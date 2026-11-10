@@ -47,7 +47,7 @@ describe('enabled feature profile', () => {
         expect(output).toBeDefined()
         const profile = JSON.parse(output!.slice('FEATURE_PROFILE='.length))
 
-        expect(profile.toolCount, JSON.stringify(profile)).toBe(38)
+        expect(profile.toolCount, JSON.stringify(profile)).toBe(41)
         expect(profile.nullCount).toBe(0)
         expect(profile.toolNames).toEqual(
           expect.arrayContaining([
@@ -66,6 +66,9 @@ describe('enabled feature profile', () => {
             'CtxInspect',
             'Snip',
             'ReviewArtifact',
+            'SendUserFile',
+            'PushNotification',
+            'SubscribePR',
           ]),
         )
         expect(profile.sleepInitiallyEnabled).toBe(false)
@@ -84,6 +87,7 @@ describe('enabled feature profile', () => {
         expect(profile.hasBuddyCommand).toBe(true)
         expect(profile.hasForkCommand).toBe(true)
         expect(profile.hasForceSnipCommand).toBe(true)
+        expect(profile.hasAssistantCommand).toBe(true)
         expect(profile.hasUltraplan).toBe(true)
         expect(profile.hasVoice).toBe(true)
         expect(profile.hasBrief).toBe(true)

@@ -32,6 +32,8 @@ const result = await Bun.build({
     'FORK_SUBAGENT',
     'HISTORY_SNIP',
     'REVIEW_ARTIFACT',
+    'KAIROS',
+    'KAIROS_GITHUB_WEBHOOKS',
   ],
   define: {
     'process.env.USER_TYPE': JSON.stringify('external'),
@@ -91,6 +93,7 @@ console.log(
     hasBuddyCommand: commandNames.has('buddy'),
     hasForkCommand: commandNames.has('fork'),
     hasForceSnipCommand: commandNames.has('force-snip'),
+    hasAssistantCommand: commandNames.has('assistant'),
     hasUltraplan: commandNames.has('ultraplan'),
     hasVoice: commandNames.has('voice'),
     hasBrief: commandNames.has('brief'),

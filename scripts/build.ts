@@ -59,6 +59,8 @@ for (const build of builds) {
       'FORK_SUBAGENT',
       'HISTORY_SNIP',
       'REVIEW_ARTIFACT',
+      'KAIROS',
+      'KAIROS_GITHUB_WEBHOOKS',
     ],
     define,
     loader: {
