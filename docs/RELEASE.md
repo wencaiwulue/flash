@@ -62,3 +62,8 @@ protocol remains separate work and is not claimed here.
 
 Verification and release metadata for this change will be appended after the
 next commit and GitHub Actions run.
+
+- **Commit**: `02bc3c2efcd3f3d7978da33b2683e9d392f3220c`.
+- **CI**: `ci` run `42778573907` passed on 2026-11-10.
+- **Verification**: 61 tests and 247 assertions passed, with typecheck, build,
+  declarations, and CLI/SDK smoke checks passing.
