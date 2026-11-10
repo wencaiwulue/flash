@@ -45,6 +45,7 @@ import { runCleanupFunctions } from './cleanupRegistry.js'
 import { flushSessionStorage } from './sessionStorage.js'
 import { FileCheckpointing } from './fileCheckpointing.js'
 import { getModelOptions } from './model/modelOptions.js'
+import { getMainLoopModel } from './model/model.js'
 import {
   applySdkFlagSettings,
   getSdkContextUsage,
@@ -54,7 +55,14 @@ import {
 } from './sdkControl.js'
 import { initializeToolPermissionContext } from './permissions/permissionSetup.js'
 import { hasPermissionsToUseTool } from './permissions/permissions.js'
-import { getOauthAccountInfo } from './auth.js'
+import { getOauthAccountInfo, getClaudeAIOAuthTokens } from './auth.js'
+import { getOrganizationUUID } from '../services/oauth/client.js'
+import { getOauthConfig } from '../constants/oauth.js'
+import { connectDaemonBridge } from '../assistant/daemonBridge.js'
+import {
+  startSdkRemoteControl,
+  type SdkRemoteController,
+} from './sdkRemoteControl.js'
 import type { ThinkingConfig } from './thinking.js'
 
 function debug(stage: string): void {
@@ -314,14 +322,19 @@ export function createSdkQuery({
   options = {},
   initialMessages,
   session,
+  remoteControlFactory = connectDaemonBridge,
+  organizationUUID,
 }: {
   prompt: string | AsyncIterable<SDKUserMessage>
   options?: InternalOptions
   initialMessages?: Message[] | Promise<Message[]>
   session?: { id: string; projectDir?: string | Promise<string | undefined> }
+  remoteControlFactory?: typeof connectDaemonBridge
+  organizationUUID?: string
 }): InternalQuery {
   const abortController = options.abortController ?? new AbortController()
   const channel = new UserMessageChannel()
+  let remoteController: SdkRemoteController | undefined
   let setupPromise: Promise<{
     appState: AppState
     commands: Awaited<ReturnType<typeof getCommands>>
@@ -470,6 +483,9 @@ export function createSdkQuery({
       toolUseID,
       forceDecision,
     ) => {
+      if (remoteController) {
+        return remoteController.requestPermission(tool.name, input, toolUseID)
+      }
       if (options.canUseTool) {
         const result = await options.canUseTool(tool.name, input, {
           signal: context.abortController.signal,
@@ -586,6 +602,11 @@ export function createSdkQuery({
     cleanupPromise ??= (async () => {
       try {
         const setup = await setupPromise
+        if (remoteController) {
+          const controller = remoteController
+          remoteController = undefined
+          await controller.stop()
+        }
         if (setup) {
           await Promise.all([
             cleanupClients(setup.appState.mcp.clients),
@@ -606,10 +627,6 @@ export function createSdkQuery({
     } finally {
       await cleanup()
     }
-  }
-
-  const unsupported = (name: string) => async (): Promise<never> => {
-    throw new Error(`${name} is not supported by this SDK query`)
   }
 
   return Object.assign(query, {
@@ -783,6 +800,47 @@ export function createSdkQuery({
       const setup = await initialize()
       return getSdkSettings(setup.appState)
     },
-    enableRemoteControl: unsupported('enableRemoteControl'),
+    enableRemoteControl: async (enabled: boolean) => {
+      if (!enabled) {
+        const controller = remoteController
+        remoteController = undefined
+        await controller?.stop()
+        return
+      }
+      if (remoteController) {
+        return {
+          session_url: remoteController.handle.sessionUrl,
+          connect_url: remoteController.handle.sessionUrl,
+          environment_id: remoteController.handle.environmentId,
+        }
+      }
+      const setup = await initialize()
+      const orgUUID = organizationUUID ?? (await getOrganizationUUID())
+      if (!orgUUID) {
+        throw new Error('Remote control requires an organization UUID')
+      }
+      const handle = await remoteControlFactory({
+        dir: options.cwd ?? process.cwd(),
+        name: 'Claude Code SDK',
+        workerType: 'sdk',
+        getAccessToken: () => getClaudeAIOAuthTokens()?.accessToken,
+        baseUrl: getOauthConfig().BASE_API_URL,
+        orgUUID,
+        model: setup.userSpecifiedModel ?? getMainLoopModel(),
+      })
+      if (!handle) {
+        throw new Error('Remote control initialization failed')
+      }
+      remoteController = startSdkRemoteControl({
+        handle,
+        query,
+        channel,
+      })
+      return {
+        session_url: handle.sessionUrl,
+        connect_url: handle.sessionUrl,
+        environment_id: handle.environmentId,
+      }
+    },
   })
 }

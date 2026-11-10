@@ -113,6 +113,12 @@ export type EnvLessBridgeParams = {
    */
   onUserMessage?: (text: string, sessionId: string) => boolean
   onPermissionResponse?: (response: SDKControlResponse) => void
+  /**
+   * Return true when the caller will respond to this control request itself.
+   * Return false to use the default REPL response handler. This prevents
+   * duplicate control responses when an SDK daemon owns the control loop.
+   */
+  onControlRequest?: (request: SDKControlRequest) => boolean
   onInterrupt?: () => void
   onSetModel?: (model: string | undefined) => void
   onSetMaxThinkingTokens?: (maxTokens: number | null) => void
@@ -152,6 +158,7 @@ export async function initEnvLessBridgeCore(
     onInboundMessage,
     onUserMessage,
     onPermissionResponse,
+    onControlRequest,
     onInterrupt,
     onSetModel,
     onSetMaxThinkingTokens,
@@ -434,7 +441,8 @@ export async function initEnvLessBridgeCore(
               onPermissionResponse(res)
             }
           : undefined,
-        req =>
+        req => {
+          if (onControlRequest?.(req)) return
           handleServerControlRequest(req, {
             transport,
             sessionId,
@@ -443,7 +451,8 @@ export async function initEnvLessBridgeCore(
             onSetMaxThinkingTokens,
             onSetPermissionMode,
             outboundOnly,
-          }),
+          })
+        },
       )
     })
 

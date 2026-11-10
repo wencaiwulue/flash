@@ -48,12 +48,14 @@ for await (const message of query({
 }
 ```
 
-`connectRemoteControl()` remains unavailable. Remote control is not emulated
-with placeholder success responses.
+`connectRemoteControl()` is implemented over the existing env-less bridge, with
+fake-transport coverage for control messages, permissions, and teardown. A real
+remote-control round trip still requires an authorized environment.
 
 Linux credential storage uses `secret-tool` with plaintext fallback. npm
 marketplace packages are downloaded with lifecycle scripts disabled and cached
-using the existing marketplace schema and refresh flow.
+using the existing marketplace schema and refresh flow. Cloud persistence maps
+output paths to Files API file IDs without relying on an xattr attribute name.
 
 ---
 

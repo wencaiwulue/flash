@@ -48,3 +48,17 @@ The initial release does not amend its commit to add release metadata. The actua
 Added Linux libsecret with fallback, npm marketplace loading and refresh, ultraplan OAuth refresh, SDK rewind, headless prompt/agent stop hooks, and SDK control APIs. The full suite now has 38 tests and 146 assertions, with build and declaration generation passing.
 
 Cloud xattr and daemon/bridge remote control remain blocked on authoritative protocols. See `docs/STATUS.md` for the current matrix rather than treating them as implemented.
+
+## Remote control and Cloud unblocking
+
+`connectRemoteControl` now uses the existing env-less bridge instead of a daemon
+stub. It has offline fake-transport coverage for FIFO queues, permission request
+pairing, control responses, and teardown. Cloud persistence now maps output paths
+to Files API file IDs rather than relying on an unspecified xattr attribute.
+
+The perpetual fallback is intentional: env-less + perpetual uses the existing
+env-based pointer/reconnect implementation. A future pure env-less perpetual
+protocol remains separate work and is not claimed here.
+
+Verification and release metadata for this change will be appended after the
+next commit and GitHub Actions run.

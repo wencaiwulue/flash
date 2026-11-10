@@ -17,7 +17,7 @@ Statuses:
 | `bun install --frozen-lockfile` | Passed |
 | `bun run generate:sdk-types` | Generated 125 core types and 59 control types |
 | `bun run typecheck` | Passed with zero TypeScript errors |
-| `bun test` | 38 tests, 146 assertions passed |
+| `bun test` | 61 tests, 247 assertions passed |
 | Linux secret storage | 4 tests, 17 assertions passed with mocked `secret-tool` |
 | npm marketplace | 7 tests passed with mocked npm execution; no registry access |
 | ultraplan polling | Refresh-before-poll test passed |
@@ -51,19 +51,18 @@ Real model checks used the session's configured provider with an isolated `HOME`
 | Non-REPL prompt/agent stop hooks | Verified (offline and E2E) | Prompt/agent allow, block, failure, cancellation, and real headless Stop feedback verified |
 | SDK rewind | Verified (offline) | Per-query snapshots, dry-run, actual restore, async snapshot waits, invalid IDs, and concurrent persistence isolation tested |
 | SDK `getContextUsage`, `reloadPlugins`, `stopTask`, `applyFlagSettings`, `getSettings` | Verified (offline) | Control methods use shared CLI implementations and have an empty-input regression test |
-| `connectRemoteControl` | Blocked on protocol | Requires matching daemon/bridge lifecycle and duplex protocol; API currently rejects |
+| `connectRemoteControl` | Verified (offline transport) | Env-less bridge handle, FIFO queues, permission pairing, control responses, and teardown verified with fake transport; real remote round trip not yet run |
 | Linux libsecret | Verified (offline) | `secret-tool` lookup/store/clear with fallback, migration, and mocked failure tests |
 | npm marketplace source | Verified (offline) | Fresh npm staging, scoped packages, schema validation, refresh, cache cleanup, and lifecycle-script suppression tested with a mock runner |
-| Cloud xattr file IDs | Blocked on protocol | Attribute name, encoding, output root, and error behavior must be confirmed |
+| Cloud file persistence | Verified (offline) | Files API maps normalized output paths to file IDs; ambiguity, pagination, delay, partial failure, and abort tests passed; no xattr attribute guessed |
 | ultraplan OAuth refresh | Verified (mocked) | Refresh runs before every remote poll; internal feature remains gated |
-| env-less perpetual bridge | Blocked on protocol | Requires internal bridge-pointer and JWT lifecycle |
+| env-based perpetual bridge | Verified (offline) | Env-less + perpetual intentionally falls back to env-based pointer/reconnect; teardown preserves pointer. Pure env-less perpetual remains a separate protocol task |
 | Internal KAIROS/proactive/workflow/computer-use features | Explicitly disabled | No internal flags are enabled in the external build |
 | iTerm hide/show/rebalance | Platform limitation | Not treated as a core implementation gap |
 
 ## Next implementation order
 
-1. Cloud xattr after confirming its protocol.
-2. `connectRemoteControl` after recovering the daemon/bridge contract.
-3. env-less perpetual bridge after the remote-control contract is available.
+1. Real Cloud API and remote bridge round trips in an authorized environment.
+2. Pure env-less perpetual bridge only if the product explicitly requires eliminating the Environments API; existing perpetual continuity is already provided by env-based bridge.
 
 Every implementation must add or update its verification evidence here. Build success alone does not promote a feature to **Verified**.

@@ -26,6 +26,7 @@ import {
 } from '../utils/sdkSessions.js'
 import { buildMissedTaskNotification as formatMissedTaskNotification } from '../utils/cronNotification.js'
 import { createSdkQuery } from '../utils/sdkQuery.js'
+import { connectDaemonBridge } from '../assistant/daemonBridge.js'
 import {
   createSdkSession,
   promptSdkSession,
@@ -550,7 +551,7 @@ export type RemoteControlHandle = {
  * @internal
  */
 export async function connectRemoteControl(
-  _opts: ConnectRemoteControlOptions,
+  opts: ConnectRemoteControlOptions,
 ): Promise<RemoteControlHandle | null> {
-  throw new Error('connectRemoteControl is unavailable in this build')
+  return connectDaemonBridge(opts)
 }

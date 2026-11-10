@@ -97,10 +97,12 @@ type RetryResult<T> = { done: true; value: T } | { done: false; error?: string }
 async function retryWithBackoff<T>(
   operation: string,
   attemptFn: (attempt: number) => Promise<RetryResult<T>>,
+  signal?: AbortSignal,
 ): Promise<T> {
   let lastError = ''
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    throwIfAborted(signal)
     const result = await attemptFn(attempt)
 
     if (result.done) {
@@ -115,11 +117,19 @@ async function retryWithBackoff<T>(
     if (attempt < MAX_RETRIES) {
       const delayMs = BASE_DELAY_MS * Math.pow(2, attempt - 1)
       logDebug(`Retrying ${operation} in ${delayMs}ms...`)
-      await sleep(delayMs)
+      await sleep(delayMs, signal)
     }
   }
 
   throw new Error(`${lastError} after ${MAX_RETRIES} attempts`)
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    const error = new Error('Files API request aborted')
+    error.name = 'AbortError'
+    throw error
+  }
 }
 
 /**
@@ -612,11 +622,13 @@ export type FileMetadata = {
  *
  * @param afterCreatedAt - ISO 8601 timestamp to filter files created after
  * @param config - Files API configuration
+ * @param opts - Optional cancellation signal
  * @returns Array of file metadata for files created after the timestamp
  */
 export async function listFilesCreatedAfter(
   afterCreatedAt: string,
   config: FilesApiConfig,
+  opts?: { signal?: AbortSignal },
 ): Promise<FileMetadata[]> {
   const baseUrl = config.baseUrl || getDefaultApiBaseUrl()
   const headers = {
@@ -629,6 +641,7 @@ export async function listFilesCreatedAfter(
 
   const allFiles: FileMetadata[] = []
   let afterId: string | undefined
+  const seenCursors = new Set<string>()
 
   // Paginate through results
   while (true) {
@@ -643,10 +656,12 @@ export async function listFilesCreatedAfter(
       `List files after ${afterCreatedAt}`,
       async () => {
         try {
+          throwIfAborted(opts?.signal)
           const response = await axios.get(`${baseUrl}/v1/files`, {
             headers,
             params,
             timeout: 60000,
+            signal: opts?.signal,
             validateStatus: status => status < 500,
           })
 
@@ -671,6 +686,12 @@ export async function listFilesCreatedAfter(
 
           return { done: false, error: `status ${response.status}` }
         } catch (error) {
+          if (opts?.signal?.aborted) {
+            throwIfAborted(opts.signal)
+          }
+          if (axios.isCancel(error)) {
+            throw error
+          }
           if (!axios.isAxiosError(error)) {
             throw error
           }
@@ -681,6 +702,7 @@ export async function listFilesCreatedAfter(
           return { done: false, error: error.message }
         }
       },
+      opts?.signal,
     )
 
     const files = page.data || []
@@ -696,11 +718,20 @@ export async function listFilesCreatedAfter(
       break
     }
 
-    // Use the last file's ID as cursor for next page
+    // A partial page is not safe for matching: callers could mistake files on
+    // omitted pages for indexing lag or missing uploads.
     const lastFile = files.at(-1)
     if (!lastFile?.id) {
-      break
+      throw new Error(
+        'Files API pagination interrupted: has_more is true but no next cursor was returned',
+      )
     }
+    if (seenCursors.has(lastFile.id)) {
+      throw new Error(
+        `Files API pagination interrupted: repeated cursor ${lastFile.id}`,
+      )
+    }
+    seenCursors.add(lastFile.id)
     afterId = lastFile.id
   }
 

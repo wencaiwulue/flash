@@ -404,9 +404,11 @@ export async function initReplBridge(
   // The env-based path below can ALSO use CCR v2 via CLAUDE_CODE_USE_CCR_V2.
   // tengu_bridge_repl_v2 gates env-less (no poll loop), not transport version.
   //
-  // perpetual (assistant-mode session continuity via bridge-pointer.json) is
-  // env-coupled and not yet implemented here — fall back to env-based when set
-  // so KAIROS users don't silently lose cross-restart continuity.
+  // Cross-restart continuity for perpetual sessions is provided by the
+  // env-based path below: it persists bridge-pointer.json and reconnects the
+  // same environment/session on the next start. A pure no-Environments API
+  // perpetual mode is separate protocol work, so deliberately retain the
+  // env-based fallback here rather than silently dropping continuity.
   if (isEnvLessBridgeEnabled() && !perpetual) {
     const versionError = await checkEnvLessBridgeMinVersion()
     if (versionError) {
