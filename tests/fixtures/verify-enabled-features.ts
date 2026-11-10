@@ -27,6 +27,7 @@ const result = await Bun.build({
     'DAEMON',
     'WORKFLOW_SCRIPTS',
     'CONTEXT_COLLAPSE',
+    'REACTIVE_COMPACT',
   ],
   define: {
     'process.env.USER_TYPE': JSON.stringify('external'),
@@ -46,6 +47,7 @@ const {
   getAllBaseTools,
   builtInCommandNames,
   getCoordinatorAgents,
+  isReactiveCompactEnabled,
   activateProactive,
   deactivateProactive,
   isProactiveActive,
@@ -71,6 +73,7 @@ console.log(
     workerBackground: worker?.background,
     workerHasBash: worker?.tools?.includes('Bash') ?? false,
     workerHasAgent: worker?.tools?.includes('Agent') ?? false,
+    reactiveCompactEnabled: isReactiveCompactEnabled(),
     hasProactiveCommand: commandNames.has('proactive'),
     hasPeersCommand: commandNames.has('peers'),
     hasRemoteControlServerCommand: commandNames.has('remote-control-server'),

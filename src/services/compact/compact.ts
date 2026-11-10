@@ -392,6 +392,7 @@ export async function compactConversation(
   customInstructions?: string,
   isAutoCompact: boolean = false,
   recompactionInfo?: RecompactionInfo,
+  skipPreCompactHooks = false,
 ): Promise<CompactionResult> {
   try {
     if (messages.length === 0) {
@@ -408,15 +409,21 @@ export async function compactConversation(
       hookType: 'pre_compact',
     })
 
-    // Execute PreCompact hooks
+    // Reactive callers run PreCompact separately to merge instructions before
+    // entering this shared implementation.
     context.setSDKStatus?.('compacting')
-    const hookResult = await executePreCompactHooks(
-      {
-        trigger: isAutoCompact ? 'auto' : 'manual',
-        customInstructions: customInstructions ?? null,
-      },
-      context.abortController.signal,
-    )
+    const hookResult = skipPreCompactHooks
+      ? {
+          newCustomInstructions: undefined,
+          userDisplayMessage: undefined,
+        }
+      : await executePreCompactHooks(
+          {
+            trigger: isAutoCompact ? 'auto' : 'manual',
+            customInstructions: customInstructions ?? null,
+          },
+          context.abortController.signal,
+        )
     customInstructions = mergeHookInstructions(
       customInstructions,
       hookResult.newCustomInstructions,

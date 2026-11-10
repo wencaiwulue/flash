@@ -54,6 +54,7 @@ for (const build of builds) {
       'DAEMON',
       'WORKFLOW_SCRIPTS',
       'CONTEXT_COLLAPSE',
+      'REACTIVE_COMPACT',
     ],
     define,
     loader: {

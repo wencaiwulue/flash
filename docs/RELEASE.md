@@ -183,3 +183,15 @@ Tool-use/result pairs are kept intact, empty summaries are rejected, and
   declarations, and the 36-tool compiled feature profile passing. Summarizers
   and persistence are injected fakes in tests; live model and API 413 recovery
   remain separately unverified.
+
+## Reactive compaction
+
+Reactive compaction now detects prompt-too-long and media-size errors, strips
+images/documents with the existing compactor, preserves PreCompact semantics,
+and maps too-few-groups, abort, exhausted, error, and unstrippable-media
+outcomes. Successful recovery performs the same cache and state cleanup as the
+other compaction paths.
+
+- **Verification**: 112 tests and 479 assertions passed, with typecheck, build,
+  declarations, and the 36-tool compiled feature profile passing. Live API
+  recovery remains separately unverified.

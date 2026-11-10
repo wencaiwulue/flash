@@ -73,6 +73,7 @@ describe('enabled feature profile', () => {
         expect(profile.workerBackground).toBe(true)
         expect(profile.workerHasBash).toBe(true)
         expect(profile.workerHasAgent).toBe(false)
+        expect(profile.reactiveCompactEnabled).toBe(true)
         expect(profile.hasProactiveCommand).toBe(true)
         expect(profile.hasPeersCommand).toBe(true)
         expect(profile.hasRemoteControlServerCommand).toBe(true)

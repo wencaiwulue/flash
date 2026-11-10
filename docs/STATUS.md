@@ -17,7 +17,7 @@ Statuses:
 | `bun install --frozen-lockfile` | Passed |
 | `bun run generate:sdk-types` | Generated 125 core types and 59 control types |
 | `bun run typecheck` | Passed with zero TypeScript errors |
-| `bun test` | 107 tests, 459 assertions passed |
+| `bun test` | 112 tests, 479 assertions passed |
 | Linux secret storage | 4 tests, 17 assertions passed with mocked `secret-tool` |
 | npm marketplace | 7 tests passed with mocked npm execution; no registry access |
 | ultraplan polling | Refresh-before-poll test passed |
@@ -50,6 +50,7 @@ Real model checks used the session's configured provider with an isolated `HOME`
 | Daemon supervisor and worker registry | Verified (offline lifecycle) | Bounded exponential restarts, clean stop, stale PID cleanup, worker dispatch, and `daemon status` smoke tested |
 | Remote Control server | Verified (offline lifecycle/build) | Shared SDK query, enable/disable, input close, idempotent start/stop, and `/remote-control-server` registration tested; no live Cloud session claimed |
 | Workflow definitions and execution | Verified (offline runner/task) | Strict schema/dependency validation, project discovery, bounded DAG concurrency, interpolation, failure propagation, skip/retry/kill, output persistence, task UI state, `/workflows`, and `Workflow` build registration tested; real model agents not run |
+| Reactive compaction | Verified (offline compactor/hooks) | PTL/media withholding, media stripping, shared compactor retry, PreCompact deduplication, failure mapping, and success cleanup tested; live API recovery not run |
 | Context collapse and CtxInspect | Verified (offline summarizer/persistence) | 90% background spawn, 95% blocking spawn, idempotent UUID projection, tool-pair boundaries, empty-summary health, commit/snapshot restore, staged overflow recovery, subscriptions, and compiled CtxInspect tested; live model/413 not run |
 | Core query and tool orchestration | Verified | Real model + Read round trip passed |
 | SDK query, async messages, abort | Verified | Source and packaged SDK queries passed |
