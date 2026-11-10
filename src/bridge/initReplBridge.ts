@@ -404,12 +404,10 @@ export async function initReplBridge(
   // The env-based path below can ALSO use CCR v2 via CLAUDE_CODE_USE_CCR_V2.
   // tengu_bridge_repl_v2 gates env-less (no poll loop), not transport version.
   //
-  // Cross-restart continuity for perpetual sessions is provided by the
-  // env-based path below: it persists bridge-pointer.json and reconnects the
-  // same environment/session on the next start. A pure no-Environments API
-  // perpetual mode is separate protocol work, so deliberately retain the
-  // env-based fallback here rather than silently dropping continuity.
-  if (isEnvLessBridgeEnabled() && !perpetual) {
+  // Perpetual sessions reuse the persisted cse_* and SSE cursor in
+  // env-less-bridge-pointer.json. Temporary teardown preserves the session;
+  // only an explicit archive() call archives it and clears the pointer.
+  if (isEnvLessBridgeEnabled()) {
     const versionError = await checkEnvLessBridgeMinVersion()
     if (versionError) {
       logBridgeSkip(
@@ -450,6 +448,8 @@ export async function initReplBridge(
       onStateChange,
       outboundOnly,
       tags,
+      perpetual,
+      cwd: getOriginalCwd(),
     })
   }
 

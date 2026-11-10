@@ -273,3 +273,19 @@ closed-connection cleanup.
 
 - **Verification**: 151 tests and 643 assertions passed, with typecheck, build,
   declarations, and the 42-tool compiled feature profile passing.
+
+## Env-less perpetual and live model validation
+
+Perpetual env-less bridges now persist `cse_*` and SSE cursors, skip session
+creation on resume, rebuild after 401s, and distinguish temporary teardown from
+explicit archive. Workflow-backed commands are `local` with non-interactive
+support and a real permission fallback, so headless workflows execute.
+
+Real model checks returned `WORKFLOW_LIVE_OK`, `PROACTIVE_LIVE_OK`,
+`CONTEXT_COLLAPSE_LIVE_OK`, and `REACTIVE_COMPACTION_LIVE_OK`. No Claude OAuth
+is currently available, so Cloud Files, Remote Control, and env-less live
+server checks remain unverified. Native desktop control also needs an
+authorized interactive desktop.
+
+- **Verification**: 152 tests and 645 assertions passed, with typecheck, build,
+  declarations, and the 42-tool compiled feature profile passing.

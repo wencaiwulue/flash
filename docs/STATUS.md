@@ -17,7 +17,7 @@ Statuses:
 | `bun install --frozen-lockfile` | Passed |
 | `bun run generate:sdk-types` | Generated 125 core types and 59 control types |
 | `bun run typecheck` | Passed with zero TypeScript errors |
-| `bun test` | 151 tests, 643 assertions passed |
+| `bun test` | 152 tests, 645 assertions passed |
 | Linux secret storage | 4 tests, 17 assertions passed with mocked `secret-tool` |
 | npm marketplace | 7 tests passed with mocked npm execution; no registry access |
 | ultraplan polling | Refresh-before-poll test passed |
@@ -70,7 +70,10 @@ Real model checks used the session's configured provider with an isolated `HOME`
 | npm marketplace source | Verified (offline) | Fresh npm staging, scoped packages, schema validation, refresh, cache cleanup, and lifecycle-script suppression tested with a mock runner |
 | Cloud file persistence | Verified (offline) | Files API maps normalized output paths to file IDs; ambiguity, pagination, delay, partial failure, and abort tests passed; no xattr attribute guessed |
 | ultraplan OAuth refresh | Verified (mocked) | Refresh runs before every remote poll; `/ultraplan` is externally registered with Claude AI availability checks |
-| env-based perpetual bridge | Verified (offline) | Env-less + perpetual intentionally falls back to env-based pointer/reconnect; teardown preserves pointer. Pure env-less perpetual remains a separate protocol task |
+| env-less perpetual bridge | Verified (offline isolated process) | Reuses cse_* and SSE cursor, skips create on resume, rebuilds after 401, preserves temporary teardown, and clears pointer only on explicit archive; live OAuth round trip not yet run |
+| Live model Workflow | Verified | Real `/live-flow` returned `WORKFLOW_LIVE_OK` |
+| Live proactive Sleep | Verified | Real Sleep call returned `PROACTIVE_LIVE_OK` |
+| Live context-collapse and reactive compaction | Verified | Real summarization returned `CONTEXT_COLLAPSE_LIVE_OK` and `REACTIVE_COMPACTION_LIVE_OK` |
 | Buddy and Fork Subagent | Verified (offline/build) | Deterministic bones, model soul persistence, reaction, mute command, fork cache placeholders, recursive guard, worktree notice, and `/fork` prompt tested |
 | Open KAIROS adapters | Verified (offline/build) | Assistant gate/team/session discovery, isolated team initialization, install wizard, SendUserFile, OS/webhook notifications, GitHub PR subscriptions, and dream registration tested |
 | Computer Use via Zavora MCP | Verified (metadata/permissions) | Real tool schemas and denied-action protection passed; native desktop control requires a separately authorized desktop session |
@@ -86,10 +89,8 @@ Real model checks used the session's configured provider with an isolated `HOME`
 
 ## Next implementation order
 
-1. Add changed-file, cron, and LSP lifecycle regressions.
-2. Add changed-file, cron, and LSP lifecycle regressions.
-3. Run real proactive, Coordinator, workflow, context-collapse, and reactive-compaction model sessions with an authorized provider.
-4. Run real Cloud API and remote bridge round trips in an authorized environment.
-5. Pure env-less perpetual bridge only if the product explicitly requires eliminating the Environments API; existing perpetual continuity is already provided by env-based bridge.
+1. Run Cloud Files, Remote Control, and env-less perpetual round trips in an authorized Claude OAuth environment.
+2. Run native Computer Use control in an authorized interactive desktop/VM.
+3. Run a self-hosted SkillHub registry round trip.
 
 Every implementation must add or update its verification evidence here. Build success alone does not promote a feature to **Verified**.

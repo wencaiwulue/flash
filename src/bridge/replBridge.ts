@@ -78,6 +78,8 @@ export type ReplBridgeHandle = {
   sendControlCancelRequest(requestId: string): void
   sendResult(): void
   teardown(): Promise<void>
+  /** Permanently archive a perpetual session and clear its pointer. */
+  archive?: () => Promise<void>
 }
 
 export type BridgeState = 'ready' | 'connected' | 'reconnecting' | 'failed'

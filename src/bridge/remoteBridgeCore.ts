@@ -37,6 +37,11 @@ import {
 import { buildCCRv2SdkUrl } from './workSecret.js'
 import { toCompatSessionId } from './sessionIdCompat.js'
 import { FlushGate } from './flushGate.js'
+import {
+  clearEnvLessBridgePointer,
+  readEnvLessBridgePointer,
+  writeEnvLessBridgePointer,
+} from './envLessBridgePointer.js'
 import { createTokenRefreshScheduler } from './jwtUtils.js'
 import { getTrustedDeviceToken } from './trustedDevice.js'
 import {
@@ -134,6 +139,10 @@ export type EnvLessBridgeParams = {
   outboundOnly?: boolean
   /** Free-form tags for session categorization (e.g. ['ccr-mirror']). */
   tags?: string[]
+  /** Reuse cse_* and SSE cursor across processes instead of archiving on stop. */
+  perpetual?: boolean
+  /** Project directory used to scope the persistent env-less pointer. */
+  cwd?: string
 }
 
 /**
@@ -166,31 +175,52 @@ export async function initEnvLessBridgeCore(
     onStateChange,
     outboundOnly,
     tags,
+    perpetual,
+    cwd,
   } = params
 
   const cfg = await getEnvLessBridgeConfig()
 
-  // ── 1. Create session (POST /v1/code/sessions, no env_id) ───────────────
+  // ── 1. Create or resume session (POST /v1/code/sessions only when needed) ──
   const accessToken = getAccessToken()
   if (!accessToken) {
     logForDebugging('[remote-bridge] No OAuth token')
     return null
   }
 
-  const createdSessionId = await withRetry(
-    () =>
-      createCodeSession(baseUrl, accessToken, title, cfg.http_timeout_ms, tags),
-    'createCodeSession',
-    cfg,
-  )
-  if (!createdSessionId) {
+  const pointerDir = cwd ?? process.cwd()
+  const pointer = perpetual ? await readEnvLessBridgePointer(pointerDir) : null
+  const resumedSessionId = pointer?.sessionId
+  let initialSequenceNum = pointer?.lastSequenceNum
+  const createdSessionId = resumedSessionId
+    ? null
+    : await withRetry(
+        () =>
+          createCodeSession(baseUrl, accessToken, title, cfg.http_timeout_ms, tags),
+        'createCodeSession',
+        cfg,
+      )
+  if (!resumedSessionId && !createdSessionId) {
     onStateChange?.('failed', 'Session creation failed — see debug log')
     logBridgeSkip('v2_session_create_failed', undefined, true)
     return null
   }
-  const sessionId: string = createdSessionId
-  logForDebugging(`[remote-bridge] Created session ${sessionId}`)
-  logForDiagnosticsNoPII('info', 'bridge_repl_v2_session_created')
+  const sessionId: string = resumedSessionId ?? createdSessionId!
+  if (resumedSessionId) {
+    logForDebugging(
+      `[remote-bridge] Resuming session ${sessionId} at seq ${initialSequenceNum ?? 0}`,
+    )
+  } else {
+    logForDebugging(`[remote-bridge] Created session ${sessionId}`)
+    logForDiagnosticsNoPII('info', 'bridge_repl_v2_session_created')
+    if (perpetual) {
+      await writeEnvLessBridgePointer(pointerDir, {
+        sessionId,
+        lastSequenceNum: 0,
+        updatedAt: Date.now(),
+      })
+    }
+  }
 
   // ── 2. Fetch bridge credentials (POST /bridge → worker_jwt, expires_in, api_base_url) ──
   const credentials = await withRetry(
@@ -207,13 +237,15 @@ export async function initEnvLessBridgeCore(
   if (!credentials) {
     onStateChange?.('failed', 'Remote credentials fetch failed — see debug log')
     logBridgeSkip('v2_remote_creds_failed', undefined, true)
-    void archiveSession(
-      sessionId,
-      baseUrl,
-      accessToken,
-      orgUUID,
-      cfg.http_timeout_ms,
-    )
+    if (!resumedSessionId) {
+      void archiveSession(
+        sessionId,
+        baseUrl,
+        accessToken,
+        orgUUID,
+        cfg.http_timeout_ms,
+      )
+    }
     return null
   }
   logForDebugging(
@@ -231,6 +263,7 @@ export async function initEnvLessBridgeCore(
       ingressToken: credentials.worker_jwt,
       sessionId,
       epoch: credentials.worker_epoch,
+      initialSequenceNum,
       heartbeatIntervalMs: cfg.heartbeat_interval_ms,
       heartbeatJitterFraction: cfg.heartbeat_jitter_fraction,
       // Per-instance closure — keeps the worker JWT out of
@@ -248,13 +281,15 @@ export async function initEnvLessBridgeCore(
     )
     onStateChange?.('failed', `Transport setup failed: ${errorMessage(err)}`)
     logBridgeSkip('v2_transport_setup_failed', undefined, true)
-    void archiveSession(
-      sessionId,
-      baseUrl,
-      accessToken,
-      orgUUID,
-      cfg.http_timeout_ms,
-    )
+    if (!resumedSessionId) {
+      void archiveSession(
+        sessionId,
+        baseUrl,
+        accessToken,
+        orgUUID,
+        cfg.http_timeout_ms,
+      )
+    }
     return null
   }
   logForDebugging(
@@ -670,12 +705,26 @@ export async function initEnvLessBridgeCore(
   //   - archive: teardown_archive_timeout_ms (default 1500, cap 2000)
   //   - result write: fire-and-forget, archive latency covers the drain
   //   - 401 retry: only if first archive 401s, shares the same budget
-  async function teardown(): Promise<void> {
+  async function teardown(final = false): Promise<void> {
     if (tornDown) return
     tornDown = true
     refresh.cancelAll()
     clearTimeout(connectDeadline)
     flushGate.drop()
+
+    if (perpetual && !final) {
+      transport.reportState('idle')
+      transport.close()
+      await writeEnvLessBridgePointer(pointerDir, {
+        sessionId,
+        lastSequenceNum: transport.getLastSequenceNum(),
+        updatedAt: Date.now(),
+      })
+      logForDebugging(
+        `[remote-bridge] Temporary teardown preserved session ${sessionId}`,
+      )
+      return
+    }
 
     // Fire the result message before archive — transport.write() only awaits
     // enqueue (SerialBatchEventUploader resolves once buffered, drain is
@@ -723,6 +772,7 @@ export async function initEnvLessBridgeCore(
     }
 
     transport.close()
+    if (perpetual) await clearEnvLessBridgePointer(pointerDir)
 
     const archiveStatus: ArchiveTelemetryStatus =
       status === 'no_token'
@@ -781,6 +831,13 @@ export async function initEnvLessBridgeCore(
           !recentPostedUUIDs.has(m.uuid),
       )
       if (filtered.length === 0) return
+      if (perpetual) {
+        void writeEnvLessBridgePointer(pointerDir, {
+          sessionId,
+          lastSequenceNum: transport.getLastSequenceNum(),
+          updatedAt: Date.now(),
+        })
+      }
 
       // Fire onUserMessage for title derivation. Scan before the flushGate
       // check — prompts are title-worthy even if they queue. Keeps calling
@@ -891,6 +948,10 @@ export async function initEnvLessBridgeCore(
     async teardown() {
       unregister()
       await teardown()
+    },
+    async archive() {
+      unregister()
+      await teardown(true)
     },
   }
 }

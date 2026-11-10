@@ -1,33 +1,29 @@
 import { startWorkflowTask } from '../../tasks/LocalWorkflowTask/LocalWorkflowTask.js'
-import type { Command, LocalJSXCommandContext, LocalJSXCommandOnDone } from '../../types/command.js'
+import type { Command, LocalJSXCommandContext } from '../../types/command.js'
 import { listWorkflowDefinitions, type DiscoveredWorkflow } from './discovery.js'
+import { hasPermissionsToUseTool } from '../../utils/permissions/permissions.js'
 
 function commandForWorkflow(workflow: DiscoveredWorkflow): Command {
-  async function call(
-    onDone: LocalJSXCommandOnDone,
-    context: LocalJSXCommandContext,
-    args: string,
-  ): Promise<null> {
-    if (!context.canUseTool) {
-      onDone(`Workflow ${workflow.name} requires an interactive permission context.`)
-      return null
-    }
+  async function call(args: string, context: LocalJSXCommandContext) {
     const { taskId } = startWorkflowTask({
       workflow,
       input: args,
       context,
-      canUseTool: context.canUseTool,
+      canUseTool: context.canUseTool ?? hasPermissionsToUseTool,
     })
-    onDone(`Workflow ${workflow.name} started: ${taskId}`)
-    return null
+    return {
+      type: 'text' as const,
+      value: `Workflow ${workflow.name} started: ${taskId}`,
+    }
   }
   return {
-    type: 'local-jsx',
+    type: 'local',
     name: workflow.name,
     description: workflow.description,
     kind: 'workflow',
     ...(workflow.source === 'bundled' ? { loadedFrom: 'bundled' } : {}),
     isEnabled: () => true,
+    supportsNonInteractive: true,
     load: () => Promise.resolve({ call }),
   }
 }

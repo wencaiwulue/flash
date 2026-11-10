@@ -399,17 +399,17 @@ async function waitForTransport(): Promise<void> {
 }
 
 describe('perpetual bridge path selection', () => {
-  test('env-less gate plus perpetual deliberately selects env-based', async () => {
+  test('env-less gate plus perpetual selects env-less with persistent continuity', async () => {
     const handle = await initReplBridge({
       initialName: 'perpetual-test',
       perpetual: true,
     })
 
-    expect(handle).not.toBeNull()
+    expect(handle).toBe(envLessHandle)
     track(handle!)
-    expect(registerBridgeEnvironment).toHaveBeenCalledTimes(1)
-    expect(createBridgeSession).toHaveBeenCalledTimes(1)
-    expect(initEnvLessBridgeCore).not.toHaveBeenCalled()
+    expect(initEnvLessBridgeCore).toHaveBeenCalledTimes(1)
+    expect(registerBridgeEnvironment).not.toHaveBeenCalled()
+    expect(createBridgeSession).not.toHaveBeenCalled()
   })
 
   test('env-less gate without perpetual selects env-less', async () => {
