@@ -111,6 +111,6 @@ non-recursive tools and a self-contained task/verification prompt. Lightweight
 name-only modules avoid loading the tool registry from worker definitions.
 
 - **Verification**: 77 tests and 329 assertions passed, with typecheck, build,
-  declarations, CLI startup smoke checks, and the 31-tool compiled feature
+  declarations, CLI startup smoke checks, and the 32-tool compiled feature
   profile passing. Real model-driven proactive and multi-worker sessions remain
   separate live validation work.

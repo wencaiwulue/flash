@@ -26,6 +26,8 @@ describe('enabled feature profile', () => {
         env: {
           ...process.env,
           ANTHROPIC_API_KEY: 'offline-test-placeholder',
+          ANTHROPIC_BASE_URL: 'https://api.anthropic.com',
+          ENABLE_TOOL_SEARCH: 'true',
           NODE_ENV: 'production',
         },
         stdout: 'pipe',
@@ -45,7 +47,7 @@ describe('enabled feature profile', () => {
         expect(output).toBeDefined()
         const profile = JSON.parse(output!.slice('FEATURE_PROFILE='.length))
 
-        expect(profile.toolCount, JSON.stringify(profile)).toBe(31)
+        expect(profile.toolCount, JSON.stringify(profile)).toBe(32)
         expect(profile.nullCount).toBe(0)
         expect(profile.toolNames).toEqual(
           expect.arrayContaining([
@@ -57,6 +59,7 @@ describe('enabled feature profile', () => {
             'OverflowTest',
             'TerminalCapture',
             'Sleep',
+            'ToolSearch',
           ]),
         )
         expect(profile.sleepInitiallyEnabled).toBe(false)
