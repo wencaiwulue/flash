@@ -23,6 +23,7 @@ const result = await Bun.build({
     'PROACTIVE',
     'COORDINATOR_MODE',
     'EXPERIMENTAL_SKILL_SEARCH',
+    'UDS_INBOX',
   ],
   define: {
     'process.env.USER_TYPE': JSON.stringify('external'),
@@ -68,6 +69,7 @@ console.log(
     workerHasBash: worker?.tools?.includes('Bash') ?? false,
     workerHasAgent: worker?.tools?.includes('Agent') ?? false,
     hasProactiveCommand: commandNames.has('proactive'),
+    hasPeersCommand: commandNames.has('peers'),
     hasUltraplan: commandNames.has('ultraplan'),
     hasVoice: commandNames.has('voice'),
     hasBrief: commandNames.has('brief'),

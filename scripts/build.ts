@@ -50,6 +50,7 @@ for (const build of builds) {
       'PROACTIVE',
       'COORDINATOR_MODE',
       'EXPERIMENTAL_SKILL_SEARCH',
+      'UDS_INBOX',
     ],
     define,
     loader: {

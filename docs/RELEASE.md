@@ -111,7 +111,7 @@ non-recursive tools and a self-contained task/verification prompt. Lightweight
 name-only modules avoid loading the tool registry from worker definitions.
 
 - **Verification**: 77 tests and 329 assertions passed, with typecheck, build,
-  declarations, CLI startup smoke checks, and the 33-tool compiled feature
+  declarations, CLI startup smoke checks, and the 34-tool compiled feature
   profile passing. Real model-driven proactive and multi-worker sessions remain
   separate live validation work.
 
@@ -128,5 +128,18 @@ authoritative remote protocol is present; this change does not fabricate remote
 skills or success telemetry.
 
 - **Verification**: 83 tests and 352 assertions passed, with typecheck, build,
-  declarations, CLI startup smoke checks, and the 33-tool compiled feature
+  declarations, CLI startup smoke checks, and the 34-tool compiled feature
   profile passing.
+
+## UDS inbox and peer sessions
+
+The UDS boundary now runs a real local socket server with 0600 permissions,
+bounded newline frames, ping/pong discovery, request timeouts, and private
+per-session registry records. Incoming text enters the existing prompt queue
+and wakes headless consumers. Clients address peers by socket path or session
+ID, remove stale records instead of returning offline peers, and clean up both
+socket and registry on teardown. `ListPeers` and `/peers` expose the live view.
+
+- **Verification**: 85 tests and 368 assertions passed, including real local
+  socket round trips. Typecheck, build, declarations, and the 34-tool compiled
+  feature profile passed.
