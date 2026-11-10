@@ -26,6 +26,7 @@ const result = await Bun.build({
     'UDS_INBOX',
     'DAEMON',
     'WORKFLOW_SCRIPTS',
+    'CONTEXT_COLLAPSE',
   ],
   define: {
     'process.env.USER_TYPE': JSON.stringify('external'),

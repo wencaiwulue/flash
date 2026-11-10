@@ -53,6 +53,7 @@ for (const build of builds) {
       'UDS_INBOX',
       'DAEMON',
       'WORKFLOW_SCRIPTS',
+      'CONTEXT_COLLAPSE',
     ],
     define,
     loader: {

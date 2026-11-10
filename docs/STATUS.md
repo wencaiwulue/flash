@@ -17,7 +17,7 @@ Statuses:
 | `bun install --frozen-lockfile` | Passed |
 | `bun run generate:sdk-types` | Generated 125 core types and 59 control types |
 | `bun run typecheck` | Passed with zero TypeScript errors |
-| `bun test` | 100 tests, 424 assertions passed |
+| `bun test` | 107 tests, 459 assertions passed |
 | Linux secret storage | 4 tests, 17 assertions passed with mocked `secret-tool` |
 | npm marketplace | 7 tests passed with mocked npm execution; no registry access |
 | ultraplan polling | Refresh-before-poll test passed |
@@ -39,7 +39,7 @@ Real model checks used the session's configured provider with an isolated `HOME`
 | Area | Status | Evidence / next step |
 |---|---|---|
 | CLI build and startup | Verified | Build, version, help, and real headless query passed |
-| Built-in tool pool | Verified | External feature-profile build loaded 35 tools with no null entries, including Cron, RemoteTrigger, Monitor, OverflowTest, TerminalCapture, and Sleep |
+| Built-in tool pool | Verified | External feature-profile build loaded 36 tools with no null entries, including Cron, RemoteTrigger, Monitor, OverflowTest, TerminalCapture, and Sleep |
 | External feature profile | Verified | Trigger, remote-trigger, voice, bridge, ultraplan, persistence, brief, Monitor, OverflowTest, terminal panel, PROACTIVE, and COORDINATOR_MODE are compiled in; `ultraplan`, `voice`, `brief`, and `proactive` are registered |
 | Monitor streaming | Verified (local shell) | Real stdout chunks become deduplicated per-line notifications, with final partial-line flush and completion notification; Bash permission checks are reused |
 | Proactive and Sleep | Verified (offline scheduler/build) | Activation, pause/resume, context blocking, idle scheduling, abort/settings, `/proactive`, and external REPL wiring tested; real model-driven perpetual session not run |
@@ -50,7 +50,7 @@ Real model checks used the session's configured provider with an isolated `HOME`
 | Daemon supervisor and worker registry | Verified (offline lifecycle) | Bounded exponential restarts, clean stop, stale PID cleanup, worker dispatch, and `daemon status` smoke tested |
 | Remote Control server | Verified (offline lifecycle/build) | Shared SDK query, enable/disable, input close, idempotent start/stop, and `/remote-control-server` registration tested; no live Cloud session claimed |
 | Workflow definitions and execution | Verified (offline runner/task) | Strict schema/dependency validation, project discovery, bounded DAG concurrency, interpolation, failure propagation, skip/retry/kill, output persistence, task UI state, `/workflows`, and `Workflow` build registration tested; real model agents not run |
-| CtxInspect | Implemented, feature-gated | Report-format tests pass; `CONTEXT_COLLAPSE` remains off until its service is complete |
+| Context collapse and CtxInspect | Verified (offline summarizer/persistence) | 90% background spawn, 95% blocking spawn, idempotent UUID projection, tool-pair boundaries, empty-summary health, commit/snapshot restore, staged overflow recovery, subscriptions, and compiled CtxInspect tested; live model/413 not run |
 | Core query and tool orchestration | Verified | Real model + Read round trip passed |
 | SDK query, async messages, abort | Verified | Source and packaged SDK queries passed |
 | In-process MCP tools | Verified | Tool metadata, invocation, and model round trip passed |
@@ -73,9 +73,8 @@ Real model checks used the session's configured provider with an isolated `HOME`
 
 ## Next implementation order
 
-1. Complete context-collapse state, projection, recovery, persistence, and CtxInspect activation.
-2. Run a real proactive tick/Sleep session and Coordinator multi-worker orchestration with an authorized model provider.
-3. Run real Cloud API and remote bridge round trips in an authorized environment.
-4. Pure env-less perpetual bridge only if the product explicitly requires eliminating the Environments API; existing perpetual continuity is already provided by env-based bridge.
+1. Run real proactive, Coordinator, workflow, and context-collapse model sessions with an authorized provider.
+2. Run real Cloud API and remote bridge round trips in an authorized environment.
+3. Pure env-less perpetual bridge only if the product explicitly requires eliminating the Environments API; existing perpetual continuity is already provided by env-based bridge.
 
 Every implementation must add or update its verification evidence here. Build success alone does not promote a feature to **Verified**.
