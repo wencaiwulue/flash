@@ -17,7 +17,7 @@ Statuses:
 | `bun install --frozen-lockfile` | Passed |
 | `bun run generate:sdk-types` | Generated 125 core types and 59 control types |
 | `bun run typecheck` | Passed with zero TypeScript errors |
-| `bun test` | 142 tests, 611 assertions passed |
+| `bun test` | 151 tests, 643 assertions passed |
 | Linux secret storage | 4 tests, 17 assertions passed with mocked `secret-tool` |
 | npm marketplace | 7 tests passed with mocked npm execution; no registry access |
 | ultraplan polling | Refresh-before-poll test passed |
@@ -59,9 +59,9 @@ Real model checks used the session's configured provider with an isolated `HOME`
 | In-process MCP tools | Verified | Tool metadata, invocation, and model round trip passed |
 | SDK session list/read/rename/tag/fork | Verified | Offline JSONL tests passed; fresh fork UUID chains and parallel assistant/tool-result DAG recovery before both SDK read paths and pagination checked |
 | V2 create/resume/prompt | Verified | Multi-turn and history recall passed |
-| Scheduled tasks | Verified | Missed-event and abort tests passed |
-| LSP lifecycle configuration | Verified | `restartOnCrash` and `shutdownTimeout` configuration test passed |
-| Changed-file partial reads | Implemented, unverified | `offset/limit` is forwarded to `FileReadTool`; add a dedicated regression test |
+| Scheduled tasks | Verified | One-shot dedup, recurring reschedule, aging, lock takeover, and missed/abort tests passed |
+| LSP lifecycle | Verified | Real JSON-RPC initialize, crash restart, maxRestarts, shutdown timeout, and stop cleanup passed |
+| Changed-file partial reads | Verified | Real offset/limit rereads, boundary changes, full reads, and deletion eviction passed |
 | Non-REPL prompt/agent stop hooks | Verified (offline and E2E) | Prompt/agent allow, block, failure, cancellation, and real headless Stop feedback verified |
 | SDK rewind | Verified (offline) | Per-query snapshots, dry-run, actual restore, async snapshot waits, invalid IDs, and concurrent persistence isolation tested |
 | SDK `getContextUsage`, `reloadPlugins`, `stopTask`, `applyFlagSettings`, `getSettings` | Verified (offline) | Control methods use shared CLI implementations and have an empty-input regression test |
@@ -82,7 +82,7 @@ Real model checks used the session's configured provider with an isolated `HOME`
 - Self-hosted SkillHub live registry: the adapter and local HTTP protocol tests pass; a real registry round trip is still pending.
 - `MonitorMcpTask`: the legacy MCP-task backend remains unavailable. The enabled `Monitor` tool uses the verified local-shell task path instead and never creates `monitor_mcp` state.
 - Native Computer Use desktop control: open MCP metadata and permission checks pass, but a real authorized desktop session is still required.
-- Validation-only gaps: changed-file `offset/limit`, cron recurring/aging, and LSP restart/shutdown behavior still need dedicated deterministic lifecycle tests.
+- Live validation gaps: model/Cloud/remote-control and native desktop round trips still need authorized environments; changed-file, cron, and LSP deterministic lifecycle tests now pass.
 
 ## Next implementation order
 

@@ -61,6 +61,7 @@ export function createLSPClient(
   let startFailed = false
   let startError: Error | undefined
   let isStopping = false // Track intentional shutdown to avoid spurious error logging
+  let connectionClosed = false
   // Queue handlers registered before connection ready (lazy initialization support)
   const pendingHandlers: Array<{
     method: string
@@ -96,6 +97,7 @@ export function createLSPClient(
     ): Promise<void> {
       try {
         // 1. Spawn LSP server process
+        connectionClosed = false
         process = spawn(command, args, {
           stdio: ['pipe', 'pipe', 'pipe'],
           env: { ...subprocessEnv(), ...options?.env },
@@ -155,6 +157,7 @@ export function createLSPClient(
         })
 
         process.on('exit', (code, _signal) => {
+          connectionClosed = true
           if (code !== 0 && code !== null && !isStopping) {
             isInitialized = false
             startFailed = false
@@ -200,6 +203,7 @@ export function createLSPClient(
         })
 
         connection.onClose(() => {
+          connectionClosed = true
           // Only treat as error if not intentionally stopping
           if (!isStopping) {
             isInitialized = false
@@ -399,8 +403,9 @@ export function createLSPClient(
       forceKillTimer?.unref()
 
       try {
-        if (connection) {
-          // Try to send shutdown request and exit notification
+        if (connection && !connectionClosed) {
+          // Try to send shutdown request and exit notification only while the
+          // peer can respond. A crashed process can never answer shutdown.
           await connection.sendRequest('shutdown', {})
           await connection.sendNotification('exit', {})
         }

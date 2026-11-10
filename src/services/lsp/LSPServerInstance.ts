@@ -142,6 +142,7 @@ export function createLSPServerInstance(
         `LSP server '${name}' exceeded max crash recovery attempts (${maxRestarts})`,
       )
       lastError = error
+      state = 'error'
       logError(error)
       throw error
     }
@@ -312,6 +313,8 @@ export function createLSPServerInstance(
       const error = new Error(
         `Max restart attempts (${maxRestarts}) exceeded for server '${name}'`,
       )
+      lastError = error
+      state = 'error'
       logError(error)
       throw error
     }

@@ -126,6 +126,8 @@ type CronSchedulerOptions = {
    * non-permanent tasks in the same scheduled_tasks.json are untouched.
    */
   filter?: (t: CronTask) => boolean
+  /** Time source for deterministic lifecycle tests. Defaults to Date.now. */
+  now?: () => number
 }
 
 export type CronScheduler = {
@@ -156,6 +158,8 @@ export function createCronScheduler(
     filter,
   } = options
   const lockOpts = dir || lockIdentity ? { dir, lockIdentity } : undefined
+
+  const nowFn = options.now ?? Date.now
 
   // File-backed tasks only. Session tasks (durable: false) are NOT loaded
   // here — they can be added/removed mid-session with no file event, so
@@ -192,7 +196,7 @@ export function createCronScheduler(
     // missed tasks need user input (run once now, or discard forever).
     if (!initial) return
 
-    const now = Date.now()
+    const now = nowFn()
     const missed = findMissedTasks(next, now).filter(
       t => !t.recurring && !missedAsked.has(t.id) && (!filter || filter(t)),
     )
@@ -231,7 +235,7 @@ export function createCronScheduler(
   function check() {
     if (isKilled?.()) return
     if (isLoading() && !assistantMode) return
-    const now = Date.now()
+    const now = nowFn()
     const seen = new Set<string>()
     // File-backed recurring tasks that fired this tick. Batched into one
     // markCronTasksFired call after the loop so N fires = one write. Session
@@ -335,6 +339,12 @@ export function createCronScheduler(
         // removeCronTasks + chokidar reload.
         inFlight.add(t.id)
         void removeCronTasks([t.id], dir)
+          .then(() => {
+            // The file watcher reload is asynchronous. Remove from memory at
+            // the same commit point so the old entry cannot fire a second time
+            // between disk deletion and the next chokidar event.
+            tasks = tasks.filter(task => task.id !== t.id)
+          })
           .catch(e =>
             logForDebugging(
               `[ScheduledTasks] failed to remove task ${t.id}: ${e}`,

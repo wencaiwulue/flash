@@ -262,3 +262,14 @@ not the previous empty private-package stubs.
   declarations, and the 42-tool compiled feature profile passing. Real local
   browser navigation passed; native desktop control still needs an authorized
   desktop session.
+
+## Lifecycle regressions
+
+Changed-file offset/limit reads now have real filesystem coverage. Cron has
+one-shot deduplication, recurring reschedule, aging, and lock-takeover tests,
+including a fix for the disk-delete/watch-reload race. LSP has real JSON-RPC
+lifecycle tests, including crash recovery, maxRestarts, shutdown timeout, and
+closed-connection cleanup.
+
+- **Verification**: 151 tests and 643 assertions passed, with typecheck, build,
+  declarations, and the 42-tool compiled feature profile passing.
