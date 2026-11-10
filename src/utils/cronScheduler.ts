@@ -128,6 +128,8 @@ type CronSchedulerOptions = {
   filter?: (t: CronTask) => boolean
   /** Time source for deterministic lifecycle tests. Defaults to Date.now. */
   now?: () => number
+  /** Lock takeover probe interval. Defaults to 5000ms. */
+  lockProbeIntervalMs?: number
 }
 
 export type CronScheduler = {
@@ -442,7 +444,7 @@ export function createCronScheduler(
             }
           })
           .catch(e => logForDebugging(String(e), { level: 'error' }))
-      }, LOCK_PROBE_INTERVAL_MS)
+      }, options.lockProbeIntervalMs ?? LOCK_PROBE_INTERVAL_MS)
       lockProbeTimer.unref?.()
     }
 

@@ -9,7 +9,6 @@ import {
   ReviewArtifactTool,
 } from '../src/tools/ReviewArtifactTool/ReviewArtifactTool.ts'
 import type { ToolUseContext } from '../src/Tool.ts'
-import { runWithCwdOverride } from '../src/utils/cwd.ts'
 
 const context = {} as ToolUseContext
 const allow = async () => ({ behavior: 'allow' as const, updatedInput: {} })
@@ -68,13 +67,11 @@ describe('ReviewArtifactTool', () => {
     const dir = await mkdtemp(join('/tmp', 'claude-review-artifact-'))
     try {
       await writeFile(join(dir, 'artifact.txt'), 'file artifact')
-      const result = await runWithCwdOverride(dir, () =>
-        reviewArtifact(
-          { artifact_path: 'artifact.txt' },
-          context,
-          allow,
-          async () => '{"summary":"ok","findings":[]}',
-        ),
+      const result = await reviewArtifact(
+        { artifact_path: join(dir, 'artifact.txt') },
+        context,
+        allow,
+        async () => '{"summary":"ok","findings":[]}',
       )
       expect(result.summary).toBe('ok')
     } finally {

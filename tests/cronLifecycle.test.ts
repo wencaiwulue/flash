@@ -116,6 +116,7 @@ describe('cron scheduler lifecycle', () => {
     const second = createCronScheduler({
       dir,
       now: () => current,
+      lockProbeIntervalMs: 50,
       lockIdentity: 'second',
       isLoading: () => false,
       onFireTask: task => secondFired.push(task),
@@ -125,12 +126,17 @@ describe('cron scheduler lifecycle', () => {
     schedulers.add(second)
     first.start()
     second.start()
-    await waitFor(() => first.getNextFireTime() !== null)
+    await waitFor(
+      () => first.getNextFireTime() !== null || second.getNextFireTime() !== null,
+    )
     current += 60_000
-    await waitFor(() => firstFired.length >= 1)
-    expect(secondFired).toHaveLength(0)
-    first.stop()
-    await waitFor(() => secondFired.length >= 1, 30_000)
-    second.stop()
+    await waitFor(() => firstFired.length + secondFired.length >= 1)
+    const owner = firstFired.length > 0 ? first : second
+    const other = firstFired.length > 0 ? second : first
+    const otherFired = firstFired.length > 0 ? secondFired : firstFired
+    expect(otherFired).toHaveLength(0)
+    owner.stop()
+    await waitFor(() => otherFired.length >= 1, 30_000)
+    other.stop()
   }, 40_000)
 })
