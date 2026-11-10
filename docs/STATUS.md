@@ -72,10 +72,21 @@ Real model checks used the session's configured provider with an isolated `HOME`
 | Full KAIROS/proactive/workflow/computer-use features | Explicitly disabled or stub-only | `KAIROS_BRIEF` is enabled independently; the remaining internal systems require implementation before their flags are enabled |
 | iTerm hide/show/rebalance | Platform limitation | Not treated as a core implementation gap |
 
+## Remaining implementation boundaries
+
+- `HISTORY_SNIP`: `snipCompact.ts`, `snipProjection.ts`, `SnipTool`, and `/force-snip` are still stubs; the flag remains off.
+- `REVIEW_ARTIFACT`: the tool is still an explicit stub and is not registered in the external build.
+- Remote canonical skills: no authoritative loading protocol is available; the loader remains unavailable by design.
+- `MonitorMcpTask`: the legacy MCP-task backend remains unavailable. The enabled `Monitor` tool uses the verified local-shell task path instead and never creates `monitor_mcp` state.
+- Full KAIROS, Buddy/Fork, and private computer-use/browser backends remain disabled; their external protocols or implementations are not present.
+- Validation-only gaps: changed-file `offset/limit`, cron recurring/aging, and LSP restart/shutdown behavior still need dedicated deterministic lifecycle tests.
+
 ## Next implementation order
 
-1. Run real proactive, Coordinator, workflow, and context-collapse model sessions with an authorized provider.
-2. Run real Cloud API and remote bridge round trips in an authorized environment.
-3. Pure env-less perpetual bridge only if the product explicitly requires eliminating the Environments API; existing perpetual continuity is already provided by env-based bridge.
+1. Implement HISTORY_SNIP and ReviewArtifact with focused regressions; do not enable their flags while stubs remain.
+2. Add changed-file, cron, and LSP lifecycle regressions.
+3. Run real proactive, Coordinator, workflow, context-collapse, and reactive-compaction model sessions with an authorized provider.
+4. Run real Cloud API and remote bridge round trips in an authorized environment.
+5. Pure env-less perpetual bridge only if the product explicitly requires eliminating the Environments API; existing perpetual continuity is already provided by env-based bridge.
 
 Every implementation must add or update its verification evidence here. Build success alone does not promote a feature to **Verified**.
