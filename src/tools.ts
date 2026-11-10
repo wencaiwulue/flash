@@ -121,6 +121,10 @@ const DiscoverSkillsTool = feature('EXPERIMENTAL_SKILL_SEARCH')
   ? require('./tools/DiscoverSkillsTool/DiscoverSkillsTool.js')
       .DiscoverSkillsTool
   : null
+const ReviewArtifactTool = feature('REVIEW_ARTIFACT')
+  ? require('./tools/ReviewArtifactTool/ReviewArtifactTool.js')
+      .ReviewArtifactTool
+  : null
 const WebBrowserTool = feature('WEB_BROWSER_TOOL')
   ? require('./tools/WebBrowserTool/WebBrowserTool.js').WebBrowserTool
   : null
@@ -229,6 +233,7 @@ export function getAllBaseTools(): Tools {
     ...(CtxInspectTool ? [CtxInspectTool] : []),
     ...(TerminalCaptureTool ? [TerminalCaptureTool] : []),
     ...(DiscoverSkillsTool ? [DiscoverSkillsTool] : []),
+    ...(ReviewArtifactTool ? [ReviewArtifactTool] : []),
     ...(isEnvTruthy(process.env.ENABLE_LSP_TOOL) ? [LSPTool] : []),
     ...(isWorktreeModeEnabled() ? [EnterWorktreeTool, ExitWorktreeTool] : []),
     getSendMessageTool(),

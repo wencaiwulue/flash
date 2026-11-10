@@ -58,6 +58,7 @@ for (const build of builds) {
       'BUDDY',
       'FORK_SUBAGENT',
       'HISTORY_SNIP',
+      'REVIEW_ARTIFACT',
     ],
     define,
     loader: {

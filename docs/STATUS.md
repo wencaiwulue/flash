@@ -17,7 +17,7 @@ Statuses:
 | `bun install --frozen-lockfile` | Passed |
 | `bun run generate:sdk-types` | Generated 125 core types and 59 control types |
 | `bun run typecheck` | Passed with zero TypeScript errors |
-| `bun test` | 125 tests, 546 assertions passed |
+| `bun test` | 130 tests, 563 assertions passed |
 | Linux secret storage | 4 tests, 17 assertions passed with mocked `secret-tool` |
 | npm marketplace | 7 tests passed with mocked npm execution; no registry access |
 | ultraplan polling | Refresh-before-poll test passed |
@@ -39,7 +39,7 @@ Real model checks used the session's configured provider with an isolated `HOME`
 | Area | Status | Evidence / next step |
 |---|---|---|
 | CLI build and startup | Verified | Build, version, help, and real headless query passed |
-| Built-in tool pool | Verified | External feature-profile build loaded 37 tools with no null entries, including Cron, RemoteTrigger, Monitor, OverflowTest, TerminalCapture, and Sleep |
+| Built-in tool pool | Verified | External feature-profile build loaded 38 tools with no null entries, including Cron, RemoteTrigger, Monitor, OverflowTest, TerminalCapture, and Sleep |
 | External feature profile | Verified | Trigger, remote-trigger, voice, bridge, ultraplan, persistence, brief, Monitor, OverflowTest, terminal panel, PROACTIVE, and COORDINATOR_MODE are compiled in; `ultraplan`, `voice`, `brief`, and `proactive` are registered |
 | Monitor streaming | Verified (local shell) | Real stdout chunks become deduplicated per-line notifications, with final partial-line flush and completion notification; Bash permission checks are reused |
 | Proactive and Sleep | Verified (offline scheduler/build) | Activation, pause/resume, context blocking, idle scheduling, abort/settings, `/proactive`, and external REPL wiring tested; real model-driven perpetual session not run |
@@ -51,6 +51,7 @@ Real model checks used the session's configured provider with an isolated `HOME`
 | Remote Control server | Verified (offline lifecycle/build) | Shared SDK query, enable/disable, input close, idempotent start/stop, and `/remote-control-server` registration tested; no live Cloud session claimed |
 | Workflow definitions and execution | Verified (offline runner/task) | Strict schema/dependency validation, project discovery, bounded DAG concurrency, interpolation, failure propagation, skip/retry/kill, output persistence, task UI state, `/workflows`, and `Workflow` build registration tested; real model agents not run |
 | HISTORY_SNIP | Verified (offline/build) | Marker execution, protected-tail/tool-pair safety, tokensFreed, nudge reset, REPL projection, SDK replay contract, SnipTool, and `/force-snip` tested |
+| ReviewArtifact and `/hunter` | Verified (offline reviewer/build) | Input/size validation, independent read-only reviewer, structured findings, unverified status, FileRead permission delegation, and bundled skill registration tested |
 | Reactive compaction | Verified (offline compactor/hooks) | PTL/media withholding, media stripping, shared compactor retry, PreCompact deduplication, failure mapping, and success cleanup tested; live API recovery not run |
 | Context collapse and CtxInspect | Verified (offline summarizer/persistence) | 90% background spawn, 95% blocking spawn, idempotent UUID projection, tool-pair boundaries, empty-summary health, commit/snapshot restore, staged overflow recovery, subscriptions, and compiled CtxInspect tested; live model/413 not run |
 | Core query and tool orchestration | Verified | Real model + Read round trip passed |
@@ -76,7 +77,6 @@ Real model checks used the session's configured provider with an isolated `HOME`
 
 ## Remaining implementation boundaries
 
-- `REVIEW_ARTIFACT`: the tool is still an explicit stub and is not registered in the external build.
 - Remote canonical skills: no authoritative loading protocol is available; the loader remains unavailable by design.
 - `MonitorMcpTask`: the legacy MCP-task backend remains unavailable. The enabled `Monitor` tool uses the verified local-shell task path instead and never creates `monitor_mcp` state.
 - Full KAIROS and private computer-use/browser backends remain disabled; Buddy/Fork are enabled, while the remaining private backends use the planned open adapters.
@@ -84,7 +84,7 @@ Real model checks used the session's configured provider with an isolated `HOME`
 
 ## Next implementation order
 
-1. Implement ReviewArtifact with focused regressions; do not enable its flag while stubs remain.
+1. Complete the SkillHub remote-skill adapter and validate it against a local registry.
 2. Add changed-file, cron, and LSP lifecycle regressions.
 3. Run real proactive, Coordinator, workflow, context-collapse, and reactive-compaction model sessions with an authorized provider.
 4. Run real Cloud API and remote bridge round trips in an authorized environment.

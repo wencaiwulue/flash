@@ -47,7 +47,7 @@ describe('enabled feature profile', () => {
         expect(output).toBeDefined()
         const profile = JSON.parse(output!.slice('FEATURE_PROFILE='.length))
 
-        expect(profile.toolCount, JSON.stringify(profile)).toBe(37)
+        expect(profile.toolCount, JSON.stringify(profile)).toBe(38)
         expect(profile.nullCount).toBe(0)
         expect(profile.toolNames).toEqual(
           expect.arrayContaining([
@@ -65,6 +65,7 @@ describe('enabled feature profile', () => {
             'Workflow',
             'CtxInspect',
             'Snip',
+            'ReviewArtifact',
           ]),
         )
         expect(profile.sleepInitiallyEnabled).toBe(false)
@@ -75,6 +76,7 @@ describe('enabled feature profile', () => {
         expect(profile.workerHasBash).toBe(true)
         expect(profile.workerHasAgent).toBe(false)
         expect(profile.reactiveCompactEnabled).toBe(true)
+        expect(profile.hasHunterSkill).toBe(true)
         expect(profile.hasProactiveCommand).toBe(true)
         expect(profile.hasPeersCommand).toBe(true)
         expect(profile.hasRemoteControlServerCommand).toBe(true)

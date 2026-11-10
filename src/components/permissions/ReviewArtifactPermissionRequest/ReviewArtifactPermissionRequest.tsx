@@ -1,17 +1,10 @@
-import React, { useEffect } from 'react'
-import { Text } from '../../../ink.js'
+import React from 'react'
 import type { PermissionRequestProps } from '../PermissionRequest.js'
+import { FallbackPermissionRequest } from '../FallbackPermissionRequest.js'
 
-export function ReviewArtifactPermissionRequest({
-  toolUseConfirm,
-  onDone,
-  onReject,
-}: PermissionRequestProps): React.ReactNode {
-  useEffect(() => {
-    toolUseConfirm.onReject('ReviewArtifact is unavailable in this build')
-    onReject()
-    onDone()
-  }, [toolUseConfirm, onDone, onReject])
-
-  return <Text color="warning">ReviewArtifact is unavailable in this build.</Text>
+/** Reviewing is read-only; file-backed reviews reuse FileRead permission checks. */
+export function ReviewArtifactPermissionRequest(
+  props: PermissionRequestProps,
+): React.ReactNode {
+  return <FallbackPermissionRequest {...props} />
 }

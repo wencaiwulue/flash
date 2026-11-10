@@ -31,6 +31,7 @@ const result = await Bun.build({
     'BUDDY',
     'FORK_SUBAGENT',
     'HISTORY_SNIP',
+    'REVIEW_ARTIFACT',
   ],
   define: {
     'process.env.USER_TYPE': JSON.stringify('external'),
@@ -51,6 +52,8 @@ const {
   builtInCommandNames,
   getCoordinatorAgents,
   isReactiveCompactEnabled,
+  getBundledSkills,
+  initBundledSkills,
   activateProactive,
   deactivateProactive,
   isProactiveActive,
@@ -64,6 +67,7 @@ const proactiveActive = isProactiveActive()
 const sleepWhenActive = sleepTool?.isEnabled() ?? false
 deactivateProactive()
 const worker = getCoordinatorAgents()[0]
+initBundledSkills()
 console.log(
   `FEATURE_PROFILE=${JSON.stringify({
     toolCount: tools.length,
@@ -77,6 +81,9 @@ console.log(
     workerHasBash: worker?.tools?.includes('Bash') ?? false,
     workerHasAgent: worker?.tools?.includes('Agent') ?? false,
     reactiveCompactEnabled: isReactiveCompactEnabled(),
+    hasHunterSkill: getBundledSkills().some(
+      (skill: { name: string }) => skill.name === 'hunter',
+    ),
     hasProactiveCommand: commandNames.has('proactive'),
     hasPeersCommand: commandNames.has('peers'),
     hasRemoteControlServerCommand: commandNames.has('remote-control-server'),
