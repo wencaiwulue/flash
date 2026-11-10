@@ -226,3 +226,15 @@ bundled evidence-review prompt instead of an unavailable placeholder.
 
 - **Verification**: 130 tests and 563 assertions passed, with typecheck, build,
   declarations, and the 38-tool compiled feature profile passing.
+
+## SkillHub remote skills
+
+Remote canonical skills now use SkillHub's public REST API instead of the
+missing private AKI backend. Discovery registers `_canonical_` skills, loading
+resolves a fixed version, and downloads use bounded, path-safe zip extraction
+with symlink rejection and versioned disk caches. Remote errors are reported
+without dropping local skill results or emitting false success telemetry.
+
+- **Verification**: 134 tests and 580 assertions passed, with typecheck, build,
+  declarations, and the 38-tool compiled feature profile passing. Tests use a
+  real local HTTP registry; a self-hosted live registry remains separate.

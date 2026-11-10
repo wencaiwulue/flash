@@ -3,7 +3,12 @@ import type { Message } from '../../types/message.js'
 import type { Attachment } from '../../utils/attachments.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { isSkillSearchEnabled } from './featureCheck.js'
-import { searchLocalSkills, type SkillIndexEntry } from './localSearch.js'
+import {
+  getVisibleSkillNames,
+  searchLocalSkills,
+  type SkillIndexEntry,
+} from './localSearch.js'
+import { searchRemoteSkills } from './remoteSearch.js'
 import type { DiscoverySignal } from './signals.js'
 
 export type SkillDiscoveryAttachment = Extract<
@@ -81,21 +86,41 @@ async function discover(
 ): Promise<SkillDiscoveryAttachment[]> {
   if (!query.trim() || !isSkillSearchEnabled()) return []
   try {
-    const skills = await searchLocalSkills(query, context, { index })
-    if (skills.length === 0) return []
+    const [localSkills, remoteSkills] = await Promise.all([
+      searchLocalSkills(query, context, { index }),
+      searchRemoteSkills(query, { limit: 5 }).catch(error => {
+        logForDebugging(`Remote skill discovery failed: ${String(error)}`)
+        return []
+      }),
+    ])
+    const visible = getVisibleSkillNames(context.messages)
+    const remote = remoteSkills.filter(
+      skill => !visible.has(`_canonical_${skill.slug}`),
+    )
+    if (localSkills.length === 0 && remote.length === 0) return []
+    for (const skill of remote) {
+      context.discoveredSkillNames?.add(`_canonical_${skill.slug}`)
+    }
     return [
       {
         type: 'skill_discovery',
-        skills: skills.map(skill => ({
-          name: skill.name,
-          description: skill.description,
-        })),
+        skills: [
+          ...localSkills.map(skill => ({
+            name: skill.name,
+            description: skill.description,
+          })),
+          ...remote.map(skill => ({
+            name: `_canonical_${skill.slug}`,
+            description: skill.description,
+            ...(skill.shortId ? { shortId: skill.shortId } : {}),
+          })),
+        ],
         signal,
-        source: 'native',
+        source: remote.length > 0 && localSkills.length > 0 ? 'both' : remote.length > 0 ? 'aki' : 'native',
       },
     ]
   } catch (error) {
-    logForDebugging(`Local skill discovery failed: ${String(error)}`)
+    logForDebugging(`Skill discovery failed: ${String(error)}`)
     return []
   }
 }

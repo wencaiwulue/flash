@@ -1,7 +1,8 @@
 import { z } from 'zod/v4'
 import { buildTool, type ToolDef } from '../../Tool.js'
 import { isSkillSearchEnabled } from '../../services/skillSearch/featureCheck.js'
-import { searchLocalSkills } from '../../services/skillSearch/localSearch.js'
+import { getVisibleSkillNames, searchLocalSkills } from '../../services/skillSearch/localSearch.js'
+import { searchRemoteSkills } from '../../services/skillSearch/remoteSearch.js'
 import { DISCOVER_SKILLS_TOOL_NAME } from './prompt.js'
 
 const inputSchema = z.strictObject({
@@ -12,6 +13,7 @@ type InputSchema = typeof inputSchema
 const outputSchema = z.object({
   query: z.string(),
   skills: z.array(z.object({ name: z.string(), description: z.string() })),
+  remoteError: z.string().optional(),
 })
 type Output = z.infer<typeof outputSchema>
 
@@ -34,11 +36,29 @@ export const DiscoverSkillsTool = buildTool({
     return 'Search local skill names, descriptions, and usage guidance. Already visible or invoked skills are omitted. Returns up to limit relevant skills (default 5); invoke a result with Skill(name) to load its full instructions.'
   },
   async call({ query, limit }, context) {
-    const matches = await searchLocalSkills(query, context, { limit })
+    const [matches, remoteResult] = await Promise.all([
+      searchLocalSkills(query, context, { limit }),
+      searchRemoteSkills(query, { limit }).then(
+        skills => ({ skills }),
+        error => ({ error: error instanceof Error ? error.message : String(error) }),
+      ),
+    ])
+    const visible = getVisibleSkillNames(context.messages)
+    const remote = ('skills' in remoteResult ? remoteResult.skills : []).filter(
+      skill => !visible.has(`_canonical_${skill.slug}`),
+    )
+    const remoteError = 'error' in remoteResult ? remoteResult.error : undefined
     return {
       data: {
         query,
-        skills: matches.map(({ name, description }) => ({ name, description })),
+        skills: [
+          ...matches.map(({ name, description }) => ({ name, description })),
+          ...remote.map(skill => ({
+            name: `_canonical_${skill.slug}`,
+            description: skill.description,
+          })),
+        ],
+        ...(remoteError ? { remoteError } : {}),
       },
     }
   },
@@ -51,7 +71,8 @@ export const DiscoverSkillsTool = buildTool({
           ? `No new local skills matched: ${output.query}`
           : output.skills
               .map(skill => `- ${skill.name}: ${skill.description}`)
-              .join('\n'),
+              .join('\n') +
+            (output.remoteError ? `\nRemote registry error: ${output.remoteError}` : ''),
     }
   },
 } satisfies ToolDef<InputSchema, Output>)

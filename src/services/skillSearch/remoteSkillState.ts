@@ -7,6 +7,7 @@ export type DiscoveredRemoteSkill = {
 }
 
 const CANONICAL_PREFIX = '_canonical_'
+const discovered = new Map<string, DiscoveredRemoteSkill>()
 
 export function stripCanonicalPrefix(commandName: string): string | null {
   if (!commandName.startsWith(CANONICAL_PREFIX)) return null
@@ -14,8 +15,22 @@ export function stripCanonicalPrefix(commandName: string): string | null {
   return slug.length > 0 ? slug : null
 }
 
+export function registerDiscoveredRemoteSkill(
+  skill: DiscoveredRemoteSkill,
+): void {
+  discovered.set(skill.slug, skill)
+}
+
 export function getDiscoveredRemoteSkill(
-  _slug: string,
+  slug: string,
 ): DiscoveredRemoteSkill | undefined {
-  return undefined
+  return discovered.get(slug)
+}
+
+export function listDiscoveredRemoteSkills(): DiscoveredRemoteSkill[] {
+  return [...discovered.values()]
+}
+
+export function clearDiscoveredRemoteSkills(): void {
+  discovered.clear()
 }

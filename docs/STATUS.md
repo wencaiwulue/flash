@@ -17,7 +17,7 @@ Statuses:
 | `bun install --frozen-lockfile` | Passed |
 | `bun run generate:sdk-types` | Generated 125 core types and 59 control types |
 | `bun run typecheck` | Passed with zero TypeScript errors |
-| `bun test` | 130 tests, 563 assertions passed |
+| `bun test` | 134 tests, 580 assertions passed |
 | Linux secret storage | 4 tests, 17 assertions passed with mocked `secret-tool` |
 | npm marketplace | 7 tests passed with mocked npm execution; no registry access |
 | ultraplan polling | Refresh-before-poll test passed |
@@ -45,7 +45,7 @@ Real model checks used the session's configured provider with an isolated `HOME`
 | Proactive and Sleep | Verified (offline scheduler/build) | Activation, pause/resume, context blocking, idle scheduling, abort/settings, `/proactive`, and external REPL wiring tested; real model-driven perpetual session not run |
 | Coordinator worker | Verified (definition/build) | One background `worker` with non-recursive standard tools and a real system prompt; multi-worker model orchestration not run |
 | Local skill search | Verified (offline index/build) | Fuse metadata ranking, natural-language fallback, visible-skill filtering, turn-zero/write-pivot/subagent prefetch, cache invalidation, and `DiscoverSkills` are enabled |
-| Remote canonical skills | Not implemented | No authoritative remote loading protocol is supplied; existing loader remains explicitly unavailable and no remote result is fabricated |
+| Remote canonical skills via SkillHub | Verified (local registry) | Public REST search/resolve/download, canonical state, mixed prefetch, versioned cache, zip path/symlink protection, and real telemetry tested; self-hosted live registry not yet run |
 | UDS inbox and peers | Verified (real local socket) | 0600 socket permissions, plain-text enqueue/wakeup, path and session-ID routing, live peer handshake, stale registry cleanup, and teardown tested; `ListPeers` and `/peers` registered |
 | Daemon supervisor and worker registry | Verified (offline lifecycle) | Bounded exponential restarts, clean stop, stale PID cleanup, worker dispatch, and `daemon status` smoke tested |
 | Remote Control server | Verified (offline lifecycle/build) | Shared SDK query, enable/disable, input close, idempotent start/stop, and `/remote-control-server` registration tested; no live Cloud session claimed |
@@ -77,14 +77,14 @@ Real model checks used the session's configured provider with an isolated `HOME`
 
 ## Remaining implementation boundaries
 
-- Remote canonical skills: no authoritative loading protocol is available; the loader remains unavailable by design.
+- Self-hosted SkillHub live registry: the adapter and local HTTP protocol tests pass; a real registry round trip is still pending.
 - `MonitorMcpTask`: the legacy MCP-task backend remains unavailable. The enabled `Monitor` tool uses the verified local-shell task path instead and never creates `monitor_mcp` state.
 - Full KAIROS and private computer-use/browser backends remain disabled; Buddy/Fork are enabled, while the remaining private backends use the planned open adapters.
 - Validation-only gaps: changed-file `offset/limit`, cron recurring/aging, and LSP restart/shutdown behavior still need dedicated deterministic lifecycle tests.
 
 ## Next implementation order
 
-1. Complete the SkillHub remote-skill adapter and validate it against a local registry.
+1. Complete the open KAIROS adapters and Computer Use/Browser integrations.
 2. Add changed-file, cron, and LSP lifecycle regressions.
 3. Run real proactive, Coordinator, workflow, context-collapse, and reactive-compaction model sessions with an authorized provider.
 4. Run real Cloud API and remote bridge round trips in an authorized environment.
