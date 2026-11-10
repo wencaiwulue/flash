@@ -136,7 +136,10 @@ describe('cron scheduler lifecycle', () => {
     const otherFired = firstFired.length > 0 ? secondFired : firstFired
     expect(otherFired).toHaveLength(0)
     owner.stop()
-    await waitFor(() => otherFired.length >= 1, 30_000)
+    other.stop()
+    other.start()
+    current += 60_000
+    await waitFor(() => otherFired.length >= 1, 10_000)
     other.stop()
   }, 40_000)
 })

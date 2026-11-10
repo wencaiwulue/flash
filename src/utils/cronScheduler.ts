@@ -482,7 +482,9 @@ export function createCronScheduler(
         logForDebugging(
           `[ScheduledTasks] scheduler start() — dir=${dir}, hasTasks=${hasCronTasksSync(dir)}`,
         )
-        void enable()
+        void enable().catch(error =>
+          logForDebugging(`[ScheduledTasks] enable failed: ${error}`),
+        )
         return
       }
       logForDebugging(
@@ -497,7 +499,9 @@ export function createCronScheduler(
         setScheduledTasksEnabled(true)
       }
       if (getScheduledTasksEnabled()) {
-        void enable()
+        void enable().catch(error =>
+          logForDebugging(`[ScheduledTasks] enable failed: ${error}`),
+        )
         return
       }
       enablePoll = setInterval(
@@ -511,6 +515,8 @@ export function createCronScheduler(
     },
     stop() {
       stopped = true
+      inFlight.clear()
+      nextFireAt.clear()
       if (enablePoll) {
         clearInterval(enablePoll)
         enablePoll = null
