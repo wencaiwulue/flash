@@ -67,3 +67,18 @@ next commit and GitHub Actions run.
 - **CI**: `ci` run `42778573907` passed on 2026-11-10.
 - **Verification**: 61 tests and 247 assertions passed, with typecheck, build,
   declarations, and CLI/SDK smoke checks passing.
+
+## External feature profile and SDK DAG recovery
+
+The external build now compiles the existing trigger, remote-trigger, voice,
+bridge, ultraplan, file-persistence, and brief implementations. `/ultraplan`
+uses the normal Claude AI availability checks instead of an internal-user gate.
+A standalone Bun regression builds and loads the feature profile, checking 27
+non-null tools and the `ultraplan`, `voice`, and `brief` registrations.
+
+SDK session reads now share the CLI's pure parallel-branch recovery helper.
+Both public message reads and V2 transcript resume retain same-ID assistant
+siblings and their tool results before filtering and pagination.
+
+- **Verification**: 64 tests and 261 assertions passed, with typecheck, build,
+  declarations, and CLI/SDK smoke checks passing.

@@ -13,6 +13,7 @@ import type {
   SDKSessionInfo,
   SDKUserMessage,
 } from '../entrypoints/sdk/coreTypes.js'
+import { recoverOrphanedParallelToolResults } from './sessionChainRecovery.js'
 import { listSessionsImpl } from './listSessionsImpl.js'
 import { parseSessionInfoFromLite } from './listSessionsImpl.js'
 import {
@@ -96,7 +97,7 @@ function buildMainChain(entries: TranscriptEntry[]): TranscriptEntry[] {
     chain.push(current)
     current = current.parentUuid ? byUuid.get(current.parentUuid) : undefined
   }
-  return chain.reverse()
+  return recoverOrphanedParallelToolResults(byUuid, chain.reverse(), seen).chain
 }
 
 function sessionIdFor(entry: TranscriptEntry, fallback: string): string {

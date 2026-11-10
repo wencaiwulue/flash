@@ -36,7 +36,15 @@ for (const build of builds) {
     outdir,
     target: 'bun',
     format: 'esm',
-    features: [],
+    features: [
+      'AGENT_TRIGGERS',
+      'AGENT_TRIGGERS_REMOTE',
+      'VOICE_MODE',
+      'BRIDGE_MODE',
+      'ULTRAPLAN',
+      'FILE_PERSISTENCE',
+      'KAIROS_BRIEF',
+    ],
     define,
     loader: {
       '.md': 'text',

@@ -236,7 +236,6 @@ export const INTERNAL_ONLY_COMMANDS = [
   mockLimits,
   bridgeKick,
   version,
-  ...(ultraplan ? [ultraplan] : []),
   ...(subscribePr ? [subscribePr] : []),
   resetLimits,
   resetLimitsNonInteractive,
@@ -338,6 +337,7 @@ const COMMANDS = memoize((): Command[] => [
   passes,
   ...(peersCmd ? [peersCmd] : []),
   tasks,
+  ...(ultraplan ? [ultraplan] : []),
   ...(workflowsCmd ? [workflowsCmd] : []),
   ...(torch ? [torch] : []),
   ...(process.env.USER_TYPE === 'ant' && !process.env.IS_DEMO

@@ -89,6 +89,7 @@ import {
   readTranscriptForLoad,
   SKIP_PRECOMPACT_THRESHOLD,
 } from './sessionStoragePortable.js'
+import { recoverOrphanedParallelToolResults } from './sessionChainRecovery.js'
 import { getSettings_DEPRECATED } from './settings/settings.js'
 import { jsonParse, jsonStringify } from './slowOperations.js'
 import type { ContentReplacementRecord } from './toolResultStorage.js'
@@ -2090,119 +2091,13 @@ export function buildConversationChain(
       : undefined
   }
   transcript.reverse()
-  return recoverOrphanedParallelToolResults(messages, transcript, seen)
-}
-
-/**
- * Post-pass for buildConversationChain: recover sibling assistant blocks and
- * tool_results that the single-parent walk orphaned.
- *
- * Streaming (claude.ts:~2024) emits one AssistantMessage per content_block_stop
- * — N parallel tool_uses → N messages, distinct uuid, same message.id. Each
- * tool_result's sourceToolAssistantUUID points to its own one-block assistant,
- * so insertMessageChain's override (line ~894) writes each TR's parentUuid to a
- * DIFFERENT assistant. The topology is a DAG; the walk above is a linked-list
- * traversal and keeps only one branch.
- *
- * Two loss modes observed in production (both fixed here):
- *   1. Sibling assistant orphaned: walk goes prev→asstA→TR_A→next, drops asstB
- *      (same message.id, chained off asstA) and TR_B.
- *   2. Progress-fork (legacy, pre-#23537): each tool_use asst had a progress
- *      child (continued the write chain) AND a TR child. Walk followed
- *      progress; TRs were dropped. No longer written (progress removed from
- *      transcript persistence), but old transcripts still have this shape.
- *
- * Read-side fix: the write topology is already on disk for old transcripts;
- * this recovery pass handles them.
- */
-function recoverOrphanedParallelToolResults(
-  messages: Map<UUID, TranscriptMessage>,
-  chain: TranscriptMessage[],
-  seen: Set<UUID>,
-): TranscriptMessage[] {
-  type ChainAssistant = Extract<TranscriptMessage, { type: 'assistant' }>
-  const chainAssistants = chain.filter(
-    (m): m is ChainAssistant => m.type === 'assistant',
-  )
-  if (chainAssistants.length === 0) return chain
-
-  // Anchor = last on-chain member of each sibling group. chainAssistants is
-  // already in chain order, so later iterations overwrite → last wins.
-  const anchorByMsgId = new Map<string, ChainAssistant>()
-  for (const a of chainAssistants) {
-    if (a.message.id) anchorByMsgId.set(a.message.id, a)
+  const recovered = recoverOrphanedParallelToolResults(messages, transcript, seen)
+  if (recovered.recoveredCount > 0) {
+    logEvent('tengu_chain_parallel_tr_recovered', {
+      recovered_count: recovered.recoveredCount,
+    })
   }
-
-  // O(n) precompute: sibling groups and TR index.
-  // TRs indexed by parentUuid — insertMessageChain:~894 already wrote that
-  // as the srcUUID, and --fork-session strips srcUUID but keeps parentUuid.
-  const siblingsByMsgId = new Map<string, TranscriptMessage[]>()
-  const toolResultsByAsst = new Map<UUID, TranscriptMessage[]>()
-  for (const m of messages.values()) {
-    if (m.type === 'assistant' && m.message.id) {
-      const group = siblingsByMsgId.get(m.message.id)
-      if (group) group.push(m)
-      else siblingsByMsgId.set(m.message.id, [m])
-    } else if (
-      m.type === 'user' &&
-      m.parentUuid &&
-      Array.isArray(m.message.content) &&
-      m.message.content.some(b => b.type === 'tool_result')
-    ) {
-      const group = toolResultsByAsst.get(m.parentUuid)
-      if (group) group.push(m)
-      else toolResultsByAsst.set(m.parentUuid, [m])
-    }
-  }
-
-  // For each message.id group touching the chain: collect off-chain siblings,
-  // then off-chain TRs for ALL members. Splice right after the last on-chain
-  // member so the group stays contiguous for normalizeMessagesForAPI's merge
-  // and every TR lands after its tool_use.
-  const processedGroups = new Set<string>()
-  const inserts = new Map<UUID, TranscriptMessage[]>()
-  let recoveredCount = 0
-  for (const asst of chainAssistants) {
-    const msgId = asst.message.id
-    if (!msgId || processedGroups.has(msgId)) continue
-    processedGroups.add(msgId)
-
-    const group = siblingsByMsgId.get(msgId) ?? [asst]
-    const orphanedSiblings = group.filter(s => !seen.has(s.uuid))
-    const orphanedTRs: TranscriptMessage[] = []
-    for (const member of group) {
-      const trs = toolResultsByAsst.get(member.uuid)
-      if (!trs) continue
-      for (const tr of trs) {
-        if (!seen.has(tr.uuid)) orphanedTRs.push(tr)
-      }
-    }
-    if (orphanedSiblings.length === 0 && orphanedTRs.length === 0) continue
-
-    // Timestamp sort keeps content-block / completion order; stable-sort
-    // preserves JSONL write order on ties.
-    orphanedSiblings.sort((a, b) => a.timestamp.localeCompare(b.timestamp))
-    orphanedTRs.sort((a, b) => a.timestamp.localeCompare(b.timestamp))
-
-    const anchor = anchorByMsgId.get(msgId)!
-    const recovered = [...orphanedSiblings, ...orphanedTRs]
-    for (const r of recovered) seen.add(r.uuid)
-    recoveredCount += recovered.length
-    inserts.set(anchor.uuid, recovered)
-  }
-
-  if (recoveredCount === 0) return chain
-  logEvent('tengu_chain_parallel_tr_recovered', {
-    recovered_count: recoveredCount,
-  })
-
-  const result: TranscriptMessage[] = []
-  for (const m of chain) {
-    result.push(m)
-    const toInsert = inserts.get(m.uuid)
-    if (toInsert) result.push(...toInsert)
-  }
-  return result
+  return recovered.chain
 }
 
 /**

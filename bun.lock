@@ -90,6 +90,7 @@
         "vscode-jsonrpc": "^10.0.0",
         "vscode-languageserver-protocol": "^3.17.0",
         "wrap-ansi": "^9.0.0",
+        "ws": "^7.5.11",
         "xss": "^1.0.15",
         "yaml": "^2.5.0",
         "zod": "^4.0.0",
