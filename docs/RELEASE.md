@@ -38,3 +38,13 @@ See `docs/STATUS.md` for the commands and the distinction between verified, impl
 `connectRemoteControl`, Linux libsecret, npm marketplace sources, Cloud xattr persistence, SDK rewind, non-REPL stop hooks, and several SDK control methods remain incomplete. Cloud and daemon/bridge work requires authoritative protocol confirmation. Internal experimental features remain disabled in the external build.
 
 The initial release does not amend its commit to add release metadata. The actual commit SHA and GitHub Actions result will be recorded in a subsequent documentation update.
+
+## Follow-up feature completion
+
+- **Commit**: `6b7bf48b0b4f0af740073eddbc5584f0c598c539`.
+- **CI**: `ci` run `42757526053` passed on 2026-11-10.
+- **Remote**: the same commit is present on `origin/main`.
+
+Added Linux libsecret with fallback, npm marketplace loading and refresh, ultraplan OAuth refresh, SDK rewind, headless prompt/agent stop hooks, and SDK control APIs. The full suite now has 38 tests and 146 assertions, with build and declaration generation passing.
+
+Cloud xattr and daemon/bridge remote control remain blocked on authoritative protocols. See `docs/STATUS.md` for the current matrix rather than treating them as implemented.
