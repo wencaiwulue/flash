@@ -111,6 +111,22 @@ non-recursive tools and a self-contained task/verification prompt. Lightweight
 name-only modules avoid loading the tool registry from worker definitions.
 
 - **Verification**: 77 tests and 329 assertions passed, with typecheck, build,
-  declarations, CLI startup smoke checks, and the 32-tool compiled feature
+  declarations, CLI startup smoke checks, and the 33-tool compiled feature
   profile passing. Real model-driven proactive and multi-worker sessions remain
   separate live validation work.
+
+## Local skill discovery
+
+Local skill search now indexes project, user, and plugin command metadata with
+Fuse.js, falls back to keyword aggregation for natural-language queries, and
+filters skills already visible or invoked. Turn-zero, write-pivot, and subagent
+signals produce native discovery attachments, and `DiscoverSkills` exposes the
+same search to the model. Cache clearing is wired into command reloads.
+
+Remote canonical-skill loading remains explicitly unavailable because no
+authoritative remote protocol is present; this change does not fabricate remote
+skills or success telemetry.
+
+- **Verification**: 83 tests and 352 assertions passed, with typecheck, build,
+  declarations, CLI startup smoke checks, and the 33-tool compiled feature
+  profile passing.

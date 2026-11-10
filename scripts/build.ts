@@ -49,6 +49,7 @@ for (const build of builds) {
       'TERMINAL_PANEL',
       'PROACTIVE',
       'COORDINATOR_MODE',
+      'EXPERIMENTAL_SKILL_SEARCH',
     ],
     define,
     loader: {

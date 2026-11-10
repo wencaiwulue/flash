@@ -47,7 +47,7 @@ describe('enabled feature profile', () => {
         expect(output).toBeDefined()
         const profile = JSON.parse(output!.slice('FEATURE_PROFILE='.length))
 
-        expect(profile.toolCount, JSON.stringify(profile)).toBe(32)
+        expect(profile.toolCount, JSON.stringify(profile)).toBe(33)
         expect(profile.nullCount).toBe(0)
         expect(profile.toolNames).toEqual(
           expect.arrayContaining([
@@ -60,6 +60,7 @@ describe('enabled feature profile', () => {
             'TerminalCapture',
             'Sleep',
             'ToolSearch',
+            'DiscoverSkills',
           ]),
         )
         expect(profile.sleepInitiallyEnabled).toBe(false)

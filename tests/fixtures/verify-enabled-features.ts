@@ -22,6 +22,7 @@ const result = await Bun.build({
     'TERMINAL_PANEL',
     'PROACTIVE',
     'COORDINATOR_MODE',
+    'EXPERIMENTAL_SKILL_SEARCH',
   ],
   define: {
     'process.env.USER_TYPE': JSON.stringify('external'),
