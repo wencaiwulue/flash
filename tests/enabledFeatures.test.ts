@@ -45,7 +45,7 @@ describe('enabled feature profile', () => {
         expect(output).toBeDefined()
         const profile = JSON.parse(output!.slice('FEATURE_PROFILE='.length))
 
-        expect(profile.toolCount, JSON.stringify(profile)).toBe(30)
+        expect(profile.toolCount, JSON.stringify(profile)).toBe(31)
         expect(profile.nullCount).toBe(0)
         expect(profile.toolNames).toEqual(
           expect.arrayContaining([
@@ -56,8 +56,17 @@ describe('enabled feature profile', () => {
             'Monitor',
             'OverflowTest',
             'TerminalCapture',
+            'Sleep',
           ]),
         )
+        expect(profile.sleepInitiallyEnabled).toBe(false)
+        expect(profile.proactiveActive).toBe(true)
+        expect(profile.sleepWhenActive).toBe(true)
+        expect(profile.workerType).toBe('worker')
+        expect(profile.workerBackground).toBe(true)
+        expect(profile.workerHasBash).toBe(true)
+        expect(profile.workerHasAgent).toBe(false)
+        expect(profile.hasProactiveCommand).toBe(true)
         expect(profile.hasUltraplan).toBe(true)
         expect(profile.hasVoice).toBe(true)
         expect(profile.hasBrief).toBe(true)

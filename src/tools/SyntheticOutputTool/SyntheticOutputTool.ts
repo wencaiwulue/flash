@@ -6,6 +6,8 @@ import { TelemetrySafeError_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../
 import { lazySchema } from '../../utils/lazySchema.js'
 import type { PermissionResult } from '../../utils/permissions/PermissionResult.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
+import { SYNTHETIC_OUTPUT_TOOL_NAME } from './constants.js'
+export { SYNTHETIC_OUTPUT_TOOL_NAME } from './constants.js'
 
 // Allow any input object since the schema is provided dynamically
 const inputSchema = lazySchema(() => z.object({}).passthrough())
@@ -16,8 +18,6 @@ const outputSchema = lazySchema(() =>
 )
 type OutputSchema = ReturnType<typeof outputSchema>
 export type Output = z.infer<OutputSchema>
-
-export const SYNTHETIC_OUTPUT_TOOL_NAME = 'StructuredOutput'
 
 export function isSyntheticOutputToolEnabled(opts: {
   isNonInteractiveSession: boolean

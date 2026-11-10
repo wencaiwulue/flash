@@ -5429,10 +5429,13 @@ export function REPL({
       isLoading,
       onSubmitTask: handleIncomingPrompt,
     })
+  }
 
-    // Loop mode: auto-tick when enabled (via /job command)
+  if (feature('PROACTIVE') || feature('KAIROS')) {
+    // Proactive mode is also available in external builds; only the adjacent
+    // task-list watcher is internal-user-specific.
     // eslint-disable-next-line react-hooks/rules-of-hooks
-    // biome-ignore lint/correctness/useHookAtTopLevel: conditional for dead code elimination in external builds
+    // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
     useProactive?.({
       // Suppress ticks while an initial message is pending — the initial
       // message will be processed asynchronously and a premature tick would

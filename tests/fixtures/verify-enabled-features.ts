@@ -20,6 +20,8 @@ const result = await Bun.build({
     'MONITOR_TOOL',
     'OVERFLOW_TEST_TOOL',
     'TERMINAL_PANEL',
+    'PROACTIVE',
+    'COORDINATOR_MODE',
   ],
   define: {
     'process.env.USER_TYPE': JSON.stringify('external'),
@@ -35,16 +37,36 @@ if (!result.success) {
   throw new Error(result.logs.map(String).join('\n'))
 }
 
-const { getAllBaseTools, builtInCommandNames } = await import(
-  join(outdir, 'feature-check.js')
-)
+const {
+  getAllBaseTools,
+  builtInCommandNames,
+  getCoordinatorAgents,
+  activateProactive,
+  deactivateProactive,
+  isProactiveActive,
+} = await import(join(outdir, 'feature-check.js'))
 const tools = await getAllBaseTools()
 const commandNames = builtInCommandNames()
+const sleepTool = tools.find((tool: { name: string }) => tool.name === 'Sleep')
+const sleepInitiallyEnabled = sleepTool?.isEnabled() ?? false
+activateProactive('command')
+const proactiveActive = isProactiveActive()
+const sleepWhenActive = sleepTool?.isEnabled() ?? false
+deactivateProactive()
+const worker = getCoordinatorAgents()[0]
 console.log(
   `FEATURE_PROFILE=${JSON.stringify({
     toolCount: tools.length,
     nullCount: tools.filter((tool: unknown) => !tool).length,
     toolNames: tools.map((tool: { name: string }) => tool.name),
+    sleepInitiallyEnabled,
+    proactiveActive,
+    sleepWhenActive,
+    workerType: worker?.agentType,
+    workerBackground: worker?.background,
+    workerHasBash: worker?.tools?.includes('Bash') ?? false,
+    workerHasAgent: worker?.tools?.includes('Agent') ?? false,
+    hasProactiveCommand: commandNames.has('proactive'),
     hasUltraplan: commandNames.has('ultraplan'),
     hasVoice: commandNames.has('voice'),
     hasBrief: commandNames.has('brief'),

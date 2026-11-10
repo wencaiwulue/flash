@@ -1,5 +1,6 @@
 import { z } from 'zod/v4'
 import { buildTool, type ToolDef } from '../../Tool.js'
+import { isProactiveActive } from '../../proactive/index.js'
 import { getSettings_DEPRECATED } from '../../utils/settings/settings.js'
 import { sleep } from '../../utils/sleep.js'
 import { DESCRIPTION, SLEEP_TOOL_NAME, SLEEP_TOOL_PROMPT } from './prompt.js'
@@ -49,7 +50,7 @@ export const SleepTool = buildTool({
   inputSchema,
   outputSchema,
   maxResultSizeChars: 1_000,
-  isEnabled: () => true,
+  isEnabled: () => isProactiveActive(),
   isReadOnly: () => true,
   isConcurrencySafe: () => true,
   renderToolUseMessage() {

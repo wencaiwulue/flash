@@ -17,7 +17,7 @@ Statuses:
 | `bun install --frozen-lockfile` | Passed |
 | `bun run generate:sdk-types` | Generated 125 core types and 59 control types |
 | `bun run typecheck` | Passed with zero TypeScript errors |
-| `bun test` | 73 tests, 288 assertions passed |
+| `bun test` | 77 tests, 329 assertions passed |
 | Linux secret storage | 4 tests, 17 assertions passed with mocked `secret-tool` |
 | npm marketplace | 7 tests passed with mocked npm execution; no registry access |
 | ultraplan polling | Refresh-before-poll test passed |
@@ -39,10 +39,12 @@ Real model checks used the session's configured provider with an isolated `HOME`
 | Area | Status | Evidence / next step |
 |---|---|---|
 | CLI build and startup | Verified | Build, version, help, and real headless query passed |
-| Built-in tool pool | Verified | External feature-profile build loaded 30 tools with no null entries, including Cron, RemoteTrigger, Monitor, OverflowTest, and TerminalCapture |
-| External feature profile | Verified | `AGENT_TRIGGERS`, `AGENT_TRIGGERS_REMOTE`, `VOICE_MODE`, `BRIDGE_MODE`, `ULTRAPLAN`, `FILE_PERSISTENCE`, `KAIROS_BRIEF`, `MONITOR_TOOL`, `OVERFLOW_TEST_TOOL`, and `TERMINAL_PANEL` are compiled in; `ultraplan`, `voice`, and `brief` are registered |
+| Built-in tool pool | Verified | External feature-profile build loaded 31 tools with no null entries, including Cron, RemoteTrigger, Monitor, OverflowTest, TerminalCapture, and Sleep |
+| External feature profile | Verified | Trigger, remote-trigger, voice, bridge, ultraplan, persistence, brief, Monitor, OverflowTest, terminal panel, PROACTIVE, and COORDINATOR_MODE are compiled in; `ultraplan`, `voice`, `brief`, and `proactive` are registered |
 | Monitor streaming | Verified (local shell) | Real stdout chunks become deduplicated per-line notifications, with final partial-line flush and completion notification; Bash permission checks are reused |
-| Sleep and CtxInspect | Implemented, feature-gated | Abort/settings and report-format tests pass; flags remain off until their proactive/context-collapse feature groups are complete |
+| Proactive and Sleep | Verified (offline scheduler/build) | Activation, pause/resume, context blocking, idle scheduling, abort/settings, `/proactive`, and external REPL wiring tested; real model-driven perpetual session not run |
+| Coordinator worker | Verified (definition/build) | One background `worker` with non-recursive standard tools and a real system prompt; multi-worker model orchestration not run |
+| CtxInspect | Implemented, feature-gated | Report-format tests pass; `CONTEXT_COLLAPSE` remains off until its service is complete |
 | Core query and tool orchestration | Verified | Real model + Read round trip passed |
 | SDK query, async messages, abort | Verified | Source and packaged SDK queries passed |
 | In-process MCP tools | Verified | Tool metadata, invocation, and model round trip passed |
@@ -65,8 +67,8 @@ Real model checks used the session's configured provider with an isolated `HOME`
 
 ## Next implementation order
 
-1. Implement proactive state and Coordinator worker definitions, then enable Sleep with the completed proactive feature group.
-2. Split workflow, UDS inbox, daemon, context-collapse (including CtxInspect activation), and local skill-search work into separately verified implementations.
+1. Split workflow, UDS inbox, daemon, context-collapse (including CtxInspect activation), and local skill-search work into separately verified implementations.
+2. Run a real proactive tick/Sleep session and Coordinator multi-worker orchestration with an authorized model provider.
 3. Run real Cloud API and remote bridge round trips in an authorized environment.
 4. Pure env-less perpetual bridge only if the product explicitly requires eliminating the Environments API; existing perpetual continuity is already provided by env-based bridge.
 

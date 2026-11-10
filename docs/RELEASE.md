@@ -98,3 +98,19 @@ flags remain disabled until those feature groups are complete.
 
 - **Verification**: 73 tests and 288 assertions passed, with typecheck, build,
   declarations, and CLI startup smoke checks passing.
+
+## Proactive state and Coordinator workers
+
+Proactive mode now has real activation, pause/resume, context-blocked state,
+change subscriptions, next-tick visibility, and an idle scheduler. `/proactive`
+controls the mode, Sleep is enabled only while it is active, and the external
+REPL no longer relies on `USER_TYPE=ant` for tick scheduling.
+
+Coordinator mode now supplies a background `worker` definition with standard
+non-recursive tools and a self-contained task/verification prompt. Lightweight
+name-only modules avoid loading the tool registry from worker definitions.
+
+- **Verification**: 77 tests and 329 assertions passed, with typecheck, build,
+  declarations, CLI startup smoke checks, and the 31-tool compiled feature
+  profile passing. Real model-driven proactive and multi-worker sessions remain
+  separate live validation work.

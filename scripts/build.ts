@@ -47,6 +47,8 @@ for (const build of builds) {
       'MONITOR_TOOL',
       'OVERFLOW_TEST_TOOL',
       'TERMINAL_PANEL',
+      'PROACTIVE',
+      'COORDINATOR_MODE',
     ],
     define,
     loader: {
