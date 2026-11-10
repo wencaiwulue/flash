@@ -57,6 +57,7 @@ for (const build of builds) {
       'REACTIVE_COMPACT',
       'BUDDY',
       'FORK_SUBAGENT',
+      'HISTORY_SNIP',
     ],
     define,
     loader: {

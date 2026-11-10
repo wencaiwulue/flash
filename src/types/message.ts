@@ -185,6 +185,21 @@ export interface SystemMicrocompactBoundaryMessage extends SystemMessageBase {
   microcompactMetadata: MicrocompactMetadata
 }
 
+export interface SystemSnipMarkerMessage extends SystemMessageBase {
+  subtype: 'snip_marker'
+  content: string
+  level: 'info'
+  messageIds: string[]
+}
+
+export interface SystemSnipBoundaryMessage extends SystemMessageBase {
+  subtype: 'snip_boundary'
+  content: string
+  level: 'info'
+  snippedCount: number
+  snippedTokens: number
+}
+
 export interface SystemTurnDurationMessage extends SystemMessageBase {
   subtype: 'turn_duration'
   durationMs: number
@@ -285,6 +300,8 @@ export type SystemMessage =
   | SystemAPIErrorMessage
   | SystemCompactBoundaryMessage
   | SystemMicrocompactBoundaryMessage
+  | SystemSnipMarkerMessage
+  | SystemSnipBoundaryMessage
   | SystemTurnDurationMessage
   | SystemPermissionRetryMessage
   | SystemLocalCommandMessage

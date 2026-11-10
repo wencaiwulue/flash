@@ -30,6 +30,7 @@ const result = await Bun.build({
     'REACTIVE_COMPACT',
     'BUDDY',
     'FORK_SUBAGENT',
+    'HISTORY_SNIP',
   ],
   define: {
     'process.env.USER_TYPE': JSON.stringify('external'),
@@ -82,6 +83,7 @@ console.log(
     hasWorkflowsCommand: commandNames.has('workflows'),
     hasBuddyCommand: commandNames.has('buddy'),
     hasForkCommand: commandNames.has('fork'),
+    hasForceSnipCommand: commandNames.has('force-snip'),
     hasUltraplan: commandNames.has('ultraplan'),
     hasVoice: commandNames.has('voice'),
     hasBrief: commandNames.has('brief'),

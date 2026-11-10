@@ -111,7 +111,7 @@ non-recursive tools and a self-contained task/verification prompt. Lightweight
 name-only modules avoid loading the tool registry from worker definitions.
 
 - **Verification**: 77 tests and 329 assertions passed, with typecheck, build,
-  declarations, CLI startup smoke checks, and the 36-tool compiled feature
+  declarations, CLI startup smoke checks, and the 37-tool compiled feature
   profile passing. Real model-driven proactive and multi-worker sessions remain
   separate live validation work.
 
@@ -128,7 +128,7 @@ authoritative remote protocol is present; this change does not fabricate remote
 skills or success telemetry.
 
 - **Verification**: 83 tests and 352 assertions passed, with typecheck, build,
-  declarations, CLI startup smoke checks, and the 36-tool compiled feature
+  declarations, CLI startup smoke checks, and the 37-tool compiled feature
   profile passing.
 
 ## UDS inbox and peer sessions
@@ -141,7 +141,7 @@ ID, remove stale records instead of returning offline peers, and clean up both
 socket and registry on teardown. `ListPeers` and `/peers` expose the live view.
 
 - **Verification**: 85 tests and 368 assertions passed, including real local
-  socket round trips. Typecheck, build, declarations, and the 36-tool compiled
+  socket round trips. Typecheck, build, declarations, and the 37-tool compiled
   feature profile passed.
 
 ## Daemon and Remote Control server lifecycle
@@ -153,7 +153,7 @@ wire protocol. `/remote-control-server` shares one query, reports the existing
 session URL, and disables remote control and closes input during teardown.
 
 - **Verification**: 91 tests and 390 assertions passed, with typecheck, build,
-  declarations, `daemon status`, and the 36-tool compiled feature profile
+  declarations, `daemon status`, and the 37-tool compiled feature profile
   passing. Lifecycle tests use fakes; no live Cloud session is claimed.
 
 ## Declarative workflows
@@ -167,7 +167,7 @@ workflow detail UI are connected. Steps still execute through the existing
 agent runner and tool permission callback.
 
 - **Verification**: 100 tests and 424 assertions passed, with typecheck, build,
-  declarations, and the 36-tool compiled feature profile passing. Step runners
+  declarations, and the 37-tool compiled feature profile passing. Step runners
   are deterministic fakes; real model-agent workflows remain live validation.
 
 ## Context collapse
@@ -180,7 +180,7 @@ Tool-use/result pairs are kept intact, empty summaries are rejected, and
 `CtxInspect` exposes the live counters.
 
 - **Verification**: 107 tests and 459 assertions passed, with typecheck, build,
-  declarations, and the 36-tool compiled feature profile passing. Summarizers
+  declarations, and the 37-tool compiled feature profile passing. Summarizers
   and persistence are injected fakes in tests; live model and API 413 recovery
   remain separately unverified.
 
@@ -193,7 +193,7 @@ outcomes. Successful recovery performs the same cache and state cleanup as the
 other compaction paths.
 
 - **Verification**: 112 tests and 479 assertions passed, with typecheck, build,
-  declarations, and the 36-tool compiled feature profile passing. Live API
+  declarations, and the 37-tool compiled feature profile passing. Live API
   recovery remains separately unverified.
 
 ## Buddy and Fork Subagent
@@ -205,4 +205,14 @@ FORK_SUBAGENT is enabled with its existing cache-preserving context prefix,
 recursive-fork guard, worktree notice, and a real `/fork` prompt command.
 
 - **Verification**: 118 tests and 516 assertions passed, with typecheck, build,
-  declarations, and the 36-tool compiled feature profile passing.
+  declarations, and the 37-tool compiled feature profile passing.
+
+## HISTORY_SNIP
+
+History snipping now uses explicit tool markers, protected recent messages,
+bidirectional tool-pair expansion, token-growth nudges, and idempotent boundary
+projection. REPL keeps scrollback while SDK replay truncates its in-memory
+view. `Snip` and `/force-snip` are enabled without rewriting on-disk history.
+
+- **Verification**: 125 tests and 546 assertions passed, with typecheck, build,
+  declarations, and the 37-tool compiled feature profile passing.
