@@ -47,9 +47,11 @@ export function getTerminalPanel(): TerminalPanel {
   return instance
 }
 
-class TerminalPanel {
+export class TerminalPanel {
   private hasTmux: boolean | undefined
   private cleanupRegistered = false
+
+  constructor(private readonly run: typeof spawnSync = spawnSync) {}
 
   // ── public API ────────────────────────────────────────────────────
 
@@ -57,11 +59,41 @@ class TerminalPanel {
     this.showShell()
   }
 
+  /** Capture the existing pane without creating a session or attaching to it. */
+  capture(lines: number): string {
+    if (!this.checkTmux() || !this.hasSession()) {
+      throw new Error(
+        'Terminal panel is not running. Open it with Meta+J before capturing.',
+      )
+    }
+    const result = this.run(
+      'tmux',
+      [
+        '-L',
+        getTerminalPanelSocket(),
+        'capture-pane',
+        '-p',
+        '-J',
+        '-t',
+        TMUX_SESSION,
+        '-S',
+        `-${lines}`,
+      ],
+      { encoding: 'utf-8' },
+    )
+    if (result.status !== 0) {
+      throw new Error(
+        `Terminal capture failed: ${result.stderr.trim() || 'tmux error'}`,
+      )
+    }
+    return result.stdout
+  }
+
   // ── tmux helpers ──────────────────────────────────────────────────
 
   private checkTmux(): boolean {
     if (this.hasTmux !== undefined) return this.hasTmux
-    const result = spawnSync('tmux', ['-V'], { encoding: 'utf-8' })
+    const result = this.run('tmux', ['-V'], { encoding: 'utf-8' })
     this.hasTmux = result.status === 0
     if (!this.hasTmux) {
       logForDebugging(
@@ -72,7 +104,7 @@ class TerminalPanel {
   }
 
   private hasSession(): boolean {
-    const result = spawnSync(
+    const result = this.run(
       'tmux',
       ['-L', getTerminalPanelSocket(), 'has-session', '-t', TMUX_SESSION],
       { encoding: 'utf-8' },
@@ -85,7 +117,7 @@ class TerminalPanel {
     const cwd = pwd()
     const socket = getTerminalPanelSocket()
 
-    const result = spawnSync(
+    const result = this.run(
       'tmux',
       [
         '-L',
@@ -113,7 +145,7 @@ class TerminalPanel {
     // and configure the status bar hint. Chained with ';' to collapse
     // 5 spawnSync calls into 1.
     // biome-ignore format: one tmux command per line
-    spawnSync('tmux', [
+    this.run('tmux', [
       '-L', socket,
       'bind-key', '-n', 'M-j', 'detach-client', ';',
       'set-option', '-g', 'status-style', 'bg=default', ';',
@@ -142,7 +174,7 @@ class TerminalPanel {
   }
 
   private attachSession(): void {
-    spawnSync(
+    this.run(
       'tmux',
       ['-L', getTerminalPanelSocket(), 'attach-session', '-t', TMUX_SESSION],
       { stdio: 'inherit' },
@@ -182,7 +214,7 @@ class TerminalPanel {
   private runShellDirect(): void {
     const shell = process.env.SHELL || '/bin/bash'
     const cwd = pwd()
-    spawnSync(shell, ['-i', '-l'], {
+    this.run(shell, ['-i', '-l'], {
       stdio: 'inherit',
       cwd,
       env: process.env,

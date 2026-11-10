@@ -17,6 +17,9 @@ const result = await Bun.build({
     'ULTRAPLAN',
     'FILE_PERSISTENCE',
     'KAIROS_BRIEF',
+    'MONITOR_TOOL',
+    'OVERFLOW_TEST_TOOL',
+    'TERMINAL_PANEL',
   ],
   define: {
     'process.env.USER_TYPE': JSON.stringify('external'),

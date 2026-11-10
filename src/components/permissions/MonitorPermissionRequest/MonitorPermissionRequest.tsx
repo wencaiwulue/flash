@@ -1,17 +1,10 @@
-import React, { useEffect } from 'react'
-import { Text } from '../../../ink.js'
+import React from 'react'
 import type { PermissionRequestProps } from '../PermissionRequest.js'
+import { BashPermissionRequest } from '../BashPermissionRequest/BashPermissionRequest.js'
 
-export function MonitorPermissionRequest({
-  toolUseConfirm,
-  onDone,
-  onReject,
-}: PermissionRequestProps): React.ReactNode {
-  useEffect(() => {
-    toolUseConfirm.onReject('Monitor is unavailable in this build')
-    onReject()
-    onDone()
-  }, [toolUseConfirm, onDone, onReject])
-
-  return <Text color="warning">Monitor is unavailable in this build.</Text>
+/** Monitor executes a shell command, so it uses Bash's permission UI and rules. */
+export function MonitorPermissionRequest(
+  props: PermissionRequestProps,
+): React.ReactNode {
+  return <BashPermissionRequest {...props} />
 }

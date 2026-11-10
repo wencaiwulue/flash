@@ -44,6 +44,9 @@ for (const build of builds) {
       'ULTRAPLAN',
       'FILE_PERSISTENCE',
       'KAIROS_BRIEF',
+      'MONITOR_TOOL',
+      'OVERFLOW_TEST_TOOL',
+      'TERMINAL_PANEL',
     ],
     define,
     loader: {

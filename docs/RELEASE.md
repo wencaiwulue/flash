@@ -82,3 +82,19 @@ siblings and their tool results before filtering and pagination.
 
 - **Verification**: 64 tests and 261 assertions passed, with typecheck, build,
   declarations, and CLI/SDK smoke checks passing.
+
+## Monitor, terminal capture, and simple tool implementations
+
+`Monitor` now runs permission-checked background shell commands and turns real
+stdout chunks into per-line task notifications, including chunk-boundary and
+final partial-line handling. `TerminalCapture` reads the existing tmux panel
+without creating or attaching a session. `OverflowTest` produces deterministic
+large results. These three features are enabled in the external profile, which
+now contains 30 non-null tools.
+
+Sleep supports aborts and the existing min/max settings; CtxInspect reuses the
+`/context` data path. Their dependent proactive and context-collapse feature
+flags remain disabled until those feature groups are complete.
+
+- **Verification**: 73 tests and 288 assertions passed, with typecheck, build,
+  declarations, and CLI startup smoke checks passing.

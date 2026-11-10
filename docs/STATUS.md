@@ -17,7 +17,7 @@ Statuses:
 | `bun install --frozen-lockfile` | Passed |
 | `bun run generate:sdk-types` | Generated 125 core types and 59 control types |
 | `bun run typecheck` | Passed with zero TypeScript errors |
-| `bun test` | 64 tests, 261 assertions passed |
+| `bun test` | 73 tests, 288 assertions passed |
 | Linux secret storage | 4 tests, 17 assertions passed with mocked `secret-tool` |
 | npm marketplace | 7 tests passed with mocked npm execution; no registry access |
 | ultraplan polling | Refresh-before-poll test passed |
@@ -39,8 +39,10 @@ Real model checks used the session's configured provider with an isolated `HOME`
 | Area | Status | Evidence / next step |
 |---|---|---|
 | CLI build and startup | Verified | Build, version, help, and real headless query passed |
-| Built-in tool pool | Verified | External feature-profile build loaded 27 tools with no null entries, including Cron and RemoteTrigger |
-| External feature profile | Verified | `AGENT_TRIGGERS`, `AGENT_TRIGGERS_REMOTE`, `VOICE_MODE`, `BRIDGE_MODE`, `ULTRAPLAN`, `FILE_PERSISTENCE`, and `KAIROS_BRIEF` are compiled in; `ultraplan`, `voice`, and `brief` are registered |
+| Built-in tool pool | Verified | External feature-profile build loaded 30 tools with no null entries, including Cron, RemoteTrigger, Monitor, OverflowTest, and TerminalCapture |
+| External feature profile | Verified | `AGENT_TRIGGERS`, `AGENT_TRIGGERS_REMOTE`, `VOICE_MODE`, `BRIDGE_MODE`, `ULTRAPLAN`, `FILE_PERSISTENCE`, `KAIROS_BRIEF`, `MONITOR_TOOL`, `OVERFLOW_TEST_TOOL`, and `TERMINAL_PANEL` are compiled in; `ultraplan`, `voice`, and `brief` are registered |
+| Monitor streaming | Verified (local shell) | Real stdout chunks become deduplicated per-line notifications, with final partial-line flush and completion notification; Bash permission checks are reused |
+| Sleep and CtxInspect | Implemented, feature-gated | Abort/settings and report-format tests pass; flags remain off until their proactive/context-collapse feature groups are complete |
 | Core query and tool orchestration | Verified | Real model + Read round trip passed |
 | SDK query, async messages, abort | Verified | Source and packaged SDK queries passed |
 | In-process MCP tools | Verified | Tool metadata, invocation, and model round trip passed |
@@ -63,8 +65,8 @@ Real model checks used the session's configured provider with an isolated `HOME`
 
 ## Next implementation order
 
-1. Implement the remaining simple tool stubs, then proactive state and Coordinator worker definitions before enabling their flags.
-2. Split workflow, UDS inbox, daemon, context-collapse, and local skill-search work into separately verified implementations.
+1. Implement proactive state and Coordinator worker definitions, then enable Sleep with the completed proactive feature group.
+2. Split workflow, UDS inbox, daemon, context-collapse (including CtxInspect activation), and local skill-search work into separately verified implementations.
 3. Run real Cloud API and remote bridge round trips in an authorized environment.
 4. Pure env-less perpetual bridge only if the product explicitly requires eliminating the Environments API; existing perpetual continuity is already provided by env-based bridge.
 

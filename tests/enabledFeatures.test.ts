@@ -45,7 +45,7 @@ describe('enabled feature profile', () => {
         expect(output).toBeDefined()
         const profile = JSON.parse(output!.slice('FEATURE_PROFILE='.length))
 
-        expect(profile.toolCount, JSON.stringify(profile)).toBe(27)
+        expect(profile.toolCount, JSON.stringify(profile)).toBe(30)
         expect(profile.nullCount).toBe(0)
         expect(profile.toolNames).toEqual(
           expect.arrayContaining([
@@ -53,6 +53,9 @@ describe('enabled feature profile', () => {
             'CronDelete',
             'CronList',
             'RemoteTrigger',
+            'Monitor',
+            'OverflowTest',
+            'TerminalCapture',
           ]),
         )
         expect(profile.hasUltraplan).toBe(true)
