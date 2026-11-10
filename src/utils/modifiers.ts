@@ -1,6 +1,29 @@
 export type ModifierKey = 'shift' | 'command' | 'control' | 'option'
 
+type ModifiersModule = {
+  prewarm: () => void
+  isModifierPressed: (modifier: ModifierKey) => boolean
+}
+
 let prewarmed = false
+let modifiersModule: ModifiersModule | null | undefined
+
+function getModifiersModule(): ModifiersModule | null {
+  if (modifiersModule !== undefined) {
+    return modifiersModule
+  }
+  try {
+    const candidate = require('modifiers-napi') as Partial<ModifiersModule>
+    modifiersModule =
+      typeof candidate.prewarm === 'function' &&
+      typeof candidate.isModifierPressed === 'function'
+        ? (candidate as ModifiersModule)
+        : null
+  } catch {
+    modifiersModule = null
+  }
+  return modifiersModule
+}
 
 /**
  * Pre-warm the native module by loading it in advance.
@@ -11,26 +34,16 @@ export function prewarmModifiers(): void {
     return
   }
   prewarmed = true
-  // Load module in background
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { prewarm } = require('modifiers-napi') as { prewarm: () => void }
-    prewarm()
-  } catch {
-    // Ignore errors during prewarm
-  }
+  getModifiersModule()?.prewarm()
 }
 
 /**
  * Check if a specific modifier key is currently pressed (synchronous).
+ * Returns false when the optional native module is unavailable.
  */
 export function isModifierPressed(modifier: ModifierKey): boolean {
   if (process.platform !== 'darwin') {
     return false
   }
-  // Dynamic import to avoid loading native module at top level
-  const { isModifierPressed: nativeIsModifierPressed } =
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    require('modifiers-napi') as { isModifierPressed: (m: string) => boolean }
-  return nativeIsModifierPressed(modifier)
+  return getModifiersModule()?.isModifierPressed(modifier) ?? false
 }

@@ -9,10 +9,28 @@
  * sdk/controlTypes.ts directly.
  */
 
+import '../runtimeMacros.js'
 import type {
   CallToolResult,
   ToolAnnotations,
 } from '@modelcontextprotocol/sdk/types.js'
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import { randomUUID } from 'crypto'
+import {
+  forkSdkSession,
+  getSdkSessionInfo,
+  getSdkSessionMessages,
+  listSdkSessions,
+  renameSdkSession,
+  tagSdkSession,
+} from '../utils/sdkSessions.js'
+import { buildMissedTaskNotification as formatMissedTaskNotification } from '../utils/cronNotification.js'
+import { createSdkQuery } from '../utils/sdkQuery.js'
+import {
+  createSdkSession,
+  promptSdkSession,
+  resumeSdkSession,
+} from '../utils/sdkSessionConversation.js'
 
 // Control protocol types for SDK builders (bridge subpath consumers)
 /** @alpha */
@@ -71,20 +89,20 @@ export type {
 }
 
 export function tool<Schema extends AnyZodRawShape>(
-  _name: string,
-  _description: string,
-  _inputSchema: Schema,
-  _handler: (
+  name: string,
+  description: string,
+  inputSchema: Schema,
+  handler: (
     args: InferShape<Schema>,
     extra: unknown,
   ) => Promise<CallToolResult>,
-  _extras?: {
+  extras?: {
     annotations?: ToolAnnotations
     searchHint?: string
     alwaysLoad?: boolean
   },
 ): SdkMcpToolDefinition<Schema> {
-  throw new Error('not implemented')
+  return { name, description, inputSchema, handler, ...extras }
 }
 
 type CreateSdkMcpServerOptions = {
@@ -101,9 +119,45 @@ type CreateSdkMcpServerOptions = {
  * If your SDK MCP calls will run longer than 60s, override CLAUDE_CODE_STREAM_CLOSE_TIMEOUT
  */
 export function createSdkMcpServer(
-  _options: CreateSdkMcpServerOptions,
+  options: CreateSdkMcpServerOptions,
 ): McpSdkServerConfigWithInstance {
-  throw new Error('not implemented')
+  const server = new McpServer(
+    {
+      name: options.name,
+      version: options.version ?? '1.0.0',
+    },
+    {
+      capabilities: {
+        tools: options.tools ? {} : undefined,
+      },
+    },
+  )
+
+  for (const toolDef of options.tools ?? []) {
+    server.registerTool(
+      toolDef.name,
+      {
+        description: toolDef.description,
+        inputSchema: toolDef.inputSchema,
+        annotations: toolDef.annotations,
+        _meta: {
+          ...(toolDef.searchHint !== undefined && {
+            'anthropic/searchHint': toolDef.searchHint,
+          }),
+          ...(toolDef.alwaysLoad !== undefined && {
+            'anthropic/alwaysLoad': toolDef.alwaysLoad,
+          }),
+        },
+      },
+      toolDef.handler,
+    )
+  }
+
+  return {
+    type: 'sdk',
+    name: options.name,
+    instance: server,
+  }
 }
 
 export class AbortError extends Error {}
@@ -117,8 +171,11 @@ export function query(_params: {
   prompt: string | AsyncIterable<SDKUserMessage>
   options?: Options
 }): Query
-export function query(): Query {
-  throw new Error('query is not implemented in the SDK')
+export function query(params: {
+  prompt: string | AsyncIterable<SDKUserMessage>
+  options?: InternalOptions
+}): InternalQuery {
+  return createSdkQuery(params)
 }
 
 /**
@@ -127,9 +184,9 @@ export function query(): Query {
  * @alpha
  */
 export function unstable_v2_createSession(
-  _options: SDKSessionOptions,
+  options: SDKSessionOptions,
 ): SDKSession {
-  throw new Error('unstable_v2_createSession is not implemented in the SDK')
+  return createSdkSession(options)
 }
 
 /**
@@ -138,10 +195,10 @@ export function unstable_v2_createSession(
  * @alpha
  */
 export function unstable_v2_resumeSession(
-  _sessionId: string,
-  _options: SDKSessionOptions,
+  sessionId: string,
+  options: SDKSessionOptions,
 ): SDKSession {
-  throw new Error('unstable_v2_resumeSession is not implemented in the SDK')
+  return resumeSdkSession(sessionId, options)
 }
 
 // @[MODEL LAUNCH]: Update the example model ID in this docstring.
@@ -158,10 +215,10 @@ export function unstable_v2_resumeSession(
  * ```
  */
 export async function unstable_v2_prompt(
-  _message: string,
-  _options: SDKSessionOptions,
+  message: string,
+  options: SDKSessionOptions,
 ): Promise<SDKResultMessage> {
-  throw new Error('unstable_v2_prompt is not implemented in the SDK')
+  return promptSdkSession(message, options)
 }
 
 /**
@@ -176,10 +233,10 @@ export async function unstable_v2_prompt(
  * @returns Array of messages, or empty array if session not found
  */
 export async function getSessionMessages(
-  _sessionId: string,
-  _options?: GetSessionMessagesOptions,
+  sessionId: string,
+  options?: GetSessionMessagesOptions,
 ): Promise<SessionMessage[]> {
-  throw new Error('getSessionMessages is not implemented in the SDK')
+  return getSdkSessionMessages(sessionId, options)
 }
 
 /**
@@ -202,9 +259,9 @@ export async function getSessionMessages(
  * ```
  */
 export async function listSessions(
-  _options?: ListSessionsOptions,
+  options?: ListSessionsOptions,
 ): Promise<SDKSessionInfo[]> {
-  throw new Error('listSessions is not implemented in the SDK')
+  return listSdkSessions(options)
 }
 
 /**
@@ -217,10 +274,10 @@ export async function listSessions(
  * @param options - `{ dir?: string }` project path; omit to search all project directories
  */
 export async function getSessionInfo(
-  _sessionId: string,
-  _options?: GetSessionInfoOptions,
+  sessionId: string,
+  options?: GetSessionInfoOptions,
 ): Promise<SDKSessionInfo | undefined> {
-  throw new Error('getSessionInfo is not implemented in the SDK')
+  return getSdkSessionInfo(sessionId, options)
 }
 
 /**
@@ -230,11 +287,11 @@ export async function getSessionInfo(
  * @param options - `{ dir?: string }` project path; omit to search all projects
  */
 export async function renameSession(
-  _sessionId: string,
-  _title: string,
-  _options?: SessionMutationOptions,
+  sessionId: string,
+  title: string,
+  options?: SessionMutationOptions,
 ): Promise<void> {
-  throw new Error('renameSession is not implemented in the SDK')
+  return renameSdkSession(sessionId, title, options)
 }
 
 /**
@@ -244,11 +301,11 @@ export async function renameSession(
  * @param options - `{ dir?: string }` project path; omit to search all projects
  */
 export async function tagSession(
-  _sessionId: string,
-  _tag: string | null,
-  _options?: SessionMutationOptions,
+  sessionId: string,
+  tag: string | null,
+  options?: SessionMutationOptions,
 ): Promise<void> {
-  throw new Error('tagSession is not implemented in the SDK')
+  return tagSdkSession(sessionId, tag, options)
 }
 
 /**
@@ -266,10 +323,10 @@ export async function tagSession(
  * @returns `{ sessionId }` — UUID of the new forked session
  */
 export async function forkSession(
-  _sessionId: string,
-  _options?: ForkSessionOptions,
+  sessionId: string,
+  options?: ForkSessionOptions,
 ): Promise<ForkSessionResult> {
-  throw new Error('forkSession is not implemented in the SDK')
+  return forkSdkSession(sessionId, options)
 }
 
 // ============================================================================
@@ -347,12 +404,68 @@ export type ScheduledTasksHandle = {
  *
  * @internal
  */
-export function watchScheduledTasks(_opts: {
+export function watchScheduledTasks(opts: {
   dir: string
   signal: AbortSignal
   getJitterConfig?: () => CronJitterConfig
 }): ScheduledTasksHandle {
-  throw new Error('not implemented')
+  const { createCronScheduler } = require('../utils/cronScheduler.js') as typeof import('../utils/cronScheduler.js')
+  const pending: ScheduledTaskEvent[] = []
+  let done = opts.signal.aborted
+  let wake: (() => void) | undefined
+
+  const notify = () => {
+    const resolve = wake
+    wake = undefined
+    resolve?.()
+  }
+  const push = (event: ScheduledTaskEvent) => {
+    if (done) return
+    pending.push(event)
+    notify()
+  }
+  const scheduler = createCronScheduler({
+    dir: opts.dir,
+    lockIdentity: randomUUID(),
+    assistantMode: true,
+    isLoading: () => false,
+    onFire: () => {},
+    onFireTask: task => push({ type: 'fire', task }),
+    onMissed: tasks => push({ type: 'missed', tasks }),
+    getJitterConfig: opts.getJitterConfig,
+  })
+  const stop = () => {
+    if (done) return
+    done = true
+    scheduler.stop()
+    notify()
+  }
+
+  opts.signal.addEventListener('abort', stop, { once: true })
+  if (!done) {
+    scheduler.start()
+  }
+
+  return {
+    async *events(): AsyncGenerator<ScheduledTaskEvent> {
+      try {
+        while (!done || pending.length > 0) {
+          if (pending.length === 0) {
+            await new Promise<void>(resolve => {
+              wake = resolve
+            })
+          }
+          while (pending.length > 0) {
+            yield pending.shift()!
+          }
+        }
+      } finally {
+        opts.signal.removeEventListener('abort', stop)
+        stop()
+      }
+    },
+    getNextFireTime: () => scheduler.getNextFireTime(),
+  }
 }
 
 /**
@@ -360,8 +473,8 @@ export function watchScheduledTasks(_opts: {
  * with the user (via AskUserQuestion) before executing.
  * @internal
  */
-export function buildMissedTaskNotification(_missed: CronTask[]): string {
-  throw new Error('not implemented')
+export function buildMissedTaskNotification(missed: CronTask[]): string {
+  return formatMissedTaskNotification(missed)
 }
 
 /**
@@ -439,5 +552,5 @@ export type RemoteControlHandle = {
 export async function connectRemoteControl(
   _opts: ConnectRemoteControlOptions,
 ): Promise<RemoteControlHandle | null> {
-  throw new Error('not implemented')
+  throw new Error('connectRemoteControl is unavailable in this build')
 }

@@ -29,6 +29,9 @@ export const AFK_MODE_BETA_HEADER = feature('TRANSCRIPT_CLASSIFIER')
 export const CLI_INTERNAL_BETA_HEADER =
   process.env.USER_TYPE === 'ant' ? 'cli-internal-2026-02-09' : ''
 export const ADVISOR_BETA_HEADER = 'advisor-tool-2026-03-01'
+// Cached microcompact is internal-only and its beta header is not included in
+// external builds. The feature-gated caller is excluded before this value is used.
+export const CACHE_EDITING_BETA_HEADER = ''
 
 /**
  * Bedrock only supports a limited number of beta headers and only through

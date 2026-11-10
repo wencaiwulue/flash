@@ -53,7 +53,8 @@ const COMPACTABLE_TOOLS = new Set<string>([
 
 // Lazy-initialized cached MC module and state to avoid importing in external builds.
 // The imports and state live inside feature() checks for dead code elimination.
-let cachedMCModule: typeof import('./cachedMicrocompact.js') | null = null
+let cachedMCModule: typeof import('./cachedMicrocompact.js') | null =
+  feature('CACHED_MICROCOMPACT') ? require('./cachedMicrocompact.js') : null
 let cachedMCState: import('./cachedMicrocompact.js').CachedMCState | null = null
 let pendingCacheEdits:
   | import('./cachedMicrocompact.js').CacheEditsBlock
@@ -62,8 +63,11 @@ let pendingCacheEdits:
 async function getCachedMCModule(): Promise<
   typeof import('./cachedMicrocompact.js')
 > {
+  if (!feature('CACHED_MICROCOMPACT')) {
+    throw new Error('Cached microcompact is not available in this build')
+  }
   if (!cachedMCModule) {
-    cachedMCModule = await import('./cachedMicrocompact.js')
+    throw new Error('Cached microcompact module was not initialized')
   }
   return cachedMCModule
 }

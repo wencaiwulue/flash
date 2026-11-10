@@ -390,7 +390,8 @@ async function initializeBetaTracing(
   const loggerProvider = new LoggerProvider({
     resource,
     processors: [
-      new BatchLogRecordProcessor(logExporter, {
+      new BatchLogRecordProcessor({
+        exporter: logExporter,
         scheduledDelayMillis: DEFAULT_LOGS_EXPORT_INTERVAL_MS,
       }),
     ],
@@ -585,7 +586,8 @@ export async function initializeTelemetry() {
         // Add batch processors for each exporter
         processors: logExporters.map(
           exporter =>
-            new BatchLogRecordProcessor(exporter, {
+            new BatchLogRecordProcessor({
+              exporter,
               scheduledDelayMillis: parseInt(
                 process.env.OTEL_LOGS_EXPORT_INTERVAL ||
                   DEFAULT_LOGS_EXPORT_INTERVAL_MS.toString(),

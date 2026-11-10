@@ -9,14 +9,97 @@ import type {
   SDKToolProgressMessage,
 } from '../entrypoints/agentSdkTypes.js'
 import type {
+  BetaContentBlock,
+  BetaRawMessageStreamEvent,
+} from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs'
+import type { UUID } from 'crypto'
+import type {
   AssistantMessage,
   Message,
   StreamEvent,
   SystemMessage,
+  UserMessage,
 } from '../types/message.js'
 import { logForDebugging } from '../utils/debug.js'
 import { fromSDKCompactMetadata } from '../utils/messages/mappers.js'
 import { createUserMessage } from '../utils/messages.js'
+import { validateUuid } from '../utils/uuid.js'
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function isContentBlockParam(value: unknown): value is ContentBlockParam {
+  return isRecord(value) && typeof value.type === 'string'
+}
+
+function isBetaContentBlock(value: unknown): value is BetaContentBlock {
+  return isRecord(value) && typeof value.type === 'string'
+}
+
+function isUserMessagePayload(value: unknown): value is UserMessage['message'] {
+  if (!isRecord(value) || value.role !== 'user') {
+    return false
+  }
+  return (
+    typeof value.content === 'string' ||
+    (Array.isArray(value.content) && value.content.every(isContentBlockParam))
+  )
+}
+
+function isAssistantMessagePayload(
+  value: unknown,
+): value is AssistantMessage['message'] {
+  return (
+    isRecord(value) &&
+    value.type === 'message' &&
+    value.role === 'assistant' &&
+    typeof value.id === 'string' &&
+    typeof value.model === 'string' &&
+    Array.isArray(value.content) &&
+    value.content.every(isBetaContentBlock)
+  )
+}
+
+function isBetaRawMessageStreamEvent(
+  value: unknown,
+): value is BetaRawMessageStreamEvent {
+  if (!isRecord(value)) {
+    return false
+  }
+  switch (value.type) {
+    case 'message_start':
+      return isAssistantMessagePayload(value.message)
+    case 'message_delta':
+      return isRecord(value.delta) && isRecord(value.usage)
+    case 'message_stop':
+      return true
+    case 'content_block_start':
+      return (
+        typeof value.index === 'number' &&
+        isBetaContentBlock(value.content_block)
+      )
+    case 'content_block_delta':
+      return (
+        typeof value.index === 'number' &&
+        isRecord(value.delta) &&
+        typeof value.delta.type === 'string'
+      )
+    case 'content_block_stop':
+      return typeof value.index === 'number'
+    default:
+      return false
+  }
+}
+
+function requireUUID(value: unknown): UUID {
+  const uuid = validateUuid(value)
+  if (!uuid) {
+    throw new TypeError('Expected a valid UUID in SDK message')
+  }
+  return uuid
+}
 
 /**
  * Converts SDKMessage from CCR to REPL Message types.
@@ -29,10 +112,13 @@ import { createUserMessage } from '../utils/messages.js'
  * Convert an SDKAssistantMessage to an AssistantMessage
  */
 function convertAssistantMessage(msg: SDKAssistantMessage): AssistantMessage {
+  if (!isAssistantMessagePayload(msg.message)) {
+    throw new TypeError('Invalid assistant message payload in SDK message')
+  }
   return {
     type: 'assistant',
     message: msg.message,
-    uuid: msg.uuid,
+    uuid: requireUUID(msg.uuid),
     requestId: undefined,
     timestamp: new Date().toISOString(),
     error: msg.error,
@@ -43,6 +129,9 @@ function convertAssistantMessage(msg: SDKAssistantMessage): AssistantMessage {
  * Convert an SDKPartialAssistantMessage (streaming) to a StreamEvent
  */
 function convertStreamEvent(msg: SDKPartialAssistantMessage): StreamEvent {
+  if (!isBetaRawMessageStreamEvent(msg.event)) {
+    throw new TypeError('Invalid stream event payload in SDK message')
+  }
   return {
     type: 'stream_event',
     event: msg.event,
@@ -63,7 +152,7 @@ function convertResultMessage(msg: SDKResultMessage): SystemMessage {
     subtype: 'informational',
     content,
     level: isError ? 'warning' : 'info',
-    uuid: msg.uuid,
+    uuid: requireUUID(msg.uuid),
     timestamp: new Date().toISOString(),
   }
 }
@@ -77,7 +166,7 @@ function convertInitMessage(msg: SDKSystemMessage): SystemMessage {
     subtype: 'informational',
     content: `Remote session initialized (model: ${msg.model})`,
     level: 'info',
-    uuid: msg.uuid,
+    uuid: requireUUID(msg.uuid),
     timestamp: new Date().toISOString(),
   }
 }
@@ -98,7 +187,7 @@ function convertStatusMessage(msg: SDKStatusMessage): SystemMessage | null {
         ? 'Compacting conversation…'
         : `Status: ${msg.status}`,
     level: 'info',
-    uuid: msg.uuid,
+    uuid: requireUUID(msg.uuid),
     timestamp: new Date().toISOString(),
   }
 }
@@ -116,7 +205,7 @@ function convertToolProgressMessage(
     subtype: 'informational',
     content: `Tool ${msg.tool_name} running for ${msg.elapsed_time_seconds}s…`,
     level: 'info',
-    uuid: msg.uuid,
+    uuid: requireUUID(msg.uuid),
     timestamp: new Date().toISOString(),
     toolUseID: msg.tool_use_id,
   }
@@ -133,7 +222,7 @@ function convertCompactBoundaryMessage(
     subtype: 'compact_boundary',
     content: 'Conversation compacted',
     level: 'info',
-    uuid: msg.uuid,
+    uuid: requireUUID(msg.uuid),
     timestamp: new Date().toISOString(),
     compactMetadata: fromSDKCompactMetadata(msg.compact_metadata),
   }
@@ -174,7 +263,11 @@ export function convertSDKMessage(
       return { type: 'message', message: convertAssistantMessage(msg) }
 
     case 'user': {
-      const content = msg.message?.content
+      if (!isUserMessagePayload(msg.message)) {
+        logForDebugging('[sdkMessageAdapter] Ignoring invalid user message')
+        return { type: 'ignored' }
+      }
+      const content = msg.message.content
       // Tool result messages from the remote server need to be converted so
       // they render and collapse like local tool results. Detect via content
       // shape (tool_result blocks) — parent_tool_use_id is NOT reliable: the
@@ -188,7 +281,7 @@ export function convertSDKMessage(
           message: createUserMessage({
             content,
             toolUseResult: msg.tool_use_result,
-            uuid: msg.uuid,
+            uuid: requireUUID(msg.uuid),
             timestamp: msg.timestamp,
           }),
         }
@@ -203,7 +296,7 @@ export function convertSDKMessage(
             message: createUserMessage({
               content,
               toolUseResult: msg.tool_use_result,
-              uuid: msg.uuid,
+              uuid: requireUUID(msg.uuid),
               timestamp: msg.timestamp,
             }),
           }

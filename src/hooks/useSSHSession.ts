@@ -70,7 +70,7 @@ export function useSSHSession({
     logForDebugging('[useSSHSession] wiring SSH session manager')
 
     const manager = session.createManager({
-      onMessage: sdkMessage => {
+      onMessage: (sdkMessage: Parameters<typeof convertSDKMessage>[0]) => {
         if (isSessionEndMessage(sdkMessage)) {
           setIsLoading(false)
         }
@@ -88,7 +88,10 @@ export function useSSHSession({
           setMessages(prev => [...prev, converted.message])
         }
       },
-      onPermissionRequest: (request, requestId) => {
+      onPermissionRequest: (
+        request: Parameters<typeof createSyntheticAssistantMessage>[0],
+        requestId: Parameters<typeof createSyntheticAssistantMessage>[1],
+      ) => {
         logForDebugging(
           `[useSSHSession] permission request: ${request.tool_name}`,
         )
@@ -159,7 +162,7 @@ export function useSSHSession({
         logForDebugging('[useSSHSession] connected')
         isConnectedRef.current = true
       },
-      onReconnecting: (attempt, max) => {
+      onReconnecting: (attempt: number, max: number) => {
         logForDebugging(
           `[useSSHSession] ssh dropped, reconnecting (${attempt}/${max})`,
         )
@@ -197,7 +200,7 @@ export function useSSHSession({
         }
         void gracefulShutdown(1, 'other', { finalMessage: msg })
       },
-      onError: error => {
+      onError: (error: Error) => {
         logForDebugging(`[useSSHSession] error: ${error.message}`)
       },
     })

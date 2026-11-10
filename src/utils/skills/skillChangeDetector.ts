@@ -1,4 +1,5 @@
-import chokidar, { type FSWatcher } from 'chokidar'
+import chokidar, { type FSWatcher, type WatchOptions } from 'chokidar'
+import type { Stats } from 'fs'
 import * as platformPath from 'path'
 import { getAdditionalDirectoriesForClaudeMd } from '../../bootstrap/state.js'
 import {
@@ -119,11 +120,11 @@ export async function initialize(): Promise<void> {
     },
     // Ignore special file types (sockets, FIFOs, devices) - they cannot be watched
     // and will error with EOPNOTSUPP on macOS. Only allow regular files and directories.
-    ignored: (path, stats) => {
+    ignored: ((path: string, stats?: Stats) => {
       if (stats && !stats.isFile() && !stats.isDirectory()) return true
       // Ignore .git directories
       return path.split(platformPath.sep).some(dir => dir === '.git')
-    },
+    }) as WatchOptions['ignored'],
     ignorePermissionErrors: true,
     usePolling: USE_POLLING,
     interval: testOverrides?.chokidarInterval ?? POLLING_INTERVAL_MS,

@@ -364,6 +364,8 @@ function baseCreateAssistantMessage({
     output_tokens: 0,
     cache_creation_input_tokens: 0,
     cache_read_input_tokens: 0,
+    fallback_credit: null,
+    output_tokens_details: null,
     server_tool_use: { web_search_requests: 0, web_fetch_requests: 0 },
     service_tier: null,
     cache_creation: {
@@ -398,6 +400,8 @@ function baseCreateAssistantMessage({
       usage,
       content,
       context_management: null,
+      diagnostics: null,
+      stop_details: null,
     },
     requestId: undefined,
     apiError,

@@ -1,4 +1,4 @@
-import type { StructuredPatchHunk } from 'diff'
+import type { Hunk as StructuredPatchHunk } from 'diff'
 import { useMemo, useRef } from 'react'
 import type { FileEditOutput } from '../tools/FileEditTool/types.js'
 import type { Output as FileWriteOutput } from '../tools/FileWriteTool/FileWriteTool.js'

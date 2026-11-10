@@ -1,0 +1,40 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ESNext"],
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "baseUrl": ".",
+    "paths": {
+      "src/*": ["./src/*"],
+      "@ant/computer-use-mcp": ["./src/external-stubs/computer-use-mcp.ts"],
+      "@ant/computer-use-mcp/types": ["./src/external-stubs/computer-use-types.ts"],
+      "@ant/computer-use-mcp/sentinelApps": ["./src/external-stubs/computer-use-sentinel-apps.ts"],
+      "@ant/computer-use-input": ["./src/external-stubs/computer-use-input.ts"],
+      "@ant/computer-use-swift": ["./src/external-stubs/computer-use-swift.ts"],
+      "@ant/claude-for-chrome-mcp": ["./src/external-stubs/claude-for-chrome-mcp.ts"],
+      "react/compiler-runtime": ["./node_modules/react-compiler-runtime"]
+    },
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "allowSyntheticDefaultImports": true,
+    "allowJs": true,
+    "checkJs": false,
+    "types": ["bun-types"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": ["node_modules", "dist"]
+}

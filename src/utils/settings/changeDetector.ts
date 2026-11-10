@@ -1,4 +1,5 @@
-import chokidar, { type FSWatcher } from 'chokidar'
+import chokidar, { type FSWatcher, type WatchOptions } from 'chokidar'
+import type { Stats } from 'fs'
 import { stat } from 'fs/promises'
 import * as platformPath from 'path'
 import { getIsRemoteMode } from '../../bootstrap/state.js'
@@ -110,7 +111,7 @@ export async function initialize(): Promise<void> {
       pollInterval:
         testOverrides?.pollInterval ?? FILE_STABILITY_POLL_INTERVAL_MS,
     },
-    ignored: (path, stats) => {
+    ignored: ((path: string, stats?: Stats) => {
       // Ignore special file types (sockets, FIFOs, devices) - they cannot be watched
       // and will error with EOPNOTSUPP on macOS.
       if (stats && !stats.isFile() && !stats.isDirectory()) return true
@@ -133,7 +134,7 @@ export async function initialize(): Promise<void> {
         return false
       }
       return true
-    },
+    }) as WatchOptions['ignored'],
     // Additional options for stability
     ignorePermissionErrors: true,
     usePolling: false, // Use native file system events

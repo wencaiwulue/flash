@@ -206,6 +206,9 @@ const BRIEF_TOOL_NAME: string | null =
 const sessionTranscriptModule = feature('KAIROS')
   ? (require('../services/sessionTranscript/sessionTranscript.js') as typeof import('../services/sessionTranscript/sessionTranscript.js'))
   : null
+const snipCompactModule = feature('HISTORY_SNIP')
+  ? (require('../services/compact/snipCompact.js') as typeof import('../services/compact/snipCompact.js'))
+  : null
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { hasUltrathinkKeyword, isUltrathinkEnabled } from './thinking.js'
 import {
@@ -583,6 +586,12 @@ export type Attachment =
     }
   | {
       type: 'auto_mode_exit'
+    }
+  | {
+      type: 'pen_mode_enter'
+    }
+  | {
+      type: 'pen_mode_exit'
     }
   | {
       type: 'critical_system_reminder'
@@ -999,7 +1008,7 @@ export async function getAttachments(
     ...userAttachmentResults.flat(),
     ...threadAttachmentResults.flat(),
     ...mainThreadAttachmentResults.flat(),
-  ].filter(a => a !== undefined && a !== null)
+  ].filter((a): a is Attachment => a !== undefined && a !== null)
 }
 
 async function maybe<A>(label: string, f: () => Promise<A[]>): Promise<A[]> {
@@ -2072,11 +2081,6 @@ export async function getChangedFiles(
       const fileState = toolUseContext.readFileState.get(filePath)
       if (!fileState) return null
 
-      // TODO: Implement offset/limit support for changed files
-      if (fileState.offset !== undefined || fileState.limit !== undefined) {
-        return null
-      }
-
       const normalizedPath = expandPath(filePath)
 
       // Check if file has a deny rule configured
@@ -2090,7 +2094,11 @@ export async function getChangedFiles(
           return null
         }
 
-        const fileInput = { file_path: normalizedPath }
+        const fileInput = {
+          file_path: normalizedPath,
+          ...(fileState.offset !== undefined && { offset: fileState.offset }),
+          ...(fileState.limit !== undefined && { limit: fileState.limit }),
+        }
 
         // Validate file path is valid
         const isValid = await FileReadTool.validateInput(
@@ -3963,14 +3971,12 @@ export function getCompactionReminderAttachment(
 export function getContextEfficiencyAttachment(
   messages: Message[],
 ): Attachment[] {
-  if (!feature('HISTORY_SNIP')) {
+  if (!snipCompactModule) {
     return []
   }
   // Gate must match SnipTool.isEnabled() — don't nudge toward a tool that
   // isn't in the tool list. Lazy require keeps this file snip-string-free.
-  const { isSnipRuntimeEnabled, shouldNudgeForSnips } =
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    require('../services/compact/snipCompact.js') as typeof import('../services/compact/snipCompact.js')
+  const { isSnipRuntimeEnabled, shouldNudgeForSnips } = snipCompactModule
   if (!isSnipRuntimeEnabled()) {
     return []
   }

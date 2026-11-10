@@ -19,4 +19,8 @@ export const EMPTY_USAGE: Readonly<NonNullableUsage> = {
   inference_geo: '',
   iterations: [],
   speed: 'standard',
+  fallback_credit: {
+    status: { type: 'not_applied', reason: 'not_enabled' },
+  },
+  output_tokens_details: { thinking_tokens: 0 },
 }

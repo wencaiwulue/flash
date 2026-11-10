@@ -38,7 +38,11 @@ import {
   isBuiltInAgent,
   parseAgentsFromJson,
 } from 'src/tools/AgentTool/loadAgentsDir.js'
-import type { Message, NormalizedUserMessage } from 'src/types/message.js'
+import type {
+  Message,
+  NormalizedUserMessage,
+  UserMessage,
+} from 'src/types/message.js'
 import type { QueuedCommand } from 'src/types/textInputTypes.js'
 import {
   dequeue,
@@ -127,7 +131,6 @@ import type {
   SDKControlMcpSetServersResponse,
   SDKControlReloadPluginsResponse,
 } from 'src/entrypoints/sdk/controlTypes.js'
-import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk'
 import type { PermissionMode as InternalPermissionMode } from 'src/types/permissions.js'
 import { cwd } from 'process'
 import { getCwd } from 'src/utils/cwd.js'
@@ -241,6 +244,7 @@ import { executeNotificationHooks } from 'src/utils/hooks.js'
 import {
   ElicitRequestSchema,
   ElicitationCompleteNotificationSchema,
+  JSONRPCMessageSchema,
 } from '@modelcontextprotocol/sdk/types.js'
 import { getMcpPrefix } from 'src/services/mcp/mcpStringUtils.js'
 import {
@@ -412,6 +416,23 @@ function trackReceivedMessageUuid(uuid: UUID): boolean {
     }
   }
   return true // new UUID
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function isUserMessagePayload(value: unknown): value is UserMessage['message'] {
+  if (!isRecord(value) || value.role !== 'user') {
+    return false
+  }
+  return (
+    typeof value.content === 'string' ||
+    (Array.isArray(value.content) &&
+      value.content.every(
+        block => isRecord(block) && typeof block.type === 'string',
+      ))
+  )
 }
 
 type PromptValue = string | ContentBlockParam[]
@@ -1058,24 +1079,18 @@ function runHeadlessStreaming(
   // notifySessionMetadataChanged, both of which onChangeAppState now covers);
   // keeping it would double-emit status messages.
   setPermissionModeChangedListener(newMode => {
-    // Only emit for SDK-exposed modes.
-    if (
-      newMode === 'default' ||
-      newMode === 'acceptEdits' ||
-      newMode === 'bypassPermissions' ||
-      newMode === 'plan' ||
-      newMode === (feature('TRANSCRIPT_CLASSIFIER') && 'auto') ||
-      newMode === 'dontAsk'
-    ) {
-      output.enqueue({
-        type: 'system',
-        subtype: 'status',
-        status: null,
-        permissionMode: newMode as PermissionMode,
-        uuid: randomUUID(),
-        session_id: getSessionId(),
-      })
+    // Only emit modes represented by the SDK protocol.
+    if (newMode === 'auto' || newMode === 'bubble') {
+      return
     }
+    output.enqueue({
+      type: 'system',
+      subtype: 'status',
+      status: null,
+      permissionMode: newMode,
+      uuid: randomUUID(),
+      session_id: getSessionId(),
+    })
   })
 
   // Prompt suggestion tracking (push model)
@@ -2989,7 +3004,14 @@ function runHeadlessStreaming(
             sdkClient.type === 'connected' &&
             sdkClient.client?.transport?.onmessage
           ) {
-            sdkClient.client.transport.onmessage(mcpRequest.message)
+            const mcpMessage = JSONRPCMessageSchema.safeParse(
+              mcpRequest.message,
+            )
+            if (!mcpMessage.success) {
+              sendControlResponseError(message, 'Invalid JSON-RPC message')
+              continue
+            }
+            sdkClient.client.transport.onmessage(mcpMessage.data)
           }
           sendControlResponseSuccess(message)
         } else if (message.request.subtype === 'rewind_files') {
@@ -4056,31 +4078,50 @@ function runHeadlessStreaming(
         continue
       }
 
+      if (!isUserMessagePayload(message.message)) {
+        logForDebugging('Ignoring invalid user message payload', {
+          level: 'warn',
+        })
+        continue
+      }
+      const messageUuid = message.uuid
+        ? (validateUuid(message.uuid) ?? undefined)
+        : undefined
+      if (message.uuid && !messageUuid) {
+        logForDebugging('Ignoring user message with invalid UUID', {
+          level: 'warn',
+        })
+        continue
+      }
+
       // First prompt message implicitly initializes if not already done.
       initialized = true
 
       // Check for duplicate user message - skip if already processed
-      if (message.uuid) {
-        const sessionId = getSessionId() as UUID
+      if (messageUuid) {
+        const sessionId = validateUuid(getSessionId())
+        if (!sessionId) {
+          throw new Error('Invalid session UUID')
+        }
         const existsInSession = await doesMessageExistInSession(
           sessionId,
-          message.uuid,
+          messageUuid,
         )
 
         // Check both historical duplicates (from file) and runtime duplicates (this session)
-        if (existsInSession || receivedMessageUuids.has(message.uuid)) {
-          logForDebugging(`Skipping duplicate user message: ${message.uuid}`)
+        if (existsInSession || receivedMessageUuids.has(messageUuid)) {
+          logForDebugging(`Skipping duplicate user message: ${messageUuid}`)
           // Send acknowledgment for duplicate message if replay mode is enabled
           if (options.replayUserMessages) {
             logForDebugging(
-              `Sending acknowledgment for duplicate user message: ${message.uuid}`,
+              `Sending acknowledgment for duplicate user message: ${messageUuid}`,
             )
             output.enqueue({
               type: 'user',
               message: message.message,
               session_id: sessionId,
               parent_tool_use_id: null,
-              uuid: message.uuid,
+              uuid: messageUuid,
               timestamp: message.timestamp,
               isReplay: true,
             } as SDKUserMessageReplay)
@@ -4089,14 +4130,14 @@ function runHeadlessStreaming(
           // ran but its lifecycle was never closed (interrupted before ack).
           // Runtime dups don't need this — the original enqueue path closes them.
           if (existsInSession) {
-            notifyCommandLifecycle(message.uuid, 'completed')
+            notifyCommandLifecycle(messageUuid, 'completed')
           }
           // Don't enqueue duplicate messages for execution
           continue
         }
 
         // Track this UUID to prevent runtime duplicates
-        trackReceivedMessageUuid(message.uuid)
+        trackReceivedMessageUuid(messageUuid)
       }
 
       enqueue({
@@ -4104,7 +4145,7 @@ function runHeadlessStreaming(
         // file_attachments rides the protobuf catchall from the web composer.
         // Same-ref no-op when absent (no 'file_attachments' key).
         value: await resolveAndPrepend(message, message.message.content),
-        uuid: message.uuid,
+        uuid: messageUuid,
         priority: message.priority,
       })
       // Increment prompt count for attribution tracking and save snapshot

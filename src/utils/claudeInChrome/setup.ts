@@ -1,4 +1,8 @@
-import { BROWSER_TOOLS } from '@ant/claude-for-chrome-mcp'
+import {
+  assertClaudeInChromeMcpAvailable,
+  BROWSER_TOOLS,
+  isClaudeInChromeMcpAvailable,
+} from './browserTools.js'
 import { chmod, mkdir, readFile, writeFile } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
@@ -70,6 +74,9 @@ export function shouldEnableClaudeInChrome(chromeFlag?: boolean): boolean {
 let shouldAutoEnable: boolean | undefined = undefined
 
 export function shouldAutoEnableClaudeInChrome(): boolean {
+  if (!isClaudeInChromeMcpAvailable()) {
+    return false
+  }
   if (shouldAutoEnable !== undefined) {
     return shouldAutoEnable
   }
@@ -93,6 +100,7 @@ export function setupClaudeInChrome(): {
   allowedTools: string[]
   systemPrompt: string
 } {
+  assertClaudeInChromeMcpAvailable()
   const isNativeBuild = isInBundledMode()
   const allowedTools = BROWSER_TOOLS.map(
     tool => `mcp__claude-in-chrome__${tool.name}`,

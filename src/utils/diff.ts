@@ -1,4 +1,4 @@
-import { type StructuredPatchHunk, structuredPatch } from 'diff'
+import { type Hunk as StructuredPatchHunk, structuredPatch } from 'diff'
 import { logEvent } from 'src/services/analytics/index.js'
 import { getLocCounter } from '../bootstrap/state.js'
 import { addToTotalLinesChanged } from '../cost-tracker.js'
@@ -91,6 +91,11 @@ export function getPatchFromContents({
   ignoreWhitespace?: boolean
   singleHunk?: boolean
 }): StructuredPatchHunk[] {
+  const options = {
+    ignoreWhitespace,
+    context: singleHunk ? 100_000 : CONTEXT_LINES,
+    timeout: DIFF_TIMEOUT_MS,
+  }
   const result = structuredPatch(
     filePath,
     filePath,
@@ -98,11 +103,7 @@ export function getPatchFromContents({
     escapeForDiff(newContent),
     undefined,
     undefined,
-    {
-      ignoreWhitespace,
-      context: singleHunk ? 100_000 : CONTEXT_LINES,
-      timeout: DIFF_TIMEOUT_MS,
-    },
+    options,
   )
   if (!result) {
     return []
@@ -139,6 +140,11 @@ export function getPatchForDisplay({
   const preparedFileContents = escapeForDiff(
     convertLeadingTabsToSpaces(fileContents),
   )
+  const options = {
+    context: CONTEXT_LINES,
+    ignoreWhitespace,
+    timeout: DIFF_TIMEOUT_MS,
+  }
   const result = structuredPatch(
     filePath,
     filePath,
@@ -161,11 +167,7 @@ export function getPatchForDisplay({
     }, preparedFileContents),
     undefined,
     undefined,
-    {
-      context: CONTEXT_LINES,
-      ignoreWhitespace,
-      timeout: DIFF_TIMEOUT_MS,
-    },
+    options,
   )
   if (!result) {
     return []

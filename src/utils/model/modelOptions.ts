@@ -1,5 +1,6 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import { getInitialMainLoopModel } from '../../bootstrap/state.js'
+import { getAntModels } from './antModelOverrides.js'
 import {
   isClaudeAISubscriber,
   isMaxSubscriber,

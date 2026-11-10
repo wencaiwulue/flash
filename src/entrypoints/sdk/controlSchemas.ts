@@ -102,6 +102,15 @@ export const SDKControlInterruptRequestSchema = lazySchema(() =>
     .describe('Interrupts the currently running conversation turn.'),
 )
 
+export const SDKControlEndSessionRequestSchema = lazySchema(() =>
+  z
+    .object({
+      subtype: z.literal('end_session'),
+      reason: z.string().optional(),
+    })
+    .describe('Ends the current session after aborting in-flight work.'),
+)
+
 
 export const SDKControlPermissionRequestSchema = lazySchema(() =>
   z
@@ -451,6 +460,102 @@ export const SDKControlMcpToggleRequestSchema = lazySchema(() =>
     .describe('Enables or disables an MCP server.'),
 )
 
+export const SDKControlChannelEnableRequestSchema = lazySchema(() =>
+  z
+    .object({
+      subtype: z.literal('channel_enable'),
+      serverName: z.string(),
+    })
+    .describe('Enables channel notifications for an allowlisted MCP plugin.'),
+)
+
+export const SDKControlMcpAuthenticateRequestSchema = lazySchema(() =>
+  z
+    .object({
+      subtype: z.literal('mcp_authenticate'),
+      serverName: z.string(),
+    })
+    .describe('Starts OAuth authentication for an HTTP or SSE MCP server.'),
+)
+
+export const SDKControlMcpAuthenticateResponseSchema = lazySchema(() =>
+  z
+    .object({
+      authUrl: z
+        .string()
+        .optional()
+        .describe('Authorization URL when user action is required.'),
+      requiresUserAction: z.boolean(),
+    })
+    .describe('Result of starting an MCP OAuth flow.'),
+)
+
+export const SDKControlMcpOauthCallbackUrlRequestSchema = lazySchema(() =>
+  z
+    .object({
+      subtype: z.literal('mcp_oauth_callback_url'),
+      serverName: z.string(),
+      callbackUrl: z.string(),
+    })
+    .describe(
+      'Submits the full redirect URL for an in-flight MCP OAuth flow and waits for token exchange.',
+    ),
+)
+
+export const SDKControlClaudeAuthenticateRequestSchema = lazySchema(() =>
+  z
+    .object({
+      subtype: z.literal('claude_authenticate'),
+      loginWithClaudeAi: z.boolean().optional(),
+    })
+    .describe('Starts an Anthropic OAuth flow owned by the SDK consumer.'),
+)
+
+export const SDKControlClaudeAuthenticateResponseSchema = lazySchema(() =>
+  z
+    .object({
+      manualUrl: z.string(),
+      automaticUrl: z.string(),
+    })
+    .describe('Manual and localhost callback URLs for Anthropic OAuth.'),
+)
+
+export const SDKControlClaudeOauthCallbackRequestSchema = lazySchema(() =>
+  z
+    .object({
+      subtype: z.literal('claude_oauth_callback'),
+      authorizationCode: z.string(),
+      state: z.string(),
+    })
+    .describe('Supplies the manual authorization code for Anthropic OAuth.'),
+)
+
+export const SDKControlClaudeOauthWaitForCompletionRequestSchema = lazySchema(
+  () =>
+    z
+      .object({
+        subtype: z.literal('claude_oauth_wait_for_completion'),
+      })
+      .describe('Waits for the active Anthropic OAuth flow to complete.'),
+)
+
+export const SDKControlClaudeOauthCompletionResponseSchema = lazySchema(() =>
+  z
+    .object({
+      account: AccountInfoSchema(),
+    })
+    .describe('Account information after Anthropic OAuth completes.'),
+)
+
+export const SDKControlMcpClearAuthRequestSchema = lazySchema(() =>
+  z
+    .object({
+      subtype: z.literal('mcp_clear_auth'),
+      serverName: z.string(),
+    })
+    .describe('Revokes MCP OAuth tokens and reconnects the server.'),
+)
+
 
 export const SDKControlStopTaskRequestSchema = lazySchema(() =>
   z
@@ -519,6 +624,73 @@ export const SDKControlGetSettingsResponseSchema = lazySchema(() =>
     ),
 )
 
+export const SDKControlGenerateSessionTitleRequestSchema = lazySchema(() =>
+  z
+    .object({
+      subtype: z.literal('generate_session_title'),
+      description: z.string(),
+      persist: z.boolean(),
+    })
+    .describe('Generates a concise session title, optionally persisting it.'),
+)
+
+export const SDKControlGenerateSessionTitleResponseSchema = lazySchema(() =>
+  z
+    .object({
+      title: z.string().nullable(),
+    })
+    .describe('Generated title, or null when generation did not produce one.'),
+)
+
+export const SDKControlSideQuestionRequestSchema = lazySchema(() =>
+  z
+    .object({
+      subtype: z.literal('side_question'),
+      question: z.string(),
+    })
+    .describe(
+      'Asks a question in a forked context without interrupting the main turn.',
+    ),
+)
+
+export const SDKControlSideQuestionResponseSchema = lazySchema(() =>
+  z
+    .object({
+      response: z.string().nullable(),
+    })
+    .describe('Side-question response, or null when no response was produced.'),
+)
+
+export const SDKControlSetProactiveRequestSchema = lazySchema(() =>
+  z
+    .object({
+      subtype: z.literal('set_proactive'),
+      enabled: z.boolean(),
+    })
+    .describe(
+      '@internal Enables or disables proactive mode in supported builds.',
+    ),
+)
+
+export const SDKControlRemoteControlRequestSchema = lazySchema(() =>
+  z
+    .object({
+      subtype: z.literal('remote_control'),
+      enabled: z.boolean(),
+    })
+    .describe('Enables or disables the claude.ai remote-control bridge.'),
+)
+
+export const SDKControlRemoteControlResponseSchema = lazySchema(() =>
+  z
+    .object({
+      session_url: z.string(),
+      connect_url: z.string(),
+      environment_id: z.string(),
+    })
+    .describe('Connection details returned when remote control is enabled.'),
+)
+
 export const SDKControlElicitationRequestSchema = lazySchema(() =>
   z
     .object({
@@ -552,6 +724,7 @@ export const SDKControlElicitationResponseSchema = lazySchema(() =>
 export const SDKControlRequestInnerSchema = lazySchema(() =>
   z.union([
     SDKControlInterruptRequestSchema(),
+    SDKControlEndSessionRequestSchema(),
     SDKControlPermissionRequestSchema(),
     SDKControlInitializeRequestSchema(),
     SDKControlSetPermissionModeRequestSchema(),
@@ -568,9 +741,20 @@ export const SDKControlRequestInnerSchema = lazySchema(() =>
     SDKControlReloadPluginsRequestSchema(),
     SDKControlMcpReconnectRequestSchema(),
     SDKControlMcpToggleRequestSchema(),
+    SDKControlChannelEnableRequestSchema(),
+    SDKControlMcpAuthenticateRequestSchema(),
+    SDKControlMcpOauthCallbackUrlRequestSchema(),
+    SDKControlClaudeAuthenticateRequestSchema(),
+    SDKControlClaudeOauthCallbackRequestSchema(),
+    SDKControlClaudeOauthWaitForCompletionRequestSchema(),
+    SDKControlMcpClearAuthRequestSchema(),
     SDKControlStopTaskRequestSchema(),
     SDKControlApplyFlagSettingsRequestSchema(),
     SDKControlGetSettingsRequestSchema(),
+    SDKControlGenerateSessionTitleRequestSchema(),
+    SDKControlSideQuestionRequestSchema(),
+    SDKControlSetProactiveRequestSchema(),
+    SDKControlRemoteControlRequestSchema(),
     SDKControlElicitationRequestSchema(),
   ]),
 )

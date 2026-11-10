@@ -1,3 +1,4 @@
+import type { BetaRawMessageStreamEvent } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import { randomUUID } from 'crypto'
 import type {
   SDKPartialAssistantMessage,
@@ -95,6 +96,38 @@ type CoalescedStreamEvent = {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function isBetaRawMessageStreamEvent(
+  value: unknown,
+): value is BetaRawMessageStreamEvent {
+  if (!isRecord(value)) {
+    return false
+  }
+  switch (value.type) {
+    case 'message_start':
+      return isRecord(value.message) && typeof value.message.id === 'string'
+    case 'message_delta':
+      return isRecord(value.delta) && isRecord(value.usage)
+    case 'message_stop':
+      return true
+    case 'content_block_start':
+      return typeof value.index === 'number' && isRecord(value.content_block)
+    case 'content_block_delta':
+      return typeof value.index === 'number' && isRecord(value.delta)
+    case 'content_block_stop':
+      return typeof value.index === 'number'
+    default:
+      return false
+  }
+}
+
+function isMessageWithID(value: unknown): value is { id: string } {
+  return isRecord(value) && typeof value.id === 'string'
+}
+
 /**
  * Accumulator state for text_delta coalescing. Keyed by API message ID so
  * lifetime is tied to the assistant message — cleared when the complete
@@ -148,9 +181,14 @@ export function accumulateStreamEvents(
   // rewrite the same entry instead of emitting one event per delta.
   const touched = new Map<string[], CoalescedStreamEvent>()
   for (const msg of buffer) {
-    switch (msg.event.type) {
+    const event = msg.event
+    if (!isBetaRawMessageStreamEvent(event)) {
+      out.push(msg)
+      continue
+    }
+    switch (event.type) {
       case 'message_start': {
-        const id = msg.event.message.id
+        const id = event.message.id
         const prevId = state.scopeToMessage.get(scopeKey(msg))
         if (prevId) state.byMessage.delete(prevId)
         state.scopeToMessage.set(scopeKey(msg), id)
@@ -159,7 +197,7 @@ export function accumulateStreamEvents(
         break
       }
       case 'content_block_delta': {
-        if (msg.event.delta.type !== 'text_delta') {
+        if (event.delta.type !== 'text_delta') {
           out.push(msg)
           break
         }
@@ -173,8 +211,8 @@ export function accumulateStreamEvents(
           out.push(msg)
           break
         }
-        const chunks = (blocks[msg.event.index] ??= [])
-        chunks.push(msg.event.delta.text)
+        const chunks = (blocks[event.index] ??= [])
+        chunks.push(event.delta.text)
         const existing = touched.get(chunks)
         if (existing) {
           existing.event.delta.text = chunks.join('')
@@ -187,7 +225,7 @@ export function accumulateStreamEvents(
           parent_tool_use_id: msg.parent_tool_use_id,
           event: {
             type: 'content_block_delta',
-            index: msg.event.index,
+            index: event.index,
             delta: { type: 'text_delta', text: chunks.join('') },
           },
         }
@@ -744,8 +782,11 @@ export class CCRClient {
       return
     }
     await this.flushStreamEventBuffer()
-    if (message.type === 'assistant') {
-      clearStreamAccumulatorForMessage(this.streamTextAccumulator, message)
+    if (message.type === 'assistant' && isMessageWithID(message.message)) {
+      clearStreamAccumulatorForMessage(this.streamTextAccumulator, {
+        ...message,
+        message: message.message,
+      })
     }
     await this.eventUploader.enqueue(this.toClientEvent(message))
   }

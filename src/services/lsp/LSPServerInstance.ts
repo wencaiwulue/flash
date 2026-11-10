@@ -91,18 +91,6 @@ export function createLSPServerInstance(
   name: string,
   config: ScopedLspServerConfig,
 ): LSPServerInstance {
-  // Validate that unimplemented fields are not set
-  if (config.restartOnCrash !== undefined) {
-    throw new Error(
-      `LSP server '${name}': restartOnCrash is not yet implemented. Remove this field from the configuration.`,
-    )
-  }
-  if (config.shutdownTimeout !== undefined) {
-    throw new Error(
-      `LSP server '${name}': shutdownTimeout is not yet implemented. Remove this field from the configuration.`,
-    )
-  }
-
   // Private state encapsulated via closures. Lazy-require LSPClient so
   // vscode-jsonrpc (~129KB) only loads when an LSP server is actually
   // instantiated, not when the static import chain reaches this module.
@@ -122,6 +110,15 @@ export function createLSPServerInstance(
     state = 'error'
     lastError = error
     crashRecoveryCount++
+    if (config.restartOnCrash) {
+      void restart().catch(restartError => {
+        logError(
+          new Error(
+            `LSP server '${name}' failed to restart after a crash: ${errorMessage(restartError)}`,
+          ),
+        )
+      })
+    }
   })
 
   /**
@@ -278,7 +275,7 @@ export function createLSPServerInstance(
 
     try {
       state = 'stopping'
-      await client.stop()
+      await client.stop(config.shutdownTimeout)
       state = 'stopped'
       logForDebugging(`LSP server instance stopped: ${name}`)
     } catch (error) {
@@ -293,7 +290,7 @@ export function createLSPServerInstance(
    * Manually restarts the server by stopping and starting it.
    *
    * Increments restartCount and enforces maxRestarts limit.
-   * Note: This is NOT automatic - must be called explicitly.
+   * Also used automatically after a crash when restartOnCrash is enabled.
    *
    * @throws {Error} If stop or start fails, or if restartCount exceeds config.maxRestarts (default: 3)
    */

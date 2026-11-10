@@ -33,6 +33,7 @@ const NULL_RENDERING_TYPES = [
   'deferred_tools_delta',
   'mcp_instructions_delta',
   'companion_intro',
+  'bagel_console',
   'token_usage',
   'ultrathink_effort',
   'max_turns_reached',

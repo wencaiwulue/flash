@@ -432,6 +432,10 @@ export function getSessionId(): SessionId {
   return STATE.sessionId
 }
 
+export function isReplBridgeActive(): boolean {
+  return 'replBridgeActive' in STATE && STATE.replBridgeActive === true
+}
+
 export function regenerateSessionId(
   options: { setCurrentAsParent?: boolean } = {},
 ): SessionId {

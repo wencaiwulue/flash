@@ -1,10 +1,14 @@
 import { feature } from 'bun:bundle'
-import type {
-  ElicitResult,
-  JSONRPCMessage,
+import {
+  type ElicitResult,
+  type JSONRPCMessage,
+  JSONRPCMessageSchema,
 } from '@modelcontextprotocol/sdk/types.js'
 import { randomUUID } from 'crypto'
-import type { AssistantMessage } from 'src//types/message.js'
+import type {
+  AssistantMessage,
+  UserMessage,
+} from 'src//types/message.js'
 import type {
   HookInput,
   HookJSONOutput,
@@ -121,6 +125,23 @@ type PendingRequest<T> = {
   reject: (error: unknown) => void
   schema?: z.Schema
   request: SDKControlRequest
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function isUserMessagePayload(value: unknown): value is UserMessage['message'] {
+  if (!isRecord(value) || value.role !== 'user') {
+    return false
+  }
+  return (
+    typeof value.content === 'string' ||
+    (Array.isArray(value.content) &&
+      value.content.every(
+        block => isRecord(block) && typeof block.type === 'string',
+      ))
+  )
 }
 
 /**
@@ -448,10 +469,16 @@ export class StructuredIO {
       if (message.type === 'assistant' || message.type === 'system') {
         return message
       }
-      if (message.message.role !== 'user') {
+      if (!isRecord(message.message) || message.message.role !== 'user') {
+        const role = isRecord(message.message)
+          ? message.message.role
+          : undefined
         exitWithMessage(
-          `Error: Expected message role 'user', got '${message.message.role}'`,
+          `Error: Expected message role 'user', got '${String(role)}'`,
         )
+      }
+      if (!isUserMessagePayload(message.message)) {
+        exitWithMessage('Error: Invalid user message content')
       }
       return message
     } catch (error) {
@@ -766,7 +793,7 @@ export class StructuredIO {
         message,
       },
       z.object({
-        mcp_response: z.any() as z.Schema<JSONRPCMessage>,
+        mcp_response: JSONRPCMessageSchema,
       }),
     )
     return response.mcp_response

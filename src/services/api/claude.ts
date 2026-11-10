@@ -1,14 +1,11 @@
 import type {
   BetaContentBlock,
-  BetaContentBlockParam,
-  BetaImageBlockParam,
   BetaJSONOutputFormat,
   BetaMessage,
   BetaMessageDeltaUsage,
   BetaMessageStreamParams,
   BetaOutputConfig,
   BetaRawMessageStreamEvent,
-  BetaRequestDocumentBlock,
   BetaStopReason,
   BetaToolChoiceAuto,
   BetaToolChoiceTool,
@@ -937,15 +934,15 @@ function getPreviousRequestIdFromMessages(
   return undefined
 }
 
-function isMedia(
-  block: BetaContentBlockParam,
-): block is BetaImageBlockParam | BetaRequestDocumentBlock {
+function isMedia(block: {
+  type: string
+}): block is { type: 'image' | 'document' } {
   return block.type === 'image' || block.type === 'document'
 }
 
-function isToolResult(
-  block: BetaContentBlockParam,
-): block is BetaToolResultBlockParam {
+function isToolResult(block: {
+  type: string
+}): block is BetaToolResultBlockParam {
   return block.type === 'tool_result'
 }
 
@@ -2983,6 +2980,9 @@ export function updateUsage(
     inference_geo: usage.inference_geo,
     iterations: partUsage.iterations ?? usage.iterations,
     speed: (partUsage as BetaUsage).speed ?? usage.speed,
+    fallback_credit: partUsage.fallback_credit ?? usage.fallback_credit,
+    output_tokens_details:
+      partUsage.output_tokens_details ?? usage.output_tokens_details,
   }
 }
 
@@ -3034,6 +3034,12 @@ export function accumulateUsage(
     inference_geo: messageUsage.inference_geo, // Use the most recent
     iterations: messageUsage.iterations, // Use the most recent
     speed: messageUsage.speed, // Use the most recent
+    fallback_credit: messageUsage.fallback_credit,
+    output_tokens_details: {
+      thinking_tokens:
+        totalUsage.output_tokens_details.thinking_tokens +
+        messageUsage.output_tokens_details.thinking_tokens,
+    },
   }
 }
 

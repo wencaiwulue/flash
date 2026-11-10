@@ -797,25 +797,27 @@ async function* queryLoop(
             // tree-shaking constraint), so the collapse check is nested
             // rather than composed.
             let withheld = false
-            if (feature('CONTEXT_COLLAPSE')) {
+            if (message.type !== 'stream_event') {
+              if (feature('CONTEXT_COLLAPSE')) {
+                if (
+                  contextCollapse?.isWithheldPromptTooLong(
+                    message,
+                    isPromptTooLongMessage,
+                    querySource,
+                  )
+                ) {
+                  withheld = true
+                }
+              }
+              if (reactiveCompact?.isWithheldPromptTooLong(message)) {
+                withheld = true
+              }
               if (
-                contextCollapse?.isWithheldPromptTooLong(
-                  message,
-                  isPromptTooLongMessage,
-                  querySource,
-                )
+                mediaRecoveryEnabled &&
+                reactiveCompact?.isWithheldMediaSizeError(message)
               ) {
                 withheld = true
               }
-            }
-            if (reactiveCompact?.isWithheldPromptTooLong(message)) {
-              withheld = true
-            }
-            if (
-              mediaRecoveryEnabled &&
-              reactiveCompact?.isWithheldMediaSizeError(message)
-            ) {
-              withheld = true
             }
             if (isWithheldMaxOutputTokens(message)) {
               withheld = true
@@ -1170,6 +1172,9 @@ async function* queryLoop(
         // so hooks have nothing meaningful to evaluate. Running stop hooks
         // on prompt-too-long creates a death spiral: error → hook blocking
         // → retry → error → … (the hook injects more tokens each cycle).
+        if (!lastMessage) {
+          throw new Error('Withheld API error is missing its assistant message')
+        }
         yield lastMessage
         void executeStopFailureHooks(lastMessage, toolUseContext)
         return { reason: isWithheldMedia ? 'image_error' : 'prompt_too_long' }

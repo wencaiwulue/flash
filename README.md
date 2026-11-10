@@ -1,52 +1,53 @@
-# Claude Code Source Snapshot for Security Research
+## Build and Verification
 
-> This repository mirrors a **publicly exposed Claude Code source snapshot** that became accessible on **March 31, 2026** through a source map exposure in the npm distribution. It is maintained for **educational, defensive security research, and software supply-chain analysis**.
+Requirements: Bun 1.3+.
 
----
+```bash
+bun install --frozen-lockfile
+bun run generate:sdk-types
+bun run typecheck
+bun test
+bun run build
 
-## Research Context
+bun dist/main.js --version
+bun dist/main.js --help
+```
 
-This repository is maintained by a **university student** studying:
+The build produces both `dist/main.js` (CLI) and `dist/sdk.mjs` (Agent SDK).
+Do not enable internal-only feature flags in the external build: modules guarded
+by `USER_TYPE === 'ant'` or unavailable feature flags are intentionally disabled.
 
-- software supply-chain exposure and build artifact leaks
-- secure software engineering practices
-- agentic developer tooling architecture
-- defensive analysis of real-world CLI systems
+Project documents:
 
-This archive is intended to support:
+- [Architecture](docs/ARCHITECTURE.md)
+- [Implementation status and verification evidence](docs/STATUS.md)
+- [Release record](docs/RELEASE.md)
 
-- educational study
-- security research practice
-- architecture review
-- discussion of packaging and release-process failures
+## Agent SDK
 
-It does **not** claim ownership of the original code, and it should not be interpreted as an official Anthropic repository.
+The local SDK entrypoint supports:
 
----
+- `tool()` and `createSdkMcpServer()` for in-process MCP tools.
+- `query()` with async messages, aborts, permissions, models, and MCP controls.
+- V2 sessions: `unstable_v2_createSession()`, `unstable_v2_resumeSession()`,
+  and `unstable_v2_prompt()`.
+- Session storage: list, read, rename, tag, and fork.
+- Scheduled tasks: `watchScheduledTasks()` and
+  `buildMissedTaskNotification()`.
 
-## How the Public Snapshot Became Accessible
+```ts
+import { query } from './dist/sdk.mjs'
 
-[Chaofan Shou (@Fried_rice)](https://x.com/Fried_rice) publicly noted that Claude Code source material was reachable through a `.map` file exposed in the npm package:
+for await (const message of query({
+  prompt: 'Reply with a short greeting.',
+  options: { tools: [] },
+})) {
+  console.log(message)
+}
+```
 
-> **"Claude code source code has been leaked via a map file in their npm registry!"**
->
-> — [@Fried_rice, March 31, 2026](https://x.com/Fried_rice/status/2038894956459290963)
-
-The published source map referenced unobfuscated TypeScript sources hosted in Anthropic's R2 storage bucket, which made the `src/` snapshot publicly downloadable.
-
----
-
-## Repository Scope
-
-Claude Code is Anthropic's CLI for interacting with Claude from the terminal to perform software engineering tasks such as editing files, running commands, searching codebases, and coordinating workflows.
-
-This repository contains a mirrored `src/` snapshot for research and analysis.
-
-- **Public exposure identified on**: 2026-03-31
-- **Language**: TypeScript
-- **Runtime**: Bun
-- **Terminal UI**: React + [Ink](https://github.com/vadimdemedes/ink)
-- **Scale**: ~1,900 files, 512,000+ lines of code
+`connectRemoteControl()` remains unavailable. File checkpoint rewind and remote
+control are not emulated with placeholder success responses.
 
 ---
 
@@ -100,7 +101,7 @@ src/
 
 ### 1. Tool System (`src/tools/`)
 
-Every tool Claude Code can invoke is implemented as a self-contained module. Each tool defines its input schema, permission model, and execution logic.
+Every tool cli can invoke is implemented as a self-contained module. Each tool defines its input schema, permission model, and execution logic. Built-in tools are registered in `src/tools.ts`; MCP tools are discovered at runtime by `src/services/mcp/client.ts` and merged into the same pool, so they do not require static imports in `src/tools.ts`.
 
 | Tool | Description |
 |---|---|
@@ -125,7 +126,7 @@ Every tool Claude Code can invoke is implemented as a self-contained module. Eac
 | `ToolSearchTool` | Deferred tool discovery |
 | `CronCreateTool` | Scheduled trigger creation |
 | `RemoteTriggerTool` | Remote trigger |
-| `SleepTool` | Proactive mode wait |
+| `SleepTool` | Proactive mode wait (`PROACTIVE`/`KAIROS` only; not included in the external build) |
 | `SyntheticOutputTool` | Structured output generation |
 
 ### 2. Command System (`src/commands/`)
@@ -151,7 +152,7 @@ User-facing slash commands invoked with `/` prefix.
 | `/context` | Context visualization |
 | `/pr_comments` | View PR comments |
 | `/resume` | Restore previous session |
-| `/share` | Share session |
+| `/share` | Share session (internal-only hidden stub; unavailable externally) |
 | `/desktop` | Desktop app handoff |
 | `/mobile` | Mobile app handoff |
 
@@ -206,15 +207,15 @@ Notable flags: `PROACTIVE`, `KAIROS`, `BRIDGE_MODE`, `DAEMON`, `VOICE_MODE`, `AG
 
 ## Key Files in Detail
 
-### `QueryEngine.ts` (~46K lines)
+### `QueryEngine.ts` (~1.3K lines)
 
 The core engine for LLM API calls. Handles streaming responses, tool-call loops, thinking mode, retry logic, and token counting.
 
-### `Tool.ts` (~29K lines)
+### `Tool.ts` (~800 lines)
 
 Defines base types and interfaces for all tools — input schemas, permission models, and progress state types.
 
-### `commands.ts` (~25K lines)
+### `commands.ts` (~750 lines)
 
 Manages registration and execution of all slash commands. Uses conditional imports to load different command sets per environment.
 
@@ -271,10 +272,3 @@ Reusable workflows defined in `skills/` are executed through `SkillTool`. Users 
 Built-in and third-party plugins are loaded through the `plugins/` subsystem.
 
 ---
-
-## Research / Ownership Disclaimer
-
-- This repository is an **educational and defensive security research archive** maintained by a university student.
-- It exists to study source exposure, packaging failures, and the architecture of modern agentic CLI systems.
-- The original Claude Code source remains the property of **Anthropic**.
-- This repository is **not affiliated with, endorsed by, or maintained by Anthropic**.

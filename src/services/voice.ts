@@ -17,20 +17,44 @@ import { getPlatform } from '../utils/platform.js'
 // (post-wake, post-boot). Load happens on first voice keypress — no
 // preload, because there's no way to make dlopen non-blocking and a
 // startup freeze is worse than a first-press delay.
-type AudioNapi = typeof import('audio-capture-napi')
+type AudioNapi = {
+  isNativeAudioAvailable(): boolean
+  isNativeRecordingActive(): boolean
+  startNativeRecording(
+    onData: (chunk: Buffer) => void,
+    onEnd: () => void,
+  ): boolean
+  stopNativeRecording(): void
+}
+
+const unavailableAudioNapi: AudioNapi = {
+  isNativeAudioAvailable: () => false,
+  isNativeRecordingActive: () => false,
+  startNativeRecording: () => false,
+  stopNativeRecording: () => {},
+}
+
 let audioNapi: AudioNapi | null = null
 let audioNapiPromise: Promise<AudioNapi> | null = null
 
 function loadAudioNapi(): Promise<AudioNapi> {
   audioNapiPromise ??= (async () => {
     const t0 = Date.now()
-    const mod = await import('audio-capture-napi')
-    // vendor/audio-capture-src/index.ts defers require(...node) until the
-    // first function call — trigger it here so timing reflects real cost.
-    mod.isNativeAudioAvailable()
-    audioNapi = mod
-    logForDebugging(`[voice] audio-capture-napi loaded in ${Date.now() - t0}ms`)
-    return mod
+    try {
+      const mod = (await import('audio-capture-napi')) as AudioNapi
+      // vendor/audio-capture-src/index.ts defers require(...node) until the
+      // first function call — trigger it here so timing reflects real cost.
+      if (!mod.isNativeAudioAvailable()) {
+        return unavailableAudioNapi
+      }
+      audioNapi = mod
+      logForDebugging(`[voice] audio-capture-napi loaded in ${Date.now() - t0}ms`)
+      return mod
+    } catch (error) {
+      logForDebugging(`[voice] Native audio unavailable: ${error}`)
+      audioNapi = null
+      return unavailableAudioNapi
+    }
   })()
   return audioNapiPromise
 }

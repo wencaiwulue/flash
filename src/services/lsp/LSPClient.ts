@@ -5,7 +5,8 @@ import {
   StreamMessageReader,
   StreamMessageWriter,
   Trace,
-} from 'vscode-jsonrpc/node.js'
+  type GenericRequestHandler,
+} from 'vscode-jsonrpc/node'
 import type {
   InitializeParams,
   InitializeResult,
@@ -37,7 +38,7 @@ export type LSPClient = {
     method: string,
     handler: (params: TParams) => TResult | Promise<TResult>,
   ) => void
-  stop: () => Promise<void>
+  stop: (shutdownTimeoutMs?: number) => Promise<void>
 }
 
 /**
@@ -184,7 +185,8 @@ export function createLSPClient(
 
         // 2.5. Register error/close handlers BEFORE listen() to catch all errors
         // This prevents unhandled promise rejections when the server crashes or closes unexpectedly
-        connection.onError(([error, _message, _code]) => {
+        connection.onError(
+          ([error, _message, _code]: [Error, unknown, unknown]) => {
           // Only log if not intentionally stopping (avoid spurious errors during shutdown)
           if (!isStopping) {
             startFailed = true
@@ -236,7 +238,7 @@ export function createLSPClient(
 
         // 5. Apply any queued request handlers
         for (const { method, handler } of pendingRequestHandlers) {
-          connection.onRequest(method, handler)
+          connection.onRequest<unknown, unknown>(method, handler)
           logForDebugging(
             `Applied queued request handler for ${serverName}.${method}`,
           )
@@ -367,14 +369,34 @@ export function createLSPClient(
 
       checkStartFailed()
 
-      connection.onRequest(method, handler)
+      connection.onRequest(
+        method,
+        handler as GenericRequestHandler<TResult, Error>,
+      )
     },
 
-    async stop(): Promise<void> {
+    async stop(shutdownTimeoutMs?: number): Promise<void> {
       let shutdownError: Error | undefined
 
       // Mark as stopping to prevent error handlers from logging spurious errors
       isStopping = true
+      const forceKillTimer =
+        shutdownTimeoutMs === undefined
+          ? undefined
+          : setTimeout(() => {
+              if (!process) return
+              logForDebugging(
+                `LSP server ${serverName} shutdown timed out after ${shutdownTimeoutMs}ms; killing the process`,
+              )
+              try {
+                process.kill()
+              } catch (error) {
+                logForDebugging(
+                  `LSP server ${serverName} force-kill failed: ${errorMessage(error)}`,
+                )
+              }
+            }, shutdownTimeoutMs)
+      forceKillTimer?.unref()
 
       try {
         if (connection) {
@@ -390,6 +412,7 @@ export function createLSPClient(
         shutdownError = err
         // Continue to cleanup despite shutdown failure
       } finally {
+        if (forceKillTimer) clearTimeout(forceKillTimer)
         // Always cleanup resources, even if shutdown/exit failed
         if (connection) {
           try {

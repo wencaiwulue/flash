@@ -6,6 +6,7 @@
  * during dead code elimination
  */
 import { getMainLoopModelOverride } from '../../bootstrap/state.js'
+import { getAntModelOverrideConfig, resolveAntModel } from './antModelOverrides.js'
 import {
   getSubscriptionType,
   isClaudeAISubscriber,

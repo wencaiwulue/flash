@@ -1006,17 +1006,17 @@ export function matchingRuleForInput(
 
     const igResult = ig.test(relativePathStr)
 
-    if (igResult.ignored && igResult.rule) {
-      // Map the matched pattern back to the original rule
-      const originalPattern = igResult.rule.pattern
-
-      // Check if this was a /** pattern we simplified
-      const withWildcard = originalPattern + '/**'
-      if (patternMap.has(withWildcard)) {
-        return patternMap.get(withWildcard) ?? null
+    if (igResult.ignored) {
+      // ignore@5 does not expose the matched rule, so find the original
+      // permission pattern that matches this path.
+      for (const originalPattern of patternMap.keys()) {
+        const adjustedPattern = originalPattern.endsWith('/**')
+          ? originalPattern.slice(0, -3)
+          : originalPattern
+        if (ignore().add(adjustedPattern).ignores(relativePathStr)) {
+          return patternMap.get(originalPattern) ?? null
+        }
       }
-
-      return patternMap.get(originalPattern) ?? null
     }
   }
 

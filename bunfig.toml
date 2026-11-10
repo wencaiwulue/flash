@@ -1,0 +1,12 @@
+# Bun configuration
+# https://bun.sh/docs/runtime/bunfig
+
+[test]
+timeout = 30000
+bail = false
+
+[install]
+production = false
+
+[resolve]
+"react/compiler-runtime" = "react-compiler-runtime"

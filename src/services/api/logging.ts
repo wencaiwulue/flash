@@ -189,7 +189,7 @@ export function logAPIQuery({
   querySource: string
   queryTracking?: QueryChainTracking
   thinkingType?: 'adaptive' | 'enabled' | 'disabled'
-  effortValue?: EffortLevel | null
+  effortValue?: EffortLevel | 'xhigh' | null
   fastMode?: boolean
   previousRequestId?: string | null
 }): void {
