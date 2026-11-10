@@ -25,6 +25,7 @@ const result = await Bun.build({
     'EXPERIMENTAL_SKILL_SEARCH',
     'UDS_INBOX',
     'DAEMON',
+    'WORKFLOW_SCRIPTS',
   ],
   define: {
     'process.env.USER_TYPE': JSON.stringify('external'),
@@ -72,6 +73,7 @@ console.log(
     hasProactiveCommand: commandNames.has('proactive'),
     hasPeersCommand: commandNames.has('peers'),
     hasRemoteControlServerCommand: commandNames.has('remote-control-server'),
+    hasWorkflowsCommand: commandNames.has('workflows'),
     hasUltraplan: commandNames.has('ultraplan'),
     hasVoice: commandNames.has('voice'),
     hasBrief: commandNames.has('brief'),

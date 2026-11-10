@@ -52,6 +52,7 @@ for (const build of builds) {
       'EXPERIMENTAL_SKILL_SEARCH',
       'UDS_INBOX',
       'DAEMON',
+      'WORKFLOW_SCRIPTS',
     ],
     define,
     loader: {

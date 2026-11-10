@@ -111,7 +111,7 @@ non-recursive tools and a self-contained task/verification prompt. Lightweight
 name-only modules avoid loading the tool registry from worker definitions.
 
 - **Verification**: 77 tests and 329 assertions passed, with typecheck, build,
-  declarations, CLI startup smoke checks, and the 34-tool compiled feature
+  declarations, CLI startup smoke checks, and the 35-tool compiled feature
   profile passing. Real model-driven proactive and multi-worker sessions remain
   separate live validation work.
 
@@ -128,7 +128,7 @@ authoritative remote protocol is present; this change does not fabricate remote
 skills or success telemetry.
 
 - **Verification**: 83 tests and 352 assertions passed, with typecheck, build,
-  declarations, CLI startup smoke checks, and the 34-tool compiled feature
+  declarations, CLI startup smoke checks, and the 35-tool compiled feature
   profile passing.
 
 ## UDS inbox and peer sessions
@@ -141,7 +141,7 @@ ID, remove stale records instead of returning offline peers, and clean up both
 socket and registry on teardown. `ListPeers` and `/peers` expose the live view.
 
 - **Verification**: 85 tests and 368 assertions passed, including real local
-  socket round trips. Typecheck, build, declarations, and the 34-tool compiled
+  socket round trips. Typecheck, build, declarations, and the 35-tool compiled
   feature profile passed.
 
 ## Daemon and Remote Control server lifecycle
@@ -153,5 +153,19 @@ wire protocol. `/remote-control-server` shares one query, reports the existing
 session URL, and disables remote control and closes input during teardown.
 
 - **Verification**: 91 tests and 390 assertions passed, with typecheck, build,
-  declarations, `daemon status`, and the 34-tool compiled feature profile
+  declarations, `daemon status`, and the 35-tool compiled feature profile
   passing. Lifecycle tests use fakes; no live Cloud session is claimed.
+
+## Declarative workflows
+
+Workflow JSON definitions now have strict schema, unique-step, dependency, and
+cycle validation. Discovery covers project/user directories plus bundled
+registrations. The executor provides bounded DAG concurrency, input/result
+interpolation, failure propagation, skip/retry/kill controls, and downstream
+retry recovery. Local task state, output persistence, notifications, and the
+workflow detail UI are connected. Steps still execute through the existing
+agent runner and tool permission callback.
+
+- **Verification**: 100 tests and 424 assertions passed, with typecheck, build,
+  declarations, and the 35-tool compiled feature profile passing. Step runners
+  are deterministic fakes; real model-agent workflows remain live validation.
