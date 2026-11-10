@@ -73,6 +73,7 @@ describe('enabled feature profile', () => {
         expect(profile.workerHasAgent).toBe(false)
         expect(profile.hasProactiveCommand).toBe(true)
         expect(profile.hasPeersCommand).toBe(true)
+        expect(profile.hasRemoteControlServerCommand).toBe(true)
         expect(profile.hasUltraplan).toBe(true)
         expect(profile.hasVoice).toBe(true)
         expect(profile.hasBrief).toBe(true)

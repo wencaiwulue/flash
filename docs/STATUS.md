@@ -17,7 +17,7 @@ Statuses:
 | `bun install --frozen-lockfile` | Passed |
 | `bun run generate:sdk-types` | Generated 125 core types and 59 control types |
 | `bun run typecheck` | Passed with zero TypeScript errors |
-| `bun test` | 85 tests, 368 assertions passed |
+| `bun test` | 91 tests, 390 assertions passed |
 | Linux secret storage | 4 tests, 17 assertions passed with mocked `secret-tool` |
 | npm marketplace | 7 tests passed with mocked npm execution; no registry access |
 | ultraplan polling | Refresh-before-poll test passed |
@@ -47,6 +47,8 @@ Real model checks used the session's configured provider with an isolated `HOME`
 | Local skill search | Verified (offline index/build) | Fuse metadata ranking, natural-language fallback, visible-skill filtering, turn-zero/write-pivot/subagent prefetch, cache invalidation, and `DiscoverSkills` are enabled |
 | Remote canonical skills | Not implemented | No authoritative remote loading protocol is supplied; existing loader remains explicitly unavailable and no remote result is fabricated |
 | UDS inbox and peers | Verified (real local socket) | 0600 socket permissions, plain-text enqueue/wakeup, path and session-ID routing, live peer handshake, stale registry cleanup, and teardown tested; `ListPeers` and `/peers` registered |
+| Daemon supervisor and worker registry | Verified (offline lifecycle) | Bounded exponential restarts, clean stop, stale PID cleanup, worker dispatch, and `daemon status` smoke tested |
+| Remote Control server | Verified (offline lifecycle/build) | Shared SDK query, enable/disable, input close, idempotent start/stop, and `/remote-control-server` registration tested; no live Cloud session claimed |
 | CtxInspect | Implemented, feature-gated | Report-format tests pass; `CONTEXT_COLLAPSE` remains off until its service is complete |
 | Core query and tool orchestration | Verified | Real model + Read round trip passed |
 | SDK query, async messages, abort | Verified | Source and packaged SDK queries passed |
@@ -70,7 +72,7 @@ Real model checks used the session's configured provider with an isolated `HOME`
 
 ## Next implementation order
 
-1. Split workflow, daemon, and context-collapse (including CtxInspect activation) into separately verified implementations.
+1. Split workflow and context-collapse (including CtxInspect activation) into separately verified implementations.
 2. Run a real proactive tick/Sleep session and Coordinator multi-worker orchestration with an authorized model provider.
 3. Run real Cloud API and remote bridge round trips in an authorized environment.
 4. Pure env-less perpetual bridge only if the product explicitly requires eliminating the Environments API; existing perpetual continuity is already provided by env-based bridge.

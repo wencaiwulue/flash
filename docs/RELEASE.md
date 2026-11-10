@@ -143,3 +143,15 @@ socket and registry on teardown. `ListPeers` and `/peers` expose the live view.
 - **Verification**: 85 tests and 368 assertions passed, including real local
   socket round trips. Typecheck, build, declarations, and the 34-tool compiled
   feature profile passed.
+
+## Daemon and Remote Control server lifecycle
+
+`daemon start|run|stop|status` now has a real supervisor with bounded
+exponential restarts, signal-driven worker termination, and stale PID cleanup.
+Workers dispatch to the SDK remote-control query path instead of a separate
+wire protocol. `/remote-control-server` shares one query, reports the existing
+session URL, and disables remote control and closes input during teardown.
+
+- **Verification**: 91 tests and 390 assertions passed, with typecheck, build,
+  declarations, `daemon status`, and the 34-tool compiled feature profile
+  passing. Lifecycle tests use fakes; no live Cloud session is claimed.

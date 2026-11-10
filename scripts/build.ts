@@ -51,6 +51,7 @@ for (const build of builds) {
       'COORDINATOR_MODE',
       'EXPERIMENTAL_SKILL_SEARCH',
       'UDS_INBOX',
+      'DAEMON',
     ],
     define,
     loader: {
