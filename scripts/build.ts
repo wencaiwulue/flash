@@ -55,6 +55,8 @@ for (const build of builds) {
       'WORKFLOW_SCRIPTS',
       'CONTEXT_COLLAPSE',
       'REACTIVE_COMPACT',
+      'BUDDY',
+      'FORK_SUBAGENT',
     ],
     define,
     loader: {

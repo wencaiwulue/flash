@@ -17,7 +17,7 @@ Statuses:
 | `bun install --frozen-lockfile` | Passed |
 | `bun run generate:sdk-types` | Generated 125 core types and 59 control types |
 | `bun run typecheck` | Passed with zero TypeScript errors |
-| `bun test` | 112 tests, 479 assertions passed |
+| `bun test` | 118 tests, 516 assertions passed |
 | Linux secret storage | 4 tests, 17 assertions passed with mocked `secret-tool` |
 | npm marketplace | 7 tests passed with mocked npm execution; no registry access |
 | ultraplan polling | Refresh-before-poll test passed |
@@ -69,7 +69,8 @@ Real model checks used the session's configured provider with an isolated `HOME`
 | Cloud file persistence | Verified (offline) | Files API maps normalized output paths to file IDs; ambiguity, pagination, delay, partial failure, and abort tests passed; no xattr attribute guessed |
 | ultraplan OAuth refresh | Verified (mocked) | Refresh runs before every remote poll; `/ultraplan` is externally registered with Claude AI availability checks |
 | env-based perpetual bridge | Verified (offline) | Env-less + perpetual intentionally falls back to env-based pointer/reconnect; teardown preserves pointer. Pure env-less perpetual remains a separate protocol task |
-| Full KAIROS/proactive/workflow/computer-use features | Explicitly disabled or stub-only | `KAIROS_BRIEF` is enabled independently; the remaining internal systems require implementation before their flags are enabled |
+| Buddy and Fork Subagent | Verified (offline/build) | Deterministic bones, model soul persistence, reaction, mute command, fork cache placeholders, recursive guard, worktree notice, and `/fork` prompt tested |
+| Full KAIROS and private computer-use backends | Explicitly disabled or stub-only | Proactive, Workflow, BUDDY, and FORK_SUBAGENT are enabled independently; remaining private backends require open adapters before their flags are enabled |
 | iTerm hide/show/rebalance | Platform limitation | Not treated as a core implementation gap |
 
 ## Remaining implementation boundaries
@@ -78,7 +79,7 @@ Real model checks used the session's configured provider with an isolated `HOME`
 - `REVIEW_ARTIFACT`: the tool is still an explicit stub and is not registered in the external build.
 - Remote canonical skills: no authoritative loading protocol is available; the loader remains unavailable by design.
 - `MonitorMcpTask`: the legacy MCP-task backend remains unavailable. The enabled `Monitor` tool uses the verified local-shell task path instead and never creates `monitor_mcp` state.
-- Full KAIROS, Buddy/Fork, and private computer-use/browser backends remain disabled; their external protocols or implementations are not present.
+- Full KAIROS and private computer-use/browser backends remain disabled; Buddy/Fork are enabled, while the remaining private backends use the planned open adapters.
 - Validation-only gaps: changed-file `offset/limit`, cron recurring/aging, and LSP restart/shutdown behavior still need dedicated deterministic lifecycle tests.
 
 ## Next implementation order

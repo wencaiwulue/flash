@@ -28,6 +28,8 @@ const result = await Bun.build({
     'WORKFLOW_SCRIPTS',
     'CONTEXT_COLLAPSE',
     'REACTIVE_COMPACT',
+    'BUDDY',
+    'FORK_SUBAGENT',
   ],
   define: {
     'process.env.USER_TYPE': JSON.stringify('external'),
@@ -78,6 +80,8 @@ console.log(
     hasPeersCommand: commandNames.has('peers'),
     hasRemoteControlServerCommand: commandNames.has('remote-control-server'),
     hasWorkflowsCommand: commandNames.has('workflows'),
+    hasBuddyCommand: commandNames.has('buddy'),
+    hasForkCommand: commandNames.has('fork'),
     hasUltraplan: commandNames.has('ultraplan'),
     hasVoice: commandNames.has('voice'),
     hasBrief: commandNames.has('brief'),

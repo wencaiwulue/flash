@@ -78,6 +78,8 @@ describe('enabled feature profile', () => {
         expect(profile.hasPeersCommand).toBe(true)
         expect(profile.hasRemoteControlServerCommand).toBe(true)
         expect(profile.hasWorkflowsCommand).toBe(true)
+        expect(profile.hasBuddyCommand).toBe(true)
+        expect(profile.hasForkCommand).toBe(true)
         expect(profile.hasUltraplan).toBe(true)
         expect(profile.hasVoice).toBe(true)
         expect(profile.hasBrief).toBe(true)

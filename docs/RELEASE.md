@@ -195,3 +195,14 @@ other compaction paths.
 - **Verification**: 112 tests and 479 assertions passed, with typecheck, build,
   declarations, and the 36-tool compiled feature profile passing. Live API
   recovery remains separately unverified.
+
+## Buddy and Fork Subagent
+
+BUDDY now hatches and persists model-generated companion souls, emits short
+reactions through the existing side-query path, and supports `/buddy` status,
+mute, and unmute. Deterministic bones remain independent of stored soul data.
+FORK_SUBAGENT is enabled with its existing cache-preserving context prefix,
+recursive-fork guard, worktree notice, and a real `/fork` prompt command.
+
+- **Verification**: 118 tests and 516 assertions passed, with typecheck, build,
+  declarations, and the 36-tool compiled feature profile passing.

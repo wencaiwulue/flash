@@ -3775,12 +3775,15 @@ export function REPL({
 
 
       if (feature('BUDDY')) {
-        void fireCompanionObserver(messagesRef.current, (reaction: string) =>
-          setAppState(prev =>
-            prev.companionReaction === reaction
-              ? prev
-              : { ...prev, companionReaction: reaction },
-          ),
+        void fireCompanionObserver(
+          messagesRef.current,
+          (reaction: string) =>
+            setAppState(prev =>
+              prev.companionReaction === reaction
+                ? prev
+                : { ...prev, companionReaction: reaction },
+            ),
+          toolUseContext,
         )
       }
 
