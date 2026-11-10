@@ -1,30 +1,23 @@
-export type BrowserToolDescriptor = {
-  name: string
+import type { BrowserToolDescriptor } from '@ant/claude-for-chrome-mcp'
+
+let catalog: Promise<BrowserToolDescriptor[]> | undefined
+
+export function getBrowserTools(): Promise<BrowserToolDescriptor[]> {
+  catalog ??= import('@ant/claude-for-chrome-mcp')
+    .then(module => module.listBrowserTools())
+    .catch(error => {
+      catalog = undefined
+      throw error
+    })
+  return catalog
 }
 
-type ClaudeForChromeModule = {
-  BROWSER_TOOLS?: BrowserToolDescriptor[]
+export async function isClaudeInChromeMcpAvailable(): Promise<boolean> {
+  return (await getBrowserTools()).length > 0
 }
 
-function loadBrowserTools(): BrowserToolDescriptor[] {
-  try {
-    const module = require('@ant/claude-for-chrome-mcp') as ClaudeForChromeModule
-    return Array.isArray(module.BROWSER_TOOLS) ? module.BROWSER_TOOLS : []
-  } catch {
-    return []
-  }
-}
-
-export const BROWSER_TOOLS = loadBrowserTools()
-
-export function isClaudeInChromeMcpAvailable(): boolean {
-  return BROWSER_TOOLS.length > 0
-}
-
-export function assertClaudeInChromeMcpAvailable(): void {
-  if (!isClaudeInChromeMcpAvailable()) {
-    throw new Error(
-      'Claude in Chrome is unavailable: @ant/claude-for-chrome-mcp is not included in this build',
-    )
+export async function assertClaudeInChromeMcpAvailable(): Promise<void> {
+  if (!(await isClaudeInChromeMcpAvailable())) {
+    throw new Error('Playwright MCP returned no browser tools')
   }
 }

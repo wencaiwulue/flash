@@ -2339,7 +2339,7 @@ async function run(): Promise<CommanderCommand> {
         shouldEnableClaudeInChrome(chromeOpts.chrome) &&
         (process.env.USER_TYPE === 'ant' || isClaudeAISubscriber())
       const autoEnableClaudeInChrome =
-        !enableClaudeInChrome && shouldAutoEnableClaudeInChrome()
+        !enableClaudeInChrome && (await shouldAutoEnableClaudeInChrome())
 
       if (enableClaudeInChrome) {
         const platform = getPlatform()
@@ -2353,7 +2353,7 @@ async function run(): Promise<CommanderCommand> {
             mcpConfig: chromeMcpConfig,
             allowedTools: chromeMcpTools,
             systemPrompt: chromeSystemPrompt,
-          } = setupClaudeInChrome()
+          } = await setupClaudeInChrome()
           dynamicMcpConfig = { ...dynamicMcpConfig, ...chromeMcpConfig }
           allowedTools.push(...chromeMcpTools)
           if (chromeSystemPrompt) {
@@ -2374,7 +2374,7 @@ async function run(): Promise<CommanderCommand> {
         }
       } else if (autoEnableClaudeInChrome) {
         try {
-          const { mcpConfig: chromeMcpConfig } = setupClaudeInChrome()
+          const { mcpConfig: chromeMcpConfig } = await setupClaudeInChrome()
           dynamicMcpConfig = { ...dynamicMcpConfig, ...chromeMcpConfig }
 
           const hint =
@@ -2445,7 +2445,7 @@ async function run(): Promise<CommanderCommand> {
             const { setupComputerUseMCP } = await import(
               'src/utils/computerUse/setup.js'
             )
-            const { mcpConfig, allowedTools: cuTools } = setupComputerUseMCP()
+            const { mcpConfig, allowedTools: cuTools } = await setupComputerUseMCP()
             dynamicMcpConfig = { ...dynamicMcpConfig, ...mcpConfig }
             allowedTools.push(...cuTools)
           }

@@ -250,7 +250,7 @@ export async function runClaudeInChromeMcpServer(): Promise<void> {
   initializeAnalyticsSink()
   const context = createChromeContext()
 
-  const server = createClaudeForChromeMcpServer(context)
+  const server = await createClaudeForChromeMcpServer(context)
   const transport = new StdioServerTransport()
 
   // Exit when parent process dies (stdin pipe closes).

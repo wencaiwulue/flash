@@ -917,7 +917,7 @@ export const connectToServer = memoize(
           './InProcessTransport.js'
         )
         const context = createChromeContext(serverRef.env)
-        const server = createClaudeForChromeMcpServer(context)
+        const server = await createClaudeForChromeMcpServer(context)
         inProcessServer = server
         const [clientTransport, serverTransport] = createLinkedTransportPair()
         await server.connect(serverTransport)

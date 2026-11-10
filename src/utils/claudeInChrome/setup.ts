@@ -1,6 +1,6 @@
 import {
   assertClaudeInChromeMcpAvailable,
-  BROWSER_TOOLS,
+  getBrowserTools,
   isClaudeInChromeMcpAvailable,
 } from './browserTools.js'
 import { chmod, mkdir, readFile, writeFile } from 'fs/promises'
@@ -73,8 +73,8 @@ export function shouldEnableClaudeInChrome(chromeFlag?: boolean): boolean {
 
 let shouldAutoEnable: boolean | undefined = undefined
 
-export function shouldAutoEnableClaudeInChrome(): boolean {
-  if (!isClaudeInChromeMcpAvailable()) {
+export async function shouldAutoEnableClaudeInChrome(): Promise<boolean> {
+  if (!(await isClaudeInChromeMcpAvailable())) {
     return false
   }
   if (shouldAutoEnable !== undefined) {
@@ -95,14 +95,14 @@ export function shouldAutoEnableClaudeInChrome(): boolean {
  *
  * @returns MCP config and allowed tools, or throws an error if platform is unsupported
  */
-export function setupClaudeInChrome(): {
+export async function setupClaudeInChrome(): Promise<{
   mcpConfig: Record<string, ScopedMcpServerConfig>
   allowedTools: string[]
   systemPrompt: string
-} {
-  assertClaudeInChromeMcpAvailable()
+}> {
+  await assertClaudeInChromeMcpAvailable()
   const isNativeBuild = isInBundledMode()
-  const allowedTools = BROWSER_TOOLS.map(
+  const allowedTools = (await getBrowserTools()).map(
     tool => `mcp__claude-in-chrome__${tool.name}`,
   )
 

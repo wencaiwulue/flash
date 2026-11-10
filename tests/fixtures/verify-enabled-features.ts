@@ -34,6 +34,8 @@ const result = await Bun.build({
     'REVIEW_ARTIFACT',
     'KAIROS',
     'KAIROS_GITHUB_WEBHOOKS',
+    'CHICAGO_MCP',
+    'WEB_BROWSER_TOOL',
   ],
   define: {
     'process.env.USER_TYPE': JSON.stringify('external'),

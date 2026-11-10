@@ -61,6 +61,8 @@ for (const build of builds) {
       'REVIEW_ARTIFACT',
       'KAIROS',
       'KAIROS_GITHUB_WEBHOOKS',
+      'CHICAGO_MCP',
+      'WEB_BROWSER_TOOL',
     ],
     define,
     loader: {

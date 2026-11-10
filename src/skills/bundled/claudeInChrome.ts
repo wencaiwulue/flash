@@ -1,33 +1,26 @@
-import { BROWSER_TOOLS } from '../../utils/claudeInChrome/browserTools.js'
+import { getBrowserTools } from '../../utils/claudeInChrome/browserTools.js'
 import { BASE_CHROME_PROMPT } from '../../utils/claudeInChrome/prompt.js'
-import { shouldAutoEnableClaudeInChrome } from '../../utils/claudeInChrome/setup.js'
 import { registerBundledSkill } from '../bundledSkills.js'
 
-const CLAUDE_IN_CHROME_MCP_TOOLS = BROWSER_TOOLS.map(
-  tool => `mcp__claude-in-chrome__${tool.name}`,
-)
-
 const SKILL_ACTIVATION_MESSAGE = `
-Now that this skill is invoked, you have access to Chrome browser automation tools. You can now use the mcp__claude-in-chrome__* tools to interact with web pages.
-
-IMPORTANT: Start by calling mcp__claude-in-chrome__tabs_context_mcp to get information about the user's current browser tabs.
+This skill uses the open Playwright MCP backend in an isolated browser profile. Start by inspecting the current page or opening a new tab, then use the browser's accessibility tree for precise actions.
 `
 
 export function registerClaudeInChromeSkill(): void {
   registerBundledSkill({
     name: 'claude-in-chrome',
     description:
-      'Automates your Chrome browser to interact with web pages - clicking elements, filling forms, capturing screenshots, reading console logs, and navigating sites. Opens pages in new tabs within your existing Chrome session. Requires site-level permissions before executing (configured in the extension).',
+      'Automates an isolated Chromium browser with Playwright MCP: navigation, forms, screenshots, console logs, and accessibility-tree inspection.',
     whenToUse:
-      'When the user wants to interact with web pages, automate browser tasks, capture screenshots, read console logs, or perform any browser-based actions. Always invoke BEFORE attempting to use any mcp__claude-in-chrome__* tools.',
-    allowedTools: CLAUDE_IN_CHROME_MCP_TOOLS,
+      'When the user wants to interact with web pages, automate browser tasks, capture screenshots, read console logs, or test a web application.',
+    allowedTools: [],
     userInvocable: true,
-    isEnabled: () => shouldAutoEnableClaudeInChrome(),
+    isEnabled: () => true,
     async getPromptForCommand(args) {
-      let prompt = `${BASE_CHROME_PROMPT}\n${SKILL_ACTIVATION_MESSAGE}`
-      if (args) {
-        prompt += `\n## Task\n\n${args}`
-      }
+      const tools = await getBrowserTools()
+      const toolList = tools.map(tool => `mcp__claude-in-chrome__${tool.name}`).join(', ')
+      let prompt = `${BASE_CHROME_PROMPT}\n${SKILL_ACTIVATION_MESSAGE}\nAvailable tools: ${toolList}`
+      if (args) prompt += `\n## Task\n\n${args}`
       return [{ type: 'text', text: prompt }]
     },
   })

@@ -17,7 +17,7 @@ Statuses:
 | `bun install --frozen-lockfile` | Passed |
 | `bun run generate:sdk-types` | Generated 125 core types and 59 control types |
 | `bun run typecheck` | Passed with zero TypeScript errors |
-| `bun test` | 140 tests, 604 assertions passed |
+| `bun test` | 142 tests, 611 assertions passed |
 | Linux secret storage | 4 tests, 17 assertions passed with mocked `secret-tool` |
 | npm marketplace | 7 tests passed with mocked npm execution; no registry access |
 | ultraplan polling | Refresh-before-poll test passed |
@@ -39,7 +39,7 @@ Real model checks used the session's configured provider with an isolated `HOME`
 | Area | Status | Evidence / next step |
 |---|---|---|
 | CLI build and startup | Verified | Build, version, help, and real headless query passed |
-| Built-in tool pool | Verified | External feature-profile build loaded 41 tools with no null entries, including Cron, RemoteTrigger, Monitor, OverflowTest, TerminalCapture, and Sleep |
+| Built-in tool pool | Verified | External feature-profile build loaded 42 tools with no null entries, including Cron, RemoteTrigger, Monitor, OverflowTest, TerminalCapture, and Sleep |
 | External feature profile | Verified | Trigger, remote-trigger, voice, bridge, ultraplan, persistence, brief, Monitor, OverflowTest, terminal panel, PROACTIVE, and COORDINATOR_MODE are compiled in; `ultraplan`, `voice`, `brief`, and `proactive` are registered |
 | Monitor streaming | Verified (local shell) | Real stdout chunks become deduplicated per-line notifications, with final partial-line flush and completion notification; Bash permission checks are reused |
 | Proactive and Sleep | Verified (offline scheduler/build) | Activation, pause/resume, context blocking, idle scheduling, abort/settings, `/proactive`, and external REPL wiring tested; real model-driven perpetual session not run |
@@ -73,19 +73,20 @@ Real model checks used the session's configured provider with an isolated `HOME`
 | env-based perpetual bridge | Verified (offline) | Env-less + perpetual intentionally falls back to env-based pointer/reconnect; teardown preserves pointer. Pure env-less perpetual remains a separate protocol task |
 | Buddy and Fork Subagent | Verified (offline/build) | Deterministic bones, model soul persistence, reaction, mute command, fork cache placeholders, recursive guard, worktree notice, and `/fork` prompt tested |
 | Open KAIROS adapters | Verified (offline/build) | Assistant gate/team/session discovery, isolated team initialization, install wizard, SendUserFile, OS/webhook notifications, GitHub PR subscriptions, and dream registration tested |
-| Private computer-use backends | Explicitly disabled pending open MCP adapters | Proactive, Workflow, BUDDY, FORK_SUBAGENT, and KAIROS are enabled; Computer Use/Chrome remain off until their open adapters are connected |
+| Computer Use via Zavora MCP | Verified (metadata/permissions) | Real tool schemas and denied-action protection passed; native desktop control requires a separately authorized desktop session |
+| Browser via Playwright MCP | Verified (real isolated browser) | Real tool metadata, local-page navigation, snapshot, and close passed with isolated browser profile |
 | iTerm hide/show/rebalance | Platform limitation | Not treated as a core implementation gap |
 
 ## Remaining implementation boundaries
 
 - Self-hosted SkillHub live registry: the adapter and local HTTP protocol tests pass; a real registry round trip is still pending.
 - `MonitorMcpTask`: the legacy MCP-task backend remains unavailable. The enabled `Monitor` tool uses the verified local-shell task path instead and never creates `monitor_mcp` state.
-- Private computer-use/browser backends remain disabled pending open MCP adapters; Buddy/Fork and open KAIROS are enabled.
+- Native Computer Use desktop control: open MCP metadata and permission checks pass, but a real authorized desktop session is still required.
 - Validation-only gaps: changed-file `offset/limit`, cron recurring/aging, and LSP restart/shutdown behavior still need dedicated deterministic lifecycle tests.
 
 ## Next implementation order
 
-1. Complete Computer Use/Browser open MCP integrations and lifecycle tests.
+1. Add changed-file, cron, and LSP lifecycle regressions.
 2. Add changed-file, cron, and LSP lifecycle regressions.
 3. Run real proactive, Coordinator, workflow, context-collapse, and reactive-compaction model sessions with an authorized provider.
 4. Run real Cloud API and remote bridge round trips in an authorized environment.
