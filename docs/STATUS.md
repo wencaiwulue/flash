@@ -17,7 +17,10 @@ Statuses:
 | `bun install --frozen-lockfile` | Passed |
 | `bun run generate:sdk-types` | Generated 125 core types and 59 control types |
 | `bun run typecheck` | Passed with zero TypeScript errors |
-| `bun test` | 7 tests, 38 assertions passed |
+| `bun test` | 38 tests, 146 assertions passed |
+| Linux secret storage | 4 tests, 17 assertions passed with mocked `secret-tool` |
+| npm marketplace | 7 tests passed with mocked npm execution; no registry access |
+| ultraplan polling | Refresh-before-poll test passed |
 | `bun run build` | Built CLI, SDK, and declarations |
 | `bun dist/main.js --version` | `1.0.0 (Claude Code)` |
 | `bun dist/main.js --help` | Completed successfully |
@@ -45,25 +48,22 @@ Real model checks used the session's configured provider with an isolated `HOME`
 | Scheduled tasks | Verified | Missed-event and abort tests passed |
 | LSP lifecycle configuration | Verified | `restartOnCrash` and `shutdownTimeout` configuration test passed |
 | Changed-file partial reads | Implemented, unverified | `offset/limit` is forwarded to `FileReadTool`; add a dedicated regression test |
-| Non-REPL prompt/agent stop hooks | Not implemented | `src/utils/hooks.ts` still has the non-REPL TODO |
-| SDK rewind | Not implemented | `src/utils/sdkQuery.ts` currently reports that checkpointing is unavailable |
-| SDK `getContextUsage`, `reloadPlugins`, `stopTask`, `applyFlagSettings`, `getSettings` | Not implemented | These methods currently report unsupported |
+| Non-REPL prompt/agent stop hooks | Verified (offline and E2E) | Prompt/agent allow, block, failure, cancellation, and real headless Stop feedback verified |
+| SDK rewind | Verified (offline) | Per-query snapshots, dry-run, actual restore, async snapshot waits, invalid IDs, and concurrent persistence isolation tested |
+| SDK `getContextUsage`, `reloadPlugins`, `stopTask`, `applyFlagSettings`, `getSettings` | Verified (offline) | Control methods use shared CLI implementations and have an empty-input regression test |
 | `connectRemoteControl` | Blocked on protocol | Requires matching daemon/bridge lifecycle and duplex protocol; API currently rejects |
-| Linux libsecret | Not implemented | Linux currently uses plaintext storage; implement `secret-tool` with fallback |
-| npm marketplace source | Not implemented | `src/utils/plugins/marketplaceManager.ts` still throws |
+| Linux libsecret | Verified (offline) | `secret-tool` lookup/store/clear with fallback, migration, and mocked failure tests |
+| npm marketplace source | Verified (offline) | Fresh npm staging, scoped packages, schema validation, refresh, cache cleanup, and lifecycle-script suppression tested with a mock runner |
 | Cloud xattr file IDs | Blocked on protocol | Attribute name, encoding, output root, and error behavior must be confirmed |
-| ultraplan OAuth refresh | Not implemented | Add refresh before repeated polling; preserve existing internal gate |
+| ultraplan OAuth refresh | Verified (mocked) | Refresh runs before every remote poll; internal feature remains gated |
 | env-less perpetual bridge | Blocked on protocol | Requires internal bridge-pointer and JWT lifecycle |
 | Internal KAIROS/proactive/workflow/computer-use features | Explicitly disabled | No internal flags are enabled in the external build |
 | iTerm hide/show/rebalance | Platform limitation | Not treated as a core implementation gap |
 
 ## Next implementation order
 
-1. Linux libsecret with isolated runner tests.
-2. npm marketplace loading and refresh with mocked npm execution.
-3. ultraplan refresh, SDK rewind, headless hooks, and SDK control methods.
-4. Cloud xattr after confirming its protocol.
-5. `connectRemoteControl` after recovering the daemon/bridge contract.
-6. env-less perpetual bridge after the remote-control contract is available.
+1. Cloud xattr after confirming its protocol.
+2. `connectRemoteControl` after recovering the daemon/bridge contract.
+3. env-less perpetual bridge after the remote-control contract is available.
 
 Every implementation must add or update its verification evidence here. Build success alone does not promote a feature to **Verified**.

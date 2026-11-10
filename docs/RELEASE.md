@@ -5,8 +5,10 @@
 - **Source baseline**: `4b9d30f` (`asdf`).
 - **Target repository**: `wencaiwulue/flash` on GitHub.
 - **Visibility**: Public, selected by the repository owner.
-- **Release status**: Preparing the initial commit; repository creation and push have not yet been performed.
-- **Planned remotes**:
+- **Release status**: Initial commit pushed and first GitHub Actions run passed.
+- **Commit**: `9b2a35201244ca84adeaa6844bf799e5a18aff6d`.
+- **CI**: `ci` run `42750917055` passed on 2026-11-10.
+- **Remotes**:
   - `legacy`: `https://github.com/wencaiwulue/claude-code`
   - `origin`: `git@github.com:wencaiwulue/flash.git`
 

@@ -303,12 +303,7 @@ import type { UUID } from 'crypto'
 import { randomUUID } from 'crypto'
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs'
 import type { AppState } from 'src/state/AppStateStore.js'
-import {
-  fileHistoryRewind,
-  fileHistoryCanRestore,
-  fileHistoryEnabled,
-  fileHistoryGetDiffStats,
-} from 'src/utils/fileHistory.js'
+import { rewindFileCheckpoint } from 'src/utils/fileCheckpointing.js'
 import {
   restoreAgentFromSession,
   restoreSessionStateFromLog,
@@ -4564,46 +4559,16 @@ async function handleRewindFiles(
   setAppState: (updater: (prev: AppState) => AppState) => void,
   dryRun: boolean,
 ): Promise<RewindFilesResult> {
-  if (!fileHistoryEnabled()) {
-    return { canRewind: false, error: 'File rewinding is not enabled.' }
-  }
-  if (!fileHistoryCanRestore(appState.fileHistory, userMessageId)) {
-    return {
-      canRewind: false,
-      error: 'No file checkpoint found for this message.',
-    }
-  }
-
-  if (dryRun) {
-    const diffStats = await fileHistoryGetDiffStats(
-      appState.fileHistory,
-      userMessageId,
-    )
-    return {
-      canRewind: true,
-      filesChanged: diffStats?.filesChanged,
-      insertions: diffStats?.insertions,
-      deletions: diffStats?.deletions,
-    }
-  }
-
-  try {
-    await fileHistoryRewind(
-      updater =>
-        setAppState(prev => ({
-          ...prev,
-          fileHistory: updater(prev.fileHistory),
-        })),
-      userMessageId,
-    )
-  } catch (error) {
-    return {
-      canRewind: false,
-      error: `Failed to rewind: ${errorMessage(error)}`,
-    }
-  }
-
-  return { canRewind: true }
+  return rewindFileCheckpoint(
+    userMessageId,
+    appState.fileHistory,
+    updater =>
+      setAppState(prev => ({
+        ...prev,
+        fileHistory: updater(prev.fileHistory),
+      })),
+    dryRun,
+  )
 }
 
 function handleSetPermissionMode(

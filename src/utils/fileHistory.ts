@@ -45,6 +45,9 @@ export type FileHistorySnapshot = {
 export type FileHistoryState = {
   snapshots: FileHistorySnapshot[]
   trackedFiles: Set<string>
+  // Per-query SDK override. Undefined retains the process/environment behavior;
+  // an explicit boolean keeps concurrent SDK queries isolated from global env.
+  checkpointingEnabled?: boolean
   // Monotonically-increasing counter incremented on every snapshot, even when
   // old snapshots are evicted.  Used by useGitDiffStats as an activity signal
   // (snapshots.length plateaus once the cap is reached).
@@ -77,6 +80,13 @@ function fileHistoryEnabledSdk(): boolean {
   )
 }
 
+export function fileHistoryEnabledForState(state: FileHistoryState): boolean {
+  if (isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING)) {
+    return false
+  }
+  return state.checkpointingEnabled ?? fileHistoryEnabled()
+}
+
 /**
  * Tracks a file edit (and add) by creating a backup of its current contents (if necessary).
  *
@@ -90,10 +100,6 @@ export async function fileHistoryTrackEdit(
   filePath: string,
   messageId: UUID,
 ): Promise<void> {
-  if (!fileHistoryEnabled()) {
-    return
-  }
-
   const trackingPath = maybeShortenFilePath(filePath)
 
   // Phase 1: check if backup is needed. Speculative writes would overwrite
@@ -104,7 +110,7 @@ export async function fileHistoryTrackEdit(
     captured = state
     return state
   })
-  if (!captured) return
+  if (!captured || !fileHistoryEnabledForState(captured)) return
   const mostRecent = captured.snapshots.at(-1)
   if (!mostRecent) {
     logError(new Error('FileHistory: Missing most recent snapshot'))
@@ -201,10 +207,6 @@ export async function fileHistoryMakeSnapshot(
   ) => void,
   messageId: UUID,
 ): Promise<void> {
-  if (!fileHistoryEnabled()) {
-    return undefined
-  }
-
   // Phase 1: capture current state with a no-op updater so we know which
   // files to back up. Returning the same reference keeps this a true no-op
   // for any wrapper that honors same-ref returns (src/CLAUDE.md wrapper
@@ -216,6 +218,10 @@ export async function fileHistoryMakeSnapshot(
     return state
   })
   if (!captured) return // updateFileHistoryState was a no-op stub (e.g. mcp.ts)
+  if (!fileHistoryEnabledForState(captured)) return
+  // QueryEngine also schedules snapshots when transcript persistence is on.
+  // The SDK creates and awaits its own snapshot first, so do not duplicate it.
+  if (captured.snapshots.at(-1)?.messageId === messageId) return
 
   // Phase 2: do all IO async, outside the updater.
   const trackedFileBackups: Record<string, FileHistoryBackup> = {}
@@ -350,10 +356,6 @@ export async function fileHistoryRewind(
   ) => void,
   messageId: UUID,
 ): Promise<void> {
-  if (!fileHistoryEnabled()) {
-    return
-  }
-
   // Rewind is a pure filesystem side-effect and does not mutate
   // FileHistoryState. Capture state with a no-op updater, then do IO async.
   let captured: FileHistoryState | undefined
@@ -361,7 +363,7 @@ export async function fileHistoryRewind(
     captured = state
     return state
   })
-  if (!captured) return
+  if (!captured || !fileHistoryEnabledForState(captured)) return
 
   const targetSnapshot = captured.snapshots.findLast(
     snapshot => snapshot.messageId === messageId,
@@ -400,7 +402,7 @@ export function fileHistoryCanRestore(
   state: FileHistoryState,
   messageId: UUID,
 ): boolean {
-  if (!fileHistoryEnabled()) {
+  if (!fileHistoryEnabledForState(state)) {
     return false
   }
 
@@ -415,7 +417,7 @@ export async function fileHistoryGetDiffStats(
   state: FileHistoryState,
   messageId: UUID,
 ): Promise<DiffStats> {
-  if (!fileHistoryEnabled()) {
+  if (!fileHistoryEnabledForState(state)) {
     return undefined
   }
 
@@ -495,7 +497,7 @@ export async function fileHistoryHasAnyChanges(
   state: FileHistoryState,
   messageId: UUID,
 ): Promise<boolean> {
-  if (!fileHistoryEnabled()) {
+  if (!fileHistoryEnabledForState(state)) {
     return false
   }
 

@@ -1,5 +1,6 @@
 import { createFallbackStorage } from './fallbackStorage.js'
 import { macOsKeychainStorage } from './macOsKeychainStorage.js'
+import { linuxSecretStorage } from './linuxSecretStorage.js'
 import { plainTextStorage } from './plainTextStorage.js'
 import type { SecureStorage } from './types.js'
 
@@ -11,7 +12,9 @@ export function getSecureStorage(): SecureStorage {
     return createFallbackStorage(macOsKeychainStorage, plainTextStorage)
   }
 
-  // TODO: add libsecret support for Linux
+  if (process.platform === 'linux') {
+    return createFallbackStorage(linuxSecretStorage, plainTextStorage)
+  }
 
   return plainTextStorage
 }

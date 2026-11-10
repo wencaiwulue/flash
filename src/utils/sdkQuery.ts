@@ -1,5 +1,5 @@
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs'
-import { randomUUID } from 'crypto'
+import { randomUUID, type UUID } from 'crypto'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { ask } from '../QueryEngine.js'
@@ -11,6 +11,8 @@ import {
   setOriginalCwd,
   setSessionSource,
   switchSession,
+  isSessionPersistenceDisabled,
+  setSessionPersistenceDisabled,
 } from '../bootstrap/state.js'
 import { enableConfigs } from './config.js'
 import type {
@@ -41,7 +43,15 @@ import { asSessionId } from '../types/ids.js'
 import type { Message } from '../types/message.js'
 import { runCleanupFunctions } from './cleanupRegistry.js'
 import { flushSessionStorage } from './sessionStorage.js'
+import { FileCheckpointing } from './fileCheckpointing.js'
 import { getModelOptions } from './model/modelOptions.js'
+import {
+  applySdkFlagSettings,
+  getSdkContextUsage,
+  getSdkSettings,
+  reloadSdkPlugins,
+  stopSdkTask,
+} from './sdkControl.js'
 import { initializeToolPermissionContext } from './permissions/permissionSetup.js'
 import { hasPermissionsToUseTool } from './permissions/permissions.js'
 import { getOauthAccountInfo } from './auth.js'
@@ -49,6 +59,54 @@ import type { ThinkingConfig } from './thinking.js'
 
 function debug(stage: string): void {
   if (process.env.SDK_DEBUG) console.error(`[sdk-query] ${stage}`)
+}
+
+// Session persistence is process-global in QueryEngine. Serialize only its
+// configuration (not queries themselves), and reject combinations that cannot
+// be represented safely. File checkpointing itself is per-query state.
+let activePersistenceLease:
+  | {
+      persistSession: boolean
+      previousDisabled: boolean
+      users: number
+    }
+  | undefined
+
+function acquireSessionPersistence(persistSession: boolean): () => void {
+  if (
+    activePersistenceLease &&
+    activePersistenceLease.persistSession !== persistSession
+  ) {
+    throw new Error(
+      'Concurrent SDK queries with different persistSession options are not supported because session persistence is process-global',
+    )
+  }
+
+  if (!activePersistenceLease) {
+    const previousDisabled = isSessionPersistenceDisabled()
+    activePersistenceLease = {
+      persistSession,
+      previousDisabled,
+      users: 0,
+    }
+    // Checkpoint backups are independent of this flag. In particular, never
+    // enable transcript persistence just to make file snapshots available.
+    setSessionPersistenceDisabled(previousDisabled || !persistSession)
+  }
+  activePersistenceLease.users++
+
+  let released = false
+  return () => {
+    if (released) return
+    released = true
+    const lease = activePersistenceLease
+    if (!lease || lease.persistSession !== persistSession) return
+    lease.users--
+    if (lease.users === 0) {
+      setSessionPersistenceDisabled(lease.previousDisabled)
+      activePersistenceLease = undefined
+    }
+  }
 }
 
 export class UserMessageChannel {
@@ -272,7 +330,11 @@ export function createSdkQuery({
     userSpecifiedModel: string | undefined
     readFileCache: ReturnType<typeof createFileStateCacheWithSizeLimit>
     mutableMessages: Parameters<typeof ask>[0]['mutableMessages']
+    fileCheckpointing: FileCheckpointing
+    releasePersistence: () => void
   }> | undefined
+
+  let releasePersistence: (() => void) | undefined
 
   if (typeof prompt === 'string') {
     channel.push({
@@ -296,6 +358,9 @@ export function createSdkQuery({
 
   const initialize = () => {
     setupPromise ??= (async () => {
+      releasePersistence = acquireSessionPersistence(
+        options.persistSession !== false,
+      )
       const cwd = options.cwd ?? process.cwd()
       setOriginalCwd(cwd)
       setCwdState(cwd)
@@ -321,6 +386,10 @@ export function createSdkQuery({
         mainLoopModel: options.model ?? null,
         verbose: options.verbose ?? false,
         agent: options.agent,
+        fileHistory: {
+          ...appState.fileHistory,
+          checkpointingEnabled: options.enableFileCheckpointing,
+        },
         agentDefinitions: {
           activeAgents: [],
           allAgents: [],
@@ -361,6 +430,14 @@ export function createSdkQuery({
       const tools = assembleSdkToolPool(appState, options.tools)
       debug(`tools:${tools.map(tool => tool.name).join(',')}`)
       const thinkingConfig = resolveThinkingConfig(options)
+      const fileCheckpointing = new FileCheckpointing(
+        () => appState.fileHistory,
+        updater => {
+          Object.assign(appState, {
+            fileHistory: updater(appState.fileHistory),
+          })
+        },
+      )
 
       return {
         appState,
@@ -370,8 +447,11 @@ export function createSdkQuery({
         userSpecifiedModel: options.model,
         readFileCache: createFileStateCacheWithSizeLimit(100),
         mutableMessages: (await initialMessages) ?? [],
+        fileCheckpointing,
+        releasePersistence: releasePersistence!,
       }
     })()
+    setupPromise.catch(() => releasePersistence?.())
     return setupPromise
   }
 
@@ -438,6 +518,12 @@ export function createSdkQuery({
         const content = message.message.content
         const promptContent: string | ContentBlockParam[] =
           typeof content === 'string' ? content : content
+        if (!message.isSynthetic) {
+          // A user-visible checkpoint is usable only after its initial state
+          // has been committed. QueryEngine's fire-and-forget duplicate is
+          // deduplicated by fileHistoryMakeSnapshot.
+          await setup.fileCheckpointing.makeSnapshot(message.uuid as UUID)
+        }
         debug('ask:start')
         for await (const output of ask({
           commands: setup.commands,
@@ -490,15 +576,38 @@ export function createSdkQuery({
       debug(`error:${error instanceof Error ? error.stack : String(error)}`)
       throw error
     } finally {
-      await Promise.all([
-        cleanupClients(setup.appState.mcp.clients),
-        runCleanupFunctions(),
-        flushSessionStorage(),
-      ])
+      await cleanup()
     }
   }
 
   const query = run() as InternalQuery
+  let cleanupPromise: Promise<void> | undefined
+  const cleanup = () => {
+    cleanupPromise ??= (async () => {
+      try {
+        const setup = await setupPromise
+        if (setup) {
+          await Promise.all([
+            cleanupClients(setup.appState.mcp.clients),
+            runCleanupFunctions(),
+            flushSessionStorage(),
+          ])
+        }
+      } finally {
+        releasePersistence?.()
+      }
+    })()
+    return cleanupPromise
+  }
+  const originalReturn = query.return.bind(query)
+  query.return = async (value: void | undefined) => {
+    try {
+      return await originalReturn(value)
+    } finally {
+      await cleanup()
+    }
+  }
+
   const unsupported = (name: string) => async (): Promise<never> => {
     throw new Error(`${name} is not supported by this SDK query`)
   }
@@ -554,10 +663,22 @@ export function createSdkQuery({
       if (!account) throw new Error('No authenticated account is available')
       return account
     },
-    rewindFiles: async () => ({
-      canRewind: false,
-      error: 'File checkpointing is not enabled for this SDK query',
-    }),
+    rewindFiles: async (
+      userMessageId: string,
+      rewindOptions?: { dryRun?: boolean },
+    ) => {
+      if (options.enableFileCheckpointing === false) {
+        return {
+          canRewind: false,
+          error: 'File checkpointing is not enabled for this SDK query',
+        }
+      }
+      const setup = await initialize()
+      return setup.fileCheckpointing.rewindFiles(
+        userMessageId,
+        rewindOptions,
+      )
+    },
     setMcpServers: async (servers: Record<string, McpServerConfig>) => {
       const setup = await initialize()
       const previousNames = new Set(
@@ -602,14 +723,66 @@ export function createSdkQuery({
       for await (const message of stream) channel.push(message)
     },
     close: async (reason?: string) => {
-      void reason
       abortController.abort(reason)
+      await query.return(undefined)
     },
-    getContextUsage: unsupported('getContextUsage'),
-    reloadPlugins: unsupported('reloadPlugins'),
-    stopTask: unsupported('stopTask'),
-    applyFlagSettings: unsupported('applyFlagSettings'),
-    getSettings: unsupported('getSettings'),
+    getContextUsage: async () => {
+      const setup = await initialize()
+      return getSdkContextUsage({
+        messages: setup.mutableMessages ?? [],
+        tools: setup.tools,
+        getAppState: () => setup.appState,
+        setAppState: f => {
+          Object.assign(setup.appState, f(setup.appState))
+        },
+        systemPrompt:
+          typeof options.systemPrompt === 'string'
+            ? options.systemPrompt
+            : undefined,
+        appendSystemPrompt:
+          typeof options.systemPrompt === 'object' &&
+          options.systemPrompt.type === 'preset'
+            ? options.systemPrompt.append
+            : undefined,
+      })
+    },
+    reloadPlugins: async () => {
+      const setup = await initialize()
+      return reloadSdkPlugins({
+        cwd: options.cwd ?? process.cwd(),
+        loadCommands: getCommands,
+        mcpServers: toMcpStatus(setup.appState.mcp.clients),
+        agents: options.agents,
+        getAppState: () => setup.appState,
+        setAppState: f => {
+          Object.assign(setup.appState, f(setup.appState))
+        },
+      })
+    },
+    stopTask: async (taskId: string) => {
+      const setup = await initialize()
+      await stopSdkTask(taskId, {
+        getAppState: () => setup.appState,
+        setAppState: f => {
+          Object.assign(setup.appState, f(setup.appState))
+        },
+      })
+    },
+    applyFlagSettings: async (settings: Record<string, unknown>) => {
+      const setup = await initialize()
+      applySdkFlagSettings(settings)
+      if ('model' in settings) {
+        setup.userSpecifiedModel =
+          settings.model == null ? undefined : String(settings.model)
+        Object.assign(setup.appState, {
+          mainLoopModel: setup.userSpecifiedModel ?? null,
+        })
+      }
+    },
+    getSettings: async () => {
+      const setup = await initialize()
+      return getSdkSettings(setup.appState)
+    },
     enableRemoteControl: unsupported('enableRemoteControl'),
   })
 }

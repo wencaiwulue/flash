@@ -1947,6 +1947,7 @@ export function getUserPromptSubmitHookBlockingMessage(
  * @param timeoutMs Optional timeout in milliseconds for hook execution
  * @param toolUseContext Optional ToolUseContext for prompt-based hooks (required if using prompt hooks)
  * @param messages Optional conversation history for prompt/function hooks
+ * @param skipModelHooks Whether prompt/agent hooks are handled by the headless path
  * @returns Async generator that yields progress messages and hook results
  */
 async function* executeHooks({
@@ -1960,6 +1961,7 @@ async function* executeHooks({
   forceSyncExecution,
   requestPrompt,
   toolInputSummary,
+  skipModelHooks = false,
 }: {
   hookInput: HookInput
   toolUseID: string
@@ -1974,6 +1976,7 @@ async function* executeHooks({
     toolInputSummary?: string | null,
   ) => (request: PromptRequest) => Promise<PromptResponse>
   toolInputSummary?: string | null
+  skipModelHooks?: boolean
 }): AsyncGenerator<AggregatedHookResult> {
   if (shouldDisableAllHooksIncludingManaged()) {
     return
@@ -2001,12 +2004,17 @@ async function* executeHooks({
   const appState = toolUseContext ? toolUseContext.getAppState() : undefined
   // Use the agent's session ID if available, otherwise fall back to main session
   const sessionId = toolUseContext?.agentId ?? getSessionId()
-  const matchingHooks = await getMatchingHooks(
-    appState,
-    sessionId,
-    hookEvent,
-    hookInput,
-    toolUseContext?.options?.tools,
+  const matchingHooks = (
+    await getMatchingHooks(
+      appState,
+      sessionId,
+      hookEvent,
+      hookInput,
+      toolUseContext?.options?.tools,
+    )
+  ).filter(
+    ({ hook }) =>
+      !skipModelHooks || (hook.type !== 'prompt' && hook.type !== 'agent'),
   )
   if (matchingHooks.length === 0) {
     return
@@ -2978,10 +2986,53 @@ export type HookOutsideReplResult = {
   blocked: boolean
   watchPaths?: string[]
   systemMessage?: string
+  preventContinuation?: boolean
+  stopReason?: string
+  message?: HookResultMessage
 }
 
 export function hasBlockingResult(results: HookOutsideReplResult[]): boolean {
   return results.some(r => r.blocked)
+}
+
+function isModelStopHookEvent(hookEvent: HookEvent): boolean {
+  return hookEvent === 'Stop' || hookEvent === 'SubagentStop'
+}
+
+function modelHookResultToOutsideReplResult(
+  hook: Extract<HookCommand, { type: 'prompt' | 'agent' }>,
+  result: HookResult,
+): HookOutsideReplResult {
+  let output = result.systemMessage ?? ''
+  if (result.blockingError) {
+    output = result.blockingError.blockingError
+  } else if (result.message?.type === 'attachment') {
+    const attachment = result.message.attachment
+    if (attachment.type === 'hook_non_blocking_error') {
+      output = attachment.stderr || attachment.stdout
+    } else if (
+      attachment.type === 'hook_error_during_execution' ||
+      attachment.type === 'hook_success'
+    ) {
+      output = attachment.content
+    }
+  }
+  if (result.outcome === 'cancelled' && !output) {
+    output = 'Hook cancelled'
+  }
+
+  return {
+    command: hook.prompt,
+    // A blocking decision is a successful model evaluation, just like a
+    // callback hook returning { decision: 'block' } in this execution path.
+    succeeded: result.outcome === 'success' || result.outcome === 'blocking',
+    output,
+    blocked: result.outcome === 'blocking',
+    systemMessage: result.systemMessage,
+    preventContinuation: result.preventContinuation,
+    stopReason: result.stopReason,
+    ...(result.message ? { message: result.message } : {}),
+  }
 }
 
 /**
@@ -2998,20 +3049,32 @@ export function hasBlockingResult(results: HookOutsideReplResult[]): boolean {
  * @param matchQuery The query to match against hook matchers
  * @param signal Optional AbortSignal to cancel hook execution
  * @param timeoutMs Optional timeout in milliseconds for hook execution
+ * @param toolUseContext Headless query context required by prompt/agent stop hooks
+ * @param messages Conversation history supplied to prompt-based stop hooks
+ * @param modelStopHooksOnly Restrict execution to prompt/agent hooks for headless Stop
+ * @param toolUseID Shared progress/result ID for headless Stop hooks
  * @returns Array of HookOutsideReplResult objects containing command, succeeded, and output
  */
-async function executeHooksOutsideREPL({
+export async function executeHooksOutsideREPL({
   getAppState,
   hookInput,
   matchQuery,
   signal,
   timeoutMs = TOOL_HOOK_EXECUTION_TIMEOUT_MS,
+  toolUseContext,
+  messages,
+  modelStopHooksOnly = false,
+  toolUseID,
 }: {
   getAppState?: () => AppState
   hookInput: HookInput
   matchQuery?: string
   signal?: AbortSignal
   timeoutMs: number
+  toolUseContext?: ToolUseContext
+  messages?: Message[]
+  modelStopHooksOnly?: boolean
+  toolUseID?: string
 }): Promise<HookOutsideReplResult[]> {
   if (isEnvTruthy(process.env.CLAUDE_CODE_SIMPLE)) {
     return []
@@ -3036,13 +3099,13 @@ async function executeHooksOutsideREPL({
   }
 
   const appState = getAppState ? getAppState() : undefined
-  // Use main session ID for outside-REPL hooks
-  const sessionId = getSessionId()
-  const matchingHooks = await getMatchingHooks(
-    appState,
-    sessionId,
-    hookEvent,
-    hookInput,
+  // Use the agent session when a headless SubagentStop hook supplies its context.
+  const sessionId = toolUseContext?.agentId ?? getSessionId()
+  const matchingHooks = (
+    await getMatchingHooks(appState, sessionId, hookEvent, hookInput)
+  ).filter(
+    ({ hook }) =>
+      !modelStopHooksOnly || hook.type === 'prompt' || hook.type === 'agent',
   )
   if (matchingHooks.length === 0) {
     return []
@@ -3149,23 +3212,67 @@ async function executeHooksOutsideREPL({
         }
       }
 
-      // TODO: Implement prompt stop hooks outside REPL
-      if (hook.type === 'prompt') {
-        return {
-          command: hook.prompt,
-          succeeded: false,
-          output: 'Prompt stop hooks are not yet supported outside REPL',
-          blocked: false,
+      if (hook.type === 'prompt' || hook.type === 'agent') {
+        const hookTypeName = hook.type === 'prompt' ? 'Prompt' : 'Agent'
+        if (!isModelStopHookEvent(hookEvent) || !toolUseContext) {
+          return {
+            command: hook.prompt,
+            succeeded: false,
+            output: `${hookTypeName} stop hooks are not yet supported outside REPL`,
+            blocked: false,
+          }
         }
-      }
 
-      // TODO: Implement agent stop hooks outside REPL
-      if (hook.type === 'agent') {
-        return {
-          command: hook.prompt,
-          succeeded: false,
-          output: 'Agent stop hooks are not yet supported outside REPL',
-          blocked: false,
+        const modelTimeoutMs = hook.timeout ? hook.timeout * 1000 : timeoutMs
+        const { signal: abortSignal, cleanup } = createCombinedAbortSignal(
+          signal,
+          { timeoutMs: modelTimeoutMs },
+        )
+        const modelToolUseID = toolUseID ?? randomUUID()
+        try {
+          const result =
+            hook.type === 'prompt'
+              ? await execPromptHook(
+                  hook,
+                  hookName,
+                  hookEvent,
+                  jsonInput,
+                  abortSignal,
+                  toolUseContext,
+                  messages,
+                  modelToolUseID,
+                )
+              : await execAgentHook(
+                  hook,
+                  hookName,
+                  hookEvent,
+                  jsonInput,
+                  abortSignal,
+                  toolUseContext,
+                  modelToolUseID,
+                  messages ?? [],
+                  'agent_type' in hookInput
+                    ? (hookInput.agent_type as string)
+                    : undefined,
+                )
+          logForDebugging(
+            `${hookName} [${hook.type}] completed with outcome ${result.outcome}`,
+          )
+          return modelHookResultToOutsideReplResult(hook, result)
+        } catch (error) {
+          const message = errorMessage(error)
+          logForDebugging(
+            `${hookName} [${hook.type}] failed to run: ${message}`,
+            { level: 'error' },
+          )
+          return {
+            command: hook.prompt,
+            succeeded: false,
+            output: message,
+            blocked: false,
+          }
+        } finally {
+          cleanup()
         }
       }
 
@@ -3684,6 +3791,113 @@ export async function* executeStopHooks(
         last_assistant_message: lastAssistantText,
       }
 
+  // Headless model hooks use the same side-query executors as the REPL, but
+  // return the outside-REPL result contract. Keep command/function hooks on
+  // executeHooks so their streaming and structured-output behavior is unchanged.
+  const isNonInteractive = getIsNonInteractiveSession()
+  const modelHooks = isNonInteractive
+    ? (
+        await getMatchingHooks(
+          appState,
+          sessionId,
+          hookEvent,
+          hookInput,
+          toolUseContext?.options?.tools,
+        )
+      ).filter(
+        (
+          matched,
+        ): matched is MatchedHook & {
+          hook: Extract<HookCommand, { type: 'prompt' | 'agent' }>
+        } => matched.hook.type === 'prompt' || matched.hook.type === 'agent',
+      )
+    : []
+  if (modelHooks.length > 0 && !signal?.aborted) {
+    const toolUseID = randomUUID()
+    for (const { hook } of modelHooks) {
+      yield {
+        message: {
+          type: 'progress',
+          data: {
+            type: 'hook_progress',
+            hookEvent,
+            hookName: hookEvent,
+            command: hook.prompt,
+            ...(hook.type === 'prompt' && { promptText: hook.prompt }),
+            ...(hook.statusMessage != null && {
+              statusMessage: hook.statusMessage,
+            }),
+          },
+          parentToolUseID: toolUseID,
+          toolUseID,
+          timestamp: new Date().toISOString(),
+          uuid: randomUUID(),
+        },
+      }
+    }
+
+    const results = await executeHooksOutsideREPL({
+      getAppState: toolUseContext?.getAppState,
+      hookInput,
+      signal,
+      timeoutMs,
+      toolUseContext,
+      messages,
+      modelStopHooksOnly: true,
+      toolUseID,
+    })
+    for (const result of results) {
+      if (result.preventContinuation) {
+        yield {
+          preventContinuation: true,
+          stopReason: result.stopReason,
+        }
+      }
+      if (result.blocked) {
+        yield {
+          blockingError: {
+            blockingError: result.output || 'Stop hook blocked by hook',
+            command: result.command,
+          },
+        }
+      }
+      if (result.message) {
+        yield { message: result.message }
+      }
+      if (result.systemMessage) {
+        yield {
+          message: createAttachmentMessage({
+            type: 'hook_system_message',
+            content: result.systemMessage,
+            hookName: hookEvent,
+            toolUseID,
+            hookEvent,
+          }),
+        }
+      }
+      if (
+        !result.succeeded &&
+        !result.blocked &&
+        !result.message &&
+        result.output &&
+        result.output !== 'Hook cancelled'
+      ) {
+        yield {
+          message: createAttachmentMessage({
+            type: 'hook_non_blocking_error',
+            hookName: hookEvent,
+            toolUseID,
+            hookEvent,
+            stderr: result.output,
+            stdout: '',
+            exitCode: 1,
+            command: result.command,
+          }),
+        }
+      }
+    }
+  }
+
   // Trust check is now centralized in executeHooks()
   yield* executeHooks({
     hookInput,
@@ -3693,6 +3907,7 @@ export async function* executeStopHooks(
     toolUseContext,
     messages,
     requestPrompt,
+    skipModelHooks: isNonInteractive,
   })
 }
 

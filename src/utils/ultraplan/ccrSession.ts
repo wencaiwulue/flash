@@ -12,6 +12,7 @@ import type { SDKMessage } from '../../entrypoints/agentSdkTypes.js'
 import { EXIT_PLAN_MODE_V2_TOOL_NAME } from '../../tools/ExitPlanModeTool/constants.js'
 import { logForDebugging } from '../debug.js'
 import { sleep } from '../sleep.js'
+import { checkAndRefreshOAuthTokenIfNeeded } from '../auth.js'
 import { isTransientNetworkError } from '../teleport/api.js'
 import {
   type PollRemoteSessionResponse,
@@ -195,12 +196,23 @@ export type PollResult = {
 // browser sends a rejection so the remote stays in plan mode, with the plan
 // text embedded in the feedback. Normal rejections (is_error === true, no
 // sentinel) are tracked and skipped so the user can iterate in the browser.
+export type UltraplanPollDependencies = {
+  pollEvents?: typeof pollRemoteSessionEvents
+  refreshOAuth?: () => Promise<unknown>
+  sleep?: (ms: number) => Promise<void>
+}
+
 export async function pollForApprovedExitPlanMode(
   sessionId: string,
   timeoutMs: number,
   onPhaseChange?: (phase: UltraplanPhase) => void,
   shouldStop?: () => boolean,
+  dependencies: UltraplanPollDependencies = {},
 ): Promise<PollResult> {
+  const pollEvents = dependencies.pollEvents ?? pollRemoteSessionEvents
+  const refreshOAuth =
+    dependencies.refreshOAuth ?? checkAndRefreshOAuthTokenIfNeeded
+  const wait = dependencies.sleep ?? sleep
   const deadline = Date.now() + timeoutMs
   const scanner = new ExitPlanModeScanner()
   let cursor: string | null = null
@@ -221,7 +233,8 @@ export async function pollForApprovedExitPlanMode(
       // Metadata fetch (session_status) is the needs_input signal —
       // threadstore doesn't persist result(success) turn-end events, so
       // idle status is the only authoritative "remote is waiting" marker.
-      const resp = await pollRemoteSessionEvents(sessionId, cursor)
+      await refreshOAuth()
+      const resp = await pollEvents(sessionId, cursor)
       newEvents = resp.newEvents
       cursor = resp.lastEventId
       sessionStatus = resp.sessionStatus
@@ -236,7 +249,7 @@ export async function pollForApprovedExitPlanMode(
           { cause: e },
         )
       }
-      await sleep(POLL_INTERVAL_MS)
+      await wait(POLL_INTERVAL_MS)
       continue
     }
 
@@ -293,7 +306,7 @@ export async function pollForApprovedExitPlanMode(
       lastPhase = phase
       onPhaseChange?.(phase)
     }
-    await sleep(POLL_INTERVAL_MS)
+    await wait(POLL_INTERVAL_MS)
   }
 
   throw new UltraplanPollError(

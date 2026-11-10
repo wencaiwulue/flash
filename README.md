@@ -32,6 +32,8 @@ The local SDK entrypoint supports:
 - V2 sessions: `unstable_v2_createSession()`, `unstable_v2_resumeSession()`,
   and `unstable_v2_prompt()`.
 - Session storage: list, read, rename, tag, and fork.
+- File checkpoint rewind with `enableFileCheckpointing`.
+- Context usage, plugin reload, task stop, flag settings, and settings reads.
 - Scheduled tasks: `watchScheduledTasks()` and
   `buildMissedTaskNotification()`.
 
@@ -46,8 +48,12 @@ for await (const message of query({
 }
 ```
 
-`connectRemoteControl()` remains unavailable. File checkpoint rewind and remote
-control are not emulated with placeholder success responses.
+`connectRemoteControl()` remains unavailable. Remote control is not emulated
+with placeholder success responses.
+
+Linux credential storage uses `secret-tool` with plaintext fallback. npm
+marketplace packages are downloaded with lifecycle scripts disabled and cached
+using the existing marketplace schema and refresh flow.
 
 ---
 

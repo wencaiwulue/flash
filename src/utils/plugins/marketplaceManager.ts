@@ -997,6 +997,36 @@ export async function gitClone(
  */
 export type MarketplaceProgressCallback = (message: string) => void
 
+export type NpmRunnerResult = {
+  stdout: string
+  stderr: string
+  code: number
+  error?: string
+}
+
+export type NpmRunner = (
+  args: string[],
+  options: { cwd: string; env: NodeJS.ProcessEnv },
+) => Promise<NpmRunnerResult>
+
+const defaultNpmRunner: NpmRunner = (args, { cwd, env }) =>
+  execFileNoThrowWithCwd('npm', args, {
+    cwd,
+    env,
+    timeout: DEFAULT_PLUGIN_GIT_TIMEOUT_MS,
+    stdin: 'ignore',
+  })
+
+let npmRunner: NpmRunner = defaultNpmRunner
+
+/**
+ * Override npm execution, primarily so marketplace loading can be tested without
+ * a registry. Passing no runner restores the real npm implementation.
+ */
+export function setNpmRunnerForTests(runner?: NpmRunner): void {
+  npmRunner = runner ?? defaultNpmRunner
+}
+
 /**
  * Safely invoke a progress callback, catching and logging any errors.
  * Prevents callback errors from aborting marketplace operations.
@@ -1350,6 +1380,73 @@ async function cacheMarketplaceFromUrl(
 }
 
 /**
+ * Download and unpack an npm marketplace into an empty staging directory.
+ *
+ * npm owns registry authentication and its download cache, just as it does for
+ * npm-sourced plugins. We never put credentials on the command line. Both the
+ * CLI flag and environment setting disable dependency and package lifecycle
+ * scripts; marketplace packages are data sources, not trusted installers.
+ */
+async function cacheMarketplaceFromNpm(
+  packageName: string,
+  cachePath: string,
+  onProgress?: MarketplaceProgressCallback,
+): Promise<void> {
+  const fs = getFsImplementation()
+  const workspacePath = `${cachePath}.work`
+  const installPath = join(workspacePath, 'install')
+  const packagePath = join(installPath, 'node_modules', packageName)
+
+  try {
+    await fs.mkdir(installPath)
+    safeCallProgress(onProgress, `Downloading npm package ${packageName}`)
+    logForDebugging(`Installing npm marketplace package ${packageName}`)
+
+    const result = await npmRunner(
+      [
+        'install',
+        packageName,
+        '--prefix',
+        installPath,
+        '--ignore-scripts',
+        '--no-save',
+        '--no-package-lock',
+        '--no-audit',
+        '--no-fund',
+        '--omit=dev',
+      ],
+      {
+        cwd: workspacePath,
+        env: { ...process.env, npm_config_ignore_scripts: 'true' },
+      },
+    )
+    if (result.code !== 0) {
+      throw new Error(
+        `Failed to download npm package '${packageName}': ${result.stderr || result.error || `npm exited with code ${result.code}`}`,
+      )
+    }
+
+    // npm installs under node_modules (including both path components for a
+    // scoped package). Move only the requested package into the marketplace
+    // staging path so its canonical manifest and relative plugin sources have
+    // the same layout as git/directory marketplaces.
+    safeCallProgress(onProgress, 'Extracting npm marketplace package')
+    await fs.rename(packagePath, cachePath)
+  } finally {
+    // Includes partial downloads, dependencies, and npm metadata. The package
+    // itself has already been moved out on success.
+    try {
+      await fs.rm(workspacePath, { recursive: true, force: true })
+    } catch (cleanupError) {
+      logForDebugging(
+        `Warning: Failed to clean up npm marketplace staging directory at ${workspacePath}: ${errorMessage(cleanupError)}`,
+        { level: 'warn' },
+      )
+    }
+  }
+}
+
+/**
  * Generate a cache path for a marketplace source
  */
 function getCachePathForSource(source: MarketplaceSource): string {
@@ -1411,7 +1508,7 @@ async function parseFileWithSchema<T>(
  * - URL: Downloads marketplace.json directly
  * - GitHub: Clones repo and looks for .claude-plugin/marketplace.json
  * - Git: Clones repository from git URL
- * - NPM: (Not yet implemented) Would fetch from npm package
+ * - NPM: Installs and unpacks the latest package without lifecycle scripts
  * - File: Reads from local filesystem
  *
  * After loading, validates the marketplace schema and renames the cache
@@ -1616,8 +1713,26 @@ async function loadAndCacheMarketplace(
       }
 
       case 'npm': {
-        // TODO: Implement npm package support
-        throw new Error('NPM marketplace sources not yet implemented')
+        // Always use a fresh, unique staging path. In particular, neither first
+        // materialization nor refresh may reuse a previous package directory:
+        // the package-only source intentionally resolves the registry's current
+        // latest version each time it is fetched.
+        temporaryCachePath = join(
+          cacheDir,
+          `temp_npm_${tempName}_${process.pid}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        )
+        cleanupNeeded = true
+        await cacheMarketplaceFromNpm(
+          source.package,
+          temporaryCachePath,
+          onProgress,
+        )
+        marketplacePath = join(
+          temporaryCachePath,
+          '.claude-plugin',
+          'marketplace.json',
+        )
+        break
       }
 
       case 'file': {
@@ -1764,6 +1879,34 @@ async function loadAndCacheMarketplace(
       }
     }
     throw error
+  }
+}
+
+/** Remove an old npm cache only after its replacement is fully validated. */
+async function cleanupReplacedNpmCache(
+  previousCachePath: string,
+  newCachePath: string,
+): Promise<void> {
+  const cacheDir = resolve(getMarketplacesCacheDir())
+  const previous = resolve(previousCachePath)
+  if (
+    previous === resolve(newCachePath) ||
+    !previous.startsWith(cacheDir + sep)
+  ) {
+    return
+  }
+  try {
+    await getFsImplementation().rm(previousCachePath, {
+      recursive: true,
+      force: true,
+    })
+  } catch (error) {
+    // The refreshed cache is usable; a stale, differently-named cache should
+    // not turn the successful download into a failed refresh.
+    logForDebugging(
+      `Failed to clean up replaced npm marketplace cache at ${previousCachePath}: ${errorMessage(error)}`,
+      { level: 'warn' },
+    )
   }
 }
 
@@ -2337,6 +2480,9 @@ export async function refreshAllMarketplaces(): Promise<void> {
       const { cachePath } = await loadAndCacheMarketplace(entry.source)
       config[name]!.lastUpdated = new Date().toISOString()
       config[name]!.installLocation = cachePath
+      if (entry.source.source === 'npm') {
+        await cleanupReplacedNpmCache(entry.installLocation, cachePath)
+      }
     } catch (error) {
       logForDebugging(
         `Failed to refresh marketplace ${name}: ${errorMessage(error)}`,
@@ -2356,6 +2502,7 @@ export async function refreshAllMarketplaces(): Promise<void> {
  * Updates a specific marketplace from its source by doing an in-place update.
  * For git sources, runs git pull in the existing directory.
  * For URL sources, re-downloads to the existing file.
+ * For npm sources, always downloads the current latest package into fresh staging.
  * Clears the memoization cache and updates the lastUpdated timestamp.
  *
  * @param name - The name of the marketplace to refresh
@@ -2551,6 +2698,13 @@ export async function refreshMarketplace(
         source.headers,
         onProgress,
       )
+    } else if (source.source === 'npm') {
+      // Unlike git's in-place pull, npm must resolve and unpack into a fresh
+      // directory. loadAndCacheMarketplace validates the new manifest before
+      // replacing the current cache, then returns its manifest-derived path.
+      const { cachePath } = await loadAndCacheMarketplace(source, onProgress)
+      config[name]!.installLocation = cachePath
+      await cleanupReplacedNpmCache(installLocation, cachePath)
     } else if (isLocalMarketplaceSource(source)) {
       // Local sources: no remote to update from, but validate the file still exists and is valid
       safeCallProgress(onProgress, 'Validating local marketplace')
