@@ -30,6 +30,7 @@ logs/
 *.pem
 *.key
 credentials.json
+.credentials.json
 service-account.json
 
 # ---------------------------------------------------------------------------

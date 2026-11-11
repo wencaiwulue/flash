@@ -3,34 +3,75 @@ commit: 8a248e3a57a3121e5e0bfeb7dbdeefb1551ac9b3
 title: "Complete previous commit documentation"
 date: 2026-11-11T11:17:45+08:00
 status: implemented
+kind: metadata-migration
 ---
 
 # Complete previous commit documentation
 
-## Background and requirements
+> 本文是依据该提交的 diff、对应 revision 的实现与测试，以及有出处的状态记录所作的回溯性设计重建；不冒充历史提交当时已存在的原文。
 
-Complete previous commit documentation。保持现有 CLI/SDK 接口、feature gating 与权限边界，完成该提交对应的实现、修复或文档工作。
+## 前置状态与问题
 
-## Actual scope
+父版本 e0cbbe1 已补好 1fe1430，INDEX 汇总为 Implemented 76；被补档的祖父提交 a4edc60 自己没有 SPEC/PLAN 和 status 对象，self 仍位于新增历史项之后。
 
-- Changed files: 4
-- Diff statistics: 4 files changed, 78 insertions(+), 1 deletion(-)
+需要为 a4edc60 建立文档身份并保留其内层 dc3f075 范围。本提交与目标都叫 Complete previous commit documentation，但 SHA、日期和 Actual scope 不同，不能因标题相同而复用内容。
 
-```text
-docs/INDEX.md
-docs/plans/a4edc60-PLAN.md
-docs/specs/a4edc60-SPEC.md
-docs/status/index.json
-```
+## 目标与非目标
 
-## Protocol, dependencies, and security
+### 目标
 
-不引入新的凭据、私有协议或绕过现有权限的行为。
+- 新建 a4edc60-SPEC.md 和 a4edc60-PLAN.md，完整身份使用 a4edc60de4da2600197f59e1b032d5e4a754e19b。
+- 为 a4edc60 同步添加 INDEX 与 JSON 注册，将 Implemented 从 76 调为 77，保持 self 最后及其他计数不变。
 
-## Acceptance and verification
+### 非目标
 
-bun test、bun run typecheck、bun run build 及对应 CI 检查。
+- 不修改 e0cbbe1、1fe1430 或 dc3f075 的既有文件，也不涉及应用实现。
+- 不将生成的验证命令清单表述成实际 test、build 或 CI 通过。
 
-## Remaining / unimplemented boundaries
+## 方案架构与数据流
 
-无该提交范围内的未实现项。
+a4edc60 是当前文档化对象，dc3f075 是其 SPEC 内 Actual scope 的下一层对象，8a248e3 则是执行四文件写入的提交，三层身份各自独立。
+
+Markdown 双文件承载目标身份和历史范围，INDEX 增加第 77 个 implemented 链接，status 保存同 SHA 的机器映射。
+
+### 文件、接口与证据关系
+
+| 关系 | 位置 | 设计作用 |
+|---|---|---|
+| 变更 | `docs/INDEX.md` | 新增 a4edc60 行，Implemented 76→77。 |
+| 变更 | `docs/plans/a4edc60-PLAN.md` | 为同标题的祖父提交 a4edc60 创建独立计划。 |
+| 变更 | `docs/specs/a4edc60-SPEC.md` | 记录 a4edc60 身份与 dc3f075 内层清单。 |
+| 变更 | `docs/status/index.json` | 在 self 前添加 a4edc60 机器状态对象。 |
+
+## 关键决策与工程取舍
+
+- 目标文档采用 a4edc60 的 2026-11-11T11:16:45+08:00 时间，内层文件清单写 dc3f075-SPEC/PLAN 加 INDEX/status。
+- 新增行位于 1fe1430 后、self 前，status 对象采用相同顺序；Partial 1 和 Unimplemented 0 完全不动。
+
+### 备选方案与回溯分析
+
+- 相同 Complete 标题容易让人只替换 SHA 后保留 5c5bc03 内层清单，这不符合 a4edc60 实际 diff；单建 SPEC 也无法提供计划和双索引。
+
+## 安全与协议边界
+
+- 本 diff 仅是文档元数据，没有权限决策、敏感数据或协议变更；通用安全措辞不构成新增保证。
+
+## 验收标准
+
+- SPEC/PLAN frontmatter 与 a4edc60 的 full SHA、日期、Complete 标题和 implemented 状态一致。
+- Actual scope 为 dc3f075 两个文档，INDEX 达 77/1/0，JSON 路径正确，self 保留末位且无额外变更。
+
+## 验证证据
+
+| 类型 | 证据陈述 | 来源 |
+|---|---|---|
+| diff-observed | a4edc60-SPEC 的 Actual scope 明确列出 dc3f075 的 PLAN，frontmatter 则使用 a4edc60 身份。 | `docs/specs/a4edc60-SPEC.md`，符号 `docs/plans/dc3f075-PLAN.md`，revision `8a248e3a57a3121e5e0bfeb7dbdeefb1551ac9b3` |
+| diff-observed | a4edc60-PLAN 以目标完整 SHA 新建，标题与目标 Git subject 一致。 | `docs/plans/a4edc60-PLAN.md`，符号 `commit: a4edc60de4da2600197f59e1b032d5e4a754e19b`，revision `8a248e3a57a3121e5e0bfeb7dbdeefb1551ac9b3` |
+| diff-observed | INDEX patch 增加 a4edc60 双链接行，并把 implemented 汇总从 76 更新到 77。 | `docs/INDEX.md`，符号 `- Implemented: 77`，revision `8a248e3a57a3121e5e0bfeb7dbdeefb1551ac9b3` |
+| diff-observed | status JSON 新对象记录 a4edc60 完整 SHA 及其 SPEC/PLAN 路径，插入于 self 前。 | `docs/status/index.json`，符号 `"fullSha": "a4edc60de4da2600197f59e1b032d5e4a754e19b"`，revision `8a248e3a57a3121e5e0bfeb7dbdeefb1551ac9b3` |
+| not-recorded | 没有随提交记录的命令输出或持续集成状态，不能宣称任何验证已经通过。 | 未随提交记录执行证据 |
+
+## 实现状态与剩余范围
+
+- 状态：**implemented**
+- 生成文档没有展开 a4edc60 的更细设计背景；本记录只补足可观察的元数据关系与无执行证据边界。

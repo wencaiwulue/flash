@@ -1,6 +1,6 @@
 # Implementation Status
 
-Last updated: 2026-11-10.
+Last updated: 2026-11-11.
 
 Statuses:
 
@@ -17,9 +17,9 @@ Statuses:
 | `bun install --frozen-lockfile` | Passed |
 | `bun run generate:sdk-types` | Generated 125 core types and 59 control types |
 | `bun run typecheck` | Passed with zero TypeScript errors |
-| `bun test` | 152 tests, 645 assertions passed |
-| `live-validation` workflow | Model, SkillHub, and Cloud jobs passed; desktop correctly skipped without a self-hosted runner |
-| Commit documentation | 41 historical SPEC/PLAN pairs plus the current self record; `docs:check` passes with full SHA history |
+| `bun test` | 168 tests, 672 assertions passed |
+| `live-validation` workflow | Run `42940722483` passed; SkillHub executed, model/Cloud were skipped when credentials were absent, and desktop was skipped without a self-hosted runner |
+| Commit documentation | 93 historical SPEC/PLAN pairs plus `self`; full-history `--next` checks passed with path/evidence/duplication gates and independent semantic review for every commit |
 | Linux secret storage | 4 tests, 17 assertions passed with mocked `secret-tool` |
 | npm marketplace | 7 tests passed with mocked npm execution; no registry access |
 | ultraplan polling | Refresh-before-poll test passed |
@@ -46,23 +46,23 @@ Real model checks used the session's configured provider with an isolated `HOME`
 | Monitor streaming | Verified (local shell) | Real stdout chunks become deduplicated per-line notifications, with final partial-line flush and completion notification; Bash permission checks are reused |
 | Proactive and Sleep | Verified (offline scheduler/build) | Activation, pause/resume, context blocking, idle scheduling, abort/settings, `/proactive`, and external REPL wiring tested; real model-driven perpetual session not run |
 | Coordinator worker | Verified (definition/build) | One background `worker` with non-recursive standard tools and a real system prompt; multi-worker model orchestration not run |
-| Local skill search | Verified (offline index/build) | Fuse metadata ranking, natural-language fallback, visible-skill filtering, turn-zero/write-pivot/subagent prefetch, cache invalidation, and `DiscoverSkills` are enabled |
-| Remote canonical skills via SkillHub | Verified (live public registry) | Public REST search/resolve/download, canonical state, mixed prefetch, versioned cache, zip path/symlink protection, and real telemetry tested; `SKILLHUB_LIVE_OK` |
+| Local skill search | Implemented, unverified (cache lifecycle) | Fuse ranking, filtering and discovery signals are implemented, but failed-load cleanup unconditionally deletes the cwd entry and can remove a newer overlapping load; empty write-pivot results can also repeat |
+| Remote canonical skills via SkillHub | Implemented, unverified (SkillTool integration) | Public REST search/resolve/download and `SKILLHUB_LIVE_OK` passed, but canonical `skillPath=destination` is later miscomputed with `dirname()`, so loading/permission/telemetry integration is not closed |
 | UDS inbox and peers | Verified (real local socket) | 0600 socket permissions, plain-text enqueue/wakeup, path and session-ID routing, live peer handshake, stale registry cleanup, and teardown tested; `ListPeers` and `/peers` registered |
 | Daemon supervisor and worker registry | Verified (offline lifecycle) | Bounded exponential restarts, clean stop, stale PID cleanup, worker dispatch, and `daemon status` smoke tested |
 | Remote Control server | Verified (offline lifecycle/build) | Shared SDK query, enable/disable, input close, idempotent start/stop, and `/remote-control-server` registration tested; no live Cloud session claimed |
-| Workflow definitions and execution | Verified (offline runner/task) | Strict schema/dependency validation, project discovery, bounded DAG concurrency, interpolation, failure propagation, skip/retry/kill, output persistence, task UI state, `/workflows`, and `Workflow` build registration tested; real model agents not run |
-| HISTORY_SNIP | Verified (offline/build) | Marker execution, protected-tail/tool-pair safety, tokensFreed, nudge reset, REPL projection, SDK replay contract, SnipTool, and `/force-snip` tested |
-| ReviewArtifact and `/hunter` | Verified (offline reviewer/build) | Input/size validation, independent read-only reviewer, structured findings, unverified status, FileRead permission delegation, and bundled skill registration tested |
-| Reactive compaction | Verified (offline compactor/hooks) | PTL/media withholding, media stripping, shared compactor retry, PreCompact deduplication, failure mapping, and success cleanup tested; live API recovery not run |
-| Context collapse and CtxInspect | Verified (offline summarizer/persistence) | 90% background spawn, 95% blocking spawn, idempotent UUID projection, tool-pair boundaries, empty-summary health, commit/snapshot restore, staged overflow recovery, subscriptions, and compiled CtxInspect tested; live model/413 not run |
+| Workflow definitions and execution | Implemented, unverified (scheduler edge cases) | Offline tests cover schema, DAG, controls, persistence and registration, but reverse-order dependency skip propagation can stall and skip→retry admits late results from the old runner; the later live sentinel does not cover these orderings |
+| HISTORY_SNIP | Implemented, unverified (model Snip path) | Direct arrays and `/force-snip` cover marker/projection behavior, but the real query filters all `snip_marker` entries before `snipCompactIfNeeded`, so a model-emitted marker cannot execute through that path |
+| ReviewArtifact and `/hunter` | Implemented, unverified (file permission executor) | Direct/mock tests cover input validation, reviewer structure and registration, but FileRead's `updatedInput` replaces ReviewArtifact's input shape instead of preserving `artifact_path`, `focus`, and `context` |
+| Reactive compaction | Verified (offline compactor/hooks) | PTL/media withholding, media stripping, shared compactor retry, PreCompact deduplication, failure mapping, and success cleanup tested; the later live recovery sentinel is recorded separately below |
+| Context collapse and CtxInspect | Implemented, unverified (full staged lifecycle) | Offline tests cover thresholds, UUID projection, restore and overflow draining, but normal `startSpawn` still commits directly without first enqueueing `staged`; the later live model sentinel is recorded separately below |
 | Core query and tool orchestration | Verified | Real model + Read round trip passed |
 | SDK query, async messages, abort | Verified | Source and packaged SDK queries passed |
 | In-process MCP tools | Verified | Tool metadata, invocation, and model round trip passed |
 | SDK session list/read/rename/tag/fork | Verified | Offline JSONL tests passed; fresh fork UUID chains and parallel assistant/tool-result DAG recovery before both SDK read paths and pagination checked |
 | V2 create/resume/prompt | Verified | Multi-turn and history recall passed |
 | Scheduled tasks | Verified | One-shot dedup, recurring reschedule, aging, lock takeover, and missed/abort tests passed |
-| LSP lifecycle | Verified | Real JSON-RPC initialize, crash restart, maxRestarts, shutdown timeout, and stop cleanup passed |
+| LSP lifecycle | Verified (offline lifecycle subset) | Real JSON-RPC initialize, crash restart and maxRestarts passed; shutdown tests observe fast return and `stopped`, not listener disposal or child-process exit |
 | Changed-file partial reads | Verified | Real offset/limit rereads, boundary changes, full reads, and deletion eviction passed |
 | Non-REPL prompt/agent stop hooks | Verified (offline and E2E) | Prompt/agent allow, block, failure, cancellation, and real headless Stop feedback verified |
 | SDK rewind | Verified (offline) | Per-query snapshots, dry-run, actual restore, async snapshot waits, invalid IDs, and concurrent persistence isolation tested |
@@ -72,27 +72,41 @@ Real model checks used the session's configured provider with an isolated `HOME`
 | npm marketplace source | Verified (offline) | Fresh npm staging, scoped packages, schema validation, refresh, cache cleanup, and lifecycle-script suppression tested with a mock runner |
 | Cloud file persistence | Verified (offline) | Files API maps normalized output paths to file IDs; ambiguity, pagination, delay, partial failure, and abort tests passed; no xattr attribute guessed |
 | ultraplan OAuth refresh | Verified (mocked) | Refresh runs before every remote poll; `/ultraplan` is externally registered with Claude AI availability checks |
-| env-less perpetual bridge | Verified (offline isolated process) | Reuses cse_* and SSE cursor, skips create on resume, rebuilds after 401, preserves temporary teardown, and clears pointer only on explicit archive; live OAuth round trip not yet run |
-| Live model Workflow | Verified | Settings-based auth returned `WORKFLOW_LIVE_OK` |
-| Live proactive Sleep | Verified | Settings-based auth returned `PROACTIVE_LIVE_OK` |
-| Live context-collapse and reactive compaction | Verified | Settings-based auth returned `CONTEXT_COLLAPSE_LIVE_OK` and `REACTIVE_COMPACTION_LIVE_OK` |
+| env-less perpetual bridge | Verified (offline mock transport) | Reuses cse_* and SSE cursor, skips create on resume, rebuilds after 401, preserves temporary teardown, and attempts pointer cleanup on explicit archive; write/unlink failures are best-effort, and real restart/OAuth/SSE behavior is unverified |
+| Live model Workflow | Verified | Settings-provided Bearer environment returned `WORKFLOW_LIVE_OK` |
+| Live proactive Sleep | Verified (local scheduler) | `PROACTIVE_LIVE_OK` confirms activation and local Sleep timing; it does not make a model request or verify Bearer/OAuth |
+| Live context-collapse and reactive compaction | Verified | Settings-provided Bearer environment returned `CONTEXT_COLLAPSE_LIVE_OK` and `REACTIVE_COMPACTION_LIVE_OK` |
 | Buddy and Fork Subagent | Verified (offline/build) | Deterministic bones, model soul persistence, reaction, mute command, fork cache placeholders, recursive guard, worktree notice, and `/fork` prompt tested |
-| Open KAIROS adapters | Verified (offline/build) | Assistant gate/team/session discovery, isolated team initialization, install wizard, SendUserFile, OS/webhook notifications, GitHub PR subscriptions, and dream registration tested |
+| Open KAIROS adapters | Verified (offline subset) | Six offline tests cover the main adapters and build registration; direct coverage does not prove every session-discovery, install-wizard, webhook, supervisor-liveness, or remote-readiness path |
 | Computer Use via Zavora MCP | Verified (metadata/permissions) | Real tool schemas and denied-action protection passed; native desktop control requires a separately authorized desktop session |
-| Browser via Playwright MCP | Verified (real isolated browser) | Real tool metadata, local-page navigation, snapshot, and close passed with isolated browser profile |
+| Browser via Playwright MCP | Implemented, unverified (error propagation) | Real isolated Chromium navigation, snapshot and close passed, but WebBrowser discards MCP `result.isError`, so backend failures can be returned without an error signal |
 | iTerm hide/show/rebalance | Platform limitation | Not treated as a core implementation gap |
 
 ## Remaining implementation boundaries
 
 - Self-hosted SkillHub registry: the public registry round trip passes (`SKILLHUB_LIVE_OK`); a separate private/self-hosted registry run is optional.
 - `MonitorMcpTask`: the legacy MCP-task backend remains unavailable. The enabled `Monitor` tool uses the verified local-shell task path instead and never creates `monitor_mcp` state.
+- Workflow scheduling: reverse-declared dependency chains can leave skipped work pending, and skip→retry can accept a late result from the aborted runner. The live Workflow sentinel does not exercise these orderings.
+- HISTORY_SNIP integration: the real query projects away all `snip_marker` messages before calling `snipCompactIfNeeded`, so direct marker tests and `/force-snip` do not prove the model Snip path works.
+- Local skill cache lifecycle: a failed older load can delete a newer cwd Promise during cleanup, and a write pivot with no attachment can trigger repeatedly.
+- SkillHub integration: canonical metadata uses process-global state, and `skillPath=destination` is later passed through `dirname()`, producing the wrong base directory for skill loading, permissions and telemetry. `SKILLHUB_LIVE_OK` does not cover this integration path.
+- Browser error propagation: WebBrowser drops MCP `result.isError`; local navigation/snapshot success does not prove backend errors are surfaced.
+- Live-validation settings loading: `live-model-validation.ts` checks `process.env` before any `settings.env` application; a settings-provided Bearer must already be injected by the caller, and the standalone script does not itself load `~/.claude/settings.json`.
+- ReviewArtifact permission input: on automatic-allow paths, FileRead permission delegation returns `updatedInput` in FileRead's shape and loses `artifact_path`, `focus`, and `context`. A persistent ReviewArtifact allow without a path can also cover later unrelated reads outside the working directory. Direct tool tests do not cover these paths.
+- Context-collapse staging: normal `startSpawn` calls `commitStaged` without first adding the new summary to `collapseStore.staged`; restored snapshots can be drained, but a same-run prompt-too-long response has no newly generated staged summary to drain. The default summarizer also supplies the archive through both prompt and fork context, duplicating it, and reset-during-persistence still needs regression coverage. The live model sentinel does not close these gaps.
 - Native Computer Use desktop control: open MCP metadata and permission checks pass, but a real authorized desktop session is still required.
-- Live validation gaps: model/Cloud/remote-control and native desktop round trips still need authorized environments; changed-file, cron, and LSP deterministic lifecycle tests now pass.
+- Live validation gaps: Cloud/remote-control and native desktop round trips still need authorized environments; model and public SkillHub checks have passed, and changed-file, cron, and LSP deterministic lifecycle tests pass.
 
 ## Next implementation order
 
-1. Run Cloud Files, Remote Control, and env-less perpetual round trips in an authorized Claude OAuth environment.
-2. Run native Computer Use control in an authorized interactive desktop/VM.
-3. Optionally run a private self-hosted SkillHub registry round trip.
+1. Fix reverse-order skip propagation and skip→retry runner fencing in Workflow, with adversarial DAG-order regressions.
+2. Make model-emitted snip markers survive projection until execution, then add a real query-path regression.
+3. Preserve ReviewArtifact's input fields and path scope through permission delegation, with executor-level allow/ask/persistent-allow tests.
+4. Close normal-spawn context staging, remove duplicate archive input, and cover reset-during-persistence recovery.
+5. Repair canonical skillPath/base-directory handling, local cache ownership, and WebBrowser `isError` propagation with integration regressions.
+6. Make standalone live-validation settings loading explicit, or require caller-injected credentials and test the four authentication matrix branches.
+7. Run Cloud Files, Remote Control, and env-less perpetual round trips in an authorized Claude OAuth environment.
+8. Run native Computer Use control in an authorized interactive desktop/VM.
+9. Optionally run a private self-hosted SkillHub registry round trip.
 
 Every implementation must add or update its verification evidence here. Build success alone does not promote a feature to **Verified**.

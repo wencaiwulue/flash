@@ -3,819 +3,202 @@ commit: 9b2a35201244ca84adeaa6844bf799e5a18aff6d
 title: "Restore CLI and SDK build"
 date: 2026-11-10T11:39:20+08:00
 status: implemented
+kind: component
 ---
 
 # Restore CLI and SDK build
 
-## Background and requirements
+> 本文是依据该提交的 diff、对应 revision 的实现与测试，以及有出处的状态记录所作的回溯性设计重建；不冒充历史提交当时已存在的原文。
 
-恢复可复现的 Bun CLI/SDK 构建、TypeScript 配置和直接依赖。
+## 前置状态与问题
 
-## Actual scope
+父提交 4b9d30f7953273e567a18eb819f4eddd45fcc877 是只有 README.md 与 src/ 的根快照，没有 package.json、锁文件、tsconfig、构建脚本、测试目录、CI 或状态/发布文档。其 agentSdkTypes.ts 中 query、tool、createSdkMcpServer、V2 session、session mutations/fork 和 scheduled-task API 多数直接抛出未实现错误；若干部件还引用快照中不存在的类型和模块。大量 TS/TSX 保留转换后的 compiler 代码形态，LSP 的 restartOnCrash 与 shutdownTimeout 配置也会显式拒绝使用。
 
-- Changed files: 789
-- Diff statistics: 789 files changed, 114247 insertions(+), 100795 deletions(-)
+需要把研究源码镜像恢复成能够类型检查、构建和验证的 CLI 与 Agent SDK，而不是只增加一个表面可用的打包命令。恢复工作同时包含：从可用 embedded source maps 还原原始 TypeScript/TSX，补齐依赖和公共 SDK 类型，接通 headless CLI、query/tool/MCP 权限链，提供同进程 SDK、V2 多轮会话、portable JSONL session 操作和 scheduled tasks，并用 external-build 边界隔离内部能力。规模上这是一次 789 文件组合恢复，不能把 616 个修改文件都解释成独立新功能，也不能用 build success 覆盖仍然缺失或协议受阻的产品能力。
 
-```text
-.github/workflows/ci.yml
-.gitignore
-README.md
-bun.lock
-bunfig.toml
-docs/ARCHITECTURE.md
-docs/RELEASE.md
-docs/STATUS.md
-package.json
-scripts/build.ts
-scripts/generate-sdk-types.ts
-src/assistant/AssistantSessionChooser.tsx
-src/assistant/gate.ts
-src/assistant/index.ts
-src/assistant/sessionDiscovery.ts
-src/bootstrap/state.ts
-src/bridge/peerSessions.ts
-src/bridge/webhookSanitizer.ts
-src/buddy/CompanionSprite.tsx
-src/buddy/companionObserver.ts
-src/buddy/useBuddyNotification.tsx
-src/cli/bg.ts
-src/cli/handlers/ant.ts
-src/cli/handlers/mcp.tsx
-src/cli/handlers/templateJobs.ts
-src/cli/handlers/util.tsx
-src/cli/print.ts
-src/cli/rollback.ts
-src/cli/structuredIO.ts
-src/cli/transports/Transport.ts
-src/cli/transports/ccrClient.ts
-src/cli/up.ts
-src/commands/add-dir/add-dir.tsx
-src/commands/agents/agents.tsx
-src/commands/bridge/bridge.tsx
-src/commands/btw/btw.tsx
-src/commands/buddy/index.ts
-src/commands/chrome/chrome.tsx
-src/commands/config/config.tsx
-src/commands/context/context.tsx
-src/commands/copy/copy.tsx
-src/commands/desktop/desktop.tsx
-src/commands/diff/diff.tsx
-src/commands/doctor/doctor.tsx
-src/commands/effort/effort.tsx
-src/commands/exit/exit.tsx
-src/commands/export/export.tsx
-src/commands/extra-usage/extra-usage.tsx
-src/commands/fast/fast.tsx
-src/commands/feedback/feedback.tsx
-src/commands/fork/index.ts
-src/commands/help/help.tsx
-src/commands/hooks/hooks.tsx
-src/commands/ide/ide.tsx
-src/commands/insights.ts
-src/commands/install-github-app/ApiKeyStep.tsx
-src/commands/install-github-app/CheckExistingSecretStep.tsx
-src/commands/install-github-app/CheckGitHubStep.tsx
-src/commands/install-github-app/ChooseRepoStep.tsx
-src/commands/install-github-app/CreatingStep.tsx
-src/commands/install-github-app/ErrorStep.tsx
-src/commands/install-github-app/ExistingWorkflowStep.tsx
-src/commands/install-github-app/InstallAppStep.tsx
-src/commands/install-github-app/OAuthFlowStep.tsx
-src/commands/install-github-app/SuccessStep.tsx
-src/commands/install-github-app/WarningsStep.tsx
-src/commands/install-github-app/install-github-app.tsx
-src/commands/install-github-app/types.ts
-src/commands/install.tsx
-src/commands/login/login.tsx
-src/commands/logout/logout.tsx
-src/commands/mcp/mcp.tsx
-src/commands/memory/memory.tsx
-src/commands/mobile/mobile.tsx
-src/commands/model/model.tsx
-src/commands/output-style/output-style.tsx
-src/commands/passes/passes.tsx
-src/commands/peers/index.ts
-src/commands/permissions/permissions.tsx
-src/commands/plan/plan.tsx
-src/commands/plugin/AddMarketplace.tsx
-src/commands/plugin/BrowseMarketplace.tsx
-src/commands/plugin/DiscoverPlugins.tsx
-src/commands/plugin/ManageMarketplaces.tsx
-src/commands/plugin/ManagePlugins.tsx
-src/commands/plugin/PluginErrors.tsx
-src/commands/plugin/PluginOptionsDialog.tsx
-src/commands/plugin/PluginOptionsFlow.tsx
-src/commands/plugin/PluginSettings.tsx
-src/commands/plugin/PluginTrustWarning.tsx
-src/commands/plugin/UnifiedInstalledCell.tsx
-src/commands/plugin/ValidatePlugin.tsx
-src/commands/plugin/index.tsx
-src/commands/plugin/plugin.tsx
-src/commands/plugin/pluginDetailsHelpers.tsx
-src/commands/plugin/types.ts
-src/commands/plugin/unifiedTypes.ts
-src/commands/privacy-settings/privacy-settings.tsx
-src/commands/rate-limit-options/rate-limit-options.tsx
-src/commands/remote-env/remote-env.tsx
-src/commands/remote-setup/remote-setup.tsx
-src/commands/resume/resume.tsx
-src/commands/review/UltrareviewOverageDialog.tsx
-src/commands/review/ultrareviewCommand.tsx
-src/commands/sandbox-toggle/sandbox-toggle.tsx
-src/commands/session/session.tsx
-src/commands/skills/skills.tsx
-src/commands/stats/stats.tsx
-src/commands/status/status.tsx
-src/commands/statusline.tsx
-src/commands/tag/tag.tsx
-src/commands/tasks/tasks.tsx
-src/commands/terminalSetup/terminalSetup.tsx
-src/commands/theme/theme.tsx
-src/commands/thinkback/thinkback.tsx
-src/commands/ultraplan.tsx
-src/commands/upgrade/upgrade.tsx
-src/commands/usage/usage.tsx
-src/commands/workflows/index.ts
-src/components/AgentProgressLine.tsx
-src/components/App.tsx
-src/components/ApproveApiKey.tsx
-src/components/AutoModeOptInDialog.tsx
-src/components/AutoUpdater.tsx
-src/components/AutoUpdaterWrapper.tsx
-src/components/AwsAuthStatusBox.tsx
-src/components/BaseTextInput.tsx
-src/components/BashModeProgress.tsx
-src/components/BridgeDialog.tsx
-src/components/BypassPermissionsModeDialog.tsx
-src/components/ChannelDowngradeDialog.tsx
-src/components/ClaudeCodeHint/PluginHintMenu.tsx
-src/components/ClaudeInChromeOnboarding.tsx
-src/components/ClaudeMdExternalIncludesDialog.tsx
-src/components/ClickableImageRef.tsx
-src/components/CompactSummary.tsx
-src/components/ConfigurableShortcutHint.tsx
-src/components/ConsoleOAuthFlow.tsx
-src/components/ContextSuggestions.tsx
-src/components/ContextVisualization.tsx
-src/components/CoordinatorAgentStatus.tsx
-src/components/CostThresholdDialog.tsx
-src/components/CtrlOToExpand.tsx
-src/components/CustomSelect/SelectMulti.tsx
-src/components/CustomSelect/select-input-option.tsx
-src/components/CustomSelect/select-option.tsx
-src/components/CustomSelect/select.tsx
-src/components/DesktopHandoff.tsx
-src/components/DesktopUpsell/DesktopUpsellStartup.tsx
-src/components/DevBar.tsx
-src/components/DevChannelsDialog.tsx
-src/components/DiagnosticsDisplay.tsx
-src/components/EffortCallout.tsx
-src/components/ExitFlow.tsx
-src/components/ExportDialog.tsx
-src/components/FallbackToolUseErrorMessage.tsx
-src/components/FallbackToolUseRejectedMessage.tsx
-src/components/FastIcon.tsx
-src/components/Feedback.tsx
-src/components/FeedbackSurvey/FeedbackSurvey.tsx
-src/components/FeedbackSurvey/FeedbackSurveyView.tsx
-src/components/FeedbackSurvey/TranscriptSharePrompt.tsx
-src/components/FeedbackSurvey/useFeedbackSurvey.tsx
-src/components/FeedbackSurvey/useFrustrationDetection.ts
-src/components/FeedbackSurvey/useMemorySurvey.tsx
-src/components/FeedbackSurvey/usePostCompactSurvey.tsx
-src/components/FeedbackSurvey/useSurveyState.tsx
-src/components/FeedbackSurvey/utils.ts
-src/components/FileEditToolDiff.tsx
-src/components/FileEditToolUpdatedMessage.tsx
-src/components/FileEditToolUseRejectedMessage.tsx
-src/components/FilePathLink.tsx
-src/components/FullscreenLayout.tsx
-src/components/GlobalSearchDialog.tsx
-src/components/HelpV2/Commands.tsx
-src/components/HelpV2/General.tsx
-src/components/HelpV2/HelpV2.tsx
-src/components/HighlightedCode.tsx
-src/components/HighlightedCode/Fallback.tsx
-src/components/HistorySearchDialog.tsx
-src/components/IdeAutoConnectDialog.tsx
-src/components/IdeOnboardingDialog.tsx
-src/components/IdeStatusIndicator.tsx
-src/components/IdleReturnDialog.tsx
-src/components/InterruptedByUser.tsx
-src/components/InvalidConfigDialog.tsx
-src/components/InvalidSettingsDialog.tsx
-src/components/KeybindingWarnings.tsx
-src/components/LanguagePicker.tsx
-src/components/LogSelector.tsx
-src/components/LogoV2/AnimatedAsterisk.tsx
-src/components/LogoV2/AnimatedClawd.tsx
-src/components/LogoV2/ChannelsNotice.tsx
-src/components/LogoV2/Clawd.tsx
-src/components/LogoV2/CondensedLogo.tsx
-src/components/LogoV2/EmergencyTip.tsx
-src/components/LogoV2/ExperimentEnrollmentNotice.tsx
-src/components/LogoV2/Feed.tsx
-src/components/LogoV2/FeedColumn.tsx
-src/components/LogoV2/GateOverridesWarning.tsx
-src/components/LogoV2/GuestPassesUpsell.tsx
-src/components/LogoV2/LogoV2.tsx
-src/components/LogoV2/Opus1mMergeNotice.tsx
-src/components/LogoV2/OverageCreditUpsell.tsx
-src/components/LogoV2/VoiceModeNotice.tsx
-src/components/LogoV2/WelcomeV2.tsx
-src/components/LogoV2/feedConfigs.tsx
-src/components/LspRecommendation/LspRecommendationMenu.tsx
-src/components/MCPServerApprovalDialog.tsx
-src/components/MCPServerDesktopImportDialog.tsx
-src/components/MCPServerDialogCopy.tsx
-src/components/MCPServerMultiselectDialog.tsx
-src/components/ManagedSettingsSecurityDialog/ManagedSettingsSecurityDialog.tsx
-src/components/Markdown.tsx
-src/components/MarkdownTable.tsx
-src/components/MemoryUsageIndicator.tsx
-src/components/Message.tsx
-src/components/MessageModel.tsx
-src/components/MessageResponse.tsx
-src/components/MessageRow.tsx
-src/components/MessageSelector.tsx
-src/components/MessageTimestamp.tsx
-src/components/Messages.tsx
-src/components/ModelPicker.tsx
-src/components/NativeAutoUpdater.tsx
-src/components/NotebookEditToolUseRejectedMessage.tsx
-src/components/OffscreenFreeze.tsx
-src/components/Onboarding.tsx
-src/components/OutputStylePicker.tsx
-src/components/PackageManagerAutoUpdater.tsx
-src/components/Passes/Passes.tsx
-src/components/PrBadge.tsx
-src/components/PressEnterToContinue.tsx
-src/components/PromptInput/HistorySearchInput.tsx
-src/components/PromptInput/IssueFlagBanner.tsx
-src/components/PromptInput/Notifications.tsx
-src/components/PromptInput/PromptInput.tsx
-src/components/PromptInput/PromptInputFooter.tsx
-src/components/PromptInput/PromptInputFooterLeftSide.tsx
-src/components/PromptInput/PromptInputFooterSuggestions.tsx
-src/components/PromptInput/PromptInputHelpMenu.tsx
-src/components/PromptInput/PromptInputModeIndicator.tsx
-src/components/PromptInput/PromptInputQueuedCommands.tsx
-src/components/PromptInput/PromptInputStashNotice.tsx
-src/components/PromptInput/SandboxPromptFooterHint.tsx
-src/components/PromptInput/ShimmeredInput.tsx
-src/components/PromptInput/TungstenPill.tsx
-src/components/PromptInput/VoiceIndicator.tsx
-src/components/QuickOpenDialog.tsx
-src/components/RemoteCallout.tsx
-src/components/RemoteEnvironmentDialog.tsx
-src/components/ResumeTask.tsx
-src/components/SandboxViolationExpandedView.tsx
-src/components/ScrollKeybindingHandler.tsx
-src/components/SearchBox.tsx
-src/components/SessionBackgroundHint.tsx
-src/components/SessionPreview.tsx
-src/components/Settings/Config.tsx
-src/components/Settings/Gates.tsx
-src/components/Settings/Settings.tsx
-src/components/Settings/Status.tsx
-src/components/Settings/Usage.tsx
-src/components/ShowInIDEPrompt.tsx
-src/components/SkillImprovementSurvey.tsx
-src/components/Spinner.tsx
-src/components/Spinner/FlashingChar.tsx
-src/components/Spinner/GlimmerMessage.tsx
-src/components/Spinner/ShimmerChar.tsx
-src/components/Spinner/SpinnerAnimationRow.tsx
-src/components/Spinner/SpinnerGlyph.tsx
-src/components/Spinner/TeammateSpinnerLine.tsx
-src/components/Spinner/TeammateSpinnerTree.tsx
-src/components/Spinner/types.ts
-src/components/Stats.tsx
-src/components/StatusLine.tsx
-src/components/StatusNotices.tsx
-src/components/StructuredDiff.tsx
-src/components/StructuredDiff/Fallback.tsx
-src/components/StructuredDiff/colorDiff.ts
-src/components/StructuredDiffList.tsx
-src/components/TagTabs.tsx
-src/components/TaskListV2.tsx
-src/components/TeammateViewHeader.tsx
-src/components/TeleportError.tsx
-src/components/TeleportProgress.tsx
-src/components/TeleportRepoMismatchDialog.tsx
-src/components/TeleportResumeWrapper.tsx
-src/components/TeleportStash.tsx
-src/components/TextInput.tsx
-src/components/ThemePicker.tsx
-src/components/ThinkingToggle.tsx
-src/components/TokenWarning.tsx
-src/components/ToolUseLoader.tsx
-src/components/TrustDialog/TrustDialog.tsx
-src/components/UltraplanChoiceDialog.tsx
-src/components/UltraplanLaunchDialog.tsx
-src/components/ValidationErrorsList.tsx
-src/components/VimTextInput.tsx
-src/components/VirtualMessageList.tsx
-src/components/WorkflowMultiselectDialog.tsx
-src/components/WorktreeExitDialog.tsx
-src/components/agents/AgentDetail.tsx
-src/components/agents/AgentEditor.tsx
-src/components/agents/AgentNavigationFooter.tsx
-src/components/agents/AgentsList.tsx
-src/components/agents/AgentsMenu.tsx
-src/components/agents/ColorPicker.tsx
-src/components/agents/ModelSelector.tsx
-src/components/agents/SnapshotUpdateDialog.tsx
-src/components/agents/ToolSelector.tsx
-src/components/agents/new-agent-creation/CreateAgentWizard.tsx
-src/components/agents/new-agent-creation/types.ts
-src/components/agents/new-agent-creation/wizard-steps/ColorStep.tsx
-src/components/agents/new-agent-creation/wizard-steps/ConfirmStep.tsx
-src/components/agents/new-agent-creation/wizard-steps/ConfirmStepWrapper.tsx
-src/components/agents/new-agent-creation/wizard-steps/DescriptionStep.tsx
-src/components/agents/new-agent-creation/wizard-steps/GenerateStep.tsx
-src/components/agents/new-agent-creation/wizard-steps/LocationStep.tsx
-src/components/agents/new-agent-creation/wizard-steps/MemoryStep.tsx
-src/components/agents/new-agent-creation/wizard-steps/MethodStep.tsx
-src/components/agents/new-agent-creation/wizard-steps/ModelStep.tsx
-src/components/agents/new-agent-creation/wizard-steps/PromptStep.tsx
-src/components/agents/new-agent-creation/wizard-steps/ToolsStep.tsx
-src/components/agents/new-agent-creation/wizard-steps/TypeStep.tsx
-src/components/design-system/Byline.tsx
-src/components/design-system/Dialog.tsx
-src/components/design-system/Divider.tsx
-src/components/design-system/FuzzyPicker.tsx
-src/components/design-system/KeyboardShortcutHint.tsx
-src/components/design-system/ListItem.tsx
-src/components/design-system/LoadingState.tsx
-src/components/design-system/Pane.tsx
-src/components/design-system/ProgressBar.tsx
-src/components/design-system/Ratchet.tsx
-src/components/design-system/StatusIcon.tsx
-src/components/design-system/Tabs.tsx
-src/components/design-system/ThemeProvider.tsx
-src/components/design-system/ThemedBox.tsx
-src/components/design-system/ThemedText.tsx
-src/components/diff/DiffDetailView.tsx
-src/components/diff/DiffDialog.tsx
-src/components/diff/DiffFileList.tsx
-src/components/grove/Grove.tsx
-src/components/hooks/HooksConfigMenu.tsx
-src/components/hooks/PromptDialog.tsx
-src/components/hooks/SelectEventMode.tsx
-src/components/hooks/SelectHookMode.tsx
-src/components/hooks/SelectMatcherMode.tsx
-src/components/hooks/ViewHookMode.tsx
-src/components/mcp/CapabilitiesSection.tsx
-src/components/mcp/ElicitationDialog.tsx
-src/components/mcp/MCPAgentServerMenu.tsx
-src/components/mcp/MCPListPanel.tsx
-src/components/mcp/MCPReconnect.tsx
-src/components/mcp/MCPRemoteServerMenu.tsx
-src/components/mcp/MCPSettings.tsx
-src/components/mcp/MCPStdioServerMenu.tsx
-src/components/mcp/MCPToolDetailView.tsx
-src/components/mcp/MCPToolListView.tsx
-src/components/mcp/McpParsingWarnings.tsx
-src/components/mcp/types.ts
-src/components/mcp/utils/reconnectHelpers.tsx
-src/components/memory/MemoryFileSelector.tsx
-src/components/memory/MemoryUpdateNotification.tsx
-src/components/messageActions.tsx
-src/components/messages/AdvisorMessage.tsx
-src/components/messages/AssistantRedactedThinkingMessage.tsx
-src/components/messages/AssistantTextMessage.tsx
-src/components/messages/AssistantThinkingMessage.tsx
-src/components/messages/AssistantToolUseMessage.tsx
-src/components/messages/AttachmentMessage.tsx
-src/components/messages/CollapsedReadSearchContent.tsx
-src/components/messages/CompactBoundaryMessage.tsx
-src/components/messages/GroupedToolUseContent.tsx
-src/components/messages/HighlightedThinkingText.tsx
-src/components/messages/HookProgressMessage.tsx
-src/components/messages/PlanApprovalMessage.tsx
-src/components/messages/RateLimitMessage.tsx
-src/components/messages/ShutdownMessage.tsx
-src/components/messages/SnipBoundaryMessage.ts
-src/components/messages/SystemAPIErrorMessage.tsx
-src/components/messages/SystemTextMessage.tsx
-src/components/messages/TaskAssignmentMessage.tsx
-src/components/messages/UserAgentNotificationMessage.tsx
-src/components/messages/UserBashInputMessage.tsx
-src/components/messages/UserBashOutputMessage.tsx
-src/components/messages/UserChannelMessage.tsx
-src/components/messages/UserCommandMessage.tsx
-src/components/messages/UserCrossSessionMessage.ts
-src/components/messages/UserForkBoilerplateMessage.ts
-src/components/messages/UserGitHubWebhookMessage.ts
-src/components/messages/UserImageMessage.tsx
-src/components/messages/UserLocalCommandOutputMessage.tsx
-src/components/messages/UserMemoryInputMessage.tsx
-src/components/messages/UserPlanMessage.tsx
-src/components/messages/UserPromptMessage.tsx
-src/components/messages/UserResourceUpdateMessage.tsx
-src/components/messages/UserTeammateMessage.tsx
-src/components/messages/UserTextMessage.tsx
-src/components/messages/UserToolResultMessage/RejectedPlanMessage.tsx
-src/components/messages/UserToolResultMessage/RejectedToolUseMessage.tsx
-src/components/messages/UserToolResultMessage/UserToolCanceledMessage.tsx
-src/components/messages/UserToolResultMessage/UserToolErrorMessage.tsx
-src/components/messages/UserToolResultMessage/UserToolRejectMessage.tsx
-src/components/messages/UserToolResultMessage/UserToolResultMessage.tsx
-src/components/messages/UserToolResultMessage/UserToolSuccessMessage.tsx
-src/components/messages/UserToolResultMessage/utils.tsx
-src/components/messages/nullRenderingAttachments.ts
-src/components/messages/teamMemCollapsed.tsx
-src/components/permissions/AskUserQuestionPermissionRequest/AskUserQuestionPermissionRequest.tsx
-src/components/permissions/AskUserQuestionPermissionRequest/PreviewBox.tsx
-src/components/permissions/AskUserQuestionPermissionRequest/PreviewQuestionView.tsx
-src/components/permissions/AskUserQuestionPermissionRequest/QuestionNavigationBar.tsx
-src/components/permissions/AskUserQuestionPermissionRequest/QuestionView.tsx
-src/components/permissions/AskUserQuestionPermissionRequest/SubmitQuestionsView.tsx
-src/components/permissions/BashPermissionRequest/BashPermissionRequest.tsx
-src/components/permissions/BashPermissionRequest/bashToolUseOptions.tsx
-src/components/permissions/ComputerUseApproval/ComputerUseApproval.tsx
-src/components/permissions/EnterPlanModePermissionRequest/EnterPlanModePermissionRequest.tsx
-src/components/permissions/ExitPlanModePermissionRequest/ExitPlanModePermissionRequest.tsx
-src/components/permissions/FallbackPermissionRequest.tsx
-src/components/permissions/FileEditPermissionRequest/FileEditPermissionRequest.tsx
-src/components/permissions/FilePermissionDialog/FilePermissionDialog.tsx
-src/components/permissions/FilePermissionDialog/permissionOptions.tsx
-src/components/permissions/FileWritePermissionRequest/FileWritePermissionRequest.tsx
-src/components/permissions/FileWritePermissionRequest/FileWriteToolDiff.tsx
-src/components/permissions/FilesystemPermissionRequest/FilesystemPermissionRequest.tsx
-src/components/permissions/MonitorPermissionRequest/MonitorPermissionRequest.tsx
-src/components/permissions/NotebookEditPermissionRequest/NotebookEditPermissionRequest.tsx
-src/components/permissions/NotebookEditPermissionRequest/NotebookEditToolDiff.tsx
-src/components/permissions/PermissionDecisionDebugInfo.tsx
-src/components/permissions/PermissionDialog.tsx
-src/components/permissions/PermissionExplanation.tsx
-src/components/permissions/PermissionPrompt.tsx
-src/components/permissions/PermissionRequest.tsx
-src/components/permissions/PermissionRequestTitle.tsx
-src/components/permissions/PermissionRuleExplanation.tsx
-src/components/permissions/PowerShellPermissionRequest/PowerShellPermissionRequest.tsx
-src/components/permissions/PowerShellPermissionRequest/powershellToolUseOptions.tsx
-src/components/permissions/ReviewArtifactPermissionRequest/ReviewArtifactPermissionRequest.tsx
-src/components/permissions/SandboxPermissionRequest.tsx
-src/components/permissions/SedEditPermissionRequest/SedEditPermissionRequest.tsx
-src/components/permissions/SkillPermissionRequest/SkillPermissionRequest.tsx
-src/components/permissions/WebFetchPermissionRequest/WebFetchPermissionRequest.tsx
-src/components/permissions/WorkerBadge.tsx
-src/components/permissions/WorkerPendingPermission.tsx
-src/components/permissions/rules/AddPermissionRules.tsx
-src/components/permissions/rules/AddWorkspaceDirectory.tsx
-src/components/permissions/rules/PermissionRuleDescription.tsx
-src/components/permissions/rules/PermissionRuleInput.tsx
-src/components/permissions/rules/PermissionRuleList.tsx
-src/components/permissions/rules/RecentDenialsTab.tsx
-src/components/permissions/rules/RemoveWorkspaceDirectory.tsx
-src/components/permissions/rules/WorkspaceTab.tsx
-src/components/permissions/shellPermissionHelpers.tsx
-src/components/sandbox/SandboxConfigTab.tsx
-src/components/sandbox/SandboxDependenciesTab.tsx
-src/components/sandbox/SandboxDoctorSection.tsx
-src/components/sandbox/SandboxOverridesTab.tsx
-src/components/sandbox/SandboxSettings.tsx
-src/components/shell/ExpandShellOutputContext.tsx
-src/components/shell/OutputLine.tsx
-src/components/shell/ShellProgressMessage.tsx
-src/components/shell/ShellTimeDisplay.tsx
-src/components/skills/SkillsMenu.tsx
-src/components/tasks/AsyncAgentDetailDialog.tsx
-src/components/tasks/BackgroundTask.tsx
-src/components/tasks/BackgroundTaskStatus.tsx
-src/components/tasks/BackgroundTasksDialog.tsx
-src/components/tasks/DreamDetailDialog.tsx
-src/components/tasks/InProcessTeammateDetailDialog.tsx
-src/components/tasks/MonitorMcpDetailDialog.tsx
-src/components/tasks/RemoteSessionDetailDialog.tsx
-src/components/tasks/RemoteSessionProgress.tsx
-src/components/tasks/ShellDetailDialog.tsx
-src/components/tasks/ShellProgress.tsx
-src/components/tasks/WorkflowDetailDialog.tsx
-src/components/tasks/renderToolActivity.tsx
-src/components/tasks/taskStatusUtils.tsx
-src/components/teams/TeamStatus.tsx
-src/components/teams/TeamsDialog.tsx
-src/components/ui/OrderedList.tsx
-src/components/ui/OrderedListItem.tsx
-src/components/ui/TreeSelect.tsx
-src/components/ui/option.ts
-src/components/wizard/WizardDialogLayout.tsx
-src/components/wizard/WizardNavigationFooter.tsx
-src/components/wizard/WizardProvider.tsx
-src/components/wizard/types.ts
-src/constants/betas.ts
-src/constants/prompts.ts
-src/constants/querySource.ts
-src/context/QueuedMessageContext.tsx
-src/context/fpsMetrics.tsx
-src/context/mailbox.tsx
-src/context/modalContext.tsx
-src/context/notifications.tsx
-src/context/overlayContext.tsx
-src/context/promptOverlayContext.tsx
-src/context/stats.tsx
-src/context/voice.tsx
-src/coordinator/workerAgent.ts
-src/daemon/main.ts
-src/daemon/workerRegistry.ts
-src/dialogLaunchers.tsx
-src/entrypoints/agentSdkTypes.ts
-src/entrypoints/cli.tsx
-src/entrypoints/sdk/controlSchemas.ts
-src/entrypoints/sdk/controlTypes.ts
-src/entrypoints/sdk/coreSchemas.ts
-src/entrypoints/sdk/coreTypes.generated.ts
-src/entrypoints/sdk/runtimeTypes.ts
-src/entrypoints/sdk/sdkUtilityTypes.ts
-src/entrypoints/sdk/settingsTypes.generated.ts
-src/entrypoints/sdk/toolTypes.ts
-src/env.d.ts
-src/environment-runner/main.ts
-src/external-stubs/claude-for-chrome-mcp.ts
-src/external-stubs/computer-use-input.ts
-src/external-stubs/computer-use-mcp.ts
-src/external-stubs/computer-use-sentinel-apps.ts
-src/external-stubs/computer-use-swift.ts
-src/external-stubs/computer-use-types.ts
-src/external-stubs/unavailable.ts
-src/global.d.ts
-src/hooks/notifs/useAntOrgWarningNotification.ts
-src/hooks/notifs/useCanSwitchToExistingSubscription.tsx
-src/hooks/notifs/useDeprecationWarningNotification.tsx
-src/hooks/notifs/useFastModeNotification.tsx
-src/hooks/notifs/useIDEStatusIndicator.tsx
-src/hooks/notifs/useInstallMessages.tsx
-src/hooks/notifs/useLspInitializationNotification.tsx
-src/hooks/notifs/useMcpConnectivityStatus.tsx
-src/hooks/notifs/useModelMigrationNotifications.tsx
-src/hooks/notifs/useNpmDeprecationNotification.tsx
-src/hooks/notifs/usePluginAutoupdateNotification.tsx
-src/hooks/notifs/usePluginInstallationStatus.tsx
-src/hooks/notifs/useRateLimitWarningNotification.tsx
-src/hooks/notifs/useSettingsErrors.tsx
-src/hooks/useArrowKeyHistory.tsx
-src/hooks/useCanUseTool.tsx
-src/hooks/useChromeExtensionNotification.tsx
-src/hooks/useClaudeCodeHintRecommendation.tsx
-src/hooks/useCommandKeybindings.tsx
-src/hooks/useDiffData.ts
-src/hooks/useGlobalKeybindings.tsx
-src/hooks/useIDEIntegration.tsx
-src/hooks/useLspPluginRecommendation.tsx
-src/hooks/useOfficialMarketplaceNotification.tsx
-src/hooks/usePluginRecommendationBase.tsx
-src/hooks/usePromptsFromClaudeInChrome.tsx
-src/hooks/useReplBridge.tsx
-src/hooks/useSSHSession.ts
-src/hooks/useTeleportResume.tsx
-src/hooks/useTurnDiffs.ts
-src/hooks/useTypeahead.tsx
-src/hooks/useVoiceIntegration.tsx
-src/ink/Ansi.tsx
-src/ink/components/AlternateScreen.tsx
-src/ink/components/App.tsx
-src/ink/components/Box.tsx
-src/ink/components/Button.tsx
-src/ink/components/ClockContext.tsx
-src/ink/components/ErrorOverview.tsx
-src/ink/components/Link.tsx
-src/ink/components/Newline.tsx
-src/ink/components/NoSelect.tsx
-src/ink/components/RawAnsi.tsx
-src/ink/components/ScrollBox.tsx
-src/ink/components/Spacer.tsx
-src/ink/components/TerminalFocusContext.tsx
-src/ink/components/TerminalSizeContext.tsx
-src/ink/components/Text.tsx
-src/ink/cursor.ts
-src/ink/devtools.ts
-src/ink/events/paste-event.ts
-src/ink/events/resize-event.ts
-src/ink/ink.tsx
-src/interactiveHelpers.tsx
-src/jobs/classifier.ts
-src/keybindings/KeybindingContext.tsx
-src/keybindings/KeybindingProviderSetup.tsx
-src/keybindings/types.ts
-src/main.tsx
-src/memdir/memoryShapeTelemetry.ts
-src/moreright/useMoreRight.tsx
-src/native-ts/color-diff/index.ts
-src/proactive/index.ts
-src/proactive/useProactive.ts
-src/query.ts
-src/query/transitions.ts
-src/remote/sdkMessageAdapter.ts
-src/replLauncher.tsx
-src/runtimeMacros.ts
-src/screens/Doctor.tsx
-src/screens/REPL.tsx
-src/screens/ResumeConversation.tsx
-src/self-hosted-runner/main.ts
-src/server/backends/dangerousBackend.ts
-src/server/connectHeadless.ts
-src/server/lockfile.ts
-src/server/parseConnectUrl.ts
-src/server/server.ts
-src/server/serverBanner.ts
-src/server/serverLog.ts
-src/server/sessionManager.ts
-src/services/analytics/firstPartyEventLogger.ts
-src/services/api/bootstrap.ts
-src/services/api/claude.ts
-src/services/api/client.ts
-src/services/api/emptyUsage.ts
-src/services/api/logging.ts
-src/services/compact/cachedMCConfig.ts
-src/services/compact/cachedMicrocompact.ts
-src/services/compact/microCompact.ts
-src/services/compact/reactiveCompact.ts
-src/services/compact/snipCompact.ts
-src/services/compact/snipProjection.ts
-src/services/contextCollapse/index.ts
-src/services/contextCollapse/operations.ts
-src/services/contextCollapse/persist.ts
-src/services/lsp/LSPClient.ts
-src/services/lsp/LSPServerInstance.ts
-src/services/lsp/passiveFeedback.ts
-src/services/lsp/types.ts
-src/services/mcp/MCPConnectionManager.tsx
-src/services/mcp/client.ts
-src/services/mcpServerApproval.tsx
-src/services/notifier.ts
-src/services/oauth/types.ts
-src/services/remoteManagedSettings/securityCheck.tsx
-src/services/sessionTranscript/sessionTranscript.ts
-src/services/skillSearch/featureCheck.ts
-src/services/skillSearch/localSearch.ts
-src/services/skillSearch/prefetch.ts
-src/services/skillSearch/remoteSkillLoader.ts
-src/services/skillSearch/remoteSkillState.ts
-src/services/skillSearch/signals.ts
-src/services/skillSearch/telemetry.ts
-src/services/tips/types.ts
-src/services/tokenEstimation.ts
-src/services/voice.ts
-src/skills/bundled/claudeInChrome.ts
-src/skills/bundled/verify/SKILL.md
-src/skills/bundled/verify/examples/cli.md
-src/skills/bundled/verify/examples/server.md
-src/skills/mcpSkills.ts
-src/ssh/SSHSessionManager.ts
-src/ssh/createSSHSession.ts
-src/state/AppState.tsx
-src/tasks/InProcessTeammateTask/InProcessTeammateTask.tsx
-src/tasks/LocalAgentTask/LocalAgentTask.tsx
-src/tasks/LocalShellTask/LocalShellTask.tsx
-src/tasks/LocalWorkflowTask/LocalWorkflowTask.ts
-src/tasks/MonitorMcpTask/MonitorMcpTask.ts
-src/tasks/RemoteAgentTask/RemoteAgentTask.tsx
-src/tools.ts
-src/tools/AgentTool/AgentTool.tsx
-src/tools/AgentTool/UI.tsx
-src/tools/AskUserQuestionTool/AskUserQuestionTool.tsx
-src/tools/BashTool/BashTool.tsx
-src/tools/BashTool/BashToolResultMessage.tsx
-src/tools/BashTool/UI.tsx
-src/tools/BriefTool/UI.tsx
-src/tools/ConfigTool/UI.tsx
-src/tools/DiscoverSkillsTool/prompt.ts
-src/tools/EnterPlanModeTool/UI.tsx
-src/tools/EnterWorktreeTool/UI.tsx
-src/tools/ExitPlanModeTool/UI.tsx
-src/tools/ExitWorktreeTool/UI.tsx
-src/tools/FileEditTool/UI.tsx
-src/tools/FileEditTool/utils.ts
-src/tools/FileReadTool/UI.tsx
-src/tools/FileWriteTool/UI.tsx
-src/tools/GlobTool/UI.tsx
-src/tools/GrepTool/UI.tsx
-src/tools/LSPTool/UI.tsx
-src/tools/ListMcpResourcesTool/UI.tsx
-src/tools/MCPTool/UI.tsx
-src/tools/MonitorTool/MonitorTool.ts
-src/tools/NotebookEditTool/UI.tsx
-src/tools/OverflowTestTool/OverflowTestTool.ts
-src/tools/PowerShellTool/PowerShellTool.tsx
-src/tools/PowerShellTool/UI.tsx
-src/tools/ReadMcpResourceTool/UI.tsx
-src/tools/RemoteTriggerTool/UI.tsx
-src/tools/ReviewArtifactTool/ReviewArtifactTool.ts
-src/tools/ScheduleCronTool/UI.tsx
-src/tools/SendMessageTool/UI.tsx
-src/tools/SendUserFileTool/prompt.ts
-src/tools/SkillTool/UI.tsx
-src/tools/SnipTool/prompt.ts
-src/tools/TaskOutputTool/TaskOutputTool.tsx
-src/tools/TaskStopTool/UI.tsx
-src/tools/TeamCreateTool/UI.tsx
-src/tools/TeamDeleteTool/UI.tsx
-src/tools/TerminalCaptureTool/prompt.ts
-src/tools/TungstenTool/TungstenLiveMonitor.ts
-src/tools/TungstenTool/TungstenTool.ts
-src/tools/VerifyPlanExecutionTool/constants.ts
-src/tools/WebBrowserTool/WebBrowserPanel.tsx
-src/tools/WebFetchTool/UI.tsx
-src/tools/WebFetchTool/utils.ts
-src/tools/WebSearchTool/UI.tsx
-src/tools/WorkflowTool/WorkflowPermissionRequest.ts
-src/tools/WorkflowTool/WorkflowTool.ts
-src/tools/WorkflowTool/constants.ts
-src/tools/WorkflowTool/createWorkflowCommand.ts
-src/tools/testing/TestingPermissionTool.tsx
-src/transport/processTransportTypes.ts
-src/transport/transport.ts
-src/types/connectorText.ts
-src/types/diff-augmentations.d.ts
-src/types/fileSuggestion.ts
-src/types/message.ts
-src/types/messageQueueTypes.ts
-src/types/notebook.ts
-src/types/statusLine.ts
-src/types/tools.ts
-src/types/utils.ts
-src/utils/asciicast.ts
-src/utils/attachments.ts
-src/utils/attributionHooks.ts
-src/utils/attributionTrailer.ts
-src/utils/autoRunIssue.tsx
-src/utils/bash/commands.ts
-src/utils/ccshareResume.ts
-src/utils/claudeInChrome/browserTools.ts
-src/utils/claudeInChrome/setup.ts
-src/utils/claudeInChrome/toolRendering.tsx
-src/utils/cliHighlight.ts
-src/utils/computerUse/toolRendering.tsx
-src/utils/computerUse/wrapper.tsx
-src/utils/context.ts
-src/utils/cronNotification.ts
-src/utils/cronScheduler.ts
-src/utils/diff.ts
-src/utils/dxt/helpers.ts
-src/utils/effort.ts
-src/utils/eventLoopStallDetector.ts
-src/utils/execFileNoThrowPortable.ts
-src/utils/exportRenderer.tsx
-src/utils/filePersistence/outputsScanner.ts
-src/utils/filePersistence/types.ts
-src/utils/gitDiff.ts
-src/utils/highlightMatch.tsx
-src/utils/log.ts
-src/utils/messages.ts
-src/utils/model/antModelOverrides.ts
-src/utils/model/model.ts
-src/utils/model/modelOptions.ts
-src/utils/modifiers.ts
-src/utils/permissions/filesystem.ts
-src/utils/plugins/mcpbHandler.ts
-src/utils/plugins/performStartupChecks.tsx
-src/utils/postCommitAttribution.ts
-src/utils/preflightChecks.tsx
-src/utils/processUserInput/processBashCommand.tsx
-src/utils/processUserInput/processSlashCommand.tsx
-src/utils/protectedNamespace.ts
-src/utils/readFileInRange.ts
-src/utils/sdkHeapDumpMonitor.ts
-src/utils/sdkQuery.ts
-src/utils/sdkSessionConversation.ts
-src/utils/sdkSessions.ts
-src/utils/secureStorage/types.ts
-src/utils/sessionDataUploader.ts
-src/utils/settings/changeDetector.ts
-src/utils/skills/skillChangeDetector.ts
-src/utils/sliceAnsi.ts
-src/utils/staticRender.tsx
-src/utils/status.tsx
-src/utils/statusNoticeDefinitions.tsx
-src/utils/swarm/It2SetupPrompt.tsx
-src/utils/systemThemeWatcher.ts
-src/utils/taskSummary.ts
-src/utils/telemetry/instrumentation.ts
-src/utils/teleport.tsx
-src/utils/textHighlighting.ts
-src/utils/thinking.ts
-src/utils/udsClient.ts
-src/utils/udsMessaging.ts
-src/utils/ultraplan/prompt.txt
-tests/lsp.test.ts
-tests/sdkCron.test.ts
-tests/sdkMcp.test.ts
-tests/sdkSessions.test.ts
-tests/toolPool.test.ts
-tsconfig.json
-```
+## 目标与非目标
 
-## Protocol, dependencies, and security
+### 目标
 
-仅恢复公开源码与构建元数据，不引入内部私有包。
+- 建立固定依赖的 Bun/TypeScript 流程，依次支持 SDK 类型生成、typecheck、离线测试、CLI/SDK bundle 和 declaration emit。
+- 恢复可维护的原始 TS/TSX 与缺失类型模块，同时保留现有 QueryEngine、工具、权限、MCP 和 Ink 模块边界。
+- 实现并验证 external CLI headless 路径、SDK query/async input/abort、in-process MCP、V2 create/resume/prompt、session list/read/rename/tag/fork；实现 scheduled-task watch/fire/missed 接口，并仅验证 missed-task 格式化、初始 missed 事件及 abort/iterator.return 清理路径。
+- 提供清晰的包出口、CI smoke、架构说明、分项验证状态和发布范围，使已实现、未验证、未实现、禁用与协议受阻不再混为一谈。
+- 保留父提交基线历史，并以离线回归测试覆盖工具池、MCP、session、cron 和 LSP 配置的关键行为。
 
-## Acceptance and verification
+### 非目标
 
-类型检查、CLI/SDK 构建及启动冒烟。
+- 不恢复或验证完整 USER_TYPE=ant 产品，也不宣称 KAIROS、proactive、workflow、computer-use 等内部能力在 external build 可用。
+- 不实现 connectRemoteControl、env-less perpetual bridge、Cloud xattr 等需要权威协议或 daemon/bridge 环境的能力。
+- 不完成 Linux libsecret、npm marketplace、ultraplan OAuth refresh、SDK rewind、non-REPL stop hooks 和全部 SDK control methods。
+- 不把 disabled stub、显式 unsupported error 或成功 bundle 伪装成相应功能已经通过端到端验收。
+- 不在本提交中完成远端仓库创建、push、GitHub Actions 验证或最终 release metadata 回写。
+- 不承诺 bit-for-bit reproducible artifact；MACRO.BUILD_TIME 仍取构建时当前时间，目标是流程可重复而非输出哈希恒定。
 
-## Remaining / unimplemented boundaries
+## 方案架构与数据流
 
-当时仍存在 SDK 生命周期和协议实现缺口，后续提交继续补齐。
+构建链路以 package.json 为产品和脚本契约，bun.lock 固定依赖，tsconfig.json 启用 strict、bundler resolution 和 declaration/declarationMap。scripts/build.ts 先调用 generateSdkTypes()，再以 Bun target、ESM、features: [] 分别构建 src/entrypoints/cli.tsx 到 dist/main.js 与 src/entrypoints/agentSdkTypes.ts 到 dist/sdk.mjs；CLI 加 Bun shebang 并设置为可执行。构建注入 MACRO.*、USER_TYPE=external 和 CLAUDE_CODE_VERIFY_PLAN=false，随后 package.json 的 build 脚本调用 tsc --emitDeclarationOnly 输出 dist/types。根 export 同时指向 sdk.mjs 与 agentSdkTypes.d.ts，./cli 和 bin 指向 main.js。
+
+scripts/generate-sdk-types.ts 扫描 coreSchemas.ts 与 controlSchemas.ts 中 exported Zod schema，生成 z.infer<ReturnType<typeof schemas.XSchema>> 形式的 coreTypes.generated.ts 和 controlTypes.ts；提交内记录为 125 个 core types 与 59 个 control types。src/runtimeMacros.ts 为直接 source execution 和测试提供 MACRO 默认值，使模块 import 不必先经过 bundle。tsconfig 的 paths 将私有 @ant/* 模块映射到 src/external-stubs/，配合 features: [] 和 dead-code elimination 形成 external 编译边界，但该边界不是运行时 sandbox。
+
+源码恢复与功能接通是两条相互依赖的线。616 个修改文件中，395 个可明确识别为移除父版 react/compiler-runtime 转换痕迹，552 个文件字节数缩小超过一半；这些只是批量恢复的可观察子集。components、commands、hooks、ink、screens、tools、services 与 utils 恢复原模块结构后，CLI 由 cli.tsx 处理 version fast path；help 与其他完整路径继续动态加载 main.tsx，再进入 Commander、交互 Ink 或 headless 执行；核心仍沿 QueryEngine、query.ts、assembleToolPool 和权限上下文传递消息与工具结果。
+
+SDK 不 spawn CLI，也不启动 Ink。src/utils/sdkQuery.ts 初始化 cwd、bootstrap/AppState、权限上下文、commands、MCP clients/tools/resources 和内建工具池，把字符串 prompt 或 UserMessageChannel 的异步输入送入 QueryEngine.ask()。canUseTool 优先走 SDK callback，否则进入 hasPermissionsToUseTool()；in-process MCP 通过 InMemoryTransport.createLinkedPair() 连接 Client 与 McpServer，process MCP 复用 services/mcp/client.ts 的 getMcpToolsCommandsAndResources() 连接与发现逻辑；SDK 不挂载 React 的 MCPConnectionManager。输出消息直接 yield 给 host，finally 清理 MCP、cleanup registry 并 flush session storage，不主动结束宿主进程。
+
+V2 由 src/utils/sdkSessionConversation.ts 的 LocalSdkSession 保留底层 query 与 input channel：每次 stream() 在 result message 结束，但底层会话继续服务下一 turn。src/utils/sdkSessions.ts 直接处理配置目录 projects/ 下的 JSONL，按 parentUuid 重建主链；rename/tag 追加 metadata，fork 生成新 session ID、重写全部 UUID 和父子链并保留 content-replacement，但不复制 file-history/undo snapshots。scheduled tasks 复用 file-backed cronScheduler 和锁，cronNotification 独立格式化 missed events；LSP 恢复 restart 与 shutdown timeout 行为，但新增测试只覆盖配置接受和 stopped 状态下 stop() 可安全返回。
+
+验证与发布信息被拆成三种职责：README 说明 Build and Verification、Agent SDK 和 external 边界；docs/ARCHITECTURE.md 描述入口与数据流；docs/STATUS.md 保存命令结果和 capability matrix；docs/RELEASE.md 记录保留 baseline 的发布范围及尚未 push/未跑 hosted Actions 的状态。CI 只串行执行 frozen install、generate、typecheck、offline test、build、CLI version/help 和 SDK import smoke，真实模型检查留在 STATUS 的单独记录中。
+
+### 文件、接口与证据关系
+
+| 关系 | 位置 | 设计作用 |
+|---|---|---|
+| 变更 | `package.json` | 定义 1.0.0 包、Bun scripts、依赖以及 CLI/bin、SDK import 和 declaration exports。 |
+| 变更 | `bun.lock` | 固定恢复后的依赖解析，使 CI 与本地 frozen install 有共同输入。 |
+| 变更 | `bunfig.toml` | 设置测试 timeout/bail、开发依赖安装和 react/compiler-runtime 解析。 |
+| 变更 | `tsconfig.json` | 启用 strict、bundler resolution、declarations，并把私有 @ant/* import 映射到 external stubs。 |
+| 变更 | `.gitignore` | 排除依赖、dist、日志、环境文件、密钥和常见凭据产物，降低恢复后误提交风险。 |
+| 变更 | `.github/workflows/ci.yml` | 以 Bun 1.3.14 串行执行 frozen install、generate、typecheck、test、build 和 CLI/SDK smoke。 |
+| 变更 | `README.md` | 改为构建验证、Agent SDK 和 external 边界说明，并修正核心文件行数尺度。 |
+| 变更 | `docs/ARCHITECTURE.md` | 记录双产品入口、QueryEngine 数据流、SDK 组合、安全持久化和功能边界。 |
+| 变更 | `docs/STATUS.md` | 保存命令结果、真实模型检查和 Verified/unverified/missing/disabled/protocol-blocked 能力矩阵。 |
+| 变更 | `docs/RELEASE.md` | 记录 source baseline、源码恢复范围、发布前验证、保留历史决策和尚未 push/CI 的状态。 |
+| 变更 | `scripts/build.ts` | 先生成 SDK 类型，再以 external defines 构建 main.js/sdk.mjs，并设置 CLI 可执行权限。 |
+| 变更 | `scripts/generate-sdk-types.ts` | 从 core/control Zod schemas 生成 z.infer 类型文件，是声明链路的生成源。 |
+| 变更 | `src/runtimeMacros.ts` | 为直接源码执行与测试提供 MACRO 默认值，解除对预先 bundle 的 import 依赖。 |
+| 变更 | `src/env.d.ts` | 补充 Bun、资源和环境相关 ambient 类型，使恢复源码进入统一 TypeScript 契约。 |
+| 变更 | `src/global.d.ts` | 声明全局构建宏等类型，与 runtimeMacros 和 build defines 配合。 |
+| 变更 | `src/main.tsx` | 恢复完整 Commander、交互和 headless 主链的原始 TypeScript/TSX 形态。 |
+| 变更 | `src/query.ts` | 修复共享模型流和工具编排边界，供 CLI 与同进程 SDK 复用。 |
+| 变更 | `src/tools.ts` | 恢复内建工具池组合并补齐工具集合，支撑 tool-pool smoke 和 SDK/CLI 调用。 |
+| 变更 | `src/replLauncher.tsx` | 恢复交互 REPL 启动适配，保持 SDK 不加载 Ink 的边界。 |
+| 变更 | `src/dialogLaunchers.tsx` | 恢复终端对话框启动辅助，与交互组件源码同步。 |
+| 变更 | `src/interactiveHelpers.tsx` | 恢复交互模式公共辅助实现，配合 main 与 REPL 的原始源码。 |
+| 变更 | `src/entrypoints/cli.tsx` | 提供 version fast path，并将 help 及其他完整 CLI 路径动态加载到 main.tsx，是 dist/main.js 的源入口。 |
+| 变更 | `src/entrypoints/agentSdkTypes.ts` | 把父快照中抛错的 SDK 入口接到 query、MCP、V2、sessions 和 cron 实现，同时保留未支持边界。 |
+| 变更 | `src/entrypoints/sdk/coreSchemas.ts` | 作为核心可序列化 SDK 类型的 Zod source of truth。 |
+| 变更 | `src/entrypoints/sdk/controlSchemas.ts` | 定义 SDK control 消息的 schema，并驱动 controlTypes 生成。 |
+| 变更 | `src/entrypoints/sdk/coreTypes.generated.ts` | 由 coreSchemas 生成的核心类型文件，补齐父快照缺失的公共 import。 |
+| 变更 | `src/entrypoints/sdk/controlTypes.ts` | 由 controlSchemas 生成并 re-export core types，修复 SDK/bridge 类型缺口。 |
+| 变更 | `src/utils/sdkQuery.ts` | 实现同进程 SDK 初始化、异步输入、权限、MCP、模型控制、消息 yield 与资源清理。 |
+| 变更 | `src/utils/sdkSessionConversation.ts` | 实现 V2 多轮会话，让每 turn 在 result 结束而底层 query 保持可用。 |
+| 变更 | `src/utils/sdkSessions.ts` | 实现 portable JSONL list/read/rename/tag/fork 和 fresh UUID parent chain。 |
+| 变更 | `src/utils/cronScheduler.ts` | 恢复文件型计划任务调度、锁和 missed/fire 事件，供 SDK watch 接口复用。 |
+| 变更 | `src/utils/cronNotification.ts` | 独立实现 missed-task 格式化、用户确认提示与动态 fence 防护。 |
+| 变更 | `src/services/mcp/client.ts` | 恢复 MCP 工具、命令和资源发现，供 process 与 SDK 工具池组合复用。 |
+| 变更 | `src/services/mcp/MCPConnectionManager.tsx` | 恢复 MCPConnectionManager React context 的原始 TSX；SDK process MCP 直接使用 services/mcp/client.ts，本文件没有 SDK cleanup 适配。 |
+| 变更 | `tests/toolPool.test.ts` | 添加两个工具池回归测试，检查无 null、唯一名称和核心工具集合。 |
+| 变更 | `tests/sdkMcp.test.ts` | 添加 in-process MCP metadata 与 invocation 测试。 |
+| 变更 | `tests/sdkSessions.test.ts` | 添加离线 JSONL session mutations、pagination 和 fork UUID 链测试。 |
+| 变更 | `tests/sdkCron.test.ts` | 添加 missed-task 动态 fence、事件格式和 abort 测试。 |
+| 变更 | `tests/lsp.test.ts` | 添加 LSP lifecycle options 接受和 stopped 状态下 stop() 安全返回测试，不覆盖真实崩溃重启或运行中进程清理。 |
+
+### 大型快照分组核对
+
+- 恢复 assistant chooser、gate、discovery 和入口，形成会话选择辅助边界。：`src/assistant/`，4 个文件。
+- 调整共享 bootstrap/AppState，使 CLI 与 SDK 初始化能够复用。：`src/bootstrap/`，1 个文件。
+- 加入 peer session 与 webhook 清理辅助；bridge 产品协议并未因此全部恢复。：`src/bridge/`，2 个文件。
+- 恢复 companion observer 与通知/UI 适配，属于附加交互功能。：`src/buddy/`，3 个文件。
+- 恢复 headless、后台任务、transports、structured IO、rollback 和 CLI handlers。：`src/cli/`，11 个文件。
+- 批量恢复 slash commands 原始 TS/TSX，并加入 buddy、fork 等命令适配。：`src/commands/`，87 个文件。
+- 最大的 UI 源码恢复组，还原终端组件并适配消息、权限、设置和输入行为。：`src/components/`，370 个文件。
+- 恢复共享常量与产品配置，配合 external 构建和入口行为。：`src/constants/`，3 个文件。
+- 恢复项目上下文构造与系统提示辅助，保持查询输入契约。：`src/context/`，9 个文件。
+- 恢复协调者模式边界；该源码存在不代表 internal coordinator 已在 external 验证。：`src/coordinator/`，1 个文件。
+- 恢复 daemon 相关适配并保留远程协议限制，不等同于 connectRemoteControl 完成。：`src/daemon/`，2 个文件。
+- CLI/SDK 入口、Zod schemas、生成类型和公共工具类型组，是构建与 API 恢复核心。：`src/entrypoints/`，10 个文件。
+- 恢复环境 runner 适配，保持特定运行环境的独立边界。：`src/environment-runner/`，1 个文件。
+- 为私有 computer-use、Chrome 等 @ant/* 模块提供明确 external 编译替代边界。：`src/external-stubs/`，7 个文件。
+- 批量恢复 React/session/tool hooks，并适配共享状态和权限流程。：`src/hooks/`，32 个文件。
+- 恢复 Ink 渲染、事件和布局支撑，与 components/screens 的原始源码匹配。：`src/ink/`，21 个文件。
+- 恢复 job 支撑模块，为后台工作提供独立抽象。：`src/jobs/`，1 个文件。
+- 恢复键位配置和输入映射，配合终端 UI 源码。：`src/keybindings/`，3 个文件。
+- 恢复记忆目录辅助实现，保持项目上下文持久化边界。：`src/memdir/`，1 个文件。
+- 恢复独立附加功能模块，保留原目录隔离。：`src/moreright/`，1 个文件。
+- 恢复原生能力 TypeScript 适配，不扩大平台验证结论。：`src/native-ts/`，1 个文件。
+- 恢复 proactive 模块的 external/disabled 边界，不声明内部能力启用。：`src/proactive/`，2 个文件。
+- 恢复核心查询辅助模块，配合 query.ts 的模型与工具循环。：`src/query/`，1 个文件。
+- 恢复远程会话辅助代码，但 remote-control 协议仍属于受阻范围。：`src/remote/`，1 个文件。
+- 恢复 REPL 等屏幕级大型 TSX 源码，是批量原始 UI 还原的重要组成。：`src/screens/`，3 个文件。
+- 恢复 self-hosted runner 边界，不据此声明 hosted 环境验证。：`src/self-hosted-runner/`，1 个文件。
+- 恢复 server 与传输适配，包含 SDK/CLI 所需服务端支撑。：`src/server/`，8 个文件。
+- 恢复 API、MCP、LSP、OAuth、compact 等服务并修复生命周期接口。：`src/services/`，36 个文件。
+- 恢复技能加载和 bundled skill 适配，继续复用命令注册体系。：`src/skills/`，5 个文件。
+- 恢复 SSH 相关传输辅助，保留其环境依赖。：`src/ssh/`，2 个文件。
+- 恢复共享状态辅助，配合 bootstrap 与 SDK/CLI 初始化。：`src/state/`，1 个文件。
+- 恢复后台任务类型与实现，配合 CLI/SDK 任务支撑。：`src/tasks/`，6 个文件。
+- 恢复内建工具原始源码和缺失实现，支撑统一 tool pool。：`src/tools/`，52 个文件。
+- 恢复通用传输接口，与 CLI、SDK 和远程适配解耦。：`src/transport/`，2 个文件。
+- 补齐 message、tools、SDK 等共享类型，修复父快照核心导入缺口。：`src/types/`，9 个文件。
+- 恢复通用支撑并新增 SDK query/session/cron 等关键实现，是功能恢复最大核心组之一。：`src/utils/`，63 个文件。
+
+## 关键决策与工程取舍
+
+- 发布文档明确选择保留 4b9d30f 基线历史，不创建 orphan branch、不重写 baseline，使恢复 diff 与父快照可以直接核对。
+- 构建固定 USER_TYPE=external 与 features: []，私有模块采用显式 stub 或裁剪；对未恢复能力保留 unavailable/unsupported，而非返回伪成功。
+- SDK 同进程复用 QueryEngine、AppState、工具、权限和 MCP 管理，而非复制 agent loop 或嵌入终端 UI，从而支持 async input、callback、流式消息与长会话。
+- 以 Zod schemas 作为 serializable SDK types 的 source of truth，并提交生成结果供源码 import、IDE 和 declaration emit 使用；build 每次重新生成以减少漂移。
+- portable sessions 直接操作 JSONL，避免依赖交互 CLI 的全局 session 状态；V2 把单 turn 的流结束与底层 query 生命周期分离。
+- 状态文档把 Verified、Implemented/unverified、Not implemented、Explicitly disabled 和 Blocked on protocol 分开，并明确 build success 不能自动提升功能状态。
+- README 同时修正父版把 QueryEngine.ts、Tool.ts、commands.ts 字节量级写成行数的描述，采用约 1.3K、800、750 行的实测尺度。
+
+### 备选方案与回溯分析
+
+- 回溯性工程分析：SDK 可以 spawn headless CLI 以获得更强进程隔离，但 async control、in-process MCP、cleanup 和 V2 长会话会更复杂；同进程方案的代价是共享全局状态与环境变量。
+- 回溯性工程分析：手写 SDK declarations 可去掉生成器，却容易与 Zod schemas 漂移；当前轻量文本扫描方案要求 schema 保持 export const ...Schema 的匹配格式。
+- 回溯性工程分析：一次恢复全部 internal/ant 功能可能追求表面 feature parity，但会引入私有依赖和未知协议；external-first 更容易验证，却不能证明内部路径兼容。
+- 回溯性工程分析：让 unsupported API 返回空成功可暂时减少调用方错误，但会破坏 API 语义并掩盖缺口；显式失败更适合作为恢复边界。
+- 回溯性工程分析：只用最小 smoke 而不恢复离线测试会降低变更成本，但无法覆盖 JSONL UUID 链、cron fence/abort 和 in-process MCP 等容易回归的细节。
+- 回溯性工程分析：BUILD_OUTDIR 可进一步同时约束 declaration 输出；当前只改 Bun JS 输出目录而 build:types 固定写 dist/types，属于保留的构建接口限制。
+
+## 安全与协议边界
+
+- external define、空 features 和 external stubs 收缩公开构建功能面，但不是文件系统、进程或网络安全沙箱，也不能证明被排除的内部实现安全。
+- .gitignore 排除环境文件、key/PEM、credentials.json、service-account.json、依赖、构建产物和日志，但未覆盖 plainTextStorage 实际写入的 .credentials.json；防误提交覆盖因此不完整，也不等同于 secret scan 或仓库无敏感信息的独立审计。
+- 真实模型检查的文档记录使用 session configured provider 与 isolated HOME，且不在仓库存放凭据；本文不披露任何凭据，也不把该声明扩展为 USER_TYPE=ant 验证。
+- macOS 使用 Keychain 并保留 plaintext fallback，其他平台当前依赖 fallback，Linux libsecret 仍未实现；凭据静态保护因此是明确剩余风险。
+- SDK 的 options.env 会增删 process.env，核心还使用 bootstrap 全局状态；同进程并发、多租户或不同配置 query 的隔离不能仅凭 portable session 文件得到保证。
+- session 目录和文件采用 0700/0600 创建模式并校验 session UUID；fork 不复制 undo history。secret-bearing JSON 仍不得写日志或放入命令行参数。
+- missed-task prompt 要求先询问用户确认，并使用长于内容中任意 backtick run 的动态 fence，降低持久任务内容逃逸为即时指令的风险。
+- allowDangerouslySkipPermissions 是调用方显式承担的高权限选项；canUseTool 与权限系统的存在不意味着所有工具调用默认安全。
+
+## 验收标准
+
+- 构建验收应同时得到 dist/main.js、dist/sdk.mjs 和 dist/types/entrypoints/agentSdkTypes.d.ts，并确认 bin、根 import/types export 与 ./cli 映射一致。
+- 生成验收应核对 coreSchemas/controlSchemas 到生成类型的来源关系；提交内记录的通过结果为 125 core types、59 control types、typecheck 零错误。
+- 测试验收应区分 5 个新增测试文件、7 个 test() 与 STATUS 记录的 7 tests/38 assertions passed，不能把测试文件存在本身写成执行证据。
+- CLI 验收记录包括 version/help 和真实 model + Read round trip；SDK 验收记录包括 source/packaged query、in-process MCP、V2 multi-turn/resume、abort cleanup 与 scheduled-task formatting/abort。
+- 工具池测试应证明无 null、名称唯一和核心 Agent/Bash/Read/Edit/Write/Glob/Grep 存在；23 个工具的数量来自 STATUS 的另行 smoke，不是该测试自身断言。
+- LSP 验收只能声称 lifecycle options 被接受及 stopped 状态下 stop() 可安全返回，不能扩大为真实 crash/restart、shutdown-timeout kill 或运行中进程清理已测试。
+- 能力验收必须保留 rewind、remote control、SDK controls、Linux secret storage、marketplace、Cloud xattr 和 internal features 的未完成或禁用状态。
+- 发布验收在此 revision 只能确认 CI workflow 和发布文档已加入；不得声称 repository creation、push 或 GitHub Actions 已通过。
+
+## 验证证据
+
+| 类型 | 证据陈述 | 来源 |
+|---|---|---|
+| diff-observed | 相对父快照观察到 789 个变更路径：173 A、616 M、零删除、零 rename；src/ 占 772，tests/ 为 5，另有构建、CI 和文档文件。 | 该提交 diff 与 Git 元数据 |
+| diff-observed | 395 个修改文件明确移除父版 react/compiler-runtime 转换痕迹，552 个修改文件字节数缩小超过 50%；这些统计用于识别批量源码恢复，不把其余修改全部归类为手工新功能。 | `docs/RELEASE.md` |
+| recorded-command-pass | STATUS 记录 bun install --frozen-lockfile、bun run typecheck 和 bun run build 通过，build 包含 CLI、SDK 与 declarations；这是提交携带的执行记录，不是本次文档编写时复跑。 | `docs/STATUS.md` |
+| recorded-command-pass | STATUS 记录 bun run generate:sdk-types 成功生成 125 个 core types 和 59 个 control types。 | `docs/STATUS.md` |
+| recorded-command-pass | STATUS 记录 bun test 完成 7 tests、38 assertions passed；该记录与五个新增测试文件相互对应，但完整测试日志未随提交保存。 | `docs/STATUS.md` |
+| recorded-command-pass | STATUS 记录 CLI version/help 成功，真实 model + Read round trip 返回 CLI_TOOL_ROUNDTRIP_OK；检查使用 configured provider 和 isolated HOME。 | `docs/STATUS.md` |
+| recorded-command-pass | STATUS 记录 source/packaged SDK query、in-process MCP model round trip、V2 multi-turn/resume recall、query abort cleanup 和 packaged dist/sdk.mjs query 均通过。 | `docs/STATUS.md` |
+| test-added | 新增两个工具池测试，覆盖无 null、名称唯一和核心内建工具存在；它本身不断言 23 个工具。 | `tests/toolPool.test.ts` |
+| test-added | 新增一个 in-process MCP 测试，覆盖工具 metadata 与同进程 invocation。 | `tests/sdkMcp.test.ts` |
+| test-added | 新增一个 portable session 测试，覆盖 list/read/pagination、rename/tag、fork fresh UUID chain 和非法 title。 | `tests/sdkSessions.test.ts` |
+| test-added | 新增两个 scheduled-task 测试，覆盖动态 fence、初始 missed event，以及调用 abort 后手动 iterator.return() 的清理路径；未覆盖正常 fire、recurring、jitter、锁或 abort 单独终止迭代。 | `tests/sdkCron.test.ts` |
+| test-added | 新增一个 LSP 配置测试，只验证 lifecycle options 被接受及 stopped 状态下 stop() 可安全返回，没有触发真实 crash restart、timeout kill 或运行中进程清理。 | `tests/lsp.test.ts` |
+| diff-observed | 构建源码固定注入 USER_TYPE=external 和 features: []；提交内没有 USER_TYPE=ant 构建或运行验证记录，因此不作该环境的能力声明。 | `scripts/build.ts` |
+| not-recorded | RELEASE 明确记载 repository creation 和 push 尚未执行，实际 commit SHA 与 GitHub Actions 结果留待后续；因此本记录不使用 recorded-ci-pass，也不声称发布完成。 | `docs/RELEASE.md` |
+
+## 实现状态与剩余范围
+
+- 状态：**implemented**
+- changed-file offset/limit 已转发到 FileReadTool，但 STATUS 标为 Implemented/unverified，仍缺专门回归测试。
+- SDK rewind、non-REPL prompt/agent stop hooks、getContextUsage、reloadPlugins、stopTask、applyFlagSettings、getSettings 等仍未实现或明确 unsupported。
+- connectRemoteControl、Cloud xattr 和 env-less perpetual bridge 分别等待 daemon/duplex、属性编码及 bridge-pointer/JWT 生命周期等权威协议。
+- Linux libsecret、npm marketplace source 和 ultraplan OAuth refresh 尚未完成；Linux 当前直接使用 plaintext credential storage，且 .credentials.json 未被 at-commit .gitignore 覆盖，仍是安全缺口。
+- LSP 测试没有真实 crash/timeout 生命周期覆盖，大量恢复 UI 也只能由 typecheck/build 提供有限证据，不能视为完整交互回归。
+- SDK 同进程全局 state 与 process.env 修改带来并发和配置隔离风险，需要在多 query 场景另行设计和验证。
+- 发布仍处于 preparing 状态，push、hosted Actions 与最终 release metadata 未完成；本记录没有独立重跑 at-commit 命令。

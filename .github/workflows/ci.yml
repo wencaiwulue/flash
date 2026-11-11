@@ -10,6 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
       - uses: oven-sh/setup-bun@v2
         with:
@@ -21,9 +22,7 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
       - name: Check commit documentation
-        run: |
-          bun scripts/document-commits.ts
-          bun scripts/check-commit-docs.ts
+        run: bun run docs:check
       - name: Test
         run: bun test
       - name: Build

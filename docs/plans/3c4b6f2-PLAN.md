@@ -3,29 +3,71 @@ commit: 3c4b6f2752cee47fd15ead682e6016fe48174bd8
 title: "Finalize previous commit documentation"
 date: 2026-11-11T11:20:31+08:00
 status: implemented
+kind: metadata-migration
 ---
 
-# Implementation plan: Finalize previous commit documentation
+# 实施计划：Finalize previous commit documentation
 
-## Objective
+> 本文按实际代码依赖重建实施顺序，用于说明怎样完成该提交；不伪称是历史提交当时保存的计划。
 
-Finalize previous commit documentation。保持现有 CLI/SDK 接口、feature gating 与权限边界，完成该提交对应的实现、修复或文档工作。
+## 目标与前置条件
 
-## Implementation steps
+e8d8c06 刚刚完成的是 4329cd8 的补档，本提交则要为 e8d8c06 自己补档。相同提交标题叠加两层文档关系，最容易把新建 e8d8c06 文件误写成修改 4329cd8 文件。
 
-1. 复核目标、现有实现和复用模块。
-2. 按提交范围修改实现并补充回归。
-3. 执行验证、记录状态与未实现边界。
+- 厘清 e8d8c06 是当前文档对象，4329cd8 是其 SPEC 内的历史范围，fdffe9e 才是实际 parent。
 
-## Risks and mitigations
+## 复用与兼容处理
 
-不引入新的凭据、私有协议或绕过现有权限的行为。
+### 复用现有实现
 
-## Verification sequence
+- 沿用相邻条目的字段顺序与 Markdown 小节，保持 f5b097b 和 self 的相对位置。
 
-bun test、bun run typecheck、bun run build 及对应 CI 检查。
+### 兼容、迁移与生命周期
 
-## Completion status and remaining work
+- 已有 79 至 81 计数对应的历史行保持原顺序，只追加新一代入口。
 
-- Status: **implemented**
-- Remaining: 无该提交范围内的未实现项。
+## 文件级实施步骤
+
+### 1. 建立 e8d8c06 规格
+
+填写 e8d8c06 身份，并如实抄录其 4329cd8 两文件范围与 78+1 统计。
+
+涉及位置：`docs/specs/e8d8c06-SPEC.md`
+
+### 2. 建立 e8d8c06 计划
+
+使用相同提交日期和 Finalize 标题，生成计划的各个标准小节。
+
+涉及位置：`docs/plans/e8d8c06-PLAN.md`
+
+### 3. 移动汇总到 82
+
+在 f5b097b 行之后加入 e8d8c06，保持 self 行不动。
+
+涉及位置：`docs/INDEX.md`
+
+### 4. 登记 e8d8c06 JSON
+
+让机器条目指向新建 SPEC/PLAN，而不是其内部提到的 4329cd8 文件。
+
+涉及位置：`docs/status/index.json`
+
+## 风险与处理
+
+- 同名 Finalize 提交连续出现，完整 SHA 与嵌套路径若未同时核对，就可能错配一代。
+
+## 验证顺序
+
+1. 检查 e8d8c06 原始 name-status 与 SPEC 路径块，并核对当前 INDEX/JSON 的 82 计数和新对象。
+
+## 完成状态与剩余工作
+
+- 状态：**implemented**
+
+### 已完成
+
+- e8d8c06 自身的两个文档与两个索引入口已经补齐。
+
+### 未完成或后续工作
+
+- 通用计划没有执行证据，也没有更细的生成过程说明。

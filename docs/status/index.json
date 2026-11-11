@@ -6,6 +6,7 @@
       "date": "2026-03-31T03:34:03-07:00",
       "subject": "asdf",
       "status": "partial",
+      "kind": "component",
       "spec": "docs/specs/4b9d30f-SPEC.md",
       "plan": "docs/plans/4b9d30f-PLAN.md"
     },
@@ -15,6 +16,7 @@
       "date": "2026-11-10T11:39:20+08:00",
       "subject": "Restore CLI and SDK build",
       "status": "implemented",
+      "kind": "component",
       "spec": "docs/specs/9b2a352-SPEC.md",
       "plan": "docs/plans/9b2a352-PLAN.md"
     },
@@ -24,6 +26,7 @@
       "date": "2026-11-10T12:41:48+08:00",
       "subject": "Complete secure storage, marketplace, and SDK controls",
       "status": "implemented",
+      "kind": "component",
       "spec": "docs/specs/6b7bf48-SPEC.md",
       "plan": "docs/plans/6b7bf48-PLAN.md"
     },
@@ -33,6 +36,7 @@
       "date": "2026-11-10T12:44:19+08:00",
       "subject": "Document feature completion and CI results",
       "status": "implemented",
+      "kind": "evidence-update",
       "spec": "docs/specs/e5c06bc-SPEC.md",
       "plan": "docs/plans/e5c06bc-PLAN.md"
     },
@@ -42,6 +46,7 @@
       "date": "2026-11-10T15:53:19+08:00",
       "subject": "Unblock remote control and Cloud persistence",
       "status": "implemented",
+      "kind": "component",
       "spec": "docs/specs/02bc3c2-SPEC.md",
       "plan": "docs/plans/02bc3c2-PLAN.md"
     },
@@ -51,6 +56,7 @@
       "date": "2026-11-10T15:56:54+08:00",
       "subject": "Document remote control and Cloud verification",
       "status": "implemented",
+      "kind": "evidence-update",
       "spec": "docs/specs/2ff078c-SPEC.md",
       "plan": "docs/plans/2ff078c-PLAN.md"
     },
@@ -60,6 +66,7 @@
       "date": "2026-11-10T18:48:33+08:00",
       "subject": "Enable external features and recover SDK parallel branches",
       "status": "implemented",
+      "kind": "component",
       "spec": "docs/specs/614bf48-SPEC.md",
       "plan": "docs/plans/614bf48-PLAN.md"
     },
@@ -69,6 +76,7 @@
       "date": "2026-11-10T19:13:06+08:00",
       "subject": "Implement monitoring and simple internal tools",
       "status": "implemented",
+      "kind": "component",
       "spec": "docs/specs/301a3e7-SPEC.md",
       "plan": "docs/plans/301a3e7-PLAN.md"
     },
@@ -78,6 +86,7 @@
       "date": "2026-11-10T19:29:50+08:00",
       "subject": "Implement proactive state and coordinator workers",
       "status": "implemented",
+      "kind": "component",
       "spec": "docs/specs/edcaa95-SPEC.md",
       "plan": "docs/plans/edcaa95-PLAN.md"
     },
@@ -87,6 +96,7 @@
       "date": "2026-11-10T19:33:02+08:00",
       "subject": "Make feature profile test CI-independent",
       "status": "implemented",
+      "kind": "component",
       "spec": "docs/specs/e2e0ff6-SPEC.md",
       "plan": "docs/plans/e2e0ff6-PLAN.md"
     },
@@ -96,6 +106,7 @@
       "date": "2026-11-10T19:47:22+08:00",
       "subject": "Implement local skill discovery",
       "status": "implemented",
+      "kind": "component",
       "spec": "docs/specs/e92caa6-SPEC.md",
       "plan": "docs/plans/e92caa6-PLAN.md"
     },
@@ -105,6 +116,7 @@
       "date": "2026-11-10T19:59:18+08:00",
       "subject": "Implement UDS inbox and peer discovery",
       "status": "implemented",
+      "kind": "component",
       "spec": "docs/specs/809351a-SPEC.md",
       "plan": "docs/plans/809351a-PLAN.md"
     },
@@ -114,6 +126,7 @@
       "date": "2026-11-10T20:11:39+08:00",
       "subject": "Implement daemon and remote control server lifecycle",
       "status": "implemented",
+      "kind": "component",
       "spec": "docs/specs/d2fafcd-SPEC.md",
       "plan": "docs/plans/d2fafcd-PLAN.md"
     },
@@ -122,7 +135,8 @@
       "shortSha": "ea80851",
       "date": "2026-11-10T20:30:36+08:00",
       "subject": "Implement declarative workflow execution",
-      "status": "implemented",
+      "status": "partial",
+      "kind": "component",
       "spec": "docs/specs/ea80851-SPEC.md",
       "plan": "docs/plans/ea80851-PLAN.md"
     },
@@ -131,7 +145,8 @@
       "shortSha": "31697a0",
       "date": "2026-11-10T20:47:04+08:00",
       "subject": "Implement context collapse and recovery",
-      "status": "implemented",
+      "status": "partial",
+      "kind": "component",
       "spec": "docs/specs/31697a0-SPEC.md",
       "plan": "docs/plans/31697a0-PLAN.md"
     },
@@ -141,6 +156,7 @@
       "date": "2026-11-10T20:59:02+08:00",
       "subject": "Implement reactive compaction recovery",
       "status": "implemented",
+      "kind": "component",
       "spec": "docs/specs/da942ac-SPEC.md",
       "plan": "docs/plans/da942ac-PLAN.md"
     },
@@ -150,6 +166,7 @@
       "date": "2026-11-10T21:01:21+08:00",
       "subject": "Document remaining implementation boundaries",
       "status": "implemented",
+      "kind": "evidence-update",
       "spec": "docs/specs/dab8405-SPEC.md",
       "plan": "docs/plans/dab8405-PLAN.md"
     },
@@ -159,6 +176,7 @@
       "date": "2026-11-10T22:28:04+08:00",
       "subject": "Enable Buddy and Fork Subagent",
       "status": "implemented",
+      "kind": "component",
       "spec": "docs/specs/982ab10-SPEC.md",
       "plan": "docs/plans/982ab10-PLAN.md"
     },
@@ -167,7 +185,8 @@
       "shortSha": "2bf435a",
       "date": "2026-11-10T22:42:16+08:00",
       "subject": "Implement history snipping",
-      "status": "implemented",
+      "status": "partial",
+      "kind": "component",
       "spec": "docs/specs/2bf435a-SPEC.md",
       "plan": "docs/plans/2bf435a-PLAN.md"
     },
@@ -176,7 +195,8 @@
       "shortSha": "0b68068",
       "date": "2026-11-10T22:53:28+08:00",
       "subject": "Implement ReviewArtifact and Hunter skill",
-      "status": "implemented",
+      "status": "partial",
+      "kind": "component",
       "spec": "docs/specs/0b68068-SPEC.md",
       "plan": "docs/plans/0b68068-PLAN.md"
     },
@@ -186,6 +206,7 @@
       "date": "2026-11-10T23:05:51+08:00",
       "subject": "Integrate SkillHub remote skills",
       "status": "implemented",
+      "kind": "component",
       "spec": "docs/specs/ab30aec-SPEC.md",
       "plan": "docs/plans/ab30aec-PLAN.md"
     },
@@ -195,6 +216,7 @@
       "date": "2026-11-10T23:23:22+08:00",
       "subject": "Implement open KAIROS functionality",
       "status": "implemented",
+      "kind": "component",
       "spec": "docs/specs/d5a675a-SPEC.md",
       "plan": "docs/plans/d5a675a-PLAN.md"
     },
@@ -204,6 +226,7 @@
       "date": "2026-11-10T23:43:33+08:00",
       "subject": "Integrate open computer use and browser MCP",
       "status": "implemented",
+      "kind": "component",
       "spec": "docs/specs/d925b12-SPEC.md",
       "plan": "docs/plans/d925b12-PLAN.md"
     },
@@ -213,6 +236,7 @@
       "date": "2026-11-11T00:06:18+08:00",
       "subject": "Add lifecycle regressions and race fixes",
       "status": "implemented",
+      "kind": "component",
       "spec": "docs/specs/a8c8b90-SPEC.md",
       "plan": "docs/plans/a8c8b90-PLAN.md"
     },
@@ -222,6 +246,7 @@
       "date": "2026-11-11T00:40:35+08:00",
       "subject": "Implement env-less perpetual continuity",
       "status": "implemented",
+      "kind": "component",
       "spec": "docs/specs/adaa8ff-SPEC.md",
       "plan": "docs/plans/adaa8ff-PLAN.md"
     },
@@ -231,6 +256,7 @@
       "date": "2026-11-11T00:44:19+08:00",
       "subject": "Isolate CI lifecycle test timing and cwd",
       "status": "implemented",
+      "kind": "component",
       "spec": "docs/specs/c43f42e-SPEC.md",
       "plan": "docs/plans/c43f42e-PLAN.md"
     },
@@ -240,6 +266,7 @@
       "date": "2026-11-11T00:50:26+08:00",
       "subject": "Make cron takeover test deterministic",
       "status": "implemented",
+      "kind": "component",
       "spec": "docs/specs/3948f91-SPEC.md",
       "plan": "docs/plans/3948f91-PLAN.md"
     },
@@ -249,6 +276,7 @@
       "date": "2026-11-11T01:02:40+08:00",
       "subject": "Reset cron scheduler state on stop and restart",
       "status": "implemented",
+      "kind": "component",
       "spec": "docs/specs/e31ff8f-SPEC.md",
       "plan": "docs/plans/e31ff8f-PLAN.md"
     },
@@ -258,6 +286,7 @@
       "date": "2026-11-11T01:07:01+08:00",
       "subject": "Record final CI verification",
       "status": "implemented",
+      "kind": "evidence-update",
       "spec": "docs/specs/271cf75-SPEC.md",
       "plan": "docs/plans/271cf75-PLAN.md"
     },
@@ -266,7 +295,8 @@
       "shortSha": "9cd4c63",
       "date": "2026-11-11T09:15:44+08:00",
       "subject": "Add live validation workflows and registry compatibility",
-      "status": "implemented",
+      "status": "partial",
+      "kind": "component",
       "spec": "docs/specs/9cd4c63-SPEC.md",
       "plan": "docs/plans/9cd4c63-PLAN.md"
     },
@@ -275,7 +305,8 @@
       "shortSha": "6ef3352",
       "date": "2026-11-11T09:18:52+08:00",
       "subject": "Allow live jobs without precreated environment",
-      "status": "implemented",
+      "status": "partial",
+      "kind": "component",
       "spec": "docs/specs/6ef3352-SPEC.md",
       "plan": "docs/plans/6ef3352-PLAN.md"
     },
@@ -284,7 +315,8 @@
       "shortSha": "85028f7",
       "date": "2026-11-11T09:20:57+08:00",
       "subject": "Isolate live workflow job parsing",
-      "status": "implemented",
+      "status": "partial",
+      "kind": "component",
       "spec": "docs/specs/85028f7-SPEC.md",
       "plan": "docs/plans/85028f7-PLAN.md"
     },
@@ -293,7 +325,8 @@
       "shortSha": "17f52b5",
       "date": "2026-11-11T09:22:15+08:00",
       "subject": "Test live workflow without job conditions",
-      "status": "implemented",
+      "status": "partial",
+      "kind": "component",
       "spec": "docs/specs/17f52b5-SPEC.md",
       "plan": "docs/plans/17f52b5-PLAN.md"
     },
@@ -303,6 +336,7 @@
       "date": "2026-11-11T09:23:48+08:00",
       "subject": "Re-register live validation workflow",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/4dd93b7-SPEC.md",
       "plan": "docs/plans/4dd93b7-PLAN.md"
     },
@@ -311,7 +345,8 @@
       "shortSha": "b183b9a",
       "date": "2026-11-11T09:28:02+08:00",
       "subject": "Gate live validation jobs on available environments",
-      "status": "implemented",
+      "status": "partial",
+      "kind": "component",
       "spec": "docs/specs/b183b9a-SPEC.md",
       "plan": "docs/plans/b183b9a-PLAN.md"
     },
@@ -320,7 +355,8 @@
       "shortSha": "4c04383",
       "date": "2026-11-11T09:29:51+08:00",
       "subject": "Use env context for live job gating",
-      "status": "implemented",
+      "status": "partial",
+      "kind": "component",
       "spec": "docs/specs/4c04383-SPEC.md",
       "plan": "docs/plans/4c04383-PLAN.md"
     },
@@ -329,7 +365,8 @@
       "shortSha": "b160aef",
       "date": "2026-11-11T09:31:11+08:00",
       "subject": "Use explicit expressions for live gating",
-      "status": "implemented",
+      "status": "partial",
+      "kind": "component",
       "spec": "docs/specs/b160aef-SPEC.md",
       "plan": "docs/plans/b160aef-PLAN.md"
     },
@@ -338,7 +375,8 @@
       "shortSha": "97b13fd",
       "date": "2026-11-11T09:33:58+08:00",
       "subject": "Move live validation gating into scripts",
-      "status": "implemented",
+      "status": "partial",
+      "kind": "component",
       "spec": "docs/specs/97b13fd-SPEC.md",
       "plan": "docs/plans/97b13fd-PLAN.md"
     },
@@ -348,6 +386,7 @@
       "date": "2026-11-11T09:40:42+08:00",
       "subject": "Skip desktop validation without self-hosted runner",
       "status": "implemented",
+      "kind": "component",
       "spec": "docs/specs/e900423-SPEC.md",
       "plan": "docs/plans/e900423-PLAN.md"
     },
@@ -356,7 +395,8 @@
       "shortSha": "4dbadb8",
       "date": "2026-11-11T09:42:27+08:00",
       "subject": "Record live validation workflow success",
-      "status": "implemented",
+      "status": "partial",
+      "kind": "evidence-update",
       "spec": "docs/specs/4dbadb8-SPEC.md",
       "plan": "docs/plans/4dbadb8-PLAN.md"
     },
@@ -365,7 +405,8 @@
       "shortSha": "beee034",
       "date": "2026-11-11T10:06:54+08:00",
       "subject": "Support settings-based bearer authentication",
-      "status": "implemented",
+      "status": "partial",
+      "kind": "component",
       "spec": "docs/specs/beee034-SPEC.md",
       "plan": "docs/plans/beee034-PLAN.md"
     },
@@ -374,7 +415,8 @@
       "shortSha": "587c466",
       "date": "2026-11-11T10:37:55+08:00",
       "subject": "Document every commit with specs and plans",
-      "status": "implemented",
+      "status": "partial",
+      "kind": "component",
       "spec": "docs/specs/587c466-SPEC.md",
       "plan": "docs/plans/587c466-PLAN.md"
     },
@@ -384,6 +426,7 @@
       "date": "2026-11-11T10:43:47+08:00",
       "subject": "Finalize self record for current commit",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/8117aaa-SPEC.md",
       "plan": "docs/plans/8117aaa-PLAN.md"
     },
@@ -393,6 +436,7 @@
       "date": "2026-11-11T10:45:50+08:00",
       "subject": "Finalize previous self documentation",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/c4e19ce-SPEC.md",
       "plan": "docs/plans/c4e19ce-PLAN.md"
     },
@@ -402,6 +446,7 @@
       "date": "2026-11-11T10:48:19+08:00",
       "subject": "Finalize self record for previous commit",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/17c9196-SPEC.md",
       "plan": "docs/plans/17c9196-PLAN.md"
     },
@@ -411,6 +456,7 @@
       "date": "2026-11-11T10:50:48+08:00",
       "subject": "Finalize commit documentation for previous change",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/f210ce9-SPEC.md",
       "plan": "docs/plans/f210ce9-PLAN.md"
     },
@@ -420,6 +466,7 @@
       "date": "2026-11-11T10:51:16+08:00",
       "subject": "Finalize self documentation for current commit",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/7740a1d-SPEC.md",
       "plan": "docs/plans/7740a1d-PLAN.md"
     },
@@ -429,6 +476,7 @@
       "date": "2026-11-11T10:53:02+08:00",
       "subject": "Complete self documentation for previous commit",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/fe3c177-SPEC.md",
       "plan": "docs/plans/fe3c177-PLAN.md"
     },
@@ -438,6 +486,7 @@
       "date": "2026-11-11T10:53:49+08:00",
       "subject": "Finalize previous commit self documentation",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/63e138f-SPEC.md",
       "plan": "docs/plans/63e138f-PLAN.md"
     },
@@ -447,6 +496,7 @@
       "date": "2026-11-11T10:56:11+08:00",
       "subject": "Finalize self record to previous SHA on next commit",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/80e6def-SPEC.md",
       "plan": "docs/plans/80e6def-PLAN.md"
     },
@@ -456,6 +506,7 @@
       "date": "2026-11-11T10:57:38+08:00",
       "subject": "Complete all commit documentation records",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/7ca78c1-SPEC.md",
       "plan": "docs/plans/7ca78c1-PLAN.md"
     },
@@ -465,6 +516,7 @@
       "date": "2026-11-11T10:59:48+08:00",
       "subject": "Finalize previous commit documentation records",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/f251df9-SPEC.md",
       "plan": "docs/plans/f251df9-PLAN.md"
     },
@@ -474,6 +526,7 @@
       "date": "2026-11-11T11:02:02+08:00",
       "subject": "Complete documentation for previous commit",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/2fe47f6-SPEC.md",
       "plan": "docs/plans/2fe47f6-PLAN.md"
     },
@@ -483,6 +536,7 @@
       "date": "2026-11-11T11:02:53+08:00",
       "subject": "Finalize documentation for previous commit",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/f355de1-SPEC.md",
       "plan": "docs/plans/f355de1-PLAN.md"
     },
@@ -492,6 +546,7 @@
       "date": "2026-11-11T11:03:24+08:00",
       "subject": "Finalize documentation for previous change",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/55f7c7e-SPEC.md",
       "plan": "docs/plans/55f7c7e-PLAN.md"
     },
@@ -501,6 +556,7 @@
       "date": "2026-11-11T11:03:52+08:00",
       "subject": "Complete commit documentation for previous commit",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/d802331-SPEC.md",
       "plan": "docs/plans/d802331-PLAN.md"
     },
@@ -510,6 +566,7 @@
       "date": "2026-11-11T11:04:20+08:00",
       "subject": "Finalize previous commit documentation",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/335b217-SPEC.md",
       "plan": "docs/plans/335b217-PLAN.md"
     },
@@ -519,6 +576,7 @@
       "date": "2026-11-11T11:04:47+08:00",
       "subject": "Complete documentation for current and previous commits",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/0640471-SPEC.md",
       "plan": "docs/plans/0640471-PLAN.md"
     },
@@ -528,6 +586,7 @@
       "date": "2026-11-11T11:05:14+08:00",
       "subject": "Complete documentation for previous commit",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/501672c-SPEC.md",
       "plan": "docs/plans/501672c-PLAN.md"
     },
@@ -537,6 +596,7 @@
       "date": "2026-11-11T11:05:45+08:00",
       "subject": "Finalize previous commit documentation",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/2f55f19-SPEC.md",
       "plan": "docs/plans/2f55f19-PLAN.md"
     },
@@ -546,6 +606,7 @@
       "date": "2026-11-11T11:06:14+08:00",
       "subject": "Complete previous commit documentation",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/d472e5c-SPEC.md",
       "plan": "docs/plans/d472e5c-PLAN.md"
     },
@@ -555,6 +616,7 @@
       "date": "2026-11-11T11:06:43+08:00",
       "subject": "Finalize previous commit documentation",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/3fbabc2-SPEC.md",
       "plan": "docs/plans/3fbabc2-PLAN.md"
     },
@@ -564,6 +626,7 @@
       "date": "2026-11-11T11:08:23+08:00",
       "subject": "Complete previous commit documentation",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/1bc02bf-SPEC.md",
       "plan": "docs/plans/1bc02bf-PLAN.md"
     },
@@ -573,6 +636,7 @@
       "date": "2026-11-11T11:08:53+08:00",
       "subject": "Finalize documentation for previous commit",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/1329f79-SPEC.md",
       "plan": "docs/plans/1329f79-PLAN.md"
     },
@@ -582,6 +646,7 @@
       "date": "2026-11-11T11:09:24+08:00",
       "subject": "Complete previous commit documentation",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/be5c03e-SPEC.md",
       "plan": "docs/plans/be5c03e-PLAN.md"
     },
@@ -591,6 +656,7 @@
       "date": "2026-11-11T11:09:50+08:00",
       "subject": "Finalize documentation for previous commit",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/2a4aa6c-SPEC.md",
       "plan": "docs/plans/2a4aa6c-PLAN.md"
     },
@@ -600,6 +666,7 @@
       "date": "2026-11-11T11:10:16+08:00",
       "subject": "Complete previous commit documentation",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/0dabf46-SPEC.md",
       "plan": "docs/plans/0dabf46-PLAN.md"
     },
@@ -609,6 +676,7 @@
       "date": "2026-11-11T11:10:48+08:00",
       "subject": "Finalize previous commit documentation",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/612cc40-SPEC.md",
       "plan": "docs/plans/612cc40-PLAN.md"
     },
@@ -618,6 +686,7 @@
       "date": "2026-11-11T11:11:31+08:00",
       "subject": "Finalize documentation for previous commit",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/6c3c1e4-SPEC.md",
       "plan": "docs/plans/6c3c1e4-PLAN.md"
     },
@@ -627,6 +696,7 @@
       "date": "2026-11-11T11:12:02+08:00",
       "subject": "Complete previous commit documentation",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/96283ae-SPEC.md",
       "plan": "docs/plans/96283ae-PLAN.md"
     },
@@ -636,6 +706,7 @@
       "date": "2026-11-11T11:12:31+08:00",
       "subject": "Finalize documentation for previous commit",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/b6bf982-SPEC.md",
       "plan": "docs/plans/b6bf982-PLAN.md"
     },
@@ -645,6 +716,7 @@
       "date": "2026-11-11T11:12:59+08:00",
       "subject": "Complete previous commit documentation",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/787b2dc-SPEC.md",
       "plan": "docs/plans/787b2dc-PLAN.md"
     },
@@ -654,6 +726,7 @@
       "date": "2026-11-11T11:13:50+08:00",
       "subject": "Finalize previous commit documentation",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/6b0ce9d-SPEC.md",
       "plan": "docs/plans/6b0ce9d-PLAN.md"
     },
@@ -663,6 +736,7 @@
       "date": "2026-11-11T11:14:17+08:00",
       "subject": "Complete previous commit documentation",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/5c5bc03-SPEC.md",
       "plan": "docs/plans/5c5bc03-PLAN.md"
     },
@@ -672,6 +746,7 @@
       "date": "2026-11-11T11:15:03+08:00",
       "subject": "Finalize previous commit documentation",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/c771f05-SPEC.md",
       "plan": "docs/plans/c771f05-PLAN.md"
     },
@@ -681,6 +756,7 @@
       "date": "2026-11-11T11:15:31+08:00",
       "subject": "Complete previous commit documentation",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/dc3f075-SPEC.md",
       "plan": "docs/plans/dc3f075-PLAN.md"
     },
@@ -690,6 +766,7 @@
       "date": "2026-11-11T11:16:02+08:00",
       "subject": "Finalize previous commit documentation",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/1fe1430-SPEC.md",
       "plan": "docs/plans/1fe1430-PLAN.md"
     },
@@ -699,6 +776,7 @@
       "date": "2026-11-11T11:16:45+08:00",
       "subject": "Complete previous commit documentation",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/a4edc60-SPEC.md",
       "plan": "docs/plans/a4edc60-PLAN.md"
     },
@@ -708,6 +786,7 @@
       "date": "2026-11-11T11:17:15+08:00",
       "subject": "Finalize documentation for previous commit",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/e0cbbe1-SPEC.md",
       "plan": "docs/plans/e0cbbe1-PLAN.md"
     },
@@ -717,6 +796,7 @@
       "date": "2026-11-11T11:17:45+08:00",
       "subject": "Complete previous commit documentation",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/8a248e3-SPEC.md",
       "plan": "docs/plans/8a248e3-PLAN.md"
     },
@@ -726,6 +806,7 @@
       "date": "2026-11-11T11:18:31+08:00",
       "subject": "Finalize previous commit documentation",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/4329cd8-SPEC.md",
       "plan": "docs/plans/4329cd8-PLAN.md"
     },
@@ -735,6 +816,7 @@
       "date": "2026-11-11T11:18:59+08:00",
       "subject": "Complete previous commit documentation",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/f5b097b-SPEC.md",
       "plan": "docs/plans/f5b097b-PLAN.md"
     },
@@ -744,6 +826,7 @@
       "date": "2026-11-11T11:19:30+08:00",
       "subject": "Finalize previous commit documentation",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/e8d8c06-SPEC.md",
       "plan": "docs/plans/e8d8c06-PLAN.md"
     },
@@ -753,6 +836,7 @@
       "date": "2026-11-11T11:20:02+08:00",
       "subject": "Complete previous commit documentation",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/fdffe9e-SPEC.md",
       "plan": "docs/plans/fdffe9e-PLAN.md"
     },
@@ -762,6 +846,7 @@
       "date": "2026-11-11T11:20:31+08:00",
       "subject": "Finalize previous commit documentation",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/3c4b6f2-SPEC.md",
       "plan": "docs/plans/3c4b6f2-PLAN.md"
     },
@@ -771,6 +856,7 @@
       "date": "2026-11-11T11:21:15+08:00",
       "subject": "Complete previous commit documentation",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/c8338e1-SPEC.md",
       "plan": "docs/plans/c8338e1-PLAN.md"
     },
@@ -780,6 +866,7 @@
       "date": "2026-11-11T11:21:43+08:00",
       "subject": "Finalize previous commit documentation",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/69d3596-SPEC.md",
       "plan": "docs/plans/69d3596-PLAN.md"
     },
@@ -789,6 +876,7 @@
       "date": "2026-11-11T11:22:18+08:00",
       "subject": "Complete previous commit documentation",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/846c130-SPEC.md",
       "plan": "docs/plans/846c130-PLAN.md"
     },
@@ -798,14 +886,56 @@
       "date": "2026-11-11T11:23:01+08:00",
       "subject": "Finalize previous commit documentation",
       "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/0e2559a-SPEC.md",
       "plan": "docs/plans/0e2559a-PLAN.md"
     },
     {
-      "fullSha": "self",
-      "changeId": "commit-docs-bootstrap",
-      "subject": "Document commit specifications and plans",
+      "fullSha": "fe2ced6af51deecae060e1729f1b5ebe5f871f27",
+      "shortSha": "fe2ced6",
+      "date": "2026-11-11T11:23:32+08:00",
+      "subject": "Complete previous commit documentation",
       "status": "implemented",
+      "kind": "metadata-migration",
+      "spec": "docs/specs/fe2ced6-SPEC.md",
+      "plan": "docs/plans/fe2ced6-PLAN.md"
+    },
+    {
+      "fullSha": "5c5645575a79226d0a103b896681c9941d687d82",
+      "shortSha": "5c56455",
+      "date": "2026-11-11T11:24:03+08:00",
+      "subject": "Finalize previous commit documentation",
+      "status": "implemented",
+      "kind": "metadata-migration",
+      "spec": "docs/specs/5c56455-SPEC.md",
+      "plan": "docs/plans/5c56455-PLAN.md"
+    },
+    {
+      "fullSha": "9525612e328486ceb996e3ce3327c0119129bf29",
+      "shortSha": "9525612",
+      "date": "2026-11-11T11:26:09+08:00",
+      "subject": "Generate commit documentation before CI checks",
+      "status": "implemented",
+      "kind": "component",
+      "spec": "docs/specs/9525612-SPEC.md",
+      "plan": "docs/plans/9525612-PLAN.md"
+    },
+    {
+      "fullSha": "ab2d941c75f445320180c2559bc62e146238aacc",
+      "shortSha": "ab2d941",
+      "date": "2026-11-11T11:30:50+08:00",
+      "subject": "Record commit documentation CI success",
+      "status": "partial",
+      "kind": "evidence-update",
+      "spec": "docs/specs/ab2d941-SPEC.md",
+      "plan": "docs/plans/ab2d941-PLAN.md"
+    },
+    {
+      "fullSha": "self",
+      "changeId": "substantive-commit-docs",
+      "subject": "Rebuild substantive per-commit design and implementation documentation",
+      "status": "implemented",
+      "kind": "component",
       "spec": "docs/specs/self-SPEC.md",
       "plan": "docs/plans/self-PLAN.md"
     }

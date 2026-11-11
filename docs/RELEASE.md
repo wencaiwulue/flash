@@ -314,11 +314,25 @@ Local settings-based validation returned all four model sentinels. The workflow
 uses the matching `ANTHROPIC_AUTH_TOKEN` secret instead of treating it as an
 `x-api-key` credential or Claude OAuth.
 
-## Commit documentation policy
+## Substantive commit design documentation
 
-All 41 historical commits now have independent SPEC and PLAN documents with
-actual changed files, requirements, security constraints, verification, and
-remaining work. `docs/INDEX.md` and `docs/status/index.json` link every record,
-and `docs:check` enforces them in CI. A `self` record handles the current
-commit's SHA without recursive history rewrites. CI run `42952964466` passed
-with full-history generation and validation.
+All 93 historical commits now have independently reviewed design records and
+rendered SPEC/PLAN pairs. SPEC records the before-state, goals and non-goals,
+architecture and data flow, decisions, alternatives, security boundaries,
+acceptance criteria, evidence, and remaining scope. PLAN reconstructs the
+file-level implementation order, reuse, compatibility, risks, verification,
+and completed versus incomplete work. Metadata-only commits document their
+actual self/SHA and index migration rather than inventing product architecture.
+
+`scripts/commit-docs/records/` is the mandatory content source; missing records
+and generic fallback prose fail instead of being generated. Validation covers
+full-SHA inventory, changed-file and symbol references, immutable evidence
+revisions, descendant-only later evidence, placeholders, sensitive content,
+and duplicated substantive paragraphs. Automated checks do not replace the
+per-commit semantic review.
+
+Normal CI validates ancestor SHA records plus the current `self` record. The
+local `--next` mode also finalizes the current HEAD before a new commit. CI runs
+only the read-only `docs:check`; it no longer generates documents immediately
+before checking them. A new GitHub Actions result will be recorded separately
+only after that run actually completes.
