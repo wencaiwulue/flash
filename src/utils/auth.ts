@@ -274,6 +274,7 @@ export function getAnthropicApiKeyWithSource(
 
     if (
       !apiKeyEnv &&
+      !process.env.ANTHROPIC_AUTH_TOKEN &&
       !process.env.CLAUDE_CODE_OAUTH_TOKEN &&
       !process.env.CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR
     ) {

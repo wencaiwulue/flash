@@ -38,7 +38,10 @@ function context(model: string) {
 }
 
 async function main() {
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_AUTH_TOKEN) {
+    throw new Error('ANTHROPIC_API_KEY and ANTHROPIC_AUTH_TOKEN are mutually exclusive')
+  }
+  if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) {
     console.log('MODEL_LIVE_SKIPPED')
     return
   }

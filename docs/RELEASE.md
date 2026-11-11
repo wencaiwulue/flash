@@ -304,3 +304,12 @@ Live script checks returned `WORKFLOW_LIVE_OK`, `PROACTIVE_LIVE_OK`,
 are now supported. GitHub Actions `live-validation` run `42940722483` also
 passed, with model/Cloud skipped when their credentials are absent and desktop
 skipped when no self-hosted runner is configured.
+
+## Settings-based authentication
+
+`live-model-validation.ts` now accepts `ANTHROPIC_AUTH_TOKEN` directly from
+`~/.claude/settings.json` while rejecting ambiguous simultaneous API-key and
+Bearer-token configurations. The CI auth guard recognizes the same token type.
+Local settings-based validation returned all four model sentinels. The workflow
+uses the matching `ANTHROPIC_AUTH_TOKEN` secret instead of treating it as an
+`x-api-key` credential or Claude OAuth.

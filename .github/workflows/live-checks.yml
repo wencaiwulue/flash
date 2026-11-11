@@ -12,7 +12,7 @@ jobs:
   model:
     runs-on: ubuntu-latest
     env:
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      ANTHROPIC_AUTH_TOKEN: ${{ secrets.ANTHROPIC_AUTH_TOKEN }}
       ANTHROPIC_BASE_URL: ${{ secrets.ANTHROPIC_BASE_URL }}
     steps:
       - uses: actions/checkout@v4
@@ -22,7 +22,7 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun scripts/live-model-validation.ts
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_AUTH_TOKEN: ${{ secrets.ANTHROPIC_AUTH_TOKEN }}
           ANTHROPIC_BASE_URL: ${{ secrets.ANTHROPIC_BASE_URL }}
           HOME: /tmp/flash-live-home
           CLAUDE_CONFIG_DIR: /tmp/flash-live-config

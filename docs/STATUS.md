@@ -72,9 +72,9 @@ Real model checks used the session's configured provider with an isolated `HOME`
 | Cloud file persistence | Verified (offline) | Files API maps normalized output paths to file IDs; ambiguity, pagination, delay, partial failure, and abort tests passed; no xattr attribute guessed |
 | ultraplan OAuth refresh | Verified (mocked) | Refresh runs before every remote poll; `/ultraplan` is externally registered with Claude AI availability checks |
 | env-less perpetual bridge | Verified (offline isolated process) | Reuses cse_* and SSE cursor, skips create on resume, rebuilds after 401, preserves temporary teardown, and clears pointer only on explicit archive; live OAuth round trip not yet run |
-| Live model Workflow | Verified | Real `/live-flow` returned `WORKFLOW_LIVE_OK` |
-| Live proactive Sleep | Verified | Real Sleep call returned `PROACTIVE_LIVE_OK` |
-| Live context-collapse and reactive compaction | Verified | Real summarization returned `CONTEXT_COLLAPSE_LIVE_OK` and `REACTIVE_COMPACTION_LIVE_OK` |
+| Live model Workflow | Verified | Settings-based auth returned `WORKFLOW_LIVE_OK` |
+| Live proactive Sleep | Verified | Settings-based auth returned `PROACTIVE_LIVE_OK` |
+| Live context-collapse and reactive compaction | Verified | Settings-based auth returned `CONTEXT_COLLAPSE_LIVE_OK` and `REACTIVE_COMPACTION_LIVE_OK` |
 | Buddy and Fork Subagent | Verified (offline/build) | Deterministic bones, model soul persistence, reaction, mute command, fork cache placeholders, recursive guard, worktree notice, and `/fork` prompt tested |
 | Open KAIROS adapters | Verified (offline/build) | Assistant gate/team/session discovery, isolated team initialization, install wizard, SendUserFile, OS/webhook notifications, GitHub PR subscriptions, and dream registration tested |
 | Computer Use via Zavora MCP | Verified (metadata/permissions) | Real tool schemas and denied-action protection passed; native desktop control requires a separately authorized desktop session |
