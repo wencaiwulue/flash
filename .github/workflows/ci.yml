@@ -21,7 +21,9 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
       - name: Check commit documentation
-        run: bun scripts/check-commit-docs.ts
+        run: |
+          bun scripts/document-commits.ts
+          bun scripts/check-commit-docs.ts
       - name: Test
         run: bun test
       - name: Build
