@@ -63,6 +63,7 @@ jobs:
           CLAUDE_CONFIG_DIR: /tmp/flash-cloud-config
 
   desktop:
+    if: vars.CLAUDE_DESKTOP_LIVE == '1'
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
