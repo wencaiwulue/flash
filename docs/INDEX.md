@@ -1,6 +1,6 @@
 # Commit documentation index
 
-- Implemented: 53
+- Implemented: 54
 - Partial: 1
 - Unimplemented: 0
 
@@ -60,4 +60,5 @@
 | f251df9 | Finalize previous commit documentation records | implemented | [SPEC](../docs/specs/f251df9-SPEC.md) | [PLAN](../docs/plans/f251df9-PLAN.md) |
 | 2fe47f6 | Complete documentation for previous commit | implemented | [SPEC](../docs/specs/2fe47f6-SPEC.md) | [PLAN](../docs/plans/2fe47f6-PLAN.md) |
 | f355de1 | Finalize documentation for previous commit | implemented | [SPEC](../docs/specs/f355de1-SPEC.md) | [PLAN](../docs/plans/f355de1-PLAN.md) |
+| 55f7c7e | Finalize documentation for previous change | implemented | [SPEC](../docs/specs/55f7c7e-SPEC.md) | [PLAN](../docs/plans/55f7c7e-PLAN.md) |
 | self (commit-docs-bootstrap) | Document commit specifications and plans | implemented | [SPEC](../docs/specs/self-SPEC.md) | [PLAN](../docs/plans/self-PLAN.md) |
