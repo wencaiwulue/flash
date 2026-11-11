@@ -376,7 +376,7 @@ export async function buildCommitDocuments(): Promise<Map<string, string>> {
     partial: 0,
     unimplemented: 0,
   }
-  for (const commit of commits()) {
+  for (const commit of commits().slice(0, -1)) {
     const status = statusFor(commit)
     counts[status]++
     const specPath = `docs/specs/${commit.short}-SPEC.md`
