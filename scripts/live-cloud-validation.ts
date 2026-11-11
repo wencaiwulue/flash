@@ -12,12 +12,14 @@ import { runCleanupFunctions } from '../src/utils/cleanupRegistry.js'
 
 const cwd = await mkdtemp(join('/tmp', 'flash-cloud-live-'))
 const token = getClaudeAIOAuthTokens()?.accessToken
-if (!token) throw new Error('Claude OAuth is required for cloud validation')
-const orgUUID = process.env.CLAUDE_CODE_ORG_UUID ?? (await getOrganizationUUID())
-if (!orgUUID) throw new Error('Organization UUID is required')
-const baseUrl = process.env.CLAUDE_CODE_BASE_URL ?? getOauthConfig().BASE_API_URL
+if (!token) {
+  console.log('CLOUD_LIVE_SKIPPED')
+} else {
+  const orgUUID = process.env.CLAUDE_CODE_ORG_UUID ?? (await getOrganizationUUID())
+  if (!orgUUID) throw new Error('Organization UUID is required')
+  const baseUrl = process.env.CLAUDE_CODE_BASE_URL ?? getOauthConfig().BASE_API_URL
 
-function params(sessionCwd: string) {
+  function params(sessionCwd: string) {
   return {
     baseUrl,
     orgUUID,
@@ -57,4 +59,5 @@ try {
 } finally {
   await runCleanupFunctions()
   await rm(cwd, { recursive: true, force: true })
+}
 }

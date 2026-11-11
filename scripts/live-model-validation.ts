@@ -38,6 +38,10 @@ function context(model: string) {
 }
 
 async function main() {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    console.log('MODEL_LIVE_SKIPPED')
+    return
+  }
   enableConfigs()
   const model = getMainLoopModel()
   const toolContext = context(model)
