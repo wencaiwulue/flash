@@ -1,6 +1,6 @@
 # Commit documentation index
 
-- Implemented: 42
+- Implemented: 43
 - Partial: 1
 - Unimplemented: 0
 
@@ -49,4 +49,5 @@
 | beee034 | Support settings-based bearer authentication | implemented | [SPEC](../docs/specs/beee034-SPEC.md) | [PLAN](../docs/plans/beee034-PLAN.md) |
 | 587c466 | Document every commit with specs and plans | implemented | [SPEC](../docs/specs/587c466-SPEC.md) | [PLAN](../docs/plans/587c466-PLAN.md) |
 | 8117aaa | Finalize self record for current commit | implemented | [SPEC](../docs/specs/8117aaa-SPEC.md) | [PLAN](../docs/plans/8117aaa-PLAN.md) |
+| c4e19ce | Finalize previous self documentation | implemented | [SPEC](../docs/specs/c4e19ce-SPEC.md) | [PLAN](../docs/plans/c4e19ce-PLAN.md) |
 | self (commit-docs-bootstrap) | Document commit specifications and plans | implemented | [SPEC](../docs/specs/self-SPEC.md) | [PLAN](../docs/plans/self-PLAN.md) |
