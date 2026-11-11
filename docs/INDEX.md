@@ -1,6 +1,6 @@
 # Commit documentation index
 
-- Implemented: 40
+- Implemented: 41
 - Partial: 1
 - Unimplemented: 0
 
@@ -47,4 +47,5 @@
 | e900423 | Skip desktop validation without self-hosted runner | implemented | [SPEC](../docs/specs/e900423-SPEC.md) | [PLAN](../docs/plans/e900423-PLAN.md) |
 | 4dbadb8 | Record live validation workflow success | implemented | [SPEC](../docs/specs/4dbadb8-SPEC.md) | [PLAN](../docs/plans/4dbadb8-PLAN.md) |
 | beee034 | Support settings-based bearer authentication | implemented | [SPEC](../docs/specs/beee034-SPEC.md) | [PLAN](../docs/plans/beee034-PLAN.md) |
+| 587c466 | Document every commit with specs and plans | implemented | [SPEC](../docs/specs/587c466-SPEC.md) | [PLAN](../docs/plans/587c466-PLAN.md) |
 | self (commit-docs-bootstrap) | Document commit specifications and plans | implemented | [SPEC](../docs/specs/self-SPEC.md) | [PLAN](../docs/plans/self-PLAN.md) |

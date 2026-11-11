@@ -370,6 +370,15 @@
       "plan": "docs/plans/beee034-PLAN.md"
     },
     {
+      "fullSha": "587c466f7e28e4cb59b0c4522857a7110e7b152a",
+      "shortSha": "587c466",
+      "date": "2026-11-11T10:37:55+08:00",
+      "subject": "Document every commit with specs and plans",
+      "status": "implemented",
+      "spec": "docs/specs/587c466-SPEC.md",
+      "plan": "docs/plans/587c466-PLAN.md"
+    },
+    {
       "fullSha": "self",
       "changeId": "commit-docs-bootstrap",
       "subject": "Document commit specifications and plans",
