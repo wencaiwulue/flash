@@ -320,4 +320,5 @@ All 41 historical commits now have independent SPEC and PLAN documents with
 actual changed files, requirements, security constraints, verification, and
 remaining work. `docs/INDEX.md` and `docs/status/index.json` link every record,
 and `docs:check` enforces them in CI. A `self` record handles the current
-commit's SHA without recursive history rewrites.
+commit's SHA without recursive history rewrites. CI run `42952964466` passed
+with full-history generation and validation.
