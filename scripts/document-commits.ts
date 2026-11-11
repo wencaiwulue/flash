@@ -394,6 +394,17 @@ export async function buildCommitDocuments(): Promise<Map<string, string>> {
       plan: planPath,
     })
   }
+  const previousHead = commits().at(-2)
+  if (previousHead) {
+    documents.set(
+      `docs/specs/${previousHead.short}-SPEC.md`,
+      specFor(previousHead),
+    )
+    documents.set(
+      `docs/plans/${previousHead.short}-PLAN.md`,
+      planFor(previousHead),
+    )
+  }
   documents.set('docs/specs/self-SPEC.md', selfSpecFor())
   documents.set('docs/plans/self-PLAN.md', selfPlanFor())
   indexRows.push(
