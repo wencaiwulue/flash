@@ -1,6 +1,6 @@
 # Commit documentation index
 
-- Implemented: 50
+- Implemented: 51
 - Partial: 1
 - Unimplemented: 0
 
@@ -57,4 +57,5 @@
 | 63e138f | Finalize previous commit self documentation | implemented | [SPEC](../docs/specs/63e138f-SPEC.md) | [PLAN](../docs/plans/63e138f-PLAN.md) |
 | 80e6def | Finalize self record to previous SHA on next commit | implemented | [SPEC](../docs/specs/80e6def-SPEC.md) | [PLAN](../docs/plans/80e6def-PLAN.md) |
 | 7ca78c1 | Complete all commit documentation records | implemented | [SPEC](../docs/specs/7ca78c1-SPEC.md) | [PLAN](../docs/plans/7ca78c1-PLAN.md) |
+| f251df9 | Finalize previous commit documentation records | implemented | [SPEC](../docs/specs/f251df9-SPEC.md) | [PLAN](../docs/plans/f251df9-PLAN.md) |
 | self (commit-docs-bootstrap) | Document commit specifications and plans | implemented | [SPEC](../docs/specs/self-SPEC.md) | [PLAN](../docs/plans/self-PLAN.md) |
