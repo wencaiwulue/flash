@@ -313,3 +313,11 @@ Bearer-token configurations. The CI auth guard recognizes the same token type.
 Local settings-based validation returned all four model sentinels. The workflow
 uses the matching `ANTHROPIC_AUTH_TOKEN` secret instead of treating it as an
 `x-api-key` credential or Claude OAuth.
+
+## Commit documentation policy
+
+All 41 historical commits now have independent SPEC and PLAN documents with
+actual changed files, requirements, security constraints, verification, and
+remaining work. `docs/INDEX.md` and `docs/status/index.json` link every record,
+and `docs:check` enforces them in CI. A `self` record handles the current
+commit's SHA without recursive history rewrites.

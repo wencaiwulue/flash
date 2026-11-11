@@ -9,6 +9,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
@@ -18,6 +20,8 @@ jobs:
         run: bun run generate:sdk-types
       - name: Typecheck
         run: bun run typecheck
+      - name: Check commit documentation
+        run: bun scripts/check-commit-docs.ts
       - name: Test
         run: bun test
       - name: Build
