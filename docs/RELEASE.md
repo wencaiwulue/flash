@@ -290,3 +290,15 @@ authorized interactive desktop.
 - **Verification**: 152 tests and 645 assertions passed, with typecheck, build,
   declarations, and the 42-tool compiled feature profile passing.
 - **Commit**: `e31ff8ffe39417856b209be89190ef9cc429e6b9`; CI run `42861258902` passed.
+
+## CI live validation
+
+Added `live-validation.yml` with separate model, SkillHub, Cloud, and desktop
+jobs. Model and public SkillHub scripts are opt-in scheduled/manual checks;
+OAuth and desktop jobs run only when their protected environment is present.
+The scripts use isolated config directories and never print credentials.
+
+Live script checks returned `WORKFLOW_LIVE_OK`, `PROACTIVE_LIVE_OK`,
+`CONTEXT_COLLAPSE_LIVE_OK`, `REACTIVE_COMPACTION_LIVE_OK`, and
+`SKILLHUB_LIVE_OK`. SkillHub's current `global` namespace and response shapes
+are now supported.

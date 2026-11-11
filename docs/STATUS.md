@@ -45,7 +45,7 @@ Real model checks used the session's configured provider with an isolated `HOME`
 | Proactive and Sleep | Verified (offline scheduler/build) | Activation, pause/resume, context blocking, idle scheduling, abort/settings, `/proactive`, and external REPL wiring tested; real model-driven perpetual session not run |
 | Coordinator worker | Verified (definition/build) | One background `worker` with non-recursive standard tools and a real system prompt; multi-worker model orchestration not run |
 | Local skill search | Verified (offline index/build) | Fuse metadata ranking, natural-language fallback, visible-skill filtering, turn-zero/write-pivot/subagent prefetch, cache invalidation, and `DiscoverSkills` are enabled |
-| Remote canonical skills via SkillHub | Verified (local registry) | Public REST search/resolve/download, canonical state, mixed prefetch, versioned cache, zip path/symlink protection, and real telemetry tested; self-hosted live registry not yet run |
+| Remote canonical skills via SkillHub | Verified (live public registry) | Public REST search/resolve/download, canonical state, mixed prefetch, versioned cache, zip path/symlink protection, and real telemetry tested; `SKILLHUB_LIVE_OK` |
 | UDS inbox and peers | Verified (real local socket) | 0600 socket permissions, plain-text enqueue/wakeup, path and session-ID routing, live peer handshake, stale registry cleanup, and teardown tested; `ListPeers` and `/peers` registered |
 | Daemon supervisor and worker registry | Verified (offline lifecycle) | Bounded exponential restarts, clean stop, stale PID cleanup, worker dispatch, and `daemon status` smoke tested |
 | Remote Control server | Verified (offline lifecycle/build) | Shared SDK query, enable/disable, input close, idempotent start/stop, and `/remote-control-server` registration tested; no live Cloud session claimed |
@@ -82,7 +82,7 @@ Real model checks used the session's configured provider with an isolated `HOME`
 
 ## Remaining implementation boundaries
 
-- Self-hosted SkillHub live registry: the adapter and local HTTP protocol tests pass; a real registry round trip is still pending.
+- Self-hosted SkillHub registry: the public registry round trip passes (`SKILLHUB_LIVE_OK`); a separate private/self-hosted registry run is optional.
 - `MonitorMcpTask`: the legacy MCP-task backend remains unavailable. The enabled `Monitor` tool uses the verified local-shell task path instead and never creates `monitor_mcp` state.
 - Native Computer Use desktop control: open MCP metadata and permission checks pass, but a real authorized desktop session is still required.
 - Live validation gaps: model/Cloud/remote-control and native desktop round trips still need authorized environments; changed-file, cron, and LSP deterministic lifecycle tests now pass.
@@ -91,6 +91,6 @@ Real model checks used the session's configured provider with an isolated `HOME`
 
 1. Run Cloud Files, Remote Control, and env-less perpetual round trips in an authorized Claude OAuth environment.
 2. Run native Computer Use control in an authorized interactive desktop/VM.
-3. Run a self-hosted SkillHub registry round trip.
+3. Optionally run a private self-hosted SkillHub registry round trip.
 
 Every implementation must add or update its verification evidence here. Build success alone does not promote a feature to **Verified**.

@@ -114,19 +114,31 @@ export class SkillHubClient {
       const namespace =
         typeof value.namespace === 'string' && value.namespace
           ? value.namespace
-          : 'default'
+          : 'global'
+      const latest = value.latestVersion as { version?: unknown } | undefined
       const version =
         typeof value.version === 'string'
           ? value.version
-          : typeof value.latestVersion === 'string'
-            ? value.latestVersion
-            : undefined
+          : typeof latest?.version === 'string'
+            ? latest.version
+            : typeof value.latestVersion === 'string'
+              ? value.latestVersion
+              : undefined
       return [{
         namespace,
         slug,
-        name: typeof value.name === 'string' ? value.name : slug,
+        name:
+          typeof value.displayName === 'string'
+            ? value.displayName
+            : typeof value.name === 'string'
+              ? value.name
+              : slug,
         description:
-          typeof value.description === 'string' ? value.description : '',
+          typeof value.summary === 'string'
+            ? value.summary
+            : typeof value.description === 'string'
+              ? value.description
+              : '',
         ...(version ? { version } : {}),
         ...(typeof value.id === 'string' || typeof value.shortId === 'string'
           ? { shortId: String(value.id ?? value.shortId) }
