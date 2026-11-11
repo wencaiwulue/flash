@@ -12,7 +12,6 @@ jobs:
   model:
     if: github.event_name != 'pull_request' && secrets.ANTHROPIC_API_KEY != ''
     runs-on: ubuntu-latest
-    environment: live-validation
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -45,7 +44,6 @@ jobs:
   cloud:
     if: github.event_name != 'pull_request' && secrets.CLAUDE_CODE_OAUTH_TOKEN != '' && secrets.CLAUDE_CODE_ORG_UUID != '' && secrets.CLAUDE_CODE_BASE_URL != ''
     runs-on: ubuntu-latest
-    environment: live-validation
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -63,7 +61,6 @@ jobs:
   desktop:
     if: github.event_name != 'pull_request' && vars.CLAUDE_DESKTOP_LIVE == '1'
     runs-on: self-hosted
-    environment: live-validation
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
