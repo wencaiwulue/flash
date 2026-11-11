@@ -1,6 +1,6 @@
 # Commit documentation index
 
-- Implemented: 47
+- Implemented: 48
 - Partial: 1
 - Unimplemented: 0
 
@@ -54,4 +54,5 @@
 | f210ce9 | Finalize commit documentation for previous change | implemented | [SPEC](../docs/specs/f210ce9-SPEC.md) | [PLAN](../docs/plans/f210ce9-PLAN.md) |
 | 7740a1d | Finalize self documentation for current commit | implemented | [SPEC](../docs/specs/7740a1d-SPEC.md) | [PLAN](../docs/plans/7740a1d-PLAN.md) |
 | fe3c177 | Complete self documentation for previous commit | implemented | [SPEC](../docs/specs/fe3c177-SPEC.md) | [PLAN](../docs/plans/fe3c177-PLAN.md) |
+| 63e138f | Finalize previous commit self documentation | implemented | [SPEC](../docs/specs/63e138f-SPEC.md) | [PLAN](../docs/plans/63e138f-PLAN.md) |
 | self (commit-docs-bootstrap) | Document commit specifications and plans | implemented | [SPEC](../docs/specs/self-SPEC.md) | [PLAN](../docs/plans/self-PLAN.md) |
