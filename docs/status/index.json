@@ -667,6 +667,15 @@
       "plan": "docs/plans/5c5bc03-PLAN.md"
     },
     {
+      "fullSha": "c771f05fa4971b361de9a9b1dbfc880972154583",
+      "shortSha": "c771f05",
+      "date": "2026-11-11T11:15:03+08:00",
+      "subject": "Finalize previous commit documentation",
+      "status": "implemented",
+      "spec": "docs/specs/c771f05-SPEC.md",
+      "plan": "docs/plans/c771f05-PLAN.md"
+    },
+    {
       "fullSha": "self",
       "changeId": "commit-docs-bootstrap",
       "subject": "Document commit specifications and plans",
