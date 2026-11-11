@@ -7,18 +7,20 @@
       "subject": "asdf",
       "status": "partial",
       "kind": "component",
-      "spec": "docs/specs/4b9d30f-SPEC.md",
-      "plan": "docs/plans/4b9d30f-PLAN.md"
+      "slug": "root-source-snapshot",
+      "spec": "docs/specs/2026-03-31-root-source-snapshot-SPEC.md",
+      "plan": "docs/plans/2026-03-31-root-source-snapshot-PLAN.md"
     },
     {
       "fullSha": "9b2a35201244ca84adeaa6844bf799e5a18aff6d",
       "shortSha": "9b2a352",
       "date": "2026-11-10T11:39:20+08:00",
       "subject": "Restore CLI and SDK build",
-      "status": "implemented",
+      "status": "partial",
       "kind": "component",
-      "spec": "docs/specs/9b2a352-SPEC.md",
-      "plan": "docs/plans/9b2a352-PLAN.md"
+      "slug": "restore-cli-sdk-build",
+      "spec": "docs/specs/2026-11-10-restore-cli-sdk-build-SPEC.md",
+      "plan": "docs/plans/2026-11-10-restore-cli-sdk-build-PLAN.md"
     },
     {
       "fullSha": "6b7bf48b0b4f0af740073eddbc5584f0c598c539",
@@ -27,8 +29,9 @@
       "subject": "Complete secure storage, marketplace, and SDK controls",
       "status": "implemented",
       "kind": "component",
-      "spec": "docs/specs/6b7bf48-SPEC.md",
-      "plan": "docs/plans/6b7bf48-PLAN.md"
+      "slug": "secure-storage-marketplace-sdk",
+      "spec": "docs/specs/2026-11-10-secure-storage-marketplace-sdk-SPEC.md",
+      "plan": "docs/plans/2026-11-10-secure-storage-marketplace-sdk-PLAN.md"
     },
     {
       "fullSha": "e5c06bc3865ddeee428732aae46dab58c412a545",
@@ -36,9 +39,10 @@
       "date": "2026-11-10T12:44:19+08:00",
       "subject": "Document feature completion and CI results",
       "status": "implemented",
-      "kind": "evidence-update",
-      "spec": "docs/specs/e5c06bc-SPEC.md",
-      "plan": "docs/plans/e5c06bc-PLAN.md"
+      "kind": "component",
+      "slug": "feature-completion-status",
+      "spec": "docs/specs/2026-11-10-feature-completion-status-SPEC.md",
+      "plan": "docs/plans/2026-11-10-feature-completion-status-PLAN.md"
     },
     {
       "fullSha": "02bc3c2efcd3f3d7978da33b2683e9d392f3220c",
@@ -47,8 +51,9 @@
       "subject": "Unblock remote control and Cloud persistence",
       "status": "implemented",
       "kind": "component",
-      "spec": "docs/specs/02bc3c2-SPEC.md",
-      "plan": "docs/plans/02bc3c2-PLAN.md"
+      "slug": "remote-control-cloud-persistence",
+      "spec": "docs/specs/2026-11-10-remote-control-cloud-persistence-SPEC.md",
+      "plan": "docs/plans/2026-11-10-remote-control-cloud-persistence-PLAN.md"
     },
     {
       "fullSha": "2ff078cf60517f6aafe5e8fd542e2369334c17e3",
@@ -56,9 +61,10 @@
       "date": "2026-11-10T15:56:54+08:00",
       "subject": "Document remote control and Cloud verification",
       "status": "implemented",
-      "kind": "evidence-update",
-      "spec": "docs/specs/2ff078c-SPEC.md",
-      "plan": "docs/plans/2ff078c-PLAN.md"
+      "kind": "component",
+      "slug": "remote-cloud-verification-status",
+      "spec": "docs/specs/2026-11-10-remote-cloud-verification-status-SPEC.md",
+      "plan": "docs/plans/2026-11-10-remote-cloud-verification-status-PLAN.md"
     },
     {
       "fullSha": "614bf48f749df56f79562e4c64f765875f8fd880",
@@ -67,8 +73,9 @@
       "subject": "Enable external features and recover SDK parallel branches",
       "status": "implemented",
       "kind": "component",
-      "spec": "docs/specs/614bf48-SPEC.md",
-      "plan": "docs/plans/614bf48-PLAN.md"
+      "slug": "external-features-sdk-dag",
+      "spec": "docs/specs/2026-11-10-external-features-sdk-dag-SPEC.md",
+      "plan": "docs/plans/2026-11-10-external-features-sdk-dag-PLAN.md"
     },
     {
       "fullSha": "301a3e7fb8da14c45f1bac77ead288302b7f2466",
@@ -77,8 +84,9 @@
       "subject": "Implement monitoring and simple internal tools",
       "status": "implemented",
       "kind": "component",
-      "spec": "docs/specs/301a3e7-SPEC.md",
-      "plan": "docs/plans/301a3e7-PLAN.md"
+      "slug": "monitoring-internal-tools",
+      "spec": "docs/specs/2026-11-10-monitoring-internal-tools-SPEC.md",
+      "plan": "docs/plans/2026-11-10-monitoring-internal-tools-PLAN.md"
     },
     {
       "fullSha": "edcaa957458d924bc9c1cfe42b7af59eb9c2db11",
@@ -87,8 +95,9 @@
       "subject": "Implement proactive state and coordinator workers",
       "status": "implemented",
       "kind": "component",
-      "spec": "docs/specs/edcaa95-SPEC.md",
-      "plan": "docs/plans/edcaa95-PLAN.md"
+      "slug": "proactive-coordinator-workers",
+      "spec": "docs/specs/2026-11-10-proactive-coordinator-workers-SPEC.md",
+      "plan": "docs/plans/2026-11-10-proactive-coordinator-workers-PLAN.md"
     },
     {
       "fullSha": "e2e0ff6e0897141823d361204e81aef79922f33b",
@@ -97,8 +106,9 @@
       "subject": "Make feature profile test CI-independent",
       "status": "implemented",
       "kind": "component",
-      "spec": "docs/specs/e2e0ff6-SPEC.md",
-      "plan": "docs/plans/e2e0ff6-PLAN.md"
+      "slug": "ci-independent-feature-profile",
+      "spec": "docs/specs/2026-11-10-ci-independent-feature-profile-SPEC.md",
+      "plan": "docs/plans/2026-11-10-ci-independent-feature-profile-PLAN.md"
     },
     {
       "fullSha": "e92caa6639daf982d3299a485dfc6c0b5ff7f1e7",
@@ -107,8 +117,9 @@
       "subject": "Implement local skill discovery",
       "status": "implemented",
       "kind": "component",
-      "spec": "docs/specs/e92caa6-SPEC.md",
-      "plan": "docs/plans/e92caa6-PLAN.md"
+      "slug": "local-skill-discovery",
+      "spec": "docs/specs/2026-11-10-local-skill-discovery-SPEC.md",
+      "plan": "docs/plans/2026-11-10-local-skill-discovery-PLAN.md"
     },
     {
       "fullSha": "809351a35c47c5a21edb76a1b8e88b1512cfc1ff",
@@ -117,8 +128,9 @@
       "subject": "Implement UDS inbox and peer discovery",
       "status": "implemented",
       "kind": "component",
-      "spec": "docs/specs/809351a-SPEC.md",
-      "plan": "docs/plans/809351a-PLAN.md"
+      "slug": "uds-inbox-peer-discovery",
+      "spec": "docs/specs/2026-11-10-uds-inbox-peer-discovery-SPEC.md",
+      "plan": "docs/plans/2026-11-10-uds-inbox-peer-discovery-PLAN.md"
     },
     {
       "fullSha": "d2fafcde7d75171be093fd40ec8d954c0f326d21",
@@ -127,28 +139,31 @@
       "subject": "Implement daemon and remote control server lifecycle",
       "status": "implemented",
       "kind": "component",
-      "spec": "docs/specs/d2fafcd-SPEC.md",
-      "plan": "docs/plans/d2fafcd-PLAN.md"
+      "slug": "daemon-remote-control-lifecycle",
+      "spec": "docs/specs/2026-11-10-daemon-remote-control-lifecycle-SPEC.md",
+      "plan": "docs/plans/2026-11-10-daemon-remote-control-lifecycle-PLAN.md"
     },
     {
       "fullSha": "ea8085139c013577cad3130c35a21fc53a3d8bee",
       "shortSha": "ea80851",
       "date": "2026-11-10T20:30:36+08:00",
       "subject": "Implement declarative workflow execution",
-      "status": "partial",
+      "status": "implemented",
       "kind": "component",
-      "spec": "docs/specs/ea80851-SPEC.md",
-      "plan": "docs/plans/ea80851-PLAN.md"
+      "slug": "declarative-workflow-execution",
+      "spec": "docs/specs/2026-11-10-declarative-workflow-execution-SPEC.md",
+      "plan": "docs/plans/2026-11-10-declarative-workflow-execution-PLAN.md"
     },
     {
       "fullSha": "31697a0f6d4c66dae4c792583e94410b07aa1bff",
       "shortSha": "31697a0",
       "date": "2026-11-10T20:47:04+08:00",
       "subject": "Implement context collapse and recovery",
-      "status": "partial",
+      "status": "implemented",
       "kind": "component",
-      "spec": "docs/specs/31697a0-SPEC.md",
-      "plan": "docs/plans/31697a0-PLAN.md"
+      "slug": "context-collapse-recovery",
+      "spec": "docs/specs/2026-11-10-context-collapse-recovery-SPEC.md",
+      "plan": "docs/plans/2026-11-10-context-collapse-recovery-PLAN.md"
     },
     {
       "fullSha": "da942ac7d8b72858fc186837690c9b5b3cdeafe5",
@@ -157,8 +172,9 @@
       "subject": "Implement reactive compaction recovery",
       "status": "implemented",
       "kind": "component",
-      "spec": "docs/specs/da942ac-SPEC.md",
-      "plan": "docs/plans/da942ac-PLAN.md"
+      "slug": "reactive-compaction-recovery",
+      "spec": "docs/specs/2026-11-10-reactive-compaction-recovery-SPEC.md",
+      "plan": "docs/plans/2026-11-10-reactive-compaction-recovery-PLAN.md"
     },
     {
       "fullSha": "dab8405a36c2cb18c22b58235c8124265666b162",
@@ -166,9 +182,10 @@
       "date": "2026-11-10T21:01:21+08:00",
       "subject": "Document remaining implementation boundaries",
       "status": "implemented",
-      "kind": "evidence-update",
-      "spec": "docs/specs/dab8405-SPEC.md",
-      "plan": "docs/plans/dab8405-PLAN.md"
+      "kind": "component",
+      "slug": "implementation-boundaries-status",
+      "spec": "docs/specs/2026-11-10-implementation-boundaries-status-SPEC.md",
+      "plan": "docs/plans/2026-11-10-implementation-boundaries-status-PLAN.md"
     },
     {
       "fullSha": "982ab108e16a0919269629256555d7ef9efea707",
@@ -177,28 +194,31 @@
       "subject": "Enable Buddy and Fork Subagent",
       "status": "implemented",
       "kind": "component",
-      "spec": "docs/specs/982ab10-SPEC.md",
-      "plan": "docs/plans/982ab10-PLAN.md"
+      "slug": "buddy-fork-subagent",
+      "spec": "docs/specs/2026-11-10-buddy-fork-subagent-SPEC.md",
+      "plan": "docs/plans/2026-11-10-buddy-fork-subagent-PLAN.md"
     },
     {
       "fullSha": "2bf435a5d3aca3c375da1387f1e33d3ce13db683",
       "shortSha": "2bf435a",
       "date": "2026-11-10T22:42:16+08:00",
       "subject": "Implement history snipping",
-      "status": "partial",
+      "status": "implemented",
       "kind": "component",
-      "spec": "docs/specs/2bf435a-SPEC.md",
-      "plan": "docs/plans/2bf435a-PLAN.md"
+      "slug": "history-snipping",
+      "spec": "docs/specs/2026-11-10-history-snipping-SPEC.md",
+      "plan": "docs/plans/2026-11-10-history-snipping-PLAN.md"
     },
     {
       "fullSha": "0b6806800508a15c7a5f8293c572b8fa5c960d24",
       "shortSha": "0b68068",
       "date": "2026-11-10T22:53:28+08:00",
       "subject": "Implement ReviewArtifact and Hunter skill",
-      "status": "partial",
+      "status": "implemented",
       "kind": "component",
-      "spec": "docs/specs/0b68068-SPEC.md",
-      "plan": "docs/plans/0b68068-PLAN.md"
+      "slug": "review-artifact-hunter",
+      "spec": "docs/specs/2026-11-10-review-artifact-hunter-SPEC.md",
+      "plan": "docs/plans/2026-11-10-review-artifact-hunter-PLAN.md"
     },
     {
       "fullSha": "ab30aec7490292b93198d53c8436081dd8b06cdf",
@@ -207,8 +227,9 @@
       "subject": "Integrate SkillHub remote skills",
       "status": "implemented",
       "kind": "component",
-      "spec": "docs/specs/ab30aec-SPEC.md",
-      "plan": "docs/plans/ab30aec-PLAN.md"
+      "slug": "skillhub-remote-skills",
+      "spec": "docs/specs/2026-11-10-skillhub-remote-skills-SPEC.md",
+      "plan": "docs/plans/2026-11-10-skillhub-remote-skills-PLAN.md"
     },
     {
       "fullSha": "d5a675a4df66ff620d7577aaf167bb5749cc08a2",
@@ -217,8 +238,9 @@
       "subject": "Implement open KAIROS functionality",
       "status": "implemented",
       "kind": "component",
-      "spec": "docs/specs/d5a675a-SPEC.md",
-      "plan": "docs/plans/d5a675a-PLAN.md"
+      "slug": "open-kairos-functionality",
+      "spec": "docs/specs/2026-11-10-open-kairos-functionality-SPEC.md",
+      "plan": "docs/plans/2026-11-10-open-kairos-functionality-PLAN.md"
     },
     {
       "fullSha": "d925b128abfd8ecd0cc36a26364b497083fd305e",
@@ -227,8 +249,9 @@
       "subject": "Integrate open computer use and browser MCP",
       "status": "implemented",
       "kind": "component",
-      "spec": "docs/specs/d925b12-SPEC.md",
-      "plan": "docs/plans/d925b12-PLAN.md"
+      "slug": "computer-use-browser-mcp",
+      "spec": "docs/specs/2026-11-10-computer-use-browser-mcp-SPEC.md",
+      "plan": "docs/plans/2026-11-10-computer-use-browser-mcp-PLAN.md"
     },
     {
       "fullSha": "a8c8b90fd2e7b5fa14ebb2bc6beff3f5c2904346",
@@ -237,8 +260,9 @@
       "subject": "Add lifecycle regressions and race fixes",
       "status": "implemented",
       "kind": "component",
-      "spec": "docs/specs/a8c8b90-SPEC.md",
-      "plan": "docs/plans/a8c8b90-PLAN.md"
+      "slug": "lifecycle-regressions-race-fixes",
+      "spec": "docs/specs/2026-11-11-lifecycle-regressions-race-fixes-SPEC.md",
+      "plan": "docs/plans/2026-11-11-lifecycle-regressions-race-fixes-PLAN.md"
     },
     {
       "fullSha": "adaa8fffa7c7c536d782616f8f7e187de637a582",
@@ -247,8 +271,9 @@
       "subject": "Implement env-less perpetual continuity",
       "status": "implemented",
       "kind": "component",
-      "spec": "docs/specs/adaa8ff-SPEC.md",
-      "plan": "docs/plans/adaa8ff-PLAN.md"
+      "slug": "env-less-perpetual-continuity",
+      "spec": "docs/specs/2026-11-11-env-less-perpetual-continuity-SPEC.md",
+      "plan": "docs/plans/2026-11-11-env-less-perpetual-continuity-PLAN.md"
     },
     {
       "fullSha": "c43f42e4eba9ae16c7d7a78dfbcfcb4bfb177d0c",
@@ -257,8 +282,9 @@
       "subject": "Isolate CI lifecycle test timing and cwd",
       "status": "implemented",
       "kind": "component",
-      "spec": "docs/specs/c43f42e-SPEC.md",
-      "plan": "docs/plans/c43f42e-PLAN.md"
+      "slug": "ci-lifecycle-test-isolation",
+      "spec": "docs/specs/2026-11-11-ci-lifecycle-test-isolation-SPEC.md",
+      "plan": "docs/plans/2026-11-11-ci-lifecycle-test-isolation-PLAN.md"
     },
     {
       "fullSha": "3948f914500e3982fb160607250d6a2e22f0578d",
@@ -267,8 +293,9 @@
       "subject": "Make cron takeover test deterministic",
       "status": "implemented",
       "kind": "component",
-      "spec": "docs/specs/3948f91-SPEC.md",
-      "plan": "docs/plans/3948f91-PLAN.md"
+      "slug": "deterministic-cron-takeover",
+      "spec": "docs/specs/2026-11-11-deterministic-cron-takeover-SPEC.md",
+      "plan": "docs/plans/2026-11-11-deterministic-cron-takeover-PLAN.md"
     },
     {
       "fullSha": "e31ff8ffe39417856b209be89190ef9cc429e6b9",
@@ -277,8 +304,9 @@
       "subject": "Reset cron scheduler state on stop and restart",
       "status": "implemented",
       "kind": "component",
-      "spec": "docs/specs/e31ff8f-SPEC.md",
-      "plan": "docs/plans/e31ff8f-PLAN.md"
+      "slug": "cron-scheduler-reset",
+      "spec": "docs/specs/2026-11-11-cron-scheduler-reset-SPEC.md",
+      "plan": "docs/plans/2026-11-11-cron-scheduler-reset-PLAN.md"
     },
     {
       "fullSha": "271cf757a24eb6cd7e46586fa18995759be32043",
@@ -286,9 +314,10 @@
       "date": "2026-11-11T01:07:01+08:00",
       "subject": "Record final CI verification",
       "status": "implemented",
-      "kind": "evidence-update",
-      "spec": "docs/specs/271cf75-SPEC.md",
-      "plan": "docs/plans/271cf75-PLAN.md"
+      "kind": "component",
+      "slug": "final-ci-status",
+      "spec": "docs/specs/2026-11-11-final-ci-status-SPEC.md",
+      "plan": "docs/plans/2026-11-11-final-ci-status-PLAN.md"
     },
     {
       "fullSha": "9cd4c63193ded6eb916bf734f65a427da193faf0",
@@ -297,38 +326,42 @@
       "subject": "Add live validation workflows and registry compatibility",
       "status": "partial",
       "kind": "component",
-      "spec": "docs/specs/9cd4c63-SPEC.md",
-      "plan": "docs/plans/9cd4c63-PLAN.md"
+      "slug": "live-validation-probes",
+      "spec": "docs/specs/2026-11-11-live-validation-probes-SPEC.md",
+      "plan": "docs/plans/2026-11-11-live-validation-probes-PLAN.md"
     },
     {
       "fullSha": "6ef3352651472a951a3779f7b9f906fbc5ca86ca",
       "shortSha": "6ef3352",
       "date": "2026-11-11T09:18:52+08:00",
       "subject": "Allow live jobs without precreated environment",
-      "status": "partial",
+      "status": "implemented",
       "kind": "component",
-      "spec": "docs/specs/6ef3352-SPEC.md",
-      "plan": "docs/plans/6ef3352-PLAN.md"
+      "slug": "live-jobs-environment-gating",
+      "spec": "docs/specs/2026-11-11-live-jobs-environment-gating-SPEC.md",
+      "plan": "docs/plans/2026-11-11-live-jobs-environment-gating-PLAN.md"
     },
     {
       "fullSha": "85028f74ed5ec110dcfd0a0933f615f88cc4600e",
       "shortSha": "85028f7",
       "date": "2026-11-11T09:20:57+08:00",
       "subject": "Isolate live workflow job parsing",
-      "status": "partial",
+      "status": "implemented",
       "kind": "component",
-      "spec": "docs/specs/85028f7-SPEC.md",
-      "plan": "docs/plans/85028f7-PLAN.md"
+      "slug": "isolate-live-workflow-jobs",
+      "spec": "docs/specs/2026-11-11-isolate-live-workflow-jobs-SPEC.md",
+      "plan": "docs/plans/2026-11-11-isolate-live-workflow-jobs-PLAN.md"
     },
     {
       "fullSha": "17f52b5584441f3c937f3d927acad381852159b7",
       "shortSha": "17f52b5",
       "date": "2026-11-11T09:22:15+08:00",
       "subject": "Test live workflow without job conditions",
-      "status": "partial",
+      "status": "implemented",
       "kind": "component",
-      "spec": "docs/specs/17f52b5-SPEC.md",
-      "plan": "docs/plans/17f52b5-PLAN.md"
+      "slug": "unconditional-live-workflow-jobs",
+      "spec": "docs/specs/2026-11-11-unconditional-live-workflow-jobs-SPEC.md",
+      "plan": "docs/plans/2026-11-11-unconditional-live-workflow-jobs-PLAN.md"
     },
     {
       "fullSha": "4dd93b75220926cefbe9d5d017224238bfd8e0f1",
@@ -336,49 +369,54 @@
       "date": "2026-11-11T09:23:48+08:00",
       "subject": "Re-register live validation workflow",
       "status": "implemented",
-      "kind": "metadata-migration",
-      "spec": "docs/specs/4dd93b7-SPEC.md",
-      "plan": "docs/plans/4dd93b7-PLAN.md"
+      "kind": "component",
+      "slug": "reregister-live-validation-workflow",
+      "spec": "docs/specs/2026-11-11-reregister-live-validation-workflow-SPEC.md",
+      "plan": "docs/plans/2026-11-11-reregister-live-validation-workflow-PLAN.md"
     },
     {
       "fullSha": "b183b9a76948750cf396dd36c62ad06a62221b60",
       "shortSha": "b183b9a",
       "date": "2026-11-11T09:28:02+08:00",
       "subject": "Gate live validation jobs on available environments",
-      "status": "partial",
+      "status": "implemented",
       "kind": "component",
-      "spec": "docs/specs/b183b9a-SPEC.md",
-      "plan": "docs/plans/b183b9a-PLAN.md"
+      "slug": "live-job-environment-gates",
+      "spec": "docs/specs/2026-11-11-live-job-environment-gates-SPEC.md",
+      "plan": "docs/plans/2026-11-11-live-job-environment-gates-PLAN.md"
     },
     {
       "fullSha": "4c04383cd5a2ee8953031948453d99da6d080946",
       "shortSha": "4c04383",
       "date": "2026-11-11T09:29:51+08:00",
       "subject": "Use env context for live job gating",
-      "status": "partial",
+      "status": "implemented",
       "kind": "component",
-      "spec": "docs/specs/4c04383-SPEC.md",
-      "plan": "docs/plans/4c04383-PLAN.md"
+      "slug": "env-context-live-gating",
+      "spec": "docs/specs/2026-11-11-env-context-live-gating-SPEC.md",
+      "plan": "docs/plans/2026-11-11-env-context-live-gating-PLAN.md"
     },
     {
       "fullSha": "b160aef6c60e6ef3ef0d4bfdf7f97dae7532e02b",
       "shortSha": "b160aef",
       "date": "2026-11-11T09:31:11+08:00",
       "subject": "Use explicit expressions for live gating",
-      "status": "partial",
+      "status": "implemented",
       "kind": "component",
-      "spec": "docs/specs/b160aef-SPEC.md",
-      "plan": "docs/plans/b160aef-PLAN.md"
+      "slug": "explicit-live-gating-expressions",
+      "spec": "docs/specs/2026-11-11-explicit-live-gating-expressions-SPEC.md",
+      "plan": "docs/plans/2026-11-11-explicit-live-gating-expressions-PLAN.md"
     },
     {
       "fullSha": "97b13fd5279b917c69462da929db00bba942de6a",
       "shortSha": "97b13fd",
       "date": "2026-11-11T09:33:58+08:00",
       "subject": "Move live validation gating into scripts",
-      "status": "partial",
+      "status": "implemented",
       "kind": "component",
-      "spec": "docs/specs/97b13fd-SPEC.md",
-      "plan": "docs/plans/97b13fd-PLAN.md"
+      "slug": "script-based-live-gating",
+      "spec": "docs/specs/2026-11-11-script-based-live-gating-SPEC.md",
+      "plan": "docs/plans/2026-11-11-script-based-live-gating-PLAN.md"
     },
     {
       "fullSha": "e90042354c2cb902b033cf9e06b39d9c67c1b111",
@@ -387,38 +425,42 @@
       "subject": "Skip desktop validation without self-hosted runner",
       "status": "implemented",
       "kind": "component",
-      "spec": "docs/specs/e900423-SPEC.md",
-      "plan": "docs/plans/e900423-PLAN.md"
+      "slug": "skip-desktop-without-runner",
+      "spec": "docs/specs/2026-11-11-skip-desktop-without-runner-SPEC.md",
+      "plan": "docs/plans/2026-11-11-skip-desktop-without-runner-PLAN.md"
     },
     {
       "fullSha": "4dbadb8a7616033419b9d4a614b62c11c1c3df52",
       "shortSha": "4dbadb8",
       "date": "2026-11-11T09:42:27+08:00",
       "subject": "Record live validation workflow success",
-      "status": "partial",
-      "kind": "evidence-update",
-      "spec": "docs/specs/4dbadb8-SPEC.md",
-      "plan": "docs/plans/4dbadb8-PLAN.md"
+      "status": "implemented",
+      "kind": "component",
+      "slug": "live-workflow-status",
+      "spec": "docs/specs/2026-11-11-live-workflow-status-SPEC.md",
+      "plan": "docs/plans/2026-11-11-live-workflow-status-PLAN.md"
     },
     {
       "fullSha": "beee034523510ac0425461bb4ffce3250514d693",
       "shortSha": "beee034",
       "date": "2026-11-11T10:06:54+08:00",
       "subject": "Support settings-based bearer authentication",
-      "status": "partial",
+      "status": "implemented",
       "kind": "component",
-      "spec": "docs/specs/beee034-SPEC.md",
-      "plan": "docs/plans/beee034-PLAN.md"
+      "slug": "settings-bearer-authentication",
+      "spec": "docs/specs/2026-11-11-settings-bearer-authentication-SPEC.md",
+      "plan": "docs/plans/2026-11-11-settings-bearer-authentication-PLAN.md"
     },
     {
       "fullSha": "587c466f7e28e4cb59b0c4522857a7110e7b152a",
       "shortSha": "587c466",
       "date": "2026-11-11T10:37:55+08:00",
       "subject": "Document every commit with specs and plans",
-      "status": "partial",
+      "status": "implemented",
       "kind": "component",
-      "spec": "docs/specs/587c466-SPEC.md",
-      "plan": "docs/plans/587c466-PLAN.md"
+      "slug": "commit-specs-and-plans",
+      "spec": "docs/specs/2026-11-11-commit-specs-and-plans-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-specs-and-plans-PLAN.md"
     },
     {
       "fullSha": "8117aaa81ba58bb7ddae1256712797880a6cdebd",
@@ -427,8 +469,9 @@
       "subject": "Finalize self record for current commit",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/8117aaa-SPEC.md",
-      "plan": "docs/plans/8117aaa-PLAN.md"
+      "slug": "head-self-inventory",
+      "spec": "docs/specs/2026-11-11-head-self-inventory-SPEC.md",
+      "plan": "docs/plans/2026-11-11-head-self-inventory-PLAN.md"
     },
     {
       "fullSha": "c4e19cee451ce0a5a43e78475d40f2e079b350df",
@@ -437,8 +480,9 @@
       "subject": "Finalize previous self documentation",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/c4e19ce-SPEC.md",
-      "plan": "docs/plans/c4e19ce-PLAN.md"
+      "slug": "commit-docs-finalization",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-PLAN.md"
     },
     {
       "fullSha": "17c91967ada4424f164da8e2699e3ee90d587036",
@@ -447,8 +491,9 @@
       "subject": "Finalize self record for previous commit",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/17c9196-SPEC.md",
-      "plan": "docs/plans/17c9196-PLAN.md"
+      "slug": "commit-docs-finalization-02",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-02-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-02-PLAN.md"
     },
     {
       "fullSha": "f210ce9c2dc51a30f98514628b07538a969f21aa",
@@ -457,8 +502,9 @@
       "subject": "Finalize commit documentation for previous change",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/f210ce9-SPEC.md",
-      "plan": "docs/plans/f210ce9-PLAN.md"
+      "slug": "commit-docs-finalization-03",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-03-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-03-PLAN.md"
     },
     {
       "fullSha": "7740a1d28b70629f41d49116a8e6007eb46c72aa",
@@ -467,8 +513,9 @@
       "subject": "Finalize self documentation for current commit",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/7740a1d-SPEC.md",
-      "plan": "docs/plans/7740a1d-PLAN.md"
+      "slug": "commit-docs-finalization-04",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-04-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-04-PLAN.md"
     },
     {
       "fullSha": "fe3c177c28b7581e93f7496c58b98bafa10dbb03",
@@ -477,8 +524,9 @@
       "subject": "Complete self documentation for previous commit",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/fe3c177-SPEC.md",
-      "plan": "docs/plans/fe3c177-PLAN.md"
+      "slug": "commit-docs-finalization-05",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-05-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-05-PLAN.md"
     },
     {
       "fullSha": "63e138f4eb8ea207a1aeb0806e060275ac55b4a3",
@@ -487,8 +535,9 @@
       "subject": "Finalize previous commit self documentation",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/63e138f-SPEC.md",
-      "plan": "docs/plans/63e138f-PLAN.md"
+      "slug": "commit-docs-finalization-06",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-06-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-06-PLAN.md"
     },
     {
       "fullSha": "80e6defe99a3ce09a3d2b4229458fed0fbde5dbc",
@@ -496,9 +545,10 @@
       "date": "2026-11-11T10:56:11+08:00",
       "subject": "Finalize self record to previous SHA on next commit",
       "status": "implemented",
-      "kind": "metadata-migration",
-      "spec": "docs/specs/80e6def-SPEC.md",
-      "plan": "docs/plans/80e6def-PLAN.md"
+      "kind": "component",
+      "slug": "previous-head-documents",
+      "spec": "docs/specs/2026-11-11-previous-head-documents-SPEC.md",
+      "plan": "docs/plans/2026-11-11-previous-head-documents-PLAN.md"
     },
     {
       "fullSha": "7ca78c1a18a7f05e1740f701b256079bb4cc2c2e",
@@ -507,8 +557,9 @@
       "subject": "Complete all commit documentation records",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/7ca78c1-SPEC.md",
-      "plan": "docs/plans/7ca78c1-PLAN.md"
+      "slug": "commit-docs-finalization-07",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-07-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-07-PLAN.md"
     },
     {
       "fullSha": "f251df9151d7a7c054fa662c4b50f0d09c1bf305",
@@ -517,8 +568,9 @@
       "subject": "Finalize previous commit documentation records",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/f251df9-SPEC.md",
-      "plan": "docs/plans/f251df9-PLAN.md"
+      "slug": "commit-docs-finalization-08",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-08-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-08-PLAN.md"
     },
     {
       "fullSha": "2fe47f6e46a3add0a3ee9bdd57bda9feac2220a7",
@@ -527,8 +579,9 @@
       "subject": "Complete documentation for previous commit",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/2fe47f6-SPEC.md",
-      "plan": "docs/plans/2fe47f6-PLAN.md"
+      "slug": "commit-docs-finalization-09",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-09-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-09-PLAN.md"
     },
     {
       "fullSha": "f355de14f9baeccda3b49eed9e8e020fcae68e39",
@@ -537,8 +590,9 @@
       "subject": "Finalize documentation for previous commit",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/f355de1-SPEC.md",
-      "plan": "docs/plans/f355de1-PLAN.md"
+      "slug": "commit-docs-finalization-10",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-10-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-10-PLAN.md"
     },
     {
       "fullSha": "55f7c7e66db7653d2afaa546162a6dc486c547d7",
@@ -547,8 +601,9 @@
       "subject": "Finalize documentation for previous change",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/55f7c7e-SPEC.md",
-      "plan": "docs/plans/55f7c7e-PLAN.md"
+      "slug": "commit-docs-finalization-11",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-11-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-11-PLAN.md"
     },
     {
       "fullSha": "d8023311609efec07cdedba3484a7cec0f84deb4",
@@ -557,8 +612,9 @@
       "subject": "Complete commit documentation for previous commit",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/d802331-SPEC.md",
-      "plan": "docs/plans/d802331-PLAN.md"
+      "slug": "commit-docs-finalization-12",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-12-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-12-PLAN.md"
     },
     {
       "fullSha": "335b217899a7b0920f972973a92363db436f158f",
@@ -567,8 +623,9 @@
       "subject": "Finalize previous commit documentation",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/335b217-SPEC.md",
-      "plan": "docs/plans/335b217-PLAN.md"
+      "slug": "commit-docs-finalization-13",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-13-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-13-PLAN.md"
     },
     {
       "fullSha": "064047104f5156043604afd50f2793e1b336950a",
@@ -577,8 +634,9 @@
       "subject": "Complete documentation for current and previous commits",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/0640471-SPEC.md",
-      "plan": "docs/plans/0640471-PLAN.md"
+      "slug": "commit-docs-finalization-14",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-14-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-14-PLAN.md"
     },
     {
       "fullSha": "501672c99b9338a35a2f7f261adc395a9b829dd2",
@@ -587,8 +645,9 @@
       "subject": "Complete documentation for previous commit",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/501672c-SPEC.md",
-      "plan": "docs/plans/501672c-PLAN.md"
+      "slug": "commit-docs-finalization-15",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-15-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-15-PLAN.md"
     },
     {
       "fullSha": "2f55f199acfd26b90c81c5de3c5ca6fcfe167dfc",
@@ -597,8 +656,9 @@
       "subject": "Finalize previous commit documentation",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/2f55f19-SPEC.md",
-      "plan": "docs/plans/2f55f19-PLAN.md"
+      "slug": "commit-docs-finalization-16",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-16-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-16-PLAN.md"
     },
     {
       "fullSha": "d472e5c963d799ffa51192e7358ecaba45de8c7a",
@@ -607,8 +667,9 @@
       "subject": "Complete previous commit documentation",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/d472e5c-SPEC.md",
-      "plan": "docs/plans/d472e5c-PLAN.md"
+      "slug": "commit-docs-finalization-17",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-17-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-17-PLAN.md"
     },
     {
       "fullSha": "3fbabc2d43b99236cae4c232c6730bb6bc0a19ef",
@@ -617,8 +678,9 @@
       "subject": "Finalize previous commit documentation",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/3fbabc2-SPEC.md",
-      "plan": "docs/plans/3fbabc2-PLAN.md"
+      "slug": "commit-docs-finalization-18",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-18-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-18-PLAN.md"
     },
     {
       "fullSha": "1bc02bfb5271653be2dd2c2fcc498246cf111dc5",
@@ -627,8 +689,9 @@
       "subject": "Complete previous commit documentation",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/1bc02bf-SPEC.md",
-      "plan": "docs/plans/1bc02bf-PLAN.md"
+      "slug": "commit-docs-finalization-19",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-19-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-19-PLAN.md"
     },
     {
       "fullSha": "1329f792eb0a103eeeabea26a46566bfa9eceaba",
@@ -637,8 +700,9 @@
       "subject": "Finalize documentation for previous commit",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/1329f79-SPEC.md",
-      "plan": "docs/plans/1329f79-PLAN.md"
+      "slug": "commit-docs-finalization-20",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-20-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-20-PLAN.md"
     },
     {
       "fullSha": "be5c03e17428c3a7f85f7c0459b49432e61ccbf4",
@@ -647,8 +711,9 @@
       "subject": "Complete previous commit documentation",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/be5c03e-SPEC.md",
-      "plan": "docs/plans/be5c03e-PLAN.md"
+      "slug": "commit-docs-finalization-21",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-21-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-21-PLAN.md"
     },
     {
       "fullSha": "2a4aa6c36263b3b17c6c5f188b03cc9a6a7e3cff",
@@ -657,8 +722,9 @@
       "subject": "Finalize documentation for previous commit",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/2a4aa6c-SPEC.md",
-      "plan": "docs/plans/2a4aa6c-PLAN.md"
+      "slug": "commit-docs-finalization-22",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-22-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-22-PLAN.md"
     },
     {
       "fullSha": "0dabf466a5db43caa9890f5e0a031d00505a0008",
@@ -667,8 +733,9 @@
       "subject": "Complete previous commit documentation",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/0dabf46-SPEC.md",
-      "plan": "docs/plans/0dabf46-PLAN.md"
+      "slug": "commit-docs-finalization-23",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-23-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-23-PLAN.md"
     },
     {
       "fullSha": "612cc40e519f48121614051611d16b054823c24c",
@@ -677,8 +744,9 @@
       "subject": "Finalize previous commit documentation",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/612cc40-SPEC.md",
-      "plan": "docs/plans/612cc40-PLAN.md"
+      "slug": "commit-docs-finalization-24",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-24-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-24-PLAN.md"
     },
     {
       "fullSha": "6c3c1e4d3cdd8b1b8279c023575fb7a37e94a14c",
@@ -687,8 +755,9 @@
       "subject": "Finalize documentation for previous commit",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/6c3c1e4-SPEC.md",
-      "plan": "docs/plans/6c3c1e4-PLAN.md"
+      "slug": "commit-docs-finalization-25",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-25-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-25-PLAN.md"
     },
     {
       "fullSha": "96283aecc10afd0f0269eff9b7a3b0c543191b01",
@@ -697,8 +766,9 @@
       "subject": "Complete previous commit documentation",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/96283ae-SPEC.md",
-      "plan": "docs/plans/96283ae-PLAN.md"
+      "slug": "commit-docs-finalization-26",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-26-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-26-PLAN.md"
     },
     {
       "fullSha": "b6bf9822536793efc08cd9ce4d94f1c066530d1c",
@@ -707,8 +777,9 @@
       "subject": "Finalize documentation for previous commit",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/b6bf982-SPEC.md",
-      "plan": "docs/plans/b6bf982-PLAN.md"
+      "slug": "commit-docs-finalization-27",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-27-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-27-PLAN.md"
     },
     {
       "fullSha": "787b2dcef6629be82036283cc709384b56e6d981",
@@ -717,8 +788,9 @@
       "subject": "Complete previous commit documentation",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/787b2dc-SPEC.md",
-      "plan": "docs/plans/787b2dc-PLAN.md"
+      "slug": "commit-docs-finalization-28",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-28-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-28-PLAN.md"
     },
     {
       "fullSha": "6b0ce9d6834a125567ec0121caa531f5b8341101",
@@ -727,8 +799,9 @@
       "subject": "Finalize previous commit documentation",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/6b0ce9d-SPEC.md",
-      "plan": "docs/plans/6b0ce9d-PLAN.md"
+      "slug": "commit-docs-finalization-29",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-29-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-29-PLAN.md"
     },
     {
       "fullSha": "5c5bc03abc666d111ae5e4227224884bbaafd340",
@@ -737,8 +810,9 @@
       "subject": "Complete previous commit documentation",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/5c5bc03-SPEC.md",
-      "plan": "docs/plans/5c5bc03-PLAN.md"
+      "slug": "commit-docs-finalization-30",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-30-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-30-PLAN.md"
     },
     {
       "fullSha": "c771f05fa4971b361de9a9b1dbfc880972154583",
@@ -747,8 +821,9 @@
       "subject": "Finalize previous commit documentation",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/c771f05-SPEC.md",
-      "plan": "docs/plans/c771f05-PLAN.md"
+      "slug": "commit-docs-finalization-31",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-31-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-31-PLAN.md"
     },
     {
       "fullSha": "dc3f075364391ad09070858cd0763d57e7c073c9",
@@ -757,8 +832,9 @@
       "subject": "Complete previous commit documentation",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/dc3f075-SPEC.md",
-      "plan": "docs/plans/dc3f075-PLAN.md"
+      "slug": "commit-docs-finalization-32",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-32-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-32-PLAN.md"
     },
     {
       "fullSha": "1fe14300c3b0a9eced6c5c3b3bf4615c7ca43361",
@@ -767,8 +843,9 @@
       "subject": "Finalize previous commit documentation",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/1fe1430-SPEC.md",
-      "plan": "docs/plans/1fe1430-PLAN.md"
+      "slug": "commit-docs-finalization-33",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-33-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-33-PLAN.md"
     },
     {
       "fullSha": "a4edc60de4da2600197f59e1b032d5e4a754e19b",
@@ -777,8 +854,9 @@
       "subject": "Complete previous commit documentation",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/a4edc60-SPEC.md",
-      "plan": "docs/plans/a4edc60-PLAN.md"
+      "slug": "commit-docs-finalization-34",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-34-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-34-PLAN.md"
     },
     {
       "fullSha": "e0cbbe14182f93a59bd7e28a4dcd0776e05831f0",
@@ -787,8 +865,9 @@
       "subject": "Finalize documentation for previous commit",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/e0cbbe1-SPEC.md",
-      "plan": "docs/plans/e0cbbe1-PLAN.md"
+      "slug": "commit-docs-finalization-35",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-35-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-35-PLAN.md"
     },
     {
       "fullSha": "8a248e3a57a3121e5e0bfeb7dbdeefb1551ac9b3",
@@ -797,8 +876,9 @@
       "subject": "Complete previous commit documentation",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/8a248e3-SPEC.md",
-      "plan": "docs/plans/8a248e3-PLAN.md"
+      "slug": "commit-docs-finalization-36",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-36-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-36-PLAN.md"
     },
     {
       "fullSha": "4329cd8296630e2e5334d4b410cc8fe1cca273b6",
@@ -807,8 +887,9 @@
       "subject": "Finalize previous commit documentation",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/4329cd8-SPEC.md",
-      "plan": "docs/plans/4329cd8-PLAN.md"
+      "slug": "commit-docs-finalization-37",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-37-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-37-PLAN.md"
     },
     {
       "fullSha": "f5b097b742b8e9d68acce71c9b2fa38e19c6088a",
@@ -817,8 +898,9 @@
       "subject": "Complete previous commit documentation",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/f5b097b-SPEC.md",
-      "plan": "docs/plans/f5b097b-PLAN.md"
+      "slug": "commit-docs-finalization-38",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-38-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-38-PLAN.md"
     },
     {
       "fullSha": "e8d8c066c1419579fbf8bf6f653760110eaf315a",
@@ -827,8 +909,9 @@
       "subject": "Finalize previous commit documentation",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/e8d8c06-SPEC.md",
-      "plan": "docs/plans/e8d8c06-PLAN.md"
+      "slug": "commit-docs-finalization-39",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-39-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-39-PLAN.md"
     },
     {
       "fullSha": "fdffe9e872a6bdf9ef41623b532f512f1846ab3a",
@@ -837,8 +920,9 @@
       "subject": "Complete previous commit documentation",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/fdffe9e-SPEC.md",
-      "plan": "docs/plans/fdffe9e-PLAN.md"
+      "slug": "commit-docs-finalization-40",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-40-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-40-PLAN.md"
     },
     {
       "fullSha": "3c4b6f2752cee47fd15ead682e6016fe48174bd8",
@@ -847,8 +931,9 @@
       "subject": "Finalize previous commit documentation",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/3c4b6f2-SPEC.md",
-      "plan": "docs/plans/3c4b6f2-PLAN.md"
+      "slug": "commit-docs-finalization-41",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-41-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-41-PLAN.md"
     },
     {
       "fullSha": "c8338e1be21cdc792f1c69a5bf3c0094d3c29261",
@@ -857,8 +942,9 @@
       "subject": "Complete previous commit documentation",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/c8338e1-SPEC.md",
-      "plan": "docs/plans/c8338e1-PLAN.md"
+      "slug": "commit-docs-finalization-42",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-42-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-42-PLAN.md"
     },
     {
       "fullSha": "69d3596e99fa57a97ac37628d1aab22880b5a060",
@@ -867,8 +953,9 @@
       "subject": "Finalize previous commit documentation",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/69d3596-SPEC.md",
-      "plan": "docs/plans/69d3596-PLAN.md"
+      "slug": "commit-docs-finalization-43",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-43-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-43-PLAN.md"
     },
     {
       "fullSha": "846c13000bb120adf83febaf0732e704446a0e02",
@@ -877,8 +964,9 @@
       "subject": "Complete previous commit documentation",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/846c130-SPEC.md",
-      "plan": "docs/plans/846c130-PLAN.md"
+      "slug": "commit-docs-finalization-44",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-44-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-44-PLAN.md"
     },
     {
       "fullSha": "0e2559ac8ac23b99ff705b51372d2eb97a8487d6",
@@ -887,8 +975,9 @@
       "subject": "Finalize previous commit documentation",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/0e2559a-SPEC.md",
-      "plan": "docs/plans/0e2559a-PLAN.md"
+      "slug": "commit-docs-finalization-45",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-45-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-45-PLAN.md"
     },
     {
       "fullSha": "fe2ced6af51deecae060e1729f1b5ebe5f871f27",
@@ -897,8 +986,9 @@
       "subject": "Complete previous commit documentation",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/fe2ced6-SPEC.md",
-      "plan": "docs/plans/fe2ced6-PLAN.md"
+      "slug": "commit-docs-finalization-46",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-46-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-46-PLAN.md"
     },
     {
       "fullSha": "5c5645575a79226d0a103b896681c9941d687d82",
@@ -907,8 +997,9 @@
       "subject": "Finalize previous commit documentation",
       "status": "implemented",
       "kind": "metadata-migration",
-      "spec": "docs/specs/5c56455-SPEC.md",
-      "plan": "docs/plans/5c56455-PLAN.md"
+      "slug": "commit-docs-finalization-47",
+      "spec": "docs/specs/2026-11-11-commit-docs-finalization-47-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-finalization-47-PLAN.md"
     },
     {
       "fullSha": "9525612e328486ceb996e3ce3327c0119129bf29",
@@ -917,25 +1008,50 @@
       "subject": "Generate commit documentation before CI checks",
       "status": "implemented",
       "kind": "component",
-      "spec": "docs/specs/9525612-SPEC.md",
-      "plan": "docs/plans/9525612-PLAN.md"
+      "slug": "generate-docs-before-ci",
+      "spec": "docs/specs/2026-11-11-generate-docs-before-ci-SPEC.md",
+      "plan": "docs/plans/2026-11-11-generate-docs-before-ci-PLAN.md"
     },
     {
       "fullSha": "ab2d941c75f445320180c2559bc62e146238aacc",
       "shortSha": "ab2d941",
       "date": "2026-11-11T11:30:50+08:00",
       "subject": "Record commit documentation CI success",
-      "status": "partial",
-      "kind": "evidence-update",
-      "spec": "docs/specs/ab2d941-SPEC.md",
-      "plan": "docs/plans/ab2d941-PLAN.md"
+      "status": "implemented",
+      "kind": "component",
+      "slug": "commit-docs-ci-status",
+      "spec": "docs/specs/2026-11-11-commit-docs-ci-status-SPEC.md",
+      "plan": "docs/plans/2026-11-11-commit-docs-ci-status-PLAN.md"
+    },
+    {
+      "fullSha": "c69c271db2278642918bce5caf9641108e4f6cab",
+      "shortSha": "c69c271",
+      "date": "2026-11-11T14:04:41+08:00",
+      "subject": "Rebuild substantive commit design documentation",
+      "status": "implemented",
+      "kind": "component",
+      "slug": "substantive-commit-design-docs",
+      "spec": "docs/specs/2026-11-11-substantive-commit-design-docs-SPEC.md",
+      "plan": "docs/plans/2026-11-11-substantive-commit-design-docs-PLAN.md"
+    },
+    {
+      "fullSha": "4909c0fccbf24736f5c670ef936bae317e52dd4c",
+      "shortSha": "4909c0f",
+      "date": "2026-11-11T16:01:00+08:00",
+      "subject": "Design date-based commit documentation",
+      "status": "implemented",
+      "kind": "component",
+      "slug": "date-based-commit-docs-design",
+      "spec": "docs/specs/2026-11-11-date-based-commit-docs-design-SPEC.md",
+      "plan": "docs/plans/2026-11-11-date-based-commit-docs-design-PLAN.md"
     },
     {
       "fullSha": "self",
-      "changeId": "substantive-commit-docs",
-      "subject": "Rebuild substantive per-commit design and implementation documentation",
+      "changeId": "manual-commit-design-rewrite",
+      "subject": "Rewrite every commit design and implementation document",
       "status": "implemented",
-      "kind": "component",
+      "kind": "metadata-migration",
+      "slug": "self",
       "spec": "docs/specs/self-SPEC.md",
       "plan": "docs/plans/self-PLAN.md"
     }

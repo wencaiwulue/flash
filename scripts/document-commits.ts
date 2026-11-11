@@ -1,10 +1,7 @@
 import { mkdir, writeFile } from 'fs/promises'
 import { dirname, join } from 'path'
-import { commits, REPOSITORY_ROOT } from './commit-docs/git.ts'
-import { loadRecords } from './commit-docs/load.ts'
-import { buildDocuments } from './commit-docs/render.ts'
-import { validateRecords } from './commit-docs/validate.ts'
-import type { DocumentationMode } from './commit-docs/schema.ts'
+import { REPOSITORY_ROOT } from './commit-docs/git.ts'
+import { buildManualIndexes, type DocumentationMode } from './commit-docs/manual.ts'
 
 export function documentationMode(args = Bun.argv.slice(2)): DocumentationMode {
   if (args.length === 0) return 'head'
@@ -13,13 +10,7 @@ export function documentationMode(args = Bun.argv.slice(2)): DocumentationMode {
 }
 
 export async function prepareCommitDocuments(mode: DocumentationMode) {
-  const history = commits()
-  const loaded = await loadRecords()
-  const errors = validateRecords(loaded, history, mode)
-  if (errors.length > 0) {
-    throw new Error(`Commit design records are invalid:\n${errors.join('\n')}`)
-  }
-  return buildDocuments(loaded, history, mode)
+  return buildManualIndexes(mode)
 }
 
 async function writeCommitDocuments(): Promise<void> {
@@ -30,7 +21,8 @@ async function writeCommitDocuments(): Promise<void> {
     await mkdir(dirname(absolute), { recursive: true })
     await writeFile(absolute, content)
   }
-  console.log(`Generated ${documents.size - 2} commit design/implementation documents and indexes (${mode} mode).`)
+  const count = JSON.parse(documents.get('docs/status/index.json')!).commits.length
+  console.log(`Validated ${count * 2} commit design/implementation documents and wrote indexes (${mode} mode).`)
 }
 
 if (import.meta.main) await writeCommitDocuments()

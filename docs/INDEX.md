@@ -1,104 +1,106 @@
 # Commit documentation index
 
-每份 SPEC 是回溯性方案设计，每份 PLAN 是文件级实施顺序。自动检查不替代逐提交的语义审查。
+每份 SPEC/PLAN 均由对应 revision 独立审核；索引器不生成设计正文。
 
-- Implemented: 76
-- Partial: 17
+- Implemented: 92
+- Partial: 3
 - Unimplemented: 0
 
 | Commit | Subject | Status | SPEC | PLAN |
 |---|---|---|---|---|
-| 4b9d30f | asdf | partial | [SPEC](../docs/specs/4b9d30f-SPEC.md) | [PLAN](../docs/plans/4b9d30f-PLAN.md) |
-| 9b2a352 | Restore CLI and SDK build | implemented | [SPEC](../docs/specs/9b2a352-SPEC.md) | [PLAN](../docs/plans/9b2a352-PLAN.md) |
-| 6b7bf48 | Complete secure storage, marketplace, and SDK controls | implemented | [SPEC](../docs/specs/6b7bf48-SPEC.md) | [PLAN](../docs/plans/6b7bf48-PLAN.md) |
-| e5c06bc | Document feature completion and CI results | implemented | [SPEC](../docs/specs/e5c06bc-SPEC.md) | [PLAN](../docs/plans/e5c06bc-PLAN.md) |
-| 02bc3c2 | Unblock remote control and Cloud persistence | implemented | [SPEC](../docs/specs/02bc3c2-SPEC.md) | [PLAN](../docs/plans/02bc3c2-PLAN.md) |
-| 2ff078c | Document remote control and Cloud verification | implemented | [SPEC](../docs/specs/2ff078c-SPEC.md) | [PLAN](../docs/plans/2ff078c-PLAN.md) |
-| 614bf48 | Enable external features and recover SDK parallel branches | implemented | [SPEC](../docs/specs/614bf48-SPEC.md) | [PLAN](../docs/plans/614bf48-PLAN.md) |
-| 301a3e7 | Implement monitoring and simple internal tools | implemented | [SPEC](../docs/specs/301a3e7-SPEC.md) | [PLAN](../docs/plans/301a3e7-PLAN.md) |
-| edcaa95 | Implement proactive state and coordinator workers | implemented | [SPEC](../docs/specs/edcaa95-SPEC.md) | [PLAN](../docs/plans/edcaa95-PLAN.md) |
-| e2e0ff6 | Make feature profile test CI-independent | implemented | [SPEC](../docs/specs/e2e0ff6-SPEC.md) | [PLAN](../docs/plans/e2e0ff6-PLAN.md) |
-| e92caa6 | Implement local skill discovery | implemented | [SPEC](../docs/specs/e92caa6-SPEC.md) | [PLAN](../docs/plans/e92caa6-PLAN.md) |
-| 809351a | Implement UDS inbox and peer discovery | implemented | [SPEC](../docs/specs/809351a-SPEC.md) | [PLAN](../docs/plans/809351a-PLAN.md) |
-| d2fafcd | Implement daemon and remote control server lifecycle | implemented | [SPEC](../docs/specs/d2fafcd-SPEC.md) | [PLAN](../docs/plans/d2fafcd-PLAN.md) |
-| ea80851 | Implement declarative workflow execution | partial | [SPEC](../docs/specs/ea80851-SPEC.md) | [PLAN](../docs/plans/ea80851-PLAN.md) |
-| 31697a0 | Implement context collapse and recovery | partial | [SPEC](../docs/specs/31697a0-SPEC.md) | [PLAN](../docs/plans/31697a0-PLAN.md) |
-| da942ac | Implement reactive compaction recovery | implemented | [SPEC](../docs/specs/da942ac-SPEC.md) | [PLAN](../docs/plans/da942ac-PLAN.md) |
-| dab8405 | Document remaining implementation boundaries | implemented | [SPEC](../docs/specs/dab8405-SPEC.md) | [PLAN](../docs/plans/dab8405-PLAN.md) |
-| 982ab10 | Enable Buddy and Fork Subagent | implemented | [SPEC](../docs/specs/982ab10-SPEC.md) | [PLAN](../docs/plans/982ab10-PLAN.md) |
-| 2bf435a | Implement history snipping | partial | [SPEC](../docs/specs/2bf435a-SPEC.md) | [PLAN](../docs/plans/2bf435a-PLAN.md) |
-| 0b68068 | Implement ReviewArtifact and Hunter skill | partial | [SPEC](../docs/specs/0b68068-SPEC.md) | [PLAN](../docs/plans/0b68068-PLAN.md) |
-| ab30aec | Integrate SkillHub remote skills | implemented | [SPEC](../docs/specs/ab30aec-SPEC.md) | [PLAN](../docs/plans/ab30aec-PLAN.md) |
-| d5a675a | Implement open KAIROS functionality | implemented | [SPEC](../docs/specs/d5a675a-SPEC.md) | [PLAN](../docs/plans/d5a675a-PLAN.md) |
-| d925b12 | Integrate open computer use and browser MCP | implemented | [SPEC](../docs/specs/d925b12-SPEC.md) | [PLAN](../docs/plans/d925b12-PLAN.md) |
-| a8c8b90 | Add lifecycle regressions and race fixes | implemented | [SPEC](../docs/specs/a8c8b90-SPEC.md) | [PLAN](../docs/plans/a8c8b90-PLAN.md) |
-| adaa8ff | Implement env-less perpetual continuity | implemented | [SPEC](../docs/specs/adaa8ff-SPEC.md) | [PLAN](../docs/plans/adaa8ff-PLAN.md) |
-| c43f42e | Isolate CI lifecycle test timing and cwd | implemented | [SPEC](../docs/specs/c43f42e-SPEC.md) | [PLAN](../docs/plans/c43f42e-PLAN.md) |
-| 3948f91 | Make cron takeover test deterministic | implemented | [SPEC](../docs/specs/3948f91-SPEC.md) | [PLAN](../docs/plans/3948f91-PLAN.md) |
-| e31ff8f | Reset cron scheduler state on stop and restart | implemented | [SPEC](../docs/specs/e31ff8f-SPEC.md) | [PLAN](../docs/plans/e31ff8f-PLAN.md) |
-| 271cf75 | Record final CI verification | implemented | [SPEC](../docs/specs/271cf75-SPEC.md) | [PLAN](../docs/plans/271cf75-PLAN.md) |
-| 9cd4c63 | Add live validation workflows and registry compatibility | partial | [SPEC](../docs/specs/9cd4c63-SPEC.md) | [PLAN](../docs/plans/9cd4c63-PLAN.md) |
-| 6ef3352 | Allow live jobs without precreated environment | partial | [SPEC](../docs/specs/6ef3352-SPEC.md) | [PLAN](../docs/plans/6ef3352-PLAN.md) |
-| 85028f7 | Isolate live workflow job parsing | partial | [SPEC](../docs/specs/85028f7-SPEC.md) | [PLAN](../docs/plans/85028f7-PLAN.md) |
-| 17f52b5 | Test live workflow without job conditions | partial | [SPEC](../docs/specs/17f52b5-SPEC.md) | [PLAN](../docs/plans/17f52b5-PLAN.md) |
-| 4dd93b7 | Re-register live validation workflow | implemented | [SPEC](../docs/specs/4dd93b7-SPEC.md) | [PLAN](../docs/plans/4dd93b7-PLAN.md) |
-| b183b9a | Gate live validation jobs on available environments | partial | [SPEC](../docs/specs/b183b9a-SPEC.md) | [PLAN](../docs/plans/b183b9a-PLAN.md) |
-| 4c04383 | Use env context for live job gating | partial | [SPEC](../docs/specs/4c04383-SPEC.md) | [PLAN](../docs/plans/4c04383-PLAN.md) |
-| b160aef | Use explicit expressions for live gating | partial | [SPEC](../docs/specs/b160aef-SPEC.md) | [PLAN](../docs/plans/b160aef-PLAN.md) |
-| 97b13fd | Move live validation gating into scripts | partial | [SPEC](../docs/specs/97b13fd-SPEC.md) | [PLAN](../docs/plans/97b13fd-PLAN.md) |
-| e900423 | Skip desktop validation without self-hosted runner | implemented | [SPEC](../docs/specs/e900423-SPEC.md) | [PLAN](../docs/plans/e900423-PLAN.md) |
-| 4dbadb8 | Record live validation workflow success | partial | [SPEC](../docs/specs/4dbadb8-SPEC.md) | [PLAN](../docs/plans/4dbadb8-PLAN.md) |
-| beee034 | Support settings-based bearer authentication | partial | [SPEC](../docs/specs/beee034-SPEC.md) | [PLAN](../docs/plans/beee034-PLAN.md) |
-| 587c466 | Document every commit with specs and plans | partial | [SPEC](../docs/specs/587c466-SPEC.md) | [PLAN](../docs/plans/587c466-PLAN.md) |
-| 8117aaa | Finalize self record for current commit | implemented | [SPEC](../docs/specs/8117aaa-SPEC.md) | [PLAN](../docs/plans/8117aaa-PLAN.md) |
-| c4e19ce | Finalize previous self documentation | implemented | [SPEC](../docs/specs/c4e19ce-SPEC.md) | [PLAN](../docs/plans/c4e19ce-PLAN.md) |
-| 17c9196 | Finalize self record for previous commit | implemented | [SPEC](../docs/specs/17c9196-SPEC.md) | [PLAN](../docs/plans/17c9196-PLAN.md) |
-| f210ce9 | Finalize commit documentation for previous change | implemented | [SPEC](../docs/specs/f210ce9-SPEC.md) | [PLAN](../docs/plans/f210ce9-PLAN.md) |
-| 7740a1d | Finalize self documentation for current commit | implemented | [SPEC](../docs/specs/7740a1d-SPEC.md) | [PLAN](../docs/plans/7740a1d-PLAN.md) |
-| fe3c177 | Complete self documentation for previous commit | implemented | [SPEC](../docs/specs/fe3c177-SPEC.md) | [PLAN](../docs/plans/fe3c177-PLAN.md) |
-| 63e138f | Finalize previous commit self documentation | implemented | [SPEC](../docs/specs/63e138f-SPEC.md) | [PLAN](../docs/plans/63e138f-PLAN.md) |
-| 80e6def | Finalize self record to previous SHA on next commit | implemented | [SPEC](../docs/specs/80e6def-SPEC.md) | [PLAN](../docs/plans/80e6def-PLAN.md) |
-| 7ca78c1 | Complete all commit documentation records | implemented | [SPEC](../docs/specs/7ca78c1-SPEC.md) | [PLAN](../docs/plans/7ca78c1-PLAN.md) |
-| f251df9 | Finalize previous commit documentation records | implemented | [SPEC](../docs/specs/f251df9-SPEC.md) | [PLAN](../docs/plans/f251df9-PLAN.md) |
-| 2fe47f6 | Complete documentation for previous commit | implemented | [SPEC](../docs/specs/2fe47f6-SPEC.md) | [PLAN](../docs/plans/2fe47f6-PLAN.md) |
-| f355de1 | Finalize documentation for previous commit | implemented | [SPEC](../docs/specs/f355de1-SPEC.md) | [PLAN](../docs/plans/f355de1-PLAN.md) |
-| 55f7c7e | Finalize documentation for previous change | implemented | [SPEC](../docs/specs/55f7c7e-SPEC.md) | [PLAN](../docs/plans/55f7c7e-PLAN.md) |
-| d802331 | Complete commit documentation for previous commit | implemented | [SPEC](../docs/specs/d802331-SPEC.md) | [PLAN](../docs/plans/d802331-PLAN.md) |
-| 335b217 | Finalize previous commit documentation | implemented | [SPEC](../docs/specs/335b217-SPEC.md) | [PLAN](../docs/plans/335b217-PLAN.md) |
-| 0640471 | Complete documentation for current and previous commits | implemented | [SPEC](../docs/specs/0640471-SPEC.md) | [PLAN](../docs/plans/0640471-PLAN.md) |
-| 501672c | Complete documentation for previous commit | implemented | [SPEC](../docs/specs/501672c-SPEC.md) | [PLAN](../docs/plans/501672c-PLAN.md) |
-| 2f55f19 | Finalize previous commit documentation | implemented | [SPEC](../docs/specs/2f55f19-SPEC.md) | [PLAN](../docs/plans/2f55f19-PLAN.md) |
-| d472e5c | Complete previous commit documentation | implemented | [SPEC](../docs/specs/d472e5c-SPEC.md) | [PLAN](../docs/plans/d472e5c-PLAN.md) |
-| 3fbabc2 | Finalize previous commit documentation | implemented | [SPEC](../docs/specs/3fbabc2-SPEC.md) | [PLAN](../docs/plans/3fbabc2-PLAN.md) |
-| 1bc02bf | Complete previous commit documentation | implemented | [SPEC](../docs/specs/1bc02bf-SPEC.md) | [PLAN](../docs/plans/1bc02bf-PLAN.md) |
-| 1329f79 | Finalize documentation for previous commit | implemented | [SPEC](../docs/specs/1329f79-SPEC.md) | [PLAN](../docs/plans/1329f79-PLAN.md) |
-| be5c03e | Complete previous commit documentation | implemented | [SPEC](../docs/specs/be5c03e-SPEC.md) | [PLAN](../docs/plans/be5c03e-PLAN.md) |
-| 2a4aa6c | Finalize documentation for previous commit | implemented | [SPEC](../docs/specs/2a4aa6c-SPEC.md) | [PLAN](../docs/plans/2a4aa6c-PLAN.md) |
-| 0dabf46 | Complete previous commit documentation | implemented | [SPEC](../docs/specs/0dabf46-SPEC.md) | [PLAN](../docs/plans/0dabf46-PLAN.md) |
-| 612cc40 | Finalize previous commit documentation | implemented | [SPEC](../docs/specs/612cc40-SPEC.md) | [PLAN](../docs/plans/612cc40-PLAN.md) |
-| 6c3c1e4 | Finalize documentation for previous commit | implemented | [SPEC](../docs/specs/6c3c1e4-SPEC.md) | [PLAN](../docs/plans/6c3c1e4-PLAN.md) |
-| 96283ae | Complete previous commit documentation | implemented | [SPEC](../docs/specs/96283ae-SPEC.md) | [PLAN](../docs/plans/96283ae-PLAN.md) |
-| b6bf982 | Finalize documentation for previous commit | implemented | [SPEC](../docs/specs/b6bf982-SPEC.md) | [PLAN](../docs/plans/b6bf982-PLAN.md) |
-| 787b2dc | Complete previous commit documentation | implemented | [SPEC](../docs/specs/787b2dc-SPEC.md) | [PLAN](../docs/plans/787b2dc-PLAN.md) |
-| 6b0ce9d | Finalize previous commit documentation | implemented | [SPEC](../docs/specs/6b0ce9d-SPEC.md) | [PLAN](../docs/plans/6b0ce9d-PLAN.md) |
-| 5c5bc03 | Complete previous commit documentation | implemented | [SPEC](../docs/specs/5c5bc03-SPEC.md) | [PLAN](../docs/plans/5c5bc03-PLAN.md) |
-| c771f05 | Finalize previous commit documentation | implemented | [SPEC](../docs/specs/c771f05-SPEC.md) | [PLAN](../docs/plans/c771f05-PLAN.md) |
-| dc3f075 | Complete previous commit documentation | implemented | [SPEC](../docs/specs/dc3f075-SPEC.md) | [PLAN](../docs/plans/dc3f075-PLAN.md) |
-| 1fe1430 | Finalize previous commit documentation | implemented | [SPEC](../docs/specs/1fe1430-SPEC.md) | [PLAN](../docs/plans/1fe1430-PLAN.md) |
-| a4edc60 | Complete previous commit documentation | implemented | [SPEC](../docs/specs/a4edc60-SPEC.md) | [PLAN](../docs/plans/a4edc60-PLAN.md) |
-| e0cbbe1 | Finalize documentation for previous commit | implemented | [SPEC](../docs/specs/e0cbbe1-SPEC.md) | [PLAN](../docs/plans/e0cbbe1-PLAN.md) |
-| 8a248e3 | Complete previous commit documentation | implemented | [SPEC](../docs/specs/8a248e3-SPEC.md) | [PLAN](../docs/plans/8a248e3-PLAN.md) |
-| 4329cd8 | Finalize previous commit documentation | implemented | [SPEC](../docs/specs/4329cd8-SPEC.md) | [PLAN](../docs/plans/4329cd8-PLAN.md) |
-| f5b097b | Complete previous commit documentation | implemented | [SPEC](../docs/specs/f5b097b-SPEC.md) | [PLAN](../docs/plans/f5b097b-PLAN.md) |
-| e8d8c06 | Finalize previous commit documentation | implemented | [SPEC](../docs/specs/e8d8c06-SPEC.md) | [PLAN](../docs/plans/e8d8c06-PLAN.md) |
-| fdffe9e | Complete previous commit documentation | implemented | [SPEC](../docs/specs/fdffe9e-SPEC.md) | [PLAN](../docs/plans/fdffe9e-PLAN.md) |
-| 3c4b6f2 | Finalize previous commit documentation | implemented | [SPEC](../docs/specs/3c4b6f2-SPEC.md) | [PLAN](../docs/plans/3c4b6f2-PLAN.md) |
-| c8338e1 | Complete previous commit documentation | implemented | [SPEC](../docs/specs/c8338e1-SPEC.md) | [PLAN](../docs/plans/c8338e1-PLAN.md) |
-| 69d3596 | Finalize previous commit documentation | implemented | [SPEC](../docs/specs/69d3596-SPEC.md) | [PLAN](../docs/plans/69d3596-PLAN.md) |
-| 846c130 | Complete previous commit documentation | implemented | [SPEC](../docs/specs/846c130-SPEC.md) | [PLAN](../docs/plans/846c130-PLAN.md) |
-| 0e2559a | Finalize previous commit documentation | implemented | [SPEC](../docs/specs/0e2559a-SPEC.md) | [PLAN](../docs/plans/0e2559a-PLAN.md) |
-| fe2ced6 | Complete previous commit documentation | implemented | [SPEC](../docs/specs/fe2ced6-SPEC.md) | [PLAN](../docs/plans/fe2ced6-PLAN.md) |
-| 5c56455 | Finalize previous commit documentation | implemented | [SPEC](../docs/specs/5c56455-SPEC.md) | [PLAN](../docs/plans/5c56455-PLAN.md) |
-| 9525612 | Generate commit documentation before CI checks | implemented | [SPEC](../docs/specs/9525612-SPEC.md) | [PLAN](../docs/plans/9525612-PLAN.md) |
-| ab2d941 | Record commit documentation CI success | partial | [SPEC](../docs/specs/ab2d941-SPEC.md) | [PLAN](../docs/plans/ab2d941-PLAN.md) |
-| self (substantive-commit-docs) | Rebuild substantive per-commit design and implementation documentation | implemented | [SPEC](../docs/specs/self-SPEC.md) | [PLAN](../docs/plans/self-PLAN.md) |
+| 4b9d30f | asdf | partial | [SPEC](../docs/specs/2026-03-31-root-source-snapshot-SPEC.md) | [PLAN](../docs/plans/2026-03-31-root-source-snapshot-PLAN.md) |
+| 9b2a352 | Restore CLI and SDK build | partial | [SPEC](../docs/specs/2026-11-10-restore-cli-sdk-build-SPEC.md) | [PLAN](../docs/plans/2026-11-10-restore-cli-sdk-build-PLAN.md) |
+| 6b7bf48 | Complete secure storage, marketplace, and SDK controls | implemented | [SPEC](../docs/specs/2026-11-10-secure-storage-marketplace-sdk-SPEC.md) | [PLAN](../docs/plans/2026-11-10-secure-storage-marketplace-sdk-PLAN.md) |
+| e5c06bc | Document feature completion and CI results | implemented | [SPEC](../docs/specs/2026-11-10-feature-completion-status-SPEC.md) | [PLAN](../docs/plans/2026-11-10-feature-completion-status-PLAN.md) |
+| 02bc3c2 | Unblock remote control and Cloud persistence | implemented | [SPEC](../docs/specs/2026-11-10-remote-control-cloud-persistence-SPEC.md) | [PLAN](../docs/plans/2026-11-10-remote-control-cloud-persistence-PLAN.md) |
+| 2ff078c | Document remote control and Cloud verification | implemented | [SPEC](../docs/specs/2026-11-10-remote-cloud-verification-status-SPEC.md) | [PLAN](../docs/plans/2026-11-10-remote-cloud-verification-status-PLAN.md) |
+| 614bf48 | Enable external features and recover SDK parallel branches | implemented | [SPEC](../docs/specs/2026-11-10-external-features-sdk-dag-SPEC.md) | [PLAN](../docs/plans/2026-11-10-external-features-sdk-dag-PLAN.md) |
+| 301a3e7 | Implement monitoring and simple internal tools | implemented | [SPEC](../docs/specs/2026-11-10-monitoring-internal-tools-SPEC.md) | [PLAN](../docs/plans/2026-11-10-monitoring-internal-tools-PLAN.md) |
+| edcaa95 | Implement proactive state and coordinator workers | implemented | [SPEC](../docs/specs/2026-11-10-proactive-coordinator-workers-SPEC.md) | [PLAN](../docs/plans/2026-11-10-proactive-coordinator-workers-PLAN.md) |
+| e2e0ff6 | Make feature profile test CI-independent | implemented | [SPEC](../docs/specs/2026-11-10-ci-independent-feature-profile-SPEC.md) | [PLAN](../docs/plans/2026-11-10-ci-independent-feature-profile-PLAN.md) |
+| e92caa6 | Implement local skill discovery | implemented | [SPEC](../docs/specs/2026-11-10-local-skill-discovery-SPEC.md) | [PLAN](../docs/plans/2026-11-10-local-skill-discovery-PLAN.md) |
+| 809351a | Implement UDS inbox and peer discovery | implemented | [SPEC](../docs/specs/2026-11-10-uds-inbox-peer-discovery-SPEC.md) | [PLAN](../docs/plans/2026-11-10-uds-inbox-peer-discovery-PLAN.md) |
+| d2fafcd | Implement daemon and remote control server lifecycle | implemented | [SPEC](../docs/specs/2026-11-10-daemon-remote-control-lifecycle-SPEC.md) | [PLAN](../docs/plans/2026-11-10-daemon-remote-control-lifecycle-PLAN.md) |
+| ea80851 | Implement declarative workflow execution | implemented | [SPEC](../docs/specs/2026-11-10-declarative-workflow-execution-SPEC.md) | [PLAN](../docs/plans/2026-11-10-declarative-workflow-execution-PLAN.md) |
+| 31697a0 | Implement context collapse and recovery | implemented | [SPEC](../docs/specs/2026-11-10-context-collapse-recovery-SPEC.md) | [PLAN](../docs/plans/2026-11-10-context-collapse-recovery-PLAN.md) |
+| da942ac | Implement reactive compaction recovery | implemented | [SPEC](../docs/specs/2026-11-10-reactive-compaction-recovery-SPEC.md) | [PLAN](../docs/plans/2026-11-10-reactive-compaction-recovery-PLAN.md) |
+| dab8405 | Document remaining implementation boundaries | implemented | [SPEC](../docs/specs/2026-11-10-implementation-boundaries-status-SPEC.md) | [PLAN](../docs/plans/2026-11-10-implementation-boundaries-status-PLAN.md) |
+| 982ab10 | Enable Buddy and Fork Subagent | implemented | [SPEC](../docs/specs/2026-11-10-buddy-fork-subagent-SPEC.md) | [PLAN](../docs/plans/2026-11-10-buddy-fork-subagent-PLAN.md) |
+| 2bf435a | Implement history snipping | implemented | [SPEC](../docs/specs/2026-11-10-history-snipping-SPEC.md) | [PLAN](../docs/plans/2026-11-10-history-snipping-PLAN.md) |
+| 0b68068 | Implement ReviewArtifact and Hunter skill | implemented | [SPEC](../docs/specs/2026-11-10-review-artifact-hunter-SPEC.md) | [PLAN](../docs/plans/2026-11-10-review-artifact-hunter-PLAN.md) |
+| ab30aec | Integrate SkillHub remote skills | implemented | [SPEC](../docs/specs/2026-11-10-skillhub-remote-skills-SPEC.md) | [PLAN](../docs/plans/2026-11-10-skillhub-remote-skills-PLAN.md) |
+| d5a675a | Implement open KAIROS functionality | implemented | [SPEC](../docs/specs/2026-11-10-open-kairos-functionality-SPEC.md) | [PLAN](../docs/plans/2026-11-10-open-kairos-functionality-PLAN.md) |
+| d925b12 | Integrate open computer use and browser MCP | implemented | [SPEC](../docs/specs/2026-11-10-computer-use-browser-mcp-SPEC.md) | [PLAN](../docs/plans/2026-11-10-computer-use-browser-mcp-PLAN.md) |
+| a8c8b90 | Add lifecycle regressions and race fixes | implemented | [SPEC](../docs/specs/2026-11-11-lifecycle-regressions-race-fixes-SPEC.md) | [PLAN](../docs/plans/2026-11-11-lifecycle-regressions-race-fixes-PLAN.md) |
+| adaa8ff | Implement env-less perpetual continuity | implemented | [SPEC](../docs/specs/2026-11-11-env-less-perpetual-continuity-SPEC.md) | [PLAN](../docs/plans/2026-11-11-env-less-perpetual-continuity-PLAN.md) |
+| c43f42e | Isolate CI lifecycle test timing and cwd | implemented | [SPEC](../docs/specs/2026-11-11-ci-lifecycle-test-isolation-SPEC.md) | [PLAN](../docs/plans/2026-11-11-ci-lifecycle-test-isolation-PLAN.md) |
+| 3948f91 | Make cron takeover test deterministic | implemented | [SPEC](../docs/specs/2026-11-11-deterministic-cron-takeover-SPEC.md) | [PLAN](../docs/plans/2026-11-11-deterministic-cron-takeover-PLAN.md) |
+| e31ff8f | Reset cron scheduler state on stop and restart | implemented | [SPEC](../docs/specs/2026-11-11-cron-scheduler-reset-SPEC.md) | [PLAN](../docs/plans/2026-11-11-cron-scheduler-reset-PLAN.md) |
+| 271cf75 | Record final CI verification | implemented | [SPEC](../docs/specs/2026-11-11-final-ci-status-SPEC.md) | [PLAN](../docs/plans/2026-11-11-final-ci-status-PLAN.md) |
+| 9cd4c63 | Add live validation workflows and registry compatibility | partial | [SPEC](../docs/specs/2026-11-11-live-validation-probes-SPEC.md) | [PLAN](../docs/plans/2026-11-11-live-validation-probes-PLAN.md) |
+| 6ef3352 | Allow live jobs without precreated environment | implemented | [SPEC](../docs/specs/2026-11-11-live-jobs-environment-gating-SPEC.md) | [PLAN](../docs/plans/2026-11-11-live-jobs-environment-gating-PLAN.md) |
+| 85028f7 | Isolate live workflow job parsing | implemented | [SPEC](../docs/specs/2026-11-11-isolate-live-workflow-jobs-SPEC.md) | [PLAN](../docs/plans/2026-11-11-isolate-live-workflow-jobs-PLAN.md) |
+| 17f52b5 | Test live workflow without job conditions | implemented | [SPEC](../docs/specs/2026-11-11-unconditional-live-workflow-jobs-SPEC.md) | [PLAN](../docs/plans/2026-11-11-unconditional-live-workflow-jobs-PLAN.md) |
+| 4dd93b7 | Re-register live validation workflow | implemented | [SPEC](../docs/specs/2026-11-11-reregister-live-validation-workflow-SPEC.md) | [PLAN](../docs/plans/2026-11-11-reregister-live-validation-workflow-PLAN.md) |
+| b183b9a | Gate live validation jobs on available environments | implemented | [SPEC](../docs/specs/2026-11-11-live-job-environment-gates-SPEC.md) | [PLAN](../docs/plans/2026-11-11-live-job-environment-gates-PLAN.md) |
+| 4c04383 | Use env context for live job gating | implemented | [SPEC](../docs/specs/2026-11-11-env-context-live-gating-SPEC.md) | [PLAN](../docs/plans/2026-11-11-env-context-live-gating-PLAN.md) |
+| b160aef | Use explicit expressions for live gating | implemented | [SPEC](../docs/specs/2026-11-11-explicit-live-gating-expressions-SPEC.md) | [PLAN](../docs/plans/2026-11-11-explicit-live-gating-expressions-PLAN.md) |
+| 97b13fd | Move live validation gating into scripts | implemented | [SPEC](../docs/specs/2026-11-11-script-based-live-gating-SPEC.md) | [PLAN](../docs/plans/2026-11-11-script-based-live-gating-PLAN.md) |
+| e900423 | Skip desktop validation without self-hosted runner | implemented | [SPEC](../docs/specs/2026-11-11-skip-desktop-without-runner-SPEC.md) | [PLAN](../docs/plans/2026-11-11-skip-desktop-without-runner-PLAN.md) |
+| 4dbadb8 | Record live validation workflow success | implemented | [SPEC](../docs/specs/2026-11-11-live-workflow-status-SPEC.md) | [PLAN](../docs/plans/2026-11-11-live-workflow-status-PLAN.md) |
+| beee034 | Support settings-based bearer authentication | implemented | [SPEC](../docs/specs/2026-11-11-settings-bearer-authentication-SPEC.md) | [PLAN](../docs/plans/2026-11-11-settings-bearer-authentication-PLAN.md) |
+| 587c466 | Document every commit with specs and plans | implemented | [SPEC](../docs/specs/2026-11-11-commit-specs-and-plans-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-specs-and-plans-PLAN.md) |
+| 8117aaa | Finalize self record for current commit | implemented | [SPEC](../docs/specs/2026-11-11-head-self-inventory-SPEC.md) | [PLAN](../docs/plans/2026-11-11-head-self-inventory-PLAN.md) |
+| c4e19ce | Finalize previous self documentation | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-PLAN.md) |
+| 17c9196 | Finalize self record for previous commit | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-02-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-02-PLAN.md) |
+| f210ce9 | Finalize commit documentation for previous change | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-03-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-03-PLAN.md) |
+| 7740a1d | Finalize self documentation for current commit | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-04-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-04-PLAN.md) |
+| fe3c177 | Complete self documentation for previous commit | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-05-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-05-PLAN.md) |
+| 63e138f | Finalize previous commit self documentation | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-06-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-06-PLAN.md) |
+| 80e6def | Finalize self record to previous SHA on next commit | implemented | [SPEC](../docs/specs/2026-11-11-previous-head-documents-SPEC.md) | [PLAN](../docs/plans/2026-11-11-previous-head-documents-PLAN.md) |
+| 7ca78c1 | Complete all commit documentation records | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-07-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-07-PLAN.md) |
+| f251df9 | Finalize previous commit documentation records | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-08-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-08-PLAN.md) |
+| 2fe47f6 | Complete documentation for previous commit | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-09-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-09-PLAN.md) |
+| f355de1 | Finalize documentation for previous commit | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-10-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-10-PLAN.md) |
+| 55f7c7e | Finalize documentation for previous change | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-11-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-11-PLAN.md) |
+| d802331 | Complete commit documentation for previous commit | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-12-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-12-PLAN.md) |
+| 335b217 | Finalize previous commit documentation | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-13-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-13-PLAN.md) |
+| 0640471 | Complete documentation for current and previous commits | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-14-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-14-PLAN.md) |
+| 501672c | Complete documentation for previous commit | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-15-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-15-PLAN.md) |
+| 2f55f19 | Finalize previous commit documentation | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-16-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-16-PLAN.md) |
+| d472e5c | Complete previous commit documentation | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-17-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-17-PLAN.md) |
+| 3fbabc2 | Finalize previous commit documentation | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-18-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-18-PLAN.md) |
+| 1bc02bf | Complete previous commit documentation | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-19-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-19-PLAN.md) |
+| 1329f79 | Finalize documentation for previous commit | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-20-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-20-PLAN.md) |
+| be5c03e | Complete previous commit documentation | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-21-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-21-PLAN.md) |
+| 2a4aa6c | Finalize documentation for previous commit | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-22-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-22-PLAN.md) |
+| 0dabf46 | Complete previous commit documentation | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-23-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-23-PLAN.md) |
+| 612cc40 | Finalize previous commit documentation | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-24-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-24-PLAN.md) |
+| 6c3c1e4 | Finalize documentation for previous commit | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-25-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-25-PLAN.md) |
+| 96283ae | Complete previous commit documentation | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-26-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-26-PLAN.md) |
+| b6bf982 | Finalize documentation for previous commit | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-27-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-27-PLAN.md) |
+| 787b2dc | Complete previous commit documentation | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-28-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-28-PLAN.md) |
+| 6b0ce9d | Finalize previous commit documentation | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-29-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-29-PLAN.md) |
+| 5c5bc03 | Complete previous commit documentation | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-30-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-30-PLAN.md) |
+| c771f05 | Finalize previous commit documentation | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-31-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-31-PLAN.md) |
+| dc3f075 | Complete previous commit documentation | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-32-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-32-PLAN.md) |
+| 1fe1430 | Finalize previous commit documentation | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-33-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-33-PLAN.md) |
+| a4edc60 | Complete previous commit documentation | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-34-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-34-PLAN.md) |
+| e0cbbe1 | Finalize documentation for previous commit | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-35-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-35-PLAN.md) |
+| 8a248e3 | Complete previous commit documentation | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-36-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-36-PLAN.md) |
+| 4329cd8 | Finalize previous commit documentation | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-37-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-37-PLAN.md) |
+| f5b097b | Complete previous commit documentation | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-38-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-38-PLAN.md) |
+| e8d8c06 | Finalize previous commit documentation | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-39-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-39-PLAN.md) |
+| fdffe9e | Complete previous commit documentation | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-40-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-40-PLAN.md) |
+| 3c4b6f2 | Finalize previous commit documentation | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-41-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-41-PLAN.md) |
+| c8338e1 | Complete previous commit documentation | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-42-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-42-PLAN.md) |
+| 69d3596 | Finalize previous commit documentation | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-43-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-43-PLAN.md) |
+| 846c130 | Complete previous commit documentation | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-44-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-44-PLAN.md) |
+| 0e2559a | Finalize previous commit documentation | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-45-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-45-PLAN.md) |
+| fe2ced6 | Complete previous commit documentation | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-46-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-46-PLAN.md) |
+| 5c56455 | Finalize previous commit documentation | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-finalization-47-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-finalization-47-PLAN.md) |
+| 9525612 | Generate commit documentation before CI checks | implemented | [SPEC](../docs/specs/2026-11-11-generate-docs-before-ci-SPEC.md) | [PLAN](../docs/plans/2026-11-11-generate-docs-before-ci-PLAN.md) |
+| ab2d941 | Record commit documentation CI success | implemented | [SPEC](../docs/specs/2026-11-11-commit-docs-ci-status-SPEC.md) | [PLAN](../docs/plans/2026-11-11-commit-docs-ci-status-PLAN.md) |
+| c69c271 | Rebuild substantive commit design documentation | implemented | [SPEC](../docs/specs/2026-11-11-substantive-commit-design-docs-SPEC.md) | [PLAN](../docs/plans/2026-11-11-substantive-commit-design-docs-PLAN.md) |
+| 4909c0f | Design date-based commit documentation | implemented | [SPEC](../docs/specs/2026-11-11-date-based-commit-docs-design-SPEC.md) | [PLAN](../docs/plans/2026-11-11-date-based-commit-docs-design-PLAN.md) |
+| self (manual-commit-design-rewrite) | Rewrite every commit design and implementation document | implemented | [SPEC](../docs/specs/self-SPEC.md) | [PLAN](../docs/plans/self-PLAN.md) |

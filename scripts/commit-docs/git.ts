@@ -1,5 +1,11 @@
 import { fileURLToPath } from 'url'
-import type { Commit } from './schema.ts'
+
+export type Commit = {
+  full: string
+  short: string
+  date: string
+  subject: string
+}
 
 export const REPOSITORY_ROOT = fileURLToPath(new URL('../../', import.meta.url))
 
@@ -15,15 +21,18 @@ export function git(args: string[]): string {
   return result.stdout.toString().trim()
 }
 
+let cachedCommits: Commit[] | undefined
+
 export function commits(): Commit[] {
-  const revisions = git(['rev-list', '--reverse', '--topo-order', 'HEAD'])
+  if (cachedCommits) return cachedCommits
+  cachedCommits = git(['log', '--reverse', '--topo-order', '--format=%H%x09%h%x09%cI%x09%s'])
     .split('\n')
     .filter(Boolean)
-  return revisions.map(full => {
-    const line = git(['show', '-s', '--format=%cI%x09%s', full])
-    const [date, ...subject] = line.split('\t')
-    return { full, short: full.slice(0, 7), date: date!, subject: subject.join('\t') }
-  })
+    .map(line => {
+      const [full, short, date, ...subject] = line.split('\t')
+      return { full: full!, short: short!, date: date!, subject: subject.join('\t') }
+    })
+  return cachedCommits
 }
 
 export type ChangedFile = {

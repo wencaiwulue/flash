@@ -43,9 +43,9 @@ async function mkdirIfNeeded(dir: string): Promise<void> {
   await mkdir(join(dir, '.claude'), { recursive: true })
 }
 
-async function waitFor(predicate: () => boolean, timeoutMs = 8_000): Promise<void> {
+async function waitFor(predicate: () => boolean | Promise<boolean>, timeoutMs = 8_000): Promise<void> {
   const started = Date.now()
-  while (!predicate()) {
+  while (!(await predicate())) {
     if (Date.now() - started > timeoutMs) throw new Error('Timed out waiting for cron')
     await sleep(50)
   }
@@ -90,6 +90,7 @@ describe('cron scheduler lifecycle', () => {
     await waitFor(() => scheduler.getNextFireTime() !== null)
     current += 60_000
     await waitFor(() => fired.length >= 1)
+    await waitFor(async () => (await readCronTasks(dir))[0]?.lastFiredAt !== undefined)
     const tasks = await readCronTasks(dir)
     expect(tasks[0]?.lastFiredAt).toBeDefined()
     expect(scheduler.getNextFireTime()).not.toBeNull()
