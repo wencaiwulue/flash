@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: 'ab30aec7490292b93198d53c8436081dd8b06cdf',
+  slug: 'skillhub-remote-skills',
   title: 'Integrate SkillHub remote skills',
   kind: 'component',
   status: 'implemented',
@@ -64,113 +65,7 @@ export const record = defineCommitRecord({
     '远程搜索失败时本地结果仍返回，重复可见 canonical 被过滤；DiscoverSkills 在有结果时同时报告 remoteError，零结果错误展示缺陷需单独保留。',
     '成功遥测包含真实 cache/file/byte/fetch 数据，失败遥测包含 error 并继续抛出；搜索失败不得发送伪造 loaded 成功。',
     '本地 HTTP 回归覆盖搜索登记/prefetch、版本缓存与更新、路径穿越及 symlink；公共 live、私有自托管和后续响应兼容不得写作目标时验收。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: 'SkillHubClient 实现环境端点、10 秒组合取消、可选 Bearer、code/data 解包、search/resolve/download 及 zip 下载的 10 MiB 检查；search/resolve JSON 没有响应大小上限，目标代码没有默认公共 URL。',
-      source: {
-        path: 'src/services/skillSearch/skillhubClient.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'export class SkillHubClient',
-        note: '公共 REST 契约、端点选择和请求边界的直接实现证据。',
-      },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'loadRemoteSkill 每次 resolve，按版本哈希缓存，并包含 central-directory symlink、路径、文件数/大小、SKILL.md、staging 权限和 in-flight 逻辑。',
-      source: {
-        path: 'src/services/skillSearch/remoteSkillLoader.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'export async function loadRemoteSkill',
-        note: '固定版本缓存和安全落盘的 at-commit 实现证据。',
-      },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'prefetch 并行本地/远程搜索并单独捕获远程异常，合并 canonical 结果、过滤可见技能和使用 native/aki/both 来源。',
-      source: {
-        path: 'src/services/skillSearch/prefetch.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'async function discover',
-        note: '本地结果韧性和混合发现的直接实现证据。',
-      },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'logRemoteSkillLoaded 已接入真实 logEvent，字段来自加载结果或 error；既有 SkillTool 成功/失败分支提供调用上下文。',
-      source: {
-        path: 'src/services/skillSearch/telemetry.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'export function logRemoteSkillLoaded',
-        note: '真实遥测字段实现，不表示新增测试直接断言了事件。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '新增四个测试、17 个断言，以 127.0.0.1 临时 HTTP server 和真实 zip 覆盖搜索登记/prefetch、版本缓存与 1.0.0→1.0.1 更新、../ 路径及 symlink；此项只声明测试加入。',
-      source: {
-        path: 'tests/remoteSkills.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: "describe('SkillHub discovery and loading'",
-        note: '本地 registry 回归；没有直接测试 telemetry、DiscoverSkills 错误、超时或大小上限。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 STATUS 记录 bun test 通过 134 个测试、580 个断言，远程能力状态为 Verified (local registry)；这是 at-commit 历史记录而非本次文档复跑。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '`bun test`',
-        note: '全量离线测试和 local registry 状态的历史记录。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 RELEASE 记录 typecheck、build、declarations 和 38-tool feature profile 通过，并明确测试使用 real local HTTP registry、self-hosted live 另行处理。',
-      source: {
-        path: 'docs/RELEASE.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '## SkillHub remote skills',
-        note: 'SkillHub 发布段的构建声明与本地 HTTP 验证限定。',
-      },
-    },
-    {
-      kind: 'not-recorded',
-      statement: '目标提交没有公共或自托管 registry live 运行记录，也没有目标专属 CI run ID；STATUS 明确写 real registry round trip still pending，不能从本地 server 推断公共兼容。',
-    },
-    {
-      kind: 'later-evidence',
-      statement: '后续 9cd4c63193ded6eb916bf734f65a427da193faf0 的 STATUS 才记录 Verified (live public registry) 与 SKILLHUB_LIVE_OK；这是 descendant later evidence，不是 ab30aec 当时已有的公共运行结果。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: '9cd4c63193ded6eb916bf734f65a427da193faf0',
-        symbol: 'SKILLHUB_LIVE_OK',
-        note: '后续公共 registry live 状态记录，自托管仍另列。',
-      },
-    },
-    {
-      kind: 'later-evidence',
-      statement: '同一后续 revision 把缺省 namespace 从 default 改为 global，并增加 displayName/summary 与对象 latestVersion.version 兼容，说明目标本地 fixture 并未证明公共响应形状。',
-      source: {
-        path: 'src/services/skillSearch/skillhubClient.ts',
-        role: 'evidence',
-        revision: '9cd4c63193ded6eb916bf734f65a427da193faf0',
-        symbol: 'displayName',
-        note: '公共 live 同代客户端响应兼容修正，不能倒填到目标实现。',
-      },
-    },
-  ],
-  remaining: [
+  ],  remaining: [
     '公共 live 是后续 9cd4c63 在 global namespace 和新响应字段兼容后记录的结果；私有/自托管 registry 仍是独立环境验证，不由公共成功覆盖。',
     '下载与解压上限均在完整缓冲/解压后执行，高压缩比或超大响应仍可能先造成内存压力；缓存也没有签名或内容完整性验证。',
     'resolve 无版本会退化为 latest，缓存命中前必须联网；inFlight 忽略 cacheDir/client/signal，canonical Map 也不按会话隔离。',
@@ -253,7 +148,7 @@ export const record = defineCommitRecord({
       '零结果时 remoteError 不出现在文本、局部失败韧性不对称、失败 latency 固定零，都会降低诊断准确性。',
       '本地四测试没有覆盖真实 SkillTool 注入、遥测、权限、公共网络、timeout/abort 和各项资源上限。',
     ],
-    verification: [
+    acceptanceSequence: [
       '用本地 server 核对三条 REST 路径、query/limit/namespace、code/data 与数组/items/skills/results 响应，另测空配置和 Bearer/abort/timeout。',
       '加载同一版本两次并检查 cacheHit 与 metadata，再改变 resolve 版本确认新目录、新下载和新 SKILL.md；另测无版本 latest 分支。',
       '分别构造空包、101 文件、缺 SKILL.md、超过 5 MiB、绝对/反斜杠/点/上级路径、symlink 和超过 10 MiB 响应，并观察内存限额发生的阶段。',

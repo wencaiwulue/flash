@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '809351a35c47c5a21edb76a1b8e88b1512cfc1ff',
+  slug: 'uds-inbox-peer-discovery',
   title: 'Implement UDS inbox and peer discovery',
   kind: 'component',
   status: 'implemented',
@@ -69,102 +70,7 @@ export const record = defineCommitRecord({
     '停止后活动路径和回调被清空，连接与 server 关闭，匹配 registry 记录和 POSIX socket 文件被删除，之后发送失败。',
     'ListPeers 与 /peers 使用同一份实时结果并正确处理空列表；外部特性构建包含 UDS_INBOX、peers 命令和 ListPeers，非空工具总数为 34。',
     '历史命令证据只用于说明本机 socket、离线回归和构建结果；真实模型处理、Windows named pipe 与独立进程场景没有据此标记为已验证。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: 'udsMessaging 的实现包含真实 createServer、连接级换行缓冲、ping/pong、普通文本入队与唤醒、0600 chmod、活动 socket 探测以及连接/server/registry/socket 的完整停止链。',
-      source: {
-        path: 'src/utils/udsMessaging.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'export async function startUdsMessaging',
-        note: 'server 生命周期和 inbox 协议的直接实现证据。',
-      },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'registry 与 client 共同实现 0700/0600 私有记录、临时文件 rename、路径条件注销、带超时的单响应请求、pong 身份核对、stale cleanup 和路径/session ID 两种路由。',
-      source: {
-        path: 'src/utils/udsClient.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'export async function listAllLiveSessions',
-        note: '实时发现和发送语义的直接实现证据；registry 细节见同提交 udsRegistry.ts。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '新增测试通过真实本地 socket 按路径和 session ID 各发送一次文本，断言 0600、两个 wakeups、两个队列值、实时 peer 的 session/path/pid，以及 stop 后 registry/socket 消失和继续发送失败；这是同进程 server/client round trip，不是模型执行测试。',
-      source: {
-        path: 'tests/udsMessaging.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: "test('serves real UDS prompts, peer discovery, and teardown'",
-        note: '真实 UDS 集成回归的测试源；test-added 本身不替代历史执行结果。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '另一项新增回归写入指向缺失 socket 的 registry 记录，断言实时列表为空、记录被删除且按 stale session ID 发送报 Unknown or offline UDS peer。',
-      source: {
-        path: 'tests/udsMessaging.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: "test('removes stale registry entries instead of returning offline peers'",
-        note: 'stale registry 清理与拒绝投递的测试证据。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '外部特性档断言从 33 更新为 34 个工具且 nullCount 为 0，并新增 ListPeers 与 hasPeersCommand 检查；独立夹具同时启用 UDS_INBOX 和导出 peers 注册信息。',
-      source: {
-        path: 'tests/enabledFeatures.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: 'expect(profile.toolCount',
-        note: '34 工具与 peers 命令的编译特性档断言。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: 'at-commit STATUS 的 Verified evidence 精确记录：bun run typecheck 以零 TypeScript 错误通过，bun test 为 85 tests、368 assertions passed，bun run build 构建 CLI、SDK 与 declarations。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '| `bun test` | 85 tests, 368 assertions passed |',
-        note: '提交时记录的全量测试、类型检查和构建结果，不是本次文档编写重新执行。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: 'at-commit STATUS 将 UDS inbox and peers 标为 Verified (real local socket)，逐项列出 0600、plain-text enqueue/wakeup、path/session-ID routing、live handshake、stale cleanup、teardown 和 ListPeers//peers 注册；Built-in tool pool 记录 34 tools、无 null entries。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '| UDS inbox and peers | Verified (real local socket) |',
-        note: 'UDS 能力矩阵的历史实测范围与 34 工具结果。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: 'at-commit RELEASE 的 UDS inbox and peer sessions 段记录 85 tests、368 assertions passed，明确包括 real local socket round trips，并记录 typecheck、build、declarations 与 34-tool compiled feature profile 全部通过。',
-      source: {
-        path: 'docs/RELEASE.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '## UDS inbox and peer sessions',
-        note: '发布段对本地真实 socket 和构建验证的精确历史记录。',
-      },
-    },
-    {
-      kind: 'not-recorded',
-      statement: '测试源和 at-commit 文档没有记录独立进程压力测试、Windows named pipe 执行、真实模型消费注入 prompt，亦没有 oversize、分片/合帧、malformed response 或超时的专项执行结果；这些不能从 85/368 总数中推定。',
-    },
-  ],
-  remaining: [
+  ],  remaining: [
     'Windows named pipe 仅保留地址生成与跳过 POSIX chmod/unlink 的代码路径，本提交没有 Windows 权限或连接实测证据。',
     '真实 socket 测试在同一进程启动 server/client，验证到队列快照和 wakeups 为止；多进程并发发现以及真实模型查询循环处理仍需独立验收。',
     '帧上限、分片/合帧处理、响应 malformed/超限和 300/2000 ms 超时有实现，但新增两项 UDS 测试没有逐一覆盖这些分支。',
@@ -384,7 +290,7 @@ export const record = defineCommitRecord({
       '模块级单例与连接集合若清理不完整会污染后续启动或测试；stop 先重置活动状态，再关闭资源并反注册 cleanup，测试 afterEach 再调用 stop 保持幂等。',
       '收到文本即成为 prompt 具有本机注入敏感性；0600/0700 权限限制 POSIX 访问面，ok 只表示入队，不能解释为内容可信或模型已执行。',
     ],
-    verification: [
+    acceptanceSequence: [
       '运行真实 UDS 主回归，核对 stat mode&0777 为 0600，路径和 session ID 两次发送产生按序队列值及两次 wakeups。',
       '检查 listAllLiveSessions 返回当前 sessionId、socketPath 和 process.pid，并确认 pong 的 kind 来自交互状态。',
       '执行 stop 后核对活动路径为空、setOnEnqueue=false、registry 为空、socket stat 失败以及 after-stop 发送拒绝。',

@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: 'beee034523510ac0425461bb4ffce3250514d693',
+  slug: 'settings-bearer-authentication',
   kind: 'component',
   status: 'partial',
   beforeState: '父提交的 live model 脚本只接受 ANTHROPIC_API_KEY；只有 Bearer settings 的环境会输出 MODEL_LIVE_SKIPPED。核心 getAnthropicApiKeyWithSource 在缺少 API key 时，即使已有 ANTHROPIC_AUTH_TOKEN，也仍可能进入“缺少 API key 或 Claude OAuth”的错误分支。CI model job 同样只映射 API-key secret。',
@@ -37,24 +38,7 @@ export const record = defineCommitRecord({
     '仅凭据通过 guard 后，脚本进入 Workflow、context-collapse、reactive-compaction 三个 model-backed probes，以及不发起模型请求的 proactive SleepTool 本地计时检查。',
     'live 脚本中两种变量同时设置时在配置初始化前抛出明确互斥错误；都未设置时，该认证分支只打印 MODEL_LIVE_SKIPPED 后返回。',
     'workflow 的 job 与 run step 都引用 ANTHROPIC_AUTH_TOKEN secret，不再把该 secret 交给 API-key 变量。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: '核心 CI/test 缺少凭据条件新增 !process.env.ANTHROPIC_AUTH_TOKEN，live 脚本新增互斥与双缺失两个独立分支。',
-      source: { path: 'src/utils/auth.ts', role: 'evidence', revision: 'commit', symbol: '!process.env.ANTHROPIC_AUTH_TOKEN', note: 'Bearer 被纳入既有凭据存在性判定。' },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: 'at-commit RELEASE 的 Settings-based authentication 小节声称本地 settings-based validation 返回全部四个 model sentinels；STATUS 将 WORKFLOW_LIVE_OK、PROACTIVE_LIVE_OK、CONTEXT_COLLAPSE_LIVE_OK 和 REACTIVE_COMPACTION_LIVE_OK 四个具名结果归因于 settings-based auth。按实现，其中 PROACTIVE_LIVE_OK 仅是本地 Sleep 检查，不构成 Bearer 或 OAuth 验证。',
-      source: { path: 'docs/STATUS.md', role: 'evidence', revision: 'commit', symbol: 'Settings-based auth returned', note: '四个具名 sentinel 的历史记录；RELEASE 仅概括全部四个 model sentinels，未逐一列名。' },
-    },
-    {
-      kind: 'not-recorded',
-      statement: '本提交没有新增 Claude OAuth、Cloud/remote-control 或原生桌面 round trip，也没有独立 auth 单元测试文件。',
-    },
-  ],
-  remaining: ['standalone live 脚本尚未把仅存在于 settings.json 的 token 注入 process.env；该路径会在 guard 处 skip，且历史输出无法证明 token 仅来自 settings 文件。', '真实 Claude OAuth 与原生桌面仍需各自授权环境；本次仅有 at-commit 文档记录支持三个 model-backed Bearer 路径，PROACTIVE_LIVE_OK 是本地 Sleep 结果，不构成 Bearer 或 OAuth 验证。'],
+  ],  remaining: ['standalone live 脚本尚未把仅存在于 settings.json 的 token 注入 process.env；该路径会在 guard 处 skip，且历史输出无法证明 token 仅来自 settings 文件。', '真实 Claude OAuth 与原生桌面仍需各自授权环境；本次仅有 at-commit 文档记录支持三个 model-backed Bearer 路径，PROACTIVE_LIVE_OK 是本地 Sleep 结果，不构成 Bearer 或 OAuth 验证。'],
   references: [
     { path: 'src/utils/auth.ts', role: 'changed', symbol: '!process.env.ANTHROPIC_AUTH_TOKEN', note: '避免 CI/test 分支已有 Bearer 时仍进入缺少 API key/OAuth 的错误。' },
     { path: 'scripts/live-model-validation.ts', role: 'changed', symbol: 'mutually exclusive', note: '实现双认证互斥、双缺失 skip 和单凭据进入 probes。' },
@@ -73,7 +57,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['直接运行 live 脚本时，预先进入 process.env 的仅 API-key 或仅 AUTH_TOKEN 配置仍被 guard 接受；两者并存仅在该脚本中变成显式错误。CI model job 改为只映射 ANTHROPIC_AUTH_TOKEN secret，因此旧有仅配置 ANTHROPIC_API_KEY secret 的 workflow 不再继承该 API key，并会在无其他凭据时 skip。'],
     risks: ['若只改脚本不改核心，后续 API-key 检查仍会失败；若允许双凭据并存，则请求身份依赖不可见优先级。'],
-    verification: ['按仅 API key、仅 AUTH_TOKEN、两者并存、两者缺失四种矩阵检查分支，再依据 STATUS/RELEASE 记录核对四个 live-script sentinel，其中三个对应 model-backed 路径，PROACTIVE_LIVE_OK 仅证明本地 proactive Sleep 检查；本记录不新增在线执行声明。'],
+    acceptanceSequence: ['按仅 API key、仅 AUTH_TOKEN、两者并存、两者缺失四种矩阵检查分支，再依据 STATUS/RELEASE 记录核对四个 live-script sentinel，其中三个对应 model-backed 路径，PROACTIVE_LIVE_OK 仅证明本地 proactive Sleep 检查；本记录不新增在线执行声明。'],
     completed: ['核心 CI/test 分支、live 脚本和 CI 已接受同一 process.env Bearer 输入契约，文档记录了 settings-based 四个 live-script sentinel；该记录没有本次命令、时间、环境或原始输出，不能独立重建凭据来源。'],
     incomplete: ['standalone 脚本未实现认证 guard 前的 settings.env 注入，仅凭 settings.json 的路径会 skip；未新增 auth 单元测试，也未完成独立 Claude OAuth 或桌面授权验证。'],
   },

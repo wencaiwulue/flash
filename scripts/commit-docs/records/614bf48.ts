@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '614bf48f749df56f79562e4c64f765875f8fd880',
+  slug: 'external-features-sdk-dag',
   title: 'Enable external features and recover SDK parallel branches',
   kind: 'component',
   status: 'implemented',
@@ -54,69 +55,7 @@ export const record = defineCommitRecord({
     '同一 API message.id 的遗漏 assistant siblings 与 tool results 按确定顺序插回 anchor 后，公开转换、分页和 transcript loader 得到一致链。',
     '没有匹配主链 assistant 的 disconnected branches 保持排除，CLI recovery analytics 仍能取得 recoveredCount。',
     'at-commit STATUS/RELEASE 把全量记录更新为 64 tests、261 assertions，且不把父提交的 CI run 归到本提交。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: 'CLI 与 SDK 构建都列出七个外部 flags，USER_TYPE 为 external；ultraplan 注册改用 claude-ai availability。',
-      source: {
-        path: 'scripts/build.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'AGENT_TRIGGERS_REMOTE',
-        note: '外部 CLI/SDK feature profile 的直接实现证据。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '新增独立 bundle 回归，固定 27 个非空工具、四个 trigger 工具和 ultraplan/voice/brief 注册；此项声明测试加入，不单独声称执行通过。',
-      source: {
-        path: 'tests/enabledFeatures.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: 'includes real trigger, remote, voice, and brief implementations',
-        note: '通过干净 Bun 子进程加载外部构建夹具。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: 'SDK 临时 JSONL 回归新增恢复后公开顺序、UUID 唯一性、transcript 顺序、两段分页，以及 missing-parent 场景不接入无关分支。',
-      source: {
-        path: 'tests/sdkSessions.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: 'recovers parallel assistant branches before SDK conversion and pagination',
-        note: '覆盖共享恢复在 SDK 两条读取出口中的位置；不是完整 V2 在线测试。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: 'at-commit STATUS 记录 bun test 为 64 tests、261 assertions，typecheck 零错误，build 产出 CLI、SDK 与 declarations。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '| `bun test` | 64 tests, 261 assertions passed |',
-        note: '历史全量结果较父提交增加 3 tests、14 assertions。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: 'RELEASE 的 External feature profile and SDK DAG recovery 段记录 64/261、typecheck、build、declarations 和 CLI/SDK smoke checks 通过。',
-      source: {
-        path: 'docs/RELEASE.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '## External feature profile and SDK DAG recovery',
-        note: '本提交发布段的验证汇总，不包含该提交的 CI run ID。',
-      },
-    },
-    {
-      kind: 'not-recorded',
-      statement: '本提交没有归属于 614bf48 的 CI run 记录，也没有 voice/bridge/remote/ultraplan 在线往返或完整 V2 resumed-query 结果。',
-    },
-  ],
-  remaining: [
+  ],  remaining: [
     '真实 Cloud API、remote bridge、voice、trigger 与 ultraplan 服务路径仍需授权环境验证，oauth refresh 证据仍为 mocked。',
     '完整内部系统和剩余 stub/proactive/Coordinator 能力没有被七个外部 flags 自动实现。',
     'V2 测试止于 transcript loader；恢复后的消息进入完整 resumed query 的端到端行为未由新增回归覆盖。',
@@ -296,7 +235,7 @@ export const record = defineCommitRecord({
       '新增 feature 可能暴露未声明依赖；ws 入库和独立 bundle/load 测试用于提前发现这一问题。',
       '后续提交增加 flags/工具数时不能直接沿用本提交的 27，应以 at-commit profile 为准。',
     ],
-    verification: [
+    acceptanceSequence: [
       '构建干净外部夹具，检查 USER_TYPE=external、27 个非空工具、四个 trigger 工具和 ultraplan/voice/brief 注册。',
       '用临时 JSONL 验证同 ID assistant siblings 与 results 的精确顺序、UUID 唯一性和 offset/limit 页面。',
       '直接调用 loadSdkSessionTranscript，确认它与公开读取获得相同恢复顺序，并单独测试 missing-parent 排除。',

@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: 'edcaa957458d924bc9c1cfe42b7af59eb9c2db11',
+  slug: 'proactive-coordinator-workers',
   title: 'Implement proactive state and coordinator workers',
   kind: 'component',
   status: 'implemented',
@@ -65,102 +66,7 @@ export const record = defineCommitRecord({
     'getCoordinatorAgents 返回唯一内置后台 worker，包含 Bash/Read，不包含 Agent/SendMessage/StructuredOutput，且提示禁止继续 spawn。',
     '旧工具名和 ASYNC_AGENT_ALLOWED_TOOLS 导入路径仍有效，真实 bundle 含 PROACTIVE/COORDINATOR_MODE、31 个非空工具及 /proactive。',
     '文档只把 proactive 标为 offline scheduler/build、worker 标为 definition/build，真实模型 perpetual 与 multi-worker orchestration 保持未运行。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: 'proactive/index.ts 提供真实 controlState、listener 集合和合法转换；useProactive.ts 的 ProactiveTickScheduler 在多处 idle gate 下取消或调度 unref timer。',
-      source: {
-        path: 'src/proactive/useProactive.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'export class ProactiveTickScheduler',
-        note: '离线 scheduler 与状态接线的直接源码证据。',
-      },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'WORKER_AGENT 是 background=true 的内置 worker，工具来自异步 allowlist 并排除 StructuredOutput，提示明确禁止 spawn 其他 agent。',
-      source: {
-        path: 'src/coordinator/workerAgent.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'const WORKER_AGENT: BuiltInAgentDefinition',
-        note: '非递归 worker 定义的直接源码证据，不是多 worker 执行结果。',
-      },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'REPL 的 proactive hook 已位于 PROACTIVE/KAIROS 编译特性分支，tick 通过既有 meta submit/queue 路径进入 query。',
-      source: {
-        path: 'src/screens/REPL.tsx',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'useProactive?.({',
-        note: '外部 REPL 接线的直接源码证据。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '新增 proactiveCoordinator 测试覆盖激活/暂停/恢复/阻塞/listener、idle tick 与 due time、繁忙抑制和唯一非递归 worker；新文件含 4 tests、33 assertions，此项只声明测试加入。',
-      source: {
-        path: 'tests/proactiveCoordinator.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: "test('schedules an idle tick and exposes its due time'",
-        note: '离线控制与定义回归套件，不包含真实模型会话。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '独立 bundle 画像新增 Sleep 动态启停、proactive 激活、worker background/Bash/无 Agent 和 /proactive 注册断言，工具数由 30 改为 31。',
-      source: {
-        path: 'tests/fixtures/verify-enabled-features.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: 'const sleepTool = tools.find',
-        note: '真实编译产物的画像采集改动；测试存在不单独代表执行通过。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 STATUS 的 Verified evidence 记录 bun test 通过 77 tests、329 assertions；这是 at-commit 历史结果，不是本次文档编写重新执行所得。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '`bun test`',
-        note: 'at-commit 全量离线测试结果。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 STATUS 记录 typecheck 零错误、build 完成 CLI/SDK/declarations，能力矩阵将 proactive/Sleep 限定为 offline scheduler/build，worker 限定为 definition/build。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'Proactive and Sleep',
-        note: 'at-commit 构建记录及两项能力的验证边界。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: 'RELEASE 的 Proactive state and Coordinator workers 段记录 77/329、typecheck、build、declarations、CLI startup smoke 和 31-tool profile 通过，并把真实 proactive/multi-worker sessions 留作独立 live validation。',
-      source: {
-        path: 'docs/RELEASE.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '## Proactive state and Coordinator workers',
-        note: '本提交发布段的验证范围及在线边界。',
-      },
-    },
-    {
-      kind: 'not-recorded',
-      statement: '没有真实模型 tick→Sleep→tick perpetual session、真实 AgentTool 多 worker 编排、worker 权限交互或长会话成本/延迟证据；STATUS 中其他历史模型 smoke 不能替代这些检查。',
-    },
-  ],
-  remaining: [
+  ],  remaining: [
     '真实模型驱动的持续 tick/Sleep、多 worker 选择/并行/通知/汇总和工具权限行为仍需授权环境验证。',
     'headless scheduler 没有与 REPL 相同的 contextBlocked 检查，不能把交互式错误抑制结论扩展到 headless。',
     '新增 worker 单测负向检查写成 SyntheticOutput，而真实排除名是 StructuredOutput；实现正确不等于该断言覆盖有效。',
@@ -410,7 +316,7 @@ export const record = defineCommitRecord({
       '主动 tick 可能增加成本并形成错误循环，必须维持 API-error block、取消暂停、用户优先和 plan/UI 抑制。',
       '文档 ARCHITECTURE 与已启用 feature 集不一致，读者可能误判外部能力边界。',
     ],
-    verification: [
+    acceptanceSequence: [
       '定向测试所有状态合法/非法转换、listener 次数和 nextTickAt 清理，并检查 activate/deactivate 幂等。',
       '以可控 delay 验证 idle tick 只提交一次、timer unref/cancel、繁忙抑制和等待期间 loading 的 queue 分支。',
       '检查 REPL meta prompt 进入原 onQuery，实测 Esc/用户输入/API error/compact/clear 生命周期；headless 单独验证。',

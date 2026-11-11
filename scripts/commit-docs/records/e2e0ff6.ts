@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: 'e2e0ff6e0897141823d361204e81aef79922f33b',
+  slug: 'ci-independent-feature-profile',
   title: 'Make feature profile test CI-independent',
   kind: 'component',
   status: 'implemented',
@@ -49,69 +50,7 @@ export const record = defineCommitRecord({
     '真实外部 bundle 加载后报告 32 个工具、0 个 null，且必要工具子集包含 ToolSearch。',
     '测试不要求有效 API 凭据，不发起模型或 ToolSearch 调用。',
     'STATUS 与 RELEASE 的相关数量均为 32，原 77/329 测试与断言总数不被虚增。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: '该 revision 仅在既有子进程 env 中新增固定官方 base URL 和 ENABLE_TOOL_SEARCH=true，同时保留继承环境、占位 key 与 production。',
-      source: {
-        path: 'tests/enabledFeatures.test.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: "ANTHROPIC_BASE_URL: 'https://api.anthropic.com'",
-        note: '环境 overlay 与 32/ToolSearch 断言的直接实现证据。',
-      },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '既有 getAllBaseTools 通过 isToolSearchEnabledOptimistic 条件加入 ToolSearchTool；本提交没有改变这条生产注册链。',
-      source: {
-        path: 'src/tools.ts',
-        role: 'evidence',
-        revision: 'parent',
-        symbol: 'isToolSearchEnabledOptimistic',
-        note: '父提交已有的 ToolSearch 条件注册，用于解释计数变化。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 STATUS 的 Verified evidence 记录 bun test 为 77 tests、329 assertions passed；这是 at-commit 历史记录，不是本次文档编写重新执行所得。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '`bun test`',
-        note: 'at-commit 全量离线测试命令结果，数量未因本提交增加。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 STATUS 记录 typecheck 零 TypeScript 错误，build 完成 CLI、SDK 与声明构建；RELEASE 同时记录 32-tool compiled feature profile 通过。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '`bun run typecheck`',
-        note: 'at-commit 类型检查和构建记录。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: 'RELEASE 的 Proactive state and Coordinator workers 验证段记录 77/329、类型检查、构建、声明、CLI startup smoke 与 32-tool profile 通过，并保留真实 proactive/multi-worker 未运行的边界。',
-      source: {
-        path: 'docs/RELEASE.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '## Proactive state and Coordinator workers',
-        note: '该提交更新数量所依据的 at-commit 发布记录。',
-      },
-    },
-    {
-      kind: 'not-recorded',
-      statement: '没有 ToolSearchTool.call、真实模型请求、官方端点连通性或代理 wire-format 的执行证据；画像包含不等于这些行为已验证。',
-    },
-  ],
-  remaining: [
+  ],  remaining: [
     'CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS 仍可从父环境强制 standard，其他工具池变量也仍可改变画像，完全确定性尚未建立。',
     '总数加必要子集不能发现所有同名数量替换或完整工具组成错误，也没有在该画像测试中断言名称唯一性。',
     'ToolSearch 的真实搜索行为、模型支持及不同 provider/proxy 的兼容性仍需独立测试。',
@@ -211,7 +150,7 @@ export const record = defineCommitRecord({
       '官方 URL 常量不具网络隔离语义；若 fixture 未来加入请求，需要另设 mock 或禁网保护。',
       '总数与九项名称子集可能遗漏未列举工具的组成回归，不能替代完整工具池测试。',
     ],
-    verification: [
+    acceptanceSequence: [
       '检查子进程 env 同时含固定端点、显式搜索开关、占位 key 和 production。',
       '运行 enabledFeatures 定向测试，读取真实 bundle 的 toolCount=32、nullCount=0 与 ToolSearch 成员。',
       '分别在继承自定义 base URL、不同 ENABLE_TOOL_SEARCH 值的环境中比较画像稳定性，并单独记录残余 kill switch 条件。',

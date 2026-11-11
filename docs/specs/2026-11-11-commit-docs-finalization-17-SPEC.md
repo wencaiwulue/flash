@@ -1,0 +1,68 @@
+---
+commit: 501672c99b9338a35a2f7f261adc395a9b829dd2
+title: "Complete documentation for previous commit"
+date: 2026-11-11T11:05:14+08:00
+status: implemented
+kind: metadata-migration
+---
+
+# Complete documentation for previous commit
+
+> 本文是依据该提交的 diff、对应 revision 的实现与测试，以及有出处的状态记录所作的回溯性设计重建；不冒充历史提交当时已存在的原文。
+
+## 前置状态与问题
+
+直接父提交是 0640471，本次实际定稿对象为其父提交 335b217899a7b0920f972973a92363db436f158f。父快照已添加 d802331，尚无 335b217 SPEC/PLAN；INDEX Implemented 为 55，status commits 为 57 项。
+
+335b217 已为 55f7c7e 补齐文档，自己却仍缺少身份和索引入口。本提交需要补这一环，同时保留直接父 0640471 那个“current and previous”标题提交与实际目标之间的层级差别。
+
+## 目标与非目标
+
+### 目标
+
+- 创建 335b217 SPEC/PLAN，记录完整 SHA、Finalize previous commit documentation、2026-11-11T11:04:20+08:00 和 implemented。
+- 登记目标为 55f7c7e 新建文档的四文件、78 行新增、1 行删除范围，并同步 INDEX 和 JSON。
+
+### 非目标
+
+- 不补直接父 0640471 或当前 501672c 的文档，不改写上一轮 d802331 条目。
+- 不修改运行时代码。
+
+## 方案架构与数据流
+
+两个新文档说明 335b217，INDEX 和 commits 数组各增加一个对应入口；本提交没有组件、协议或状态机改动。
+
+目标条目接在 d802331 后、self 前，self 只是固定占位并保留在末尾，不会被当前 501672c 的 SHA 替换。
+
+### 文件、接口与证据关系
+
+| 关系 | 位置 | 设计作用 |
+|---|---|---|
+| 变更 | `docs/INDEX.md` | Implemented 55→56，新增 335b217 行。 |
+| 变更 | `docs/plans/335b217-PLAN.md` | 新建的 335b217 实施计划。 |
+| 变更 | `docs/specs/335b217-SPEC.md` | 记录目标身份及 55f7c7e 文档组范围。 |
+| 变更 | `docs/status/index.json` | commits 57→58，新对象位于 self 前。 |
+
+## 关键决策与工程取舍
+
+- 新 SPEC 列出 55f7c7e-SPEC、55f7c7e-PLAN、INDEX 和 status JSON；目标与当前提交均为 78 行新增，但文档对象不同。
+- 表格计数的变化是 Implemented 55→56，其余汇总不变；数组则从 57 个元素变成 58 个，新增对象后含 self 的 implemented 状态为 57。
+- 新对象是数组倒数第二项；当前提交没有自我 SPEC/PLAN 或状态记录，self 对象、changeId 和两个 self 文档均未改。
+
+### 备选方案与回溯分析
+
+- 将 335b217 新 SPEC 的目标写成 0640471 会跳过一层；把更上游 2fe47f6 的 80 行 diff 套到本层也同样错误，所以以 335b217 自身的 78 行为准。
+
+## 安全与协议边界
+
+- 只有公开文档元数据变更，不涉及凭据、权限、feature gating 或私有协议。
+
+## 验收标准
+
+- 两个 frontmatter 的 SHA、标题、日期和 implemented 与 335b217 一致，Actual scope 指向 55f7c7e 文档组。
+- INDEX 新行和 JSON 新对象均链接到新产物，汇总与数组计数正确，self 仍居末位。
+
+## 实现状态与剩余范围
+
+- 状态：**implemented**
+- 0640471 和 501672c 的专属文档分别留待后续 finalization，本次只完成 335b217 的四路径登记。

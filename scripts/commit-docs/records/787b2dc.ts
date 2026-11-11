@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '787b2dcef6629be82036283cc709384b56e6d981',
+  slug: 'commit-docs-finalization',
   title: 'Complete previous commit documentation',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -13,7 +14,7 @@ export const record = defineCommitRecord({
   ],
   nonGoals: [
     '不登记直接父 b6bf982 或当前 787b2dc，不改动 6c3c1e4 的既有入口。',
-    '不修改生成器，不把生成计划中的命令、CI 或完成声明当作实际执行证据。',
+    '不修改生成器，只列出验收条件。',
   ],
   architecture: [
     '96283ae 的两个新 Markdown 文件保存历史说明，INDEX 与 status JSON 保存发现入口；diff 不含运行时代码。',
@@ -29,15 +30,7 @@ export const record = defineCommitRecord({
   acceptance: [
     '96283ae 两份 frontmatter 的标题、日期、完整 SHA 一致，范围路径指向 612cc40。',
     'INDEX 和 JSON 各新增一个 implemented 项，6c3c1e4 保持前一项，self 继续处于末尾。',
-  ],
-  evidence: [
-    { kind: 'diff-observed', statement: '96283ae SPEC 固定完整目标 SHA，并列出 612cc40 文档组及四文件统计。', source: { path: 'docs/specs/96283ae-SPEC.md', role: 'evidence', revision: 'commit', symbol: 'docs/specs/612cc40-SPEC.md', note: 'Actual scope 与 96283ae 原始 diff 对应。' } },
-    { kind: 'diff-observed', statement: '96283ae PLAN 新建，包含实现步骤、验证序列和 implemented 完成状态。', source: { path: 'docs/plans/96283ae-PLAN.md', role: 'evidence', revision: 'commit', symbol: '## Implementation steps', note: '计划结构可在当前提交核对。' } },
-    { kind: 'diff-observed', statement: 'INDEX Implemented 增至 69，并添加 96283ae 的 SPEC/PLAN 链接。', source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'commit', symbol: '| 96283ae | Complete previous commit documentation | implemented |', note: '新增行位于 6c3c1e4 与 self 之间。' } },
-    { kind: 'diff-observed', statement: 'JSON 在 self 前保存 96283ae 的完整身份和新文档路径。', source: { path: 'docs/status/index.json', role: 'evidence', revision: 'commit', symbol: '"fullSha": "96283aecc10afd0f0269eff9b7a3b0c543191b01"', note: '机器对象与 INDEX 同步登记。' } },
-    { kind: 'not-recorded', statement: '本提交未保存测试、typecheck、build、生成或 CI 输出，PLAN 的验证文字不构成执行证据。' },
-  ],
-  remaining: ['b6bf982 与当前 787b2dc 在此快照仍未建档；96283ae 的模板计划没有实际验证轨迹。'],
+  ],  remaining: ['b6bf982 与当前 787b2dc 在此快照仍未建档；96283ae 的模板计划没有实际验证轨迹。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: 'Implemented 68→69，新增 96283ae。' },
     { path: 'docs/plans/96283ae-PLAN.md', role: 'changed', note: '新建 96283ae 计划文档。' },
@@ -55,8 +48,8 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['6c3c1e4 及更早历史项保持原序，self 内容和生成器行为不变，索引 schema 无调整。'],
     risks: ['96283ae 与当前提交标题相同，若忽略 fullSha 和祖父关系，会把 612cc40 范围挂到错误对象。'],
-    verification: ['对照 96283ae 原始提交与新 SPEC/PLAN，并比较父/当前索引计数、路径和 self 下标。'],
+    acceptanceSequence: ['对照 96283ae 原始提交与新 SPEC/PLAN，并比较父/当前索引计数、路径和 self 下标。'],
     completed: ['96283ae 的 SPEC/PLAN 与双索引入口已在四个路径中同步完成。'],
-    incomplete: ['没有实际验证或 CI 记录，implemented 不扩大为测试通过声明。'],
+    incomplete: ['新文档只列出验收条件，不保存历史命令或 CI 执行结果。'],
   },
 })

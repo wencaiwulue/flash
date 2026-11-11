@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '0b6806800508a15c7a5f8293c572b8fa5c960d24',
+  slug: 'review-artifact-hunter',
   title: 'Implement ReviewArtifact and Hunter skill',
   kind: 'component',
   status: 'partial',
@@ -61,114 +62,8 @@ export const record = defineCommitRecord({
     '文件权限不仅要委托 FileRead，还必须在 executor 更新输入后仍向 call 提供 artifact_path、focus、context；本 revision 的静态 updatedInput 链未达到这一完整验收。',
     '/hunter 必须可由用户调用并包含独立评审、证据、unverified 和实际验证说明，不能把未运行检查写成 clean review。',
     '外部特性档应包含 38 个非空工具、ReviewArtifact 与 hunter；该编译断言与真实 reviewer 运行是不同验收层级。',
-    '验证报告必须分别呈现五个新增测试、STATUS/RELEASE 的历史命令声明及目标 CI 的实际失败，不能合并成一次 130/563 CI 通过。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: 'defaultReviewer 构造独立 promptMessages，只筛选 Read/Grep/Glob，并以原 canUseTool、八轮上限和只读系统提示调用 runAgent。',
-      source: {
-        path: 'src/tools/ReviewArtifactTool/ReviewArtifactTool.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'async function defaultReviewer',
-        note: '独立 reviewer 上下文、工具范围和 agent 参数的直接实现证据。',
-      },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'reviewArtifact/readArtifact/parseReviewerOutput 实现二选一之外的读取、1 MB 限制、提示构造及 blocker/warning/nit 与默认 unverified 的结构化输出。',
-      source: {
-        path: 'src/tools/ReviewArtifactTool/ReviewArtifactTool.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'export async function reviewArtifact',
-        note: 'artifact 读取和结构化审查管线的 at-commit 实现。',
-      },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '通用 executor 会用 permissionDecision.updatedInput 替换 callInput；工作目录内或 Read allow 规则的自动 allow 返回 FileRead 的 {file_path}，与 ReviewArtifact 输入契约错配。Fallback 单次 Yes 回传原输入，新增测试未覆盖这些分支。',
-      source: {
-        path: 'src/services/tools/toolExecution.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'processedInput = permissionDecision.updatedInput',
-        note: '文件权限委托端到端缺口的未修改执行器证据。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '新增五个测试覆盖来源二选一、mock runner 提示传递、临时文件读取、内联超限/无 JSON 和 /hunter 注册；此项只声明测试加入，不代表通过或真实 reviewer 已运行。',
-      source: {
-        path: 'tests/reviewArtifact.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: "describe('ReviewArtifactTool'",
-        note: '直接函数与 mock runner 回归，未经过真实权限 executor。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '特性档把工具数从 37 改为 38，并新增 ReviewArtifact 与 hasHunterSkill 断言；测试文件中的断言不是独立的执行结果。',
-      source: {
-        path: 'tests/enabledFeatures.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: 'hasHunterSkill',
-        note: '编译工具和 bundled skill 的新增注册检查。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 STATUS 自记 bun test 通过 130 个测试、563 个断言；这里仅引用该 at-commit 命令记录，不将其称为目标 GitHub Actions 结果。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '`bun test`',
-        note: 'Verified evidence 表中的历史本地/离线结果声明。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 RELEASE 自记 typecheck、build、declarations 和 38-tool feature profile 通过；这些不是目标 CI build 步骤证据，旧章节被回写为 38 也不构成各自重跑。',
-      source: {
-        path: 'docs/RELEASE.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '## ReviewArtifact and Hunter',
-        note: 'ReviewArtifact/Hunter 发布段的历史验证声明及其范围。',
-      },
-    },
-    {
-      kind: 'later-evidence',
-      statement: 'at-commit STATUS/RELEASE 未记录目标 CI；本次后续只读核对的 GitHub Actions ci run 42838711862（headSha 为本提交，https://github.com/wencaiwulue/flash/actions/runs/42838711862）实际为 failure：129 pass、1 fail、562 calls，Test 失败后 Build/CLI/SDK smoke skipped。',
-      source: {
-        path: 'tests/reviewArtifact.test.ts',
-        role: 'evidence',
-        revision: 'c43f42e4eba9ae16c7d7a78dfbcfcb4bfb177d0c',
-        symbol: 'runWithCwdOverride',
-        note: '不可变后代修复来源；目标 CI 状态来自本次后续 GitHub Actions 外部记录，不是 at-commit 文档。',
-      },
-    },
-    {
-      kind: 'later-evidence',
-      statement: '后续 c43f42e4eba9ae16c7d7a78dfbcfcb4bfb177d0c 才把该文件测试改为 runWithCwdOverride 隔离 cwd；这是后代测试修复证据，不回填为本提交测试通过。',
-      source: {
-        path: 'tests/reviewArtifact.test.ts',
-        role: 'evidence',
-        revision: 'c43f42e4eba9ae16c7d7a78dfbcfcb4bfb177d0c',
-        symbol: 'runWithCwdOverride',
-        note: '后续 revision 对目标新增测试全局 cwd 串扰的隔离改动。',
-      },
-    },
-    {
-      kind: 'not-recorded',
-      statement: '没有真实 defaultReviewer 模型调用、Read/Grep/Glob 运行时过滤、FileRead deny/ask/allow 到 call 的完整链路或 /hunter 交互端到端记录。',
-    },
-  ],
-  remaining: [
+    '验证报告必须分别呈现五个新增测试、STATUS/RELEASE 的历史命令声明及目标 CI 的实际失败，不能合并成一次 130/563 CI。',
+  ],  remaining: [
     'FileRead 在工作目录内或命中 Read allow 规则时返回的 updatedInput 会把 ReviewArtifact 输入替换为 {file_path}；需要保留原 artifact_path/focus/context 后，这些自动 allow 路径才能完成端到端验收。Fallback 单次 Yes 回传原输入，不代表所有权限路径都有同一错配。',
     'Fallback 的“不再询问”会写入无路径参数的 ReviewArtifact 工具级 allow，可能覆盖后续目录外读取 ask；该持久授权范围需要单独收敛和验收。',
     '目标 CI run 42838711862 的文件测试因全局 cwd 串扰失败，后续 runWithCwdOverride 只属于后代修复；提交内 130/563 声明与目标 CI 不能混用。',
@@ -230,7 +125,7 @@ export const record = defineCommitRecord({
       },
       {
         title: '记录能力声明并核对独立 CI',
-        detail: 'STATUS/RELEASE 写入功能、130/563 和构建声明时保留 offline reviewer 限定，同时核对目标 SHA 的实际 CI，而不能把文档声明复制成 CI 通过。后续 cwd 隔离修复只能作为 later evidence，发布记录还应避免把旧章节工具数变化当作历史重跑。',
+        detail: 'STATUS/RELEASE 写入功能、130/563 和构建声明时保留 offline reviewer 限定，同时核对目标 SHA 的实际 CI，而不能把文档声明复制成 CI 执行。后续 cwd 隔离修复只能作为 后续证据，发布记录还应避免把旧章节工具数变化当作历史重跑。',
         paths: ['docs/STATUS.md', 'docs/RELEASE.md'],
       },
     ],
@@ -248,7 +143,7 @@ export const record = defineCommitRecord({
       'lstat 与 readFile 分离导致大小和文件类型竞态，1 MB 限制不是整个读取过程的严格不变量。',
       'JSON 首末括号提取会接受提示要求之外的包裹文本，artifact 自身含大括号时仍需由完整 JSON/Zod 解析兜底。',
     ],
-    verification: [
+    acceptanceSequence: [
       '运行输入矩阵，覆盖空、双来源、空 content、内联多字节大小、普通文件、目录、symlink 和超限文件。',
       '用真实 executor 分别走 FileRead allow/ask/deny，断言 call 收到 artifact_path/focus/context，而非仅直接调用 reviewArtifact。',
       '注入可控 runner 检查独立 prompt、Read/Grep/Glob、空响应、末段文本、无效 JSON、严重级别和默认 unverified。',

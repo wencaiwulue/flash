@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: 'e8d8c066c1419579fbf8bf6f653760110eaf315a',
+  slug: 'commit-docs-finalization',
   title: 'Finalize previous commit documentation',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -28,31 +29,7 @@ export const record = defineCommitRecord({
   acceptance: [
     '两个新文件的 frontmatter 与 4329cd8 的提交身份、日期和状态一致。',
     'INDEX 为 80/1/0，JSON 新对象与表格链接均指向 4329cd8 的两个新文件，self 保持原位。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: '新 SPEC 锁定 4329cd8，并把 e0cbbe1-SPEC.md 与 e0cbbe1-PLAN.md 列为该被补档提交的历史范围。',
-      source: { path: 'docs/specs/4329cd8-SPEC.md', role: 'evidence', revision: 'commit', symbol: 'commit: 4329cd8296630e2e5334d4b410cc8fe1cca273b6', note: 'frontmatter 和 Actual scope 共同限定文档对象。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '新 PLAN 使用同一身份，包含目标、实施步骤、风险、验证序列和完成状态小节。',
-      source: { path: 'docs/plans/4329cd8-PLAN.md', role: 'evidence', revision: 'commit', symbol: '## Implementation steps', note: '该文件在本提交新建。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'INDEX patch 将 Implemented 从 79 改为 80，在 self 前增加 4329cd8 的 SPEC/PLAN 链接。',
-      source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'commit', symbol: '- Implemented: 80', note: 'Partial 1 与 Unimplemented 0 未改。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'status patch 在 self 前加入 4329cd8 对象，spec/plan 字段指向本提交的两个新产物。',
-      source: { path: 'docs/status/index.json', role: 'evidence', revision: 'commit', symbol: '"fullSha": "4329cd8296630e2e5334d4b410cc8fe1cca273b6"', note: '机器索引保存完整 SHA 与 implemented 状态。' },
-    },
-    { kind: 'not-recorded', statement: 'SPEC/PLAN 虽列出 bun test、typecheck、build 和 CI，但 diff 没有命令输出或 CI 结果。' },
-  ],
-  remaining: ['PLAN 的实施步骤仍是泛化模板，未进一步解释 4329cd8 的逐文件生成过程。'],
+  ],  remaining: ['PLAN 的实施步骤仍是泛化模板，未进一步解释 4329cd8 的逐文件生成过程。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: 'Implemented 79→80，新增 4329cd8 表格入口。' },
     { path: 'docs/plans/4329cd8-PLAN.md', role: 'changed', note: '新建 4329cd8 的计划文档。' },
@@ -70,7 +47,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['既有提交行和 JSON 对象保持顺序，新增链接使用既有 ../docs 与 repository-relative 约定。'],
     risks: ['相同标题容易造成 4329cd8 与 e0cbbe1 对象错位；验证模板也容易被误读为已经执行。'],
-    verification: ['对照 4329cd8 的真实 diff 检查 SPEC 范围，并比较 parent/current 的表格、计数和 JSON 新对象。'],
+    acceptanceSequence: ['对照 4329cd8 的真实 diff 检查 SPEC 范围，并比较 parent/current 的表格、计数和 JSON 新对象。'],
     completed: ['4329cd8 的两个新产物及人类、机器索引入口均已落入本提交。'],
     incomplete: ['没有随附测试或 CI 日志，泛化计划也未增加实现细节。'],
   },

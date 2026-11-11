@@ -1,13 +1,17 @@
 import { describe, expect, test } from 'bun:test'
 import { documentationMode } from '../scripts/document-commits.ts'
 import type { Commit, CommitRecord } from '../scripts/commit-docs/schema.ts'
-import { expectedHistorical } from '../scripts/commit-docs/render.ts'
+import { expectedHistorical, specFor, planFor } from '../scripts/commit-docs/render.ts'
 import {
   validateDuplication,
   validateRecordAgainstCommit,
   validateRecordShape,
   validateRecords,
 } from '../scripts/commit-docs/validate.ts'
+import {
+  historicalDocumentPaths,
+  SELF_DOCUMENT_PATHS,
+} from '../scripts/commit-docs/naming.ts'
 
 function validRecord(commit = 'a'.repeat(40)): CommitRecord {
   return {
@@ -23,9 +27,9 @@ function validRecord(commit = 'a'.repeat(40)): CommitRecord {
     alternatives: ['继续从标题推断正文会产生不可验证的设计理由，因此不采用。'],
     security: ['文档只引用公开代码和已有验证记录，不读取或写入认证材料。'],
     acceptance: ['缺失记录、空章节和模板正文都必须导致非零检查结论。'],
-    evidence: [{ kind: 'diff-observed', statement: '测试直接调用形状与重复度校验函数覆盖失败分支。' }],
     remaining: ['语义是否准确仍需审查者对照提交 diff 判断。'],
     references: [{ path: 'scripts/example.ts', role: 'changed', note: '承载示例中的明确实现变更。' }],
+    slug: 'example-design',
     plan: {
       preconditions: ['已经确定目标提交及其父提交。'],
       reuse: ['复用现有 Git 元数据而不是手工复制提交标题。'],
@@ -36,7 +40,7 @@ function validRecord(commit = 'a'.repeat(40)): CommitRecord {
       }],
       compatibility: ['保持原有输出目录和文档链接不变。'],
       risks: ['自动检查不能证明技术理由正确，因此仍需人工阅读 diff。'],
-      verification: ['运行负向单元测试并确认错误信息指向具体记录。'],
+      acceptanceSequence: ['运行负向单元测试并确认错误信息指向具体记录。'],
       completed: ['记录结构、失败分支和错误报告均有确定实现。'],
       incomplete: ['真实外部协议仍需要各自授权环境单独验收。'],
     },
@@ -126,32 +130,6 @@ describe('commit design record validation', () => {
     expect(validateRecordAgainstCommit(record, commit).join('\n')).toContain('symbol/heading not found at 4dd93b7')
   })
 
-  test('requires a traceable source for execution and CI claims', () => {
-    const record = validRecord()
-    record.evidence = [{ kind: 'recorded-ci-pass', statement: '声称某次 CI 已通过，但故意不提供任何来源。' }]
-    expect(validateRecordShape(record).join('\n')).toContain('requires a source for recorded-ci-pass')
-  })
-
-  test('checks evidence files at their declared revision', () => {
-    const record = validRecord('4dd93b75220926cefbe9d5d017224238bfd8e0f1')
-    record.evidence = [{
-      kind: 'recorded-command-pass',
-      statement: '该条证据引用一个不存在的记录文件，因此不能被接受。',
-      source: {
-        path: 'docs/NOT_A_REAL_VERIFICATION.md',
-        role: 'evidence',
-        note: '用于验证不存在的证据路径会失败。',
-        revision: '4dd93b75220926cefbe9d5d017224238bfd8e0f1',
-      },
-    }]
-    const commit: Commit = {
-      full: record.commit,
-      short: '4dd93b7',
-      date: '2026-01-01T00:00:00Z',
-      subject: 'Rename workflow',
-    }
-    expect(validateRecordAgainstCommit(record, commit).join('\n')).toContain('evidence reference missing at 4dd93b75220926cefbe9d5d017224238bfd8e0f1')
-  })
 
   test('rejects a crossed or fabricated rename relationship', () => {
     const record = validRecord('4dd93b75220926cefbe9d5d017224238bfd8e0f1')
@@ -192,34 +170,6 @@ describe('commit design record validation', () => {
     expect(validateRecordShape(record)).toEqual([])
   })
 
-  test('requires later evidence to use a full-SHA descendant', () => {
-    const documented = '02bc3c2efcd3f3d7978da33b2683e9d392f3220c'
-    const commit: Commit = {
-      full: documented,
-      short: '02bc3c2',
-      date: '2026-01-01T00:00:00Z',
-      subject: 'Bridge and Cloud',
-    }
-    const validateLater = (revision: string) => {
-      const record = validRecord(documented)
-      record.evidence = [{
-        kind: 'later-evidence',
-        statement: '该证据用于检查后续 revision 的时间方向与不可变性。',
-        source: {
-          path: 'docs/RELEASE.md',
-          role: 'evidence',
-          note: '后续发布记录来源。',
-          revision,
-        },
-      }]
-      return validateRecordAgainstCommit(record, commit).join('\n')
-    }
-    expect(validateLater('parent')).toContain('later revision must be an immutable full SHA')
-    expect(validateLater('HEAD')).toContain('reference revision must be commit, parent, or an immutable full SHA')
-    expect(validateLater(documented)).toContain('is not later evidence')
-    expect(validateLater('9b2a35201244ca84adeaa6844bf799e5a18aff6d')).toContain('is not a descendant')
-    expect(validateLater('ea8085139c013577cad3130c35a21fc53a3d8bee')).not.toContain('evidence[0]')
-  })
 
   test('head covers ancestors plus self while next also covers the current tip', () => {
     const history: Commit[] = ['a', 'b', 'c'].map(letter => ({
@@ -236,5 +186,98 @@ describe('commit design record validation', () => {
     expect(documentationMode([])).toBe('head')
     expect(documentationMode(['--next'])).toBe('next')
     expect(() => documentationMode(['--unknown'])).toThrow('usage:')
+  })
+
+  test('rejects legacy execution evidence fields at runtime', () => {
+    const withEvidence = validRecord() as CommitRecord & { evidence?: unknown }
+    withEvidence.evidence = []
+    expect(validateRecordShape(withEvidence).join('\n')).toContain('legacy evidence field')
+
+    const withVerification = validRecord() as CommitRecord & {
+      plan: CommitRecord['plan'] & { verification?: unknown }
+    }
+    withVerification.plan.verification = []
+    expect(validateRecordShape(withVerification).join('\n')).toContain('legacy plan.verification field')
+
+    const withEvidenceRole = validRecord()
+    withEvidenceRole.references[0]!.role = 'evidence' as never
+    expect(validateRecordShape(withEvidenceRole).join('\n')).toContain('legacy evidence reference role')
+  })
+
+  test('rejects historical execution claims outside acceptance criteria', () => {
+    const record = validRecord()
+    record.architecture = ['本地实际执行 bun test，16 个测试全部通过。']
+    expect(validateRecordShape(record).join('\n')).toContain('historical execution result')
+  })
+
+  test('renders acceptance criteria without an execution evidence section', () => {
+    const record = validRecord()
+    const commit = namingCommit('a')
+    const spec = specFor(record, commit)
+    const plan = planFor(record, commit)
+    expect(spec).not.toContain('## 验证证据')
+    expect(spec).toContain('## 验收标准')
+    expect(plan).toContain('## 验收顺序')
+    expect(plan).not.toContain('## 验证顺序')
+  })
+})
+
+function namingCommit(letter: string, date = '2026-11-11T10:00:00+08:00'): Commit {
+  return {
+    full: letter.repeat(40),
+    short: letter.repeat(7),
+    date,
+    subject: `Commit ${letter}`,
+  }
+}
+
+function pathsFor(
+  commits: Commit[],
+  slugs: Record<string, string>,
+) {
+  return historicalDocumentPaths(commits, full => {
+    const slug = slugs[full]
+    return slug === undefined ? undefined : { slug }
+  })
+}
+
+describe('date and feature document naming', () => {
+  test('uses the committer day and stable same-day suffixes', () => {
+    const commits = [namingCommit('a'), namingCommit('b'), namingCommit('c')]
+    const paths = pathsFor(commits, {
+      ['a'.repeat(40)]: 'feature-design',
+      ['b'.repeat(40)]: 'feature-design',
+      ['c'.repeat(40)]: 'feature-design',
+    })
+    expect(paths.get('a'.repeat(40))?.spec).toBe('docs/specs/2026-11-11-feature-design-SPEC.md')
+    expect(paths.get('b'.repeat(40))?.plan).toBe('docs/plans/2026-11-11-feature-design-02-PLAN.md')
+    expect(paths.get('c'.repeat(40))?.spec).toBe('docs/specs/2026-11-11-feature-design-03-SPEC.md')
+  })
+
+  test('allows the same slug on another day and keeps self fixed', () => {
+    const commits = [namingCommit('a'), namingCommit('b', '2026-11-12T00:00:00Z')]
+    const paths = pathsFor(commits, {
+      ['a'.repeat(40)]: 'feature-design',
+      ['b'.repeat(40)]: 'feature-design',
+    })
+    expect(paths.get('b'.repeat(40))?.spec).toBe('docs/specs/2026-11-12-feature-design-SPEC.md')
+    expect(SELF_DOCUMENT_PATHS).toEqual({
+      spec: 'docs/specs/self-SPEC.md',
+      plan: 'docs/plans/self-PLAN.md',
+    })
+  })
+
+  test('rejects invalid slugs, invalid dates, missing records, and residual collisions', () => {
+    const one = [namingCommit('a')]
+    expect(() => pathsFor(one, { ['a'.repeat(40)]: 'Bad Slug' })).toThrow('invalid slug')
+    expect(() => pathsFor([namingCommit('a', 'not-a-date')], { ['a'.repeat(40)]: 'valid-slug' })).toThrow('invalid commit date')
+    expect(() => pathsFor(one, {})).toThrow('missing record')
+
+    const commits = [namingCommit('a'), namingCommit('b'), namingCommit('c')]
+    expect(() => pathsFor(commits, {
+      ['a'.repeat(40)]: 'feature',
+      ['b'.repeat(40)]: 'feature',
+      ['c'.repeat(40)]: 'feature-02',
+    })).toThrow('document path collision')
   })
 })

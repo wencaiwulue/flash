@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '3948f914500e3982fb160607250d6a2e22f0578d',
+  slug: 'deterministic-cron-takeover',
   title: 'Make cron takeover test deterministic',
   kind: 'component',
   status: 'implemented',
@@ -43,58 +44,7 @@ export const record = defineCommitRecord({
     'first 或 second 任一方首次触发都可通过，首次阶段另一方必须零触发；停止实际 owner 后，另一方最终触发。',
     'ReviewArtifact 绝对路径测试不再导入 runWithCwdOverride，仍返回 fake runner 的 ok summary 并清理目录。',
     'stop/start 状态清理不属于本次验收，上一提交的 cwd 相对路径实现也未被产品层修改。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: 'createCronScheduler 新增 lockProbeIntervalMs 选项，lockProbeTimer 使用该选项并回退到既有 5000 毫秒常量。',
-      source: {
-        path: 'src/utils/cronScheduler.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'options.lockProbeIntervalMs ?? LOCK_PROBE_INTERVAL_MS',
-        note: '可注入探测周期及生产默认值的直接实现证据。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: 'takeover 回归注入 50 毫秒探测，等待任一 scheduler 就绪和双方合并触发，再按实际触发方选择 owner/other；此项声明测试改动存在。',
-      source: {
-        path: 'tests/cronLifecycle.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: "lockProbeIntervalMs: 50",
-        note: 'owner-neutral 锁接管回归；不是多进程测试。',
-      },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'ReviewArtifact 文件用例直接传入临时文件绝对路径，不再建立 cwd override。',
-      source: {
-        path: 'tests/reviewArtifact.test.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: "join(dir, 'artifact.txt')",
-        note: '测试输入简化的直接证据。',
-      },
-    },
-    {
-      kind: 'not-recorded',
-      statement: 'at-commit STATUS 的 152 tests、645 assertions、typecheck/build 来自更早的 adaa8ff，并经 c43f42e 原样继承；3948f91 没有更新执行记录。因此这些数字不能证明 owner-neutral、50ms probe 或绝对 artifact 路径修改后运行通过，本提交没有独立的定向或全量执行证据。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '| `bun test` | 152 tests, 645 assertions passed |',
-        note: '用于定位被继承的先前基线，而非把该基线归因于本提交。',
-      },
-    },
-    {
-      kind: 'not-recorded',
-      statement: '没有真实多进程 cron 接管或同一 scheduler stop/start 的新增回归证据，也没有 ReviewArtifact 真实模型调用记录。',
-    },
-  ],
-  remaining: [
+  ],  remaining: [
     '此 revision 的 stop 尚未清 inFlight/nextFireAt，测试仍是 owner.stop 后等待 other 被动接管，没有覆盖 other.stop/start。',
     '两个 scheduler 位于同一测试进程，锁身份不同但 PID 相同；真实跨进程存活探测和崩溃恢复未被该用例证明。',
   ],
@@ -170,7 +120,7 @@ export const record = defineCommitRecord({
       '50 毫秒探测使用真实 timer，CI 仍需等待 check 和异步文件写；该选项缩短窗口但不把完整生命周期变成同步测试。',
       '本用例只证明被动接管，停止再启动可能遇到不同内存状态，不能据此扩大验收范围。',
     ],
-    verification: [
+    acceptanceSequence: [
       '重复定向运行 cron takeover，分别观察任一启动顺序下首次仅一方触发、停止 owner 后另一方接管。',
       '检查未传 lockProbeIntervalMs 的调用仍走 5000 毫秒默认值，测试第二实例明确为 50 毫秒。',
       '运行 ReviewArtifact 文件用例，确认绝对路径读取成功且不依赖 cwd override；执行结论只引用有来源的命令记录。',

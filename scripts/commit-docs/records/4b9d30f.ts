@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '4b9d30f7953273e567a18eb819f4eddd45fcc877',
+  slug: 'root-source-snapshot',
   kind: 'component',
   status: 'partial',
   beforeState:
@@ -17,7 +18,7 @@ export const record = defineCommitRecord({
   nonGoals: [
     '不重建或虚构被压缩历史中的逐提交意图，也不把根快照中的全部文件称为本提交新写代码。',
     '不把 README 所述 source map 暴露事件、归属或外部研究背景当作已经独立核验的事实。',
-    '不承诺该树可以独立安装、类型检查、构建或运行，也不把静态存在权限代码等同于安全审计通过。',
+    '不承诺该树可以独立安装、类型检查、构建或运行。',
     '不在本提交层面补写后续恢复提交才加入的依赖、测试、CI、发布状态或外部功能边界。',
   ],
   architecture: [
@@ -53,72 +54,7 @@ export const record = defineCommitRecord({
     '文档验收必须把根快照保留内容的提交约束与回溯性模块分析分开，不能虚构先前提交或原始设计讨论。',
     '完整性验收必须报告缺失 package/build/test 配置和具体未解析核心导入，不能把文件数量或静态源码规模当作可构建证明。',
     '操作证据验收只能引用提交正文自述的 clean status、本地单提交历史和 force-push；fresh clone、安装、测试和运行仍应列为未验证。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement:
-        '按 --root、-r、-M 的 diff-tree 口径观察到 1903 个新增文件、零重命名；顶层仅 README.md 与 src/，其中 src/ 为 1902 个文件。',
-    },
-    {
-      kind: 'diff-observed',
-      statement:
-        '源码中可直接观察 submitMessage()、query/queryLoop 的 async-generator 消息循环、tool_use 收集和 tool result 回填；这证明结构存在，不证明运行成功。',
-      source: {
-        path: 'src/query.ts',
-        role: 'evidence',
-        note: '根快照中的模型流与工具编排实现。',
-      },
-    },
-    {
-      kind: 'diff-observed',
-      statement:
-        'src/tools.ts 引用了树中不存在的 TungstenTool 模块，核心源码还引用缺失的 src/types/message 与 src/types/tools；这些是静态导入核对结果，不伪装成编译器输出。',
-      source: {
-        path: 'src/tools.ts',
-        role: 'evidence',
-        note: '用于核对内建工具注册与缺失 TungstenTool 导入。',
-      },
-    },
-    {
-      kind: 'diff-observed',
-      statement:
-        'README 将 QueryEngine.ts 写成约 46K 行，但该 revision 实际为 1295 行、46630 字节；因此文档采用 Git 与源码实测值，而不沿用字节/行混用的描述。',
-      source: {
-        path: 'README.md',
-        role: 'evidence',
-        note: '根快照的研究定位与文件规模声明来源。',
-      },
-    },
-    {
-      kind: 'not-recorded',
-      statement:
-        '提交正文只自述 git status clean、本地历史变为一个提交及向两个远端 force-push；明确未做 push 后 fresh clone。没有安装、类型检查、构建或测试命令记录，本记录也不声称执行过这些检查。',
-    },
-    {
-      kind: 'later-evidence',
-      statement:
-        '直接后续恢复提交 9b2a352 的 docs/RELEASE.md 将该根快照标为 Source baseline；这一归属说明属于后续文档证据。',
-      source: {
-        path: 'docs/RELEASE.md',
-        role: 'evidence',
-        revision: '9b2a35201244ca84adeaa6844bf799e5a18aff6d',
-        note: '后续 revision 的 Initial restoration release 明确记录 Source baseline。',
-      },
-    },
-    {
-      kind: 'later-evidence',
-      statement:
-        '同一后续提交的 docs/STATUS.md 记录后续完成的构建、测试、真实模型检查与仍受限能力；这些均为 later-evidence，不能倒写为根提交已经验证。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: '9b2a35201244ca84adeaa6844bf799e5a18aff6d',
-        note: '后续 revision 对恢复结果与未完成能力的分项记录。',
-      },
-    },
-  ],
-  remaining: [
+  ],  remaining: [
     '该树缺少 package.json、锁文件、tsconfig、构建脚本和常规测试套件，因而不能验收为可独立构建的发布源树。',
     '静态核对发现 TungstenTool、message/tools 类型、SDK controlTypes 以及部分任务类型等导入目标缺失；缺失原因没有历史证据，不能补写成有意裁剪。',
     'README 的关键文件行数存在字节与行混用，且 source-map 暴露背景未由本提交独立证明，后续使用时应分别修正和核实。',
@@ -147,7 +83,7 @@ export const record = defineCommitRecord({
     { path: 'src/history.ts', role: 'changed', note: '处理输入或会话历史辅助逻辑，与查询消息存储相区分。' },
     { path: 'src/hooks/useCanUseTool.tsx', role: 'reused', note: '权限确认 UI 与工具权限上下文之间的复用点，供交互查询流程调用。' },
     { path: 'src/services/mcp/client.ts', role: 'reused', note: 'MCP 工具发现与连接管理的复用位置，向内建工具池提供外部工具。' },
-    { path: 'src/bridge/jwtUtils.ts', role: 'evidence', note: '用于确认无签名 JWT decode 的有限用途及其信任边界。' },
+    { path: 'src/bridge/jwtUtils.ts', role: 'reused', revision: 'commit', note: '用于确认无签名 JWT decode 的有限用途及其信任边界。' },
   ],
   changeGroups: [
     { prefix: 'src/bootstrap/', count: 1, note: '启动状态文件，承载大型 AppState/bootstrap 状态组合。' },
@@ -259,7 +195,7 @@ export const record = defineCommitRecord({
       '无签名 JWT decode、平台凭据存储和代理认证都有明确信任边界，文档必须防止把辅助解析误当安全证明。',
       'README 的规模单位和外部背景存在准确性风险，应以 revision 实测与独立来源分别校正。',
     ],
-    verification: [
+    acceptanceSequence: [
       '用 rev-list --parents 与根 diff-tree 验证无父节点、1903 个新增文件、零重命名及 README/src 的完整覆盖。',
       '抽查入口、QueryEngine/query、Tool/tools、权限和 bridge 源码，确认文档中的数据流都能落到实际符号。',
       '用静态导入扫描定位缺失模块，并把扫描结果标为词法核对而非编译通过；后续补齐后再运行 TypeScript 检查。',

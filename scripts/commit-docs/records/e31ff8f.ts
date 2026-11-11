@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: 'e31ff8ffe39417856b209be89190ef9cc429e6b9',
+  slug: 'cron-scheduler-reset',
   title: 'Reset cron scheduler state on stop and restart',
   kind: 'component',
   status: 'implemented',
@@ -44,47 +45,7 @@ export const record = defineCommitRecord({
     '同一实例 start 后重新发起任务文件读取，空 nextFireAt 使 check 按当前 tasks 的 lastFiredAt ?? createdAt 重锚；读盘不 await，旧异步 finally 也仍需定向交错验证。',
     'owner-neutral 回归执行 other.stop/start，在第二次虚拟时间推进后观察到 otherFired，且最终清理 other。',
     'dir 与已启用 REPL 两个直接 start 分支都捕获 enable rejection 并记录 debug；不改变既有正常启动路径。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: 'stop 新增 inFlight.clear 与 nextFireAt.clear，两个直接 void enable() 调用新增 catch/debug；其他锁和 timer 清理保持。',
-      source: {
-        path: 'src/utils/cronScheduler.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'inFlight.clear()',
-        note: '生命周期状态重置的直接实现证据。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: 'takeover 回归在 owner.stop 后显式执行 other.stop、other.start，再推进 current 60_000 并等待 otherFired；此项只证明非 owner 的虚拟时间重启步骤随提交加入，不构成 stop 状态清理有效性的独立证据。',
-      source: {
-        path: 'tests/cronLifecycle.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: 'other.start()',
-        note: '区分显式重启与被动接管的测试改动；不证明该用例能在未清状态的父提交上失败。',
-      },
-    },
-    {
-      kind: 'recorded-ci-pass',
-      statement: '后续 271cf75 在 RELEASE.md 将 GitHub Actions run 42861258902 记录为 e31ff8f 通过；工作流包含依赖安装、SDK 类型生成、typecheck、bun test、build 及 CLI/SDK smoke。这是提交后的累积树 CI 证据，不替代状态清理的定向回归。',
-      source: {
-        path: 'docs/RELEASE.md',
-        role: 'evidence',
-        revision: '271cf757a24eb6cd7e46586fa18995759be32043',
-        symbol: 'CI run `42861258902` passed',
-        note: '后续发布记录对 e31ff8f 的明确 CI 归因及其实际工作流范围。',
-      },
-    },
-    {
-      kind: 'not-recorded',
-      statement: 'at-commit STATUS 的 152 tests、645 assertions、typecheck/build 继承自 adaa8ff，不是本提交修改后的本地执行记录。没有真实多进程崩溃/重启或专门针对 enable rejection 日志的新测试；修改的用例使用同一进程、临时目录和注入 now。',
-    },
-  ],
-  remaining: [
+  ],  remaining: [
     '现有用例只重启首次未触发的 other，未重启积累 recurring nextFireAt/inFlight 的 owner，也没有 stop 后状态断言；两个 clear 是否消除旧生命周期残留仍需能够区分父提交的定向回归。重启读盘与首次 check 的先后顺序也未覆盖。',
     'one-shot 与 recurring 的异步 finally 没有生命周期标识，旧任务可能在重启后删除新周期同 ID 的 inFlight；该交错及真实进程崩溃恢复仍无新增证据。',
     'enable rejection 被记录为 debug，但该 diff 没有自动重试策略；enablePoll 回调也不是本次两个 catch 修改的对象。',
@@ -149,10 +110,10 @@ export const record = defineCommitRecord({
       '虚拟时钟推进不会唤醒真实 timer，测试仍需真实 waitFor；10 秒等待不是把文件与锁操作同步化。',
       '该用例不覆盖 stop 与未结束 one-shot 删除的交错，enable catch 也只记录异常而不证明恢复。',
     ],
-    verification: [
+    acceptanceSequence: [
       '定向重复运行 cron lifecycle，确认 owner.stop 后 other 经显式 stop/start 在第二次虚拟时间推进后触发。',
       '另补定向检查：让实际触发并持有 nextFireAt/inFlight 的 owner 停止再启动，直接验证 stop 后两者为空及 recurring 重锚；现有 other 用例没有执行这些断言。',
-      '核对两个直接 start 分支的 rejection 日志路径；任何测试通过结论必须引用实际命令或 CI 来源。',
+      '核对两个直接 start 分支的 rejection 日志路径；任何测试结论必须引用实际命令或 CI 来源。',
     ],
     completed: [
       'stop 已清 inFlight/nextFireAt，两个直接 enable 启动路径已增加 rejection 日志。',

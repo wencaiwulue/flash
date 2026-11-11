@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '9525612e328486ceb996e3ce3327c0119129bf29',
+  slug: 'generate-docs-before-ci',
   kind: 'component',
   status: 'implemented',
   beforeState: '父提交的 CI 已用 fetch-depth: 0 取得完整历史，但文档步骤只运行 check-commit-docs.ts。生成器负责把上一 self 落实成 SHA 文件，若提交者漏跑生成，checker 会把这些文件报告为缺失。',
@@ -12,20 +13,7 @@ export const record = defineCommitRecord({
   decisions: ['直接扩展现有 step 为两行命令，而不是新增 job 或修改 checker；实现最小，但写操作和验证仍耦合在同一 workspace。'],
   alternatives: ['回溯工程上，CI 只运行 checker 并在失败时要求作者提交生成结果，才能保留缺失/过期文档证据；先 generate 再 check 则更宽松，这是本提交实际选择及其代价。'],
   security: ['没有新增凭据或网络写入；主要风险是质量门禁被同进程生成结果满足，而不是产品权限边界变化。'],
-  acceptance: ['at-commit workflow 在 check-commit-docs.ts 前执行 document-commits.ts，且 fetch-depth、typecheck、test、build 和 smoke 顺序保持原样。'],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: 'workflow patch 只把单行文档检查替换为 generator 加 checker 两行命令。',
-      source: { path: '.github/workflows/ci.yml', role: 'evidence', revision: 'commit', symbol: 'bun scripts/document-commits.ts', note: '写后查顺序可直接在 CI 文件中核对。' },
-    },
-    {
-      kind: 'later-evidence',
-      statement: '后续 ab2d941 的 RELEASE 记录 CI run 42952964466 通过完整历史生成与校验；它证明该流程跑通，不证明 committed docs 的独立完整性或设计质量。',
-      source: { path: 'docs/RELEASE.md', role: 'evidence', revision: 'ab2d941c75f445320180c2559bc62e146238aacc', symbol: '42952964466', note: '后续证据提交中的 hosted run 记录。' },
-    },
-  ],
-  remaining: ['writer 会在 checker 前掩盖 missing/stale committed documents；后续需要把生成保留为本地写操作，CI 改为只读检查。'],
+  acceptance: ['at-commit workflow 在 check-commit-docs.ts 前执行 document-commits.ts，且 fetch-depth、typecheck、test、build 和 smoke 顺序保持原样。'],  remaining: ['writer 会在 checker 前掩盖 missing/stale committed documents；后续需要把生成保留为本地写操作，CI 改为只读检查。'],
   references: [
     { path: '.github/workflows/ci.yml', role: 'changed', symbol: 'bun scripts/document-commits.ts', note: '将生成器插入现有文档 checker 之前。' },
   ],
@@ -38,7 +26,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['本地生成命令和文档路径不变，CI 对漏提交生成结果变得更宽容。'],
     risks: ['同一输入既生成又验证会产生自证，缺失文档可能在 CI 中被临时补齐而不再失败。'],
-    verification: ['检查 patch 的命令顺序，并用后续 run 只证明 workflow 可执行；另行审查 committed tree 才能发现其独立性缺口。'],
+    acceptanceSequence: ['检查 patch 的命令顺序，并用后续 run 只证明 workflow 可执行；另行审查 committed tree 才能发现其独立性缺口。'],
     completed: ['生成器已进入文档检查步骤，后续有 run 通过的记录。'],
     incomplete: ['没有实现只读 CI 校验，也没有增加针对 stale/missing committed artifact 的回归。'],
   },

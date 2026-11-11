@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '9b2a35201244ca84adeaa6844bf799e5a18aff6d',
+  slug: 'restore-cli-sdk-build',
   kind: 'component',
   status: 'implemented',
   beforeState:
@@ -67,120 +68,7 @@ export const record = defineCommitRecord({
     'LSP 验收只能声称 lifecycle options 被接受及 stopped 状态下 stop() 可安全返回，不能扩大为真实 crash/restart、shutdown-timeout kill 或运行中进程清理已测试。',
     '能力验收必须保留 rewind、remote control、SDK controls、Linux secret storage、marketplace、Cloud xattr 和 internal features 的未完成或禁用状态。',
     '发布验收在此 revision 只能确认 CI workflow 和发布文档已加入；不得声称 repository creation、push 或 GitHub Actions 已通过。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement:
-        '相对父快照观察到 789 个变更路径：173 A、616 M、零删除、零 rename；src/ 占 772，tests/ 为 5，另有构建、CI 和文档文件。',
-    },
-    {
-      kind: 'diff-observed',
-      statement:
-        '395 个修改文件明确移除父版 react/compiler-runtime 转换痕迹，552 个修改文件字节数缩小超过 50%；这些统计用于识别批量源码恢复，不把其余修改全部归类为手工新功能。',
-      source: {
-        path: 'docs/RELEASE.md',
-        role: 'evidence',
-        note: '提交内对 embedded source maps 恢复原始 TypeScript 来源的说明。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement:
-        'STATUS 记录 bun install --frozen-lockfile、bun run typecheck 和 bun run build 通过，build 包含 CLI、SDK 与 declarations；这是提交携带的执行记录，不是本次文档编写时复跑。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        note: '构建与类型检查的 at-commit 结果表。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement:
-        'STATUS 记录 bun run generate:sdk-types 成功生成 125 个 core types 和 59 个 control types。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        note: 'SDK schema 类型生成数量的 at-commit 记录。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement:
-        'STATUS 记录 bun test 完成 7 tests、38 assertions passed；该记录与五个新增测试文件相互对应，但完整测试日志未随提交保存。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        note: '离线测试执行数量与断言结果记录。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement:
-        'STATUS 记录 CLI version/help 成功，真实 model + Read round trip 返回 CLI_TOOL_ROUNDTRIP_OK；检查使用 configured provider 和 isolated HOME。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        note: 'CLI smoke 与真实工具往返的 at-commit 结果记录。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement:
-        'STATUS 记录 source/packaged SDK query、in-process MCP model round trip、V2 multi-turn/resume recall、query abort cleanup 和 packaged dist/sdk.mjs query 均通过。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        note: 'SDK、MCP、V2 和清理路径的 at-commit 验证表。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '新增两个工具池测试，覆盖无 null、名称唯一和核心内建工具存在；它本身不断言 23 个工具。',
-      source: { path: 'tests/toolPool.test.ts', role: 'evidence', note: '工具池离线回归测试来源。' },
-    },
-    {
-      kind: 'test-added',
-      statement: '新增一个 in-process MCP 测试，覆盖工具 metadata 与同进程 invocation。',
-      source: { path: 'tests/sdkMcp.test.ts', role: 'evidence', note: 'InMemoryTransport MCP 回归测试来源。' },
-    },
-    {
-      kind: 'test-added',
-      statement: '新增一个 portable session 测试，覆盖 list/read/pagination、rename/tag、fork fresh UUID chain 和非法 title。',
-      source: { path: 'tests/sdkSessions.test.ts', role: 'evidence', note: 'JSONL session 操作与 fork 链回归测试来源。' },
-    },
-    {
-      kind: 'test-added',
-      statement: '新增两个 scheduled-task 测试，覆盖动态 fence、初始 missed event，以及调用 abort 后手动 iterator.return() 的清理路径；未覆盖正常 fire、recurring、jitter、锁或 abort 单独终止迭代。',
-      source: { path: 'tests/sdkCron.test.ts', role: 'evidence', note: 'cron notification 与 abort 回归测试来源。' },
-    },
-    {
-      kind: 'test-added',
-      statement: '新增一个 LSP 配置测试，只验证 lifecycle options 被接受及 stopped 状态下 stop() 可安全返回，没有触发真实 crash restart、timeout kill 或运行中进程清理。',
-      source: { path: 'tests/lsp.test.ts', role: 'evidence', note: 'LSP 配置边界的有限回归测试来源。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement:
-        '构建源码固定注入 USER_TYPE=external 和 features: []；提交内没有 USER_TYPE=ant 构建或运行验证记录，因此不作该环境的能力声明。',
-      source: {
-        path: 'scripts/build.ts',
-        role: 'evidence',
-        note: 'external build define 与两个 Bun.build 入口的直接来源。',
-      },
-    },
-    {
-      kind: 'not-recorded',
-      statement:
-        'RELEASE 明确记载 repository creation 和 push 尚未执行，实际 commit SHA 与 GitHub Actions 结果留待后续；因此本记录不使用 recorded-ci-pass，也不声称发布完成。',
-      source: {
-        path: 'docs/RELEASE.md',
-        role: 'evidence',
-        note: '初始发布准备状态和未执行事项的 at-commit 说明。',
-      },
-    },
-  ],
-  remaining: [
+  ],  remaining: [
     'changed-file offset/limit 已转发到 FileReadTool，但 STATUS 标为 Implemented/unverified，仍缺专门回归测试。',
     'SDK rewind、non-REPL prompt/agent stop hooks、getContextUsage、reloadPlugins、stopTask、applyFlagSettings、getSettings 等仍未实现或明确 unsupported。',
     'connectRemoteControl、Cloud xattr 和 env-less perpetual bridge 分别等待 daemon/duplex、属性编码及 bridge-pointer/JWT 生命周期等权威协议。',
@@ -353,7 +241,7 @@ export const record = defineCommitRecord({
       'LSP 测试深度有限，大量 UI 恢复也缺少交互回归；不能把 7 个测试扩大解释为全产品覆盖。',
       '发布文档中的远端计划尚未执行，workflow 可能只有在实际 Actions 环境才能暴露新的依赖或权限问题。',
     ],
-    verification: [
+    acceptanceSequence: [
       '先用 rename-aware diff-tree 核对 789 个路径、173 A/616 M、零 rename，并确认所有目录组和普通文件都有设计覆盖。',
       '复跑依赖流程时按 bun install --frozen-lockfile、bun run generate:sdk-types、bun run typecheck、bun test、bun run build 顺序执行，并单独保存本次输出，不覆盖 at-commit 历史证据。',
       '核对生成结果为 125 core/59 control types，检查 dist/main.js、dist/sdk.mjs 和 declaration export，再执行 version/help 与 SDK import smoke。',
@@ -366,7 +254,7 @@ export const record = defineCommitRecord({
       '已加入固定依赖、Bun/TypeScript 配置、双入口构建、SDK 类型生成和 declaration pipeline。',
       '已批量恢复原始 TS/TSX，并补齐核心 SDK 类型、工具、消息和运行时模块。',
       '已实现 external CLI/SDK 主链、in-process MCP、V2 多轮/resume、portable session mutations/fork 和 scheduled-task 接口。',
-      '已加入五个离线测试文件、CI workflow、架构/状态/发布文档；STATUS 记录了安装、类型检查、7 tests/38 assertions、构建和多条真实 CLI/SDK 路径通过。',
+      '已加入五个离线测试文件、CI workflow、架构/状态/发布文档；tests/toolPool.test.ts、tests/sdkMcp.test.ts、tests/sdkSessions.test.ts、tests/sdkCron.test.ts、tests/lsp.test.ts 覆盖工具池、MCP、会话、定时任务和 LSP 生命周期。',
       '已明确 external/disabled 边界、剩余功能缺口和协议依赖，并保留父基线历史。',
     ],
     incomplete: [

@@ -32,4 +32,4 @@ if (errors.length > 0) {
   console.error(errors.join('\n'))
   throw new Error(`Commit documentation is incomplete or outdated (${errors.length} issue(s)). Generate and review the records before committing.`)
 }
-console.log(`All ${documents.size - 2} substantive commit documents and indexes pass structural, reference, evidence, and duplication checks (${mode} mode). Semantic review is a separate requirement.`)
+console.log(`All ${documents.size - 2} substantive commit documents and indexes pass structural, reference, naming, and duplication checks (${mode} mode). Semantic review is a separate requirement.`)

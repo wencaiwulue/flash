@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '1bc02bfb5271653be2dd2c2fcc498246cf111dc5',
+  slug: 'commit-docs-finalization',
   title: 'Complete previous commit documentation',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -29,15 +30,7 @@ export const record = defineCommitRecord({
   acceptance: [
     '两个 frontmatter 均绑定 d472e5c 完整 SHA 和原提交时间，Actual scope 与 501672c 文档组一致。',
     'INDEX 行和 JSON 对象使用同一对 d472e5c 路径，位于 2f55f19 后且 self 仍居末位。',
-  ],
-  evidence: [
-    { kind: 'diff-observed', statement: '新 SPEC 固定 d472e5c 身份，并列出 501672c 文档对及 78 行新增、1 行删除。', source: { path: 'docs/specs/d472e5c-SPEC.md', role: 'evidence', revision: 'commit', symbol: 'commit: d472e5c963d799ffa51192e7358ecaba45de8c7a', note: '目标身份与实际范围的直接锚点。' } },
-    { kind: 'diff-observed', statement: '新 PLAN 含实现步骤、风险、验证序列和 implemented 完成状态。', source: { path: 'docs/plans/d472e5c-PLAN.md', role: 'evidence', revision: 'commit', symbol: '## Completion status and remaining work', note: '计划文件在提交中新建。' } },
-    { kind: 'diff-observed', statement: 'INDEX 汇总由 59 增至 60，并在 self 前加入 d472e5c。', source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'commit', symbol: '- Implemented: 60', note: '不含 self 的人类索引计数。' } },
-    { kind: 'diff-observed', statement: '机器索引在 2f55f19 与 self 之间插入完整 d472e5c 对象。', source: { path: 'docs/status/index.json', role: 'evidence', revision: 'commit', symbol: '"fullSha": "d472e5c963d799ffa51192e7358ecaba45de8c7a', note: '对象含 implemented 及两个新文档路径。' } },
-    { kind: 'not-recorded', statement: 'diff 未附生成、测试、构建或 CI 输出；PLAN 的验证文字只是待办模板内容。' },
-  ],
-  remaining: ['直接父 3fbabc2 和当前 1bc02bf 在此快照仍未建档；本提交仅闭合 d472e5c。'],
+  ],  remaining: ['直接父 3fbabc2 和当前 1bc02bf 在此快照仍未建档；本提交仅闭合 d472e5c。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: 'Implemented 59→60，新增 d472e5c 行。' },
     { path: 'docs/plans/d472e5c-PLAN.md', role: 'changed', note: 'd472e5c 的新建实施计划。' },
@@ -55,7 +48,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['既有 2f55f19 链接与 self 文档不变；生成器源码和 JSON schema 均未调整。'],
     risks: ['相邻提交都采用 previous 标题，混淆 3fbabc2 与 d472e5c 会让 frontmatter、Actual scope 和索引三者一起错位。'],
-    verification: ['解析两份 frontmatter，对照 d472e5c 原始 diff，并比较父/当前索引计数和 self 下标。'],
+    acceptanceSequence: ['解析两份 frontmatter，对照 d472e5c 原始 diff，并比较父/当前索引计数和 self 下标。'],
     completed: ['d472e5c 的 SPEC/PLAN 与两个索引入口已在同一提交落盘。'],
     incomplete: ['没有可归属到本提交的验证执行日志，implemented 仅描述元数据完成状态。'],
   },

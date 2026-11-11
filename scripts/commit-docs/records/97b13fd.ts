@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '97b13fd5279b917c69462da929db00bba942de6a',
+  slug: 'script-based-live-gating',
   title: 'Move live validation gating into scripts',
   kind: 'component',
   status: 'partial',
@@ -36,31 +37,7 @@ export const record = defineCommitRecord({
     '无密钥 model 不进入配置初始化和 live probes；无 token cloud 不进入组织解析及 bridge 流程。',
     '有配置的成功序列保持完整，cloud 的有 token 分支仍包含 session resume、文件持久化、archive 和 finally 清理。',
     '三个目标 job 不再有条件行，desktop 脚本无 diff 且其 workflow 步骤仍显式启用 live 模式。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: 'model 的 at-commit 代码以 falsy 密钥检查、固定跳过日志和 return 组成提前退出。',
-      source: { path: 'scripts/live-model-validation.ts', role: 'evidence', revision: 'commit', symbol: 'MODEL_LIVE_SKIPPED', note: '新 guard 位于 enableConfigs 之前。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'cloud 的 token 分支包住组织解析和原有 live body，缺少 org UUID 的异常仍保留。',
-      source: { path: 'scripts/live-cloud-validation.ts', role: 'evidence', revision: 'commit', symbol: 'CLOUD_LIVE_SKIPPED', note: '可观察缺失 token 与缺失组织配置的不同处理。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'workflow patch 仅删除 model、cloud、desktop 的三个 if，其他编排未改。',
-      source: { path: '.github/workflows/live-checks.yml', role: 'evidence', revision: 'commit', symbol: 'jobs:', note: 'at-commit job 定义与补丁相互印证。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: "desktop 的跳过标记来自既有脚本，而 workflow 的 CLAUDE_DESKTOP_LIVE: '1' 使该路径不继承旧仓库变量 gate。",
-      source: { path: 'scripts/live-desktop-validation.ts', role: 'evidence', revision: 'commit', symbol: 'DESKTOP_LIVE_SKIPPED', note: '该文件用于确认复用边界，并非本提交修改项。' },
-    },
-    { kind: 'not-recorded', statement: '提交未保存 skip 分支或成功 live probe 的运行日志，因此证据仅覆盖代码与补丁。' },
-  ],
-  remaining: [
+  ],  remaining: [
     'desktop CI 已失去仓库变量门控；需要另行恢复 job gate 或调整步骤环境，当前字面量设置会让获得 runner 的 job 进入 screenshot。',
     'cloud 在 mkdtemp 后才检查 token，skip 分支不进入清理临时目录的 finally，该退出路径仍有资源清理缺口。',
   ],
@@ -92,7 +69,7 @@ export const record = defineCommitRecord({
       'desktop 失去仓库变量 job gate 后，被选中的 self-hosted runner 会继续 screenshot probe。',
       'cloud 有 token 但无 org UUID 仍会失败，不是所有缺省配置都跳过。',
     ],
-    verification: [
+    acceptanceSequence: [
       '检查补丁为 workflow 三行删除、model guard 新增和 cloud else 重组，且 desktop 文件无差异。',
       '后续运行配置/缺省矩阵时应分别捕获 skip 与 success 标记；此处不声明这些运行已经发生。',
     ],

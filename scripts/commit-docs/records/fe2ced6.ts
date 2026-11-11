@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: 'fe2ced6af51deecae060e1729f1b5ebe5f871f27',
+  slug: 'commit-docs-finalization',
   title: 'Complete previous commit documentation',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -28,31 +29,7 @@ export const record = defineCommitRecord({
   acceptance: [
     '两个 frontmatter 与 JSON fullSha 都等于 846c13000bb120adf83febaf0732e704446a0e02，日期和 Complete 标题匹配。',
     'INDEX 为 87/1/0，846c130 行位于 69d3596 和 self 之间；JSON spec/plan 与两个实际新文件一致。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: '846c130 SPEC 的范围块列出 c8338e1-SPEC.md、c8338e1-PLAN.md、INDEX 和 status JSON，并保留 78+1 统计。',
-      source: { path: 'docs/specs/846c130-SPEC.md', role: 'evidence', revision: 'commit', symbol: 'docs/specs/c8338e1-SPEC.md', note: 'c8338e1 是被补档提交的历史范围。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '新 PLAN 使用 846c130 的 Complete 标题与 2026-11-11T11:22:18+08:00，并含完成状态小节。',
-      source: { path: 'docs/plans/846c130-PLAN.md', role: 'evidence', revision: 'commit', symbol: 'date: 2026-11-11T11:22:18+08:00', note: 'frontmatter 日期对应 846c130。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'INDEX patch 将 Implemented 86 改为 87，并在 69d3596 后添加 846c130 双链接行。',
-      source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'commit', symbol: '- Implemented: 87', note: '其他两个状态计数和 self 行没有变化。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'status patch 在 self 前新增 846c130，spec 字段指向 docs/specs/846c130-SPEC.md。',
-      source: { path: 'docs/status/index.json', role: 'evidence', revision: 'commit', symbol: '"spec": "docs/specs/846c130-SPEC.md"', note: '同一对象包含完整 SHA、Complete subject 和 PLAN 路径。' },
-    },
-    { kind: 'not-recorded', statement: '验证小节只是建议执行 bun 与 CI 检查，没有输出、状态链接或其他执行证据。' },
-  ],
-  remaining: ['846c130 的计划仍采用通用步骤，未逐条说明其原提交 SPEC、PLAN 和索引补丁的实现过程。'],
+  ],  remaining: ['846c130 的计划仍采用通用步骤，未逐条说明其原提交 SPEC、PLAN 和索引补丁的实现过程。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: 'Implemented 86→87，追加 846c130 行。' },
     { path: 'docs/plans/846c130-PLAN.md', role: 'changed', note: '新建 846c130 的 Complete 计划。' },
@@ -70,7 +47,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['已有历史项、self changeId 和路径格式均保持，新增内容可沿用现有读取方式。'],
     risks: ['当前提交与被补档提交都使用 Complete 标题；日期、嵌套路径或 fullSha 任一项复制错误都会造成错代。'],
-    verification: ['核对 846c130 原始 metadata、diff 路径与 SPEC，再检查 current INDEX 的 87 计数及 JSON 字段。'],
+    acceptanceSequence: ['核对 846c130 原始 metadata、diff 路径与 SPEC，再检查 current INDEX 的 87 计数及 JSON 字段。'],
     completed: ['846c130 的两个新产物及两个索引入口已在本提交同步建立。'],
     incomplete: ['没有验证执行日志，通用计划也未补充更细的设计说明。'],
   },

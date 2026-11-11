@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: 'fdffe9e872a6bdf9ef41623b532f512f1846ab3a',
+  slug: 'commit-docs-finalization',
   title: 'Complete previous commit documentation',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -28,31 +29,7 @@ export const record = defineCommitRecord({
   acceptance: [
     'SPEC 与 PLAN 均使用 f5b097b742b8e9d68acce71c9b2fa38e19c6088a，且标题为 Complete previous commit documentation。',
     '表格计数为 81/1/0，新增行及 JSON 对象的链接与磁盘路径一致，self 行和 self 对象未被改写。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: 'SPEC frontmatter 指向 f5b097b，Actual scope 列出 8a248e3 的 SPEC/PLAN，而不是把它们列为本提交的新文件。',
-      source: { path: 'docs/specs/f5b097b-SPEC.md', role: 'evidence', revision: 'commit', symbol: 'docs/plans/8a248e3-PLAN.md', note: '嵌套路径界定了被补档提交的历史范围。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'PLAN 的 frontmatter 使用 f5b097b 的 Complete 标题、提交日期和 implemented 状态。',
-      source: { path: 'docs/plans/f5b097b-PLAN.md', role: 'evidence', revision: 'commit', symbol: 'date: 2026-11-11T11:18:59+08:00', note: '时间与被补档提交 metadata 一致。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'INDEX 从 80 个 implemented 增至 81 个，并在 4329cd8 与 self 之间插入 f5b097b 行。',
-      source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'commit', symbol: '| f5b097b | Complete previous commit documentation | implemented |', note: '另外两种状态的计数保持 1 和 0。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'status JSON 新增 f5b097b 完整对象，其 spec 和 plan 字段与本提交新建路径吻合。',
-      source: { path: 'docs/status/index.json', role: 'evidence', revision: 'commit', symbol: '"shortSha": "f5b097b"', note: '对象插入在 self 前。' },
-    },
-    { kind: 'not-recorded', statement: '生成文档的 verification 小节只是命令建议，没有相应日志、退出码或 CI 标识。' },
-  ],
-  remaining: ['SPEC 对 f5b097b 的设计背景仍为模板化句子，未展开 8a248e3 文档链之外的分析。'],
+  ],  remaining: ['SPEC 对 f5b097b 的设计背景仍为模板化句子，未展开 8a248e3 文档链之外的分析。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: '新增 f5b097b 行，Implemented 80→81。' },
     { path: 'docs/plans/f5b097b-PLAN.md', role: 'changed', note: '新建 Complete 标题的 f5b097b 计划。' },
@@ -70,7 +47,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['保留 4329cd8 等已有入口，self 的 bootstrap 身份与排序约定不变。'],
     risks: ['Finalize 与 Complete 标题交替出现，若只复制前一文件会写错 subject、date 和嵌套范围。'],
-    verification: ['解析当前 JSON 并核对 f5b097b 对象；对照 parent/current INDEX 检查单行新增及 80→81。'],
+    acceptanceSequence: ['解析当前 JSON 并核对 f5b097b 对象；对照 parent/current INDEX 检查单行新增及 80→81。'],
     completed: ['f5b097b 的 SPEC、PLAN、表格行和 JSON 对象已同步添加。'],
     incomplete: ['验证命令仅为文档内容，本提交未记录它们的实际结果。'],
   },

@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: 'a8c8b90fd2e7b5fa14ebb2bc6beff3f5c2904346',
+  slug: 'lifecycle-regressions-race-fixes',
   title: 'Add lifecycle regressions and race fixes',
   kind: 'component',
   status: 'implemented',
@@ -31,7 +32,7 @@ export const record = defineCommitRecord({
     'LSPClient 在闭包中增加 connectionClosed，每次 start 前置 false，子进程 exit 与 JSON-RPC onClose 都置 true。stop 只在 connection 存在且尚未关闭时发送 shutdown request 和 exit notification，崩溃后的 restart 不再等待永远无法响应的对端。无论握手跳过还是失败，finally 都清 timer、dispose connection、移除 process/stdin/stderr listeners、kill 并清空 process，同时复位 initialized/capabilities/isStopping。',
     'LSPServerInstance 的 crash callback 将 state 置 error、记录 lastError、增加 crashRecoveryCount，并按 restartOnCrash 调 restart。restart 在 stop 后累计 restartCount，超过 maxRestarts 时现在同时写 lastError 和 state=error；start 的 crash-recovery 超限保护也明确 error。成功 start 会清 crashRecoveryCount，但累计 restartCount 不被隐式重置，健康状态仍要求 running 且 client.isInitialized。',
     'fake-lsp-server.ts 是实际 Bun 子进程，通过 stdin 缓冲和 Content-Length 帧解析支持 initialize、x-echo、x-crash、shutdown。x-crash 以退出码 1 模拟异常，shutdown 先响应再按环境变量延迟退出。lspLifecycle.test.ts 因而经过真正的 vscode-jsonrpc 编解码和进程生命周期，覆盖 echo、一次崩溃重启、零重启上限及延迟退出时 stop 快速返回和 stopped 状态，而不是 mock sendRequest 的表面状态；该 shutdown 用例没有直接观察 connection/listener dispose 或子进程退出。',
-    '证据分为三层：测试源码说明覆盖被加入，at-commit STATUS/RELEASE 记录 151 tests/643 assertions、typecheck、build/declarations 和 42-tool profile，后续 271cf757 的 RELEASE 才记录 e31ff8f 的 CI 42861258902 通过。三者不能互相替代，尤其后续树包含额外 cron/测试隔离修正和其他功能变化。',
+    '证据分为三层：测试源码说明覆盖被加入，at-commit STATUS/RELEASE 记录 151 tests/643 assertions、typecheck、build/declarations 和 42-tool profile，后续 271cf757 的 RELEASE 才记录 e31ff8f 的 CI 42861258902。三者不能互相替代，尤其后续树包含额外 cron/测试隔离修正和其他功能变化。',
   ],
   decisions: [
     'changed-files 用生产 FileReadTool 与真实文件做回归，而不是重新实现 diff 逻辑，确保测试证明的是实际附件路径。',
@@ -62,114 +63,8 @@ export const record = defineCommitRecord({
     'maxAgeMs=0 与 permanent 永不老化，普通 recurring 可按年龄过期；owner stop 后另一 scheduler 能按锁协议接管。',
     'LSP initialize/x-echo 正常，异常退出可重启一次，maxRestarts=0 时首次超限进入 error 并记录明确错误。',
     '连接已关闭时 stop 不发送 shutdown，所有路径都释放连接、监听器和进程；延迟退出不会拖住 stop 状态清理。',
-    'at-commit 文档记录 151/643 与构建结果，后续 e31ff8f 的 CI 通过仅作为 271cf757 提供的 later evidence。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: '该 revision 在 removeCronTasks 成功后立即从内存 tasks 过滤已删除 ID，并在 finally 才解除 inFlight，直接关闭磁盘删除与 watcher reload 的竞态窗口。',
-      source: {
-        path: 'src/utils/cronScheduler.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'tasks = tasks.filter(task => task.id !== t.id)',
-        note: 'cron 删除提交点的直接实现证据。',
-      },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'LSPClient 以 connectionClosed 跟踪 exit/onClose，只在连接未关闭时发送 shutdown/exit，并在 finally 中完成连接与进程清理。',
-      source: {
-        path: 'src/services/lsp/LSPClient.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'connection && !connectionClosed',
-        note: '崩溃后跳过无效握手和资源回收的实现证据。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '新增两个真实文件系统测试，覆盖局部范围重读、范围外变化、全读兼容和 ENOENT 驱逐；此项只声明测试随提交加入。',
-      source: {
-        path: 'tests/changedFiles.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: "describe('changed-file offset/limit reads'",
-        note: 'changed-files 的真实临时文件回归。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '新增三个 cron 生命周期测试，使用真实 scheduled_tasks.json、调度器与项目锁覆盖 one-shot、recurring/aging 和 owner stop 后接管。',
-      source: {
-        path: 'tests/cronLifecycle.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: "describe('cron scheduler lifecycle'",
-        note: 'cron 文件、时间和锁生命周期回归。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '新增真实 stdio JSON-RPC fake server 与四个 LSP 测试，覆盖 initialize/echo、一次 crash restart、maxRestarts=0，以及延迟 shutdown 时 stop 快速返回和 stopped 状态；未直接观察 connection/listener dispose 或子进程退出。',
-      source: {
-        path: 'tests/lspLifecycle.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: "describe('LSP process lifecycle'",
-        note: '真实子进程协议生命周期回归，不是第三方语言服务器在线测试。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 STATUS 记录 bun test 已通过 151 个测试、643 个断言；这是 at-commit 文档中的命令记录，不是目标 SHA 的 GitHub CI 结果或本次复跑。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '`bun test`',
-        note: 'at-commit Verified evidence 表的本地全量测试记录。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 STATUS 记录 bun run typecheck 零错误，bun run build 完成 CLI、SDK 与声明构建。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '`bun run typecheck`',
-        note: 'at-commit 类型检查和构建命令结果。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 RELEASE 的 Lifecycle regressions 段记录 151/643、typecheck、build、declarations 和 42-tool profile 通过。',
-      source: {
-        path: 'docs/RELEASE.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '## Lifecycle regressions',
-        note: '生命周期发布段的本地验证声明。',
-      },
-    },
-    {
-      kind: 'later-evidence',
-      statement: '后续 271cf757a24eb6cd7e46586fa18995759be32043 的 RELEASE 记录：包含后续 cron/测试隔离修正的 e31ff8ffe39417856b209be89190ef9cc429e6b9 才取得 CI run 42861258902 全绿；该结果不能反向写成目标 SHA 的 CI 全绿。',
-      source: {
-        path: 'docs/RELEASE.md',
-        role: 'evidence',
-        revision: '271cf757a24eb6cd7e46586fa18995759be32043',
-        symbol: '42861258902',
-        note: '目标后代文档记录的后续 CI 结果，271cf757 与 e31ff8f 均为目标完整 SHA 的后代。',
-      },
-    },
-    {
-      kind: 'not-recorded',
-      statement: '目标提交自己的 STATUS/RELEASE 没有记录其 GitHub Actions run 或失败/通过状态，因此本地 151/643 记录不得被解释为目标 SHA 的远端 CI 全绿。',
-    },
-  ],
-  remaining: [
+    'at-commit 文档记录 151/643 与构建结果，后续 e31ff8f 的 CI 仅作为 271cf757 提供的后续证据。',
+  ],  remaining: [
     '目标提交原树的 cron lock 接管和测试隔离仍有时序风险，后续 e31ff8f 的 stop/reset 与测试调整及其绿色 CI 是独立后续工作。',
     'cron 删除竞态测试没有显式暂停 watcher 来确定性复现窗口，aging 也只直接验证纯函数，没有覆盖最后一次触发后删除全链路。',
     'LSP maxRestarts 用例只验证 maxRestarts=0 的一次崩溃；shutdown 用例只断言 stop 在 500ms 内返回且 state=stopped，未直接验证 connection dispose、process/stdin/stderr listener 移除或子进程退出，也未单独证明 25ms timer 是唯一 killer。',
@@ -310,7 +205,7 @@ export const record = defineCommitRecord({
       {
         title: '记录本地结果并隔离后续 CI 证据',
         detail:
-          'STATUS/RELEASE 将三项能力改为 Verified 并记录 151/643、typecheck、build/declarations 和 42-tool profile，但不写入目标 SHA 的虚构 CI 状态。后续 271cf757 的 RELEASE 仅作为 later evidence 记录 e31ff8f 的 CI 42861258902，通过完整 SHA 明确其包含额外修复。',
+          'STATUS/RELEASE 将三项能力改为 Verified 并记录 151/643、typecheck、build/declarations 和 42-tool profile，但不写入目标 SHA 的虚构 CI 状态。后续 271cf757 的 RELEASE 仅作为后续证据记录 e31ff8f 的 CI 42861258902，完整 SHA 明确其包含额外修复。',
         paths: [
           'docs/STATUS.md',
           'docs/RELEASE.md',
@@ -332,7 +227,7 @@ export const record = defineCommitRecord({
       '真实 fake LSP 只覆盖所选协议路径，测试名称中的 force-kill 不应被过度解释为 timer 路径已被独立证明。',
       '本地命令记录、测试新增和后续 CI 是不同证据等级，混写会造成错误发布结论。',
     ],
-    verification: [
+    acceptanceSequence: [
       '运行 changed-files 定向测试，检查范围内 snippet、范围外空结果、再次查询去重和删除缓存驱逐。',
       '推进 cron 注入时间，观察 one-shot 单次触发、磁盘删除、nextFireTime=null，以及 recurring lastFiredAt 和重排。',
       '分别检查普通 recurring 老化、maxAgeMs=0、permanent，并运行两个 scheduler 的锁接管场景。',

@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: 'ea8085139c013577cad3130c35a21fc53a3d8bee',
+  slug: 'declarative-workflow-execution',
   title: 'Implement declarative workflow execution',
   kind: 'component',
   status: 'partial',
@@ -64,92 +65,8 @@ export const record = defineCommitRecord({
     'skip 会中止目标并传播，retry 能恢复目标及被依赖失败牵连的下游，kill 会中止活动 runner、跳过 pending 且最终返回 killed。',
     '任务详情持续反映步骤快照；结束后输出 JSON 可读，持久化失败会反映为任务失败，通知包含状态及成功写入时的输出位置。',
     'Workflow 工具、按定义生成的命令、/workflows 和详情控制共用同一任务执行链，外部特性构建包含 Workflow 与 workflows。',
-    '离线测试与记录的命令证据只证明上述实现和 fake runner 行为，不被解释为真实模型工作流已经通过。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: '该 revision 的 parseWorkflowDefinition 同时使用严格 Zod schema、ID/依赖检查和 DFS 环检测，buildStepPrompt 只实现 input 与步骤输出两类替换。',
-      source: {
-        path: 'src/tools/WorkflowTool/schema.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'parseWorkflowDefinition',
-        note: '定义契约与图校验的直接实现证据。',
-      },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'WorkflowExecution 的 controllers、wake、dependenciesReady、propagateSkips、skip/retry/kill 与最终状态计算共同形成有界 DAG 状态机。',
-      source: {
-        path: 'src/tools/WorkflowTool/executor.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'class WorkflowExecution',
-        note: '调度和控制语义的直接实现证据。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '新增 workflow 测试覆盖 schema/插值、并发与依赖、失败传播、重试、跳过、终止、项目发现和真实 AppState 中的输出持久化；步骤 runner 是受控 fake，不是模型在线测试。',
-      source: {
-        path: 'tests/workflow.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: "describe('WorkflowExecution'",
-        note: '新增的离线工作流回归套件；此项只声明测试被加入。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '特性档回归把工具总数更新为 35，并新增 Workflow 工具、workflows 命令与 WORKFLOW_SCRIPTS 构建断言。',
-      source: {
-        path: 'tests/enabledFeatures.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: 'expect(profile.toolCount',
-        note: '新增的外部构建注册断言；测试存在不单独代表执行通过。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 STATUS 记录 bun test 已执行并通过 100 个测试、424 个断言；这是历史记录中的全量离线结果，不是本次文档编写重新运行所得。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '`bun test`',
-        note: 'at-commit Verified evidence 表记录 100 tests、424 assertions。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 STATUS 记录 bun run typecheck 零错误，bun run build 完成 CLI、SDK 与声明构建。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '`bun run typecheck`',
-        note: 'at-commit 类型检查和构建命令结果。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 RELEASE 的 Declarative workflows 段记录测试、类型检查、构建、声明及 35 工具特性档通过，同时明确步骤 runner 为确定性 fake。',
-      source: {
-        path: 'docs/RELEASE.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '## Declarative workflows',
-        note: '工作流发布段的验证范围与 fake runner 限定。',
-      },
-    },
-    {
-      kind: 'not-recorded',
-      statement: '该提交没有真实模型 agent 工作流的执行证据；STATUS 标注 real model agents not run，RELEASE 进一步明确 real model-agent workflows remain live validation。',
-    },
-  ],
-  remaining: [
+    '离线测试与记录的命令证据只证明上述实现和 fake runner 行为；tests/workflow.test.ts、tests/enabledFeatures.test.ts 覆盖各组件行为。',
+  ],  remaining: [
     '真实模型驱动的多步骤工作流、实际工具权限提示和模型输出质量仍需在授权环境单独验证，本记录不引用或推断后续 live 结果。',
     '活动执行控制不跨进程恢复；持久化 JSON 可用于查看结果，但不能在重启后重新附着 WorkflowExecution。',
     '无效 JSON 定义被略过且只写 debug，目录 readdir 的任何错误则静默视为空；列表不会把损坏文件作为显式错误展示，内置注册表在该 revision 仍为空。',
@@ -353,7 +270,7 @@ export const record = defineCommitRecord({
       {
         title: '补齐离线回归、特性档与证据',
         detail:
-          '在 workflow.test.ts 用 deferred fake runner 验证并发时序、依赖、失败、控制和持久化，用临时项目目录验证发现；在特性夹具开启 WORKFLOW_SCRIPTS 并输出命令注册信息，在组合测试固定 35 个非空工具及 Workflow/workflows。最后把实际记录的全量命令结果与真实模型未运行边界写入 STATUS/RELEASE，区分测试新增和命令通过。',
+          '在 workflow.test.ts 用 deferred fake runner 验证并发时序、依赖、失败、控制和持久化，用临时项目目录验证发现；在特性夹具开启 WORKFLOW_SCRIPTS 并输出命令注册信息，在组合测试固定 35 个非空工具及 Workflow/workflows。最后把实际记录的全量命令结果与真实模型未运行边界写入 STATUS/RELEASE，区分测试新增和执行结果。',
         paths: [
           'tests/workflow.test.ts',
           'tests/fixtures/verify-enabled-features.ts',
@@ -376,7 +293,7 @@ export const record = defineCommitRecord({
       '输出或通知失败可能掩盖原执行结果；持久化异常显式转为 failed，输出标签仅在实际写成功后加入。',
       'fake runner 无法覆盖模型流、真实权限提示和工具副作用；这些被保留为授权环境验证，而非由构建成功推断。',
     ],
-    verification: [
+    acceptanceSequence: [
       '先运行 schema 定向测试，检查严格字段、重复 ID、未知依赖、自依赖/环和两种插值。',
       '再以可控 Promise 验证 DAG 并发上限、依赖等待、continueOnError、失败传播和最终结果。',
       '分别执行 retry、skip、kill 回归，观察下游恢复、AbortSignal、幂等控制及 killed 终态。',

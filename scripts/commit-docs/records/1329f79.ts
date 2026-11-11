@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '1329f792eb0a103eeeabea26a46566bfa9eceaba',
+  slug: 'commit-docs-finalization',
   title: 'Finalize documentation for previous commit',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -29,15 +30,7 @@ export const record = defineCommitRecord({
   acceptance: [
     'SPEC/PLAN 的标题、日期、完整 SHA 与 3fbabc2 一致，范围明确指向 2f55f19。',
     'INDEX 和 JSON 各新增一个 implemented 项，d472e5c 保持不动，self 位于最后。',
-  ],
-  evidence: [
-    { kind: 'diff-observed', statement: '3fbabc2 SPEC 记录完整身份和 2f55f19 文档组的四路径统计。', source: { path: 'docs/specs/3fbabc2-SPEC.md', role: 'evidence', revision: 'commit', symbol: 'docs/specs/2f55f19-SPEC.md', note: '范围锚点区别于 501672c 文档组。' } },
-    { kind: 'diff-observed', statement: '3fbabc2 PLAN 使用同一提交身份，并保留完成状态小节。', source: { path: 'docs/plans/3fbabc2-PLAN.md', role: 'evidence', revision: 'commit', symbol: 'commit: 3fbabc2d43b99236cae4c232c6730bb6bc0a19ef', note: 'frontmatter 没有误用直接父 1bc02bf。' } },
-    { kind: 'diff-observed', statement: '人类索引 Implemented 达到 61，并添加 3fbabc2 的 SPEC/PLAN 链接。', source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'commit', symbol: '| 3fbabc2 | Finalize previous commit documentation | implemented |', note: '新增行位于 d472e5c 后、self 前。' } },
-    { kind: 'diff-observed', statement: '机器索引新增 3fbabc2 对象，路径与两个新 Markdown 文件一致。', source: { path: 'docs/status/index.json', role: 'evidence', revision: 'commit', symbol: '"fullSha": "3fbabc2d43b99236cae4c232c6730bb6bc0a19ef"', note: '该对象是 self 前的唯一新增历史项。' } },
-    { kind: 'not-recorded', statement: '本提交未保存测试、typecheck、build 或 CI 结果，PLAN 中的验证清单不构成执行证据。' },
-  ],
-  remaining: ['1bc02bf 与当前 1329f79 的文档仍待后续提交，本快照只补齐 3fbabc2。'],
+  ],  remaining: ['1bc02bf 与当前 1329f79 的文档仍待后续提交，本快照只补齐 3fbabc2。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: 'Implemented 60→61，添加 3fbabc2 链接行。' },
     { path: 'docs/plans/3fbabc2-PLAN.md', role: 'changed', note: '新建 3fbabc2 计划文档。' },
@@ -55,7 +48,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['d472e5c 及更早链接不重排，self 路径不变；生成器和索引结构保持父版本行为。'],
     risks: ['3fbabc2 与直接父 1bc02bf 都是文档提交，若仅按时间邻近选择对象，会把 2f55f19 范围错挂到 1bc02bf。'],
-    verification: ['核对 3fbabc2 原始提交元数据与 diff，再检查两个索引只新增该对象且 self 最后。'],
+    acceptanceSequence: ['核对 3fbabc2 原始提交元数据与 diff，再检查两个索引只新增该对象且 self 最后。'],
     completed: ['3fbabc2 文档对和双索引注册已完整落盘，四个变更路径均可直接核对。'],
     incomplete: ['没有实际命令或 CI 日志，生成 PLAN 的宽泛完成声明不扩大本记录的证据范围。'],
   },

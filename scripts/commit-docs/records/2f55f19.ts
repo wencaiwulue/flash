@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '2f55f199acfd26b90c81c5de3c5ca6fcfe167dfc',
+  slug: 'commit-docs-finalization',
   title: 'Finalize previous commit documentation',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -29,31 +30,7 @@ export const record = defineCommitRecord({
   acceptance: [
     '0640471 的完整 SHA、特殊主题、日期和 implemented 在两个 frontmatter 中一致。',
     'SPEC 范围只含 d802331 文档组，INDEX/JSON 新入口和计数匹配，self 保持最后。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: '新 SPEC 使用 0640471 完整身份，并保留特殊主题及仅含 d802331 文档组的 Actual scope。',
-      source: { path: 'docs/specs/0640471-SPEC.md', role: 'evidence', revision: 'commit', symbol: 'commit: 064047104f5156043604afd50f2793e1b336950a', note: '目标身份与真实范围的 at-commit 证据。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '新 PLAN 标题保留 current and previous commits，正文声明 implemented。',
-      source: { path: 'docs/plans/0640471-PLAN.md', role: 'evidence', revision: 'commit', symbol: '# Implementation plan: Complete documentation for current and previous commits', note: '目标原始主题在计划标题中准确保留。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'INDEX patch 将 Implemented 调为 57，并在 335b217 后新增 0640471 行。',
-      source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'commit', symbol: '- Implemented: 57', note: '人类索引的新计数和入口。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'status patch 在 self 前加入 0640471 对象，commits 从 58 增至 59。',
-      source: { path: 'docs/status/index.json', role: 'evidence', revision: 'commit', symbol: '"fullSha": "064047104f5156043604afd50f2793e1b336950a"', note: '完整目标身份及 spec/plan 路径。' },
-    },
-    { kind: 'not-recorded', statement: '没有测试、构建或 CI 输出，文档中的 Verification sequence 只是计划内容。' },
-  ],
-  remaining: ['直接父 501672c 和当前 2f55f19 尚未在本提交建档，分别由后续环节处理。'],
+  ],  remaining: ['直接父 501672c 和当前 2f55f19 尚未在本提交建档，分别由后续环节处理。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: 'Implemented 56→57，新增特殊主题的 0640471 行。' },
     { path: 'docs/plans/0640471-PLAN.md', role: 'changed', note: '新建并保留目标原始主题的计划。' },
@@ -71,7 +48,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['目标主题原样保留，既有路径、条目顺序、self 文档和 changeId 均不变。'],
     risks: ['特殊主题容易诱导记录者写出不存在的一组文档，必须让 frontmatter 忠实与 Actual scope 忠实同时成立。'],
-    verification: ['比对目标主题与 frontmatter，核对范围仅四条路径，检查索引计数和 self 末位。'],
+    acceptanceSequence: ['比对目标主题与 frontmatter，核对范围仅四条路径，检查索引计数和 self 末位。'],
     completed: ['0640471 的新 SPEC/PLAN 和双索引登记已完成，四个变更路径全部覆盖。'],
     incomplete: ['未记录任何命令或 CI 执行结果，implemented 不被解释为验证通过。'],
   },

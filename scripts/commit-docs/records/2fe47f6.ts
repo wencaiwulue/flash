@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '2fe47f6e46a3add0a3ee9bdd57bda9feac2220a7',
+  slug: 'commit-docs-finalization',
   title: 'Complete documentation for previous commit',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -29,31 +30,7 @@ export const record = defineCommitRecord({
   acceptance: [
     '两个 frontmatter 与 7ca78c1 的完整 SHA、主题、日期和 implemented 状态一致。',
     'INDEX 链接与 JSON spec/plan 字段指向新文件，汇总、表格行和数组对象使用同一身份。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: '新 SPEC 的 frontmatter 锁定 7ca78c1，Actual scope 记录六文件及 145 行新增、1 行删除。',
-      source: { path: 'docs/specs/7ca78c1-SPEC.md', role: 'evidence', revision: 'commit', symbol: 'commit: 7ca78c1a18a7f05e1740f701b256079bb4cc2c2e', note: '目标提交身份与范围可在新 SPEC 核对。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '新 PLAN 提供实施步骤、风险、验证序列和 implemented 完成状态。',
-      source: { path: 'docs/plans/7ca78c1-PLAN.md', role: 'evidence', revision: 'commit', symbol: '## Implementation steps', note: '计划文件由本提交新建。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'INDEX patch 将 Implemented 改为 50，并在 self 前增加 7ca78c1 链接行。',
-      source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'commit', symbol: '- Implemented: 50', note: '人类索引的计数与新增入口。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'status patch 在末尾 self 对象前插入 7ca78c1，数组总数由 51 变为 52。',
-      source: { path: 'docs/status/index.json', role: 'evidence', revision: 'commit', symbol: '"fullSha": "7ca78c1a18a7f05e1740f701b256079bb4cc2c2e"', note: '机器索引保存完整目标 SHA 和文档路径。' },
-    },
-    { kind: 'not-recorded', statement: '文档列出的 bun test、typecheck、build 和 CI 检查没有随附输出或通过记录。' },
-  ],
-  remaining: ['直接父 f251df9 与当前提交的文档不在本次四文件范围内，分别由后续 finalization 流程处理。'],
+  ],  remaining: ['直接父 f251df9 与当前提交的文档不在本次四文件范围内，分别由后续 finalization 流程处理。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: 'Implemented 49→50，并在 self 前新增 7ca78c1 行。' },
     { path: 'docs/plans/7ca78c1-PLAN.md', role: 'changed', note: '新建的 7ca78c1 实施计划。' },
@@ -71,7 +48,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['既有文档路径和条目顺序不变；self 的 changeId、内容和末尾语义保持原样。'],
     risks: ['目标六文件与本提交四文件容易混淆，INDEX 与 JSON 的 self 计数口径也可能被错误等同。'],
-    verification: ['对照目标 diff 检查六条路径和统计，解析 JSON 并核对 INDEX 计数、链接及 self 末位。'],
+    acceptanceSequence: ['对照目标 diff 检查六条路径和统计，解析 JSON 并核对 INDEX 计数、链接及 self 末位。'],
     completed: ['7ca78c1 的两个新产物及两套索引登记已落盘，目标身份和范围一致。'],
     incomplete: ['没有命令或 CI 执行证据；本记录只验收元数据变更，不为文档中的验证 prose 背书。'],
   },

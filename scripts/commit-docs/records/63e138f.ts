@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '63e138f4eb8ea207a1aeb0806e060275ac55b4a3',
+  slug: 'commit-docs-finalization',
   title: 'Finalize previous commit self documentation',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -28,31 +29,7 @@ export const record = defineCommitRecord({
   acceptance: [
     'SPEC/PLAN frontmatter 均为 7740a1d 的完整 SHA、标题、日期和 implemented。',
     'SPEC 文件列表指向 17c9196 文档对，INDEX 与 JSON 的新增项均指向本次两个新文件。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: '7740a1d SPEC 记录 78 insertions、1 deletion，并列出 17c9196 的 SPEC 路径。',
-      source: { path: 'docs/specs/7740a1d-SPEC.md', role: 'evidence', revision: 'commit', symbol: 'docs/specs/17c9196-SPEC.md', note: '内部路径区分本记录与 fe3c177 的 c4e19ce 范围。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '7740a1d PLAN 新建，包含生成计划的实现步骤小节。',
-      source: { path: 'docs/plans/7740a1d-PLAN.md', role: 'evidence', revision: 'commit', symbol: '## Implementation steps', note: '计划文件与 7740a1d SPEC 同时新增。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'INDEX 只把 Implemented 增至 46，并添加 7740a1d 行。',
-      source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'commit', symbol: '- Implemented: 46', note: 'Partial 1 和 Unimplemented 0 不变。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '机器索引在 self 前登记 7740a1d 完整 SHA 与文档路径。',
-      source: { path: 'docs/status/index.json', role: 'evidence', revision: 'commit', symbol: '"fullSha": "7740a1d28b70629f41d49116a8e6007eb46c72aa"', note: '没有同时登记 fe3c177 或 63e138f。' },
-    },
-    { kind: 'not-recorded', statement: 'SPEC/PLAN 的验证文字没有对应命令输出、测试附件或 CI 结果。' },
-  ],
-  remaining: ['直接父 fe3c177 的文档和索引尚不闭合，当前 63e138f 自身也未在本提交登记。'],
+  ],  remaining: ['直接父 fe3c177 的文档和索引尚不闭合，当前 63e138f 自身也未在本提交登记。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: 'Implemented 45 到 46，新增 7740a1d。' },
     { path: 'docs/plans/7740a1d-PLAN.md', role: 'changed', note: '新建 7740a1d 的 PLAN。' },
@@ -70,7 +47,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['已有 f210ce9 及其之前条目不重排，新链接和 JSON 路径格式与相邻记录一致。'],
     risks: ['连续的 78/1 统计无法单独识别提交，必须核对 17c9196 路径与 7740a1d fullSha。'],
-    verification: ['对比 7740a1d diff 与 SPEC 清单，检查 PLAN frontmatter，并核对两个索引仅有一个新增对象。'],
+    acceptanceSequence: ['对比 7740a1d diff 与 SPEC 清单，检查 PLAN frontmatter，并核对两个索引仅有一个新增对象。'],
     completed: ['7740a1d 的 SPEC、PLAN、INDEX 行和 JSON 对象已同时落盘。'],
     incomplete: ['本提交没有可追溯的测试、构建或 CI 执行记录。'],
   },

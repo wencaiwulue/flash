@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: 'd5a675a4df66ff620d7577aaf167bb5749cc08a2',
+  slug: 'open-kairos-functionality',
   title: 'Implement open KAIROS functionality',
   kind: 'component',
   status: 'implemented',
@@ -65,91 +66,7 @@ export const record = defineCommitRecord({
     'PR 首次 poll 不通知，新增 ID 只通知一次，重复 poll 为空，unsubscribe 后列表移除且 timer 被清理。',
     'dream prompt 含 consolidation 指令和用户参数；外部特性档包含 41 个非空工具、三个新工具及 assistant command。',
     '提交内文档记录 140 tests/604 assertions 和构建结果，同时保留 Cloud、通知、GitHub live 往返未验证的边界。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: '该 revision 的 initializeAssistantTeam 实际写 leader team 文件、注册 cleanup、准备任务目录并切换 in-process teammate mode，不再抛出 unavailable。',
-      source: {
-        path: 'src/assistant/index.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'initializeAssistantTeam',
-        note: 'assistant 团队初始化和运行时状态的直接实现证据。',
-      },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'PRSubscriptionManager 以 initialized 控制首轮基线，以带类型前缀的 ID 更新 seen，并仅将 fresh 事件送入通知队列。',
-      source: {
-        path: 'src/services/prSubscriptions.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'class PRSubscriptionManager',
-        note: 'GitHub 首次轮询和 ID 去重的直接实现证据。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '新增六项 KAIROS 离线测试，覆盖 forced 状态、隔离 team 文件、dream prompt、OS adapter mock、bridge 前置条件及 PR 基线/去重/退订；它们不证明 OAuth、上传或 GitHub 在线成功。',
-      source: {
-        path: 'tests/kairos.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: "describe('assistant mode'",
-        note: '新增离线回归套件；此项只声明测试随提交加入。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '特性档回归把外部工具数固定为 41，新增 SendUserFile、PushNotification、SubscribePR 和 assistant command 断言。',
-      source: {
-        path: 'tests/enabledFeatures.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: 'expect(profile.toolCount',
-        note: '编译后注册结果的断言，不是远端能力验证。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 STATUS 记录 bun test 已通过 140 个测试、604 个断言；这是 at-commit 历史记录，不是本次文档编写重新执行的结果。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '`bun test`',
-        note: 'at-commit Verified evidence 表的全量离线测试记录。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 STATUS 记录 bun run typecheck 零错误，bun run build 完成 CLI、SDK 与声明构建。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '`bun run typecheck`',
-        note: 'at-commit 类型检查和构建命令结果。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 RELEASE 的 Open KAIROS functionality 段记录 140/604、typecheck、build、declarations 和 41-tool profile 通过，并明确 live Cloud、notification、GitHub round trips 仍未验证。',
-      source: {
-        path: 'docs/RELEASE.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '## Open KAIROS functionality',
-        note: '发布段的验证范围及在线边界。',
-      },
-    },
-    {
-      kind: 'not-recorded',
-      statement: '没有真实 OAuth session discovery、Cloud 文件上传、webhook/OS 实际投递、GitHub REST 或多模型 teammate 协作的在线证据；后续整体测试数量也不能替代这些专项验收。',
-    },
-  ],
-  remaining: [
+  ],  remaining: [
     '真实 OAuth session 列表、远程 viewer、daemon worker/bridge 就绪、文件上传、通知投递和 GitHub 往返仍需授权环境逐项验证。',
     '新增六项测试没有专项覆盖 session discovery、安装向导或 webhook 请求；STATUS 对这些组件统一使用 tested 的表述比实际直接证据更宽。',
     'PR 订阅状态仅存内存，重启会重新建立基线；同 ID 内容更新不会再次通知，评论和 review 没有分页，后台 poll 也没有防重入。',
@@ -387,7 +304,7 @@ export const record = defineCommitRecord({
       '基于 ID 的去重会漏掉同 ID 内容变化，内存订阅也无法跨重启；这些限制必须保留在剩余工作中。',
       'fake adapters 不能发现真实 OAuth、Cloud、GitHub 和 OS 时序问题，发布状态只能标 offline/build。',
     ],
-    verification: [
+    acceptanceSequence: [
       '运行 KAIROS 定向测试，检查 forced latch、隔离 team 文件、dream prompt 和 assistant 系统提示。',
       '验证 OS adapter 收到正确标题/消息、无适配器失败，以及无 bridge 时不会尝试上传。',
       '用可控 PR 响应执行首轮、新增、重复和退订四轮，观察通知队列与 manager.list。',
@@ -400,7 +317,7 @@ export const record = defineCommitRecord({
       'assistant 命令与私有配置的 daemon 安装向导已接通既有 supervisor。',
       'SendUserFile、PushNotification、SubscribePR 及共享 PR 轮询管理器已经实现。',
       'dream、assistant、subscribe-pr 和三个工具已进入外部构建，特性档断言为 41 个非空工具。',
-      '六项 KAIROS 离线回归和构建回归已经加入，at-commit 文档记录 140/604 与类型检查/构建通过。',
+      '六项 KAIROS 离线回归和构建回归已经加入，at-commit 文档记录 140/604 与类型检查/构建。',
     ],
     incomplete: [
       'Cloud/OAuth session、文件上传、通知和 GitHub 的真实在线往返未在该提交执行。',

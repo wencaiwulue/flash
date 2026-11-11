@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '85028f74ed5ec110dcfd0a0933f615f88cc4600e',
+  slug: 'isolate-live-workflow-jobs',
   title: '临时缩减 live workflow 的 job 解析面',
   kind: 'component',
   status: 'partial',
@@ -40,34 +41,7 @@ export const record = defineCommitRecord({
     'diff 仅删除 cloud 与 desktop 两个 job，model/skillhub 内容和 workflow 触发器保持原样；model 遗留的 secrets job-if 限制必须明确保留。',
     '当前 workflow 搜索不到 cloud: 或 desktop: job，且不能把 absent 写成 skipped。',
     '两个被移除 job 的脚本仍存在且未改，RELEASE 的四 job 文案与实际编排不一致被明确保留为缺陷。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: '补丁恰好删除 cloud 和 desktop 共 31 行；at-commit 文件只剩 model 与 skillhub，其中 model 仍带不受支持的 secrets job-if。',
-      source: { path: '.github/workflows/live-validation.yml', role: 'evidence', revision: 'commit', symbol: 'jobs:', note: '中间态二 job 编排的直接来源。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'Cloud 脚本仍包含 bridge resume 与 CLOUD_LIVE_OK，证明被移除的是 workflow 入口而不是脚本实现。',
-      source: { path: 'scripts/live-cloud-validation.ts', role: 'evidence', revision: 'commit', symbol: 'CLOUD_LIVE_OK', note: '未修改的 Cloud 能力边界。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'desktop 脚本仍有 DESKTOP_LIVE_SKIPPED 与 screenshot 路径，但此 sentinel 不会由已不存在于 workflow 的 desktop job 产生。',
-      source: { path: 'scripts/live-desktop-validation.ts', role: 'evidence', revision: 'commit', symbol: 'DESKTOP_LIVE_SKIPPED', note: '脚本保留不等于 CI job 存在或执行。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'RELEASE 仍描述 separate model、SkillHub、Cloud、desktop jobs，与当前二 job workflow 不符。',
-      source: { path: 'docs/RELEASE.md', role: 'evidence', revision: 'commit', symbol: 'with separate model, SkillHub, Cloud, and desktop', note: '本提交未修改的遗留四 job 描述。' },
-    },
-    {
-      kind: 'not-recorded',
-      statement: '没有 YAML 解析诊断、Actions run 或 Cloud/desktop sentinel；无法从该补丁证明隔离后平台注册成功。',
-    },
-  ],
-  remaining: [
+  ],  remaining: [
     'Cloud 与 desktop 的 CI 入口在此 revision 缺失，后续必须重新编排才能恢复相应检查。',
     'model 的 secrets job-if 仍不受支持，RELEASE 四 job 描述也未修正；没有平台证据证明这次解析隔离达到主题所指效果。',
   ],
@@ -110,7 +84,7 @@ export const record = defineCommitRecord({
       '仅看脚本和 RELEASE 会误以为 Cloud/desktop 仍由 CI 覆盖，实际已没有相应 job。',
       '若后续只复制最终四 job 状态而不记录此中间态，会丢失此次隔离对验证范围的真实影响。',
     ],
-    verification: [
+    acceptanceSequence: [
       '检查 diff 为单文件 31 行删除，并在 at-commit YAML 中确认仅 model、skillhub 两个 job。',
       '分别确认 Cloud/desktop 脚本 blob 未改，且不为其虚构 skip 或 live 成功日志。',
       '后续若恢复 job，应以新的 revision 和运行记录证明，不回填为本提交结果。',

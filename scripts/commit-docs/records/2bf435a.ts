@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '2bf435a5d3aca3c375da1387f1e33d3ce13db683',
+  slug: 'history-snipping',
   title: 'Implement history snipping',
   kind: 'component',
   status: 'partial',
@@ -63,91 +64,7 @@ export const record = defineCommitRecord({
     '距最近 snip/compact/marker/context_efficiency 之后增长达到 10,000 估算 token 才提醒，任一新重置点后重新计算。',
     '模型视图从最新 boundary 开始且无 marker，重复投影稳定；工具驱动的 REPL 可保留旧 scrollback，SDK boundary 回放可收缩内存，旧磁盘记录不被重写。',
     '外部构建包含 Snip 与 /force-snip，特性档为 37 个非空工具；新增测试和历史命令记录不得混写为本次重新执行。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: '该 revision 的 resolveSnipTargets 明确保护四条尾部消息，expandToolPairs 做双向不动点扩展，snipCompactIfNeeded 消费 marker 并产生边界。',
-      source: {
-        path: 'src/services/compact/snipCompact.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'export function resolveSnipTargets',
-        note: '选择、保护、工具闭包、执行和 token 估算的直接实现证据。',
-      },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'projectSnippedView 从最新 snip boundary 投影并隐藏 marker；既有 QueryEngine 注释和 snipReplay 明确区分 REPL scrollback 与 SDK 内存收缩。',
-      source: {
-        path: 'src/QueryEngine.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'snipReplay',
-        note: 'SDK boundary 回放入口及 REPL/SDK 不同存储策略的 at-commit 证据。',
-      },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'query 先以 getMessagesAfterCompactBoundary 生成 messagesForQuery，默认 projectSnippedView 会过滤所有 snip_marker，随后才把该数组交给 snipCompactIfNeeded；因此真实模型 marker 不会到达执行器。',
-      source: {
-        path: 'src/query.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'snipCompactIfNeeded(messagesForQuery)',
-        note: '模型入口集成缺口的直接调用顺序证据；纯函数测试绕过了此前置投影。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '新增七个 snip 测试，覆盖无 marker/禁用、直接数组 marker 单次执行、双向工具对、保护尾部、投影、10k nudge reset、SnipTool 和 force-snip 原数组不变；此项只声明测试被加入。',
-      source: {
-        path: 'tests/snip.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: "describe('snip compaction'",
-        note: '离线消息数组、工具与命令回归套件，不是实际模型调用证据。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '特性档回归把工具数从 36 改为 37，并增加 Snip、HISTORY_SNIP 与 hasForceSnipCommand 断言；测试存在本身不表示执行通过。',
-      source: {
-        path: 'tests/enabledFeatures.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: 'hasForceSnipCommand',
-        note: '外部编译工具和命令注册的新增断言。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 STATUS 记录 bun test 已通过 125 个测试、546 个断言；这是 at-commit 历史记录，不是本次文档编写重新运行所得。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '`bun test`',
-        note: 'Verified evidence 表的全量离线测试数量。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 STATUS 记录 bun run typecheck 零错误，bun run build 完成 CLI、SDK 与声明构建；RELEASE 另记录 37-tool compiled feature profile 通过。',
-      source: {
-        path: 'docs/RELEASE.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '## HISTORY_SNIP',
-        note: 'HISTORY_SNIP 发布段的构建和特性档历史验证范围。',
-      },
-    },
-    {
-      kind: 'not-recorded',
-      statement: '该提交没有真实模型主动调用 Snip 的独立记录，也没有长 SDK 会话在线内存测量；STATUS 将 HISTORY_SNIP 限定为 Verified (offline/build)。',
-    },
-  ],
-  remaining: [
+  ],  remaining: [
     '真实模型能否依据 [id:...] 正确选择旧轮次，以及 marker 与真实流式 tool_use 的交错行为，仍需授权模型环境单独验证。',
     '真实 query 会在每轮 snip 执行前过滤全部 marker，因此有效 marker 也不会消费，并可能持续留在原始消息数组中重置 nudge；findLast、无效目标和短 ID 问题只是修复该顺序后的次级限制。',
     '短 ID 若发生碰撞会匹配所有同 ID 消息而不是要求唯一；调用者应把选择范围限制在当前历史，不能用该 ID 做安全身份。',
@@ -232,9 +149,9 @@ export const record = defineCommitRecord({
       '保护闭包可能使显式旧 ID 最终不删除，自动模式也可能保留较长工具链；这是避免协议破序的有意取舍。',
       'token 数量来自启发式估算且 removed 含 marker，自动 compact 阈值与展示数字都存在近似性。',
       '工具投影保留 REPL 历史、force 命令直接替换内存、SDK 回放又裁剪存储，若新增消费者遗漏 includeSnipped 或 snipReplay，可能进一步扩大视图分叉。',
-      '离线测试没有真实模型选 ID、流式分片或长会话内存数据，构建通过不能覆盖这些在线行为。',
+      '离线测试没有真实模型选 ID、流式分片或长会话内存数据，构建不能覆盖这些在线行为。',
     ],
-    verification: [
+    acceptanceSequence: [
       '运行 snip 定向回归，核对无 marker/禁用不执行、marker 只消费一次及 boundary 的计数与位置。',
       '分别正选 assistant 和 tool result，验证双向扩展；让结果落入四消息保护尾部，确认整条链被保留。',
       '构造超过 10,000 估算 token 的消息，逐一检查 snip/compact/marker/context_efficiency 后的重置。',

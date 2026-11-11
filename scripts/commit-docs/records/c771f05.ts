@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: 'c771f05fa4971b361de9a9b1dbfc880972154583',
+  slug: 'commit-docs-finalization',
   title: 'Finalize previous commit documentation',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -28,31 +29,7 @@ export const record = defineCommitRecord({
   acceptance: [
     'SPEC/PLAN 均使用 6b0ce9d 的完整 SHA、2026-11-11T11:13:50+08:00 日期和 implemented 状态。',
     'SPEC 内层路径为 b6bf982 两份文档，INDEX 达 72/1/0，status 新对象字段一致，self 保持原内容与末位。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: '新增 SPEC 的 frontmatter 对应 6b0ce9d，Actual scope 则保存该提交面向 b6bf982 的四路径统计。',
-      source: { path: 'docs/specs/6b0ce9d-SPEC.md', role: 'evidence', revision: 'c771f05fa4971b361de9a9b1dbfc880972154583', symbol: 'docs/plans/b6bf982-PLAN.md', note: 'SPEC 明确显示下一层文档对象。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '新增 PLAN 的标题与 6b0ce9d subject 相同，并提供实施步骤和完成状态。',
-      source: { path: 'docs/plans/6b0ce9d-PLAN.md', role: 'evidence', revision: 'c771f05fa4971b361de9a9b1dbfc880972154583', symbol: '# Implementation plan: Finalize previous commit documentation', note: '计划文件绑定目标祖父提交标题。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'INDEX 从 71 调整为 72，并在 787b2dc 行后、self 前加入 6b0ce9d。',
-      source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'c771f05fa4971b361de9a9b1dbfc880972154583', symbol: '| 6b0ce9d | Finalize previous commit documentation | implemented |', note: '表格入口与目标提交一致。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'status 中新增完整的 6b0ce9d 对象，spec 与 plan 字段没有指向其他短 SHA。',
-      source: { path: 'docs/status/index.json', role: 'evidence', revision: 'c771f05fa4971b361de9a9b1dbfc880972154583', symbol: '"fullSha": "6b0ce9d6834a125567ec0121caa531f5b8341101"', note: 'JSON 身份证据固定在 c771f05 版本。' },
-    },
-    { kind: 'not-recorded', statement: '新 PLAN/SPEC 的验证段落没有实际日志，不能证明 bun 命令或 CI 通过。' },
-  ],
-  remaining: ['新文件仍是概括性计划，未提供 6b0ce9d 模板生成过程的更多细节，也没有独立验证产物。'],
+  ],  remaining: ['新文件仍是概括性计划，未提供 6b0ce9d 模板生成过程的更多细节，也没有独立验证产物。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: '加入 6b0ce9d 链接并将 implemented 计数设为 72。' },
     { path: 'docs/plans/6b0ce9d-PLAN.md', role: 'changed', note: '为目标祖父提交新建 Finalize 类型计划。' },
@@ -70,7 +47,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['保留既有 b6bf982、787b2dc 条目及 self 的 changeId/spec/plan，新增路径命名沿用短 SHA 约定。'],
     risks: ['本提交与前后提交都增删 78/1 行，若只比对统计会漏掉 b6bf982 与 96283ae 的语义差别。'],
-    verification: ['读取 c771f05 版本中的四个路径，核对 6b0ce9d 全 SHA、b6bf982 范围、72/1/0 汇总及 self 末位。'],
+    acceptanceSequence: ['读取 c771f05 版本中的四个路径，核对 6b0ce9d 全 SHA、b6bf982 范围、72/1/0 汇总及 self 末位。'],
     completed: ['6b0ce9d 的 SPEC、PLAN 和两类索引注册已经加入，且未出现第五个变更文件。'],
     incomplete: ['文档声明的命令没有输出存档，本记录不补造运行时或 CI 结论。'],
   },

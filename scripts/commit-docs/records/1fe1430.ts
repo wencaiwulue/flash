@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '1fe14300c3b0a9eced6c5c3b3bf4615c7ca43361',
+  slug: 'commit-docs-finalization',
   title: 'Finalize previous commit documentation',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -28,31 +29,7 @@ export const record = defineCommitRecord({
   acceptance: [
     '两个 frontmatter 与 c771f05 的 full SHA、2026-11-11T11:15:03+08:00、Finalize 标题及 implemented 一致。',
     'SPEC 指向 6b0ce9d 内层文档，INDEX 为 74/1/0，status 新对象与文件相符，self 未改动且仍最后。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: 'c771f05-SPEC 在 frontmatter 使用目标完整 SHA，并在范围内列出 6b0ce9d 的两个产物。',
-      source: { path: 'docs/specs/c771f05-SPEC.md', role: 'evidence', revision: '1fe14300c3b0a9eced6c5c3b3bf4615c7ca43361', symbol: 'docs/plans/6b0ce9d-PLAN.md', note: 'SPEC 的内层路径可由提交版本直接核验。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '对应 PLAN 新建并带有 c771f05 的 Finalize 标题和相同提交身份。',
-      source: { path: 'docs/plans/c771f05-PLAN.md', role: 'evidence', revision: '1fe14300c3b0a9eced6c5c3b3bf4615c7ca43361', symbol: 'commit: c771f05fa4971b361de9a9b1dbfc880972154583', note: '计划 frontmatter 锁定目标祖父提交。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'INDEX 将汇总更新为 74，并添加 c771f05 的 SPEC/PLAN 相对链接。',
-      source: { path: 'docs/INDEX.md', role: 'evidence', revision: '1fe14300c3b0a9eced6c5c3b3bf4615c7ca43361', symbol: '- Implemented: 74', note: '汇总证据固定在 1fe1430。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'JSON 新增 c771f05 完整对象，位置在 self 前，spec/plan 字段与新文件一致。',
-      source: { path: 'docs/status/index.json', role: 'evidence', revision: '1fe14300c3b0a9eced6c5c3b3bf4615c7ca43361', symbol: '"fullSha": "c771f05fa4971b361de9a9b1dbfc880972154583"', note: '机器索引与 frontmatter 使用同一 full SHA。' },
-    },
-    { kind: 'not-recorded', statement: '该提交未附测试、typecheck、build 或 CI 日志，无法从文档段落推导执行成功。' },
-  ],
-  remaining: ['c771f05 的新文档仍采用简要模板，对更早设计取舍覆盖有限；现有 diff 不能提供额外运行证据。'],
+  ],  remaining: ['c771f05 的新文档仍采用简要模板，对更早设计取舍覆盖有限；现有 diff 不能提供额外运行证据。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: '新增 c771f05 导航，Implemented 从 73 到 74。' },
     { path: 'docs/plans/c771f05-PLAN.md', role: 'changed', note: '目标祖父提交 c771f05 的新建计划。' },
@@ -70,7 +47,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['既有 73 个 implemented 项及 Partial/Unimplemented 记录保持，self 的 changeId 和链接不受影响。'],
     risks: ['6b0ce9d 与 787b2dc 是相邻记录的不同内层对象，混用会造成表面格式正确但历史内容错误。'],
-    verification: ['比对 c771f05 frontmatter 和 metadata，检查 6b0ce9d 路径清单、74/1/0 汇总、JSON 链接及 self 末位。'],
+    acceptanceSequence: ['比对 c771f05 frontmatter 和 metadata，检查 6b0ce9d 路径清单、74/1/0 汇总、JSON 链接及 self 末位。'],
     completed: ['c771f05 的两个新文档与两个索引变更全部落盘，四路径范围完整。'],
     incomplete: ['没有实际命令输出可审计，完成仅表示元数据与索引同步。'],
   },

@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: 'fe3c177c28b7581e93f7496c58b98bafa10dbb03',
+  slug: 'commit-docs-finalization',
   title: 'Complete self documentation for previous commit',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -28,31 +29,7 @@ export const record = defineCommitRecord({
   acceptance: [
     'f210ce9 SPEC 的 78/1 统计与 Git diff 一致，文件清单明确包含 c4e19ce 的 SPEC 和 PLAN。',
     'PLAN frontmatter、INDEX 行和 JSON 对象都使用同一 f210ce9 fullSha，self 保持最后一个条目。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: '新 SPEC 保存 f210ce9 的 4 文件、78 行新增和 1 行删除统计。',
-      source: { path: 'docs/specs/f210ce9-SPEC.md', role: 'evidence', revision: 'commit', symbol: '- Diff statistics: 4 files changed, 78 insertions(+), 1 deletion(-)', note: '该统计描述 f210ce9，而非 c4e19ce 的 169 行新增。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '新 PLAN 绑定 f210ce9 完整身份并保留计划结构。',
-      source: { path: 'docs/plans/f210ce9-PLAN.md', role: 'evidence', revision: 'commit', symbol: 'commit: f210ce9c2dc51a30f98514628b07538a969f21aa', note: 'PLAN 与 SPEC 成对新增。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'INDEX 增加 f210ce9 行并将 Implemented 更新为 45。',
-      source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'commit', symbol: '- Implemented: 45', note: 'Partial 1、Unimplemented 0 保持。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'status JSON 在 self 前加入 f210ce9 及对应 SPEC/PLAN 字段。',
-      source: { path: 'docs/status/index.json', role: 'evidence', revision: 'commit', symbol: '"fullSha": "f210ce9c2dc51a30f98514628b07538a969f21aa"', note: '机器索引只增加这一目标对象。' },
-    },
-    { kind: 'not-recorded', statement: '验证小节只是生成文本，未记录测试、typecheck、build 或 CI 的实际结果。' },
-  ],
-  remaining: ['7740a1d 的文档仍待下一提交补齐；fe3c177 自己的索引会先于其文档出现，后续再回填。'],
+  ],  remaining: ['7740a1d 的文档仍待下一提交补齐；fe3c177 自己的索引会先于其文档出现，后续再回填。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: 'Implemented 44 到 45，加入 f210ce9 行。' },
     { path: 'docs/plans/f210ce9-PLAN.md', role: 'changed', note: '新建 f210ce9 的计划文件。' },
@@ -70,7 +47,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['已有 c4e19ce、17c9196 条目顺序不动，新路径沿用 docs/specs 与 docs/plans 命名。'],
     risks: ['相邻提交具有相同四文件统计，必须用文档对象和内部路径区分，而不能只比较 diff 数字。'],
-    verification: ['检查 SPEC 内 c4e19ce 路径和 f210ce9 frontmatter，再比较 INDEX/JSON 的单项增量。'],
+    acceptanceSequence: ['检查 SPEC 内 c4e19ce 路径和 f210ce9 frontmatter，再比较 INDEX/JSON 的单项增量。'],
     completed: ['f210ce9 的两个产物与两个索引入口已在本提交闭合。'],
     incomplete: ['未保存生成器运行或任何自动化验证的可追溯输出。'],
   },

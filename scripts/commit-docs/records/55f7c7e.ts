@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '55f7c7e66db7653d2afaa546162a6dc486c547d7',
+  slug: 'commit-docs-finalization',
   title: 'Finalize documentation for previous change',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -29,31 +30,7 @@ export const record = defineCommitRecord({
   acceptance: [
     '两个 frontmatter 的完整 SHA、标题、日期和状态与 2fe47f6 一致，Actual scope 为 80 行新增。',
     'INDEX 与 JSON 的新链接均指向 2fe47f6 文件，数组和表格中 self 仍最后。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: '新 SPEC 固定 2fe47f6 完整身份，并记录其 7ca78c1 文档范围及 80 行新增、1 行删除。',
-      source: { path: 'docs/specs/2fe47f6-SPEC.md', role: 'evidence', revision: 'commit', symbol: 'commit: 2fe47f6e46a3add0a3ee9bdd57bda9feac2220a7', note: '目标身份和 Actual scope 的直接证据。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '新 PLAN 声明 implemented，并保留实施步骤、风险和验证序列。',
-      source: { path: 'docs/plans/2fe47f6-PLAN.md', role: 'evidence', revision: 'commit', symbol: '## Completion status and remaining work', note: '完成状态小节的 at-commit 内容。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'INDEX patch 将 Implemented 改为 52，并在 self 前加入 2fe47f6 链接行。',
-      source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'commit', symbol: '- Implemented: 52', note: '排除 self 的汇总与新表格入口。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'status patch 在 f251df9 后、self 前加入 2fe47f6，commits 总数达到 54。',
-      source: { path: 'docs/status/index.json', role: 'evidence', revision: 'commit', symbol: '"fullSha": "2fe47f6e46a3add0a3ee9bdd57bda9feac2220a7"', note: '新机器对象及其完整 SHA。' },
-    },
-    { kind: 'not-recorded', statement: '没有测试、typecheck、build 或 CI 运行输出；验证章节只是生成文档中的计划文字。' },
-  ],
-  remaining: ['直接父 f355de1 和当前 55f7c7e 的专属文档仍分别留待后续提交，本次仅完成 2fe47f6 的登记。'],
+  ],  remaining: ['直接父 f355de1 和当前 55f7c7e 的专属文档仍分别留待后续提交，本次仅完成 2fe47f6 的登记。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: 'Implemented 51→52，新增 2fe47f6 表格链接。' },
     { path: 'docs/plans/2fe47f6-PLAN.md', role: 'changed', note: '新建的 2fe47f6 实施计划。' },
@@ -71,7 +48,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['已有 f251df9 链接和 self 占位保持原内容，新文档沿用既有路径命名。'],
     risks: ['目标 80 行、本提交 78 行和前一目标 77 行三个统计相近，必须分别绑定到正确 SHA。'],
-    verification: ['检查目标 SPEC 的四个路径与统计，比对两套索引新增项、计数以及 self 的末位和未改内容。'],
+    acceptanceSequence: ['检查目标 SPEC 的四个路径与统计，比对两套索引新增项、计数以及 self 的末位和未改内容。'],
     completed: ['2fe47f6 的 SPEC/PLAN 与两个索引入口已同步落盘，没有额外文件。'],
     incomplete: ['本提交未记录任何命令执行或 CI 结果，元数据 implemented 不等于验证通过。'],
   },

@@ -1,0 +1,58 @@
+---
+commit: 9525612e328486ceb996e3ce3327c0119129bf29
+title: "Generate commit documentation before CI checks"
+date: 2026-11-11T11:26:09+08:00
+status: implemented
+kind: component
+---
+
+# Generate commit documentation before CI checks
+
+> 本文是依据该提交的 diff、对应 revision 的实现与测试，以及有出处的状态记录所作的回溯性设计重建；不冒充历史提交当时已存在的原文。
+
+## 前置状态与问题
+
+父提交的 CI 已用 fetch-depth: 0 取得完整历史，但文档步骤只运行 check-commit-docs.ts。生成器负责把上一 self 落实成 SHA 文件，若提交者漏跑生成，checker 会把这些文件报告为缺失。
+
+该提交选择在 checker 前执行 document-commits.ts，让 CI 能自行生成上一提交文档。这解决了漏生成导致的失败，却同时让 checker 验证刚刚由同一生成器写出的内容，无法证明仓库原本提交的文档完整或未过期。
+
+## 目标与非目标
+
+### 目标
+
+- 在 CI 的文档检查步骤中先运行生成器，再运行现有 checker，保持其他构建与测试步骤不变。
+
+### 非目标
+
+- 不改变 self/SHA 算法、SPEC/PLAN 内容或测试套件，也不把这次流程修补描述为设计正文质量校验。
+
+## 方案架构与数据流
+
+数据流由 committed tree → generator 写工作树 → checker 读取同一工作树 组成。生成与检查共享记录和 Git 元数据，因此 checker 能验证确定性，却失去了检测 committed artifact 缺失的独立起点。
+
+### 文件、接口与证据关系
+
+| 关系 | 位置 | 设计作用 |
+|---|---|---|
+| 变更 | `.github/workflows/ci.yml`，符号 `bun scripts/document-commits.ts` | 将生成器插入现有文档 checker 之前。 |
+
+## 关键决策与工程取舍
+
+- 直接扩展现有 step 为两行命令，而不是新增 job 或修改 checker；实现最小，但写操作和验证仍耦合在同一 workspace。
+
+### 备选方案与回溯分析
+
+- 回溯工程上，CI 只运行 checker 并在失败时要求作者提交生成结果，才能保留缺失/过期文档证据；先 generate 再 check 则更宽松，这是本提交实际选择及其代价。
+
+## 安全与协议边界
+
+- 没有新增凭据或网络写入；主要风险是质量门禁被同进程生成结果满足，而不是产品权限边界变化。
+
+## 验收标准
+
+- at-commit workflow 在 check-commit-docs.ts 前执行 document-commits.ts，且 fetch-depth、typecheck、test、build 和 smoke 顺序保持原样。
+
+## 实现状态与剩余范围
+
+- 状态：**implemented**
+- writer 会在 checker 前掩盖 missing/stale committed documents；后续需要把生成保留为本地写操作，CI 改为只读检查。

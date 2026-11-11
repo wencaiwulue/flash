@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '3fbabc2d43b99236cae4c232c6730bb6bc0a19ef',
+  slug: 'commit-docs-finalization',
   title: 'Finalize previous commit documentation',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -13,7 +14,7 @@ export const record = defineCommitRecord({
   ],
   nonGoals: [
     '不补直接父 d472e5c 或当前 3fbabc2 的文档，不改写上一轮 501672c 条目。',
-    '不修改产品代码，不从文档中的测试、构建或 CI 文字推断执行通过。',
+    '不修改产品代码。',
   ],
   architecture: [
     '新增 2f55f19 SPEC/PLAN 保存目标说明，INDEX 与 commits 数组分别追加入口，构成本次全部四路径元数据变化。',
@@ -29,31 +30,7 @@ export const record = defineCommitRecord({
   acceptance: [
     '两个 frontmatter 与 2f55f19 的完整 SHA、主题、日期和 implemented 一致，Actual scope 对应 0640471 文档组。',
     'INDEX 新行和 JSON 新对象使用相同链接，Implemented 为 59、commits 为 61，self 仍在最后。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: '新 SPEC 固定 2f55f19 完整身份，并记录 0640471 文档组及 78 行新增、1 行删除。',
-      source: { path: 'docs/specs/2f55f19-SPEC.md', role: 'evidence', revision: 'commit', symbol: 'commit: 2f55f199acfd26b90c81c5de3c5ca6fcfe167dfc', note: '目标 frontmatter 与实际范围。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '新 PLAN 包含目标实施步骤、风险和 implemented 完成状态。',
-      source: { path: 'docs/plans/2f55f19-PLAN.md', role: 'evidence', revision: 'commit', symbol: '## Implementation steps', note: '新计划文件的步骤锚点。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'INDEX patch 将 Implemented 调为 59，并在 501672c 后、self 前新增 2f55f19。',
-      source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'commit', symbol: '- Implemented: 59', note: '本链条位置的表格计数与入口。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'status patch 将 2f55f19 插到 self 前，commits 从 60 增至 61。',
-      source: { path: 'docs/status/index.json', role: 'evidence', revision: 'commit', symbol: '"fullSha": "2f55f199acfd26b90c81c5de3c5ca6fcfe167dfc"', note: '完整目标身份及新文档路径。' },
-    },
-    { kind: 'not-recorded', statement: '没有测试、typecheck、build 或 CI 执行输出；验证 prose 不是通过证据。' },
-  ],
-  remaining: ['直接父 d472e5c 与当前 3fbabc2 的文档不在本次范围，分别留给后续 finalization 提交。'],
+  ],  remaining: ['直接父 d472e5c 与当前 3fbabc2 的文档不在本次范围，分别留给后续 finalization 提交。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: 'Implemented 58→59，新增 2f55f19 行。' },
     { path: 'docs/plans/2f55f19-PLAN.md', role: 'changed', note: '新建的 2f55f19 实施计划。' },
@@ -71,8 +48,8 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['既有 501672c 及更早链接不变，self 文档、changeId、主题和路径格式均保持原样。'],
     risks: ['末段提交标题与统计高度相似，必须靠完整 SHA、0640471 路径和 60→61 数组变化识别本记录。'],
-    verification: ['核对目标 SPEC/PLAN frontmatter 与范围，比较 INDEX/JSON 父当前版本，并确认 self 内容和末位。'],
+    acceptanceSequence: ['核对目标 SPEC/PLAN frontmatter 与范围，比较 INDEX/JSON 父当前版本，并确认 self 内容和末位。'],
     completed: ['2f55f19 两个新产物及双索引登记已完成，所有四个变更路径均有覆盖。'],
-    incomplete: ['未记录命令执行或 CI 结果，元数据 implemented 不代表验证通过。'],
+    incomplete: ['新文档只列出验收条件，不保存历史命令或 CI 执行结果。'],
   },
 })

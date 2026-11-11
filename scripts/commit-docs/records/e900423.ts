@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: 'e90042354c2cb902b033cf9e06b39d9c67c1b111',
+  slug: 'skip-desktop-without-runner',
   title: 'Skip desktop validation without self-hosted runner',
   kind: 'component',
   status: 'implemented',
@@ -32,41 +33,7 @@ export const record = defineCommitRecord({
   acceptance: [
     'diff 恰有一行新增，位置在 desktop job 的 runs-on 之前，其他 job 和脚本零变化。',
     '变量非 1 时可在 runner 前跳过；变量为 1 且 job 获配 runner 后，脚本仍因步骤 env=1 执行 screenshot 路径。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: 'at-commit desktop job 的唯一新增门控是 vars.CLAUDE_DESKTOP_LIVE 等值表达式，runner 仍为 self-hosted。',
-      source: { path: '.github/workflows/live-checks.yml', role: 'evidence', revision: 'e90042354c2cb902b033cf9e06b39d9c67c1b111', symbol: "if: vars.CLAUDE_DESKTOP_LIVE == '1'", note: '实际机制是配置变量 opt-in，不是 runner 查询。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '同一 workflow 的 desktop 步骤继续显式设置 CLAUDE_DESKTOP_LIVE 为 1。',
-      source: { path: '.github/workflows/live-checks.yml', role: 'evidence', revision: 'e90042354c2cb902b033cf9e06b39d9c67c1b111', symbol: "CLAUDE_DESKTOP_LIVE: '1'", note: 'job 被调度后既有脚本 guard 不会走 skip 分支。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'desktop 脚本复用父版本的 skip/screenshot 分支，本提交没有新增原生桌面探针。',
-      source: { path: 'scripts/live-desktop-validation.ts', role: 'evidence', revision: '97b13fd5279b917c69462da929db00bba942de6a', symbol: 'DESKTOP_LIVE_SKIPPED', note: '脚本级跳过标记只可能在脚本实际运行时输出。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'model 的缺密钥 guard 来自父提交，e900423 未恢复其 job if。',
-      source: { path: 'scripts/live-model-validation.ts', role: 'evidence', revision: '97b13fd5279b917c69462da929db00bba942de6a', symbol: 'MODEL_LIVE_SKIPPED', note: '保留 script-gating 中间结果。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'cloud 的缺 token guard 同样保持父提交实现，未因 desktop 条件而变化。',
-      source: { path: 'scripts/live-cloud-validation.ts', role: 'evidence', revision: '97b13fd5279b917c69462da929db00bba942de6a', symbol: 'CLOUD_LIVE_SKIPPED', note: 'desktop-only 一行补丁的脚本边界。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'at-commit STATUS 仍要求真实授权桌面会话，不能将 opt-in gate 解释为 native desktop 验证。',
-      source: { path: 'docs/STATUS.md', role: 'evidence', revision: 'e90042354c2cb902b033cf9e06b39d9c67c1b111', symbol: 'Native Computer Use desktop control', note: '当时文档明确保留原生桌面验证边界。' },
-    },
-    { kind: 'not-recorded', statement: '本提交未附带变量两种取值下的 Actions 日志、self-hosted runner 分配结果或 screenshot 输出。' },
-  ],
-  remaining: ['变量值与 runner 是否登记之间没有自动同步；启用后的真实交互桌面 screenshot 仍需独立授权环境证据。'],
+  ],  remaining: ['变量值与 runner 是否登记之间没有自动同步；启用后的真实交互桌面 screenshot 仍需独立授权环境证据。'],
   references: [
     { path: '.github/workflows/live-checks.yml', role: 'changed', note: '仅恢复 desktop 的 vars job gate。' },
     { path: 'scripts/live-desktop-validation.ts', role: 'reused', symbol: "process.env.CLAUDE_DESKTOP_LIVE !== '1'", note: '复用脚本 guard；job 运行时步骤 env 固定为 1。' },
@@ -93,7 +60,7 @@ export const record = defineCommitRecord({
       'job 级 skip 不含脚本输出，若运营流程依赖 DESKTOP_LIVE_SKIPPED 标记需另行区分。',
       '获得 runner 不等于具有授权交互桌面，screenshot 的成功与失败均无随提交记录。',
     ],
-    verification: ['检查一行 patch 和脚本零差异，并读取 at-commit STATUS 的原生桌面限制；执行结论需另附具体 Actions 运行来源。'],
+    acceptanceSequence: ['检查一行 patch 和脚本零差异，并读取 at-commit STATUS 的原生桌面限制；执行结论需另附具体 Actions 运行来源。'],
     completed: ['desktop 的变量 opt-in job gate 已加入，model/cloud 脚本门控与 desktop 成功路径保持不变。'],
     incomplete: ['runner 自动发现、变量真假运行矩阵以及真实 native desktop screenshot 验证均未实现或未记录。'],
   },

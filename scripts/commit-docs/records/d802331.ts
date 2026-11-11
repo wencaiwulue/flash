@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: 'd8023311609efec07cdedba3484a7cec0f84deb4',
+  slug: 'commit-docs-finalization',
   title: 'Complete commit documentation for previous commit',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -29,31 +30,7 @@ export const record = defineCommitRecord({
   acceptance: [
     'SPEC/PLAN frontmatter 与 f355de1 完整身份一致，Actual scope 指向 f251df9 文档组。',
     'INDEX 计数、表格链接、JSON 数组计数和对象字段同步，self 保持最后。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: '新 SPEC 使用 f355de1 完整 SHA，Actual scope 保存 f251df9 文档组及 77 行新增、1 行删除。',
-      source: { path: 'docs/specs/f355de1-SPEC.md', role: 'evidence', revision: 'commit', symbol: 'commit: f355de14f9baeccda3b49eed9e8e020fcae68e39', note: 'frontmatter 区分目标与当前提交。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '新 PLAN 包含实现步骤和完成状态，声明目标范围为 implemented。',
-      source: { path: 'docs/plans/f355de1-PLAN.md', role: 'evidence', revision: 'commit', symbol: '## Implementation steps', note: '新计划文件的步骤锚点。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'INDEX patch 把 Implemented 调整为 53，并在 2fe47f6 后新增 f355de1。',
-      source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'commit', symbol: '- Implemented: 53', note: '人类索引的计数变化。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'status patch 将 f355de1 插在 self 前，commits 总数由 54 增至 55。',
-      source: { path: 'docs/status/index.json', role: 'evidence', revision: 'commit', symbol: '"fullSha": "f355de14f9baeccda3b49eed9e8e020fcae68e39"', note: '机器可读目标身份和文档路径。' },
-    },
-    { kind: 'not-recorded', statement: '本 diff 不含测试输出或 CI 结果，PLAN 中列出的命令不构成执行证明。' },
-  ],
-  remaining: ['55f7c7e 与 d802331 自身的文档不在此次范围内，分别留给后续 335b217 和 0640471 的定稿流程。'],
+  ],  remaining: ['55f7c7e 与 d802331 自身的文档不在此次范围内，分别留给后续 335b217 和 0640471 的定稿流程。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: 'Implemented 52→53，新增 f355de1 入口。' },
     { path: 'docs/plans/f355de1-PLAN.md', role: 'changed', note: '新建的 f355de1 计划与状态说明。' },
@@ -71,7 +48,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['2fe47f6 及更早条目保持不动，self 文档和 changeId 不变，路径规范延续。'],
     risks: ['目标统计 77 与当前统计 78 只差一点，且“previous commit”标题不足以识别真实目标。'],
-    verification: ['逐项比对目标 diff 与 SPEC，检查 PLAN 元数据、索引计数和链接，并确认 self 未改。'],
+    acceptanceSequence: ['逐项比对目标 diff 与 SPEC，检查 PLAN 元数据、索引计数和链接，并确认 self 未改。'],
     completed: ['f355de1 新文档和双索引登记已完成，四个变更路径全部覆盖。'],
     incomplete: ['没有可引用的命令或 CI 执行记录，不能扩展 implemented 的验证含义。'],
   },

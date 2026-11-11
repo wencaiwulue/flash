@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '6ef3352651472a951a3779f7b9f906fbc5ca86ca',
+  slug: 'live-jobs-environment-gating',
   title: '解除 live job 的预建 Environment 依赖',
   kind: 'component',
   status: 'partial',
@@ -15,7 +16,7 @@ export const record = defineCommitRecord({
   ],
   nonGoals: [
     '不删除 model 的 secret gate、Cloud 的三项 secret gate 或 desktop 的仓库变量 gate。',
-    '不修改任何验证脚本，不宣称 Cloud/desktop 已执行，也不记录 workflow 注册或 CI 通过。',
+    '不修改任何验证脚本，不宣称 Cloud/desktop 已执行，也不记录 workflow 注册或 CI 运行。',
     '不处理后续提交才出现的 job 删除、无条件运行或 workflow 重命名。',
   ],
   architecture: [
@@ -37,24 +38,7 @@ export const record = defineCommitRecord({
     'diff 恰好删除三个 environment 字段，四个 job 及其余 YAML 保持原样。',
     'model、cloud、desktop 在该 revision 不再依赖 live-validation Environment；desktop 仍由 vars 条件控制，model/cloud 的 secrets job-if 则仍存在上下文限制。',
     '没有将移除 Environment 描述为取消凭据 gate、脚本 skip 或 live 验证成功。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: 'at-commit workflow 保留 model、skillhub、cloud、desktop 及全部原 if，仅不再有 model/cloud/desktop 的 environment 行。',
-      source: { path: '.github/workflows/live-validation.yml', role: 'evidence', revision: 'commit', symbol: 'jobs:', note: '三行删除后的完整 job 结构来源。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'RELEASE 仍声称 OAuth 和 desktop job 只在 protected environment 存在时运行，与当前不再引用 named Environment 的 workflow 不一致。',
-      source: { path: 'docs/RELEASE.md', role: 'evidence', revision: 'commit', symbol: 'protected environment is present', note: '本提交未修改文档，故该来源用于确认遗留描述。' },
-    },
-    {
-      kind: 'not-recorded',
-      statement: '提交没有 Actions 解析结果、run ID 或任何 live sentinel；无法据此声称无 Environment 的 job 已在平台成功注册或执行。',
-    },
-  ],
-  remaining: [
+  ],  remaining: [
     'RELEASE 的 protected environment 描述尚未与三行删除同步。',
     'model/cloud 的 secrets job-if 仍不受支持；解除 Environment 绑定后的 workflow 注册、条件求值和各 job 实际运行也需要平台侧证据。',
   ],
@@ -83,7 +67,7 @@ export const record = defineCommitRecord({
       },
       {
         title: '检查遗留文档与证据缺口',
-        detail: '对照 RELEASE 的 protected environment 表述并标记不一致；平台运行未记录时，仅确认 YAML diff，不补写 CI 成功。',
+        detail: '对照 RELEASE 的 protected environment 表述并标记不一致；平台运行未记录时，仅确认 YAML diff，不补写 CI 运行。',
         paths: ['.github/workflows/live-validation.yml', 'docs/RELEASE.md'],
       },
     ],
@@ -96,7 +80,7 @@ export const record = defineCommitRecord({
       '把 Environment 删除误解为凭据条件删除会高估变更范围；model/cloud 虽未删除 if，但 secrets context 不受支持，条件文本存在不等于门控有效。',
       '失去 named Environment 保护是实际安全边界变化，且旧 RELEASE 会误导后续审查。',
     ],
-    verification: [
+    acceptanceSequence: [
       '用父提交与当前提交的 workflow diff 确认恰好三行删除，再读取当前文件核对四个 if 全部保留。',
       '若后续取得平台证据，应分别报告 job skipped 与脚本 executed；本提交自身不声明这类结果。',
     ],

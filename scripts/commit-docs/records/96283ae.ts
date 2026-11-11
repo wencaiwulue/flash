@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '96283aecc10afd0f0269eff9b7a3b0c543191b01',
+  slug: 'commit-docs-finalization',
   title: 'Complete previous commit documentation',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -29,15 +30,7 @@ export const record = defineCommitRecord({
   acceptance: [
     '612cc40 两份 frontmatter 的完整 SHA、标题、时间一致，Actual scope 指向 2a4aa6c。',
     'INDEX 与 JSON 新增对象状态均为 implemented，0dabf46 保持前一项，self 位于末尾。',
-  ],
-  evidence: [
-    { kind: 'diff-observed', statement: '612cc40 SPEC 以完整目标 SHA 新建，并记录 2a4aa6c 文档组。', source: { path: 'docs/specs/612cc40-SPEC.md', role: 'evidence', revision: 'commit', symbol: 'commit: 612cc40e519f48121614051611d16b054823c24c', note: '目标身份不是直接父 6c3c1e4。' } },
-    { kind: 'diff-observed', statement: '612cc40 PLAN 包含实现步骤与完成状态，标题使用目标原 subject。', source: { path: 'docs/plans/612cc40-PLAN.md', role: 'evidence', revision: 'commit', symbol: '# Implementation plan: Finalize previous commit documentation', note: '计划标题与 612cc40 原提交一致。' } },
-    { kind: 'diff-observed', statement: 'INDEX Implemented 调整为 67，并新增 612cc40 的两个链接。', source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'commit', symbol: '| 612cc40 | Finalize previous commit documentation | implemented |', note: '该行位于 0dabf46 与 self 之间。' } },
-    { kind: 'diff-observed', statement: 'JSON 保存 612cc40 完整身份及本次新建的 SPEC/PLAN 路径。', source: { path: 'docs/status/index.json', role: 'evidence', revision: 'commit', symbol: '"fullSha": "612cc40e519f48121614051611d16b054823c24c"', note: '机器对象与 INDEX 同步新增。' } },
-    { kind: 'not-recorded', statement: '本提交没有生成日志、测试输出、构建结果或 CI 记录，验证章节不构成运行证据。' },
-  ],
-  remaining: ['6c3c1e4 与当前 96283ae 的文档仍待后续，本提交只完成 612cc40。'],
+  ],  remaining: ['6c3c1e4 与当前 96283ae 的文档仍待后续，本提交只完成 612cc40。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: 'Implemented 66→67，添加 612cc40。' },
     { path: 'docs/plans/612cc40-PLAN.md', role: 'changed', note: '新建 612cc40 实施计划。' },
@@ -55,7 +48,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['0dabf46 及更早条目保持原序，self 内容不变；生成器和对象字段均无改动。'],
     risks: ['612cc40 与 6c3c1e4 的标题高度相近，若忽略祖父关系会把 2a4aa6c 与 0dabf46 范围错挂。'],
-    verification: ['解析两个 frontmatter，对照 612cc40 原 diff，并比较父/当前 INDEX 与 JSON 的单项增量。'],
+    acceptanceSequence: ['解析两个 frontmatter，对照 612cc40 原 diff，并比较父/当前 INDEX 与 JSON 的单项增量。'],
     completed: ['612cc40 SPEC/PLAN 与两个索引入口已同步落盘。'],
     incomplete: ['没有实际验证命令或 CI 输出，模板的无剩余项声明不作为额外完成证据。'],
   },

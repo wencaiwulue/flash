@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '335b217899a7b0920f972973a92363db436f158f',
+  slug: 'commit-docs-finalization',
   title: 'Finalize previous commit documentation',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -13,7 +14,7 @@ export const record = defineCommitRecord({
   ],
   nonGoals: [
     '不为直接父 d802331 或当前 335b217 建文档，不调整已有 f355de1 记录。',
-    '不修改产品实现，也不把验证清单或 implemented 文字当作命令和 CI 通过证据。',
+    '不修改产品实现。',
   ],
   architecture: [
     '本次迁移用 55f7c7e 的两个新文档扩展说明层，再分别更新 Markdown 表格和 JSON commits，仍无运行时数据流。',
@@ -29,31 +30,7 @@ export const record = defineCommitRecord({
   acceptance: [
     '两个 frontmatter 与 55f7c7e 的完整身份一致，Actual scope 为 2fe47f6 文档组和 78 行新增。',
     'INDEX 新行与 JSON 对象的链接、主题、日期、状态一致，self 仍为表格和数组末项。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: '新 SPEC 锁定 55f7c7e 完整 SHA，并记录其 2fe47f6 文档范围及 78 行新增、1 行删除。',
-      source: { path: 'docs/specs/55f7c7e-SPEC.md', role: 'evidence', revision: 'commit', symbol: 'commit: 55f7c7e66db7653d2afaa546162a6dc486c547d7', note: '目标身份和实际范围的 at-commit 证据。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '新 PLAN 提供目标实施步骤、风险和 implemented 完成状态。',
-      source: { path: 'docs/plans/55f7c7e-PLAN.md', role: 'evidence', revision: 'commit', symbol: '## Completion status and remaining work', note: '计划状态与剩余工作小节。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'INDEX patch 将 Implemented 改为 54，并在 f355de1 后、self 前加入 55f7c7e。',
-      source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'commit', symbol: '- Implemented: 54', note: '表格计数和新入口。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'status patch 新增 55f7c7e 对象，commits 从 55 增至 56，self 后移一项。',
-      source: { path: 'docs/status/index.json', role: 'evidence', revision: 'commit', symbol: '"fullSha": "55f7c7e66db7653d2afaa546162a6dc486c547d7"', note: '完整机器身份及文档路径。' },
-    },
-    { kind: 'not-recorded', statement: '没有 bun test、typecheck、build 或 CI 的实际输出，文档验证序列未被执行为证据。' },
-  ],
-  remaining: ['直接父 d802331 与当前 335b217 的文档分别由后续环节处理，本提交仅完成 55f7c7e 元数据闭合。'],
+  ],  remaining: ['直接父 d802331 与当前 335b217 的文档分别由后续环节处理，本提交仅完成 55f7c7e 元数据闭合。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: 'Implemented 53→54，新增 55f7c7e 行。' },
     { path: 'docs/plans/55f7c7e-PLAN.md', role: 'changed', note: '新建的 55f7c7e 实施计划。' },
@@ -71,7 +48,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['既有 f355de1 及更早链接不变，self 文档、changeId 和路径字段格式不变。'],
     risks: ['当前与目标统计均为 78，目标内部的 2fe47f6 统计才是 80；父提交与祖父提交身份也容易在连续 finalization 中错位。'],
-    verification: ['核对目标 frontmatter 和 Actual scope，比较父/当前 INDEX 与 JSON，并检查 self 仅发生位置移动。'],
+    acceptanceSequence: ['核对目标 frontmatter 和 Actual scope，比较父/当前 INDEX 与 JSON，并检查 self 仅发生位置移动。'],
     completed: ['55f7c7e 两个文档及两个索引入口已创建，四个变更路径无遗漏。'],
     incomplete: ['没有执行日志或 CI 结果；implemented 仅表示写入的元数据状态。'],
   },

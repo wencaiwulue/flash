@@ -1,0 +1,117 @@
+---
+commit: 0b6806800508a15c7a5f8293c572b8fa5c960d24
+title: "Implement ReviewArtifact and Hunter skill"
+date: 2026-11-10T22:53:28+08:00
+status: partial
+kind: component
+---
+
+# Implement ReviewArtifact and Hunter skill
+
+> 本文是依据该提交的 diff、对应 revision 的实现与测试，以及有出处的状态记录所作的回溯性设计重建；不冒充历史提交当时已存在的原文。
+
+## 前置状态与问题
+
+父提交 2bf435a5d3aca3c375da1387f1e33d3ce13db683 中的 ReviewArtifactTool 使用宽松 record 输入，isEnabled=false、isReadOnly=false，call 固定抛出 unavailable，权限组件也会自动拒绝。bundled/index.ts 已有 REVIEW_ARTIFACT 条件下的 registerHunterSkill 调用，但 hunter.ts 尚不存在，构建特性未开启，工具池也没有注册 ReviewArtifact。因此权限路由和 bundled 注册外壳虽已预留，独立评审、结构化结果和 /hunter 的实际内容都还没有形成可用链路。
+
+需要让作者对话之外的 reviewer 检查文件或内联 artifact，以预期行为而非个人风格为基准，返回可机读的 blocker/warning/nit、文件/行号及验证状态。文件输入必须复用 FileRead 权限而不是另开读取通道，评审 agent 只能使用只读检索工具；artifact 与 reviewer 输出都需要大小和结构约束。/hunter 应把这套约束变成用户可调用流程，并明确未执行验证的发现不能被包装成已通过。实际实现还须接受权限 updatedInput 和测试并发环境的检验，不能只验证直接函数调用。
+
+## 目标与非目标
+
+### 目标
+
+- 以严格输入要求 artifact_path 与 content 恰好一个来源，支持可选 focus/context，并对内联及文件 artifact 施加 1,000,000 字节上限。
+- 通过独立 promptMessages 和 GENERAL_PURPOSE_AGENT 运行 reviewer，只从现有工具池提供 Read、Grep、Glob，最多八轮并保留原 canUseTool。
+- 把最后一段 reviewer 文本解析为 summary/findings，限制 severity、正整数 line 和 verified/unverified，缺省状态为 unverified。
+- 文件读取委托 FileReadTool.checkPermissions，权限 UI 复用 FallbackPermissionRequest，内联内容不要求文件读取授权。
+- 新增用户可调用的 bundled /hunter，要求独立 ReviewArtifact、具体证据、聚焦验证及如实区分已执行和未执行事项。
+- 启用 REVIEW_ARTIFACT 构建与 38 工具特性档，同时区分新增测试、提交内命令记录和真实目标 CI 结果。
+
+### 非目标
+
+- 不让 reviewer 修改 artifact、运行 Bash 或自行修复问题；本组件只产生审查报告。
+- 不另写 agent 消息循环、权限系统或文件读取规则，执行仍复用 runAgent、canUseTool 与 FileReadTool。
+- 不把 reviewer 自报 status=verified 等同于工具已独立复现问题，schema 也不要求每个 finding 必有文件、行号或 verification。
+- 不把 /hunter 实现为第二个评审引擎；它只组合提示、用户参数与 ReviewArtifact 工具。
+- 不以 mock runner、特性档或 STATUS 数字宣称真实模型评审质量、目标 CI 全绿或权限端到端链路已验证。
+
+## 方案架构与数据流
+
+ReviewArtifactTool 的 strictObject 接受 artifact_path、content、focus、context 四个可选字段，validateInput 用两个字段是否同为 undefined 判定必须恰好提供一个 artifact 来源；空 content 因而不是缺失。readArtifact 对内联内容按 Buffer.byteLength 检查 1 MB，对文件则 resolve(getCwd(), artifact_path)、lstat、要求普通文件并检查 metadata.size，再以 UTF-8 读取。最终路径若是 symlink，lstat.isFile 为 false；文件读取后没有再次检查实际字节数。
+
+defaultReviewer 动态加载 runAgent、GENERAL_PURPOSE_AGENT 和 asSystemPrompt，从 context.options.tools 仅筛选 Read/Grep/Glob。新的 promptMessages 只包含本次审查请求，没有复制作者对话；override.systemPrompt 要求独立、不得修改、只报告证据支持的问题。runAgent 使用原 ToolUseContext 和 canUseTool，isAsync=false、canShowPermissionPrompts=true、querySource=agent:custom、maxTurns=8。它收集 assistant 文本并取最后一段，空响应会抛错。
+
+reviewArtifact 将 focus、context、路径和 artifact 原文放入单一提示，默认关注 correctness、regressions、security 和 missing verification，要求 blocker 有具体证据、未验证项标 unverified、无问题返回空数组。parseReviewerOutput 取首个左括号到末个右括号解析 JSON，再由 Zod 验证 summary 与 findings；finding 支持 blocker/warning/nit、可选 file_path/正整数 line/verification，status 缺省 unverified。最终 message=Artifact review completed 只表示得到可解析回答，mapToolResultToToolResultBlockParam 输出完整 JSON。
+
+权限入口对内联输入直接 allow，对文件输入调用 FileReadTool.checkPermissions({file_path: artifact_path}, context)，UI 从自动拒绝改为 FallbackPermissionRequest。通用 toolExecution 只在 permissionDecision.updatedInput 存在时替换 callInput：工作目录内或命中 Read allow 规则的自动 allow 会返回 FileRead 的 {file_path}，从而丢失 ReviewArtifact 的 artifact_path/focus/context；目录外 Fallback 的单次 Yes 则回传原始 ReviewArtifact 输入，不触发该错配。bypass/工具级 allow 也只在 FileRead 结果没有 updatedInput 时回退原输入。本提交新增的 direct reviewArtifact 测试没有经过该执行链，文件评审不能据此判定完整可用。
+
+/hunter 由新 hunter.ts 调用既有 registerBundledSkill 注册，userInvocable=true，getPromptForCommand 将用户参数直接附加到固定提示。提示先要求收集 artifact 与 intended behavior，再使用 ReviewArtifact 做独立只读评审，不让作者自评，并要求 file/line evidence、verified/unverified 分层和实际执行说明。父提交 bundled/index.ts 的 REVIEW_ARTIFACT 条件注册不变，本提交补齐被引用的模块。
+
+src/tools.ts 以 feature(REVIEW_ARTIFACT) 条件加载工具并加入 getAllBaseTools，build.ts 对 CLI/SDK 开启同一标志。特性夹具额外导出并初始化 bundled skills，组合测试检查 38 个非空工具、ReviewArtifact 和 hunter。新增 reviewArtifact.test.ts 使用 mock runner 与临时文件覆盖五个测试；它没有执行真实 defaultReviewer，也没有验证 Read/Grep/Glob 过滤或权限 updatedInput 到 call 的完整路径。
+
+### 文件、接口与证据关系
+
+| 关系 | 位置 | 设计作用 |
+|---|---|---|
+| 变更 | `src/tools/ReviewArtifactTool/ReviewArtifactTool.ts`，符号 `export const ReviewArtifactTool` | 实现严格输入、1 MB 读取、独立只读 agent、结构化 findings、权限委托与 JSON 输出。 |
+| 变更 | `src/components/permissions/ReviewArtifactPermissionRequest/ReviewArtifactPermissionRequest.tsx`，符号 `ReviewArtifactPermissionRequest` | 将自动拒绝的 unavailable UI 改为通用权限确认组件。 |
+| 变更 | `src/skills/bundled/hunter.ts`，符号 `registerHunterSkill` | 新增用户可调用的独立证据审查提示并拼接用户请求。 |
+| 变更 | `src/tools.ts`，符号 `const ReviewArtifactTool` | 在 REVIEW_ARTIFACT 分支加载工具并加入基础工具池。 |
+| 变更 | `scripts/build.ts`，符号 `'REVIEW_ARTIFACT'` | 在 CLI 与 SDK 外部构建特性中启用评审工具和 hunter 注册。 |
+| 变更 | `tests/reviewArtifact.test.ts`，符号 `describe('/hunter'` | 添加五个输入、mock reviewer、文件、大小/解析和 bundled prompt 测试。 |
+| 变更 | `tests/enabledFeatures.test.ts`，符号 `hasHunterSkill` | 固定 38 个非空工具及 ReviewArtifact/hunter 编译可见性。 |
+| 变更 | `tests/fixtures/feature-check.ts`，符号 `initBundledSkills` | 向独立特性夹具导出 bundled skill 查询和初始化函数。 |
+| 变更 | `tests/fixtures/verify-enabled-features.ts`，符号 `hasHunterSkill` | 启用 REVIEW_ARTIFACT、初始化 bundled skills 并输出 hunter 注册状态。 |
+| 变更 | `docs/STATUS.md`，符号 `ReviewArtifact and `/hunter`` | 记录 offline reviewer/build 能力声明及 130/563 数字，但不是目标 CI 日志。 |
+| 变更 | `docs/RELEASE.md`，符号 `## ReviewArtifact and Hunter` | 记录功能发布范围和命令验证声明，同时把当前及旧段工具数回写为 38。 |
+| 复用 | `src/tools/AgentTool/runAgent.ts`，符号 `runAgent` | 复用既有 agent 消息循环、工具权限和取消/转录行为。 |
+| 复用 | `src/tools/AgentTool/built-in/generalPurposeAgent.ts`，符号 `GENERAL_PURPOSE_AGENT` | 复用通用 agent 定义并以独立系统提示和窄工具池覆盖评审行为。 |
+| 复用 | `src/tools/FileReadTool/FileReadTool.ts`，符号 `async checkPermissions` | 复用文件读取 deny/ask/allow 决策，但其 updatedInput 形状需要与 ReviewArtifact 适配。 |
+| 复用 | `src/components/permissions/FallbackPermissionRequest.tsx`，符号 `FallbackPermissionRequest` | 复用通用权限确认界面，不再自动拒绝 ReviewArtifact。 |
+| 复用 | `src/skills/bundledSkills.ts`，符号 `registerBundledSkill` | 复用 bundled skill 注册和命令转换机制。 |
+| 复用 | `src/skills/bundled/index.ts`，符号 `registerHunterSkill` | 复用父提交已有的 REVIEW_ARTIFACT 条件初始化入口，本提交只补 hunter 模块。 |
+| 复用 | `src/services/tools/toolExecution.ts`，符号 `processedInput = permissionDecision.updatedInput` | 通用权限输入传播路径，决定 FileRead 委托后的实际 call 输入形状。 |
+
+## 关键决策与工程取舍
+
+- 独立 reviewer 只接收本次审查 prompt，而非继承作者完整消息历史；这样把评审上下文与实现叙述分离，但仍复用通用 agent 的运行时和权限回调。
+- 只读性由候选工具池和系统提示共同约束，实际可用名称固定为 Read/Grep/Glob；不依赖 GENERAL_PURPOSE_AGENT 的通配工具定义来扩大权限。
+- 文件与内联输入共享同一评审和输出管线，只有读取及权限阶段不同；这避免维护两种报告格式。
+- 结构化 status 默认 unverified，允许空 findings；相比强制每项给结论，这保留不确定性，但 verified 仍是 reviewer 声明而非自动证明。
+- 路径 deny/ask/allow 检查复用 FileRead，并硬编码匹配 Read 规则；但通用 Fallback 的“不再询问”写入的是无路径参数的 ReviewArtifact 工具级 allow，而不是 Read(path)。该规则可覆盖后续普通的目录外读取 ask，授权范围大于单次文件批准；显式 Read deny/ask 仍会在前置阶段生效。除 updatedInput 适配外，这一持久授权范围也需单独验收。
+- /hunter 保持薄提示层，构建和注册复用 bundled skill 机制；测试与特性档分别验证提示存在和编译可见性。
+
+### 备选方案与回溯分析
+
+- 回溯性比较：可以让当前作者 agent 自评，省去第二次 runAgent，但会共享实现假设；实际新建 reviewer promptMessages，代价是额外模型调用和独立上下文构造。
+- 回溯性比较：可以返回自由文本审查报告，解析更简单，却不利于严重级别和验证状态消费；实际采用 Zod findings，并容忍 JSON 前后少量文本。
+- 回溯性比较：可以仅支持文件路径以统一权限，但内联生成物也需要评审；实际允许两种互斥来源，并为内联输入省略文件权限检查。
+- 回溯性比较：可以为 hunter 编写独立工具集和状态机，但会重复只读评审能力；实际 bundled prompt 直接驱动同一 ReviewArtifact。
+
+## 安全与协议边界
+
+- reviewer 的候选工具不含 Write/Edit/Bash，runAgent 仍接收原 canUseTool 和权限提示能力；isReadOnly 不等于可以绕过具体 Read 权限。
+- 文件输入依赖 FileRead 的读取授权，lstat 拒绝最终 symlink 和非普通文件；但 lstat 后 readFile 存在替换/增长竞态，读取后没有第二次大小校验。
+- 1 MB 限制降低单份 artifact 的上下文与内存压力，maxResultSizeChars=100,000 限制工具结果；findings 数量和单项文本长度没有更细的 schema 上限。
+- artifact、focus、context 原文进入模型 prompt，系统提示没有明确把其中指令声明为不可信数据；只读工具减少副作用，但不能防止评审结论被提示注入影响。
+- file_path、line、verification 均可选，blocker 的证据要求仅在提示中；调用者不能把 status=verified 或空 findings 当作独立测试/安全审计证明。
+- 权限委托的 updatedInput 形状缺口会影响文件调用正确性，新增测试又绕过该链；安全边界必须按真实 executor 复验而非只看 checkPermissions 函数名。
+
+## 验收标准
+
+- 空输入或同时提供 artifact_path/content 必须拒绝，恰好一个来源才进入读取；内联按 UTF-8 字节、文件按普通文件和大小限制处理。
+- reviewer 应只获得 Read/Grep/Glob，使用独立 prompt 和原 canUseTool，最多八轮；无 assistant 文本或无效 JSON/schema 必须报错。
+- 输出仅接受 blocker/warning/nit 与 verified/unverified，line 为正整数，缺省 status 为 unverified，合法空 findings 可以表示未发现问题。
+- 文件权限不仅要委托 FileRead，还必须在 executor 更新输入后仍向 call 提供 artifact_path、focus、context；本 revision 的静态 updatedInput 链未达到这一完整验收。
+- /hunter 必须可由用户调用并包含独立评审、证据、unverified 和实际验证说明，不能把未运行检查写成 clean review。
+- 外部特性档应包含 38 个非空工具、ReviewArtifact 与 hunter；该编译断言与真实 reviewer 运行是不同验收层级。
+- 验证报告必须分别呈现五个新增测试、STATUS/RELEASE 的历史命令声明及目标 CI 的实际失败，不能合并成一次 130/563 CI。
+
+## 实现状态与剩余范围
+
+- 状态：**partial**
+- FileRead 在工作目录内或命中 Read allow 规则时返回的 updatedInput 会把 ReviewArtifact 输入替换为 {file_path}；需要保留原 artifact_path/focus/context 后，这些自动 allow 路径才能完成端到端验收。Fallback 单次 Yes 回传原输入，不代表所有权限路径都有同一错配。
+- Fallback 的“不再询问”会写入无路径参数的 ReviewArtifact 工具级 allow，可能覆盖后续目录外读取 ask；该持久授权范围需要单独收敛和验收。
+- 目标 CI run 42838711862 的文件测试因全局 cwd 串扰失败，后续 runWithCwdOverride 只属于后代修复；提交内 130/563 声明与目标 CI 不能混用。
+- status=verified 和 blocker evidence 主要靠 reviewer 自觉填写，schema 没有验证证据存在性，空 findings 也不能证明 artifact 无问题。
+- 文件 lstat/readFile 的大小检查存在 TOCTOU，artifact 文本的提示注入约束不足，真实只读评审质量仍未测量。

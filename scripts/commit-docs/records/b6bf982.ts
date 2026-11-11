@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: 'b6bf9822536793efc08cd9ce4d94f1c066530d1c',
+  slug: 'commit-docs-finalization',
   title: 'Finalize documentation for previous commit',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -29,15 +30,7 @@ export const record = defineCommitRecord({
   acceptance: [
     '6c3c1e4 的 frontmatter 完整匹配目标提交，Actual scope 的 0dabf46 路径与统计正确。',
     'INDEX 和 JSON 各新增一个 implemented 项，612cc40 保持前一项，self 仍为最后对象。',
-  ],
-  evidence: [
-    { kind: 'diff-observed', statement: '6c3c1e4 SPEC 记录完整目标身份，Actual scope 列出 0dabf46 文档对。', source: { path: 'docs/specs/6c3c1e4-SPEC.md', role: 'evidence', revision: 'commit', symbol: 'docs/plans/0dabf46-PLAN.md', note: '范围路径对应 6c3c1e4 的原始 diff。' } },
-    { kind: 'diff-observed', statement: '6c3c1e4 PLAN 使用目标完整 SHA，并提供完成状态小节。', source: { path: 'docs/plans/6c3c1e4-PLAN.md', role: 'evidence', revision: 'commit', symbol: 'commit: 6c3c1e4d3cdd8b1b8279c023575fb7a37e94a14c', note: 'frontmatter 与 SPEC 使用同一身份。' } },
-    { kind: 'diff-observed', statement: 'INDEX 的 Implemented 达到 68，新增 6c3c1e4 标题与文档链接。', source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'commit', symbol: '| 6c3c1e4 | Finalize documentation for previous commit | implemented |', note: '新增行位于 612cc40 后。' } },
-    { kind: 'diff-observed', statement: '机器索引在 self 前登记 6c3c1e4，spec/plan 字段指向新文件。', source: { path: 'docs/status/index.json', role: 'evidence', revision: 'commit', symbol: '"fullSha": "6c3c1e4d3cdd8b1b8279c023575fb7a37e94a14c"', note: '完整身份与 INDEX 短 SHA 对应。' } },
-    { kind: 'not-recorded', statement: '没有随 diff 保存生成器、测试、构建或 CI 输出，PLAN 验证序列不是执行结果。' },
-  ],
-  remaining: ['直接父 96283ae 和当前 b6bf982 尚未在此快照建档，本提交仅闭合 6c3c1e4。'],
+  ],  remaining: ['直接父 96283ae 和当前 b6bf982 尚未在此快照建档，本提交仅闭合 6c3c1e4。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: 'Implemented 67→68，新增 6c3c1e4。' },
     { path: 'docs/plans/6c3c1e4-PLAN.md', role: 'changed', note: '新建 6c3c1e4 计划。' },
@@ -55,7 +48,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['612cc40 与更早条目不改，self 字段不变；生成器源码和索引 schema 保持父版本。'],
     risks: ['6c3c1e4 与当前提交标题相同，必须按完整 SHA 和 0dabf46 范围区分，不能依赖标题识别。'],
-    verification: ['核对 6c3c1e4 原始提交元数据和 diff，再检查两个新 frontmatter 与双索引单项变化。'],
+    acceptanceSequence: ['核对 6c3c1e4 原始提交元数据和 diff，再检查两个新 frontmatter 与双索引单项变化。'],
     completed: ['6c3c1e4 的 SPEC/PLAN 与两个索引入口已在同一提交落盘。'],
     incomplete: ['没有实际命令或 CI 运行证据，implemented 仅表示文档元数据已写入。'],
   },

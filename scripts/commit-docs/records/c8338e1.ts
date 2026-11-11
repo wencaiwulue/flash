@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: 'c8338e1be21cdc792f1c69a5bf3c0094d3c29261',
+  slug: 'commit-docs-finalization',
   title: 'Complete previous commit documentation',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -28,31 +29,7 @@ export const record = defineCommitRecord({
   acceptance: [
     'fdffe9e 完整 SHA 在两个 frontmatter 与 JSON fullSha 中一致，日期和 Complete 标题无错位。',
     'INDEX 计数为 83/1/0，fdffe9e 的链接可对应两个新文件；e8d8c06 与 self 的既有内容不被替换。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: 'fdffe9e SPEC 的范围块列出 f5b097b-SPEC.md 和 f5b097b-PLAN.md，并记载 78 行新增、1 行删除。',
-      source: { path: 'docs/specs/fdffe9e-SPEC.md', role: 'evidence', revision: 'commit', symbol: 'docs/specs/f5b097b-SPEC.md', note: '该符号证明嵌套对象属于 f5b097b 一代。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '配套 PLAN 新建并采用 fdffe9e 的 Complete 标题，包含风险、验证序列及剩余工作小节。',
-      source: { path: 'docs/plans/fdffe9e-PLAN.md', role: 'evidence', revision: 'commit', symbol: '# Implementation plan: Complete previous commit documentation', note: '标题与被补档提交 subject 一致。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'INDEX 将 implemented 计数由 82 改为 83，并在 e8d8c06 后添加 fdffe9e 双链接行。',
-      source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'commit', symbol: '| fdffe9e | Complete previous commit documentation | implemented |', note: 'self 行保留在该新增行之后。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'JSON patch 在 self 前添加 fdffe9e 对象，spec/plan 字段分别指向 fdffe9e 新 SPEC 与 PLAN。',
-      source: { path: 'docs/status/index.json', role: 'evidence', revision: 'commit', symbol: '"fullSha": "fdffe9e872a6bdf9ef41623b532f512f1846ab3a"', note: 'status 字段为 implemented。' },
-    },
-    { kind: 'not-recorded', statement: '文档所列 bun 命令和 CI 检查没有输出、运行编号或结果附件。' },
-  ],
-  remaining: ['fdffe9e 的规格背景和实施步骤没有针对其具体索引补丁展开，仍是概括性生成文本。'],
+  ],  remaining: ['fdffe9e 的规格背景和实施步骤没有针对其具体索引补丁展开，仍是概括性生成文本。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: 'Implemented 82→83，追加 fdffe9e 行。' },
     { path: 'docs/plans/fdffe9e-PLAN.md', role: 'changed', note: '新建 fdffe9e 的 Complete 计划。' },
@@ -70,7 +47,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['历史对象无需迁移，新增项遵循现有排序和路径格式。'],
     risks: ['Complete 标题在前一代 f5b097b 已出现，单看标题会混淆；链接代际也必须随 SHA 更新。'],
-    verification: ['逐项比较 fdffe9e 原 diff 和 SPEC 范围，并检查 current JSON 的新对象及 parent/current 计数差。'],
+    acceptanceSequence: ['逐项比较 fdffe9e 原 diff 和 SPEC 范围，并检查 current JSON 的新对象及 parent/current 计数差。'],
     completed: ['fdffe9e 的两个文档产物和两类索引登记已形成一致集合。'],
     incomplete: ['未记录生成文档所列检查的实际执行，具体步骤也仍为模板。'],
   },

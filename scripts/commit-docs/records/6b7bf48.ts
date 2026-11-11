@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '6b7bf48b0b4f0af740073eddbc5584f0c598c539',
+  slug: 'secure-storage-marketplace-sdk',
   title: 'Complete secure storage, marketplace, and SDK controls',
   kind: 'component',
   status: 'implemented',
@@ -67,108 +68,8 @@ export const record = defineCommitRecord({
     'SDK rewind 能等待目标 snapshot，dry-run 不改文件，实际恢复处理修改与新增文件，CLI 复用相同结果和错误契约。',
     '并发 query 的 checkpoint enablement 相互独立，冲突 persistence lease 被拒绝；setup failure 单独释放 lease，return 与 close 共用幂等 cleanup。',
     'Stop/SubagentStop model hooks 支持 allow/block/failure/cancellation 和结果传递，普通 hooks 继续执行且模型部分不重复，其他事件仍 unsupported。',
-    '五个 SDK controls 返回共享实现的实际数据或领域错误，enableRemoteControl 保持 unsupported；新增测试与文档中的历史命令通过记录分开表述。',
-  ],
-  evidence: [
-    {
-      kind: 'test-added',
-      statement: '新增 4 个 Linux 存储测试、17 个断言，覆盖 lookup/store/clear、stdin-only secret JSON、异常/ malformed reads、plaintext fallback 与迁移删除；此项不表示真实 libsecret 已运行。',
-      source: {
-        path: 'tests/linuxSecretStorage.test.ts',
-        role: 'test',
-        revision: 'commit',
-        note: '同步/异步 secret-tool runner 均为 mock。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '新增 7 个 npm marketplace 测试，覆盖 scoped package、fresh staging、lifecycle flags/env、schema rejection、offline cache、refresh、schema 失败刷新保留旧缓存与 npm 失败时部分下载清理。',
-      source: {
-        path: 'tests/npmMarketplace.test.ts',
-        role: 'test',
-        revision: 'commit',
-        note: '使用 fake npm runner 和临时目录，没有 registry access。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '新增 ultraplan 顺序测试，以 injected poll/refresh/sleep 验证两次 poll attempts 各有一次前置 refresh，并由调用方停止循环。',
-      source: {
-        path: 'tests/ultraplanPoll.test.ts',
-        role: 'test',
-        revision: 'commit',
-        note: '只测试轮询顺序，不启用外部 feature 或访问远端。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '新增 7 个 rewind 测试，覆盖 dry-run、实际恢复/删除、非法 ID、异步 snapshot 等待、并发 per-query 状态和 persistence lease 冲突。',
-      source: {
-        path: 'tests/sdkRewind.test.ts',
-        role: 'test',
-        revision: 'commit',
-        note: '临时文件系统与无模型调用回归。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '新增 11 个 headless prompt/agent hook cases，覆盖 allow、structured block、结果保留、nonblocking failure、abort 和非 Stop unsupported。',
-      source: {
-        path: 'tests/headlessHooks.test.ts',
-        role: 'test',
-        revision: 'commit',
-        note: 'execPromptHook 与 execAgentHook 均为 mock。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '新增一个 empty-prompt SDK controls 集成测试，跨 context、settings、model flags、plugins、missing-task error 与显式 cleanup，无需模型调用。',
-      source: {
-        path: 'tests/sdkControls.test.ts',
-        role: 'test',
-        revision: 'commit',
-        note: '五个控制适配器共享一个无模型集成入口。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: 'at-commit STATUS 记录 bun test 为 38 tests、146 assertions，typecheck 零错误，build 产出 CLI、SDK 与 declarations；这些是历史记录而非本记录编写时重跑。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '| `bun test` | 38 tests, 146 assertions passed |',
-        note: 'Verified evidence 表的全量命令结果。',
-      },
-    },
-    {
-      kind: 'recorded-ci-pass',
-      statement: 'at-commit RELEASE 只记录父提交 9b2a352 的 initial release ci run 42750917055 通过，不能把这个 run 归给 6b7bf48。',
-      source: {
-        path: 'docs/RELEASE.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '`ci` run `42750917055` passed on 2026-11-10',
-        note: '该 CI 字段属于 initial restoration release 的父 SHA。',
-      },
-    },
-    {
-      kind: 'later-evidence',
-      statement: '直接后继 e5c06bc 的 RELEASE 后来记录 6b7bf48 的 ci run 42757526053 于 2026-11-10 通过；此证据不属于 at-commit RELEASE。',
-      source: {
-        path: 'docs/RELEASE.md',
-        role: 'evidence',
-        revision: 'e5c06bc3865ddeee428732aae46dab58c412a545',
-        symbol: '`ci` run `42757526053` passed on 2026-11-10',
-        note: '后继 Follow-up feature completion 段明确绑定本提交完整 SHA。',
-      },
-    },
-    {
-      kind: 'not-recorded',
-      statement: '没有真实 Linux desktop/libsecret、npm registry/lifecycle 或 ultraplan remote polling 结果；真实 headless Stop E2E 仅由 STATUS 记录，不是本 diff 新增测试文件。',
-    },
-  ],
-  remaining: [
+    '五个 SDK controls 返回共享实现的实际数据或领域错误，enableRemoteControl 保持 unsupported；tests/linuxSecretStorage.test.ts、tests/npmMarketplace.test.ts、tests/ultraplanPoll.test.ts、tests/sdkRewind.test.ts、tests/headlessHooks.test.ts、tests/sdkControls.test.ts 覆盖各组件行为。',
+  ],  remaining: [
     'parseMarketplaceInput 的自由文本 npm shorthand 仍未实现；本提交完成的是 typed MarketplaceSource 的加载与刷新。',
     'Cloud xattr、connectRemoteControl/enableRemoteControl 和纯 env-less perpetual bridge 仍受协议约束，内部 KAIROS/proactive/workflow/computer-use 继续禁用。',
     '真实 libsecret、registry 和 ultraplan 服务行为需要各自授权环境；offline mock 与 recorded E2E 不应互相替代。',
@@ -384,7 +285,7 @@ export const record = defineCommitRecord({
       {
         title: '同步支持矩阵与历史证据',
         detail:
-          'README 更新支持和安全边界，STATUS 记录实际 38/146、各 mock/offline/E2E 范围与剩余协议任务；RELEASE 仅补父 initial release 的 SHA、CI 和 remotes，不重写其历史 known limitations。新增测试存在与文档记录通过分别表述。',
+          'README 更新支持和安全边界，STATUS 记录各 mock/offline/E2E 范围与剩余协议任务；RELEASE 仅补父 initial release 的 SHA、CI 和 remotes，不重写其历史 known limitations。',
         paths: ['README.md', 'docs/STATUS.md', 'docs/RELEASE.md'],
       },
     ],
@@ -404,7 +305,7 @@ export const record = defineCommitRecord({
       '模型 hooks 与 command/function hooks 双阶段可能重复或遗漏；modelStopHooksOnly/skipModelHooks 过滤和共享进度 ID 维持各自边界。',
       '测试 mock 不能证明真实 secret-tool、npm registry 或远端 ultraplan 行为，文档状态必须保留环境限定。',
     ],
-    verification: [
+    acceptanceSequence: [
       '检查 secret-tool argv 不含 secret，stdin 为精确 JSON，并覆盖 primary 失败、旧值遮蔽和首次迁移。',
       '检查 npm 普通/scoped 提取、全部 install flags/env、schema 失败旧缓存保留、失败刷新与部分下载清理。',
       '以调用序列断言每次 poll 前 refresh，并覆盖 refresh/poll 异常仍进入原重试区域。',

@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '5c5645575a79226d0a103b896681c9941d687d82',
+  slug: 'commit-docs-finalization',
   title: 'Finalize previous commit documentation',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -28,31 +29,7 @@ export const record = defineCommitRecord({
   acceptance: [
     '两个 frontmatter 的 SHA、标题、时间和 implemented 状态与目标祖父提交一致。',
     'INDEX 链接、JSON 的 spec/plan 字段与实际新文件相符，摘要、表格和 JSON 状态一致。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: '新 SPEC 的 Actual scope 对应祖父提交四个路径及其 diff 统计，没有误把 69d3596 当作本文件所描述的 commit。',
-      source: { path: 'docs/specs/0e2559a-SPEC.md', role: 'evidence', revision: 'commit', symbol: 'commit: 0e2559ac8ac23b99ff705b51372d2eb97a8487d6', note: 'frontmatter 锁定目标祖父提交身份。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '新 PLAN 提供实现步骤、风险、验证和完成状态小节。',
-      source: { path: 'docs/plans/0e2559a-PLAN.md', role: 'evidence', revision: 'commit', symbol: '## Implementation steps', note: '计划文件在提交中新建。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'INDEX patch 同步 implemented 总数并增加带 SPEC/PLAN 链接的祖父提交行。',
-      source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'commit', symbol: '- Implemented: 88', note: '摘要和表格入口可在 at-commit 文件核对。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'status patch 在 self 前加入完整祖父提交对象，字段指向两个新产物。',
-      source: { path: 'docs/status/index.json', role: 'evidence', revision: 'commit', symbol: '"fullSha": "0e2559ac8ac23b99ff705b51372d2eb97a8487d6"', note: '机器索引包含身份、状态和路径。' },
-    },
-    { kind: 'not-recorded', statement: '新文档的 verification 段落没有配套命令输出或 CI 结果。' },
-  ],
-  remaining: ['生成文档对祖父提交的说明仍较概括；若要更深入的设计分析，需要另行补充内容而非扩大本提交事实范围。'],
+  ],  remaining: ['生成文档对祖父提交的说明仍较概括；若要更深入的设计分析，需要另行补充内容而非扩大本提交事实范围。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: '更新 implemented 汇总并增加祖父提交文档入口。' },
     { path: 'docs/plans/0e2559a-PLAN.md', role: 'changed', note: '新建的祖父提交实施计划。' },
@@ -70,7 +47,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['既有条目顺序不变；Markdown 链接沿用 ../docs 形式，JSON 继续使用 repository-relative 路径。'],
     risks: ['相同主题容易造成不同代际对象错位；只增行不改汇总会使统计失配，验证散文也可能被误读为执行记录。'],
-    verification: ['比对 frontmatter 与目标祖父提交 0e2559a 的 metadata，核对 SPEC 路径列表和目标祖父提交 0e2559a 的 diff，并解析 JSON 检查新增对象及链接。'],
+    acceptanceSequence: ['比对 frontmatter 与目标祖父提交 0e2559a 的 metadata，核对 SPEC 路径列表和目标祖父提交 0e2559a 的 diff，并解析 JSON 检查新增对象及链接。'],
     completed: ['四个文档元数据路径均按目标祖父提交闭合，两个索引均可发现新产物。'],
     incomplete: ['文档所列命令没有随附执行日志，本记录仅验收元数据落盘与关联一致性。'],
   },

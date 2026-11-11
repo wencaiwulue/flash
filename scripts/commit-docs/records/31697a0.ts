@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '31697a0f6d4c66dae4c792583e94410b07aa1bff',
+  slug: 'context-collapse-recovery',
   title: 'Implement context collapse and recovery',
   kind: 'component',
   status: 'partial',
@@ -74,103 +75,8 @@ export const record = defineCommitRecord({
     'recoverFromOverflow 只排空当前 staged，返回其数量并立即投影；恢复快照中的 staged 可验证该行为，但不能据此断言正常 spawn 会先暂存。',
     'resume 重建 committed 摘要消息、原 UUID 边界和 nextId，snapshot 恢复 staged/armed/lastSpawnTokens；archived 在成功投影时重新填充。',
     'CtxInspect 报告包含 collapsedSpans、collapsedMessages、stagedSpans 和 health，外部特性档注册 36 个非空工具且包含 CtxInspect。',
-    '历史通过结果仅覆盖记录的离线套件、类型检查、构建和特性档；真实模型摘要、真实持久化与 API 413 恢复保留为未验证范围。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: '该 revision 的 applyCollapsesIfNeeded 明确实现 0.90/0.95 两级行为、5000 token 增长门、activeSpawn 等待及 compact/session_memory/marble_origami 来源分流。',
-      source: {
-        path: 'src/services/contextCollapse/index.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'export async function applyCollapsesIfNeeded',
-        note: '阈值、调度与递归边界的直接实现证据。',
-      },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'projectView 以 summaryUuid 去重并按首尾 UUID 替换闭区间，selectCollapseSpan 保留末尾四条并对相邻 tool_use/tool_result 回退。',
-      source: {
-        path: 'src/services/contextCollapse/operations.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'export function selectCollapseSpan',
-        note: 'UUID 投影和工具边界的直接实现证据。',
-      },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'startSpawn 构造 StagedCollapse 后直接 await commitStaged，函数内没有先写入 collapseStore.staged；因此正常生成路径与恢复快照 staged 路径必须分别描述。',
-      source: {
-        path: 'src/services/contextCollapse/index.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'function startSpawn',
-        note: '新摘要直接提交、未先暂存的实际代码证据。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '新增七个离线测试，覆盖 96% 阻塞提交与幂等、90% 后台完成、空摘要健康、prompt-too-long withhold、恢复 committed/staged 后溢出排空、工具配对边界和订阅 reset；summarizer 与持久化均为受控 fake。',
-      source: {
-        path: 'tests/contextCollapse.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: "describe('context-collapse execution'",
-        note: '新增服务回归套件；staged 溢出用例先调用 restoreFromEntries 注入快照。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '特性档回归将工具总数从 35 更新为 36，并新增 CtxInspect 名称断言；独立夹具与生产构建同时加入 CONTEXT_COLLAPSE。',
-      source: {
-        path: 'tests/enabledFeatures.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: "'CtxInspect'",
-        note: '新增编译后工具注册断言；测试被加入本身不单独代表执行通过。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 STATUS 记录 bun test 已执行并通过 107 个测试、459 个断言；这是 at-commit 历史结果，不是本次文档编写重新运行所得。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '`bun test`',
-        note: 'Verified evidence 表记录 107 tests、459 assertions。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 STATUS 记录 bun run typecheck 零 TypeScript 错误，bun run build 完成 CLI、SDK 和 declarations，外部特性档加载 36 个无 null 工具。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '`bun run typecheck`',
-        note: 'at-commit 类型检查、构建及工具池历史结果。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 RELEASE 的 Context collapse 段记录 107/459、typecheck、build、declarations 和 36 工具特性档通过，同时明确测试使用注入 fake，live model 与 API 413 recovery 未单独验证。',
-      source: {
-        path: 'docs/RELEASE.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '## Context collapse',
-        note: '发布段的验证结果与在线边界。',
-      },
-    },
-    {
-      kind: 'not-recorded',
-      statement: '没有真实模型摘要、真实 transcript 持久化或真实 API 413 后 collapse_drain_retry 的执行证据；STATUS/RELEASE 均将 live model/413 留作后续验证。',
-    },
-  ],
-  remaining: [
+    '历史结果仅覆盖记录的离线套件、类型检查、构建和特性档；tests/contextCollapse.test.ts、tests/enabledFeatures.test.ts 覆盖各组件行为。',
+  ],  remaining: [
     '正常 startSpawn 未把新摘要加入 staged，导致非恢复场景下 stagedSpans 不经历暂存阶段，真实 413 时通常没有本次运行生成的 staged 可排空；当前测试只证明恢复快照可排空。',
     '真实模型摘要质量、工具禁用下的 fork 行为、实际 transcript 读写和真实 API 413 重试仍需授权环境验证，历史全量通过不能替代这些路径。',
     'recordCommit 或 recordSnapshot 失败只增加健康错误，内存 committed 已成立且没有重放补偿协议；边界缺失时 committed 计数也不等于当前视图实际折叠数量。',
@@ -274,7 +180,7 @@ export const record = defineCommitRecord({
       '确认父提交的 index/operations/persist 都是禁用、直通或空恢复实现，且没有 store.ts。',
       '确认 query、sessionRestore、ResumeConversation 和 autoCompact 已有 CONTEXT_COLLAPSE 门后的调用点，本提交不重写这些控制流。',
       '确认 logs.ts/sessionStorage.ts 已定义 commit 与 snapshot entry，CtxInspect 已读取 getStats，构建只需打开同一特性。',
-      '确认测试可通过 initContextCollapse 注入 token、窗口、摘要和持久化依赖，历史通过结果与 fake/live 范围必须分别记录。',
+      '确认测试可通过 initContextCollapse 注入 token、窗口、摘要和持久化依赖，历史结果与 fake/live 范围必须分别记录。',
     ],
     reuse: [
       '复用 runForkedAgent、cache-safe 参数、系统/用户上下文和 extractTextContent 生成单轮文本摘要。',
@@ -346,7 +252,7 @@ export const record = defineCommitRecord({
       '后台 Promise、reset 和迟到摘要可能污染新状态；generation 检查覆盖摘要返回和 finally，activeSpawn 清理降低竞态，但持久化 await 后仍缺少会话归属检查，真实并发模型执行也未在线验证。',
       '工具边界只检查相邻消息形态而不核对 tool_use_id，属于保守防拆分而非完整协议修复。',
     ],
-    verification: [
+    acceptanceSequence: [
       '用固定 96/100 token 比验证达到 95% 后摘要已提交、消息数由六变五、重复投影不再次 summarize，并检查 commit/snapshot fake 调用。',
       '用 deferred summarizer 在 90/100 时先确认六条原消息和一次后台调用，再完成摘要并确认后续投影为五条。',
       '用空字符串摘要确认不提交占位符、totalEmptySpawns 增一且 lastError 可见，用 assistant API error 检查 sdk withhold 与 marble_origami 排除。',

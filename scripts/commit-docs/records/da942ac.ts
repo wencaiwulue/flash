@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: 'da942ac7d8b72858fc186837690c9b5b3cdeafe5',
+  slug: 'reactive-compaction-recovery',
   title: 'Implement reactive compaction recovery',
   kind: 'component',
   status: 'implemented',
@@ -67,94 +68,10 @@ export const record = defineCommitRecord({
     'compactor 成功返回原 CompactionResult 内容；取消、再次 PTL 和其他异常映射为 aborted、exhausted、error，自动失败不清理且由 query 显露原错误。',
     '自动成功后只执行一次成功清理，合并 PreCompact/PostCompact 用户消息；手动 reactive-only 保持既有指令合并、错误翻译和清理协议。',
     '新增回归和编译特性档覆盖离线契约；任何在线 PTL/media 恢复、真实模型摘要与真实 hook 子进程结论都必须另有执行证据。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: '该 revision 的 reactiveCompact.ts 实现了环境开关、PTL/media 分类、媒体预检与剥离、双上下文参数、五种失败 reason、外层 PreCompact、单次入口门禁及成功清理；这些是实现观察，不是在线恢复结果。',
-      source: {
-        path: 'src/services/compact/reactiveCompact.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'export async function reactiveCompactOnPromptTooLong',
-        note: 'reactive 检测、协调、共享 compactor 调用和 outcome 映射的直接源代码证据。',
-      },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'compactConversation 的第八个参数默认为 false，只有 reactive 调用显式传 true 时才以空 hookResult 跳过内部 PreCompact；原有调用方无需增加实参。',
-      source: {
-        path: 'src/services/compact/compact.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'skipPreCompactHooks = false',
-        note: '共享压缩器向后兼容的 PreCompact 去重接口。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '新增 5 项离线测试，覆盖 PTL/media 检测与 kill switch、图片替换和 compactor 参数、media_unstrippable、too_few_groups、预取消、exhausted、hook 消息合并及成功 cleanup/hasAttempted；compactor、preCompact 和 onSuccess 使用注入 fake/mock，此项只声明测试被加入。',
-      source: {
-        path: 'tests/reactiveCompact.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: "describe('reactiveCompactOnPromptTooLong'",
-        note: '新增的 reactive 协调回归套件，不是模型或 API 在线测试。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '独立 Bun 特性构建链新增 REACTIVE_COMPACT、导出并读取 reactiveCompactEnabled，组合测试断言编译后默认值为 true，同时保留 36 个非空工具检查；该断言不执行 API 恢复。',
-      source: {
-        path: 'tests/enabledFeatures.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: 'expect(profile.reactiveCompactEnabled).toBe(true)',
-        note: '真实编译特性档中新增的 reactive 开关断言。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 STATUS 记录 bun test 已执行并通过 112 个测试、479 个断言；这是 at-commit 历史记录，不是本次文档编写重新运行所得，也不把其中的 mock 协调测试提升为 live API 证据。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '| `bun test` | 112 tests, 479 assertions passed |',
-        note: 'at-commit Verified evidence 表的全量测试记录。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 STATUS 记录 bun run typecheck 零 TypeScript 错误，bun run build 完成 CLI、SDK 和 declarations 构建。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '`bun run typecheck`',
-        note: 'at-commit 类型检查与构建命令结果。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 RELEASE 的 Reactive compaction 段记录 112/479、typecheck、build、declarations 和 36-tool compiled feature profile 通过，并明确 Live API recovery remains separately unverified。',
-      source: {
-        path: 'docs/RELEASE.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '## Reactive compaction',
-        note: '发布段同时记录执行结果、36 工具特性档和在线验证限制。',
-      },
-    },
-    {
-      kind: 'not-recorded',
-      statement: '没有真实 API 返回 PTL/media-size 后完成摘要、消息重建和再次请求的 live recovery 记录；新增测试也未执行真实 PreCompact 子进程或生产 compactor 的模型摘要。',
-    },
-  ],
-  remaining: [
+  ],  remaining: [
     '真实 PTL、图片/文档/PDF 超限响应及压缩后的 API 重试仍需授权环境验证；STATUS 的 Verified 限定为 offline compactor/hooks，不是在线恢复保证。',
     '新增套件注入 compactor、PreCompact 和 onSuccess，未在这条测试中贯通生产 compactConversation、PostCompact hook、模型摘要及真实清理副作用；编译特性档只检查启用状态。',
-    '普通 error、压缩过程中抛出的 APIUserAbortError、compact/session_memory 来源排除等分支虽已实现，但新增五项测试没有逐一作直接断言，不能从全量通过数字推定每项都有专门覆盖。',
+    '普通 error、压缩过程中抛出的 APIUserAbortError、compact/session_memory 来源排除等分支虽已实现，但新增五项测试没有逐一作直接断言，不能从全量数字推定每项都有专门覆盖。',
     '新增测试未直接断言 cacheSafeParams.forkContextMessages 与 messages 使用同一 stripped 数组，也未覆盖 tool_result 嵌套媒体替换；这些行为目前只有实现证据。',
     '既有 query 注释指出，若超限媒体进入压缩后保留尾部，下一次请求仍可能失败；hasAttemptedReactiveCompact 会阻止再次 reactive 恢复并让错误显露，本提交未消除这一限制。',
   ],
@@ -345,7 +262,7 @@ export const record = defineCommitRecord({
       '媒体仍在保留尾部或摘要再次 PTL 时可能恢复失败；结构化 exhausted/error、单次 hasAttempted 和手动错误翻译限制重试，但不承诺所有输入都能恢复。',
       '注入 mock 无法发现生产 compactor、真实 hook 或 API 的集成问题；因此文档只声明离线协调和编译特性档，保留 live recovery 验证项。',
     ],
-    verification: [
+    acceptanceSequence: [
       '运行 reactiveCompact.test.ts，构造带 isApiErrorMessage 的 PTL/media assistant 消息，检查默认检测及 CLAUDE_REACTIVE_COMPACT=0 后均不再 withheld。',
       '现有媒体用例读取注入 compactor 实参，直接断言 [image]、customInstructions、isAutoCompact 和 skipPreCompactHooks=true；另补读取第三个实参的回归，检查 cacheSafeParams.forkContextMessages 与 messages 使用同一 stripped 数组，不能把后者写成该提交已有断言。',
       '分别构造单组、预取消、最终 media-size 但纯文本以及 compactor 再抛 Prompt is too long，核对 too_few_groups、aborted、media_unstrippable、exhausted。',

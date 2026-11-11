@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: 'e5c06bc3865ddeee428732aae46dab58c412a545',
+  slug: 'feature-completion-status',
   title: 'Record feature completion and CI evidence',
   kind: 'evidence-update',
   status: 'implemented',
@@ -11,7 +12,7 @@ export const record = defineCommitRecord({
     '需要把前一实现提交的完整 SHA、CI run、远端存在性和验证汇总补入 RELEASE，同时保留 Cloud xattr 与 daemon/bridge remote control 的协议阻塞边界。本提交不修改 STATUS，也不实现任何功能。',
   goals: [
     '在 RELEASE 新增 Follow-up feature completion 段，明确其证据对象为 6b7bf48b0b4f0af740073eddbc5584f0c598c539。',
-    '记录 ci run 42757526053、origin/main 存在性以及 38/146、build 和 declarations 的历史结果。',
+    '记录 origin/main 存在性以及 38/146、build 和 declarations 的历史结果；CI 执行标识仅用于文档定位，不表示本次重新验证。',
   ],
   nonGoals: [
     '不重新实现或重新验证 Linux libsecret、npm marketplace、ultraplan、SDK rewind、stop hooks 和 SDK control APIs。',
@@ -31,50 +32,10 @@ export const record = defineCommitRecord({
     '新增内容只有提交标识、CI 编号、能力摘要和验证计数，不包含凭据或新的执行逻辑；npm registry 无访问等具体边界仍以 STATUS 为准。',
   ],
   acceptance: [
-    'RELEASE 新段的 Commit 字段精确指向直接父提交，CI 字段精确记录 42757526053 于 2026-11-10 通过。',
-    '新增验证汇总为 38 tests、146 assertions、build 与 declaration generation passing，且 Cloud 与 daemon/bridge 仍标为协议阻塞。',
+    'RELEASE 新段的 Commit 字段精确指向直接父提交，CI 字段记录 42757526053 仅用于文档定位，不表示本次重新执行。',
+    '新增验证汇总为 38 tests、146 assertions、build 与 declaration generation，且 Cloud 与 daemon/bridge 仍标为协议阻塞。',
     'diff 不含 docs/STATUS.md 或任何产品、测试文件变更。',
-  ],
-  evidence: [
-    {
-      kind: 'recorded-ci-pass',
-      statement: 'RELEASE 记录 ci run 42757526053 在 2026-11-10 通过；这是新增文档中的历史 CI 声明。',
-      source: {
-        path: 'docs/RELEASE.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '`ci` run `42757526053` passed on 2026-11-10',
-        note: 'Follow-up feature completion 段的 CI 记录。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: 'RELEASE 记录完整套件为 38 tests、146 assertions，并记录 build 与 declaration generation 通过。',
-      source: {
-        path: 'docs/RELEASE.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'The full suite now has 38 tests and 146 assertions',
-        note: '新增段落的验证计数与构建结果；不代表本记录编写时重跑。',
-      },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '新段把完整 SHA 6b7bf48b0b4f0af740073eddbc5584f0c598c539 与 origin/main 存在性写在同一证据对象下。',
-      source: {
-        path: 'docs/RELEASE.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'the same commit is present on `origin/main`',
-        note: '提交身份及远端状态的直接文档增量。',
-      },
-    },
-    {
-      kind: 'not-recorded',
-      statement: '该提交没有新增命令输出、真实 Cloud/remote 往返或独立 CI API 响应；只有 RELEASE 中的结果记录。',
-    },
-  ],
-  remaining: [
+  ],  remaining: [
     'Cloud xattr 与 daemon/bridge remote control 的协议阻塞说明保持未解；真实环境结果不能由这段发布摘要推得。',
   ],
   references: [
@@ -118,8 +79,8 @@ export const record = defineCommitRecord({
     risks: [
       '能力摘要容易被误读为本次文档提交重新实现或在线验证；证据类型必须保持为历史记录，并保留 offline/protocol-blocked 限定。',
     ],
-    verification: [
-      '比较父/当前 RELEASE，确认仅新增十行且 SHA、run ID、日期、38/146 计数逐项一致。',
+    acceptanceSequence: [
+      '比较父/当前 RELEASE，确认仅新增十行且 SHA、日期、38/146 计数逐项一致。',
       '核对 STATUS 无 diff，并确认 RELEASE 的 Cloud 与 remote-control 限定没有被省略。',
     ],
     completed: [

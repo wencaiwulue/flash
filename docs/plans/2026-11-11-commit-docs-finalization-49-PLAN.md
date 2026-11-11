@@ -1,0 +1,73 @@
+---
+commit: 5c5645575a79226d0a103b896681c9941d687d82
+title: "Finalize previous commit documentation"
+date: 2026-11-11T11:24:03+08:00
+status: implemented
+kind: metadata-migration
+---
+
+# 实施计划：Finalize previous commit documentation
+
+> 本文按实际代码依赖重建实施顺序，用于说明怎样完成该提交；不伪称是历史提交当时保存的计划。
+
+## 目标与前置条件
+
+需要为目标祖父提交补齐可发现的文档身份，并同步人类索引和机器索引；仅创建两个 Markdown 文件会留下断链与计数不一致。
+
+- 核对目标祖父提交 metadata 与 diff，并确认其文档对象和 69d3596 的层级关系。
+
+## 复用与兼容处理
+
+### 复用现有实现
+
+- 沿用现有 SPEC/PLAN frontmatter、INDEX 表格列和 status 对象字段，self 继续保持在末尾。
+
+### 兼容、迁移与生命周期
+
+- 既有条目顺序不变；Markdown 链接沿用 ../docs 形式，JSON 继续使用 repository-relative 路径。
+
+## 文件级实施步骤
+
+### 1. 编写祖父提交 SPEC
+
+填入目标祖父提交身份，列出其四个实际路径与 diff 统计。
+
+涉及位置：`docs/specs/0e2559a-SPEC.md`
+
+### 2. 编写祖父提交 PLAN
+
+使用相同 frontmatter，补齐目标、步骤、风险、验证和完成状态。
+
+涉及位置：`docs/plans/0e2559a-PLAN.md`
+
+### 3. 同步人类索引
+
+调整 implemented 汇总，在 self 前加入链接到新文件的祖父提交行。
+
+涉及位置：`docs/INDEX.md`
+
+### 4. 同步机器索引
+
+在 commits 数组的 self 前登记同一身份、状态和两个文档路径。
+
+涉及位置：`docs/status/index.json`
+
+## 风险与处理
+
+- 相同主题容易造成不同代际对象错位；只增行不改汇总会使统计失配，验证散文也可能被误读为执行记录。
+
+## 验收顺序
+
+1. 比对 frontmatter 与目标祖父提交 0e2559a 的 metadata，核对 SPEC 路径列表和目标祖父提交 0e2559a 的 diff，并解析 JSON 检查新增对象及链接。
+
+## 完成状态与剩余工作
+
+- 状态：**implemented**
+
+### 已完成
+
+- 四个文档元数据路径均按目标祖父提交闭合，两个索引均可发现新产物。
+
+### 未完成或后续工作
+
+- 文档所列命令没有随附执行日志，本记录仅验收元数据落盘与关联一致性。

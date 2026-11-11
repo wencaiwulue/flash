@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '612cc40e519f48121614051611d16b054823c24c',
+  slug: 'commit-docs-finalization',
   title: 'Finalize previous commit documentation',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -29,15 +30,7 @@ export const record = defineCommitRecord({
   acceptance: [
     '2a4aa6c 两份 frontmatter 身份一致，Actual scope 明确包含 1329f79 两个文档路径。',
     '人类和机器索引各增加一个 implemented 对象，be5c03e 保持前一项，self 保持最后。',
-  ],
-  evidence: [
-    { kind: 'diff-observed', statement: '2a4aa6c SPEC 使用完整目标 SHA，并列出 1329f79 文档组和 78/1 统计。', source: { path: 'docs/specs/2a4aa6c-SPEC.md', role: 'evidence', revision: 'commit', symbol: 'docs/plans/1329f79-PLAN.md', note: 'Actual scope 的目标路径锚点。' } },
-    { kind: 'diff-observed', statement: '2a4aa6c PLAN 保留实现步骤、验证序列与完成状态。', source: { path: 'docs/plans/2a4aa6c-PLAN.md', role: 'evidence', revision: 'commit', symbol: '# Implementation plan: Finalize documentation for previous commit', note: '标题与目标提交 subject 一致。' } },
-    { kind: 'diff-observed', statement: 'INDEX 汇总变为 Implemented 65，并加入 2a4aa6c 行。', source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'commit', symbol: '- Implemented: 65', note: 'Partial 和 Unimplemented 未同步增加。' } },
-    { kind: 'diff-observed', statement: 'JSON 在 self 前插入 2a4aa6c，指向本次新增的两个文件。', source: { path: 'docs/status/index.json', role: 'evidence', revision: 'commit', symbol: '"fullSha": "2a4aa6c36263b3b17c6c5f188b03cc9a6a7e3cff"', note: '机器身份与 INDEX 短 SHA 对应。' } },
-    { kind: 'not-recorded', statement: '本提交没有附带测试、typecheck、build、生成或 CI 输出，验证小节只是计划文本。' },
-  ],
-  remaining: ['0dabf46 和当前 612cc40 的文档不在本次范围；2a4aa6c 的生成计划仍无实际执行记录。'],
+  ],  remaining: ['0dabf46 和当前 612cc40 的文档不在本次范围；2a4aa6c 的生成计划仍无实际执行记录。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: 'Implemented 64→65，新增 2a4aa6c。' },
     { path: 'docs/plans/2a4aa6c-PLAN.md', role: 'changed', note: '新建 2a4aa6c 计划。' },
@@ -55,7 +48,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['be5c03e 及更早条目保持原序，self 字段和生成器行为不变，索引 schema 无新增。'],
     risks: ['0dabf46 与 2a4aa6c 都是相邻元数据提交，误用直接父会把 1329f79 和 be5c03e 两组范围对调。'],
-    verification: ['对照 2a4aa6c 原始元数据与 diff，检查两个新文件及父/当前索引的单项变化。'],
+    acceptanceSequence: ['对照 2a4aa6c 原始元数据与 diff，检查两个新文件及父/当前索引的单项变化。'],
     completed: ['2a4aa6c 的 SPEC、PLAN、INDEX 行和 JSON 对象已全部落盘。'],
     incomplete: ['没有可审查的命令或 CI 运行结果，implemented 只表示文档产物完成。'],
   },

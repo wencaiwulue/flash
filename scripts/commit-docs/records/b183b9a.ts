@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: 'b183b9a76948750cf396dd36c62ad06a62221b60',
+  slug: 'live-job-environment-gates',
   title: 'Gate live validation jobs on available environments',
   kind: 'component',
   status: 'partial',
@@ -34,36 +35,7 @@ export const record = defineCommitRecord({
   acceptance: [
     'diff 仅向 live-checks.yml 增加 33 行：一个 model if 和完整 cloud、desktop jobs。',
     'model/cloud 脚本仍分别是无缺省 guard、缺 token 抛错；desktop job 若进入步骤，其字面量 env 会走 screenshot 分支。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: 'at-commit workflow 可直接看到 model 的 secrets 条件、cloud 的三项 secrets 条件和两个新增 job。',
-      source: { path: '.github/workflows/live-checks.yml', role: 'evidence', revision: 'b183b9a76948750cf396dd36c62ad06a62221b60', symbol: "if: secrets.ANTHROPIC_API_KEY != ''", note: '初始 job 级门控及新增编排。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'desktop 使用 vars.CLAUDE_DESKTOP_LIVE 等值条件与 self-hosted runner，步骤环境仍固定为 1。',
-      source: { path: '.github/workflows/live-checks.yml', role: 'evidence', revision: 'b183b9a76948750cf396dd36c62ad06a62221b60', symbol: "if: vars.CLAUDE_DESKTOP_LIVE == '1'", note: '变量 opt-in 不等于 runner 自动发现。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '父脚本表明 cloud 在没有 OAuth token 时抛出错误，本提交未改变这一脚本行为。',
-      source: { path: 'scripts/live-cloud-validation.ts', role: 'evidence', revision: '4dd93b75220926cefbe9d5d017224238bfd8e0f1', symbol: 'Claude OAuth is required for cloud validation', note: '初始 workflow 接入时的既有脚本边界。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'desktop 的 DESKTOP_LIVE_SKIPPED 分支是复用代码，并非本提交新增。',
-      source: { path: 'scripts/live-desktop-validation.ts', role: 'evidence', revision: '4dd93b75220926cefbe9d5d017224238bfd8e0f1', symbol: "process.env.CLAUDE_DESKTOP_LIVE !== '1'", note: '脚本 guard 与 job gate 分属不同阶段。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'at-commit STATUS 仍要求另行准备授权的交互桌面，未提供原生桌面已通过依据。',
-      source: { path: 'docs/STATUS.md', role: 'evidence', revision: 'b183b9a76948750cf396dd36c62ad06a62221b60', symbol: 'Native Computer Use desktop control', note: '当时文档对 desktop 验证的明确限定。' },
-    },
-    { kind: 'not-recorded', statement: '没有随提交保存 workflow 解析、job 跳过、runner 分配或 live probe 日志。' },
-  ],
-  remaining: [
+  ],  remaining: [
     'model/cloud 的 job-if 上下文需要另行修正；desktop 变量与真实 runner 库存也未建立自动关联。',
   ],
   references: [
@@ -95,7 +67,7 @@ export const record = defineCommitRecord({
       'desktop 变量为 1 但没有 self-hosted runner 时不会由该表达式自动跳过；为假时虽可免占 runner，却没有脚本 skip 日志。',
       'cloud job 若实际进入且缺 token，复用脚本会失败而不是输出 CLOUD_LIVE_SKIPPED。',
     ],
-    verification: [
+    acceptanceSequence: [
       '静态比较父/当前 workflow 与四个脚本，确认 33 行新增和脚本零差异。',
       '后续应分别留存 workflow 解析、条件真假、runner 选择与脚本输出；本记录不宣称这些执行已发生。',
     ],

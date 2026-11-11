@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '2ff078cf60517f6aafe5e8fd542e2369334c17e3',
+  slug: 'remote-cloud-verification-status',
   title: 'Record remote control and Cloud verification',
   kind: 'evidence-update',
   status: 'implemented',
@@ -11,7 +12,7 @@ export const record = defineCommitRecord({
     '需要兑现该段末尾的元数据占位说明，补入实现提交身份、CI 结果和验证汇总；本提交只增加五行 RELEASE 内容，不改变 remote control、Cloud 或 STATUS。',
   goals: [
     '把 Remote control and Cloud unblocking 的证据对象固定为 02bc3c2efcd3f3d7978da33b2683e9d392f3220c。',
-    '追加 ci run 42778573907 及 61/247、typecheck、build、declarations、CLI/SDK smoke 的历史通过记录。',
+    '追加 61/247、typecheck、build、declarations、CLI/SDK smoke 的历史记录；CI 执行标识仅用于文档定位，不表示本次重新验证。',
   ],
   nonGoals: [
     '不新增或修改 env-less bridge、Files API、perpetual fallback 的实现，也不扩展其协议能力。',
@@ -31,50 +32,10 @@ export const record = defineCommitRecord({
     'diff 只含提交标识、CI 编号与验证计数，没有 secret、传输实现或权限变化；真实 remote/Cloud 环境边界不由文档元数据改变。',
   ],
   acceptance: [
-    'Commit 行等于直接父提交完整 SHA，CI 行记录 42778573907 于 2026-11-10 通过。',
+    'Commit 行等于直接父提交完整 SHA，CI 行记录 42778573907 仅用于文档定位，不表示本次重新执行。',
     'Verification 行精确包含 61 tests、247 assertions、typecheck、build、declarations 和 CLI/SDK smoke checks。',
     '父段关于 offline fake transport、Files API 与 env-based perpetual fallback 的表述及 STATUS 均保持原样。',
-  ],
-  evidence: [
-    {
-      kind: 'recorded-ci-pass',
-      statement: 'RELEASE 新增 ci run 42778573907 在 2026-11-10 通过的记录；本项只引用该文档证据。',
-      source: {
-        path: 'docs/RELEASE.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '`ci` run `42778573907` passed on 2026-11-10',
-        note: 'Remote control and Cloud unblocking 段新增的 CI 元数据。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: 'RELEASE 记录 61 tests、247 assertions 以及 typecheck、build、declarations、CLI/SDK smoke checks 全部通过。',
-      source: {
-        path: 'docs/RELEASE.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '61 tests and 247 assertions passed',
-        note: '新增 Verification 行的历史结果，不是本记录编写时执行。',
-      },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '提交只在已有 unblocking 段后追加完整父 SHA、CI 和 Verification 三行字段，段内既有协议边界未改。',
-      source: {
-        path: 'docs/RELEASE.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '`02bc3c2efcd3f3d7978da33b2683e9d392f3220c`',
-        note: '把验证元数据绑定到直接父实现提交。',
-      },
-    },
-    {
-      kind: 'not-recorded',
-      statement: '本提交未附真实 Cloud API/remote bridge 往返结果；at-commit STATUS 仍把两者列为授权环境中的后续检查。',
-    },
-  ],
-  remaining: [
+  ],  remaining: [
     '真实 Cloud API 与 remote bridge round trips 仍需授权环境证据；pure env-less perpetual 也仍是独立协议任务。',
   ],
   references: [
@@ -118,8 +79,8 @@ export const record = defineCommitRecord({
     risks: [
       '简洁的 Verification 行可能遮蔽 offline 范围；必须和同段前文及 STATUS 一起解读，不能据此提升真实环境状态。',
     ],
-    verification: [
-      '检查 diff 只有 RELEASE 五行新增，并逐项比对父 SHA、run ID、日期与 61/247 计数。',
+    acceptanceSequence: [
+      '检查 diff 只有 RELEASE 五行新增，并逐项比对父 SHA、执行标识、日期与 61/247 计数。',
       '确认 STATUS 无变更，且真实 Cloud/remote round trips 和 pure env-less perpetual 未被写成已完成。',
     ],
     completed: [

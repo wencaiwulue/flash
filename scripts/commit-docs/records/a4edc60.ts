@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: 'a4edc60de4da2600197f59e1b032d5e4a754e19b',
+  slug: 'commit-docs-finalization',
   title: 'Complete previous commit documentation',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -28,31 +29,7 @@ export const record = defineCommitRecord({
   acceptance: [
     '两个 frontmatter 均含 dc3f075 全 SHA、准确日期、Complete 标题和 implemented 状态。',
     'SPEC 清单指向 5c5bc03，INDEX 75/1/0 与 JSON 新对象一致，self 内容及末位不变且没有额外文件。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: 'dc3f075-SPEC 的提交身份为 dc3f075，Actual scope 明确包含 5c5bc03 的 SPEC 和 PLAN。',
-      source: { path: 'docs/specs/dc3f075-SPEC.md', role: 'evidence', revision: 'a4edc60de4da2600197f59e1b032d5e4a754e19b', symbol: 'docs/specs/5c5bc03-SPEC.md', note: '内层 5c5bc03 路径来自该提交的 SPEC。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '新 PLAN 使用与 dc3f075 相同的完整 SHA 和 Complete previous commit documentation 标题。',
-      source: { path: 'docs/plans/dc3f075-PLAN.md', role: 'evidence', revision: 'a4edc60de4da2600197f59e1b032d5e4a754e19b', symbol: 'commit: dc3f075364391ad09070858cd0763d57e7c073c9', note: '计划文件的身份可直接在 a4edc60 版本核对。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'INDEX 更新到 Implemented 75，并增加指向 dc3f075 两个新文件的表格链接。',
-      source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'a4edc60de4da2600197f59e1b032d5e4a754e19b', symbol: '- Implemented: 75', note: '计数 patch 与 dc3f075 新行同属此提交。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'status JSON 在 self 前写入 dc3f075 完整对象，两个文档字段使用对应短 SHA 文件名。',
-      source: { path: 'docs/status/index.json', role: 'evidence', revision: 'a4edc60de4da2600197f59e1b032d5e4a754e19b', symbol: '"fullSha": "dc3f075364391ad09070858cd0763d57e7c073c9"', note: '状态对象与 Markdown frontmatter 对齐。' },
-    },
-    { kind: 'not-recorded', statement: '没有任何随提交保存的命令日志或 CI 结论，验证段落不能证明检查已经通过。' },
-  ],
-  remaining: ['dc3f075 的设计分析在生成文档中仍很简略；除元数据一致性外，本提交没有留下更多可验证行为证据。'],
+  ],  remaining: ['dc3f075 的设计分析在生成文档中仍很简略；除元数据一致性外，本提交没有留下更多可验证行为证据。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: 'dc3f075 行新增，implemented 汇总更新为 75。' },
     { path: 'docs/plans/dc3f075-PLAN.md', role: 'changed', note: '为目标祖父提交新建 Complete 计划。' },
@@ -70,7 +47,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['既有历史条目和 self 引导项目不变，状态计数只增加 implemented，文件命名遵循短 SHA 约定。'],
     risks: ['dc3f075 与 5c5bc03 都是 Complete 标题，短 SHA 替换不足以保证内容正确，必须检查内层对象。'],
-    verification: ['在 a4edc60 版本比对 frontmatter、5c5bc03 清单、75/1/0 汇总和 JSON 映射，并确认 diff 只有四路径。'],
+    acceptanceSequence: ['在 a4edc60 版本比对 frontmatter、5c5bc03 清单、75/1/0 汇总和 JSON 映射，并确认 diff 只有四路径。'],
     completed: ['dc3f075 的 SPEC/PLAN 和双索引注册已完成写入，self 保持最后。'],
     incomplete: ['没有保存实际测试或 CI 输出，文档完成不代表这些外部检查完成。'],
   },

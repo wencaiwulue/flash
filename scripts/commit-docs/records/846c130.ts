@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '846c13000bb120adf83febaf0732e704446a0e02',
+  slug: 'commit-docs-finalization',
   title: 'Complete previous commit documentation',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -28,31 +29,7 @@ export const record = defineCommitRecord({
   acceptance: [
     'SPEC/PLAN 和 JSON 均锁定 c8338e1be21cdc792f1c69a5bf3c0094d3c29261，时间与 Complete 标题一致。',
     'INDEX 为 85/1/0，c8338e1 行紧随 3c4b6f2，两个索引均指向本次创建的 SPEC/PLAN，self 保持在末尾。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: 'c8338e1 SPEC 的 Actual scope 包含 fdffe9e 的 SPEC/PLAN，并明确四文件、78 行新增和 1 行删除。',
-      source: { path: 'docs/specs/c8338e1-SPEC.md', role: 'evidence', revision: 'commit', symbol: 'docs/plans/fdffe9e-PLAN.md', note: '嵌套 fdffe9e 路径不是本提交的 changed path。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '新 PLAN 以 c8338e1 完整 SHA 和 Complete 标题开头，正文记录 implemented 完成状态。',
-      source: { path: 'docs/plans/c8338e1-PLAN.md', role: 'evidence', revision: 'commit', symbol: 'commit: c8338e1be21cdc792f1c69a5bf3c0094d3c29261', note: 'frontmatter 将被补档身份固定下来。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'INDEX 汇总从 Implemented 84 改为 85，并增加 c8338e1 的两个相对链接。',
-      source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'commit', symbol: '- Implemented: 85', note: '表格中的 self 行未被修改。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'status patch 添加 c8338e1 对象，其 plan 字段为 docs/plans/c8338e1-PLAN.md，位置在 self 前。',
-      source: { path: 'docs/status/index.json', role: 'evidence', revision: 'commit', symbol: '"plan": "docs/plans/c8338e1-PLAN.md"', note: 'spec 字段与对应新 SPEC 同时新增。' },
-    },
-    { kind: 'not-recorded', statement: '验证段落没有配套运行记录，因此不能据此宣称 bun 命令或 CI 成功。' },
-  ],
-  remaining: ['生成的背景、风险与实施步骤较泛化，未说明 c8338e1 补丁中各字段为何这样变化。'],
+  ],  remaining: ['生成的背景、风险与实施步骤较泛化，未说明 c8338e1 补丁中各字段为何这样变化。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: 'Implemented 84→85，新增 c8338e1 行。' },
     { path: 'docs/plans/c8338e1-PLAN.md', role: 'changed', note: '新建 c8338e1 的 Complete 计划。' },
@@ -70,7 +47,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['旧文档和旧 JSON 对象保持原样，self 的路径格式及末尾排序继续兼容读取方。'],
     risks: ['Complete 标题与多层 parent 关系容易造成日期或路径错代，验证模板也不能替代真实证据。'],
-    verification: ['对照 c8338e1 的原始 metadata 和路径块，检查 current SPEC/PLAN、85 计数及 JSON 对象是否同源。'],
+    acceptanceSequence: ['对照 c8338e1 的原始 metadata 和路径块，检查 current SPEC/PLAN、85 计数及 JSON 对象是否同源。'],
     completed: ['c8338e1 的两个新文档和两个索引入口已经同步落盘。'],
     incomplete: ['没有保存验证执行结果，生成文本也未提供更具体的设计过程。'],
   },

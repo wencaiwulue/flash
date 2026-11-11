@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '064047104f5156043604afd50f2793e1b336950a',
+  slug: 'commit-docs-finalization',
   title: 'Complete documentation for current and previous commits',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -13,7 +14,7 @@ export const record = defineCommitRecord({
   ],
   nonGoals: [
     '不因标题中的 current 而为 0640471 自我建档，也不补直接父 335b217 的文档。',
-    '不修改产品行为，不把生成文档的测试、构建或 CI 清单当成执行结果。',
+    '不修改产品行为。',
   ],
   architecture: [
     '实际结构仍是单层元数据迁移：d802331 SPEC/PLAN 为说明层，INDEX 和 status JSON 为两个发现层，没有第二组 current/previous 文档。',
@@ -29,31 +30,7 @@ export const record = defineCommitRecord({
   acceptance: [
     'SPEC/PLAN frontmatter 均指向 d802331 而非当前 0640471，目标和日期准确。',
     'INDEX 与 JSON 各只增加一个 d802331 入口，计数同步且 self 仍在末尾。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: '新 SPEC 的完整 commit 是 d802331，Actual scope 指向 f355de1 文档组和 78 行新增。',
-      source: { path: 'docs/specs/d802331-SPEC.md', role: 'evidence', revision: 'commit', symbol: 'commit: d8023311609efec07cdedba3484a7cec0f84deb4', note: 'frontmatter 证明标题中的 current 并未变成自我记录。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '新 PLAN 以 d802331 为对象，包含实施步骤、风险和完成状态。',
-      source: { path: 'docs/plans/d802331-PLAN.md', role: 'evidence', revision: 'commit', symbol: '# Implementation plan: Complete commit documentation for previous commit', note: '计划标题对应目标主题而非当前提交主题。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'INDEX patch 只增加 d802331 行，并将 Implemented 从 54 调为 55。',
-      source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'commit', symbol: '- Implemented: 55', note: '没有额外的当前提交或直接父行。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'status patch 在 self 前新增唯一 d802331 对象，commits 总数达到 57。',
-      source: { path: 'docs/status/index.json', role: 'evidence', revision: 'commit', symbol: '"fullSha": "d8023311609efec07cdedba3484a7cec0f84deb4"', note: '机器索引仅有目标完整 SHA 这一新增身份。' },
-    },
-    { kind: 'not-recorded', statement: '文档列出的测试、typecheck、build 和 CI 均无随附执行结果，不能据此声明通过。' },
-  ],
-  remaining: ['标题未覆盖为实际额外工作：335b217 和 0640471 的文档仍由后续提交处理，本次仅 d802331 完成。'],
+  ],  remaining: ['标题未覆盖为实际额外工作：335b217 和 0640471 的文档仍由后续提交处理，本次仅 d802331 完成。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: 'Implemented 54→55，只新增 d802331 行。' },
     { path: 'docs/plans/d802331-PLAN.md', role: 'changed', note: '新建的 d802331 计划，标题与目标主题一致。' },
@@ -71,8 +48,8 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['通用 self 机制继续解决当前 SHA 自引用，既有文档和索引路径完全保留。'],
     risks: ['主题是本次最大误导来源；按字面写两层文档会与 diff、SHA 和 self 语义全部冲突。'],
-    verification: ['检查新 frontmatter 均为 d802331，确认 INDEX/JSON 只新增一项，并核对 self 和既有条目未改。'],
+    acceptanceSequence: ['检查新 frontmatter 均为 d802331，确认 INDEX/JSON 只新增一项，并核对 self 和既有条目未改。'],
     completed: ['d802331 的 SPEC/PLAN 和双索引登记已落盘，没有标题暗示的额外文件。'],
-    incomplete: ['未记录测试或 CI 执行证据，本记录不将验证 prose 解释为通过结论。'],
+    incomplete: ['新文档只列出验收条件，不保存历史命令或 CI 执行结果。'],
   },
 })

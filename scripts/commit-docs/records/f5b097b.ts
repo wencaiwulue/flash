@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: 'f5b097b742b8e9d68acce71c9b2fa38e19c6088a',
+  slug: 'commit-docs-finalization',
   title: 'Complete previous commit documentation',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -28,31 +29,7 @@ export const record = defineCommitRecord({
   acceptance: [
     '两个 frontmatter 使用 8a248e3 全 SHA、准确日期、Complete previous commit documentation 和 implemented。',
     'Actual scope 列出 a4edc60 双文档，INDEX 为 79/1/0，status 路径正确，self 内容和末位不变且无额外 diff。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: '8a248e3-SPEC 在范围内明确包含 a4edc60 的 SPEC，同时 frontmatter 绑定 8a248e3。',
-      source: { path: 'docs/specs/8a248e3-SPEC.md', role: 'evidence', revision: 'f5b097b742b8e9d68acce71c9b2fa38e19c6088a', symbol: 'docs/specs/a4edc60-SPEC.md', note: '内层 a4edc60 路径区分相邻 Complete 文档。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '新 PLAN 使用 8a248e3 的完整 SHA 和相同 Complete 标题，并包含计划各小节。',
-      source: { path: 'docs/plans/8a248e3-PLAN.md', role: 'evidence', revision: 'f5b097b742b8e9d68acce71c9b2fa38e19c6088a', symbol: 'commit: 8a248e3a57a3121e5e0bfeb7dbdeefb1551ac9b3', note: '计划身份证据固定在 f5b097b。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'INDEX patch 将 Implemented 更新为 79，并添加 8a248e3 的两个文档链接。',
-      source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'f5b097b742b8e9d68acce71c9b2fa38e19c6088a', symbol: '- Implemented: 79', note: '最终 at-commit 汇总由 INDEX 直接观察。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'status JSON 在 self 前登记 8a248e3 完整对象，spec/plan 字段指向本次新文件。',
-      source: { path: 'docs/status/index.json', role: 'evidence', revision: 'f5b097b742b8e9d68acce71c9b2fa38e19c6088a', symbol: '"fullSha": "8a248e3a57a3121e5e0bfeb7dbdeefb1551ac9b3"', note: '最后一个目标对象与 Markdown 身份一致。' },
-    },
-    { kind: 'not-recorded', statement: '该提交没有保存测试、typecheck、build 或 CI 结果，验证列表不构成执行证据。' },
-  ],
-  remaining: ['8a248e3 的生成文档仍缺少深入设计说明；本记录只确认四路径事实，不增加未经记录的验证结论。'],
+  ],  remaining: ['8a248e3 的生成文档仍缺少深入设计说明；本记录只确认四路径事实，不增加未经记录的验证结论。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: '加入 8a248e3 行并把 Implemented 提至 79。' },
     { path: 'docs/plans/8a248e3-PLAN.md', role: 'changed', note: '为祖父提交 8a248e3 新建 Complete 计划。' },
@@ -70,7 +47,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['保留此前 78 个 implemented 项、Partial/Unimplemented 计数和 self 的全部字段，新增路径遵循现有约定。'],
     risks: ['相同 Complete 标题和 78 增 1 删统计不能用于识别目标，必须依靠 8a248e3 full SHA 与 a4edc60 范围。'],
-    verification: ['在 f5b097b 版本比对 frontmatter、a4edc60 清单、79/1/0 汇总、JSON 新对象和 self 末位，并核对四文件 diff。'],
+    acceptanceSequence: ['在 f5b097b 版本比对 frontmatter、a4edc60 清单、79/1/0 汇总、JSON 新对象和 self 末位，并核对四文件 diff。'],
     completed: ['8a248e3 的 SPEC、PLAN、INDEX 行及 status 对象全部落盘，self 未改变。'],
     incomplete: ['没有真实测试或 CI 执行记录，文档中的检查清单仍待独立验证。'],
   },

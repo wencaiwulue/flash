@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: 'dc3f075364391ad09070858cd0763d57e7c073c9',
+  slug: 'commit-docs-finalization',
   title: 'Complete previous commit documentation',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -28,31 +29,7 @@ export const record = defineCommitRecord({
   acceptance: [
     'frontmatter 使用 5c5bc03 完整 SHA、2026-11-11T11:14:17+08:00 和 implemented，两个文件标题一致。',
     '内层范围准确列出 787b2dc，INDEX 汇总为 73/1/0，JSON 路径与新增文件一致且 self 不变。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: 'SPEC frontmatter 标识 5c5bc03，Actual scope 的文件名为 787b2dc-SPEC 和 787b2dc-PLAN。',
-      source: { path: 'docs/specs/5c5bc03-SPEC.md', role: 'evidence', revision: 'dc3f075364391ad09070858cd0763d57e7c073c9', symbol: 'docs/specs/787b2dc-SPEC.md', note: '该符号证明内层对象不是 6b0ce9d。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '新 PLAN 以 Complete previous commit documentation 为题，frontmatter 与 SPEC 的提交身份一致。',
-      source: { path: 'docs/plans/5c5bc03-PLAN.md', role: 'evidence', revision: 'dc3f075364391ad09070858cd0763d57e7c073c9', symbol: 'commit: 5c5bc03abc666d111ae5e4227224884bbaafd340', note: 'PLAN 在 dc3f075 中首次出现。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'INDEX patch 把 72 改为 73，并追加带两个相对链接的 5c5bc03 行。',
-      source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'dc3f075364391ad09070858cd0763d57e7c073c9', symbol: '- Implemented: 73', note: 'at-commit 汇总证据，不代表运行验证。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'status patch 在 self 前新增 5c5bc03 对象，完整 SHA 和文档路径与 SPEC/PLAN 相符。',
-      source: { path: 'docs/status/index.json', role: 'evidence', revision: 'dc3f075364391ad09070858cd0763d57e7c073c9', symbol: '"fullSha": "5c5bc03abc666d111ae5e4227224884bbaafd340"', note: '机器状态条目覆盖同一目标。' },
-    },
-    { kind: 'not-recorded', statement: '没有测试输出、构建日志或 CI 状态随该提交保存，文档中的验证序列只是计划文字。' },
-  ],
-  remaining: ['5c5bc03 文档对设计动机的说明有限；本记录依据 diff 还原范围，不推断未写出的实现过程或验证结果。'],
+  ],  remaining: ['5c5bc03 文档对设计动机的说明有限；本记录依据 diff 还原范围，不推断未写出的实现过程或验证结果。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: '5c5bc03 新行与 Implemented 73 同步落盘。' },
     { path: 'docs/plans/5c5bc03-PLAN.md', role: 'changed', note: '新建 Complete 类型的目标祖父提交计划。' },
@@ -70,7 +47,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['旧索引行与 JSON 对象保持顺序，Partial/Unimplemented 数量及 self 的引导项目元数据不受影响。'],
     risks: ['相同的 Complete/Finalize 循环标题和相同 diff 统计容易让 5c5bc03 与相邻身份错位，需用完整 SHA 防错。'],
-    verification: ['检查 dc3f075 中 frontmatter、787b2dc 文件清单、73/1/0 汇总和 JSON 新增对象，再对照四路径 diff。'],
+    acceptanceSequence: ['检查 dc3f075 中 frontmatter、787b2dc 文件清单、73/1/0 汇总和 JSON 新增对象，再对照四路径 diff。'],
     completed: ['5c5bc03 的双文档和双索引注册已完整加入，未修改其他文件。'],
     incomplete: ['提交没有记录实际命令结果，因此运行时质量和 CI 状态仍未被证实。'],
   },

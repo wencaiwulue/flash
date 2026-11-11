@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '4dd93b75220926cefbe9d5d017224238bfd8e0f1',
+  slug: 'reregister-live-validation-workflow',
   title: 'Re-register live validation workflow',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -16,16 +17,7 @@ export const record = defineCommitRecord({
   decisions: ['以单一 R100 rename 表达注册路径变化，保留 model、skillhub 两个 job 及原有 name 字段。'],
   alternatives: ['事后看，同时修改 name 虽能让显示名贴近新文件名，却会破坏纯重命名范围；保留旧路径则不存在本次可观察的注册路径迁移。'],
   security: ['contents: read、secret 与 variable 引用均逐字保留，没有新增权限或执行步骤。'],
-  acceptance: ['旧路径消失、新路径出现，rename detection 为 R100，新旧 blob 直接比较为空。'],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: 'diff 只有 live-validation.yml 到 live-checks.yml 的 R100；at-commit 文件仍声明 name: live-validation。',
-      source: { path: '.github/workflows/live-checks.yml', role: 'evidence', revision: 'commit', symbol: 'name: live-validation', note: '新路径文件与父路径内容一致。' },
-    },
-    { kind: 'not-recorded', statement: '提交没有外部 registry 响应或 workflow 运行记录。' },
-  ],
-  remaining: ['GitHub 是否随后收录或执行新路径下的 workflow，需要平台侧证据。'],
+  acceptance: ['旧路径消失、新路径出现，rename detection 为 R100，新旧 blob 直接比较为空。'],  remaining: ['GitHub 是否随后收录或执行新路径下的 workflow，需要平台侧证据。'],
   references: [
     { path: '.github/workflows/live-checks.yml', oldPath: '.github/workflows/live-validation.yml', role: 'changed', note: '同一 YAML blob 的纯重命名，覆盖新旧两个路径。' },
   ],
@@ -38,7 +30,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['手动触发、17 6 * * * schedule 和两条验证命令保持原样；仅依赖文件名的外部消费者需要识别新路径。'],
     risks: ['显示名与文件名不同，且路径变化本身不能证明平台注册结果。'],
-    verification: ['用 rename-aware diff 检查唯一变更，再比较两个 revision 的 workflow blob。'],
+    acceptanceSequence: ['用 rename-aware diff 检查唯一变更，再比较两个 revision 的 workflow blob。'],
     completed: ['新旧路径替换及零内容变化均可由提交直接确认。'],
     incomplete: ['换名后的注册、dispatch 和 schedule 执行情况未记录。'],
   },

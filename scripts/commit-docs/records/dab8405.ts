@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: 'dab8405a36c2cb18c22b58235c8124265666b162',
+  slug: 'implementation-boundaries-status',
   title: 'Document remaining implementation boundaries',
   kind: 'evidence-update',
   status: 'implemented',
@@ -33,36 +34,7 @@ export const record = defineCommitRecord({
   acceptance: [
     '新增边界清单准确区分未实现 stub、缺失外部协议、替代实现和验证缺口。',
     '实施顺序由三项扩为五项，新增 HISTORY_SNIP/ReviewArtifact、changed-file/cron/LSP 回归及 reactive-compaction 模型验证，原有 Cloud 与 env-less 条件不变。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: 'at-commit STATUS 新增六条剩余边界，明确 HISTORY_SNIP 与 REVIEW_ARTIFACT 仍为 stub，并单列三类确定性测试缺口。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '## Remaining implementation boundaries',
-        note: '剩余实现和验证边界的直接文档证据。',
-      },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'Next implementation order 从三项调整为五项，先实现和补回归，再进行授权模型、Cloud 与 remote 验证。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '## Next implementation order',
-        note: '后续顺序变化可在该小节逐项核对。',
-      },
-    },
-    {
-      kind: 'not-recorded',
-      statement: '本提交没有随附新的测试、构建或 live 命令输出；文档列出的实施项不是完成记录。',
-    },
-  ],
-  remaining: [
+  ],  remaining: [
     '清单中的 HISTORY_SNIP、ReviewArtifact、远程 canonical skills 和其他私有后端在该 revision 仍是边界，而非本次交付物。',
     'changed-file、cron、LSP 回归以及授权环境中的模型、Cloud、remote 验证仍按文档顺序待办。',
   ],
@@ -95,7 +67,7 @@ export const record = defineCommitRecord({
     risks: [
       '规划动词容易被误读为实现结果；正文必须使用 still、need 等边界措辞，并避免新增无来源的执行声明。',
     ],
-    verification: [
+    acceptanceSequence: [
       '逐行比较父提交与 at-commit STATUS，核对新增六条边界、五项顺序及唯一变更路径。',
     ],
     completed: [

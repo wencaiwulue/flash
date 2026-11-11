@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '6b0ce9d6834a125567ec0121caa531f5b8341101',
+  slug: 'commit-docs-finalization',
   title: 'Finalize previous commit documentation',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -28,31 +29,7 @@ export const record = defineCommitRecord({
   acceptance: [
     '两个 frontmatter 与 b6bf982 的 full SHA、2026-11-11T11:12:31+08:00 时间及标题一致。',
     'INDEX 70/1/0 汇总、新增 b6bf982 链接行和 status 中同 SHA 对象相互对应，self 仍在最后且没有额外变更路径。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: '新 SPEC frontmatter 锁定 b6bf982，而 Actual scope 列出的是该提交为 6c3c1e4 创建的两个产物。',
-      source: { path: 'docs/specs/b6bf982-SPEC.md', role: 'evidence', revision: '6b0ce9d6834a125567ec0121caa531f5b8341101', symbol: 'commit: b6bf9822536793efc08cd9ce4d94f1c066530d1c', note: '提交版本中的 SPEC 同时提供身份与嵌套范围。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '新 PLAN 使用同一 b6bf982 身份并包含实施步骤、风险、验证及完成状态小节。',
-      source: { path: 'docs/plans/b6bf982-PLAN.md', role: 'evidence', revision: '6b0ce9d6834a125567ec0121caa531f5b8341101', symbol: '## Implementation steps', note: '该 PLAN 是本次新增文件。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'INDEX patch 将 implemented 计数改为 70，并在 self 前加入 b6bf982 的双链接行。',
-      source: { path: 'docs/INDEX.md', role: 'evidence', revision: '6b0ce9d6834a125567ec0121caa531f5b8341101', symbol: '- Implemented: 70', note: 'at-commit 索引可核对汇总和行位置。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'status patch 插入 b6bf982 完整对象，spec/plan 字段指向本次新建的两个路径。',
-      source: { path: 'docs/status/index.json', role: 'evidence', revision: '6b0ce9d6834a125567ec0121caa531f5b8341101', symbol: '"fullSha": "b6bf9822536793efc08cd9ce4d94f1c066530d1c"', note: '机器索引登记的是祖父提交身份。' },
-    },
-    { kind: 'not-recorded', statement: '新文档列出的 bun test、typecheck、build 与 CI 均没有随附输出，不能作为已通过证据。' },
-  ],
-  remaining: ['新 SPEC/PLAN 对 b6bf982 的设计说明较模板化；本记录只能确认其实际元数据范围和关联，不能补足未记录的验证。'],
+  ],  remaining: ['新 SPEC/PLAN 对 b6bf982 的设计说明较模板化；本记录只能确认其实际元数据范围和关联，不能补足未记录的验证。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: 'Implemented 69→70，新增 b6bf982 表格入口。' },
     { path: 'docs/plans/b6bf982-PLAN.md', role: 'changed', note: '新建祖父提交 b6bf982 的实施计划。' },
@@ -70,7 +47,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['保留前 69 个 implemented 条目及 self 字段；新增 Markdown 链接和 JSON repository-relative 路径遵循现有格式。'],
     risks: ['主要风险是把直接父版本 787b2dc 与目标祖父 b6bf982 混用，或把 SPEC 内 6c3c1e4 的范围当成本提交 diff。'],
-    verification: ['比较两个 frontmatter 与 b6bf982 metadata，核对 6c3c1e4 路径清单，并检查 70/1/0 汇总、JSON 对象及 self 末位。'],
+    acceptanceSequence: ['比较两个 frontmatter 与 b6bf982 metadata，核对 6c3c1e4 路径清单，并检查 70/1/0 汇总、JSON 对象及 self 末位。'],
     completed: ['b6bf982 的两个新产物与双索引入口已落盘，四处变更均有对应身份和路径。'],
     incomplete: ['没有可归属于该提交的测试日志或 CI 结果，文档验证清单仍只是声明。'],
   },

@@ -1,18 +1,17 @@
 import type {
   Commit,
-  CommitEvidence,
   CommitRecord,
   CommitReference,
   CommitStatus,
   DocumentationMode,
 } from './schema.ts'
 import type { LoadedRecords } from './load.ts'
+import { historicalDocumentPaths, SELF_DOCUMENT_PATHS } from './naming.ts'
 
 const ROLE_LABELS = {
   changed: '变更',
   reused: '复用',
   test: '测试',
-  evidence: '证据',
 } as const
 
 function bullets(items: string[]): string {
@@ -48,12 +47,6 @@ function referenceText(reference: CommitReference): string {
   return `\`${reference.path}\`${rename}${symbol}${revision}`
 }
 
-function evidenceSource(evidence: CommitEvidence): string {
-  if (evidence.source) return referenceText(evidence.source)
-  if (evidence.kind === 'not-recorded') return '未随提交记录执行证据'
-  if (evidence.kind === 'diff-observed') return '该提交 diff 与 Git 元数据'
-  return '未提供独立来源'
-}
 
 export function expectedHistorical(commits: Commit[], mode: DocumentationMode): Commit[] {
   return mode === 'next' ? commits : commits.slice(0, -1)
@@ -112,12 +105,6 @@ ${bullets(record.security)}
 
 ${bullets(record.acceptance)}
 
-## 验证证据
-
-| 类型 | 证据陈述 | 来源 |
-|---|---|---|
-${record.evidence.map(evidence => `| ${evidence.kind} | ${tableCell(evidence.statement)} | ${tableCell(evidenceSource(evidence))} |`).join('\n')}
-
 ## 实现状态与剩余范围
 
 - 状态：**${record.status}**
@@ -161,9 +148,9 @@ ${step.detail}
 
 ${bullets(record.plan.risks)}
 
-## 验证顺序
+## 验收顺序
 
-${record.plan.verification.map((item, index) => `${index + 1}. ${item}`).join('\n')}
+${record.plan.acceptanceSequence.map((item, index) => `${index + 1}. ${item}`).join('\n')}
 
 ## 完成状态与剩余工作
 
@@ -186,6 +173,10 @@ export function buildDocuments(
 ): Map<string, string> {
   const documents = new Map<string, string>()
   const selected = expectedHistorical(history, mode)
+  const documentPaths = historicalDocumentPaths(
+    selected,
+    full => loaded.historical.get(full),
+  )
   const counts: Record<CommitStatus, number> = {
     implemented: 0,
     partial: 0,
@@ -196,12 +187,11 @@ export function buildDocuments(
 
   for (const commit of selected) {
     const record = loaded.historical.get(commit.full)!
+    const paths = documentPaths.get(commit.full)!
     counts[record.status]++
-    const spec = `docs/specs/${commit.short}-SPEC.md`
-    const plan = `docs/plans/${commit.short}-PLAN.md`
-    documents.set(spec, specFor(record, commit))
-    documents.set(plan, planFor(record, commit))
-    rows.push(`| ${commit.short} | ${commit.subject.replaceAll('|', '\\|')} | ${record.status} | [SPEC](../${spec}) | [PLAN](../${plan}) |`)
+    documents.set(paths.spec, specFor(record, commit))
+    documents.set(paths.plan, planFor(record, commit))
+    rows.push(`| ${commit.short} | ${commit.subject.replaceAll('|', '\\|')} | ${record.status} | [SPEC](../${paths.spec}) | [PLAN](../${paths.plan}) |`)
     jsonCommits.push({
       fullSha: commit.full,
       shortSha: commit.short,
@@ -209,22 +199,24 @@ export function buildDocuments(
       subject: commit.subject,
       status: record.status,
       kind: record.kind,
-      spec,
-      plan,
+      slug: paths.slug,
+      spec: paths.spec,
+      plan: paths.plan,
     })
   }
 
-  documents.set('docs/specs/self-SPEC.md', specFor(loaded.self))
-  documents.set('docs/plans/self-PLAN.md', planFor(loaded.self))
-  rows.push(`| self (${loaded.self.changeId}) | ${loaded.self.title!.replaceAll('|', '\\|')} | ${loaded.self.status} | [SPEC](../docs/specs/self-SPEC.md) | [PLAN](../docs/plans/self-PLAN.md) |`)
+  documents.set(SELF_DOCUMENT_PATHS.spec, specFor(loaded.self))
+  documents.set(SELF_DOCUMENT_PATHS.plan, planFor(loaded.self))
+  rows.push(`| self (${loaded.self.changeId}) | ${loaded.self.title!.replaceAll('|', '\\|')} | ${loaded.self.status} | [SPEC](../${SELF_DOCUMENT_PATHS.spec}) | [PLAN](../${SELF_DOCUMENT_PATHS.plan}) |`)
   jsonCommits.push({
     fullSha: 'self',
     changeId: loaded.self.changeId,
     subject: loaded.self.title,
     status: loaded.self.status,
     kind: loaded.self.kind,
-    spec: 'docs/specs/self-SPEC.md',
-    plan: 'docs/plans/self-PLAN.md',
+    slug: loaded.self.slug,
+    spec: SELF_DOCUMENT_PATHS.spec,
+    plan: SELF_DOCUMENT_PATHS.plan,
   })
   documents.set(
     'docs/INDEX.md',

@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: 'd925b128abfd8ecd0cc36a26364b497083fd305e',
+  slug: 'computer-use-browser-mcp',
   title: 'Integrate open computer use and browser MCP',
   kind: 'component',
   status: 'implemented',
@@ -19,7 +20,7 @@ export const record = defineCommitRecord({
   ],
   nonGoals: [
     '不宣称已经控制用户当前 Chrome tab、继承其登录态或接通旧 extension socket 权限协议。',
-    '不把 Zavora 工具目录和权限拒绝测试解释为原生桌面点击、键盘、剪贴板或 TCC 已实机通过。',
+    '不把 Zavora 工具目录和权限拒绝测试解释为原生桌面点击、键盘、剪贴板或 TCC 已实机验证。',
     '不声称新 dispatcher 已按 target_app 对授权 bundle ID 做逐项匹配；当前检查的是 app allowlist 是否为空及所需 flags。',
     '不为 WebBrowser 添加默认站点白名单；只有配置 PLAYWRIGHT_MCP_ALLOWED_ORIGINS 时才传 allowedOrigins。',
     '不把同步 buildComputerUseTools 的兼容宽松 schema 当作真实 setup/ListTools 数据来源。',
@@ -65,91 +66,7 @@ export const record = defineCommitRecord({
     '异步 setup、in-process/stdio server、skill 与 main 启动链接口一致，目录连接失败可清理后重试。',
     '外部特性档包含 42 个非空工具及 WebBrowser，提交内记录 142 tests/611 assertions 和构建结果。',
     '原生桌面控制、真实 app 逐项授权、现有 Chrome tab 和远程网站登录态没有被本地浏览器证据替代。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: '该 revision 直接创建 Zavora desktop server 并通过 MCP listTools 映射真实 schema，bindSessionContext 在 callTool 前处理权限拒绝。',
-      source: {
-        path: 'src/external-stubs/computer-use-mcp.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'listOpenComputerUseTools',
-        note: '真实 Computer Use 目录和权限 dispatcher 的实现证据。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '新增 Zavora 测试读取真实工具 schema，并以空 allowlist、全 false flags 和 user_denied 验证 click 被阻止；此项不是原生桌面点击成功测试。',
-      source: {
-        path: 'tests/openBackends.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: 'enumerates real Zavora tool schemas and blocks denied actions',
-        note: '真实 MCP 元数据与拒绝路径测试。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '新增浏览器测试启动真实本地 HTTP server，通过 WebBrowser 执行 navigate、snapshot、close，并核对标题与正文；这是 isolated Chromium 的本地证据。',
-      source: {
-        path: 'tests/openBackends.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: 'navigates a real isolated browser to a local page',
-        note: '真实 Playwright 浏览器回归；测试存在本身不单独代表执行通过。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '特性档回归将工具数从 41 更新为 42，并新增 WebBrowser 非空注册断言。',
-      source: {
-        path: 'tests/enabledFeatures.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: 'expect(profile.toolCount',
-        note: '外部构建中的 WebBrowser 注册证据。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 STATUS 记录 bun test 已通过 142 个测试、611 个断言；这是 at-commit 历史记录，不是本次文档编写重新执行的结果。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '`bun test`',
-        note: 'at-commit Verified evidence 表的全量测试记录。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 STATUS 记录 bun run typecheck 零错误，bun run build 完成 CLI、SDK 与声明构建。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '`bun run typecheck`',
-        note: 'at-commit 类型检查和构建命令结果。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 RELEASE 的 Open Computer Use and Browser backends 段记录 142/611、typecheck、build、declarations、42-tool profile 及真实本地浏览器导航通过，同时明确 native desktop 仍需授权会话。',
-      source: {
-        path: 'docs/RELEASE.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '## Open Computer Use and Browser backends',
-        note: '开放后端发布验证和桌面边界。',
-      },
-    },
-    {
-      kind: 'not-recorded',
-      statement: '没有授权原生桌面点击、键盘、剪贴板、macOS TCC 或 target_app 逐项授权的实机证据，也没有现有 Chrome 登录态和远程网站的验证记录。',
-    },
-  ],
-  remaining: [
+  ],  remaining: [
     'Zavora 的原生桌面动作、平台二进制、TCC 和真实权限 UI 到 app grant 的完整链路仍需授权交互桌面/VM 验证。',
     'bindSessionContext 只要求 allowedApps 非空，没有按 target_app 精确匹配，且未使用旧 adapter/coordinateMode 的完整原生行为。',
     'WebBrowser 固定 allow 且默认没有 origin allowlist；生产使用时需要评估 PLAYWRIGHT_MCP_ALLOWED_ORIGINS 与页面副作用。',
@@ -380,7 +297,7 @@ export const record = defineCommitRecord({
       {
         title: '记录浏览器证据与桌面限制',
         detail:
-          'STATUS 将 Zavora 标为 metadata/permissions，将 Playwright 标为 real isolated browser，并记录 142/611 和构建结果。RELEASE 明确真实本地导航已通过，但原生桌面仍需授权会话；不把测试新增、构建成功或本地浏览器扩大为桌面/Chrome 在线证明。',
+          'STATUS 将 Zavora 标为 metadata/permissions，将 Playwright 标为 real isolated browser，并记录 142/611 和构建结果。RELEASE 明确真实本地导航的验收条件，但原生桌面仍需授权会话；不把测试新增、构建结果或本地浏览器扩大为桌面/Chrome 在线证明。',
         paths: [
           'docs/STATUS.md',
           'docs/RELEASE.md',
@@ -402,7 +319,7 @@ export const record = defineCommitRecord({
       '异步 client Promise 若在失败后继续缓存会永久不可用；实现必须清空拒绝 Promise 并提供 close。',
       '本地 Chromium 成功不能覆盖原生桌面、现有 Chrome 登录态或远程网站，证据标签必须保持区分。',
     ],
-    verification: [
+    acceptanceSequence: [
       '运行开放后端定向测试，确认 Zavora 目录非空、包含 screenshot 且首项具有真实 inputSchema。',
       '在空 app/全 false flags 下拒绝 click，确认抛出 permission denied 且不会到达 Zavora callTool。',
       '启动随机本地端口页面，执行 browser_navigate、browser_snapshot、browser_close，核对标题和 Local content。',
@@ -415,7 +332,7 @@ export const record = defineCommitRecord({
       'Zavora 真实目录、mutating 权限拒绝和 callTool 分发已替换空 stub。',
       'Playwright isolated/headless client、真实目录和异步 Chrome 初始化链已经接通。',
       'WebBrowser 与开放 browser skill 已注册，外部特性档固定为 42 个非空工具。',
-      '真实本地 Chromium 导航/snapshot/close 测试已加入，at-commit 文档记录 142/611 和构建通过。',
+      '真实本地 Chromium 导航/snapshot/close 测试已加入，at-commit 文档记录 142/611 和构建。',
     ],
     incomplete: [
       '授权原生桌面动作和完整 app/target_app 权限链尚未实机验证。',

@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '0dabf466a5db43caa9890f5e0a031d00505a0008',
+  slug: 'commit-docs-finalization',
   title: 'Complete previous commit documentation',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -29,15 +30,7 @@ export const record = defineCommitRecord({
   acceptance: [
     '两份 frontmatter 完整匹配 be5c03e，Actual scope 的 1bc02bf 路径和统计与原 diff 一致。',
     'INDEX 与 JSON 各增加一个 be5c03e implemented 项，1329f79 保持前一项，self 最后。',
-  ],
-  evidence: [
-    { kind: 'diff-observed', statement: 'be5c03e SPEC 记录完整 SHA，并把 Actual scope 指向 1bc02bf 文档对。', source: { path: 'docs/specs/be5c03e-SPEC.md', role: 'evidence', revision: 'commit', symbol: 'docs/specs/1bc02bf-SPEC.md', note: '范围路径与目标原始提交一致。' } },
-    { kind: 'diff-observed', statement: 'be5c03e PLAN 新建并含 implemented 完成状态及剩余工作小节。', source: { path: 'docs/plans/be5c03e-PLAN.md', role: 'evidence', revision: 'commit', symbol: '## Completion status and remaining work', note: '计划声明可在当前提交直接观察。' } },
-    { kind: 'diff-observed', statement: 'INDEX 的 Implemented 调至 64，新增 be5c03e 的两个链接。', source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'commit', symbol: '| be5c03e | Complete previous commit documentation | implemented |', note: '新增行位于 1329f79 后。' } },
-    { kind: 'diff-observed', statement: 'JSON 在 self 前保存 be5c03e 完整身份、日期、标题和文档路径。', source: { path: 'docs/status/index.json', role: 'evidence', revision: 'commit', symbol: '"fullSha": "be5c03e17428c3a7f85f7c0459b49432e61ccbf4"', note: '机器对象与 INDEX 使用同一路径。' } },
-    { kind: 'not-recorded', statement: '没有测试、typecheck、build、生成器或 CI 的运行输出随本提交保存。' },
-  ],
-  remaining: ['2a4aa6c 与 0dabf46 在此版本仍未建档；be5c03e 的模板计划也未留下实际验证轨迹。'],
+  ],  remaining: ['2a4aa6c 与 0dabf46 在此版本仍未建档；be5c03e 的模板计划也未留下实际验证轨迹。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: 'Implemented 63→64，新增 be5c03e 行。' },
     { path: 'docs/plans/be5c03e-PLAN.md', role: 'changed', note: 'be5c03e 的新建计划。' },
@@ -55,7 +48,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['1329f79 及既有 self 内容不改，新增项沿用原字段和链接格式，生成器无差异。'],
     risks: ['本提交与目标标题相同，容易只看标题而忽略 SHA，进而把 1bc02bf 范围写到错误的文档身份下。'],
-    verification: ['按 fullSha 核对 be5c03e 原 diff 和 frontmatter，并检查索引只增加该项且 self 未变。'],
+    acceptanceSequence: ['按 fullSha 核对 be5c03e 原 diff 和 frontmatter，并检查索引只增加该项且 self 未变。'],
     completed: ['be5c03e 的文档对、INDEX 行和 JSON 对象已完整加入。'],
     incomplete: ['未保存任何命令或 CI 执行证据，本记录只确认元数据闭合。'],
   },

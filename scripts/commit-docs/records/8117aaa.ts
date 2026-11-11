@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '8117aaa81ba58bb7ddae1256712797880a6cdebd',
+  slug: 'commit-docs-finalization',
   title: 'Finalize self record for current commit',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -28,16 +29,7 @@ export const record = defineCommitRecord({
   acceptance: [
     '当前 HEAD 不进入历史文档、两个索引或 implemented/partial/unimplemented 计数。',
     'self 的两个文件和索引项仍由原有代码生成，历史数组其余元素处理顺序不变。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: 'at-commit 源码显示主循环使用 slice(0, -1)，而文件其余部分没有在本提交变化。',
-      source: { path: 'scripts/document-commits.ts', role: 'evidence', revision: 'commit', symbol: 'for (const commit of commits().slice(0, -1))', note: 'HEAD 排除规则的唯一变更位置。' },
-    },
-    { kind: 'not-recorded', statement: '该提交只有一行生成器源码差异，没有测试新增、命令输出或 CI 通过记录。' },
-  ],
-  remaining: ['此提交只建立排除 HEAD 的规则；它本身及直接父提交的缺失文档需要由后续提交处理。'],
+  ],  remaining: ['此提交只建立排除 HEAD 的规则；它本身及直接父提交的缺失文档需要由后续提交处理。'],
   references: [
     { path: 'scripts/document-commits.ts', role: 'changed', note: '将历史文档生成循环改为排除最新 HEAD。' },
   ],
@@ -50,7 +42,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['除最新 HEAD 外，历史提交仍按原顺序生成；已有 self 路径和 JSON 字段保持不变。'],
     risks: ['排除 HEAD 后，新提交自身不会立即获得历史文档，需要后续提交补齐；索引不能提前引用尚不存在的文件。'],
-    verification: ['可从源码确认数组截断位置，并分别检查主循环和 self 分支；本提交未保存实际生成或测试结果。'],
+    acceptanceSequence: ['可从源码确认数组截断位置，并分别检查主循环和 self 分支；本提交未保存实际生成或测试结果。'],
     completed: ['HEAD 排除已落在统一历史循环，diff 未触碰其他生成逻辑。'],
     incomplete: ['没有随提交记录运行生成器、测试、typecheck、build 或 CI 的结果。'],
   },

@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '4329cd8296630e2e5334d4b410cc8fe1cca273b6',
+  slug: 'commit-docs-finalization',
   title: 'Finalize previous commit documentation',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -28,31 +29,7 @@ export const record = defineCommitRecord({
   acceptance: [
     '两个 frontmatter 与 e0cbbe1 的 full SHA、日期和 Finalize documentation for previous commit 标题一致。',
     'SPEC 指向 1fe1430 内层文档，INDEX 为 78/1/0，status 主题和路径一致，self 不变且仍最后。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: 'e0cbbe1-SPEC 的标题包含 documentation，Actual scope 同时列出 1fe1430 的计划路径。',
-      source: { path: 'docs/specs/e0cbbe1-SPEC.md', role: 'evidence', revision: '4329cd8296630e2e5334d4b410cc8fe1cca273b6', symbol: '# Finalize documentation for previous commit', note: '标题证据用于区分当前提交 subject。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '新 PLAN frontmatter 使用 e0cbbe1 完整 SHA，与目标而非 4329cd8 自身身份绑定。',
-      source: { path: 'docs/plans/e0cbbe1-PLAN.md', role: 'evidence', revision: '4329cd8296630e2e5334d4b410cc8fe1cca273b6', symbol: 'commit: e0cbbe14182f93a59bd7e28a4dcd0776e05831f0', note: '计划在当前提交新增。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'INDEX 新行保留 e0cbbe1 的完整标题，Implemented 汇总从 77 变为 78。',
-      source: { path: 'docs/INDEX.md', role: 'evidence', revision: '4329cd8296630e2e5334d4b410cc8fe1cca273b6', symbol: '| e0cbbe1 | Finalize documentation for previous commit | implemented |', note: '人工索引包含准确主题与双链接。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'status 中 e0cbbe1 对象保存相同完整 SHA、主题和文档路径，self 仍随后出现。',
-      source: { path: 'docs/status/index.json', role: 'evidence', revision: '4329cd8296630e2e5334d4b410cc8fe1cca273b6', symbol: '"fullSha": "e0cbbe14182f93a59bd7e28a4dcd0776e05831f0"', note: '机器索引证据固定在 4329cd8。' },
-    },
-    { kind: 'not-recorded', statement: 'SPEC/PLAN 所列 bun 命令与 CI 没有输出或状态存档，不能据此报告通过。' },
-  ],
-  remaining: ['e0cbbe1 的计划内容仍较概括；除标题、范围和索引关系外，没有更多实现或验证材料可据以扩展。'],
+  ],  remaining: ['e0cbbe1 的计划内容仍较概括；除标题、范围和索引关系外，没有更多实现或验证材料可据以扩展。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: '新增 e0cbbe1 完整标题行，Implemented 达 78。' },
     { path: 'docs/plans/e0cbbe1-PLAN.md', role: 'changed', note: '新建带 documentation 字样的目标计划。' },
@@ -70,7 +47,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['已有 77 项历史记录及 self bootstrap 字段不变，状态计数继续只改变 implemented。'],
     risks: ['当前与目标标题仅一词之差，校验若忽略标题会漏错；内层 1fe1430 也不能误写成 dc3f075。'],
-    verification: ['检查两个 frontmatter 的长标题、e0cbbe1 全 SHA、1fe1430 清单、78/1/0 汇总和 JSON/self 顺序。'],
+    acceptanceSequence: ['检查两个 frontmatter 的长标题、e0cbbe1 全 SHA、1fe1430 清单、78/1/0 汇总和 JSON/self 顺序。'],
     completed: ['e0cbbe1 的两个文档和双索引入口均按目标元数据落盘，无额外路径。'],
     incomplete: ['提交未记录真实验证执行，完成状态不覆盖测试或 CI 结果。'],
   },

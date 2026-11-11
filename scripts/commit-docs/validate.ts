@@ -8,6 +8,7 @@ import type {
   CommitReference,
   DocumentationMode,
 } from './schema.ts'
+import { SLUG_PATTERN, historicalDocumentPaths } from './naming.ts'
 
 const FORBIDDEN_TEXT = [
   /复核目标、现有实现和复用模块/,
@@ -24,10 +25,18 @@ const SECRET_TEXT = [
   /\bgithub_pat_[A-Za-z0-9_]{20,}/,
 ]
 
-function nonempty(value: string): boolean {
+function nonempty(value: unknown): value is string {
+  if (typeof value !== 'string') return false
   const normalized = value.trim()
   return normalized.length > 1 && !/^(?:n\/?a|none|不适用|无)$/i.test(normalized)
 }
+
+const HISTORICAL_EXECUTION_TEXT = [
+  /本地实际(?:执行|运行)/,
+  /(?:测试|CI|构建|typecheck|build).{0,24}(?:全部|均|已)?通过(?:[。！？，；]|$)/,
+  /\brun[ -]?ID\b/i,
+  /recorded-(?:command|ci)-pass|later-evidence|not-recorded|diff-observed|test-added/,
+]
 
 function stringsInRecord(record: CommitRecord): string[] {
   return [
@@ -42,12 +51,11 @@ function stringsInRecord(record: CommitRecord): string[] {
     ...record.acceptance,
     ...record.remaining,
     ...record.references.flatMap(reference => [reference.path, reference.note]),
-    ...record.evidence.flatMap(evidence => [evidence.statement, evidence.source?.note ?? '']),
     ...record.plan.preconditions,
     ...record.plan.reuse,
     ...record.plan.compatibility,
     ...record.plan.risks,
-    ...record.plan.verification,
+    ...record.plan.acceptanceSequence,
     ...record.plan.completed,
     ...record.plan.incomplete,
     ...record.plan.steps.flatMap(step => [step.title, step.detail, ...step.paths]),
@@ -57,7 +65,7 @@ function stringsInRecord(record: CommitRecord): string[] {
 export function validateRecordShape(record: CommitRecord): string[] {
   const errors: string[] = []
   const label = record.commit || '<missing SHA>'
-  const requireString = (value: string, field: string) => {
+  const requireString = (value: unknown, field: string) => {
     if (!nonempty(value)) errors.push(`${label}: ${field} must be substantive text`)
   }
   const requireArray = (values: string[], field: string) => {
@@ -66,6 +74,17 @@ export function validateRecordShape(record: CommitRecord): string[] {
   }
 
   requireString(record.commit, 'commit')
+  requireString(record.slug, 'slug')
+  if (record.slug && !SLUG_PATTERN.test(record.slug)) {
+    errors.push(`${label}: invalid slug`)
+  }
+  if ('evidence' in record) errors.push(`${label}: legacy evidence field`)
+  if ('verification' in record.plan) errors.push(`${label}: legacy plan.verification field`)
+  for (const [index, reference] of record.references.entries()) {
+    if ((reference.role as string) === 'evidence') {
+      errors.push(`${label}: references[${index}] legacy evidence reference role`)
+    }
+  }
   requireString(record.beforeState, 'beforeState')
   requireString(record.problem, 'problem')
   requireArray(record.goals, 'goals')
@@ -80,7 +99,7 @@ export function validateRecordShape(record: CommitRecord): string[] {
   requireArray(record.plan.reuse, 'plan.reuse')
   requireArray(record.plan.compatibility, 'plan.compatibility')
   requireArray(record.plan.risks, 'plan.risks')
-  requireArray(record.plan.verification, 'plan.verification')
+  requireArray(record.plan.acceptanceSequence, 'plan.acceptanceSequence')
   record.plan.completed.forEach((value, index) => requireString(value, `plan.completed[${index}]`))
   record.plan.incomplete.forEach((value, index) => requireString(value, `plan.incomplete[${index}]`))
   if (!['implemented', 'partial', 'unimplemented'].includes(record.status)) {
@@ -90,20 +109,10 @@ export function validateRecordShape(record: CommitRecord): string[] {
     errors.push(`${label}: invalid kind`)
   }
   if (record.references.length === 0) errors.push(`${label}: references must not be empty`)
-  if (record.evidence.length === 0) errors.push(`${label}: evidence must not be empty`)
   if (record.plan.steps.length === 0) errors.push(`${label}: plan.steps must not be empty`)
   record.references.forEach((reference, index) => {
     requireString(reference.path, `references[${index}].path`)
     requireString(reference.note, `references[${index}].note`)
-  })
-  record.evidence.forEach((evidence, index) => {
-    requireString(evidence.statement, `evidence[${index}].statement`)
-    if (['recorded-command-pass', 'recorded-ci-pass', 'test-added'].includes(evidence.kind) && !evidence.source) {
-      errors.push(`${label}: evidence[${index}] requires a source for ${evidence.kind}`)
-    }
-    if (evidence.kind === 'later-evidence' && !evidence.source?.revision) {
-      errors.push(`${label}: later evidence must name its later revision`)
-    }
   })
   record.plan.steps.forEach((step, index) => {
     requireString(step.title, `plan.steps[${index}].title`)
@@ -119,6 +128,9 @@ export function validateRecordShape(record: CommitRecord): string[] {
     }
     if (SECRET_TEXT.some(pattern => pattern.test(value))) {
       errors.push(`${label}: potential credential detected; value suppressed`)
+    }
+    if (HISTORICAL_EXECUTION_TEXT.some(pattern => pattern.test(value))) {
+      errors.push(`${label}: historical execution result detected`)
     }
   })
   return errors
@@ -238,24 +250,6 @@ export function validateRecordAgainstCommit(record: CommitRecord, commit: Commit
     }
   }
 
-  for (const [index, evidence] of record.evidence.entries()) {
-    if (!evidence.source) continue
-    const source = { ...evidence.source, role: 'evidence' as const }
-    errors.push(...validateReference(source, commit, changes))
-    if (evidence.kind === 'later-evidence') {
-      const revision = evidence.source.revision
-      if (!revision || !/^[0-9a-f]{40}$/.test(revision)) {
-        errors.push(`${commit.short}: evidence[${index}] later revision must be an immutable full SHA`)
-      } else {
-        const sourceRevision = git(['rev-parse', '--verify', `${revision}^{commit}`])
-        if (sourceRevision === commit.full) {
-          errors.push(`${commit.short}: evidence[${index}] is not later evidence`)
-        } else if (git(['merge-base', commit.full, sourceRevision]) !== commit.full) {
-          errors.push(`${commit.short}: evidence[${index}] revision is not a descendant of the documented commit`)
-        }
-      }
-    }
-  }
   return errors
 }
 
@@ -316,6 +310,13 @@ export function validateRecords(
 ): string[] {
   const errors: string[] = []
   const selected = expectedHistorical(history, mode)
+
+  try {
+    historicalDocumentPaths(selected, full => loaded.historical.get(full))
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : String(error))
+  }
+
   const expected = new Set(selected.map(commit => commit.full))
   const shortShas = new Set<string>()
   for (const commit of history) {

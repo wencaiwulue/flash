@@ -1,6 +1,6 @@
 export type CommitStatus = 'implemented' | 'partial' | 'unimplemented'
 export type CommitKind = 'component' | 'metadata-migration' | 'evidence-update'
-export type ReferenceRole = 'changed' | 'reused' | 'test' | 'evidence'
+export type ReferenceRole = 'changed' | 'reused' | 'test'
 
 export type CommitReference = {
   path: string
@@ -9,20 +9,6 @@ export type CommitReference = {
   oldPath?: string
   symbol?: string
   revision?: string
-}
-
-export type EvidenceKind =
-  | 'recorded-command-pass'
-  | 'recorded-ci-pass'
-  | 'test-added'
-  | 'diff-observed'
-  | 'later-evidence'
-  | 'not-recorded'
-
-export type CommitEvidence = {
-  kind: EvidenceKind
-  statement: string
-  source?: CommitReference
 }
 
 export type ChangeGroup = {
@@ -41,6 +27,7 @@ export type CommitRecord = {
   commit: string
   changeId?: string
   title?: string
+  slug: string
   kind: CommitKind
   status: CommitStatus
   beforeState: string
@@ -52,7 +39,6 @@ export type CommitRecord = {
   alternatives: string[]
   security: string[]
   acceptance: string[]
-  evidence: CommitEvidence[]
   remaining: string[]
   references: CommitReference[]
   changeGroups?: ChangeGroup[]
@@ -62,7 +48,7 @@ export type CommitRecord = {
     steps: PlanStep[]
     compatibility: string[]
     risks: string[]
-    verification: string[]
+    acceptanceSequence: string[]
     completed: string[]
     incomplete: string[]
   }
@@ -85,14 +71,4 @@ export const REFERENCE_ROLES: ReferenceRole[] = [
   'changed',
   'reused',
   'test',
-  'evidence',
-]
-
-export const EVIDENCE_KINDS: EvidenceKind[] = [
-  'recorded-command-pass',
-  'recorded-ci-pass',
-  'test-added',
-  'diff-observed',
-  'later-evidence',
-  'not-recorded',
 ]

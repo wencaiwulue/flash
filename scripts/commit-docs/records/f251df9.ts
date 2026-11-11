@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: 'f251df9151d7a7c054fa662c4b50f0d09c1bf305',
+  slug: 'commit-docs-finalization',
   title: 'Finalize previous commit documentation records',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -13,7 +14,7 @@ export const record = defineCommitRecord({
   ],
   nonGoals: [
     '不修改 previousHead 代码，也不补直接父 7ca78c1 或当前 f251df9 的文档。',
-    '不把生成器行为描述当作本提交再次执行生成器的证据，不声称测试或 CI 已通过。',
+    '不把生成器行为描述当作本提交再次执行生成器的证据，只列出验收条件。',
   ],
   architecture: [
     '80e6def 的主循环用 slice(0, -1) 排除 HEAD并负责计数、INDEX 行和 JSON；其后 previousHead = commits().at(-2) 只通过 documents.set 输出前一 HEAD 的 SPEC/PLAN，不直接注册索引。',
@@ -28,31 +29,7 @@ export const record = defineCommitRecord({
   acceptance: [
     '80e6def SPEC/PLAN 使用相同 fullSha、标题、日期和 implemented，SPEC 统计为 22/1。',
     'INDEX 为 49/1/0，JSON 的 spec/plan 字段指向新文件；previousHead 不被描述为额外索引来源。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: '80e6def 的生成器源码以 at(-2) 选择 previousHead，该分支只设置 SPEC/PLAN。',
-      source: { path: 'scripts/document-commits.ts', role: 'evidence', revision: '80e6defe99a3ce09a3d2b4229458fed0fbde5dbc', symbol: 'const previousHead = commits().at(-2)', note: '证据固定在被文档化的 80e6def 版本。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '新 SPEC 将 80e6def 范围记录为三文件、22 行新增和 1 行删除。',
-      source: { path: 'docs/specs/80e6def-SPEC.md', role: 'evidence', revision: 'commit', symbol: '- Diff statistics: 3 files changed, 22 insertions(+), 1 deletion(-)', note: 'Actual scope 包含生成器和两个索引。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'INDEX 新增 80e6def 入口，Implemented 更新为 49。',
-      source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'commit', symbol: '- Implemented: 49', note: 'Partial 1 与 Unimplemented 0 保持。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'status JSON 在 self 前加入 80e6def 完整身份及两个文档路径。',
-      source: { path: 'docs/status/index.json', role: 'evidence', revision: 'commit', symbol: '"fullSha": "80e6defe99a3ce09a3d2b4229458fed0fbde5dbc"', note: '索引注册只出现一次。' },
-    },
-    { kind: 'not-recorded', statement: '新 PLAN 的验证序列没有命令输出；本提交也未保存生成器或 CI 的执行记录。' },
-  ],
-  remaining: ['直接父 7ca78c1 的文档仍未建立；80e6def 的 PLAN 继续使用概括模板，previousHead 行为没有随附运行日志。'],
+  ],  remaining: ['直接父 7ca78c1 的文档仍未建立；80e6def 的 PLAN 继续使用概括模板，previousHead 行为没有随附运行日志。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: 'Implemented 48 到 49，加入 80e6def。' },
     { path: 'docs/plans/80e6def-PLAN.md', role: 'changed', note: '新建 previousHead 变更提交的计划。' },
@@ -70,7 +47,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['previousHead 源码和既有 fe3c177、63e138f 条目不修改，self 继续位于两个索引末尾。'],
     risks: ['at(-2) 随 HEAD 移动，且文档输出与索引注册分属不同代码路径，静态阅读时容易误判其副作用。'],
-    verification: ['固定到 80e6def revision 核对生成器，再检查新 SPEC 的 22/1 统计和两个索引的单项增量。'],
+    acceptanceSequence: ['固定到 80e6def revision 核对生成器，再检查新 SPEC 的 22/1 统计和两个索引的单项增量。'],
     completed: ['80e6def 的 SPEC/PLAN 与两个索引入口已落盘，本提交没有生成器源码差异。'],
     incomplete: ['未记录 previousHead 实际生成过程、测试、typecheck、build 或 CI 结果。'],
   },

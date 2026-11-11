@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '17c91967ada4424f164da8e2699e3ee90d587036',
+  slug: 'commit-docs-finalization',
   title: 'Finalize self record for previous commit',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -28,31 +29,7 @@ export const record = defineCommitRecord({
   acceptance: [
     '8117aaa SPEC/PLAN 的身份、日期和 implemented 状态一致，SPEC 只列 scripts/document-commits.ts。',
     'INDEX 与 JSON 均新增 8117aaa，spec/plan 字段指向实际新文件，计数为 42/1/0。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: '8117aaa 的 at-commit 生成器确实在主循环使用 slice(0, -1)，这是新 SPEC 所描述的单行代码范围。',
-      source: { path: 'scripts/document-commits.ts', role: 'evidence', revision: '8117aaa81ba58bb7ddae1256712797880a6cdebd', symbol: 'for (const commit of commits().slice(0, -1))', note: '证据 revision 固定到被文档化的 8117aaa。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '新 SPEC 将 8117aaa 范围记录为单文件、1 行新增和 1 行删除。',
-      source: { path: 'docs/specs/8117aaa-SPEC.md', role: 'evidence', revision: 'commit', symbol: '- Diff statistics: 1 file changed, 1 insertion(+), 1 deletion(-)', note: 'Actual scope 仅包含生成器脚本。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'INDEX 增加 8117aaa 入口并将 Implemented 调为 42。',
-      source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'commit', symbol: '- Implemented: 42', note: 'Partial 与 Unimplemented 保持 1 和 0。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'status JSON 在 self 前写入 8117aaa 完整身份及两个新文档路径。',
-      source: { path: 'docs/status/index.json', role: 'evidence', revision: 'commit', symbol: '"fullSha": "8117aaa81ba58bb7ddae1256712797880a6cdebd"', note: '机器条目与人类索引相符。' },
-    },
-    { kind: 'not-recorded', statement: 'PLAN 的验证序列没有配套命令输出，不能据此声称测试或 CI 已执行。' },
-  ],
-  remaining: ['直接父 c4e19ce 的文档留待后续提交；新 PLAN 仍使用概括性模板，未记录 HEAD 排除行为的实测输出。'],
+  ],  remaining: ['直接父 c4e19ce 的文档留待后续提交；新 PLAN 仍使用概括性模板，未记录 HEAD 排除行为的实测输出。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: 'Implemented 41 到 42，加入 8117aaa。' },
     { path: 'docs/plans/8117aaa-PLAN.md', role: 'changed', note: '新建 HEAD 排除提交的计划文档。' },
@@ -70,7 +47,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['HEAD 排除代码保持原样，已有历史顺序与 self 身份不变；新增内容只有文档元数据。'],
     risks: ['动态 HEAD 容易被写成固定提交过滤，且祖父文档对象容易被误替换为直接父。'],
-    verification: ['核对 8117aaa 源码与 SPEC 的单文件统计，并检查两个索引的新行、完整 SHA 和链接。'],
+    acceptanceSequence: ['核对 8117aaa 源码与 SPEC 的单文件统计，并检查两个索引的新行、完整 SHA 和链接。'],
     completed: ['8117aaa 的文档对及双重索引注册已落盘，本提交没有额外代码差异。'],
     incomplete: ['没有保存生成器、测试、构建或 CI 的运行结果。'],
   },

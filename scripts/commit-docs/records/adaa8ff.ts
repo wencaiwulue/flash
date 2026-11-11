@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: 'adaa8fffa7c7c536d782616f8f7e187de637a582',
+  slug: 'env-less-perpetual-continuity',
   title: 'Implement env-less perpetual continuity',
   kind: 'component',
   status: 'implemented',
@@ -66,102 +67,7 @@ export const record = defineCommitRecord({
     'env-less gate 开启时 perpetual 不再调用 registerBridgeEnvironment/createBridgeSession，env-based gate 关闭路径保持。',
     'Workflow 命令为 local、supportsNoninteractive，并在缺少 callback 时使用真实权限函数，返回已启动 taskId 文本。',
     'at-commit 文档记录 152/645 和模型 sentinel，同时明确 Claude OAuth、Cloud Files、Remote Control、env-less live server 未验证。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: '该 revision 的指针只包含 sessionId、lastSequenceNum、updatedAt，按 cwd 定位并在写入时指定新文件 0600 创建 mode，以 mtime 实施四小时 TTL。',
-      source: {
-        path: 'src/bridge/envLessBridgePointer.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'ENV_LESS_POINTER_TTL_MS',
-        note: '纯 env-less perpetual 指针格式和生命周期的直接实现证据。',
-      },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'initEnvLessBridgeCore 在有指针时跳过 createCodeSession，传递 initialSequenceNum，并以 final 参数区分临时 teardown 和显式 archive。',
-      source: {
-        path: 'src/bridge/remoteBridgeCore.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'async function teardown(final = false)',
-        note: '同会话恢复和两种清理语义的直接实现证据。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '新增隔离进程 wrapper，要求 fixture 退出码为 0 且输出 ENV_LESS_PERPETUAL_OK；此项只声明测试被加入，不把 sentinel 当成真实服务端日志。',
-      source: {
-        path: 'tests/envLessPerpetual.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: 'env-less perpetual resume, recovery, and archive pass in an isolated process',
-        note: '独立 Bun 子进程的外层回归。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: 'fixture 以真实临时指针文件和 mock axios/transport 验证同 cse_test、序号 42、第二次 /bridge、临时不归档及显式 archive 清指针；两次 init 位于同一 fixture 子进程内。',
-      source: {
-        path: 'tests/fixtures/env-less-perpetual-check.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: 'ENV_LESS_PERPETUAL_OK',
-        note: '离线过程级恢复与 401 控制流验证，不是真实 OAuth/SSE 往返。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '既有路径选择测试改为 perpetual 也选择 env-less，并断言不调用 Environments 注册或 env-based session 创建。',
-      source: {
-        path: 'tests/perpetualBridge.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: 'env-less gate plus perpetual selects env-less with persistent continuity',
-        note: 'env-less 与 env-based 路径选择回归。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 STATUS 记录 bun test 已通过 152 个测试、645 个断言；这是 at-commit 历史记录，不是本次文档编写重新执行的结果。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '`bun test`',
-        note: 'at-commit Verified evidence 表的全量测试记录。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 STATUS 记录 bun run typecheck 零错误，bun run build 完成 CLI、SDK 与声明构建。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '`bun run typecheck`',
-        note: 'at-commit 类型检查和构建命令结果。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 RELEASE 记录 152/645、typecheck、build、declarations 和 42-tool profile 通过，并另记录 WORKFLOW_LIVE_OK、PROACTIVE_LIVE_OK、CONTEXT_COLLAPSE_LIVE_OK、REACTIVE_COMPACTION_LIVE_OK。',
-      source: {
-        path: 'docs/RELEASE.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '## Env-less perpetual and live model validation',
-        note: '发布段的全量离线结果和会话配置 provider 的模型 sentinel 记录。',
-      },
-    },
-    {
-      kind: 'not-recorded',
-      statement: '当时没有可用 Claude OAuth；真实 Cloud Files、Remote Control、env-less 服务端恢复和实际 OAuth 刷新均未运行。模型 sentinel 与 mock bridge fixture 都不能替代这些在线证据。',
-    },
-  ],
-  remaining: [
+  ],  remaining: [
     '真实 OAuth /v1/code/sessions、/bridge、SSE Last-Event-ID 恢复、401 刷新和服务端 archive 仍需授权环境逐项验证。',
     'fixture 只在同一子进程内执行两次 init，未证明两个不同进程的真实重启恢复，也未覆盖 TTL、损坏指针、写盘失败或 stale cse_*。',
     '显式 archive 后无论 HTTP 是否成功都会尝试清指针，但 unlink 错误被忽略，且该提交没有其他生产 archive 调用点；永久归档的调用 UX 和失败恢复仍需明确。',
@@ -344,7 +250,7 @@ export const record = defineCommitRecord({
       'archive 没有生产调用点时，用户退出不会自动永久归档；不能把句柄能力说成已接通 UI 流程。',
       '单进程 mock fixture 无法发现真实 OAuth、SSE 和跨进程问题，发布状态必须保持 offline isolated process。',
     ],
-    verification: [
+    acceptanceSequence: [
       '运行 env-less perpetual 外层测试，确认 fixture 退出码为 0 并输出 ENV_LESS_PERPETUAL_OK。',
       '检查首次 create 数为 1、普通 teardown 无 archive，第二次 init 后 create 数仍为 1 且 initialSequenceNum=42。',
       '调用显式 archive，确认出现 archive 请求且读取指针为 null；另触发 close(401)，确认 bridgeCalls=2 且序号不变。',

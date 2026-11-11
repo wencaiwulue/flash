@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '301a3e7fb8da14c45f1bac77ead288302b7f2466',
+  slug: 'monitoring-internal-tools',
   title: 'Implement monitoring and simple internal tools',
   kind: 'component',
   status: 'implemented',
@@ -62,103 +63,8 @@ export const record = defineCommitRecord({
     'TerminalCapture 只对现有 panel 执行 capture-pane -p -J 和请求行数，不调用 new-session/attach-session，缺失 panel 时抛出明确错误。',
     'OverflowTest 输出精确长度和固定 pattern；Sleep 校验别名、应用 min/max 并响应 abort；CtxInspect 输出无 visualization grid 的 JSON。',
     '外部画像加载 30 个非空工具并包含 Monitor、OverflowTest、TerminalCapture，Sleep/CtxInspect 仍保持各自 feature gate。',
-    '执行通过结论只引用 at-commit STATUS/RELEASE；新增测试存在本身不单独作为通过证据。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: 'createMonitorOutputReporter 以 pending 合并 chunk、逐行拆分、清理 CR，并由幂等 finish 补发最后半行；call 将真实 exec onStdout 接入该 reporter。',
-      source: {
-        path: 'src/tools/MonitorTool/MonitorTool.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'createMonitorOutputReporter',
-        note: '真实 stdout 分行算法与 shell 接线的直接源码证据。',
-      },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'TerminalPanel.capture 只经过 tmux 检查、既有 session 检查和 capture-pane，不包含 new-session 或 attach-session；构造器可注入 runner。',
-      source: {
-        path: 'src/utils/terminalPanel.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'capture(lines: number)',
-        note: '只读捕获与测试注入的直接源码证据。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '新增 internalTools 测试覆盖 Sleep 设置/中止、Overflow 精确输出、Monitor 跨 chunk/CRLF/burst/final flush、CtxInspect JSON 和 mock tmux 捕获；此项只声明测试被加入。',
-      source: {
-        path: 'tests/internalTools.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: 'joins chunks into complete lines and flushes the final partial line',
-        note: '八项离线单元测试所在文件，mock 与构造数据不代表真实 tmux/collapse。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '新增 Monitor 本地 shell 集成测试以 printf 产生 first/second，观察任务 completed 及输出/完成通知；它不覆盖权限 UI、stderr、timeout、kill 或真实 tmux。',
-      source: {
-        path: 'tests/monitorToolIntegration.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: 'Monitor streams real shell output and completion notifications',
-        note: '真实本地 shell 路径测试被加入，执行结果另由 at-commit 文档记录。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '特性画像回归把外部工具总数更新为 30，新增 Monitor、OverflowTest、TerminalCapture 名称断言，并在 fixture 同步三个 feature。',
-      source: {
-        path: 'tests/enabledFeatures.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: 'TerminalCapture',
-        note: '既有独立 bundle 画像的修改范围，不单独代表执行通过。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 STATUS 的 Verified evidence 记录 bun test 已通过 73 tests、288 assertions；该数字是 at-commit 历史记录，不是本次文档校验重新运行所得。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '`bun test`',
-        note: 'at-commit 全量离线测试命令结果。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 STATUS 记录 bun run typecheck 零 TypeScript 错误、bun run build 完成 CLI/SDK/declarations；RELEASE 另记录 CLI startup smoke checks 通过。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '`bun run typecheck`',
-        note: 'at-commit 类型检查和构建命令记录。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: 'RELEASE 的 Monitor, terminal capture, and simple tool implementations 段记录 73/288、typecheck、build、declarations 与 CLI startup smoke 通过。',
-      source: {
-        path: 'docs/RELEASE.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '## Monitor, terminal capture, and simple tool implementations',
-        note: '本提交发布段的验证范围。',
-      },
-    },
-    {
-      kind: 'not-recorded',
-      statement: '没有真实 tmux pane 捕获、Monitor 权限交互/timeout 极端事件、Sleep 正常长等待或 context-collapse 实际运行证据；STATUS 将后两者所在功能组保留为后续工作。',
-    },
-  ],
-  remaining: [
+    '新增测试存在本身不单独作为执行证据；tests/internalTools.test.ts、tests/monitorToolIntegration.test.ts、tests/enabledFeatures.test.ts 覆盖各组件行为。',
+  ],  remaining: [
     'TerminalCapture 的测试使用 mock runner，真实 tmux 安装、scrollback 内容和跨平台终端行为仍需现场验证。',
     'Monitor timeout 传给 exec，但既有 background 会清 foreground timeout；没有新增后台 runtime timer，也没有相关超时测试。',
     '最终 finish 挂在进程 result 而非显式 stdout close 上，finish 后迟到 chunk 会被忽略；exit/close 极端顺序未被新增测试模拟。',
@@ -311,7 +217,7 @@ export const record = defineCommitRecord({
       '复用 bashToolHasPermission、shouldUseSandbox、getMaxTimeoutMs 和 BashPermissionRequest 保持 shell 授权一致。',
       '复用 getTerminalPanel、getTerminalPanelSocket、hasSession 与 checkTmux，生产 runner 默认为 spawnSync。',
       '复用 Sleep prompt/settings/sleep helper、CtxInspect 的 collectContextData/getStats 及 src/tools.ts 条件插槽。',
-      '复用独立 feature-profile fixture 和 STATUS/RELEASE 的历史验证格式，区分测试新增与命令通过。',
+      '复用独立 feature-profile fixture 和 STATUS/RELEASE 的历史验证格式，区分测试新增与执行结果。',
     ],
     steps: [
       {
@@ -364,7 +270,7 @@ export const record = defineCommitRecord({
       '终端 scrollback 与 shell 输出可能含敏感或标记文本；只读捕获和 XML escape 不能替代权限与内容审查。',
       'mock tmux、预中止 Sleep、构造 ContextData 无法覆盖真实外部依赖，文档必须保留这些验证缺口。',
     ],
-    verification: [
+    acceptanceSequence: [
       '以多种 chunk 切分运行 reporter 单元测试，精确比较完整行、150 行 CRLF burst、最终半行和重复 finish。',
       '运行本地 Monitor 集成测试，观察真实 task_id、输出文件、first/second 通知及 completed 最终状态。',
       '分别检查 bashToolHasPermission 调用参数与 BashPermissionRequest 代理；授权交互需在支持权限提示的环境另测。',

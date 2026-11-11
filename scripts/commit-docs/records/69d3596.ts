@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '69d3596e99fa57a97ac37628d1aab22880b5a060',
+  slug: 'commit-docs-finalization',
   title: 'Finalize previous commit documentation',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -28,31 +29,7 @@ export const record = defineCommitRecord({
   acceptance: [
     '两个新文档均指向 3c4b6f2752cee47fd15ead682e6016fe48174bd8，且范围中的上一代短 SHA 为 e8d8c06。',
     'INDEX 为 84/1/0，3c4b6f2 行及 JSON 对象均位于 self 前，并准确链接两个新产物。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: '3c4b6f2 SPEC 记录四个历史 changed paths，其中 SPEC/PLAN 名为 e8d8c06，统计为 78 insertions 和 1 deletion。',
-      source: { path: 'docs/specs/3c4b6f2-SPEC.md', role: 'evidence', revision: 'commit', symbol: 'docs/plans/e8d8c06-PLAN.md', note: '路径块保留被补档提交的实际范围。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '3c4b6f2 PLAN 的 frontmatter 带有 2026-11-11T11:20:31+08:00，正文含标准计划与完成状态部分。',
-      source: { path: 'docs/plans/3c4b6f2-PLAN.md', role: 'evidence', revision: 'commit', symbol: 'date: 2026-11-11T11:20:31+08:00', note: '日期来自被补档提交而非当前提交。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'INDEX patch 把 Implemented 从 83 提至 84，新增 3c4b6f2 的 Finalize 行。',
-      source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'commit', symbol: '- Implemented: 84', note: 'Partial 1、Unimplemented 0 保持原值。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'status JSON 在 self 前新增 3c4b6f2，spec 和 plan 均使用 3c4b6f2 前缀。',
-      source: { path: 'docs/status/index.json', role: 'evidence', revision: 'commit', symbol: '"spec": "docs/specs/3c4b6f2-SPEC.md"', note: '完整 SHA 与日期也随对象写入。' },
-    },
-    { kind: 'not-recorded', statement: 'Verification sequence 仅列出建议命令，提交没有保存任何执行日志或 CI 结论。' },
-  ],
-  remaining: ['PLAN 仍使用通用实施措辞，没有逐步对应 3c4b6f2 的两个新文件和两处索引更新。'],
+  ],  remaining: ['PLAN 仍使用通用实施措辞，没有逐步对应 3c4b6f2 的两个新文件和两处索引更新。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: '新增 3c4b6f2 行，Implemented 83→84。' },
     { path: 'docs/plans/3c4b6f2-PLAN.md', role: 'changed', note: '新建 3c4b6f2 计划文档。' },
@@ -70,7 +47,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['不排序或改写旧条目，现有 SPEC/PLAN 链接和 self 路径保持有效。'],
     risks: ['3c4b6f2 与 e8d8c06 都是 Finalize，若只按标题查找会混淆文档主体和范围引用。'],
-    verification: ['用 3c4b6f2 的真实路径列表核对 SPEC，再检查当前索引 84 计数、链接和 JSON fullSha。'],
+    acceptanceSequence: ['用 3c4b6f2 的真实路径列表核对 SPEC，再检查当前索引 84 计数、链接和 JSON fullSha。'],
     completed: ['3c4b6f2 的文档文件、表格链接及机器状态已经一起补齐。'],
     incomplete: ['没有实际验证输出，且计划细节未超出通用模板。'],
   },

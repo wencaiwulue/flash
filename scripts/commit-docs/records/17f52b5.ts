@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '17f52b5584441f3c937f3d927acad381852159b7',
+  slug: 'unconditional-live-workflow-jobs',
   title: '移除 model 与 SkillHub 的 job 条件',
   kind: 'component',
   status: 'partial',
@@ -43,34 +44,7 @@ export const record = defineCommitRecord({
     '当前 model 脚本没有缺密钥 sentinel 或提前返回，无条件 job 与无条件脚本 skip 必须明确区分。',
     'SkillHub 默认公共地址仍可用，Cloud/desktop job 仍 absent，workflow 路径与内部名称均未改变。',
     '不从此补丁推断平台已接受 workflow 或任何 live probe 已通过。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: 'at-commit workflow 的 model 与 skillhub 均直接从 runs-on 开始，不再有任何 job if；触发器和 env 映射保留。',
-      source: { path: '.github/workflows/live-validation.yml', role: 'evidence', revision: 'commit', symbol: 'jobs:', note: '两行条件删除后的完整二 job 中间态。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '该 revision 的 model main 先 enableConfigs、getMainLoopModel 并启动 workflow，没有 MODEL_LIVE_SKIPPED 或密钥存在性检查。',
-      source: { path: 'scripts/live-model-validation.ts', role: 'evidence', revision: 'commit', symbol: 'async function main()', note: '确认无条件 job 尚未配套脚本缺省 guard。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'SkillHub 脚本仍以公共地址作为环境变量缺省值，并将 token 作为可选配置，因此不能与 model 的缺凭据行为混同。',
-      source: { path: 'scripts/live-skillhub-validation.ts', role: 'evidence', revision: 'commit', symbol: "process.env.CLAUDE_SKILL_REGISTRY_URL || 'https://skill.xfyun.cn'", note: '公共 SkillHub 无条件探针的直接来源。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'RELEASE 仍写四个独立 job，未反映 Cloud/desktop 在上一提交已移除以及本提交的二 job 无条件状态。',
-      source: { path: 'docs/RELEASE.md', role: 'evidence', revision: 'commit', symbol: 'with separate model, SkillHub, Cloud, and desktop', note: '未修改文档与当前中间态的偏差。' },
-    },
-    {
-      kind: 'not-recorded',
-      statement: '提交没有 workflow dispatch、schedule、解析或 sentinel 运行记录，尤其没有无密钥 model 行为或 Cloud/desktop 的实际结果。',
-    },
-  ],
-  remaining: [
+  ],  remaining: [
     'model 缺少与无条件 job 配套的无密钥 guard，未配置运行不会按后来的固定 sentinel 优雅跳过。',
     'Cloud/desktop CI 入口仍缺失，RELEASE 四 job 描述仍过时。',
     '该试验是否改善 workflow 注册或执行没有平台侧证据。',
@@ -119,7 +93,7 @@ export const record = defineCommitRecord({
       '将当前二 job 与后续四 job 成功记录混合，会错误声称 Cloud/desktop 在此 revision 被验证。',
       '旧文档仍描述四 job，可能掩盖中间态的覆盖缺口。',
     ],
-    verification: [
+    acceptanceSequence: [
       '比较父/当前 YAML，确认只有两行 if 删除，并检查当前 model 文件不存在后续 MODEL_LIVE_SKIPPED 分支。',
       '分别分析 model 与 SkillHub 的无配置路径，不把公共 SkillHub 可运行推广为 model 可跳过。',
       '若后续执行，应记录每个 job 的启动、脚本输出和外部请求结果；absent 的 Cloud/desktop 不列入 executed 或 skipped。',

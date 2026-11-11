@@ -1,0 +1,30 @@
+import { defineCommitRecord } from '../schema.ts'
+
+export const record = defineCommitRecord({
+  commit: '4909c0fccbf24736f5c670ef936bae317e52dd4c',
+  title: 'Design date-based commit documentation',
+  slug: 'date-based-commit-docs-design',
+  kind: 'metadata-migration',
+  status: 'implemented',
+  beforeState: 'c69c271 已提供逐提交的实质设计记录，但交付文档仍以七位 SHA 命名，并保存历史执行证据。',
+  problem: '需要在不改动产品实现的前提下，确定日期加功能的命名规则、同日冲突处理和只保留验收标准的迁移契约。',
+  goals: ['形成可评审的命名、渲染、校验、迁移与验收设计。'],
+  nonGoals: ['本提交只保存方案设计，不实施记录或生成物迁移。'],
+  architecture: ['设计文档把完整 SHA 保留为记录身份，把日期与显式 slug 作为输出名称，并定义 head/next 动态清单和旧文件迁移顺序。'],
+  decisions: ['采用显式 slug 而不是从标题猜测功能名；同日同功能使用稳定序号；历史执行结果不进入新文档。'],
+  alternatives: ['保留 SHA 路径会更简单但不满足可读命名要求；纯自动生成正文会重新引入无依据设计结论。'],
+  security: ['变更仅为设计文档，不增加凭据、协议或运行时权限。'],
+  acceptance: ['设计明确命名格式、冲突算法、数据契约、迁移顺序、错误处理和测试验收。'],
+  remaining: ['后续实施提交按本设计完成全部记录和生成物迁移。'],
+  references: [{ path: 'docs/superpowers/specs/2026-11-11-date-based-commit-design-docs-design.md', role: 'changed', note: '经评审的完整方案设计。' }],
+  plan: {
+    preconditions: ['确认 c69c271 的结构化文档现状和用户命名要求。'],
+    reuse: ['复用现有 head/next、结构化记录和只读检查设计。'],
+    steps: [{ title: '编写并评审迁移设计', detail: '记录命名、内容、迁移、错误和验收契约并修正动态 HEAD 边界。', paths: ['docs/superpowers/specs/2026-11-11-date-based-commit-design-docs-design.md'] }],
+    compatibility: ['完整 SHA 继续作为记录和索引身份。'],
+    risks: ['设计提交会扩大 next 清单；实施时必须动态覆盖当前 HEAD。'],
+    acceptanceSequence: ['核对设计覆盖 SPEC 各节，并确认没有把静态基线数量写成固定校验。'],
+    completed: ['方案设计文档已落盘。'],
+    incomplete: ['代码、记录和生成物迁移属于后续实施范围。'],
+  },
+})

@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '0e2559ac8ac23b99ff705b51372d2eb97a8487d6',
+  slug: 'commit-docs-finalization',
   title: 'Finalize previous commit documentation',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -28,31 +29,7 @@ export const record = defineCommitRecord({
   acceptance: [
     '69d3596 完整 SHA 在新 SPEC、新 PLAN 和 status 中一致，嵌套历史路径为 3c4b6f2。',
     'INDEX 显示 86/1/0，新行和 JSON 对象均位于 self 前，并指向实际存在的 69d3596 SPEC/PLAN。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: '69d3596 SPEC 的 frontmatter 固定其完整 SHA，Actual scope 中的两个文档路径则使用 3c4b6f2 前缀。',
-      source: { path: 'docs/specs/69d3596-SPEC.md', role: 'evidence', revision: 'commit', symbol: 'docs/specs/3c4b6f2-SPEC.md', note: 'frontmatter 与范围路径共同区分两代提交。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '新 PLAN 带有 69d3596 的 Finalize 标题和 2026-11-11T11:21:43+08:00，状态为 implemented。',
-      source: { path: 'docs/plans/69d3596-PLAN.md', role: 'evidence', revision: 'commit', symbol: 'date: 2026-11-11T11:21:43+08:00', note: '该日期属于被补档提交 69d3596。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'INDEX patch 把 Implemented 从 85 改为 86，并在 c8338e1 后新增 69d3596 行。',
-      source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'commit', symbol: '| 69d3596 | Finalize previous commit documentation | implemented |', note: 'Partial 与 Unimplemented 仍为 1、0，self 行不变。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'status JSON 在 self 前加入 69d3596 完整对象，两个文档字段使用 69d3596 文件名。',
-      source: { path: 'docs/status/index.json', role: 'evidence', revision: 'commit', symbol: '"fullSha": "69d3596e99fa57a97ac37628d1aab22880b5a060"', note: '机器可读身份与新文件路径同步。' },
-    },
-    { kind: 'not-recorded', statement: 'SPEC 和 PLAN 的验证文字没有日志支撑，本提交不记录测试、构建或 CI 结果。' },
-  ],
-  remaining: ['生成的 PLAN 没有按 69d3596 的真实四路径展开，背景和剩余工作也仍为通用表述。'],
+  ],  remaining: ['生成的 PLAN 没有按 69d3596 的真实四路径展开，背景和剩余工作也仍为通用表述。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: 'Implemented 85→86，新增 69d3596 行。' },
     { path: 'docs/plans/69d3596-PLAN.md', role: 'changed', note: '新建 69d3596 的 Finalize 计划。' },
@@ -70,7 +47,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['既有 c8338e1 等条目不被替换，新增文件命名与链接规范保持一致。'],
     risks: ['69d3596 与 3c4b6f2 都是 Finalize，混淆两代会使 SPEC 范围与 JSON 路径相互矛盾。'],
-    verification: ['比较 69d3596 原提交的 name-status 与新 SPEC，并检查 INDEX 86 汇总和 JSON 的路径映射。'],
+    acceptanceSequence: ['比较 69d3596 原提交的 name-status 与新 SPEC，并检查 INDEX 86 汇总和 JSON 的路径映射。'],
     completed: ['69d3596 的两个新文档、表格入口及 JSON 登记已闭合。'],
     incomplete: ['验证序列未附执行输出，计划内容也未提供逐文件实现细节。'],
   },

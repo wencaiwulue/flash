@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: 'c4e19cee451ce0a5a43e78475d40f2e079b350df',
+  slug: 'commit-docs-finalization',
   title: 'Finalize previous self documentation',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -28,31 +29,7 @@ export const record = defineCommitRecord({
   acceptance: [
     'SPEC/PLAN frontmatter 的 fullSha、标题、日期与 587c466 一致，状态均为 implemented。',
     'SPEC 的 95 文件统计及清单与 587c466 diff 对应，INDEX/JSON 的链接字段指向两个新文件。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: '新 SPEC 记录 95 files changed、6620 insertions，并包含初始化文档体系的脚本和 CI 路径。',
-      source: { path: 'docs/specs/587c466-SPEC.md', role: 'evidence', revision: 'commit', symbol: '- Diff statistics: 95 files changed, 6620 insertions(+)', note: '大规格 SPEC 保存完整历史路径清单。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '新 PLAN 使用 587c466 身份并包含实现步骤小节。',
-      source: { path: 'docs/plans/587c466-PLAN.md', role: 'evidence', revision: 'commit', symbol: 'commit: 587c466f7e28e4cb59b0c4522857a7110e7b152a', note: 'PLAN 与 SPEC 绑定同一历史提交。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'INDEX 的 Implemented 从 40 增至 41，并加入 587c466 文档入口。',
-      source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'commit', symbol: '- Implemented: 41', note: '其他两个状态计数未变化。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'status JSON 在 self 前加入 587c466 完整身份和两个新文档路径。',
-      source: { path: 'docs/status/index.json', role: 'evidence', revision: 'commit', symbol: '"fullSha": "587c466f7e28e4cb59b0c4522857a7110e7b152a"', note: '机器注册与人类索引一致。' },
-    },
-    { kind: 'not-recorded', statement: 'SPEC/PLAN 只列验证序列，未附 bun test、typecheck、build 或 CI 的执行输出。' },
-  ],
-  remaining: ['8117aaa 的文档在本提交仍缺失；587c466 的生成 PLAN 仍是概括性计划，不能代替执行记录。'],
+  ],  remaining: ['8117aaa 的文档在本提交仍缺失；587c466 的生成 PLAN 仍是概括性计划，不能代替执行记录。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: '加入 587c466 行并将 Implemented 调为 41。' },
     { path: 'docs/plans/587c466-PLAN.md', role: 'changed', note: '新建文档体系初始化提交的计划。' },
@@ -70,7 +47,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['既有 beee034 及更早条目不重排，self 仍收尾；新增链接使用既有相对路径约定。'],
     risks: ['长清单容易被缩成普通四文件描述，或直接父与祖父身份错位；两种错误都会破坏历史可追溯性。'],
-    verification: ['核对 SPEC 清单与 587c466 diff，解析 JSON 并检查 INDEX 计数和链接；验证散文不作为执行证据。'],
+    acceptanceSequence: ['核对 SPEC 清单与 587c466 diff，解析 JSON 并检查 INDEX 计数和链接；验证散文不作为执行证据。'],
     completed: ['587c466 的大范围 SPEC、对应 PLAN 及两个索引项已完整落盘。'],
     incomplete: ['本提交没有记录文档生成、测试或 CI 的实际运行轨迹。'],
   },

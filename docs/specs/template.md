@@ -7,9 +7,11 @@ status: implemented | partial | unimplemented
 kind: component | metadata-migration | evidence-update
 ---
 
+结构化记录必须另含 slug: <feature-slug>；slug 用于输出文件名，不重复写入生成后的 frontmatter。
+
 # <commit-subject>
 
-> 本文由结构化记录渲染。正文必须依据该提交的 diff、实现、测试和有出处的证据独立编写；本模板只规定结构，不是可交付内容。
+> 正文依据对应 revision 的实现与测试独立编写；验收标准只写应满足的条件，不记录历史执行结果。
 
 ## 前置状态与问题
 
@@ -23,9 +25,9 @@ kind: component | metadata-migration | evidence-update
 
 <组件职责、接口、状态转换、持久化格式或端到端数据流；纯元数据提交写实际迁移流程>
 
-## 文件、接口与证据关系
+## 文件、接口与复用关系
 
-<每个变更文件的设计作用、复用模块、测试和证据来源，而不是裸文件列表>
+<每个变更文件的设计作用、复用模块、测试和验收关系，而不是裸文件列表>
 
 ## 关键决策与工程取舍
 
@@ -42,10 +44,6 @@ kind: component | metadata-migration | evidence-update
 ## 验收标准
 
 <可以独立判断实现是否满足目标的行为条件>
-
-## 验证证据
-
-<区分新增测试、实际执行、CI、diff 事实和后续证据，并给出具体来源>
 
 ## 实现状态与剩余范围
 

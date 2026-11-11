@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: 'f210ce9c2dc51a30f98514628b07538a969f21aa',
+  slug: 'commit-docs-finalization',
   title: 'Finalize commit documentation for previous change',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -28,31 +29,7 @@ export const record = defineCommitRecord({
   acceptance: [
     '两个新文件的 frontmatter 均指向完整 c4e19ce SHA，SPEC 路径清单包含 587c466 的两个产物。',
     'INDEX 为 43/1/0，JSON 在 self 前登记 c4e19ce 且 spec/plan 字段与实际文件一致。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: 'c4e19ce SPEC 记录 4 files、169 insertions、1 deletion，并列出 587c466 SPEC/PLAN。',
-      source: { path: 'docs/specs/c4e19ce-SPEC.md', role: 'evidence', revision: 'commit', symbol: '- Diff statistics: 4 files changed, 169 insertions(+), 1 deletion(-)', note: '统计对应含长清单的 c4e19ce diff。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'c4e19ce PLAN 新建并带有实现步骤、验证序列与完成状态小节。',
-      source: { path: 'docs/plans/c4e19ce-PLAN.md', role: 'evidence', revision: 'commit', symbol: '## Implementation steps', note: '计划文档与 SPEC 成对新增。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'INDEX 摘要变为 Implemented 43，并新增 c4e19ce 链接行。',
-      source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'commit', symbol: '- Implemented: 43', note: 'Partial 和 Unimplemented 未调整。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '机器索引写入 c4e19ce 完整 SHA 及其两个新文档路径。',
-      source: { path: 'docs/status/index.json', role: 'evidence', revision: 'commit', symbol: '"fullSha": "c4e19cee451ce0a5a43e78475d40f2e079b350df"', note: '对象插入在 self 前。' },
-    },
-    { kind: 'not-recorded', statement: '生成文档列出的 bun test、typecheck、build 和 CI 没有随附输出或通过记录。' },
-  ],
-  remaining: ['直接父 17c9196 的文档由后续提交处理；c4e19ce 的计划正文仍是生成模板，未增加实施细节或验证日志。'],
+  ],  remaining: ['直接父 17c9196 的文档由后续提交处理；c4e19ce 的计划正文仍是生成模板，未增加实施细节或验证日志。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: 'Implemented 42 到 43，加入 c4e19ce。' },
     { path: 'docs/plans/c4e19ce-PLAN.md', role: 'changed', note: '新建 c4e19ce 的生成计划。' },
@@ -70,7 +47,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['既有 587c466 与 8117aaa 条目保持不变，新文件沿用原命名和 frontmatter 约定。'],
     risks: ['三层提交相互嵌套，最容易误用 17c9196 的 75 行统计或 587c466 的 95 文件统计。'],
-    verification: ['以 c4e19ce 的 Git diff 对照 SPEC，再交叉检查新 PLAN、INDEX 计数与 JSON 字段。'],
+    acceptanceSequence: ['以 c4e19ce 的 Git diff 对照 SPEC，再交叉检查新 PLAN、INDEX 计数与 JSON 字段。'],
     completed: ['c4e19ce 的文档对和两个索引注册已按 169 行新增的实际范围完成。'],
     incomplete: ['没有可追溯的命令执行或 CI 结果，验证序列仅是文档内容。'],
   },

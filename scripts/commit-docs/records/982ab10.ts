@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '982ab108e16a0919269629256555d7ef9efea707',
+  slug: 'buddy-fork-subagent',
   title: 'Enable Buddy and Fork Subagent',
   kind: 'component',
   status: 'implemented',
@@ -59,80 +60,7 @@ export const record = defineCommitRecord({
     '/fork 空参数给 usage，非空 prompt 同时包含完整 directive、后台 Agent 和省略 subagent_type 的指令。',
     '外部构建与 fixture 开启两个 flag，特性档断言 buddy/fork 命令存在；STATUS/RELEASE 不再把 Buddy/Fork 列为 disabled。',
     '离线测试和 at-commit 命令记录不被解释为真实模型或真实 worker 在线验证。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: 'observer 实现单飞/静音门控、4000 字符用户文本、受限 JSON、首次 soul 保存和后续 reaction；REPL 传入 ToolUseContext。',
-      source: {
-        path: 'src/buddy/companionObserver.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'export async function fireCompanionObserver',
-        note: 'Buddy 观察、持久化与反应的直接实现证据。',
-      },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '/buddy status 通过 getCompanion 组合即时 bones 与存下的 soul，mute/unmute 只写 companionMuted。',
-      source: {
-        path: 'src/commands/buddy/index.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: "companionMuted: action === 'mute'",
-        note: '静音命令的直接实现证据；新增测试文件未单列该命令用例。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '新 buddyFork 测试覆盖确定性 roll、JSON 拒绝/解析、注入 run 的 soul 保存与两次 reaction、第二次不保存，以及 Fork guard、相同 placeholders、parent UUID 不变、worktree notice 和 /fork prompt。',
-      source: {
-        path: 'tests/buddyFork.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: "describe('Buddy companion'",
-        note: '离线确定性回归；模型 run 与配置保存均为测试替身。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '外部特性档新增 hasBuddyCommand/hasForkCommand 断言，fixture 同时开启 BUDDY 和 FORK_SUBAGENT。',
-      source: {
-        path: 'tests/enabledFeatures.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: 'expect(profile.hasBuddyCommand).toBe(true)',
-        note: '编译入口注册回归，测试新增不等于独立执行证据。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: 'at-commit STATUS 记录 bun test 118 tests、516 assertions 通过；这是提交内历史执行记录，不是本次文档编写重新运行。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '| `bun test` | 118 tests, 516 assertions passed |',
-        note: 'Verified evidence 表中的全量离线测试结果。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: 'at-commit STATUS/RELEASE 记录 typecheck 零错误、CLI/SDK/声明构建和 36-tool 编译特性档通过。',
-      source: {
-        path: 'docs/RELEASE.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '## Buddy and Fork Subagent',
-        note: '发布段的构建与特性档执行记录。',
-      },
-    },
-    {
-      kind: 'not-recorded',
-      statement: '没有真实模型孵化/reaction、真实配置跨进程持久化或实际后台 fork worker 的端到端记录；新增 Buddy 测试注入 run，/fork 测试只检查生成的 prompt。',
-    },
-  ],
-  remaining: [
+  ],  remaining: [
     '真实模型是否遵循 bones 不变、返回可解析 soul/reaction，以及 side-query 的实际缓存效果，仍需授权模型环境验证。',
     '测试中的 saveGlobalConfig 是内存替身，真实配置写入和跨进程读取未由该用例证明；observer inFlight 也只是进程级单飞。',
     '/fork prompt 与核心 helper 已有离线覆盖，但命令经主模型调用 Agent、后台 worker 执行和 worktree 实际修改没有端到端证据。',
@@ -297,7 +225,7 @@ export const record = defineCommitRecord({
       '继承父上下文的 worktree 路径可能过期，notice 要求路径翻译和编辑前重读，不能假设父工作区文件同步。',
       'prompt 测试无法证明主模型会正确调用 Agent，注入 observer run 也无法证明真实模型遵循特征约束。',
     ],
-    verification: [
+    acceptanceSequence: [
       '先运行 Buddy 确定性 roll/JSON 测试，再观察首次注入响应保存 soul、第二次只 reaction 且不保存。',
       '分别核对无 context、mute、inFlight、空用户文本与非法响应分支；这些分支如需执行结论应有独立测试来源。',
       '运行 Fork helper 测试，比较所有 placeholder、parent UUID、recursive tag、worktree 路径和 /fork 完整 directive。',

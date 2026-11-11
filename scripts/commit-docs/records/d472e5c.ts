@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: 'd472e5c963d799ffa51192e7358ecaba45de8c7a',
+  slug: 'commit-docs-finalization',
   title: 'Complete previous commit documentation',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -29,31 +30,7 @@ export const record = defineCommitRecord({
   acceptance: [
     'SPEC/PLAN frontmatter 与 501672c 完整身份一致，Actual scope 对应 335b217 文档组。',
     'INDEX 和 JSON 分别新增一个入口，计数正确，self 保持在第 60 项和表格末行。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: '新 SPEC 固定 501672c 完整 SHA，Actual scope 记录 335b217 文档组及 78 行新增、1 行删除。',
-      source: { path: 'docs/specs/501672c-SPEC.md', role: 'evidence', revision: 'commit', symbol: 'commit: 501672c99b9338a35a2f7f261adc395a9b829dd2', note: '目标身份和范围可在新文件核对。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '新 PLAN 提供实施步骤、风险与 implemented 完成状态。',
-      source: { path: 'docs/plans/501672c-PLAN.md', role: 'evidence', revision: 'commit', symbol: '## Completion status and remaining work', note: '计划完成状态的直接锚点。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'INDEX patch 将 Implemented 调为 58，并在 0640471 后新增 501672c。',
-      source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'commit', symbol: '- Implemented: 58', note: '不含 self 的新汇总与表格入口。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'status patch 把 501672c 插到 self 前，commits 总数由 59 变为 60。',
-      source: { path: 'docs/status/index.json', role: 'evidence', revision: 'commit', symbol: '"fullSha": "501672c99b9338a35a2f7f261adc395a9b829dd2"', note: '机器对象的完整身份和文档路径。' },
-    },
-    { kind: 'not-recorded', statement: '本提交没有测试、typecheck、build 或 CI 结果，验证章节不构成执行证据。' },
-  ],
-  remaining: ['直接父 2f55f19 与当前 d472e5c 的文档仍属后续环节，本提交只完成 501672c 的元数据迁移。'],
+  ],  remaining: ['直接父 2f55f19 与当前 d472e5c 的文档仍属后续环节，本提交只完成 501672c 的元数据迁移。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: 'Implemented 57→58，新增 501672c 表格行。' },
     { path: 'docs/plans/501672c-PLAN.md', role: 'changed', note: '新建的 501672c 实施计划。' },
@@ -71,7 +48,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['0640471 及更早条目不改，self 文档、changeId、路径格式和末尾位置保持兼容。'],
     risks: ['连续提交主题近似，若只看 previous 字样而不核对祖父关系，会把 2f55f19 与 501672c 对调。'],
-    verification: ['对照目标 diff 检查 SPEC，核对 PLAN 元数据、两个索引计数和 self 的最终下标。'],
+    acceptanceSequence: ['对照目标 diff 检查 SPEC，核对 PLAN 元数据、两个索引计数和 self 的最终下标。'],
     completed: ['501672c SPEC/PLAN 与双索引入口已同步落盘，无额外文件。'],
     incomplete: ['没有实际验证或 CI 记录，implemented 只表示元数据声明。'],
   },

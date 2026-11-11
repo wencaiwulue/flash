@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '9cd4c63193ded6eb916bf734f65a427da193faf0',
+  slug: 'live-validation-workflows',
   title: '新增 live 验证工作流并兼容 SkillHub 响应',
   kind: 'component',
   status: 'partial',
@@ -18,7 +19,7 @@ export const record = defineCommitRecord({
     '兼容 global namespace、对象或字符串 latestVersion、displayName/name 与 summary/description 回退，并记录真实证据边界。',
   ],
   nonGoals: [
-    '不把 RELEASE 中的本地模型和公共 SkillHub sentinel 写成 GitHub Actions workflow 已通过。',
+    '不把 RELEASE 中的本地模型和公共 SkillHub sentinel 写成 GitHub Actions workflow。',
     '不宣称 Cloud OAuth、Cloud Files、bridge resume 或桌面 screenshot 已在此提交执行成功。',
     '不把公共 registry 成功扩展为私有或 self-hosted SkillHub 已验证。',
     '不引入后续提交才有的 model/cloud 脚本缺省跳过逻辑，也不改变现有 agent、bridge 或桌面协议。',
@@ -29,7 +30,7 @@ export const record = defineCommitRecord({
     'model 脚本先启用配置并解析主模型，再串行执行四个探针：真实 workflow 完成、proactive 激活后的 Sleep、100 token 窗口下的一次 context collapse、以及 reactive compaction。任一状态或结果断言失败都会抛错，四项分别输出 WORKFLOW_LIVE_OK、PROACTIVE_LIVE_OK、CONTEXT_COLLAPSE_LIVE_OK、REACTIVE_COMPACTION_LIVE_OK，外层 finally 统一清理。',
     'SkillHub 适配层保持现有请求、解包和列表提取，只扩展记录字段归一化：缺省 namespace 改为 global；版本依次取 version、latestVersion.version、字符串 latestVersion；名称依次取 displayName、name、slug；摘要依次取 summary、description、空串。live 脚本用默认公共地址或显式地址搜索 code，构造 namespace/slug 下载，再读同一缓存目录验证第二次 cacheHit。',
     'Cloud 脚本独立于模型与桌面：从既有 OAuth 配置取 access token，组织 UUID 可由环境或接口获得，base URL 可直接回退既有 OAuth 配置。它创建并写回首个 perpetual bridge session， teardown 后恢复并比较 session ID，再设置 Cloud Files 所需环境、写入嵌套文件、执行 persistence 和 archive，最后清理注册资源与临时目录。不过 workflow 的三项 secret gate 比脚本回退更严格。',
-    'desktop 脚本保留独立开关：直接调用时变量非 1 只输出 DESKTOP_LIVE_SKIPPED；workflow 一旦通过变量 gate，又在步骤中显式传 1，因此会取得 computer-use client、调用 screenshot、检查 isError 并关闭客户端。该路径需要 self-hosted 与交互桌面，和 hosted model/SkillHub 证据不可混算。',
+    'desktop 脚本保留独立开关：直接调用时变量非 1 只输出 DESKTOP_LIVE_SKIPPED；workflow 一旦执行变量 gate，又在步骤中显式传 1，因此会取得 computer-use client、调用 screenshot、检查 isError 并关闭客户端。该路径需要 self-hosted 与交互桌面，和 hosted model/SkillHub 证据不可混算。',
   ],
   decisions: [
     '初始 revision 试图用 job 级条件阻止未配置探针，而不是在 model/cloud 脚本内输出跳过标记；但 secrets 不是 jobs.<job_id>.if 的受支持上下文，只有 desktop 的 vars gate 可按该语义分析，model/cloud 不能宣称会可靠 job-skip。',
@@ -56,40 +57,8 @@ export const record = defineCommitRecord({
     'desktop 仅在开关为 1 时调用 screenshot，错误结果会抛错并关闭客户端；skip 与成功是不同标记。',
     'SkillHub 字段回退顺序和 global 缺省值与 at-commit 实现一致，显式旧字段仍可使用。',
     '提交文档只记录模型与公共 SkillHub live sentinel；Cloud、desktop 和 hosted workflow 均无伪造成功结论。',
-  ],
-  evidence: [
-    {
-      kind: 'recorded-command-pass',
-      statement: 'at-commit RELEASE 记录 live 脚本返回 WORKFLOW_LIVE_OK、PROACTIVE_LIVE_OK、CONTEXT_COLLAPSE_LIVE_OK、REACTIVE_COMPACTION_LIVE_OK 与 SKILLHUB_LIVE_OK；这是历史文档中的模型四项和公共 SkillHub 一项结果，不是本次记录编写重新执行。',
-      source: { path: 'docs/RELEASE.md', role: 'evidence', revision: 'commit', symbol: 'Live script checks returned', note: '五个 sentinel 及其公共 SkillHub 范围的直接来源。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '初始 workflow 的 model/cloud 在 job if 使用不受支持的 secrets context，desktop 使用 vars，且只有 model、cloud、desktop 声明 live-validation Environment。',
-      source: { path: '.github/workflows/live-validation.yml', role: 'evidence', revision: 'commit', symbol: 'jobs:', note: 'at-commit 编排、隔离路径和触发器证据。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'SkillHub client 在该 revision 使用 global 缺省 namespace，并支持对象 latestVersion.version、displayName 和 summary 的优先回退。',
-      source: { path: 'src/services/skillSearch/skillhubClient.ts', role: 'evidence', revision: 'commit', symbol: 'const latest = value.latestVersion', note: '响应字段兼容的直接实现。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'Cloud 脚本包含 bridge 重建、同 ID 恢复、文件持久化和 archive 断言，desktop 脚本包含独立 skip 分支与 screenshot 检查；代码存在不等于探针已运行。',
-      source: { path: 'scripts/live-cloud-validation.ts', role: 'evidence', revision: 'commit', symbol: 'Bridge session resume failed', note: 'Cloud 代码路径证据；desktop 另由变更引用覆盖。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'STATUS 将 SkillHub 标为 live public registry，同时仍要求授权 Claude OAuth 环境和授权交互桌面/VM，明确两类后续验证边界。',
-      source: { path: 'docs/STATUS.md', role: 'evidence', revision: 'commit', symbol: 'Run native Computer Use control', note: 'Cloud 与桌面后续步骤及公共 registry 状态来源。' },
-    },
-    {
-      kind: 'not-recorded',
-      statement: '此提交没有 GitHub Actions run ID，也没有 CLOUD_LIVE_OK 或 DESKTOP_LIVE_OK 的执行记录；不能把脚本新增或后续运行倒记为当时证据。',
-    },
-  ],
-  remaining: [
-    'model/cloud 的 secrets job-if 不受支持，需要改用有效门控或脚本 guard；不能依赖当前条件获得可预测的 CI 跳过。',
+  ],  remaining: [
+    'model/cloud 的 secrets job-if 不受支持；设计应使用有效门控或脚本 guard 才能获得可预测的 CI 跳过行为。',
     'Cloud OAuth、perpetual bridge、Cloud Files 与原生桌面 screenshot 仍需各自授权环境的真实执行结果。',
     '私有或 self-hosted SkillHub 仍是可选的独立验证，公共 registry 成功不覆盖其认证和部署差异。',
     '初始 workflow 是否被平台注册以及四个 job 的实际执行或跳过情况，此提交没有平台侧记录。',
@@ -139,14 +108,14 @@ export const record = defineCommitRecord({
       },
       {
         title: '记录分层验证结果与边界',
-        detail: '在 RELEASE 写入已有模型四项和 SkillHub 一项 sentinel，在 STATUS 仅提升公共 registry 状态，并保留 Cloud、交互桌面与私有 registry 的后续步骤；没有 run ID 时不声明 hosted CI 通过。',
+        detail: '在 RELEASE 写入已有模型四项和 SkillHub 一项 sentinel，在 STATUS 仅提升公共 registry 状态，并保留 Cloud、交互桌面与私有 registry 的后续步骤；没有 执行标识 时不声明 hosted CI 执行。',
         paths: ['docs/RELEASE.md', 'docs/STATUS.md'],
       },
     ],
     compatibility: [
       'SkillHub 显式 namespace、version、name、description 和字符串 latestVersion 仍可解析，仅缺省 namespace 和新字段优先级发生变化。',
       'Cloud 脚本直接调用可回退组织查询和默认 base URL；初始 workflow 的 if 文本虽列出三项 secret，但该位置不支持 secrets context，不能把文本门槛当作有效 CI 条件。',
-      'desktop 直接调用可在变量非 1 时跳过；workflow 通过 gate 后显式传 1，因此该 job 内执行的是 live 分支。',
+      'desktop 直接调用可在变量非 1 时跳过；workflow 执行 gate 后显式传 1，因此该 job 内执行的是 live 分支。',
       '既有功能入口不变，新增脚本和 workflow 是独立验证面；模型/SkillHub 的历史 sentinel 不构成 Cloud/desktop 回归证据。',
     ],
     risks: [
@@ -155,11 +124,11 @@ export const record = defineCommitRecord({
       'model/cloud 初始判断只写在不受支持的 secrets job-if 中，脚本没有 skip guard；既不能推断有效 job skip，也不会得到脚本 skip sentinel。',
       '公共响应字段回退可能掩盖异常数据类型，缺失 slug 的记录仍被过滤，版本字段仅在非空字符串时进入结果。',
     ],
-    verification: [
+    acceptanceSequence: [
       '静态比较父提交与当前提交，确认八个路径、四个新脚本和 SkillHub 四处字段映射全部覆盖。',
       '依据 at-commit RELEASE 引用模型四项与 SkillHub sentinel，不将该记录改写为本次重新运行或 Actions 结果。',
       '分别在授权 OAuth 与交互桌面环境运行对应脚本时，应检查 session ID、持久化文件、archive、screenshot 和清理，而非只等待进程退出。',
-      '后续 hosted run 应逐 job 核对条件求值、runner、sentinel 和 skip；缺省或跳过不能提升为 live round trip 通过。',
+      '后续 hosted run 应逐 job 核对条件求值、runner、sentinel 和 skip；缺省或跳过不能提升为 live round trip 执行。',
       '以临时 registry 响应覆盖 global、latestVersion 对象/字符串、displayName/name 和 summary/description 的优先顺序。',
     ],
     completed: [

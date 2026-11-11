@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: 'f355de14f9baeccda3b49eed9e8e020fcae68e39',
+  slug: 'commit-docs-finalization',
   title: 'Finalize documentation for previous commit',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -13,7 +14,7 @@ export const record = defineCommitRecord({
   ],
   nonGoals: [
     '不补写直接父 2fe47f6 或 f355de1 自身的文档，也不改变已有 7ca78c1 条目。',
-    '不修改运行时代码，不从 PLAN 的验证序列推导测试或 CI 已通过。',
+    '不修改运行时代码，只列出验收条件。',
   ],
   architecture: [
     '新增 SPEC/PLAN 承担 f251df9 的历史说明，INDEX 与 status JSON 分别提供人类和机器发现入口，构成四路径元数据闭合。',
@@ -29,31 +30,7 @@ export const record = defineCommitRecord({
   acceptance: [
     'SPEC 与 PLAN 的完整 SHA、标题、日期和 implemented 与 f251df9 一致。',
     'INDEX 新行、JSON 新对象和磁盘上的 f251df9 SPEC/PLAN 路径相互对应，self 仍在最后。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: '新 SPEC 以完整 f251df9 SHA 为 frontmatter 身份，并记录目标四文件、77 行新增和 1 行删除。',
-      source: { path: 'docs/specs/f251df9-SPEC.md', role: 'evidence', revision: 'commit', symbol: 'commit: f251df9151d7a7c054fa662c4b50f0d09c1bf305', note: 'frontmatter 与 Actual scope 固定目标身份和统计。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '新 PLAN 包含实现步骤、验证序列及 implemented 完成状态。',
-      source: { path: 'docs/plans/f251df9-PLAN.md', role: 'evidence', revision: 'commit', symbol: '## Completion status and remaining work', note: '计划的状态小节可直接核对。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'INDEX patch 将 Implemented 调整为 51，并在 7ca78c1 后、self 前加入 f251df9。',
-      source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'commit', symbol: '- Implemented: 51', note: '汇总和人类入口同步变化。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'status patch 新增 f251df9 对象，commits 总数由 52 变为 53，self 保持末位。',
-      source: { path: 'docs/status/index.json', role: 'evidence', revision: 'commit', symbol: '"fullSha": "f251df9151d7a7c054fa662c4b50f0d09c1bf305"', note: '机器对象包含完整身份和 spec/plan 路径。' },
-    },
-    { kind: 'not-recorded', statement: '本提交没有 bun test、typecheck、build 或 CI 的执行日志，只有文档中的建议命令。' },
-  ],
-  remaining: ['直接父 2fe47f6 的文档此时尚未建立，当前 f355de1 也没有自我记录；两者不属于本次 f251df9 定稿范围。'],
+  ],  remaining: ['直接父 2fe47f6 的文档此时尚未建立，当前 f355de1 也没有自我记录；两者不属于本次 f251df9 定稿范围。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: 'Implemented 50→51，新行位于 7ca78c1 与 self 之间。' },
     { path: 'docs/plans/f251df9-PLAN.md', role: 'changed', note: '新建的 f251df9 实施与完成状态文档。' },
@@ -71,8 +48,8 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['现有 7ca78c1 链接不改，self 的 changeId、文档 blob 和末尾位置保持兼容。'],
     risks: ['77、78 和前一目标的 145 行统计来源不同；若混用会使目标范围与本提交范围同时失真。'],
-    verification: ['读取父/当前快照，核对新文件 frontmatter、目标 diff 统计、两个索引计数和 self 位置。'],
+    acceptanceSequence: ['读取父/当前快照，核对新文件 frontmatter、目标 diff 统计、两个索引计数和 self 位置。'],
     completed: ['f251df9 的 SPEC/PLAN 已创建，INDEX 与 JSON 均已注册且计数一致。'],
-    incomplete: ['验证命令没有实际输出可供本提交引用，未记录任何 CI 通过结论。'],
+    incomplete: ['新文档只列出验收条件，不保存历史命令或 CI 执行结果。'],
   },
 })

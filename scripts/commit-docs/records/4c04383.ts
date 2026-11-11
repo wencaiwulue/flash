@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '4c04383cd5a2ee8953031948453d99da6d080946',
+  slug: 'env-context-live-gating',
   title: 'Use env context for live job gating',
   kind: 'component',
   status: 'partial',
@@ -34,36 +35,7 @@ export const record = defineCommitRecord({
   acceptance: [
     'diff 恰为 9 行新增、2 行删除，只影响 model/cloud 的 if 与 job env。',
     '两处 if 仍未使用显式 ${{ ... }}，desktop 和脚本内容逐字保留父版本行为。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: 'model 同时出现新 job env 块和 env context 条件，原步骤 env 仍存在。',
-      source: { path: '.github/workflows/live-checks.yml', role: 'evidence', revision: '4c04383cd5a2ee8953031948453d99da6d080946', symbol: "if: env.ANTHROPIC_API_KEY != ''", note: '环境变量创建与条件上下文切换的直接证据。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'cloud 的三项比较全部改读 env，且三个 secret 在 job env 与 step env 各映射一次。',
-      source: { path: '.github/workflows/live-checks.yml', role: 'evidence', revision: '4c04383cd5a2ee8953031948453d99da6d080946', symbol: "if: env.CLAUDE_CODE_OAUTH_TOKEN != '' && env.CLAUDE_CODE_ORG_UUID != '' && env.CLAUDE_CODE_BASE_URL != ''", note: '本提交尚未给表达式加显式定界符。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'desktop 的 vars gate 与 self-hosted 选择未随 model/cloud 改写。',
-      source: { path: '.github/workflows/live-checks.yml', role: 'evidence', revision: '4c04383cd5a2ee8953031948453d99da6d080946', symbol: "if: vars.CLAUDE_DESKTOP_LIVE == '1'", note: '保留父提交的 desktop 中间态。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'cloud 脚本仍保留缺 token 异常，说明本次没有实现 CLOUD_LIVE_SKIPPED。',
-      source: { path: 'scripts/live-cloud-validation.ts', role: 'evidence', revision: 'b183b9a76948750cf396dd36c62ad06a62221b60', symbol: 'Claude OAuth is required for cloud validation', note: '脚本复用边界，不是后续脚本 guard。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'at-commit STATUS 仍把原生桌面控制列为需要独立授权会话。',
-      source: { path: 'docs/STATUS.md', role: 'evidence', revision: '4c04383cd5a2ee8953031948453d99da6d080946', symbol: 'Native Computer Use desktop control', note: '当时文档没有 desktop live 通过结论。' },
-    },
-    { kind: 'not-recorded', statement: '未保存新 env 定义下的 workflow 解析、job 结果或任何 live probe 输出。' },
-  ],
-  remaining: ['env context 在 job if 中仍不可用；需要另行选择有效门控机制并取得平台执行证据。'],
+  ],  remaining: ['env context 在 job if 中仍不可用；需要另行选择有效门控机制并取得平台执行证据。'],
   references: [
     { path: '.github/workflows/live-checks.yml', role: 'changed', note: '新建 model/cloud job env，并切换对应 if 的 context。' },
     { path: 'scripts/live-model-validation.ts', role: 'reused', symbol: 'async function main()', note: '仍没有 MODEL_LIVE_SKIPPED 提前返回。' },
@@ -87,7 +59,7 @@ export const record = defineCommitRecord({
       'desktop 变量只提供 opt-in；变量开启时仍要求 self-hosted runner，未开启时没有 DESKTOP_LIVE_SKIPPED 脚本日志。',
       '同名 job/step env 重复增加维护面，却没有改变脚本内的凭据读取。',
     ],
-    verification: ['逐行检查 9+/2- patch，并比较当前与父脚本；平台行为需要单独保存的 workflow 日志，不能从 YAML 推断成功。'],
+    acceptanceSequence: ['逐行检查 9+/2- patch，并比较当前与父脚本；平台行为需要单独保存的 workflow 日志，不能从 YAML 推断成功。'],
     completed: ['model/cloud 的 job env 创建与 env context 改写已完成，desktop 和脚本中间态均保留。'],
     incomplete: ['job-if 可用性缺陷尚未解决，CI 跳过矩阵和原生桌面执行均无记录。'],
   },

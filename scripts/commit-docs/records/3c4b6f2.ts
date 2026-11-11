@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '3c4b6f2752cee47fd15ead682e6016fe48174bd8',
+  slug: 'commit-docs-finalization',
   title: 'Finalize previous commit documentation',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -13,7 +14,7 @@ export const record = defineCommitRecord({
   ],
   nonGoals: [
     '不编辑 e8d8c06 所生成的 4329cd8 文档，也不改变 parent fdffe9e 已登记的 f5b097b 内容。',
-    '不根据 PLAN 的验证清单推断任何测试、构建或 CI 已通过。',
+    '新文档只列出验收条件，不保存历史命令或 CI 执行结果。',
   ],
   architecture: [
     '这是一次文档链的下一层封装：新 SPEC 引用 4329cd8 两个产物作为 e8d8c06 的历史范围，本次 diff 的实体新增则是 e8d8c06 两个产物。',
@@ -28,31 +29,7 @@ export const record = defineCommitRecord({
   acceptance: [
     '两个新文件都标明 e8d8c066c1419579fbf8bf6f653760110eaf315a，SPEC 中的嵌套路径确为 4329cd8。',
     'INDEX 显示 82/1/0，e8d8c06 行位于 f5b097b 后；JSON 字段与两个新文件一致且 self 仍在末尾。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: 'e8d8c06 SPEC 的 Actual scope 同时列出 INDEX、status JSON 和 4329cd8 的 SPEC/PLAN，反映被补档提交的四文件范围。',
-      source: { path: 'docs/specs/e8d8c06-SPEC.md', role: 'evidence', revision: 'commit', symbol: 'docs/specs/4329cd8-SPEC.md', note: '4329cd8 是被描述范围，不是本次 changed reference。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '新 PLAN 以 e8d8c06 完整 SHA 为 frontmatter commit，并保留 implemented 完成状态。',
-      source: { path: 'docs/plans/e8d8c06-PLAN.md', role: 'evidence', revision: 'commit', symbol: 'commit: e8d8c066c1419579fbf8bf6f653760110eaf315a', note: '身份与本记录描述的提交一致。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'INDEX patch 将 Implemented 81 改为 82，并新增带两个 e8d8c06 链接的表格行。',
-      source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'commit', symbol: '- Implemented: 82', note: '新行插在 self 前，其他状态计数未动。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'status patch 添加 e8d8c06 的完整 SHA、2026-11-11T11:19:30+08:00、Finalize subject 和文档路径。',
-      source: { path: 'docs/status/index.json', role: 'evidence', revision: 'commit', symbol: '"plan": "docs/plans/e8d8c06-PLAN.md"', note: '该对象位于 self 对象之前。' },
-    },
-    { kind: 'not-recorded', statement: '两个生成文件只给出建议验证序列，diff 中没有任何对应执行结果。' },
-  ],
-  remaining: ['新 PLAN 没有针对 e8d8c06 的四项补丁给出专门步骤，仍停留在通用计划文本。'],
+  ],  remaining: ['新 PLAN 没有针对 e8d8c06 的四项补丁给出专门步骤，仍停留在通用计划文本。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: '新增 e8d8c06 行，Implemented 81→82。' },
     { path: 'docs/plans/e8d8c06-PLAN.md', role: 'changed', note: '新建 e8d8c06 的实施计划。' },
@@ -70,7 +47,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['已有 79 至 81 计数对应的历史行保持原顺序，只追加新一代入口。'],
     risks: ['同名 Finalize 提交连续出现，完整 SHA 与嵌套路径若未同时核对，就可能错配一代。'],
-    verification: ['检查 e8d8c06 原始 name-status 与 SPEC 路径块，并核对当前 INDEX/JSON 的 82 计数和新对象。'],
+    acceptanceSequence: ['检查 e8d8c06 原始 name-status 与 SPEC 路径块，并核对当前 INDEX/JSON 的 82 计数和新对象。'],
     completed: ['e8d8c06 自身的两个文档与两个索引入口已经补齐。'],
     incomplete: ['通用计划没有执行证据，也没有更细的生成过程说明。'],
   },

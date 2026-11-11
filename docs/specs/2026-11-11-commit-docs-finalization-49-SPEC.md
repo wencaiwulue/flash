@@ -1,0 +1,67 @@
+---
+commit: 5c5645575a79226d0a103b896681c9941d687d82
+title: "Finalize previous commit documentation"
+date: 2026-11-11T11:24:03+08:00
+status: implemented
+kind: metadata-migration
+---
+
+# Finalize previous commit documentation
+
+> 本文是依据该提交的 diff、对应 revision 的实现与测试，以及有出处的状态记录所作的回溯性设计重建；不冒充历史提交当时已存在的原文。
+
+## 前置状态与问题
+
+父版本尚无 0e2559a 的 SPEC、PLAN 或 status 条目，INDEX 的 Implemented 为 87。0e2559a 自身是在为更早的 69d3596 补齐文档，不能把两层对象混淆。
+
+需要为目标祖父提交补齐可发现的文档身份，并同步人类索引和机器索引；仅创建两个 Markdown 文件会留下断链与计数不一致。
+
+## 目标与非目标
+
+### 目标
+
+- 新建 0e2559a 的 SPEC/PLAN，frontmatter 使用目标祖父提交 0e2559a 的身份，并概述该提交实际的文档变更。
+- 让 INDEX 与 status/index.json 都能定位这两个产物，且状态统计同步。
+
+### 非目标
+
+- 不修改产品源码，也不重写 69d3596 或 0e2559a 的历史内容。
+- 不把新文档列出的 test、typecheck、build 或 CI 命令当成已经执行的证据。
+
+## 方案架构与数据流
+
+产品架构不适用：四个变更路径全是文档元数据，没有运行时代码、协议或状态机。
+
+SPEC/PLAN 保存祖父提交说明，INDEX 提供表格入口，status JSON 提供 fullSha、日期、状态和文件路径的机器可读映射。
+
+### 文件、接口与证据关系
+
+| 关系 | 位置 | 设计作用 |
+|---|---|---|
+| 变更 | `docs/INDEX.md` | 更新 implemented 汇总并增加祖父提交文档入口。 |
+| 变更 | `docs/plans/0e2559a-PLAN.md` | 新建的祖父提交实施计划。 |
+| 变更 | `docs/specs/0e2559a-SPEC.md` | 新建的祖父提交身份与实际范围说明。 |
+| 变更 | `docs/status/index.json` | 新增祖父提交的机器可读状态和文档路径。 |
+
+## 关键决策与工程取舍
+
+- SPEC 记录 0e2559a 的四文件、78 行新增和 1 行删除范围，其中包括 69d3596 的两个文档产物。
+- 两个索引的新增项放在 self 前；INDEX 只把 Implemented 从 87 调到 88，Partial 1 与 Unimplemented 0 不动。
+
+### 备选方案与回溯分析
+
+- 事后看，只写 Markdown 会使两个索引遗漏祖父提交；只改 INDEX 又缺少机器可读注册，因此四类路径需要作为一次元数据闭合处理。
+
+## 安全与协议边界
+
+- diff 不含凭据、可执行逻辑或权限变更；生成文档中的安全表述不代表 enforcement 发生变化。
+
+## 验收标准
+
+- 两个 frontmatter 的 SHA、标题、时间和 implemented 状态与目标祖父提交一致。
+- INDEX 链接、JSON 的 spec/plan 字段与实际新文件相符，摘要、表格和 JSON 状态一致。
+
+## 实现状态与剩余范围
+
+- 状态：**implemented**
+- 生成文档对祖父提交的说明仍较概括；若要更深入的设计分析，需要另行补充内容而非扩大本提交事实范围。

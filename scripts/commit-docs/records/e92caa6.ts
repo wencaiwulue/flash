@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: 'e92caa6639daf982d3299a485dfc6c0b5ff7f1e7',
+  slug: 'local-skill-discovery',
   title: 'Implement local skill discovery',
   kind: 'component',
   status: 'implemented',
@@ -67,102 +68,7 @@ export const record = defineCommitRecord({
     'DiscoverSkills 与自动路径返回一致的本地匹配和排除语义，只暴露名称/描述并提示用 Skill 加载。',
     '外部特性包加载 33 个非空工具并包含 DiscoverSkills，运行时 0/false/no/off 可关闭搜索。',
     'STATUS 将 Local skill search 限定为 offline index/build，Remote canonical skills 标为 Not implemented；测试新增不单独作为执行证据。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: 'localSearch.ts 实现 cwd Promise 缓存、非 bundled/MCP 元数据索引、加权 Fuse、零结果关键词 fallback、可见性排除和 discovered-name 记录。',
-      source: {
-        path: 'src/services/skillSearch/localSearch.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'export function searchSkillIndex(',
-        note: '本地索引、排名和过滤语义的直接源码证据。',
-      },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'prefetch.ts 实现 user_input/write_pivot/subagent_spawn 的优先级、2000 字符查询构造、四种写入工具和最近 discovery 边界。',
-      source: {
-        path: 'src/services/skillSearch/prefetch.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'export function startSkillDiscoveryPrefetch(',
-        note: '三类信号与附件生成的直接源码证据。',
-      },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'DiscoverSkillsTool 使用严格 query/limit 输入并直接调用 searchLocalSkills，工具注册由 EXPERIMENTAL_SKILL_SEARCH 条件控制。',
-      source: {
-        path: 'src/tools/DiscoverSkillsTool/DiscoverSkillsTool.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'export const DiscoverSkillsTool = buildTool({',
-        note: '模型主动发现复用同一搜索实现的直接证据。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '新增 skillSearch 测试以三条内存索引覆盖排名/exclude/limit、两类可见名称、discovered-name 遥测、turn-zero、write-pivot/subagent 和 kill switch，共 6 tests、23 assertions；此项只声明测试加入。',
-      source: {
-        path: 'tests/skillSearch.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: "describe('local skill index'",
-        note: '离线回归范围；没有真实磁盘索引、模型或远程调用。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '外部画像把工具数从 32 更新为 33并加入 DiscoverSkills，fixture 同步 EXPERIMENTAL_SKILL_SEARCH；未直接调用 DiscoverSkillsTool.call。',
-      source: {
-        path: 'tests/enabledFeatures.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: 'expect(profile.toolCount, JSON.stringify(profile)).toBe(33)',
-        note: '真实编译 bundle 注册断言的修改，不单独代表执行通过。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 STATUS 的 Verified evidence 记录 bun test 通过 83 tests、352 assertions；这是 at-commit 历史记录，不是本次文档编写重新执行所得。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '`bun test`',
-        note: 'at-commit 全量离线测试结果。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 STATUS 记录 typecheck 零 TypeScript 错误、build 完成 CLI/SDK/declarations，能力矩阵把 Local skill search 标为 Verified (offline index/build)。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '| Local skill search | Verified (offline index/build) |',
-        note: 'at-commit 构建记录和本地技能能力边界。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: 'RELEASE 的 Local skill discovery 段记录 83/352、typecheck、build、declarations、CLI startup smoke 和 33-tool profile 通过，并明确远程 canonical loading 仍不可用。',
-      source: {
-        path: 'docs/RELEASE.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '## Local skill discovery',
-        note: '本提交发布段的离线验证及远程边界。',
-      },
-    },
-    {
-      kind: 'not-recorded',
-      statement: '没有真实模型选择/加载本地技能、真实项目或插件文件索引、远程 canonical round trip、直接 DiscoverSkills.call 或缓存 reload 的专门执行证据。',
-    },
-  ],
-  remaining: [
+  ],  remaining: [
     '自然语言 fallback 没有专门构造“完整查询零结果、分词后命中”的测试，真实中文等未分词文本和低质量非零 Fuse 结果也未覆盖。',
     '真实 getLocalSkillIndex 的磁盘加载、cwd 分区、并发 Promise 合并、失败驱逐及命令/MCP reload 后重建没有直接测试。',
     '缓存无 watcher/TTL，直接修改磁盘元数据而未触发命令 reload 时可能陈旧；clear 后新旧加载重叠时，旧请求失败可能误删新 Promise。搜索使用全局 getCwd，不能按 context 指定另一 cwd；未生成附件的 write pivot 也可能重复触发。',
@@ -364,7 +270,7 @@ export const record = defineCommitRecord({
       '自动路径吞错为空结果提高韧性但降低可诊断性，直接工具调用的错误行为又不完全相同。',
       '远程错误文案与 local-only DiscoverSkills 存在措辞错位，可能引导模型尝试并不存在的 canonical 发现。',
     ],
-    verification: [
+    acceptanceSequence: [
       '定向验证 Fuse 权重、exclude/limit、空查询，并补充完整查询零结果后分词才命中的 fallback 用例。',
       '用真实临时 command 目录检查索引来源、bundled/MCP 排除、cwd 并发 Promise、失败重试和命令 reload 后重建。',
       '构造 discovery/Skill 消息验证精确名称排除和 was_discovered 集合，检查大小写与其他 listing 形式边界。',

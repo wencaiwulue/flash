@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '587c466f7e28e4cb59b0c4522857a7110e7b152a',
+  slug: 'commit-specs-and-plans',
   kind: 'component',
   status: 'partial',
   beforeState: '父提交只有全局 ARCHITECTURE/STATUS/RELEASE，没有逐提交 SPEC、PLAN、机器索引或文档 CI。当时的 41 个祖先需要集中补齐，当前文档工作又无法在自己的树内写入不会改变自身 SHA 的最终文件名。',
@@ -32,33 +33,7 @@ export const record = defineCommitRecord({
     'diff 应包含生成器、checker、两个模板、政策/索引/状态文件、CI 与 package scripts，以及 43 个 SPEC 和 43 个 PLAN 路径。',
     '生成器能输出真实 SHA/title/date，以及按硬编码 statusFor 规则填入的 status 和索引，checker 能报告缺失或文本漂移。',
     '质量验收必须同时报告 fallback、固定 PLAN 和 HEAD/self 双份问题，不能只引用 41 pairs 的数量。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: '实际 diff 为 95 个变更文件（91 个新增、4 个修改）；docs/specs 与 docs/plans 各 43 个新增路径，分别包含 41 个祖先提交的 SHA 文档、self 文档和模板。提交落地后 HEAD 可达提交数才变为 42，但 587c466 自身的 SHA pair 并未包含在该提交中。',
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'at-commit 生成器的 detailsFor 提供通用 requirements/security/verification/remaining，planFor 为无手工 plan 的提交提供固定三步。',
-      source: { path: 'scripts/document-commits.ts', role: 'evidence', revision: 'commit', symbol: 'function detailsFor', note: '泛化内容来源可在生成器直接核对。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'buildCommitDocuments 遍历 commits() 后又追加 self；已提交 INDEX 则只有 41 个祖先行和 self，显示预提交生成与 postcommit HEAD 清单存在差异。',
-      source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'commit', symbol: '- Implemented: 40', note: '索引计数与当前 HEAD/self 双份问题相互印证。' },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: 'STATUS 写有 docs:check passes with full SHA history，但这是提交内声明，不能消除上述 postcommit 清单缺陷，也不构成设计语义审查。',
-      source: { path: 'docs/STATUS.md', role: 'evidence', revision: 'commit', symbol: '| Commit documentation |', note: '仅作为当时声明保留，不扩大其证明范围。' },
-    },
-    {
-      kind: 'not-recorded',
-      statement: '没有逐提交设计评审、负向模板测试或针对 HEAD/self 清单的单元测试随该提交加入。',
-    },
-  ],
-  remaining: [
+  ],  remaining: [
     '通用 fallback 和固定三步使多数文档不具备独立架构与实施价值，需要按真实 diff 全面重写。',
     'HEAD 与 self 的清单语义需要拆分为明确的祖先/下一提交模式，不能依靠预提交时 HEAD 恰好是上一节点。',
     'checker 只检查生成集合中的路径是否存在及正文是否逐字一致；它不校验 SPEC 内列出的变更路径或 Markdown 链接目标，不发现额外/孤儿文档，也不检查证据真实性、重复正文或敏感信息，静态模板和政策文件更不在其比较集合中，因此 CI 成功不能代表内容合格。',
@@ -90,7 +65,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['self 保持当前工作的稳定链接，旧全局 STATUS/RELEASE 继续存在；但动态 HEAD 清单使已提交生成结果不能稳定复现。'],
     risks: ['生成器与 checker 共用同一内容来源会掩盖泛化正文；预提交生成又把上一 HEAD 的视角固化进当前 commit。'],
-    verification: ['核对 95 文件和目录计数，运行生成/比较检查，并单独测试提交后 HEAD 新增时是否出现额外 SHA pair；正文还需逐提交语义审查。'],
+    acceptanceSequence: ['核对 95 文件和目录计数，运行生成/比较检查，并单独测试提交后 HEAD 新增时是否出现额外 SHA pair；正文还需逐提交语义审查。'],
     completed: ['初版生成器、checker、索引、模板、政策和 CI 接线已经建立，历史文档文件得到批量覆盖。'],
     incomplete: ['未完成真正的逐提交设计/实施内容，未解决 HEAD/self 确定性，也没有内容质量负向测试。'],
   },

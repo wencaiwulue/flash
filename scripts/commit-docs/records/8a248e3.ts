@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '8a248e3a57a3121e5e0bfeb7dbdeefb1551ac9b3',
+  slug: 'commit-docs-finalization',
   title: 'Complete previous commit documentation',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -13,7 +14,7 @@ export const record = defineCommitRecord({
   ],
   nonGoals: [
     '不修改 e0cbbe1、1fe1430 或 dc3f075 的既有文件，也不涉及应用实现。',
-    '不将生成的验证命令清单表述成实际 test、build 或 CI 通过。',
+    '新文档只列出验收条件，不保存历史命令或 CI 执行结果。',
   ],
   architecture: [
     'a4edc60 是当前文档化对象，dc3f075 是其 SPEC 内 Actual scope 的下一层对象，8a248e3 则是执行四文件写入的提交，三层身份各自独立。',
@@ -28,31 +29,7 @@ export const record = defineCommitRecord({
   acceptance: [
     'SPEC/PLAN frontmatter 与 a4edc60 的 full SHA、日期、Complete 标题和 implemented 状态一致。',
     'Actual scope 为 dc3f075 两个文档，INDEX 达 77/1/0，JSON 路径正确，self 保留末位且无额外变更。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: 'a4edc60-SPEC 的 Actual scope 明确列出 dc3f075 的 PLAN，frontmatter 则使用 a4edc60 身份。',
-      source: { path: 'docs/specs/a4edc60-SPEC.md', role: 'evidence', revision: '8a248e3a57a3121e5e0bfeb7dbdeefb1551ac9b3', symbol: 'docs/plans/dc3f075-PLAN.md', note: '内层计划路径将本规格与相邻 Complete 文档区分。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'a4edc60-PLAN 以目标完整 SHA 新建，标题与目标 Git subject 一致。',
-      source: { path: 'docs/plans/a4edc60-PLAN.md', role: 'evidence', revision: '8a248e3a57a3121e5e0bfeb7dbdeefb1551ac9b3', symbol: 'commit: a4edc60de4da2600197f59e1b032d5e4a754e19b', note: '计划身份固定在 8a248e3 文件版本。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'INDEX patch 增加 a4edc60 双链接行，并把 implemented 汇总从 76 更新到 77。',
-      source: { path: 'docs/INDEX.md', role: 'evidence', revision: '8a248e3a57a3121e5e0bfeb7dbdeefb1551ac9b3', symbol: '- Implemented: 77', note: '汇总计数来自实际 INDEX diff。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'status JSON 新对象记录 a4edc60 完整 SHA 及其 SPEC/PLAN 路径，插入于 self 前。',
-      source: { path: 'docs/status/index.json', role: 'evidence', revision: '8a248e3a57a3121e5e0bfeb7dbdeefb1551ac9b3', symbol: '"fullSha": "a4edc60de4da2600197f59e1b032d5e4a754e19b"', note: '机器对象与两个新文件相对应。' },
-    },
-    { kind: 'not-recorded', statement: '没有随提交记录的命令输出或持续集成状态，不能宣称任何验证已经通过。' },
-  ],
-  remaining: ['生成文档没有展开 a4edc60 的更细设计背景；本记录只补足可观察的元数据关系与无执行证据边界。'],
+  ],  remaining: ['生成文档没有展开 a4edc60 的更细设计背景；本记录只补足可观察的元数据关系与无执行证据边界。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: '新增 a4edc60 行，Implemented 76→77。' },
     { path: 'docs/plans/a4edc60-PLAN.md', role: 'changed', note: '为同标题的祖父提交 a4edc60 创建独立计划。' },
@@ -70,8 +47,8 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['已有 Complete/Finalize 混合历史项均保留，状态分布除 implemented 加一外没有变化。'],
     risks: ['相同标题削弱了标题校验作用，若不看 full SHA 和 dc3f075 内层文件，错误记录也可能表面一致。'],
-    verification: ['核对 8a248e3 版本中的 a4edc60 全 SHA、dc3f075 清单、77/1/0 汇总、JSON 对象与 self 顺序。'],
+    acceptanceSequence: ['核对 8a248e3 版本中的 a4edc60 全 SHA、dc3f075 清单、77/1/0 汇总、JSON 对象与 self 顺序。'],
     completed: ['a4edc60 已获得两个新文档及两个索引入口，所有实际变更路径均被覆盖。'],
-    incomplete: ['测试、构建和 CI 均无随提交输出，本记录不声称执行。'],
+    incomplete: ['新文档只列出验收条件，不保存历史命令或 CI 执行结果。'],
   },
 })

@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: 'be5c03e17428c3a7f85f7c0459b49432e61ccbf4',
+  slug: 'commit-docs-finalization',
   title: 'Complete previous commit documentation',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -29,15 +30,7 @@ export const record = defineCommitRecord({
   acceptance: [
     '1bc02bf 两份 frontmatter 的 SHA、标题、时间与原提交一致，Actual scope 指向 d472e5c。',
     '新 INDEX 行和 JSON 对象路径相同，3fbabc2 保持前一项，self 保持在数组末尾。',
-  ],
-  evidence: [
-    { kind: 'diff-observed', statement: '新 SPEC 将 1bc02bf 的范围指向 d472e5c 文档对，并记录四文件 78/1 统计。', source: { path: 'docs/specs/1bc02bf-SPEC.md', role: 'evidence', revision: 'commit', symbol: 'docs/plans/d472e5c-PLAN.md', note: '该路径证明范围属于 1bc02bf 的原始 diff。' } },
-    { kind: 'diff-observed', statement: '新 PLAN 使用 1bc02bf 完整 SHA，并包含验证序列与完成状态小节。', source: { path: 'docs/plans/1bc02bf-PLAN.md', role: 'evidence', revision: 'commit', symbol: 'commit: 1bc02bfb5271653be2dd2c2fcc498246cf111dc5', note: '计划身份与 SPEC 一致。' } },
-    { kind: 'diff-observed', statement: 'INDEX 新增 1bc02bf 行，Implemented 汇总达到 62。', source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'commit', symbol: '- Implemented: 62', note: '仅 implemented 计数增加。' } },
-    { kind: 'diff-observed', statement: 'status JSON 在 self 前登记 1bc02bf 及其 SPEC/PLAN 路径。', source: { path: 'docs/status/index.json', role: 'evidence', revision: 'commit', symbol: '"fullSha": "1bc02bfb5271653be2dd2c2fcc498246cf111dc5"', note: '完整历史身份与机器路径可核对。' } },
-    { kind: 'not-recorded', statement: '没有随提交保存生成、测试、构建或 CI 输出，验证章节仅说明模板建议。' },
-  ],
-  remaining: ['直接父 1329f79 和当前 be5c03e 尚未在此快照建档，1bc02bf 之外的链条不在本提交完成。'],
+  ],  remaining: ['直接父 1329f79 和当前 be5c03e 尚未在此快照建档，1bc02bf 之外的链条不在本提交完成。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: '新增 1bc02bf，Implemented 61→62。' },
     { path: 'docs/plans/1bc02bf-PLAN.md', role: 'changed', note: '新建 1bc02bf 计划。' },
@@ -55,7 +48,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['3fbabc2 与更早历史项不改，self 内容不变；生成器和现有文档格式均保持父版本。'],
     risks: ['d472e5c 与 3fbabc2 分别是相邻两层范围，复制上一提交 SPEC 而不换路径会造成表面完整但历史错误。'],
-    verification: ['比较 1bc02bf 原 diff 与新 SPEC，解析 PLAN 元数据，并核对 INDEX/JSON 的单项增量和 self 位置。'],
+    acceptanceSequence: ['比较 1bc02bf 原 diff 与新 SPEC，解析 PLAN 元数据，并核对 INDEX/JSON 的单项增量和 self 位置。'],
     completed: ['1bc02bf 的两个文档和两个索引入口已一致落盘。'],
     incomplete: ['未记录任何实际验证命令或 CI 结果，implemented 不代表这些检查已经运行。'],
   },

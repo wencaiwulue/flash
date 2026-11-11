@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '6c3c1e4d3cdd8b1b8279c023575fb7a37e94a14c',
+  slug: 'commit-docs-finalization',
   title: 'Finalize documentation for previous commit',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -13,7 +14,7 @@ export const record = defineCommitRecord({
   ],
   nonGoals: [
     '不补直接父 612cc40 或当前 6c3c1e4，不改动 2a4aa6c 的既有文档注册。',
-    '不修改生成器，不把模板中的验证步骤或 CI 检查写成实际通过。',
+    '不修改生成器。',
   ],
   architecture: [
     '本 diff 由 0dabf46 的历史 SPEC/PLAN 和人类/机器两个索引补丁组成，未触及产品或生成代码。',
@@ -29,15 +30,7 @@ export const record = defineCommitRecord({
   acceptance: [
     '0dabf46 两份 frontmatter 使用相同完整 SHA、标题和时间，范围路径指向 be5c03e。',
     'INDEX 与 JSON 均新增一个 implemented 项，2a4aa6c 保持前一项，self 仍在最后。',
-  ],
-  evidence: [
-    { kind: 'diff-observed', statement: '0dabf46 SPEC 固定完整身份，Actual scope 包含 be5c03e 的两个文档。', source: { path: 'docs/specs/0dabf46-SPEC.md', role: 'evidence', revision: 'commit', symbol: 'docs/specs/be5c03e-SPEC.md', note: '该范围对应 0dabf46 的原始四文件 diff。' } },
-    { kind: 'diff-observed', statement: '0dabf46 PLAN 以目标完整 SHA 新建，并包含实施与完成状态小节。', source: { path: 'docs/plans/0dabf46-PLAN.md', role: 'evidence', revision: 'commit', symbol: 'commit: 0dabf466a5db43caa9890f5e0a031d00505a0008', note: 'frontmatter 未使用直接父 612cc40。' } },
-    { kind: 'diff-observed', statement: 'INDEX 新增 0dabf46 行，Implemented 计数为 66。', source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'commit', symbol: '| 0dabf46 | Complete previous commit documentation | implemented |', note: '链接指向本提交新增的 SPEC/PLAN。' } },
-    { kind: 'diff-observed', statement: '机器索引在 2a4aa6c 和 self 之间登记 0dabf46。', source: { path: 'docs/status/index.json', role: 'evidence', revision: 'commit', symbol: '"fullSha": "0dabf466a5db43caa9890f5e0a031d00505a0008"', note: '对象保留目标日期、标题、状态和路径。' } },
-    { kind: 'not-recorded', statement: 'diff 不含生成、测试、构建或 CI 输出，PLAN 中的验证命令只是文档内容。' },
-  ],
-  remaining: ['612cc40 与当前 6c3c1e4 在此快照仍未建档；0dabf46 的计划没有实际验证记录。'],
+  ],  remaining: ['612cc40 与当前 6c3c1e4 在此快照仍未建档；0dabf46 的计划没有实际验证记录。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: 'Implemented 65→66，新增 0dabf46。' },
     { path: 'docs/plans/0dabf46-PLAN.md', role: 'changed', note: '新建 0dabf46 计划文档。' },
@@ -55,8 +48,8 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['2a4aa6c 与更早历史链接不变，self 不改字段；生成器及索引格式没有版本差异。'],
     risks: ['相同标题在 0dabf46 与更早提交反复出现，必须靠 fullSha 和 be5c03e 路径避免对象混淆。'],
-    verification: ['对照 0dabf46 原始提交与 SPEC，核对 PLAN frontmatter、两个计数和 self 最终位置。'],
+    acceptanceSequence: ['对照 0dabf46 原始提交与 SPEC，核对 PLAN frontmatter、两个计数和 self 最终位置。'],
     completed: ['0dabf46 的两个新文档和双索引对象已在四路径 diff 中闭合。'],
-    incomplete: ['没有实际测试或 CI 证据，implemented 不代表模板验证序列已经执行。'],
+    incomplete: ['新文档只列出验收条件，不保存历史命令或 CI 执行结果。'],
   },
 })

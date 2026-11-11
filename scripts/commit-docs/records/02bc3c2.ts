@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '02bc3c2efcd3f3d7978da33b2683e9d392f3220c',
+  slug: 'remote-control-cloud-persistence',
   title: 'Unblock remote control and Cloud persistence',
   kind: 'component',
   status: 'implemented',
@@ -69,113 +70,7 @@ export const record = defineCommitRecord({
     'Cloud 匹配区分嵌套路径与相同 basename，接受无害重复，拒绝路径/ID 歧义；若存在有限 size 且无一匹配本地大小则失败，跳过符号链接并限制文件数量。',
     '索引延迟能在至多三次、250ms 起始的轮询后恢复；最终缺失和列表异常按文件报告，已确定成功可与失败并存，取消不发布部分结果。',
     'env-less+perpetual 明确选择 env-based，非 perpetual 才选择 env-less；有效指针复用、无效指针重建和 teardown 保留指针均有回归覆盖。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: 'daemonBridge 的 AsyncQueue、三个流队列、onControlRequest 所有权分工、空 environmentId 和缓存 teardown Promise 可直接在该 revision 的实现中核对。',
-      source: {
-        path: 'src/assistant/daemonBridge.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'connectDaemonBridge',
-        note: 'env-less 句柄、FIFO 与清理语义的直接实现证据。',
-      },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'executeCloudPersistence 以两个双向索引检查路径/ID 冲突，三轮等待索引，并对成功、失败与取消采用不同结果语义。',
-      source: {
-        path: 'src/utils/filePersistence/filePersistence.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'executeCloudPersistence',
-        note: 'Cloud 规范化匹配、延迟、部分失败和 abort 的直接实现证据。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '新增 2 个 daemonBridge 测试覆盖句柄映射、三类入站流可读、initialize 返回 false 以交还默认处理、重复 teardown、队列关闭和 initCore=null；未单独验证消费者创建前的多项预缓冲、FIFO 顺序、关闭后排空或 teardown 抛错。',
-      source: {
-        path: 'tests/daemonBridge.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: 'maps the handle and buffers inbound streams before teardown',
-        note: '离线 fake core 的桥接句柄与队列测试。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '新增 SDK remote-control 测试覆盖 prompt/控制/权限路由以及 query enable/disable 生命周期，使用 fake handle 和 query。',
-      source: {
-        path: 'tests/sdkRemoteControl.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: 'routes prompts, control requests, and permission responses',
-        note: '离线 SDK 控制与权限关联测试，不是在线远程会话。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '新增 14 个 Cloud 测试覆盖嵌套路径、同 path/ID 重复、两类歧义、唯一候选大小不符、索引延迟、部分成功、列表失败、缺游标分页中断、预先取消、列表请求在途取消、无修改、文件上限和符号链接；成功 after_id 翻页、重复游标及匹配/退避期间取消未由这些测试直接覆盖。',
-      source: {
-        path: 'tests/cloudPersistence.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: 'keeps partial successes and fails unmatched files after bounded retries',
-        note: '本地临时目录和 mock Files API 的持久化回归。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '新增 perpetual 测试明确命名为 env-less gate plus perpetual deliberately selects env-based，并覆盖非 perpetual 选择及指针复用、失效清理和保留。',
-      source: {
-        path: 'tests/perpetualBridge.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: 'env-less gate plus perpetual deliberately selects env-based',
-        note: '固定有意 env-based 回退边界的离线生命周期测试。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 STATUS 记录 bun test 已执行并通过 61 个测试、247 个断言；这是 at-commit 历史记录，不是本次文档校验重新执行的结果。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '`bun test`',
-        note: 'at-commit Verified evidence 表的全量离线测试记录。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: '提交内 STATUS 记录 bun run typecheck 零错误，bun run build 完成 CLI、SDK 和声明构建。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '`bun run typecheck`',
-        note: 'at-commit 类型检查及构建结果。',
-      },
-    },
-    {
-      kind: 'later-evidence',
-      statement: '后续提交 ea8085139c013577cad3130c35a21fc53a3d8bee 的 RELEASE 才补充记录：02bc3c2 的 GitHub Actions ci run 42778573907 于 2026-11-10 通过，61/247、typecheck、build、declarations 与 CLI/SDK smoke 也通过；这是 later evidence，不是 02bc3c2 当时已有的 CI 记录。',
-      source: {
-        path: 'docs/RELEASE.md',
-        role: 'evidence',
-        revision: 'ea8085139c013577cad3130c35a21fc53a3d8bee',
-        symbol: '42778573907',
-        note: '后续 revision 的 Remote control and Cloud unblocking 发布段补充的 CI 标识。',
-      },
-    },
-    {
-      kind: 'not-recorded',
-      statement: '该提交没有真实 OAuth、Cloud Files API 或远程控制会话的在线往返证据；STATUS 明确写的是 Verified (offline transport/offline)，并把授权环境 round trip 列为下一步。',
-    },
-  ],
-  remaining: [
+  ],  remaining: [
     '真实 OAuth 授权、远程 bridge 会话和 Cloud Files API 往返仍需在授权环境验证，fake transport 不能证明服务端协议、权限或时序。',
     '纯 env-less perpetual 尚未实现；当前跨重启连续性有意依赖 env-based Environments API 和 bridge-pointer.json。',
     'Cloud 索引在三轮后仍缺少元数据会报告失败，调用方需依据下一轮或上游同步状态处理，不会无限等待。',
@@ -382,7 +277,7 @@ export const record = defineCommitRecord({
       '取消发生在部分匹配之后时结果可能不完整；实现选择不发布任何本轮部分结果，调用方不能把取消当作完成事件。',
       '离线 fake 不能暴露真实服务端认证、协议和时序问题；发布状态仅标 offline，在线往返仍为独立验收。',
     ],
-    verification: [
+    acceptanceSequence: [
       '先运行 daemonBridge 定向测试，验证三类入站流可读、initialize 交还默认处理、null 初始化和重复 teardown；FIFO 多项预缓冲、顺序与关闭后排空另从实现核对，不归为这些测试的直接断言。',
       '再运行 sdkRemoteControl 测试，检查 prompt 入队、四类控制响应、权限 request_id 配对、enable/disable 和 stop 清理。',
       '运行 Cloud 路径与元数据测试，分别观察嵌套路径、重复副本、同路径多 ID、同 ID 多路径及大小不符。',
@@ -397,7 +292,7 @@ export const record = defineCommitRecord({
       'Files API 已在既有按创建时间列表客户端上补齐取消、缺失游标失败和重复游标检测，并保留网络重试。',
       'Cloud outputs 已能按规范相对路径关联 file_id，并处理歧义、大小、延迟、部分失败和 abort。',
       'perpetual 的 env-based 有意回退及指针生命周期已被明确保留。',
-      '四组离线测试和 README/STATUS/RELEASE 证据已加入，at-commit STATUS 记录 61/247；CI 通过由后续 ea80851 的 RELEASE 补记。',
+      '四组离线测试和 README/STATUS/RELEASE 证据已加入；tests/daemonBridge.test.ts、tests/sdkRemoteControl.test.ts、tests/cloudPersistence.test.ts、tests/perpetualBridge.test.ts 覆盖各组件行为。',
     ],
     incomplete: [
       '真实 OAuth、Cloud Files 和远程控制会话的在线端到端验证未在该提交执行。',

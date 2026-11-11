@@ -1,0 +1,73 @@
+---
+commit: 17c91967ada4424f164da8e2699e3ee90d587036
+title: "Finalize self record for previous commit"
+date: 2026-11-11T10:48:19+08:00
+status: implemented
+kind: metadata-migration
+---
+
+# 实施计划：Finalize self record for previous commit
+
+> 本文按实际代码依赖重建实施顺序，用于说明怎样完成该提交；不伪称是历史提交当时保存的计划。
+
+## 目标与前置条件
+
+本提交要把 8117aaa 的单行生成器变更记录为文档并注册，而不是继续描述直接父 c4e19ce；其范围只有 scripts/document-commits.ts 的 1 行新增和 1 行删除。
+
+- 确认直接父 c4e19ce 已完成 587c466 文档，并读取 8117aaa 的唯一脚本 diff 与动态 HEAD 位置。
+
+## 复用与兼容处理
+
+### 复用现有实现
+
+- 沿用 8117aaa 引入的 HEAD 排除生成规则及既有文档/索引格式，self 保持独立。
+
+### 兼容、迁移与生命周期
+
+- HEAD 排除代码保持原样，已有历史顺序与 self 身份不变；新增内容只有文档元数据。
+
+## 文件级实施步骤
+
+### 1. 记录 HEAD 排除 SPEC
+
+以 8117aaa 身份新建 SPEC，只列生成器和 1/1 diff 统计。
+
+涉及位置：`docs/specs/8117aaa-SPEC.md`
+
+### 2. 记录 HEAD 排除 PLAN
+
+新增同身份 PLAN，不将模板步骤改写为已发生验证。
+
+涉及位置：`docs/plans/8117aaa-PLAN.md`
+
+### 3. 注册表格入口
+
+在 587c466 后、self 前添加 8117aaa，Implemented 增至 42。
+
+涉及位置：`docs/INDEX.md`
+
+### 4. 注册机器入口
+
+在 self 前保存相同 fullSha、状态和 SPEC/PLAN 路径。
+
+涉及位置：`docs/status/index.json`
+
+## 风险与处理
+
+- 动态 HEAD 容易被写成固定提交过滤，且祖父文档对象容易被误替换为直接父。
+
+## 验收顺序
+
+1. 核对 8117aaa 源码与 SPEC 的单文件统计，并检查两个索引的新行、完整 SHA 和链接。
+
+## 完成状态与剩余工作
+
+- 状态：**implemented**
+
+### 已完成
+
+- 8117aaa 的文档对及双重索引注册已落盘，本提交没有额外代码差异。
+
+### 未完成或后续工作
+
+- 没有保存生成器、测试、构建或 CI 的运行结果。

@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '80e6defe99a3ce09a3d2b4229458fed0fbde5dbc',
+  slug: 'commit-docs-finalization',
   title: 'Finalize self record to previous SHA on next commit',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -29,26 +30,7 @@ export const record = defineCommitRecord({
     'at(-2) 仅在存在 previousHead 时设置 SPEC/PLAN，空历史不会访问不存在的对象。',
     'fe3c177 的 INDEX 行与 JSON 对象位于 self 前，状态为 implemented，链接字段彼此一致。',
     'previousHead 分支不改变状态计数，且本提交实际变更路径仅为两个索引和生成器。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: '生成器在 HEAD 排除循环之后选择倒数第二个提交，并仅设置该提交的 SPEC 与 PLAN。',
-      source: { path: 'scripts/document-commits.ts', role: 'evidence', revision: 'commit', symbol: 'const previousHead = commits().at(-2)', note: 'previous HEAD 的精确数组定义。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'INDEX 摘要增至 47，并添加 fe3c177 的 SPEC/PLAN 链接；其他状态计数不变。',
-      source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'commit', symbol: '| fe3c177 | Complete self documentation for previous commit | implemented |', note: '新增人类索引行位于 self 前。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '机器索引登记完整 fe3c177 身份与两个预期文档路径，但 diff 没有对应 Markdown 新文件。',
-      source: { path: 'docs/status/index.json', role: 'evidence', revision: 'commit', symbol: '"fullSha": "fe3c177c28b7581e93f7496c58b98bafa10dbb03"', note: '新增 JSON 对象与 INDEX 使用同一路径。' },
-    },
-    { kind: 'not-recorded', statement: '没有 previousHead 生成命令、测试或 CI 的输出；代码存在不等于目标文件已在本提交生成。' },
-  ],
-  remaining: ['fe3c177 的索引已先于文件出现，63e138f 的文档和索引仍待后续补齐；80e6def 自身也未在此提交建文档。'],
+  ],  remaining: ['fe3c177 的索引已先于文件出现，63e138f 的文档和索引仍待后续补齐；80e6def 自身也未在此提交建文档。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: 'Implemented 从 46 调到 47，并在 self 前加入 fe3c177。' },
     { path: 'docs/status/index.json', role: 'changed', note: '在 self 前新增 fe3c177 的机器可读条目。' },
@@ -64,7 +46,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['既有 HEAD 排除与 self 末尾位置不变；新增 previousHead 写操作不声明新的索引字段。'],
     risks: ['previousHead 文件输出没有同步索引副作用，而 fe3c177 索引又先于 Markdown 落盘，短暂断链必须如实保留。'],
-    verification: ['逐项比较代码分支和实际 diff，并核对两个索引中的 fe3c177；不能由源码推导执行成功。'],
+    acceptanceSequence: ['逐项比较代码分支和实际 diff，并核对两个索引中的 fe3c177；不能由源码推导执行成功。'],
     completed: ['previousHead 代码与 fe3c177 双重索引登记已进入版本树，三项变更均可直接观察。'],
     incomplete: ['本提交未落盘任何新增历史 SPEC/PLAN，也没有生成器运行日志或自动化验证记录。'],
   },

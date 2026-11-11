@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '5c5bc03abc666d111ae5e4227224884bbaafd340',
+  slug: 'commit-docs-finalization',
   title: 'Complete previous commit documentation',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -28,31 +29,7 @@ export const record = defineCommitRecord({
   acceptance: [
     '新文件 frontmatter 的 787b2dc 全 SHA、2026-11-11T11:12:59+08:00 日期及 implemented 状态准确。',
     'Actual scope 指向 96283ae-SPEC/PLAN，INDEX 为 71/1/0，status 对象路径有效，self 未被修改或移位。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: 'SPEC 在提交中新建，frontmatter 为 787b2dc，范围清单则明确列出 96283ae 的两个历史文档。',
-      source: { path: 'docs/specs/787b2dc-SPEC.md', role: 'evidence', revision: '5c5bc03abc666d111ae5e4227224884bbaafd340', symbol: 'commit: 787b2dcef6629be82036283cc709384b56e6d981', note: '完整 SHA 将本规格绑定到目标祖父提交。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'PLAN 与 SPEC 使用同一提交标题和状态，并给出独立的实施计划文档。',
-      source: { path: 'docs/plans/787b2dc-PLAN.md', role: 'evidence', revision: '5c5bc03abc666d111ae5e4227224884bbaafd340', symbol: '# Implementation plan: Complete previous commit documentation', note: '计划标题匹配 787b2dc subject。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'INDEX 的 patch 只有汇总增加及 787b2dc 新行，既有 b6bf982 与 self 行保持原序。',
-      source: { path: 'docs/INDEX.md', role: 'evidence', revision: '5c5bc03abc666d111ae5e4227224884bbaafd340', symbol: '- Implemented: 71', note: '当前提交版本可核对 71 的汇总。' },
-    },
-    {
-      kind: 'diff-observed',
-      statement: '机器索引新增 787b2dc 对象，其两个字段分别指向 787b2dc-SPEC 和 787b2dc-PLAN。',
-      source: { path: 'docs/status/index.json', role: 'evidence', revision: '5c5bc03abc666d111ae5e4227224884bbaafd340', symbol: '"fullSha": "787b2dcef6629be82036283cc709384b56e6d981"', note: 'status 记录位于 self 对象前。' },
-    },
-    { kind: 'not-recorded', statement: '提交没有附上 bun test、typecheck、build 或 CI 输出，故这里不记录任何通过结论。' },
-  ],
-  remaining: ['787b2dc 的设计细节没有被新模板充分展开；若需补充，应基于该历史提交另写分析，而不是把验证文字升级为事实。'],
+  ],  remaining: ['787b2dc 的设计细节没有被新模板充分展开；若需补充，应基于该历史提交另写分析，而不是把验证文字升级为事实。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: '新增 787b2dc 入口并将 Implemented 提至 71。' },
     { path: 'docs/plans/787b2dc-PLAN.md', role: 'changed', note: '目标祖父提交的实施计划新文件。' },
@@ -70,7 +47,7 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['不清空或重排历史对象；现有 b6bf982 链接、self changeId 以及索引格式均原样保留。'],
     risks: ['相邻提交都采用相同文件数与 diff 统计，最容易误复制 b6bf982 的身份或 6c3c1e4 的范围，验证命令也可能被误读。'],
-    verification: ['逐项比对 787b2dc metadata 与 frontmatter，检查 96283ae 范围、71/1/0 计数、两个索引链接和 self 的位置。'],
+    acceptanceSequence: ['逐项比对 787b2dc metadata 与 frontmatter，检查 96283ae 范围、71/1/0 计数、两个索引链接和 self 的位置。'],
     completed: ['目标祖父提交 787b2dc 已具备 SPEC、PLAN、INDEX 行和 status 对象，四个实际路径全部覆盖。'],
     incomplete: ['未留下可核验的命令执行或持续集成记录，完成状态仅指元数据迁移已写入。'],
   },

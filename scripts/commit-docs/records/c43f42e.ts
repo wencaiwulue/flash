@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: 'c43f42e4eba9ae16c7d7a78dfbcfcb4bfb177d0c',
+  slug: 'ci-lifecycle-test-isolation',
   title: 'Isolate CI lifecycle test timing and cwd',
   kind: 'component',
   status: 'implemented',
@@ -38,47 +39,7 @@ export const record = defineCommitRecord({
     'ReviewArtifact 测试在 override 异步上下文中读取相对 artifact.txt，源码不再导入或调用 getCwdState/setCwdState，并始终清理临时目录。',
     'cron takeover 的 second 等待上限为 30 秒、测试上限为 40 秒，原有单 owner 触发断言不变。',
     '产品源码零变更，cwd override 与锁探测的既有生产默认值不被测试调整改写。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: 'ReviewArtifact 文件测试以 runWithCwdOverride 包裹完整异步调用，并删除全局 cwd 的保存和恢复。',
-      source: {
-        path: 'tests/reviewArtifact.test.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'runWithCwdOverride(dir',
-        note: '异步 cwd 隔离的直接测试改动。',
-      },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'cron takeover 仍等待 firstFired 后停止 first，但 secondFired 的等待为 30_000，测试总超时为 40_000。',
-      source: {
-        path: 'tests/cronLifecycle.test.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'secondFired.length >= 1, 30_000',
-        note: '本提交只扩大锁接管等待窗口。',
-      },
-    },
-    {
-      kind: 'not-recorded',
-      statement: 'c43f42e 未修改 STATUS/RELEASE；其中 152 tests、645 assertions、typecheck/build 记录继承自更早的 adaa8ff，早于本提交，只能作为先前基线，不能证明本次 cwd 隔离和计时窗口修改后执行通过。本提交没有定向或全量运行记录。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '| `bun test` | 152 tests, 645 assertions passed |',
-        note: '该表在 at-commit 快照中可见，但内容来自 adaa8ff，不是本提交的执行证据。',
-      },
-    },
-    {
-      kind: 'not-recorded',
-      statement: '没有真实 ReviewArtifact 模型调用或跨进程 cron 接管证据；异步 cwd 隔离与等待窗口变更不能扩展为这些在线结论。',
-    },
-  ],
-  remaining: [
+  ],  remaining: [
     '该 revision 的 takeover 测试仍假设 first 是 owner，锁探测间隔也固定为 5000 毫秒；异步获锁先后与测试速度尚未解耦。',
     'stop/start 的调度状态重置不在本提交覆盖内，真实多进程锁竞争和真实模型 review 仍无新增证据。',
   ],
@@ -139,7 +100,7 @@ export const record = defineCommitRecord({
       '真实计时器在慢速 CI 上仍可能波动；30/40 秒只是更宽窗口，并不使 owner 选择或锁探测确定化。',
       'AsyncLocalStorage 只覆盖当前异步调用链，不能把其他未包裹测试的全局 cwd 写入变得安全。',
     ],
-    verification: [
+    acceptanceSequence: [
       '定向运行 ReviewArtifact 文件读取测试，并在并行测试环境下确认相对路径读取不依赖全局 cwd 恢复。',
       '重复运行 cron takeover 测试，核对 30 秒接管等待和 40 秒总预算；执行结果须另有命令或 CI 来源。',
     ],

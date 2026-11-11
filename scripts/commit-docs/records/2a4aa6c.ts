@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: '2a4aa6c36263b3b17c6c5f188b03cc9a6a7e3cff',
+  slug: 'commit-docs-finalization',
   title: 'Finalize documentation for previous commit',
   kind: 'metadata-migration',
   status: 'implemented',
@@ -29,15 +30,7 @@ export const record = defineCommitRecord({
   acceptance: [
     '1329f79 的完整身份与时间在两份 frontmatter 一致，范围路径准确指向 3fbabc2。',
     'INDEX 行与 JSON 对象均指向新建的 1329f79 文件，self 仍最后且其他状态计数不变。',
-  ],
-  evidence: [
-    { kind: 'diff-observed', statement: '1329f79 SPEC 固定完整提交身份，Actual scope 列出 3fbabc2 文档对。', source: { path: 'docs/specs/1329f79-SPEC.md', role: 'evidence', revision: 'commit', symbol: 'commit: 1329f792eb0a103eeeabea26a46566bfa9eceaba', note: 'frontmatter 与范围在同一新文件中。' } },
-    { kind: 'diff-observed', statement: '1329f79 PLAN 提供验证序列和 implemented 完成声明。', source: { path: 'docs/plans/1329f79-PLAN.md', role: 'evidence', revision: 'commit', symbol: '## Verification sequence', note: '该小节列出命令名称但没有输出。' } },
-    { kind: 'diff-observed', statement: 'INDEX 新增 1329f79 的标题与链接，汇总 Implemented 为 63。', source: { path: 'docs/INDEX.md', role: 'evidence', revision: 'commit', symbol: '| 1329f79 | Finalize documentation for previous commit | implemented |', note: '新增行紧随 1bc02bf。' } },
-    { kind: 'diff-observed', statement: '机器索引保存 1329f79 完整 SHA 和两个新文件路径。', source: { path: 'docs/status/index.json', role: 'evidence', revision: 'commit', symbol: '"fullSha": "1329f792eb0a103eeeabea26a46566bfa9eceaba"', note: '对象位于 1bc02bf 与 self 之间。' } },
-    { kind: 'not-recorded', statement: '本 diff 没有命令结果、测试报告或 CI 状态，文档中的验证文字不能充当执行证据。' },
-  ],
-  remaining: ['be5c03e 与 2a4aa6c 的文档仍留给后续，本提交仅完成 1329f79 这一层。'],
+  ],  remaining: ['be5c03e 与 2a4aa6c 的文档仍留给后续，本提交仅完成 1329f79 这一层。'],
   references: [
     { path: 'docs/INDEX.md', role: 'changed', note: 'Implemented 62→63，添加 1329f79。' },
     { path: 'docs/plans/1329f79-PLAN.md', role: 'changed', note: '1329f79 新建计划文档。' },
@@ -55,8 +48,8 @@ export const record = defineCommitRecord({
     ],
     compatibility: ['已有 1bc02bf 链接和 self 字段不变；生成器行为与 JSON 七字段格式保持一致。'],
     risks: ['相邻提交标题都含 documentation，若不以完整 SHA 区分 1329f79 与 be5c03e，会错配 3fbabc2 范围。'],
-    verification: ['核对 1329f79 原提交的元数据与路径，再检查两个新 frontmatter 和两个索引增量。'],
+    acceptanceSequence: ['核对 1329f79 原提交的元数据与路径，再检查两个新 frontmatter 和两个索引增量。'],
     completed: ['1329f79 SPEC/PLAN 及双索引入口已同步进入版本树。'],
-    incomplete: ['没有实际验证轨迹；模板中的 implemented 和无剩余项声明不是测试通过证明。'],
+    incomplete: ['新文档只列出验收条件，不保存历史命令或 CI 执行结果。'],
   },
 })

@@ -2,6 +2,7 @@ import { defineCommitRecord } from '../schema.ts'
 
 export const record = defineCommitRecord({
   commit: 'd2fafcde7d75171be093fd40ec8d954c0f326d21',
+  slug: 'daemon-remote-control-lifecycle',
   title: 'Implement daemon and remote control server lifecycle',
   kind: 'component',
   status: 'implemented',
@@ -64,95 +65,7 @@ export const record = defineCommitRecord({
     '顺序重复 start 只创建一个 query 并返回同一 info；正常 stop 依次发送 enable true/false、关闭输入和 return query，清理 running 并释放 waitForRemoteControlServer。',
     '/remote-control-server 展示已有或新启动服务的 session_url，外部 DAEMON+BRIDGE_MODE 特性构建包含该命令且工具池仍为 34 个非空工具。',
     'STATUS 的 Verified 仅指 offline lifecycle/build 范围；91/390、typecheck、build/declarations、daemon status 和特性档是提交内记录，fakes 不得解释为 live Cloud 通过。',
-  ],
-  evidence: [
-    {
-      kind: 'diff-observed',
-      statement: 'DaemonSupervisor 明确实现 active/stopping/running/restarts、error/exit 收口、默认五次重启、1 秒起指数退避、30 秒封顶以及 stop 对活动 worker 的 SIGTERM。',
-      source: {
-        path: 'src/daemon/supervisor.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'export class DaemonSupervisor',
-        note: '监督状态机和有界重启语义的直接实现证据。',
-      },
-    },
-    {
-      kind: 'diff-observed',
-      statement: 'Remote Control server 复用单一 running query；启动失败关闭 input/query，正常停止执行 enableRemoteControl(false)、closeInput、query.return，并在 finally 释放 done。',
-      source: {
-        path: 'src/commands/remoteControlServer/server.ts',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: 'export async function stopRemoteControlServer',
-        note: '共享 query 与 teardown 顺序的直接实现证据。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '新增六个离线测试，覆盖重复 start 的 createQuery 一次、enable true/false、query.return、wait 完成、worker 分发、一次重启延迟、maxRestarts、stop 不重启及 stale PID 文件删除；query、worker 和 wait 均为 fake/mock。',
-      source: {
-        path: 'tests/daemon.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: "describe('Remote Control server lifecycle'",
-        note: '新增 daemon/server 生命周期回归；此项只声明测试及替身范围。',
-      },
-    },
-    {
-      kind: 'test-added',
-      statement: '独立特性夹具启用 DAEMON 并报告 remote-control-server 注册，组合测试要求 hasRemoteControlServerCommand=true，同时继续断言 34 个工具且无 null。',
-      source: {
-        path: 'tests/enabledFeatures.test.ts',
-        role: 'test',
-        revision: 'commit',
-        symbol: 'hasRemoteControlServerCommand',
-        note: '新增的真实 Bun 特性构建注册断言，不是 Cloud 会话测试。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: 'at-commit STATUS 记录 bun test 已通过 91 tests、390 assertions；这是该提交保存的历史全量结果，不是本次文档编写重新执行的结果。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '`bun test`',
-        note: 'Verified evidence 表中的精确历史测试计数。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: 'at-commit STATUS 记录 bun run typecheck 零 TypeScript 错误，bun run build 已构建 CLI、SDK 和 declarations。',
-      source: {
-        path: 'docs/STATUS.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '`bun run typecheck`',
-        note: '同一历史 Verified evidence 表还列出 build 与 declarations 结果。',
-      },
-    },
-    {
-      kind: 'recorded-command-pass',
-      statement: 'at-commit RELEASE 记录 daemon status 和 34-tool compiled feature profile 通过，并再次列出 91/390、typecheck、build、declarations；生命周期测试使用 fakes。',
-      source: {
-        path: 'docs/RELEASE.md',
-        role: 'evidence',
-        revision: 'commit',
-        symbol: '## Daemon and Remote Control server lifecycle',
-        note: '本提交专属发布段的执行结果和 fake 限定。',
-      },
-    },
-    {
-      kind: 'not-recorded',
-      statement: '没有 live Cloud session 证据；STATUS/RELEASE 均明确不作此声明，测试中的 example.invalid、env-test 和 createQuery mock 不能证明真实建连。',
-    },
-    {
-      kind: 'not-recorded',
-      statement: '新增回归没有执行真实 detached start/stop、worker spawn 或 SIGINT/SIGTERM 进程往返；历史执行记录只明确列出 daemon status smoke，监督停止与重启由 FakeWorker 验证。',
-    },
-  ],
-  remaining: [
+  ],  remaining: [
     '真实 Cloud/OAuth Remote Control 会话、远端消息与权限往返仍未验证；STATUS 继续把 real Cloud API and remote bridge round trips 留在授权环境后续步骤。',
     'PID 记录没有启动身份或进程名核验，且并发 startDaemon 没有文件锁/原子占用；PID 复用与并发启动都不是当前测试覆盖的强一致场景。',
     'supervisor 在退避 wait 期间收到 stop 不会唤醒计时器，循环等待后仍可能先 spawn 下一个 worker；当前 stop 只对调用时的 active 发信号。',
@@ -364,7 +277,7 @@ export const record = defineCommitRecord({
       'teardown 的 disable 失败会阻断 closeInput/query.return，虽然 finish 会执行，资源关闭并不完整；启动失败清理也可能受首个清理异常影响。',
       'fake query/FakeWorker 只能证明调用顺序和状态转换，不能覆盖 OAuth、Cloud 网络、真实 detached 进程、OS 信号或 SDK 远端权限行为。',
     ],
-    verification: [
+    acceptanceSequence: [
       '运行 daemon/server 定向测试，核对 createQuery 仅一次、enable 调用序列 true/false、query.return、info 清除和 wait 释放。',
       '用可控 worker 分别触发 code=1、code=0、连续失败和主动 stop，核对注入延迟、重启计数、上限异常及 running/active 清理。',
       '在临时 registryDir 写入不存在进程的 PID，执行 getDaemonStatus 并确认 running=false 与记录文件删除。',
