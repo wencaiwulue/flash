@@ -442,6 +442,15 @@
       "plan": "docs/plans/63e138f-PLAN.md"
     },
     {
+      "fullSha": "80e6defe99a3ce09a3d2b4229458fed0fbde5dbc",
+      "shortSha": "80e6def",
+      "date": "2026-11-11T10:56:11+08:00",
+      "subject": "Finalize self record to previous SHA on next commit",
+      "status": "implemented",
+      "spec": "docs/specs/80e6def-SPEC.md",
+      "plan": "docs/plans/80e6def-PLAN.md"
+    },
+    {
       "fullSha": "self",
       "changeId": "commit-docs-bootstrap",
       "subject": "Document commit specifications and plans",
