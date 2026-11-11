@@ -18,6 +18,7 @@ Statuses:
 | `bun run generate:sdk-types` | Generated 125 core types and 59 control types |
 | `bun run typecheck` | Passed with zero TypeScript errors |
 | `bun test` | 152 tests, 645 assertions passed |
+| `live-validation` workflow | Model, SkillHub, and Cloud jobs passed; desktop correctly skipped without a self-hosted runner |
 | Linux secret storage | 4 tests, 17 assertions passed with mocked `secret-tool` |
 | npm marketplace | 7 tests passed with mocked npm execution; no registry access |
 | ultraplan polling | Refresh-before-poll test passed |

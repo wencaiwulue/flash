@@ -301,4 +301,6 @@ The scripts use isolated config directories and never print credentials.
 Live script checks returned `WORKFLOW_LIVE_OK`, `PROACTIVE_LIVE_OK`,
 `CONTEXT_COLLAPSE_LIVE_OK`, `REACTIVE_COMPACTION_LIVE_OK`, and
 `SKILLHUB_LIVE_OK`. SkillHub's current `global` namespace and response shapes
-are now supported.
+are now supported. GitHub Actions `live-validation` run `42940722483` also
+passed, with model/Cloud skipped when their credentials are absent and desktop
+skipped when no self-hosted runner is configured.
