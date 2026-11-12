@@ -51,3 +51,11 @@ groups:
     summary: 系统初始化消息 - 构建会话元数据
     files:
       - src/utils/messages/systemInit.ts
+  - id: uds-messaging-test
+    kind: test
+    section: 7
+    summary: UDS 消息测试 - 验证真实 socket 服务
+    files:
+      - tests/kairos.test.ts
+      - tests/messageRenderers.test.ts
+      - tests/monitorToolIntegration.test.ts

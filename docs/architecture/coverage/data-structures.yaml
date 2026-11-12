@@ -78,3 +78,12 @@ groups:
       - src/utils/stringUtils.ts
       - src/utils/treeify.ts
       - src/utils/truncate.ts
+  - id: additional-utils
+    kind: source
+    section: 4
+    summary: 额外的通用工具
+    files:
+      - src/utils/set.ts
+      - src/utils/signal.ts
+      - src/utils/xml.ts
+      - src/utils/zodToJsonSchema.ts

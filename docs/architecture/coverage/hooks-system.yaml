@@ -21,3 +21,20 @@ groups:
       - src/utils/hooks/registerFrontmatterHooks.ts
       - src/utils/hooks/sessionHooks.ts
       - src/utils/hooks/ssrfGuard.ts
+  - id: hooks-ui
+    kind: source
+    section: 4
+    summary: 钩子 UI 组件 - 钩子相关的 React 组件
+    files:
+      - src/components/hooks/HooksConfigMenu.tsx
+      - src/components/hooks/PromptDialog.tsx
+      - src/components/hooks/SelectEventMode.tsx
+      - src/components/hooks/SelectHookMode.tsx
+      - src/components/hooks/SelectMatcherMode.tsx
+      - src/components/hooks/ViewHookMode.tsx
+  - id: hooks-schemas
+    kind: source
+    section: 4
+    summary: Hooks Zod schemas - 钩子配置的类型定义
+    files:
+      - src/schemas/hooks.ts
