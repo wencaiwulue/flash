@@ -191,6 +191,8 @@ export type PendingClassifierCheck = {
   command: string
   cwd: string
   descriptions: string[]
+  /** Stable identity of command, cwd, behavior, and the ordered rule set. */
+  cacheKey: string
 }
 
 /**
@@ -328,6 +330,7 @@ export type PermissionDecisionReason =
 // ============================================================================
 
 export type ClassifierResult = {
+  available: boolean
   matches: boolean
   matchedDescription?: string
   confidence: 'high' | 'medium' | 'low'

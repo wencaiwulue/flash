@@ -210,6 +210,8 @@ export type AttributionSnapshotMessage = {
   messageId: UUID
   surface: string // Client surface (cli, ide, web, api)
   fileStates: Record<string, FileAttributionState>
+  sessionBaselines?: Record<string, { contentHash: string; mtime: number }>
+  startingHeadSha?: string | null
   promptCount?: number // Total prompts in session
   promptCountAtLastCommit?: number // Prompts at last commit
   permissionPromptCount?: number // Total permission prompts shown

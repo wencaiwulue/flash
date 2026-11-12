@@ -21,6 +21,7 @@ import type {
 } from '@anthropic-ai/sdk/resources/index.mjs'
 import type { UUID } from 'crypto'
 import type { SDKAssistantMessageError } from '../entrypoints/agentSdkTypes.js'
+import type { WebhookEvent } from '../bridge/webhookSanitizer.js'
 import type { Progress } from '../Tool.js'
 import type { Attachment } from '../utils/attachments.js'
 import type {
@@ -48,6 +49,11 @@ export type MessageOrigin =
   | { kind: 'task-notification' }
   | { kind: 'coordinator' }
   | { kind: 'channel'; server: string }
+  | {
+      kind: 'github-webhook'
+      event: WebhookEvent
+      deliveryId: string
+    }
 
 export type PartialCompactDirection = 'from' | 'up_to'
 

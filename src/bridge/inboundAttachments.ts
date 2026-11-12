@@ -23,6 +23,7 @@ import { lazySchema } from '../utils/lazySchema.js'
 import { getBridgeAccessToken, getBridgeBaseUrl } from './bridgeConfig.js'
 
 const DOWNLOAD_TIMEOUT_MS = 30_000
+export const MAX_ATTACHMENT_DOWNLOAD_BYTES = 20_000_000
 
 function debug(msg: string): void {
   logForDebugging(`[bridge:inbound-attach] ${msg}`)
@@ -83,6 +84,8 @@ async function resolveOne(att: InboundAttachment): Promise<string | undefined> {
       headers: { Authorization: `Bearer ${token}` },
       responseType: 'arraybuffer',
       timeout: DOWNLOAD_TIMEOUT_MS,
+      maxContentLength: MAX_ATTACHMENT_DOWNLOAD_BYTES,
+      maxBodyLength: MAX_ATTACHMENT_DOWNLOAD_BYTES,
       validateStatus: () => true,
     })
     if (response.status !== 200) {
@@ -90,6 +93,10 @@ async function resolveOne(att: InboundAttachment): Promise<string | undefined> {
       return undefined
     }
     data = Buffer.from(response.data)
+    if (data.length > MAX_ATTACHMENT_DOWNLOAD_BYTES) {
+      debug(`fetch ${att.file_uuid} failed: attachment too large`)
+      return undefined
+    }
   } catch (e) {
     debug(`fetch ${att.file_uuid} threw: ${e}`)
     return undefined

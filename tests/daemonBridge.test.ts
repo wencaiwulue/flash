@@ -42,7 +42,7 @@ describe('daemon remote control bridge', () => {
 
     expect(handle).not.toBeNull()
     expect(handle!.environmentId).toBe('')
-    expect(handle!.sessionUrl).toContain('/code/cse_test')
+    expect(handle!.sessionUrl).toContain('/code/session_test')
     expect(params?.title).toBe('test')
     expect(params?.initialHistoryCap).toBe(0)
 

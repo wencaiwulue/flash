@@ -1,7 +1,9 @@
 import {
+  buildComputerUseTools,
   createComputerUseMcpServer,
   listOpenComputerUseTools,
 } from '@ant/computer-use-mcp'
+import { createComputerUseServer } from '@zavora-ai/computer-use-mcp/server'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import { shutdownDatadog } from '../../services/analytics/datadog.js'
@@ -9,8 +11,7 @@ import { shutdown1PEventLogging } from '../../services/analytics/firstPartyEvent
 import { initializeAnalyticsSink } from '../../services/analytics/sink.js'
 import { enableConfigs } from '../config.js'
 import { logForDebugging } from '../debug.js'
-import { getChicagoCoordinateMode } from './gates.js'
-import { getComputerUseHostAdapter } from './hostAdapter.js'
+import { getChicagoCoordinateMode, getComputerUseBackendKind } from './gates.js'
 
 /**
  * Construct the in-process server. Delegates to the package's
@@ -29,15 +30,24 @@ import { getComputerUseHostAdapter } from './hostAdapter.js'
 export async function createComputerUseMcpServerForCli(): Promise<
   ReturnType<typeof createComputerUseMcpServer>
 > {
-  const adapter = getComputerUseHostAdapter()
   const coordinateMode = getChicagoCoordinateMode()
-  const server = createComputerUseMcpServer(adapter, coordinateMode)
+  if (getComputerUseBackendKind() === 'native-adapter') {
+    const { getComputerUseHostAdapter } = await import('./hostAdapter.js')
+    const adapter = getComputerUseHostAdapter()
+    const server = createComputerUseMcpServer(adapter, coordinateMode)
+    const tools = buildComputerUseTools(adapter.executor.capabilities, coordinateMode)
+    server.setRequestHandler(ListToolsRequestSchema, async () =>
+      adapter.isDisabled() ? { tools: [] } : { tools },
+    )
+    return server
+  }
 
+  const server = createComputerUseServer({
+    profile: 'desktop',
+    structuredContent: true,
+  }) as unknown as ReturnType<typeof createComputerUseMcpServer>
   const tools = await listOpenComputerUseTools()
-  server.setRequestHandler(ListToolsRequestSchema, async () =>
-    adapter.isDisabled() ? { tools: [] } : { tools },
-  )
-
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }))
   return server
 }
 

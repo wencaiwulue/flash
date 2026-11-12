@@ -70,10 +70,14 @@ import { getPollIntervalConfig } from './pollConfig.js'
 import type { BridgeState, ReplBridgeHandle } from './replBridge.js'
 import { initBridgeCore } from './replBridge.js'
 import { setCseShimGate } from './sessionIdCompat.js'
+import type { InboundTransportMetadata } from './inboundMessages.js'
 import type { BridgeWorkerType } from './types.js'
 
 export type InitBridgeOptions = {
-  onInboundMessage?: (msg: SDKMessage) => void | Promise<void>
+  onInboundMessage?: (
+    msg: SDKMessage,
+    transportMetadata?: InboundTransportMetadata,
+  ) => void | Promise<void>
   onPermissionResponse?: (response: SDKControlResponse) => void
   onInterrupt?: () => void
   onSetModel?: (model: string | undefined) => void

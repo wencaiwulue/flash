@@ -1,11 +1,11 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useRef } from 'react'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from 'src/services/analytics/index.js'
 import type { TeleportRemoteResponse } from 'src/utils/conversationRecovery.js'
-import type { CodeSession } from 'src/utils/teleport/api.js'
 import {
+  type TeleportResumeSession,
   type TeleportSource,
   useTeleportResume,
 } from '../hooks/useTeleportResume.js'
@@ -20,6 +20,8 @@ interface TeleportResumeWrapperProps {
   onError?: (error: string, formattedMessage?: string) => void
   isEmbedded?: boolean
   source: TeleportSource
+  /** Skip the picker and resume this already-selected session. */
+  initialSession?: TeleportResumeSession
 }
 
 /**
@@ -32,9 +34,11 @@ export function TeleportResumeWrapper({
   onError,
   isEmbedded = false,
   source,
+  initialSession,
 }: TeleportResumeWrapperProps): React.ReactNode {
-  const { resumeSession, isResuming, error, selectedSession } =
+  const { resumeSession, isResuming, error, selectedSession, getError } =
     useTeleportResume(source)
+  const initialResumeStarted = useRef(false)
 
   // Log when teleport flow starts (for funnel tracking)
   useEffect(() => {
@@ -44,18 +48,26 @@ export function TeleportResumeWrapper({
     })
   }, [source])
 
-  const handleSelect = async (session: CodeSession) => {
+  const handleSelect = async (session: TeleportResumeSession) => {
     const result = await resumeSession(session)
     if (result) {
       onComplete(result)
-    } else if (error) {
+    } else {
+      const resumeError = getError()
       // If there's an error handler provided, use it
-      if (onError) {
-        onError(error.message, error.formattedMessage)
+      if (resumeError && onError) {
+        onError(resumeError.message, resumeError.formattedMessage)
       }
       // Otherwise the error will be displayed in the UI
     }
   }
+
+  useEffect(() => {
+    if (initialSession && !initialResumeStarted.current) {
+      initialResumeStarted.current = true
+      void handleSelect(initialSession)
+    }
+  }, [initialSession])
 
   const handleCancel = () => {
     logEvent('tengu_teleport_cancelled', {})

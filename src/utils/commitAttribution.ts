@@ -549,6 +549,21 @@ export async function calculateCommitAttribution(
   states: AttributionState[],
   stagedFiles: string[],
 ): Promise<AttributionData> {
+  if (states.length === 0) {
+    return {
+      version: 1,
+      summary: {
+        claudePercent: 0,
+        claudeChars: 0,
+        humanChars: 0,
+        surfaces: [],
+      },
+      files: {},
+      surfaceBreakdown: {},
+      excludedGenerated: [],
+      sessions: [],
+    }
+  }
   const cwd = getAttributionRepoRoot()
   const sessionId = getSessionId()
 
@@ -874,9 +889,13 @@ export function stateToSnapshotMessage(
   messageId: UUID,
 ): AttributionSnapshotMessage {
   const fileStates: Record<string, FileAttributionState> = {}
+  const sessionBaselines: Record<string, { contentHash: string; mtime: number }> = {}
 
   for (const [path, fileState] of state.fileStates) {
     fileStates[path] = fileState
+  }
+  for (const [path, baseline] of state.sessionBaselines) {
+    sessionBaselines[path] = baseline
   }
 
   return {
@@ -884,6 +903,8 @@ export function stateToSnapshotMessage(
     messageId,
     surface: state.surface,
     fileStates,
+    sessionBaselines,
+    startingHeadSha: state.startingHeadSha,
     promptCount: state.promptCount,
     promptCountAtLastCommit: state.promptCountAtLastCommit,
     permissionPromptCount: state.permissionPromptCount,
@@ -915,6 +936,12 @@ export function restoreAttributionStateFromSnapshots(
   for (const [path, fileState] of Object.entries(lastSnapshot.fileStates)) {
     state.fileStates.set(path, fileState)
   }
+  for (const [path, baseline] of Object.entries(
+    lastSnapshot.sessionBaselines ?? {},
+  )) {
+    state.sessionBaselines.set(path, baseline)
+  }
+  state.startingHeadSha = lastSnapshot.startingHeadSha ?? null
 
   // Restore prompt counts from the last snapshot (most recent state)
   state.promptCount = lastSnapshot.promptCount ?? 0

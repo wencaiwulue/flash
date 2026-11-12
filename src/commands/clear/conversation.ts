@@ -124,7 +124,7 @@ export async function clearConversation({
   // Clear all session-related caches. Per-agent state for preserved background
   // tasks (invoked skills, pending permission callbacks, dump state, cache-break
   // tracking) is retained so those agents keep functioning.
-  clearSessionCaches(preservedAgentIds)
+  await clearSessionCaches(preservedAgentIds)
 
   setCwd(getOriginalCwd())
   readFileState.clear()

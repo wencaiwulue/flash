@@ -224,7 +224,22 @@ export type CuContentBlock =
 export type CuCallToolResult = {
   content: string | CuContentBlock[]
   isError?: boolean
+  structuredContent?: Record<string, unknown>
   telemetry?: Record<string, unknown> & { error_kind?: string }
+}
+
+export type ComputerUseBackendKind = 'zavora' | 'native-adapter'
+
+export type ComputerUseBackend = {
+  kind: ComputerUseBackendKind
+  listTools(): Promise<ComputerUseTool[]>
+  dispatch(
+    name: string,
+    args: unknown,
+    context: ComputerUseSessionContext,
+    signal: AbortSignal,
+  ): Promise<CuCallToolResult>
+  close(): Promise<void>
 }
 
 export type ComputerUseTool = {

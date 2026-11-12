@@ -167,9 +167,10 @@ export function useSSHSession({
           `[useSSHSession] ssh dropped, reconnecting (${attempt}/${max})`,
         )
         isConnectedRef.current = false
+        setToolUseConfirmQueue([])
         // Surface a transient system message in the transcript so the user
         // knows what's happening — the next onConnected clears the state.
-        // Any in-flight request is lost; the remote's --continue reloads
+        // Any in-flight request is lost; the remote's explicit --resume reloads
         // history but there's no turn in progress to resume.
         setIsLoading(false)
         const msg: MessageType = {

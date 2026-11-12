@@ -931,11 +931,41 @@
       "plan": "docs/plans/ab2d941-PLAN.md"
     },
     {
-      "fullSha": "self",
-      "changeId": "substantive-commit-docs",
-      "subject": "Rebuild substantive per-commit design and implementation documentation",
+      "fullSha": "c69c271db2278642918bce5caf9641108e4f6cab",
+      "shortSha": "c69c271",
+      "date": "2026-11-11T14:04:41+08:00",
+      "subject": "Rebuild substantive commit design documentation",
       "status": "implemented",
       "kind": "component",
+      "spec": "docs/specs/c69c271-SPEC.md",
+      "plan": "docs/plans/c69c271-PLAN.md"
+    },
+    {
+      "fullSha": "4909c0fccbf24736f5c670ef936bae317e52dd4c",
+      "shortSha": "4909c0f",
+      "date": "2026-11-11T16:01:00+08:00",
+      "subject": "Design date-based commit documentation",
+      "status": "implemented",
+      "kind": "component",
+      "spec": "docs/specs/4909c0f-SPEC.md",
+      "plan": "docs/plans/4909c0f-PLAN.md"
+    },
+    {
+      "fullSha": "94038b1fb81840137487963a184f158ddcc57c9b",
+      "shortSha": "94038b1",
+      "date": "2026-11-12T09:07:43+08:00",
+      "subject": "Restore external stub capabilities",
+      "status": "implemented",
+      "kind": "component",
+      "spec": "docs/specs/94038b1-SPEC.md",
+      "plan": "docs/plans/94038b1-PLAN.md"
+    },
+    {
+      "fullSha": "self",
+      "changeId": "include-superpowers-plan",
+      "subject": "Include the date-based documentation implementation plan",
+      "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/self-SPEC.md",
       "plan": "docs/plans/self-PLAN.md"
     }

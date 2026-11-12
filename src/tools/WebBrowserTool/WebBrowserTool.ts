@@ -8,7 +8,10 @@ const inputSchema = z.strictObject({
   arguments: z.record(z.string(), z.unknown()).default({}),
 })
 type InputSchema = typeof inputSchema
-const outputSchema = z.object({ content: z.unknown() })
+const outputSchema = z.object({
+  content: z.unknown(),
+  isError: z.boolean().optional(),
+})
 type Output = z.infer<typeof outputSchema>
 
 export const WebBrowserTool = buildTool({
@@ -35,7 +38,16 @@ export const WebBrowserTool = buildTool({
   async call({ action, arguments: args }) {
     const client = await getOpenBrowserClient()
     const result = await client.callTool({ name: action, arguments: args })
-    return { data: { content: result.content } }
+    return {
+      data: {
+        content: result.content,
+        ...(result.isError === true
+          ? { isError: true }
+          : result.isError === false
+            ? { isError: false }
+            : {}),
+      },
+    }
   },
   mapToolResultToToolResultBlockParam(output, toolUseID) {
     return {

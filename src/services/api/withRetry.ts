@@ -198,15 +198,13 @@ export async function* withRetry<T>(
       : false
 
     try {
-      // Check for mock rate limits (used by /mock-limits command for Ant employees)
-      if (process.env.USER_TYPE === 'ant') {
-        const mockError = checkMockRateLimitError(
-          retryContext.model,
-          wasFastModeActive,
-        )
-        if (mockError) {
-          throw mockError
-        }
+      // checkMockRateLimitError is a no-op unless mocks were explicitly enabled.
+      const mockError = checkMockRateLimitError(
+        retryContext.model,
+        wasFastModeActive,
+      )
+      if (mockError) {
+        throw mockError
       }
 
       // Get a fresh client instance on first attempt or after authentication errors

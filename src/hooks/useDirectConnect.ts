@@ -48,6 +48,7 @@ export function useDirectConnect({
   const managerRef = useRef<DirectConnectSessionManager | null>(null)
   const hasReceivedInitRef = useRef(false)
   const isConnectedRef = useRef(false)
+  const permissionToolIdsRef = useRef(new Map<string, string>())
 
   // Keep a ref to tools so the WebSocket callback doesn't go stale
   const toolsRef = useRef(tools)
@@ -89,6 +90,7 @@ export function useDirectConnect({
           `[useDirectConnect] Permission request for tool: ${request.tool_name}`,
         )
 
+        permissionToolIdsRef.current.set(requestId, request.tool_use_id)
         const tool =
           findToolByName(toolsRef.current, request.tool_name) ??
           createToolStub(request.tool_name)
@@ -161,6 +163,33 @@ export function useDirectConnect({
       onConnected: () => {
         logForDebugging('[useDirectConnect] Connected')
         isConnectedRef.current = true
+      },
+      onReplayReset: () => {
+        permissionToolIdsRef.current.clear()
+        setToolUseConfirmQueue([])
+        process.stderr.write(
+          '\nServer event history was rotated; replay resumed from a reset checkpoint.\n',
+        )
+      },
+      onReconnecting: attempt => {
+        isConnectedRef.current = false
+        process.stderr.write(`\nServer disconnected; reconnecting (${attempt}/5)…\n`)
+      },
+      onPermissionCancelled: requestIds => {
+        const toolUseIds = new Set(
+          requestIds
+            .map(id => permissionToolIdsRef.current.get(id))
+            .filter((id): id is string => !!id),
+        )
+        setToolUseConfirmQueue(queue =>
+          queue.filter(item => !toolUseIds.has(item.toolUseID)),
+        )
+        for (const id of requestIds) permissionToolIdsRef.current.delete(id)
+      },
+      onStopped: () => {
+        process.stderr.write('\nServer session stopped.\n')
+        manager.disconnect()
+        void gracefulShutdown(1)
       },
       onDisconnected: () => {
         logForDebugging('[useDirectConnect] Disconnected')

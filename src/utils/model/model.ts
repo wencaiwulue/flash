@@ -177,12 +177,14 @@ export function getRuntimeMainLoopModel(params: {
  * @returns The default model setting to use
  */
 export function getDefaultMainLoopModelSetting(): ModelName | ModelAlias {
-  // Ants default to defaultModel from flag config, or Opus 1M if not configured
+  const configuredDefault = getAntModelOverrideConfig()?.defaultModel
+  if (configuredDefault) {
+    return configuredDefault
+  }
+
+  // Ants retain their historical fallback when no catalog default is set.
   if (process.env.USER_TYPE === 'ant') {
-    return (
-      getAntModelOverrideConfig()?.defaultModel ??
-      getDefaultOpusModel() + '[1m]'
-    )
+    return getDefaultOpusModel() + '[1m]'
   }
 
   // Max users get Opus as default
@@ -398,15 +400,21 @@ export function renderModelName(model: ModelName): string {
   if (publicName) {
     return publicName
   }
+  const antModel = resolveAntModel(model)
+  if (antModel) {
+    const resolved = parseUserSpecifiedModel(model)
+    if (process.env.USER_TYPE !== 'ant') {
+      return (
+        antModel.label + (has1mContext(resolved) ? ' (1M context)' : '')
+      )
+    }
+    const baseName = antModel.model.replace(/\[1m\]$/i, '')
+    const masked = maskModelCodename(baseName)
+    const suffix = has1mContext(resolved) ? '[1m]' : ''
+    return masked + suffix
+  }
   if (process.env.USER_TYPE === 'ant') {
     const resolved = parseUserSpecifiedModel(model)
-    const antModel = resolveAntModel(model)
-    if (antModel) {
-      const baseName = antModel.model.replace(/\[1m\]$/i, '')
-      const masked = maskModelCodename(baseName)
-      const suffix = has1mContext(resolved) ? '[1m]' : ''
-      return masked + suffix
-    }
     if (resolved !== model) {
       return `${model} (${resolved})`
     }
@@ -483,20 +491,17 @@ export function parseUserSpecifiedModel(
     return getDefaultOpusModel() + (has1mTag ? '[1m]' : '')
   }
 
-  if (process.env.USER_TYPE === 'ant') {
-    const has1mAntTag = has1mContext(normalizedModel)
-    const baseAntModel = normalizedModel.replace(/\[1m]$/i, '').trim()
+  const has1mAntTag = has1mContext(normalizedModel)
+  const baseAntModel = normalizedModel.replace(/\[1m]$/i, '').trim()
 
-    const antModel = resolveAntModel(baseAntModel)
-    if (antModel) {
-      const suffix = has1mAntTag ? '[1m]' : ''
-      return antModel.model + suffix
-    }
-
-    // Fall through to the alias string if we cannot load the config. The API calls
-    // will fail with this string, but we should hear about it through feedback and
-    // can tell the user to restart/wait for flag cache refresh to get the latest values.
+  const antModel = resolveAntModel(baseAntModel)
+  if (antModel) {
+    const suffix = has1mAntTag ? '[1m]' : ''
+    return antModel.model + suffix
   }
+
+  // Unresolved aliases fall through unchanged so custom provider deployments
+  // keep their original spelling and produce a normal provider error if invalid.
 
   // Preserve original case for custom model names (e.g., Azure Foundry deployment IDs)
   // Only strip [1m] suffix if present, maintaining case of the base model

@@ -1,87 +1,64 @@
 ---
 commit: self
-changeId: substantive-commit-docs
-title: "Rebuild substantive per-commit design and implementation documentation"
+changeId: include-superpowers-plan
+title: "Include the date-based documentation implementation plan"
 status: implemented
-kind: component
+kind: metadata-migration
 ---
 
-# 实施计划：Rebuild substantive per-commit design and implementation documentation
+# 实施计划：Include the date-based documentation implementation plan
 
 > 本文按实际代码依赖重建实施顺序，用于说明怎样完成该提交；不伪称是历史提交当时保存的计划。
 
 ## 目标与前置条件
 
-这种结构只能证明文档存在且可由同一套模板复现，无法回答某个提交为什么采用特定架构、数据怎样流动、实施时先改哪个模块，也无法发现缺失记录被自动生成所掩盖。需要把技术正文变成强制、可核对的一等数据，并保留人工语义审查的位置。
+用户要求把该计划纳入提交并创建 PR。只把 Markdown 裸加到分支会缺少本次变更自己的结构化记录，也无法保持仓库要求的 self/SHA 文档连续性。需要先固化上一提交，再为计划纳入建立独立设计与实施记录。
 
-- 完整 Git 历史可用，旧生成器和代表性 SPEC/PLAN 已确认只提供结构完整性而没有设计深度。
-- 每项回填都能读取目标提交、父提交、测试以及对应 revision 的状态/发布记录。
+- 上一提交 94038b1 已推送到功能分支，当前只有计划目录和本地会话目录未跟踪。
+- 计划全文已审阅，用户明确要求包含 docs/superpowers/plans 并创建 PR。
 
 ## 复用与兼容处理
 
 ### 复用现有实现
 
-- 复用现有 docs/specs、docs/plans、INDEX 和 status/index.json 的对外布局，避免破坏已有链接。
-- 复用 Bun/TypeScript 测试与构建链，不引入新的运行时依赖或文档服务。
-- 保留 self 解决 SHA 自引用的基本思想，但把清单计算统一到 head/next 两种模式。
+- 复用上一提交的 external-stub 设计正文、结构化渲染器和 head/next 文档门禁。
+- 复用已存在的日期命名迁移实施计划，不重写其技术内容或执行其任务。
 
 ### 兼容、迁移与生命周期
 
-- 保留原有文档路径和 seven-character short SHA 链接，历史 full SHA 只在结构化记录中成为强制值。
-- 后续工作将旧 self 迁移成刚落地 commit 的 SHA 记录，再创建新的 self，避免递归修改历史。
-- PR 使用 head SHA 而不是 synthetic merge SHA，保证 CI 的 HEAD 与 self 清单含义一致。
+- 不修改上一提交或远程分支历史；新提交只追加计划及其设计记录。
+- self 机制继续避免在当前提交中预写自身 SHA，后续工作再将本 self 固化。
 
 ## 文件级实施步骤
 
-### 1. 建立不可兜底的数据契约
+### 1. 固化上一提交记录
 
-先定义完整记录、证据和文件引用，再让加载器在缺记录或 SHA 不匹配时立即失败，从入口消除通用正文。
+将 external-stub self 复制为 94038b1 的完整 SHA 记录，并按真实 diff 统计添加 src、tests、docs、scripts 分组。
 
-涉及位置：`scripts/commit-docs/schema.ts`、`scripts/commit-docs/load.ts`
+涉及位置：`scripts/commit-docs/records/94038b1.ts`
 
-### 2. 实现 Git 对照和质量门禁
+### 2. 建立计划纳入记录并生成文档
 
-读取真实 diff 与 revision 内容，核对变更覆盖和引用，再对作者正文执行占位、证据、重复与敏感信息检查。
+以新的 self 说明纳入目标和非实施边界，加入计划文件后运行 next 生成与只读检查。
 
-涉及位置：`scripts/commit-docs/git.ts`、`scripts/commit-docs/validate.ts`、`tests/commitDocs.test.ts`
+涉及位置：`scripts/commit-docs/records/self.ts`、`docs/superpowers/plans/2026-11-11-date-based-commit-documentation.md`、`docs/specs`、`docs/plans`、`docs/INDEX.md`、`docs/status/index.json`
 
-### 3. 分离渲染、写入和只读检查
+### 3. 提交并创建 PR
 
-渲染器只转换已审核记录，writer 显式生成，checker 仅比较并报告孤儿文件；随后让 CI 只调用 checker。
+仅暂存计划及对应记录，提交后运行 head 检查、推送当前功能分支并创建 PR。
 
-涉及位置：`scripts/commit-docs/render.ts`、`scripts/document-commits.ts`、`scripts/check-commit-docs.ts`、`.github/workflows/ci.yml`
-
-### 4. 以代表性提交校准内容标准
-
-分别撰写大型恢复快照、Workflow、bridge/Cloud、CI 迁移、纯 rename 和元数据 finalization，审查通过后再批量回填。
-
-涉及位置：`scripts/commit-docs/records/ea80851.ts`、`scripts/commit-docs/records/02bc3c2.ts`、`scripts/commit-docs/records/5c56455.ts`
-
-### 5. 全量回填并逐提交审查
-
-按时间顺序完成所有功能、修复、CI、证据和 finalization 记录，渲染后对照各自 diff 检查技术理由、步骤、时间和证据。
-
-涉及位置：`scripts/commit-docs/records`、`docs/specs`、`docs/plans`、`docs/INDEX.md`、`docs/status/index.json`
-
-### 6. 执行全量验证和交付
-
-先以 next 模式验证全部历史，再运行负向测试、typecheck、全量测试和 build；提交后用 head 模式及重复生成确认幂等，并把凭据文件 ignore 与状态修正纳入最终审查。
-
-涉及位置：`package.json`、`docs/COMMIT_DOCS.md`、`docs/STATUS.md`、`docs/RELEASE.md`、`.gitignore`
+涉及位置：`scripts/commit-docs/records`、`docs/superpowers/plans`、`docs/specs`、`docs/plans`、`docs/INDEX.md`、`docs/status/index.json`
 
 ## 风险与处理
 
-- 历史回填可能把后来的理解误写成当时事实；通过 revision 证据、later-evidence 类型和回溯说明控制。
-- finalization 提交天然相似；重复门禁和逐提交计数/路径审查用于防止只替换 SHA 的伪独立文档。
-- 路径存在不代表架构描述正确，因此最终报告必须保留人工语义审查结论和自动检查的边界。
+- 把计划中的完成定义误读为当前实现状态会造成误报，因此在记录中明确这是未执行的未来迁移。
+- 大范围历史记录分组计数错误会被校验器发现，必须用上一提交的真实 diff 统计而不是估计值。
 
 ## 验证顺序
 
-1. 运行 tests/commitDocs.test.ts，先确认各类无效记录确实被拒绝。
-2. 运行 docs:generate -- --next 与 docs:check -- --next，核对 93 个历史和 self 的完整清单。
-3. 运行 typecheck、全量 bun test、build 和 git diff --check，排除工具改动造成的工程回归。
-4. 提交后运行普通 docs:check 和两次 docs:generate + git diff --exit-code，验证 head 清单和幂等性。
-5. 观察真实 GitHub Actions，只记录实际完成的结果。
+1. 运行 docs:generate -- --next 和 docs:check -- --next，检查上一提交的分组覆盖及新 self 的结构。
+2. 提交后运行普通 docs:generate 和 docs:check，再确认工作树只剩未要求的本地目录。
+3. 核对推送提交和 PR 的文件范围及链接。
 
 ## 完成状态与剩余工作
 
@@ -89,13 +66,9 @@ kind: component
 
 ### 已完成
 
-- 结构化 schema、显式加载、Git 对照、质量门禁、渲染和 head/next 入口已实现。
-- CI 写后查问题已移除，维护政策和模板已改成方案设计与文件级实施要求。
-- 93 个历史记录已全部回填，并成功执行过一次 188 份文档的 next 全量生成。
-- 十六个结构、证据、revision 与负向测试已在本地执行通过。
-- 93 个提交均完成独立语义复核，已修正多处证据、CI 门控、元数据谱系和实现边界误述，STATUS 已同步已知产品缺口。
-- 审查后 next 全量生成与检查、168/672 全量测试、typecheck、build 和 diff whitespace 检查均已通过。
+- 已固化上一提交设计记录，并为计划纳入建立独立 self 记录。
+- 已审阅完整实施计划，明确不执行其迁移任务或纳入本地会话文件。
 
 ### 未完成或后续工作
 
-- 提交后的 head 幂等检查和 hosted GitHub Actions 结果尚待验证。
+- 计划文件及记录仍需提交、推送和创建 PR；日期命名迁移实施本身不在本次范围。

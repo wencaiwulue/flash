@@ -47,7 +47,7 @@ describe('enabled feature profile', () => {
         expect(output).toBeDefined()
         const profile = JSON.parse(output!.slice('FEATURE_PROFILE='.length))
 
-        expect(profile.toolCount, JSON.stringify(profile)).toBe(42)
+        expect(profile.toolCount, JSON.stringify(profile)).toBe(43)
         expect(profile.nullCount).toBe(0)
         expect(profile.toolNames).toEqual(
           expect.arrayContaining([
@@ -70,6 +70,7 @@ describe('enabled feature profile', () => {
             'PushNotification',
             'SubscribePR',
             'WebBrowser',
+            'Tungsten',
           ]),
         )
         expect(profile.sleepInitiallyEnabled).toBe(false)
@@ -92,6 +93,31 @@ describe('enabled feature profile', () => {
         expect(profile.hasUltraplan).toBe(true)
         expect(profile.hasVoice).toBe(true)
         expect(profile.hasBrief).toBe(true)
+        expect(profile.commandNames).toEqual(
+          expect.arrayContaining([
+            'ant-trace',
+            'autofix-pr',
+            'backfill-sessions',
+            'break-cache',
+            'bughunter',
+            'ctx_viz',
+            'debug-tool-call',
+            'env',
+            'good-claude',
+            'issue',
+            'mock-limits',
+            'oauth-refresh',
+            'onboarding',
+            'perf-issue',
+            'reset-limits',
+            'share',
+            'summary',
+            'teleport',
+          ]),
+        )
+        expect(profile.commandNames).not.toEqual(
+          expect.arrayContaining(['commit', 'commit-push-pr', 'agents-platform']),
+        )
       } finally {
         clearTimeout(timeout)
         if (child.exitCode === null) child.kill()

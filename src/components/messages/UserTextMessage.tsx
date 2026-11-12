@@ -1,6 +1,7 @@
 import { feature } from 'bun:bundle'
 import type { TextBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
 import * as React from 'react'
+import type { MessageOrigin } from '../../types/message.js'
 import { NO_CONTENT_MESSAGE } from '../../constants/messages.js'
 import {
   COMMAND_MESSAGE_TAG,
@@ -35,6 +36,7 @@ type Props = {
   planContent?: string
   isTranscriptMode?: boolean
   timestamp?: string
+  origin?: MessageOrigin
 }
 
 export function UserTextMessage({
@@ -44,6 +46,7 @@ export function UserTextMessage({
   planContent,
   isTranscriptMode,
   timestamp,
+  origin,
 }: Props): React.ReactNode {
   if (param.text.trim() === NO_CONTENT_MESSAGE) {
     return null
@@ -91,19 +94,24 @@ export function UserTextMessage({
     )
   }
 
-  // GitHub webhook events (check_run, review comments, pushes) delivered via
-  // bound-session routing after /subscribe-pr. The tag constant is stripped
-  // from external builds — inline the literal so the import doesn't fail.
-  // The require() below DCEs when both flags are off. startsWith (not
-  // includes) and before the includes-checks below: defense-in-depth if
-  // the sanitizer were ever weakened.
+  // Only transport-derived origin authorizes webhook rendering. Ordinary
+  // remote text can contain the same wrapper without gaining special UI.
   if (feature('KAIROS_GITHUB_WEBHOOKS')) {
-    if (param.text.startsWith('<github-webhook-activity>')) {
+    if (
+      origin?.kind === 'github-webhook' &&
+      param.text.startsWith('<github-webhook-activity>')
+    ) {
       /* eslint-disable @typescript-eslint/no-require-imports */
       const { UserGitHubWebhookMessage } =
         require('./UserGitHubWebhookMessage.js') as typeof import('./UserGitHubWebhookMessage.js')
       /* eslint-enable @typescript-eslint/no-require-imports */
-      return <UserGitHubWebhookMessage addMargin={addMargin} param={param} />
+      return (
+        <UserGitHubWebhookMessage
+          addMargin={addMargin}
+          param={param}
+          origin={origin}
+        />
+      )
     }
   }
 
@@ -152,7 +160,7 @@ export function UserTextMessage({
   // only the directive. FORK_BOILERPLATE_TAG is inlined so the import doesn't
   // ship in external builds where feature('FORK_SUBAGENT') is false.
   if (feature('FORK_SUBAGENT')) {
-    if (param.text.includes('<fork-boilerplate>')) {
+    if (param.text.startsWith('<fork-boilerplate>')) {
       /* eslint-disable @typescript-eslint/no-require-imports */
       const { UserForkBoilerplateMessage } =
         require('./UserForkBoilerplateMessage.js') as typeof import('./UserForkBoilerplateMessage.js')
@@ -165,7 +173,7 @@ export function UserTextMessage({
   // CROSS_SESSION_MESSAGE_TAG is inlined so the import doesn't ship in
   // external builds where feature('UDS_INBOX') is false.
   if (feature('UDS_INBOX')) {
-    if (param.text.includes('<cross-session-message')) {
+    if (param.text.startsWith('<cross-session-message ')) {
       /* eslint-disable @typescript-eslint/no-require-imports */
       const { UserCrossSessionMessage } =
         require('./UserCrossSessionMessage.js') as typeof import('./UserCrossSessionMessage.js')

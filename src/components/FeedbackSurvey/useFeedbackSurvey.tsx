@@ -1,10 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useDynamicConfig } from 'src/hooks/useDynamicConfig.js'
 import { isFeedbackSurveyDisabled } from 'src/services/analytics/config.js'
-import {
-  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-  logEvent,
-} from 'src/services/analytics/index.js'
 import { isPolicyAllowed } from '../../services/policyLimits/index.js'
 import type { Message } from '../../types/message.js'
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
@@ -12,11 +8,12 @@ import { isEnvTruthy } from '../../utils/envUtils.js'
 import { getLastAssistantMessage } from '../../utils/messages.js'
 import { getMainLoopModel } from '../../utils/model/model.js'
 import { getInitialSettings } from '../../utils/settings/settings.js'
-import { logOTelEvent } from '../../utils/telemetry/events.js'
 import {
-  submitTranscriptShare,
-  type TranscriptShareTrigger,
-} from './submitTranscriptShare.js'
+  handleTranscriptConsent,
+  recordFeedbackSurveyEvent,
+  recordTranscriptPromptShown,
+  shouldOfferTranscriptShare,
+} from './feedbackSurveyShared.js'
 import type { TranscriptShareResponse } from './TranscriptSharePrompt.js'
 import { useSurveyState } from './useSurveyState.js'
 import type { FeedbackSurveyResponse, FeedbackSurveyType } from './utils.js'
@@ -132,20 +129,10 @@ export function useFeedbackSurvey(
   const onOpen = useCallback(
     (appearanceId: string) => {
       updateLastShownTime(Date.now(), submitCountRef.current)
-      logEvent('tengu_feedback_survey_event', {
-        event_type:
-          'appeared' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        appearance_id:
-          appearanceId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        last_assistant_message_id:
-          lastAssistantMessageIdRef.current as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        survey_type:
-          surveyType as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      })
-      void logOTelEvent('feedback_survey', {
-        event_type: 'appeared',
-        appearance_id: appearanceId,
-        survey_type: surveyType,
+      recordFeedbackSurveyEvent('appeared', {
+        appearanceId,
+        surveyType,
+        lastAssistantMessageId: lastAssistantMessageIdRef.current,
       })
     },
     [updateLastShownTime, surveyType],
@@ -154,78 +141,38 @@ export function useFeedbackSurvey(
   const onSelect = useCallback(
     (appearanceId: string, selected: FeedbackSurveyResponse) => {
       updateLastShownTime(Date.now(), submitCountRef.current)
-      logEvent('tengu_feedback_survey_event', {
-        event_type:
-          'responded' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        appearance_id:
-          appearanceId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        response:
-          selected as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        last_assistant_message_id:
-          lastAssistantMessageIdRef.current as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        survey_type:
-          surveyType as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      })
-      void logOTelEvent('feedback_survey', {
-        event_type: 'responded',
-        appearance_id: appearanceId,
-        response: selected,
-        survey_type: surveyType,
-      })
+      recordFeedbackSurveyEvent(
+        'responded',
+        {
+          appearanceId,
+          surveyType,
+          lastAssistantMessageId: lastAssistantMessageIdRef.current,
+        },
+        selected,
+      )
     },
     [updateLastShownTime, surveyType],
   )
 
   const shouldShowTranscriptPrompt = useCallback(
-    (selected: FeedbackSurveyResponse) => {
-      // Only bad and good ratings trigger the transcript ask
-      if (selected !== 'bad' && selected !== 'good') {
-        return false
-      }
-
-      // Don't show if user previously chose "Don't ask again"
-      if (getGlobalConfig().transcriptShareDismissed) {
-        return false
-      }
-
-      // Don't show if product feedback is blocked by org policy (ZDR)
-      if (!isPolicyAllowed('allow_product_feedback')) {
-        return false
-      }
-
-      // Probability gate from GrowthBook config (separate per rating)
-      const probability =
-        selected === 'bad'
-          ? badTranscriptAskConfig.probability
-          : goodTranscriptAskConfig.probability
-      return Math.random() <= probability
-    },
+    (selected: FeedbackSurveyResponse) =>
+      shouldOfferTranscriptShare(selected, {
+        bad: badTranscriptAskConfig.probability,
+        good: goodTranscriptAskConfig.probability,
+      }),
     [badTranscriptAskConfig.probability, goodTranscriptAskConfig.probability],
   )
 
   const onTranscriptPromptShown = useCallback(
     (appearanceId: string, surveyResponse: FeedbackSurveyResponse) => {
-      const trigger: TranscriptShareTrigger =
-        surveyResponse === 'good'
-          ? 'good_feedback_survey'
-          : 'bad_feedback_survey'
-      logEvent('tengu_feedback_survey_event', {
-        event_type:
-          'transcript_prompt_appeared' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        appearance_id:
-          appearanceId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        last_assistant_message_id:
-          lastAssistantMessageIdRef.current as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        survey_type:
-          surveyType as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        trigger:
-          trigger as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      })
-      void logOTelEvent('feedback_survey', {
-        event_type: 'transcript_prompt_appeared',
-        appearance_id: appearanceId,
-        survey_type: surveyType,
-      })
+      recordTranscriptPromptShown(
+        {
+          appearanceId,
+          surveyType,
+          lastAssistantMessageId: lastAssistantMessageIdRef.current,
+        },
+        surveyResponse,
+      )
     },
     [surveyType],
   )
@@ -235,52 +182,17 @@ export function useFeedbackSurvey(
       appearanceId: string,
       selected: TranscriptShareResponse,
       surveyResponse: FeedbackSurveyResponse | null,
-    ): Promise<boolean> => {
-      const trigger: TranscriptShareTrigger =
-        surveyResponse === 'good'
-          ? 'good_feedback_survey'
-          : 'bad_feedback_survey'
-
-      logEvent('tengu_feedback_survey_event', {
-        event_type:
-          `transcript_share_${selected}` as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        appearance_id:
-          appearanceId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        last_assistant_message_id:
-          lastAssistantMessageIdRef.current as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        survey_type:
-          surveyType as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        trigger:
-          trigger as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      })
-
-      if (selected === 'dont_ask_again') {
-        saveGlobalConfig(current => ({
-          ...current,
-          transcriptShareDismissed: true,
-        }))
-      }
-
-      if (selected === 'yes') {
-        const result = await submitTranscriptShare(
-          messagesRef.current,
-          trigger,
+    ): Promise<boolean> =>
+      handleTranscriptConsent({
+        context: {
           appearanceId,
-        )
-        logEvent('tengu_feedback_survey_event', {
-          event_type: (result.success
-            ? 'transcript_share_submitted'
-            : 'transcript_share_failed') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-          appearance_id:
-            appearanceId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-          trigger:
-            trigger as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        })
-        return result.success
-      }
-
-      return false
-    },
+          surveyType,
+          lastAssistantMessageId: lastAssistantMessageIdRef.current,
+        },
+        response: surveyResponse,
+        selected,
+        messages: messagesRef.current,
+      }),
     [surveyType],
   )
 

@@ -3,6 +3,7 @@
 import { appendFileSync } from 'fs'
 import createReconciler from 'react-reconciler'
 import { getYogaCounters } from 'src/native-ts/yoga-layout/index.js'
+import { logForDebugging } from '../utils/debug.js'
 import { isEnvTruthy } from '../utils/envUtils.js'
 import {
   appendChildNode,
@@ -31,28 +32,17 @@ import applyStyles, { type Styles, type TextStyles } from './styles.js'
 // accidentally breaking other third-party code.
 // See https://github.com/vadimdemedes/ink/issues/384
 if (process.env.NODE_ENV === 'development') {
-  try {
-    // eslint-disable-next-line custom-rules/no-top-level-dynamic-import -- dev-only; NODE_ENV check is DCE'd in production
-    void import('./devtools.js')
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (error: any) {
-    if (error.code === 'ERR_MODULE_NOT_FOUND') {
-      // biome-ignore lint/suspicious/noConsole: intentional warning
-      console.warn(
-        `
-The environment variable DEV is set to true, so Ink tried to import \`react-devtools-core\`,
-but this failed as it was not installed. Debugging with React Devtools requires it.
-
-To install use this command:
-
-$ npm install --save-dev react-devtools-core
-				`.trim() + '\n',
+  // eslint-disable-next-line custom-rules/no-top-level-dynamic-import -- dev-only; NODE_ENV check is DCE'd in production
+  void import('./devtools.js')
+    .then(({ connectToDevTools }) => connectToDevTools())
+    .catch((error: unknown) => {
+      const detail = error instanceof Error ? error.message : String(error)
+      logForDebugging(
+        `Ink could not load React DevTools: ${detail}. Install dependencies ` +
+          'with `bun install`, start the UI with `npx react-devtools`, and restart Claude Code.',
+        { level: 'warn' },
       )
-    } else {
-      // eslint-disable-next-line @typescript-eslint/only-throw-error
-      throw error
-    }
-  }
+    })
 }
 
 // --

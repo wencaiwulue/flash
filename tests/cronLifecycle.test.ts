@@ -90,7 +90,12 @@ describe('cron scheduler lifecycle', () => {
     await waitFor(() => scheduler.getNextFireTime() !== null)
     current += 60_000
     await waitFor(() => fired.length >= 1)
-    const tasks = await readCronTasks(dir)
+    let tasks: CronTask[] = []
+    for (let attempt = 0; attempt < 160; attempt++) {
+      tasks = await readCronTasks(dir)
+      if (tasks[0]?.lastFiredAt !== undefined) break
+      await sleep(50)
+    }
     expect(tasks[0]?.lastFiredAt).toBeDefined()
     expect(scheduler.getNextFireTime()).not.toBeNull()
 

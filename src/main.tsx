@@ -2331,13 +2331,11 @@ async function run(): Promise<CommanderCommand> {
         }
       }
 
-      // Extract Claude in Chrome option and enforce claude.ai subscriber check (unless user is ant)
+      // Open CDP is local and does not require a Claude subscription or extension.
       const chromeOpts = options as { chrome?: boolean }
       // Store the explicit CLI flag so teammates can inherit it
       setChromeFlagOverride(chromeOpts.chrome)
-      const enableClaudeInChrome =
-        shouldEnableClaudeInChrome(chromeOpts.chrome) &&
-        (process.env.USER_TYPE === 'ant' || isClaudeAISubscriber())
+      const enableClaudeInChrome = shouldEnableClaudeInChrome(chromeOpts.chrome)
       const autoEnableClaudeInChrome =
         !enableClaudeInChrome && (await shouldAutoEnableClaudeInChrome())
 
@@ -3283,24 +3281,57 @@ async function run(): Promise<CommanderCommand> {
           mainThreadAgentDefinition.pendingSnapshotUpdate
         ) {
           const agentDef = mainThreadAgentDefinition
-          const choice = await launchSnapshotUpdateDialog(root, {
+          await launchSnapshotUpdateDialog(root, {
             agentType: agentDef.agentType,
             scope: agentDef.memory!,
             snapshotTimestamp:
               agentDef.pendingSnapshotUpdate!.snapshotTimestamp,
+            onApply: async choice => {
+              if (choice === 'keep') {
+                const { markSnapshotSynced } = await import(
+                  './tools/AgentTool/agentMemorySnapshot.js'
+                )
+                await markSnapshotSynced(
+                  agentDef.agentType,
+                  agentDef.memory!,
+                  agentDef.pendingSnapshotUpdate!.snapshotTimestamp,
+                )
+                return
+              }
+              if (choice === 'replace') {
+                const { replaceFromSnapshot } = await import(
+                  './tools/AgentTool/agentMemorySnapshot.js'
+                )
+                await replaceFromSnapshot(
+                  agentDef.agentType,
+                  agentDef.memory!,
+                  agentDef.pendingSnapshotUpdate!.snapshotTimestamp,
+                )
+                return
+              }
+              const [{ buildMergePrompt }, { beginAgentMemorySnapshotMerge }] =
+                await Promise.all([
+                  import('./components/agents/SnapshotUpdateDialog.js'),
+                  import('./tools/AgentTool/agentMemorySnapshotMerge.js'),
+                ])
+              const completionTool = await beginAgentMemorySnapshotMerge(
+                agentDef.agentType,
+                agentDef.memory!,
+                agentDef.pendingSnapshotUpdate!.snapshotTimestamp,
+              )
+              tools = [...tools, completionTool]
+              const mergePrompt = buildMergePrompt(
+                agentDef.agentType,
+                agentDef.memory!,
+              )
+              inputPrompt = inputPrompt
+                ? `${mergePrompt}\n\n${inputPrompt}`
+                : mergePrompt
+            },
           })
-          if (choice === 'merge') {
-            const { buildMergePrompt } = await import(
-              './components/agents/SnapshotUpdateDialog.js'
-            )
-            const mergePrompt = buildMergePrompt(
-              agentDef.agentType,
-              agentDef.memory!,
-            )
-            inputPrompt = inputPrompt
-              ? `${mergePrompt}\n\n${inputPrompt}`
-              : mergePrompt
-          }
+          // Escape/cancel performs no writes. Clearing only the in-memory marker
+          // prevents repeated dialogs in this process; the next process can still
+          // discover the unacknowledged snapshot from disk.
           agentDef.pendingSnapshotUpdate = undefined
         }
 
@@ -4245,7 +4276,7 @@ async function run(): Promise<CommanderCommand> {
           const { clearSessionCaches } = await import(
             './commands/clear/caches.js'
           )
-          clearSessionCaches()
+          await clearSessionCaches()
 
           const result = await loadConversationForResume(
             undefined /* sessionId */,
@@ -4368,7 +4399,7 @@ async function run(): Promise<CommanderCommand> {
         try {
           if (_pendingSSH.local) {
             process.stderr.write('Starting local ssh-proxy test session...\n')
-            sshSession = createLocalSSHSession({
+            sshSession = await createLocalSSHSession({
               cwd: _pendingSSH.cwd,
               permissionMode: _pendingSSH.permissionMode,
               dangerouslySkipPermissions:
@@ -4587,7 +4618,7 @@ async function run(): Promise<CommanderCommand> {
         const { clearSessionCaches } = await import(
           './commands/clear/caches.js'
         )
-        clearSessionCaches()
+        await clearSessionCaches()
 
         let messages: MessageType[] | null = null
         let processedResume: ProcessedResume | undefined = undefined
@@ -4883,7 +4914,7 @@ async function run(): Promise<CommanderCommand> {
             }
           }
         }
-        if (process.env.USER_TYPE === 'ant') {
+        {
           if (
             options.resume &&
             typeof options.resume === 'string' &&
@@ -5541,7 +5572,7 @@ async function run(): Promise<CommanderCommand> {
       .command('server')
       .description('Start a Claude Code session server')
       .option('--port <number>', 'HTTP port', '0')
-      .option('--host <string>', 'Bind address', '0.0.0.0')
+      .option('--host <string>', 'Bind address', '127.0.0.1')
       .option('--auth-token <token>', 'Bearer token for auth')
       .option('--unix <path>', 'Listen on a unix domain socket')
       .option(
@@ -5558,6 +5589,10 @@ async function run(): Promise<CommanderCommand> {
         'Maximum concurrent sessions (0 = unlimited)',
         '32',
       )
+      .option(
+        '--allow-dangerous-skip-permissions',
+        'Allow clients that explicitly request permission bypass',
+      )
       .action(
         async (opts: {
           port: string
@@ -5567,10 +5602,14 @@ async function run(): Promise<CommanderCommand> {
           workspace?: string
           idleTimeout: string
           maxSessions: string
+          allowDangerousSkipPermissions?: boolean
         }) => {
           const { randomBytes } = await import('crypto')
           const { startServer } = await import('./server/server.js')
           const { SessionManager } = await import('./server/sessionManager.js')
+          const { ProcessBackend } = await import(
+            './server/backends/processBackend.js'
+          )
           const { DangerousBackend } = await import(
             './server/backends/dangerousBackend.js'
           )
@@ -5599,12 +5638,31 @@ async function run(): Promise<CommanderCommand> {
             workspace: opts.workspace,
             idleTimeoutMs: parseInt(opts.idleTimeout, 10),
             maxSessions: parseInt(opts.maxSessions, 10),
+            allowDangerousSkipPermissions:
+              opts.allowDangerousSkipPermissions === true,
           }
 
-          const backend = new DangerousBackend()
+          if (
+            !Number.isInteger(config.port) ||
+            config.port < 0 ||
+            config.port > 65535 ||
+            !Number.isInteger(config.idleTimeoutMs) ||
+            config.idleTimeoutMs < 0 ||
+            !Number.isInteger(config.maxSessions) ||
+            config.maxSessions < 0
+          ) {
+            throw new Error('Invalid server port, idle timeout, or max sessions')
+          }
+
+          const backend = config.allowDangerousSkipPermissions
+            ? new DangerousBackend({ allowDangerousSkipPermissions: true })
+            : new ProcessBackend()
           const sessionManager = new SessionManager(backend, {
             idleTimeoutMs: config.idleTimeoutMs,
             maxSessions: config.maxSessions,
+            workspace: config.workspace,
+            allowDangerousSkipPermissions:
+              config.allowDangerousSkipPermissions,
           })
           const logger = createServerLogger()
 
@@ -5612,15 +5670,25 @@ async function run(): Promise<CommanderCommand> {
           const actualPort = server.port ?? config.port
           printBanner(config, authToken, actualPort)
 
-          await writeServerLock({
-            pid: process.pid,
-            port: actualPort,
-            host: config.host,
-            httpUrl: config.unix
-              ? `unix:${config.unix}`
-              : `http://${config.host}:${actualPort}`,
-            startedAt: Date.now(),
-          })
+          try {
+            await writeServerLock({
+              pid: process.pid,
+              port: actualPort,
+              host: config.host,
+              httpUrl: config.unix
+                ? `unix:${config.unix}`
+                : `http://${config.host}:${actualPort}`,
+              unix: config.unix ?? null,
+              startedAt: Date.now(),
+            })
+          } catch (error) {
+            server.stop(true)
+            await sessionManager.destroyAll()
+            process.stderr.write(
+              `Unable to acquire direct-connect server lock: ${error instanceof Error ? error.message : String(error)}\n`,
+            )
+            process.exit(1)
+          }
 
           let shuttingDown = false
           const shutdown = async () => {
@@ -6174,11 +6242,11 @@ async function run(): Promise<CommanderCommand> {
     })
 
   // claude up — run the project's CLAUDE.md "# claude up" setup instructions.
-  if (process.env.USER_TYPE === 'ant') {
+  {
     program
       .command('up')
       .description(
-        '[ANT-ONLY] Initialize or upgrade the local dev environment using the "# claude up" section of the nearest CLAUDE.md',
+        'Initialize or upgrade the local dev environment using the "# claude up" section of the nearest CLAUDE.md',
       )
       .action(async () => {
         const { up } = await import('src/cli/up.js')
@@ -6186,13 +6254,13 @@ async function run(): Promise<CommanderCommand> {
       })
   }
 
-  // claude rollback (ant-only)
+  // claude rollback
   // Rolls back to previous releases
-  if (process.env.USER_TYPE === 'ant') {
+  {
     program
       .command('rollback [target]')
       .description(
-        '[ANT-ONLY] Roll back to a previous release\n\nExamples:\n  claude rollback                                    Go 1 version back from current\n  claude rollback 3                                  Go 3 versions back from current\n  claude rollback 2.0.73-dev.20251217.t190658        Roll back to a specific version',
+        'Roll back to a previous release\n\nExamples:\n  claude rollback                                    Go 1 version back from current\n  claude rollback 3                                  Go 3 versions back from current\n  claude rollback 2.0.73-dev.20251217.t190658        Roll back to a specific version',
       )
       .option('-l, --list', 'List recent published versions with ages')
       .option('--dry-run', 'Show what would be installed without installing')
@@ -6225,8 +6293,8 @@ async function run(): Promise<CommanderCommand> {
       },
     )
 
-  // ant-only commands
-  if (process.env.USER_TYPE === 'ant') {
+  // Local conversation, task, and completion maintenance commands.
+  {
     const validateLogId = (value: string) => {
       const maybeSessionId = validateUuid(value)
       if (maybeSessionId) return maybeSessionId
@@ -6235,7 +6303,7 @@ async function run(): Promise<CommanderCommand> {
     // claude log
     program
       .command('log')
-      .description('[ANT-ONLY] Manage conversation logs.')
+      .description('Manage conversation logs.')
       .argument(
         '[number|sessionId]',
         'A number (0, 1, 2, etc.) to display a specific log, or the sesssion ID (uuid) of a log',
@@ -6250,7 +6318,7 @@ async function run(): Promise<CommanderCommand> {
     program
       .command('error')
       .description(
-        '[ANT-ONLY] View error logs. Optionally provide a number (0, -1, -2, etc.) to display a specific log.',
+        'View error logs. Optionally provide a number (0, -1, -2, etc.) to display a specific log.',
       )
       .argument(
         '[number]',
@@ -6265,7 +6333,7 @@ async function run(): Promise<CommanderCommand> {
     // claude export
     program
       .command('export')
-      .description('[ANT-ONLY] Export a conversation to a text file.')
+      .description('Export a conversation to a text file.')
       .usage('<source> <outputFile>')
       .argument(
         '<source>',
@@ -6286,10 +6354,10 @@ Examples:
         await exportHandler(source, outputFile)
       })
 
-    if (process.env.USER_TYPE === 'ant') {
+    {
       const taskCmd = program
         .command('task')
-        .description('[ANT-ONLY] Manage task list tasks')
+        .description('Manage task list tasks')
 
       taskCmd
         .command('create <subject>')
@@ -6373,7 +6441,7 @@ Examples:
 
     // claude completion <shell>
     program
-      .command('completion <shell>', { hidden: true })
+      .command('completion <shell>')
       .description('Generate shell completion script (bash, zsh, or fish)')
       .option(
         '--output <file>',

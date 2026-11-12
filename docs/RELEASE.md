@@ -336,3 +336,36 @@ local `--next` mode also finalizes the current HEAD before a new commit. CI runs
 only the read-only `docs:check`; it no longer generates documents immediately
 before checking them. A new GitHub Actions result will be recorded separately
 only after that run actually completes.
+
+## External stub restoration
+
+All 82 audited external stubs now have public implementations and offline
+verification. Remote Control distinguishes ordinary messages from trusted
+webhooks and renders webhook, cross-session, and Fork content instead of
+dropping it. `bridge:` peer messages use the Sessions API. Agent memory
+snapshots, public commit attribution, semantic Bash prompt rules, and public
+MCP Tasks cancellation are implemented.
+
+The browser and desktop backends are separated by capability: isolated
+Playwright remains available for WebBrowser, while real Chrome attaches over
+loopback CDP with a dedicated persistent profile. Computer Use separates
+Zavora from a public macOS native adapter built with ScreenCaptureKit,
+CoreGraphics, NSWorkspace, and CGEvent. Neither path claims private extension
+or Swift/Enigo ABI compatibility.
+
+Direct Connect, background sessions, SSH, local Template Jobs, and the
+versioned Open Runner protocol now include real process, persistence, auth,
+recovery, and cleanup paths. Eighteen restored slash commands, public
+maintenance commands, Tungsten, MoreRight, ccshare resume, and the remaining
+public prompt/settings/devtools capabilities are registered in the external
+build. Feature flags are shared by production and profile tests, and the
+standard test runner isolates each test file in a separate Bun process.
+
+- **Verification**: 87 test files, 483 tests and 2415 assertions passed, one
+  skipped; zero failures. Typecheck, CLI/SDK/declaration builds, Swift helper
+  compilation, external profile checks, and dist command smoke tests passed.
+- **Live boundaries**: trusted webhook production, two-session peer traffic,
+  Google Chrome login state, interactive desktop controls, authorized Linux
+  SSH, external runners, and private-protocol differential compatibility were
+  not executed. Open CDP, Open Runner, and the public macOS helper are open
+  implementations, not private-protocol compatibility claims.

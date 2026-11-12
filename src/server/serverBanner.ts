@@ -1,9 +1,20 @@
 import type { ServerConfig } from './types.js'
 
+/** Print the bearer credential once, directly to the invoking terminal. */
 export function printBanner(
-  _config: ServerConfig,
-  _authToken: string,
-  _actualPort: number,
-): never {
-  throw new Error('The direct-connect server is unavailable in this build')
+  config: ServerConfig,
+  authToken: string,
+  actualPort: number,
+): void {
+  const token = encodeURIComponent(authToken)
+  const host = config.host.includes(':') ? `[${config.host}]` : config.host
+  const url = config.unix
+    ? `cc+unix://${config.unix}?token=${token}`
+    : `cc://${host}:${actualPort}?token=${token}`
+  process.stderr.write(
+    `\nClaude Code Direct Connect (${'direct-connect-v1'})\n` +
+      `Listening: ${config.unix ?? `${config.host}:${actualPort}`}\n` +
+      `Connect: ${url}\n` +
+      'Keep this URL private. cc:// uses HTTP; use a TLS boundary off-loopback.\n\n',
+  )
 }

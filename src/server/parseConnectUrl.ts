@@ -17,6 +17,7 @@ export function parseConnectUrl(input: string): ParsedConnectUrl {
   }
 
   const authToken =
+    process.env.CLAUDE_DIRECT_CONNECT_TOKEN ??
     url.searchParams.get('token') ??
     url.searchParams.get('auth_token') ??
     undefined

@@ -7,7 +7,11 @@ import {
   isBridgePermissionResponse,
 } from '../bridge/bridgePermissionCallbacks.js'
 import { buildBridgeConnectUrl } from '../bridge/bridgeStatusUtil.js'
-import { extractInboundMessageFields } from '../bridge/inboundMessages.js'
+import {
+  InboundEnvelopeError,
+  prepareInboundMessage,
+  type InboundTransportMetadata,
+} from '../bridge/inboundMessages.js'
 import type { BridgeState, ReplBridgeHandle } from '../bridge/replBridge.js'
 import { setReplBridgeHandle } from '../bridge/replBridgeHandle.js'
 import type { Command } from '../commands.js'
@@ -214,36 +218,29 @@ export function useReplBridge(
           // disk write before we enqueue with the @path prefix. Caller doesn't
           // await — messages with attachments just land in the queue slightly
           // later, which is fine (web messages aren't rapid-fire).
-          async function handleInboundMessage(msg: SDKMessage): Promise<void> {
+          async function handleInboundMessage(
+            msg: SDKMessage,
+            transportMetadata?: InboundTransportMetadata,
+          ): Promise<void> {
             try {
-              const fields = extractInboundMessageFields(msg)
-              if (!fields) return
-
-              const { uuid } = fields
-
               // Dynamic import keeps the bridge code out of non-BRIDGE_MODE builds.
               const { resolveAndPrepend } = await import(
                 '../bridge/inboundAttachments.js'
               )
-              let sanitized = fields.content
-              if (feature('KAIROS_GITHUB_WEBHOOKS')) {
-                /* eslint-disable @typescript-eslint/no-require-imports */
-                const { sanitizeInboundWebhookContent } =
-                  require('../bridge/webhookSanitizer.js') as typeof import('../bridge/webhookSanitizer.js')
-                /* eslint-enable @typescript-eslint/no-require-imports */
-                sanitized = sanitizeInboundWebhookContent(fields.content)
-              }
-              const content = await resolveAndPrepend(msg, sanitized)
+              const { value, uuid, origin } = await prepareInboundMessage(msg, {
+                resolveAttachments: resolveAndPrepend,
+                transportMetadata,
+              })
 
               const preview =
-                typeof content === 'string'
-                  ? content.slice(0, 80)
-                  : `[${content.length} content blocks]`
+                typeof value === 'string'
+                  ? value.slice(0, 80)
+                  : `[${value.length} content blocks]`
               logForDebugging(
                 `[bridge:repl] Injecting inbound user message: ${preview}${uuid ? ` uuid=${uuid}` : ''}`,
               )
               enqueue({
-                value: content,
+                value,
                 mode: 'prompt' as const,
                 uuid,
                 // skipSlashCommands stays true as defense-in-depth —
@@ -253,10 +250,15 @@ export function useReplBridge(
                 // intact for any code path that checks skipSlashCommands directly.
                 skipSlashCommands: true,
                 bridgeOrigin: true,
+                origin,
               })
-            } catch (e) {
+            } catch (error) {
+              const code =
+                error instanceof InboundEnvelopeError
+                  ? error.code
+                  : 'prepare_failed'
               logForDebugging(
-                `[bridge:repl] handleInboundMessage failed: ${e}`,
+                `[bridge:repl] Rejected inbound user message: ${code}`,
                 { level: 'error' },
               )
             }
