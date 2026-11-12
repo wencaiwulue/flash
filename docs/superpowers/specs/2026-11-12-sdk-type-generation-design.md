@@ -6,32 +6,136 @@ date: 2026-11-12
 status: draft
 ---
 
-## 1. 概述
+# SDK Type Generation Schema 驱动类型生成设计
+
+## 1. 问题与约束
 
 SDK Type Generation 是一个基于 Zod Schema 自动生成 TypeScript 类型定义的轻量级系统。该系统通过解析 `*Schemas.ts` 文件中的导出 Zod schema，自动生成对应的 `z.infer<>` 类型，并保持与手写类型文件的兼容性。
 
-### 1.1 设计目标
+**约束条件：**
+- 生成范围仅限 `coreTypes.generated.ts` 和 `controlTypes.ts`
+- 输入来源仅限 `coreSchemas.ts` 和 `controlSchemas.ts` 中的导出 schema
+- settings 类型（`settingsTypes.generated.ts`）是手写兼容层，不参与自动生成
+- 无需完整 TypeScript 编译环境，仅通过简单正则匹配工作
 
-- **单一事实来源**：Zod Schema 是类型定义的唯一来源，避免类型漂移
-- **零依赖生成**：无需完整 TypeScript 编译环境，仅通过简单的正则匹配即可工作
-- **IDE 友好**：生成的类型文件直接提交到仓库，提供即时的类型提示和自动补全
-- **增量兼容**：手写类型文件（如 `settingsTypes.generated.ts`）可以与自动生成并存
+## 2. 设计理由与备选方案
 
-### 1.2 边界范围
+### 使用正则匹配而非 AST 解析
 
-| 维度 | 范围 |
-|------|------|
-| 生成范围 | 仅生成 `coreTypes.generated.ts` 和 `controlTypes.ts` |
-| 输入源 | `coreSchemas.ts` 和 `controlSchemas.ts` 中的导出 schema |
-| 不包含 | settings 类型（手写兼容层）、自定义类型映射、JSDoc 注释 |
+**设计**：使用 `/^export const (\w+Schema)\s*=/gm` 正则匹配导出的 schema。
 
-## 2. 系统架构
+**备选方案**：
+- 使用 `@babel/parser` 或 `typescript` API 解析 AST → 不采用，启动开销大（~300ms+），依赖复杂
+- 使用 `ts-morph` 进行更高级的源码操作 → 不采用，过度设计
 
-SDK Type Generation 采用极简的单文件脚本设计，无复杂的分层或依赖关系。
+**选择理由**：
+- 当前 schema 定义模式统一且简单（`export const *Schema = lazySchema(() => ...)`）
+- 正则方案性能开销极小（<10ms）
+- 维护成本极低（50 行代码）
+- YAGNI：当前需求不需要复杂解析
+
+**代价**：
+- 如果未来 schema 定义模式变化（如使用 `export let`、多行声明等），需要修改正则
+- 无法处理更复杂的场景（如条件导出、动态命名等）
+
+**证据**：当前 `coreSchemas.ts` 和 `controlSchemas.ts` 中的所有 schema 都严格遵循 `export const *Schema = lazySchema(() => ...)` 模式。
+
+### 提交生成文件到 Git
+
+**设计**：生成文件直接提交到 Git，无需 `prebuild` 或 `postinstall` 钩子。
+
+**备选方案**：
+- 在 `postinstall` 或 `prebuild` 时生成 → 不采用，IDE 体验差，需要先运行脚本
+- 使用 `gitattributes` 标记为生成文件 → 不采用，可追溯性差
+
+**选择理由**：
+- IDE 友好：克隆后立即有完整类型提示，无需任何前置步骤
+- 可追溯性：类型变更随代码一起出现在 Git 历史中
+- 可靠性：不依赖构建环境的一致性
+- 性能：构建时无需额外步骤
+
+**代价**：
+- 需要开发者记得在修改 schema 后重新生成
+- Git 历史中有生成代码的变更噪音
+
+**证据**：当前 `coreTypes.generated.ts` 和 `controlTypes.ts` 都在 Git 仓库中，`.gitignore` 未忽略这些文件。
+
+### 使用 `z.infer<ReturnType<typeof schemas.X>>` 模式
+
+**设计**：由于所有 schema 都包裹在 `lazySchema(() => ...)` 中，需要 `ReturnType<>` 提取函数返回值类型。
+
+**备选方案**：
+- 生成具体的类型定义（如 `{ inputTokens: number; ... }`）→ 不采用，循环引用需要特殊处理，无法利用 Zod 类型推导
+- 使用 `z.infer<typeof schemas.X>` 直接推断 → 不适用，因为 schema 是函数返回值
+
+**选择理由**：
+- `lazySchema` 允许循环引用的类型定义（如 `SDKMessage` 联合类型）
+- `z.infer<>` 保证类型与 schema 永远同步
+- 无需维护复杂的类型生成逻辑
+
+**代价**：
+- 类型定义不够直观（是 `z.infer<>` 而非具体结构）
+- JSDoc 注释不会继承到生成的类型中
+
+### settingsTypes.generated.ts 作为手写兼容层
+
+**设计**：`settingsTypes.generated.ts` 是手写兼容层，直接 re-export `SettingsJson` 类型。
+
+**备选方案**：
+- 将 settings schema 迁移到 `coreSchemas.ts` 并参与自动生成 → 不采用，历史遗留
+- 重命名为 `settingsTypes.ts` 移除 `.generated` 误导 → 不采用，路径依赖
+
+**选择理由**：
+- 历史遗留：settings 曾有独立的 JSON Schema 生成器，目前待恢复
+- 路径依赖：外部代码可能已经引用 `settingsTypes.generated.ts`
+- 单一事实来源：`SettingsJson` 是 CLI 内部验证的源，SDK 直接 re-export 保证一致性
+
+**代价**：
+- 文件名 `settingsTypes.generated.ts` 具有误导性（实际是手写的）
+- settings 类型更新流程与其他 SDK 类型不一致
+
+**证据**：`settingsTypes.generated.ts` 中的注释明确说明了这一设计：
+```typescript
+// Re-export the source-of-truth settings type until the JSON schema generator
+// is restored. This keeps the public SDK type aligned with CLI validation.
+export type { SettingsJson as Settings } from '../../utils/settings/types.js';
+```
+
+### 空源文件防护
+
+**设计**：如果源文件中没有找到任何 schema，生成器会抛出错误而非生成空文件。
+
+**备选方案**：
+- 生成空文件 → 不采用，静默失败难以调试
+- 跳过该目标 → 不采用，部分生成可能导致不一致
+
+**选择理由**：
+- 快速失败，易于调试
+- 防止生成不完整的类型文件
+
+## 3. 目标与非目标
+
+### 目标
+
+- 单一事实来源：Zod Schema 是类型定义的唯一来源，避免类型漂移
+- 零依赖生成：无需完整 TypeScript 编译环境，仅通过简单的正则匹配即可工作
+- IDE 友好：生成的类型文件直接提交到仓库，提供即时的类型提示和自动补全
+- 增量兼容：手写类型文件（如 `settingsTypes.generated.ts`）可以与自动生成并存
+
+### 非目标
+
+- 不处理 settings 类型（手写兼容层）
+- 不支持自定义类型映射
+- 不继承 JSDoc 注释
+- 不在构建时生成（文件直接提交）
+
+## 4. 架构、模块与数据流
+
+### 系统架构
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      generate-sdk-types.ts                   │
+│                  generate-sdk-types.ts                      │
 │  ┌───────────────────────────────────────────────────────┐  │
 │  │ 1. Schema Discovery: 正则匹配导出的 *Schema          │  │
 │  │    /^export const (\w+Schema)\s*=/gm                  │  │
@@ -64,16 +168,7 @@ SDK Type Generation 采用极简的单文件脚本设计，无复杂的分层或
 └──────────────────┘  └──────────────────┘
 ```
 
-### 2.1 核心模块
-
-| 模块 | 职责 | 文件位置 |
-|------|------|----------|
-| Schema 发现器 | 正则匹配导出的 schema | `scripts/generate-sdk-types.ts:24-31` |
-| 名称解析器 | Schema → Type 名称转换 | `scripts/generate-sdk-types.ts:34` |
-| 类型生成器 | 生成 `z.infer<>` 声明 | `scripts/generate-sdk-types.ts:33-36` |
-| 文件写入器 | 带 preamble 写入文件 | `scripts/generate-sdk-types.ts:38-41` |
-
-### 2.2 目标文件配置
+### 目标文件配置
 
 ```typescript
 const targets: GenerationTarget[] = [
@@ -86,320 +181,53 @@ const targets: GenerationTarget[] = [
     outputPath: 'src/entrypoints/sdk/controlTypes.ts',
     prelude: "export * from './coreTypes.js'\n\n",
   },
-]
+];
 ```
 
-## 3. 核心流程
+### 生成输出文件结构
 
-### 3.1 从 Zod Schema 提取类型
-
-类型提取采用极简的正则匹配策略，而非完整的 AST 解析。
-
-#### 3.1.1 Schema 发现
-
-```typescript
-// 正则匹配: /^export const (\w+Schema)\s*=/gm
-// 输入: coreSchemas.ts
-// 输出: ["ModelUsageSchema", "OutputFormatTypeSchema", ...]
-
-export const ModelUsageSchema = lazySchema(() =>
-  z.object({
-    inputTokens: z.number(),
-    outputTokens: z.number(),
-    // ...
-  }),
-)
-// → 匹配成功，提取 "ModelUsageSchema"
-```
-
-**设计决策**：为什么使用正则而非 TypeScript Compiler API？
-
-| 考虑维度 | 正则方案 | TypeScript API |
-|----------|----------|----------------|
-| 启动开销 | <10ms | ~300ms+ |
-| 依赖复杂度 | 无 | 需要完整 TypeScript |
-| 维护成本 | 50 行代码 | 数百行 |
-| 功能覆盖 | 当前需求足够 | 支持更复杂场景 |
-
-**证据**：当前所有 schema 都遵循 `export const *Schema =` 模式，正则方案完全满足。
-
-#### 3.1.2 空源文件防护
-
-如果源文件中没有找到任何 schema，生成器会抛出错误而非生成空文件：
-
-```typescript
-if (schemaNames.length === 0) {
-  throw new Error(`No exported schemas found in ${target.schemaPath}`)
-}
-```
-
-### 3.2 名称解析
-
-名称转换采用简单的字符串截断：
-
-```typescript
-const typeName = schemaName.slice(0, -'Schema'.length)
-// "ModelUsageSchema" → "ModelUsage"
-// "SDKAssistantMessageSchema" → "SDKAssistantMessage"
-```
-
-**设计决策**：为什么不支持更复杂的命名映射？
-
-当前项目中所有 schema 都严格遵循 `*Schema` 命名约定，无需复杂映射。YAGNI 原则（You Aren't Gonna Need It）。
-
-### 3.3 生成输出与 Re-export
-
-#### 3.3.1 Preamble（文件头）
+#### Preamble（文件头）
 
 所有生成文件都包含标准的生成标记：
 
 ```typescript
 // Generated by scripts/generate-sdk-types.ts. Do not edit directly.
-import type { z } from 'zod'
-import type * as schemas from './coreSchemas.js'
+import type { z } from 'zod';
+import type * as schemas from './coreSchemas.js';
 ```
 
-#### 3.3.2 Type Declaration 模板
+#### Type Declaration 模板
 
 ```typescript
 export type ${typeName} = z.infer<
   ReturnType<typeof schemas.${schemaName}>
->
+>;
 ```
 
-为什么需要 `ReturnType<>`？因为所有 schema 都包裹在 `lazySchema(() => ...)` 中，返回的是函数而非直接的 ZodType。
-
-**核心细节**：`lazySchema` 的存在允许循环引用的 schema 定义，这对于消息类型（如 `SDKMessage` 是多个类型的联合）至关重要。
-
-#### 3.3.3 Prelude 支持
+#### Prelude 支持
 
 `controlTypes.ts` 需要 re-export `coreTypes`，通过 `prelude` 字段实现：
 
 ```typescript
-prelude: "export * from './coreTypes.js'\n\n",
+prelude: "export * from './coreTypes.js'\n\n";
 ```
 
 生成结果：
 
 ```typescript
 // Generated by scripts/generate-sdk-types.ts. Do not edit directly.
-import type { z } from 'zod'
-import type * as schemas from './controlSchemas.js'
+import type { z } from 'zod';
+import type * as schemas from './controlSchemas.js';
 
-export * from './coreTypes.js'
+export * from './coreTypes.js';
 
 export type SDKHookCallbackMatcher = z.infer<
   ReturnType<typeof schemas.SDKHookCallbackMatcherSchema>
->
+>;
 // ...
 ```
 
-### 3.4 哪些文件生成，哪些手写
-
-| 文件 | 类型 | 说明 |
-|------|------|------|
-| `coreTypes.generated.ts` | 自动生成 | 每次运行都覆盖，不手动编辑 |
-| `controlTypes.ts` | 自动生成 | 每次运行都覆盖，不手动编辑 |
-| `settingsTypes.generated.ts` | 手写兼容层 | 虽然文件名含 generated，但是手写的 |
-
-#### 3.4.1 settingsTypes.generated.ts 的特殊性
-
-```typescript
-// Re-export the source-of-truth settings type until the JSON schema generator
-// is restored. This keeps the public SDK type aligned with CLI validation.
-export type { SettingsJson as Settings } from '../../utils/settings/types.js'
-```
-
-**设计决策**：为什么 settings 类型不参与自动生成？
-
-- settings 有历史遗留的 JSON Schema 生成器，目前处于"待恢复"状态
-- `SettingsJson` 是手写的 Zod 定义，位于非 SDK 目录（`src/utils/settings/types.ts`）
-- 需要保持 SDK 类型与 CLI 内部验证类型的一致性
-- 文件名保留 `.generated.ts` 是为了未来恢复自动生成后路径不变
-
-## 4. 构建衔接
-
-### 4.1 在构建流程中的位置
-
-SDK Type Generation 是一个**开发时工具**，而非构建时步骤：
-
-- 生成文件直接提交到 Git
-- 构建系统（Bun）直接使用生成的 `.ts` 文件
-- 无 `prebuild` 或 `postinstall` 钩子
-
-**设计决策**：为什么提交生成文件而非在构建时生成？
-
-| 对比项 | 提交生成文件 | 构建时生成 |
-|--------|-------------|-----------|
-| IDE 体验 | 即时类型提示 | 需要先运行脚本 |
-| 依赖复杂度 | 无 | 需要在每个环境安装生成器 |
-| 构建速度 | 无开销 | 每次构建增加时间 |
-| 可追溯性 | Git 历史显示类型变更 | 生成文件不在历史中 |
-
-**证据**：当前 `coreTypes.generated.ts` 和 `controlTypes.ts` 都在 Git 仓库中，`.gitignore` 未忽略这些文件。
-
-### 4.2 如何运行生成器
-
-```bash
-# 直接运行
-bun scripts/generate-sdk-types.ts
-
-# 或者通过 package.json script（如果有）
-```
-
-当前 `package.json` 中没有专门的脚本，开发者按需手动运行。
-
-## 5. 失败和漂移检测
-
-### 5.1 失败模式
-
-| 失败模式 | 检测方式 | 处理 |
-|----------|----------|------|
-| 源文件无 schema | `schemaNames.length === 0` | 抛出错误，中止生成 |
-| 源文件不存在 | `readFileSync` 异常 | 自然抛出，中止生成 |
-| 写入权限不足 | `writeFileSync` 异常 | 自然抛出，中止生成 |
-
-### 5.2 漂移检测：类型与 Schema 不一致
-
-由于使用 `z.infer<>`，类型定义与 Zod Schema 是**编译时绑定**的，不存在运行时漂移问题：
-
-- 如果 Schema 变更但类型文件未重新生成，TypeScript 编译会报错
-- `z.infer<>` 直接从 Schema 推导类型，无同步问题
-
-**设计决策**：为什么使用 `z.infer<>` 而非生成具体的类型定义？
-
-| 对比项 | `z.infer<>` 方案 | 生成具体类型 |
-|--------|-----------------|------------|
-| 同步保证 | 编译时保证一致 | 需要重新生成 |
-| 生成复杂度 | 极简 | 需要完整类型计算 |
-| JSDoc 支持 | 不继承（注释在 schema） | 可以生成 |
-| 循环引用支持 | 天然支持 | 需要特殊处理 |
-
-当前方案选择 `z.infer<>`，因为：
-1. Zod 的类型推导已经足够强大
-2. 循环引用（如 `SDKMessage`）天然支持
-3. 无需维护复杂的类型生成逻辑
-
-### 5.3 测试覆盖
-
-```typescript
-test('generates real SDK declarations and rejects an empty core schema', async () => {
-  // 1. 准备测试环境
-  // 2. 运行生成器，验证成功
-  // 3. 破坏源文件（移除所有 schema）
-  // 4. 验证生成器正确报错
-})
-```
-
-测试验证了：
-- 正常生成路径
-- 空源文件的错误处理
-- 生成内容包含预期的 re-export
-
-## 6. 设计决策深度分析
-
-### 决策 1：使用正则匹配而非 AST 解析
-
-**备选方案**：
-- 使用 `@babel/parser` 或 `typescript` API 解析 AST
-- 使用 `ts-morph` 进行更高级的源码操作
-
-**选择理由**：
-- 当前 schema 定义模式统一且简单（`export const *Schema =`）
-- 正则方案性能开销极小（<10ms）
-- 维护成本极低（50 行代码）
-- YAGNI：当前需求不需要复杂解析
-
-**代价**：
-- 如果未来 schema 定义模式变化（如使用 `export let`、多行声明等），需要修改正则
-- 无法处理更复杂的场景（如条件导出、动态命名等）
-
-**证据**：当前 `coreSchemas.ts` 和 `controlSchemas.ts` 中的所有 schema 都严格遵循 `export const *Schema = lazySchema(() => ...)` 模式。
-
-### 决策 2：提交生成文件到 Git
-
-**备选方案**：
-- 在 `postinstall` 或 `prebuild` 时生成
-- 使用 `gitattributes` 标记为生成文件
-
-**选择理由**：
-- IDE 友好：克隆后立即有完整类型提示，无需任何前置步骤
-- 可追溯性：类型变更随代码一起出现在 Git 历史中
-- 可靠性：不依赖构建环境的一致性
-- 性能：构建时无需额外步骤
-
-**代价**：
-- 需要开发者记得在修改 schema 后重新生成
-- Git 历史中有生成代码的变更噪音
-
-**证据**：当前仓库中 `coreTypes.generated.ts` 和 `controlTypes.ts` 都在 Git 跟踪中。
-
-### 决策 3：使用 `z.infer<ReturnType<typeof schemas.X>>` 模式
-
-**备选方案**：
-- 生成具体的类型定义（如 `{ inputTokens: number; ... }`）
-- 使用 `z.infer<typeof schemas.X>` 直接推断
-
-**为什么需要 `ReturnType<>`**：
-
-```typescript
-// coreSchemas.ts 中的定义模式
-export const ModelUsageSchema = lazySchema(() =>
-  z.object({ ... }),
-)
-
-// lazySchema 的返回类型是 () => ZodType
-// 所以需要 ReturnType<> 提取函数返回值类型
-export type ModelUsage = z.infer<
-  ReturnType<typeof schemas.ModelUsageSchema>
->
-```
-
-**选择理由**：
-- `lazySchema` 允许循环引用的类型定义（如 `SDKMessage` 联合类型）
-- `z.infer<>` 保证类型与 schema 永远同步
-- 无需维护复杂的类型生成逻辑
-
-**代价**：
-- 类型定义不够直观（是 `z.infer<>` 而非具体结构）
-- JSDoc 注释不会继承到生成的类型中
-
-### 决策 4：settingsTypes.generated.ts 作为手写兼容层
-
-**备选方案**：
-- 将 settings schema 迁移到 `coreSchemas.ts` 并参与自动生成
-- 重命名为 `settingsTypes.ts` 移除 `.generated` 误导
-
-**选择理由**：
-- 历史遗留：settings 曾有独立的 JSON Schema 生成器，目前"待恢复"
-- 路径依赖：外部代码可能已经引用 `settingsTypes.generated.ts`
-- 单一事实来源：`SettingsJson` 是 CLI 内部验证的源，SDK 直接 re-export 保证一致性
-
-**代价**：
-- 文件名 `settingsTypes.generated.ts` 具有误导性（实际是手写的）
-- settings 类型更新流程与其他 SDK 类型不一致
-
-**证据**：`settingsTypes.generated.ts` 中的注释明确说明了这一设计：
-
-```typescript
-// Re-export the source-of-truth settings type until the JSON schema generator
-// is restored. This keeps the public SDK type aligned with CLI validation.
-export type { SettingsJson as Settings } from '../../utils/settings/types.js'
-```
-
-## 7. 错误处理和边界情况
-
-### 7.1 空源文件
-
-```typescript
-if (schemaNames.length === 0) {
-  throw new Error(`No exported schemas found in ${target.schemaPath}`)
-}
-```
-
-这防止生成空的或不完整的类型文件。
-
-### 7.2 循环引用
+### 循环引用支持
 
 通过 `lazySchema` 和 `z.infer<ReturnType<...>>` 天然支持循环引用，例如：
 
@@ -411,10 +239,10 @@ export const SDKMessageSchema = lazySchema(() =>
     SDKUserMessageSchema(),
     // ...
   ]),
-)
+);
 ```
 
-### 7.3 外部类型占位符
+### 外部类型占位符
 
 对于从外部包导入的类型，使用 `z.custom<T>()` 作为占位符：
 
@@ -422,26 +250,118 @@ export const SDKMessageSchema = lazySchema(() =>
 // coreSchemas.ts
 export const APIUserMessagePlaceholder = lazySchema(() =>
   z.custom<APIUserMessage>(),
-)
+);
 
 // 生成的类型
 export type APIUserMessagePlaceholder = z.infer<
   ReturnType<typeof schemas.APIUserMessagePlaceholder>
->
+>;
 // 实际解析为 APIUserMessage 类型
 ```
 
-## 8. 覆盖率
+### 哪些文件生成，哪些手写
 
-见 [Coverage](../../architecture/coverage/sdk-type-generation.yaml)
+| 文件 | 类型 | 说明 |
+|---|---|---|
+| `coreTypes.generated.ts` | 自动生成 | 每次运行都覆盖，不手动编辑 |
+| `controlTypes.ts` | 自动生成 | 每次运行都覆盖，不手动编辑 |
+| `settingsTypes.generated.ts` | 手写兼容层 | 虽然文件名含 generated，但是手写的 |
 
-## 9. 总结与回顾
+## 5. 失败语义与工程取舍
 
-SDK Type Generation 是一个极简但有效的类型生成系统，其核心设计原则是：
+### 失败模式
 
-1. **极简主义**：50 行代码解决问题，避免过度工程
-2. **编译时同步**：`z.infer<>` 保证类型与 schema 永远一致
-3. **IDE 优先**：生成文件提交到 Git，提供即时类型提示
-4. **增量兼容**：手写类型文件可以与自动生成并存
+| 失败模式 | 检测方式 | 处理 |
+|---|---|---|
+| 源文件无 schema | `schemaNames.length === 0` | 抛出错误，中止生成 |
+| 源文件不存在 | `readFileSync` 异常 | 自然抛出，中止生成 |
+| 写入权限不足 | `writeFileSync` 异常 | 自然抛出，中止生成 |
 
-该系统在简单性和功能性之间取得了良好的平衡，完全满足当前 SDK 类型生成的需求。
+### 漂移检测：类型与 Schema 不一致
+
+由于使用 `z.infer<>`，类型定义与 Zod Schema 是编译时绑定的，不存在运行时漂移问题：
+- 如果 Schema 变更但类型文件未重新生成，TypeScript 编译会报错
+- `z.infer<>` 直接从 Schema 推导类型，无同步问题
+
+### 工程取舍
+
+| 维度 | 选择 | 代价 |
+|---|---|---|
+| 解析方式 | 正则匹配 | 模式变化需修改正则 |
+| 生成时机 | 提交生成文件 | 需记得重新生成 |
+| 类型推导 | `z.infer<>` | 类型定义不够直观 |
+| settings 类型 | 手写兼容层 | 文件名有误导性 |
+
+## 6. 现状验收标准
+
+### 生成器功能
+
+- 必须使用 `/^export const (\w+Schema)\s*=/gm` 正则匹配导出的 schema
+- 必须将 `*Schema` 转换为 `*` 类型名
+- 必须生成 `z.infer<ReturnType<typeof schemas.${schemaName}>>` 类型
+- 必须支持 `prelude` 字段（如 `controlTypes.ts` re-export `coreTypes`）
+- 源文件无 schema 时必须抛出错误而非生成空文件
+
+### 生成文件
+
+- 必须包含标准 preamble：`// Generated by scripts/generate-sdk-types.ts. Do not edit directly.`
+- 必须导入 `zod` 类型
+- 必须导入 `* as schemas` 从对应 schema 文件
+- 必须正确处理 `lazySchema` 包裹的函数返回值
+
+### settingsTypes.generated.ts
+
+- 必须保持手写兼容层不变
+- 必须 re-export `SettingsJson as Settings` 从 `../../utils/settings/types.js`
+
+## 7. 代码与测试证据
+
+### 现有测试
+
+- `tests/sdkTypeGeneration.test.ts`：验证正常生成路径、空源文件错误处理、生成内容包含预期的 re-export
+
+### 实现证据
+
+- `scripts/generate-sdk-types.ts`：生成器主文件（约 50 行代码）
+- `src/entrypoints/sdk/coreSchemas.ts`：核心类型 schema 定义
+- `src/entrypoints/sdk/controlSchemas.ts`：控制面类型 schema 定义
+- `src/entrypoints/sdk/coreTypes.generated.ts`：生成的核心类型
+- `src/entrypoints/sdk/controlTypes.ts`：生成的控制面类型
+- `src/entrypoints/sdk/settingsTypes.generated.ts`：手写 settings 兼容层
+
+### 未覆盖场景
+
+- schema 定义模式变化（如使用 `export let`、多行声明等）
+- 条件导出、动态命名等复杂场景
+- JSDoc 注释继承
+
+## 8. 文件覆盖与相关子系统
+
+本设计的覆盖率文件位于 [Coverage](../../architecture/coverage/sdk-type-generation.yaml)。
+
+### 相关文件
+
+- `scripts/generate-sdk-types.ts`：生成器主文件
+- `src/entrypoints/sdk/coreSchemas.ts`：核心类型 schema 定义
+- `src/entrypoints/sdk/controlSchemas.ts`：控制面类型 schema 定义
+- `src/entrypoints/sdk/coreTypes.generated.ts`：生成的核心类型
+- `src/entrypoints/sdk/controlTypes.ts`：生成的控制面类型
+- `src/entrypoints/sdk/settingsTypes.generated.ts`：手写 settings 兼容层
+- `src/utils/settings/types.ts`：settings 类型源定义
+
+### 相关子系统
+
+- SDK Query Sessions：使用生成的 SDK 类型
+- Agent SDK：公开 API 使用生成的类型
+
+## 9. 改进建议
+
+1. **添加 Git hook 自动重新生成**：当前需要开发者手动记得在修改 schema 后重新生成，建议添加 Git pre-commit hook 自动检测并重新生成。
+
+2. **改进 settings 类型生成**：当前 `settingsTypes.generated.ts` 是手写兼容层，建议在 JSON Schema 生成器恢复后，将 settings schema 迁移到 `coreSchemas.ts` 并参与自动生成，同时重命名文件移除 `.generated` 误导。
+
+3. **支持 JSDoc 注释继承**：当前生成的类型不继承 schema 中的 JSDoc 注释，建议添加注释解析和继承功能。
+
+4. **添加模式变化的降级方案**：当前正则匹配对 schema 定义模式变化敏感，建议添加更宽松的匹配或 AST 解析作为降级方案。
+
+5. **添加更严格的漂移检测**：虽然 `z.infer<>` 提供编译时同步保证，建议添加测试验证生成文件与 schema 同步。
