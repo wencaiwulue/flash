@@ -1,0 +1,59 @@
+# Network Security Coverage
+# 网络安全覆盖范围
+
+sections:
+  - title: CA 证书管理
+    id: ca-certs
+    files:
+      - src/utils/caCerts.ts
+      - src/utils/caCertsConfig.ts
+
+  - title: 双向 TLS (mTLS)
+    id: mtls
+    files:
+      - src/utils/mtls.ts
+
+  - title: HTTP/HTTPS 代理
+    id: proxy
+    files:
+      - src/utils/proxy.ts
+
+  - title: AWS 凭据管理
+    id: aws-credentials
+    files:
+      - src/utils/aws.ts
+      - src/utils/awsAuthStatusManager.ts
+
+  - title: 哈希与加密原语
+    id: hashing
+    files:
+      - src/utils/hash.ts
+      - src/utils/crypto.ts
+
+  - title: HTTP 工具
+    id: http-utils
+    files:
+      - src/utils/http.ts
+
+  - title: CCR 上游代理
+    id: upstream-proxy
+    files:
+      - src/upstreamproxy/upstreamproxy.ts
+      - src/upstreamproxy/relay.ts
+
+  - title: 环境与工具
+    id: env-utils
+    files:
+      - src/utils/env.ts
+      - src/utils/envUtils.ts
+      - src/utils/envValidation.ts
+      - src/utils/envDynamic.ts
+
+tests:
+  - title: 代理测试
+    files:
+      - tests/sshAuthProxy.test.ts
+  - title: 环境测试
+    files:
+      - tests/envCommand.test.ts
+      - tests/envLessPerpetual.test.ts
