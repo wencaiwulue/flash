@@ -3,9 +3,49 @@ spec_id: network-security
 spec: ../../superpowers/specs/2026-11-12-network-security-design.md
 status: draft
 groups:
-  - id: additional-files
+  - id: ca-certs
+    kind: source
+    section: 4
+    summary: CA 证书 - 证书加载和配置
+    files:
+      - src/utils/caCerts.ts
+      - src/utils/caCertsConfig.ts
+  - id: mtls
+    kind: source
+    section: 4
+    summary: mTLS - 双向 TLS 支持
+    files:
+      - src/utils/mtls.ts
+  - id: http-proxy
+    kind: source
+    section: 4
+    summary: HTTP 代理 - 代理配置和请求
+    files:
+      - src/utils/http.ts
+      - src/utils/proxy.ts
+  - id: aws-auth
+    kind: source
+    section: 4
+    summary: AWS 认证 - AWS 凭证管理
+    files:
+      - src/utils/aws.ts
+      - src/utils/awsAuthStatusManager.ts
+  - id: crypto-hash
+    kind: source
+    section: 4
+    summary: 加密和哈希 - 加密工具和哈希函数
+    files:
+      - src/utils/crypto.ts
+      - src/utils/hash.ts
+  - id: protected-namespace
+    kind: source
+    section: 4
+    summary: 受保护命名空间 - 从其他域移来
+    files:
+      - src/utils/protectedNamespace.ts
+  - id: protected-namespace-test
     kind: test
     section: 7
-    summary: Additional files
+    summary: 受保护命名空间测试 - 从其他域移来
     files:
       - tests/protectedNamespace.test.ts

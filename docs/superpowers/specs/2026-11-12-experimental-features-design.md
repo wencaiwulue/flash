@@ -38,11 +38,11 @@ status: draft
 
 | 决策 | 实际机制 | 为什么采用 | 备选方案及不采用原因 | 代价 | 证据 |
 |---|---|---|---|---|---|
-| 编译时剔除而非运行时隐藏 | 使用 `bun:bundle` 的 `feature()` 宏条件导入 | 减小生产构建体积；防止内部工具代码意外泄露；利用 DCE 优化 | 纯运行时检查：代码体积大，可能通过逆向发现 | 构建配置复杂；需确保 feature() 宏正确使用 | src/tools.ts 中所有实验工具都使用 `feature()` 条件导入 |
+| 编译时剔除而非运行时隐藏 | 设计推断：使用 `bun:bundle` 的 `feature()` 宏条件导入 | 设计推断：减小生产构建体积；防止内部工具代码意外泄露；利用 DCE 优化 | 纯运行时检查：代码体积大，可能通过逆向发现 | 构建配置复杂；需确保 feature() 宏正确使用 | 设计推断：src/tools.ts 中实验工具使用 `feature()` 条件导入 |
 | SyntheticOutputTool 使用 WeakMap 缓存 Ajv 验证器 | 基于 schema 对象引用缓存 | 工作流脚本通常重复使用相同 schema 对象；WeakMap 自动 GC，无内存泄漏；80次调用从~110ms降到~4ms | 每次重新编译：性能差；基于字符串哈希：内存占用高 | 需注意 schema 对象引用变化时缓存失效 | createSyntheticOutputTool() 中的 toolCache WeakMap 实现 |
 | TestingPermissionTool 仅在 NODE_ENV=test 启用 | 环境变量检查 | 测试环境明确，无意外使用风险；简单直接 | 特性标志控制：过度设计；始终隐藏：有安全风险 | 开发环境无法直接测试该工具本身 | src/tools/testing/TestingPermissionTool.tsx 中的 isEnabled() |
-| /good-claude 使用内存锁防止重复提交 | Promise 共享去重 | 实现简单，符合直觉；同一请求的 Promise 共享给所有调用者 | 无去重：可能重复提交；全局状态：增加复杂度 | 页面刷新后锁失效（可接受） | handleTranscriptConsent() 中的去重逻辑 |
-| /bughunter 作为 /review 别名 | 命令别名 + GrowthBook 门控 | 保留内部习惯用语；通过特性标志控制可用性 | 独立实现：代码重复 | 用户可能困惑两个命令的关系 | 命令注册层的别名配置 |
+| /good-claude 使用内存锁防止重复提交 | submitting ref 标志防止重复提交 | 实现简单，符合直觉；同一请求不会被重复处理 | 无去重：可能重复提交；全局状态：增加复杂度 | 页面刷新后锁失效（可接受） | goodClaude.tsx 中的 submitting ref 实现 |
+| /bughunter 作为 /review 别名 | 命令别名 + isUltrareviewEnabled 门控 | 保留内部习惯用语；通过特性标志控制可用性 | 独立实现：代码重复 | 用户可能困惑两个命令的关系 | bughunter/index.ts 中的命令别名配置 |
 
 ## 3. 目标与非目标
 

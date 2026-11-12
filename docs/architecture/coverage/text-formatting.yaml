@@ -3,88 +3,70 @@ spec_id: text-formatting
 spec: ../../superpowers/specs/2026-11-12-text-formatting-design.md
 status: draft
 groups:
-  - id: additional-files-source
+  - id: markdown
     kind: source
     section: 4
-    summary: Additional files
+    summary: Markdown 渲染 - marked 词法分析和自定义格式化
     files:
-      - src/components/ContextSuggestions.tsx
-      - src/components/ContextVisualization.tsx
-      - src/utils/analyzeContext.ts
-      - src/utils/doctorContextWarnings.ts
-      - src/utils/readEditContext.ts
-      - src/utils/workloadContext.ts
-  - id: additional-files-test
-    kind: test
-    section: 7
-    summary: Additional files
-    files:
-      - tests/snapshotUpdateDialog.test.tsx
-      - tests/snip.test.ts
-  - id: commands
-    kind: source
-    section: 4
-    summary: Command implementations
-    files:
-      - src/commands/color/color.ts
-      - src/commands/color/index.ts
-  - id: format-utils
-    kind: source
-    section: 4
-    summary: 纯显示格式化工具 - 文件大小、时间/持续时间、数字、相对时间、日志元数据格式化
-    files:
-      - src/utils/format.ts
+      - src/utils/markdown.ts
   - id: cli-highlight
     kind: source
     section: 4
-    summary: CLI 代码高亮 - cli-highlight/highlight.js 懒加载、语言检测、共享 Promise 缓存
+    summary: 代码高亮 - cli-highlight 和 highlight.js 集成
     files:
       - src/utils/cliHighlight.ts
+  - id: format-utils
+    kind: source
+    section: 4
+    summary: 格式化工具 - 文件大小、时间、数字格式化
+    files:
+      - src/utils/format.ts
   - id: highlight-match
     kind: source
     section: 4
-    summary: 搜索高亮 - 忽略大小写匹配、逆高亮、React 节点输出、保留原有文本
+    summary: 搜索高亮 - 忽略大小写匹配、逆高亮
     files:
       - src/utils/highlightMatch.tsx
   - id: display-tags
     kind: source
     section: 4
-    summary: 显示标签剥离 - 小写标签正则匹配、保留用户大写标签、空内容回退原文本、IDE 标签专用剥离
+    summary: 显示标签 - 仅剥离小写标签、保留用户内容
     files:
       - src/utils/displayTags.ts
+  - id: hyperlink
+    kind: source
+    section: 4
+    summary: 超链接 - OSC 8 超链接、支持检测和回退
+    files:
+      - src/utils/hyperlink.ts
   - id: heatmap
     kind: source
     section: 4
-    summary: 活动热图 - GitHub 风格、百分比强度分级、月份标签、Claude 橙色、字符渐变（░▒▓█）
+    summary: 热图 - GitHub 风格热图
     files:
       - src/utils/heatmap.ts
   - id: horizontal-scroll
     kind: source
     section: 4
-    summary: 水平滚动窗口 - 边缘滚动策略、箭头宽度计算、选中项可见保证、cumulativeWidths 优化
+    summary: 水平滚动 - 边缘滚动策略、箭头宽度计算
     files:
       - src/utils/horizontalScroll.ts
-  - id: hyperlink
-    kind: source
-    section: 4
-    summary: OSC 8 超链接 - 终端支持检测、蓝色着色、BEL 终止符、content/url 分离、不支持回退
-    files:
-      - src/utils/hyperlink.ts
-  - id: modifiers
-    kind: source
-    section: 4
-    summary: 修饰键检测 - macOS 专用、modifiers-napi 可选依赖、prewarm 预加载、isModifierPressed 同步检查
-    files:
-      - src/utils/modifiers.ts
   - id: logo-v2-utils
     kind: source
     section: 4
-    summary: Logo v2 布局工具 - 水平/紧凑模式、optimalLeftWidth 计算、路径中间截断、model/billing 分行检测
+    summary: Logo v2 布局工具 - Logo 显示格式化
     files:
       - src/utils/logoV2Utils.ts
-  - id: markdown-renderer
+  - id: slice-ansi
     kind: source
     section: 4
-    summary: Markdown 终端渲染 - marked 词法分析、禁用删除线、代码高亮、issue 引用链接化、表格对齐、列表编号/字母/罗马数字
+    summary: ANSI 切片 - 安全截断 ANSI 字符串
     files:
-      - src/utils/markdown.ts
+      - src/utils/sliceAnsi.ts
+  - id: color-commands
+    kind: source
+    section: 4
+    summary: 颜色命令 - 颜色相关命令
+    files:
+      - src/commands/color/color.ts
+      - src/commands/color/index.ts
