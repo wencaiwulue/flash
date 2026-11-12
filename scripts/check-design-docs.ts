@@ -339,3 +339,38 @@ export async function checkDesignDocs({
   }
   return result
 }
+
+function printDiagnostics(label: string, diagnostics: Diagnostic[]): void {
+  const output = label === 'ERROR' ? console.error : console.warn
+  for (const diagnostic of diagnostics.slice(0, 20)) {
+    output(`${label} ${diagnostic.code}: ${diagnostic.message}`)
+  }
+  if (diagnostics.length > 20) {
+    output(`${label}: ... ${diagnostics.length - 20} more diagnostics`)
+  }
+}
+
+async function main(): Promise<void> {
+  const args = process.argv.slice(2)
+  const unknown = args.filter(arg => arg !== '--require-approved')
+  if (unknown.length > 0) {
+    console.error(`Usage: bun scripts/check-design-docs.ts [--require-approved]; unknown: ${unknown.join(', ')}`)
+    process.exitCode = 2
+    return
+  }
+  const result = await checkDesignDocs({
+    cwd: process.cwd(),
+    requireApproved: args.includes('--require-approved'),
+  })
+  printDiagnostics('ERROR', result.errors)
+  printDiagnostics('WARN', result.warnings)
+  console.log(`Design docs: ${result.errors.length} errors, ${result.warnings.length} warnings`)
+  process.exitCode = result.errors.length > 0 ? 1 : 0
+}
+
+if (import.meta.main) {
+  main().catch(error => {
+    console.error(error instanceof Error ? error.message : String(error))
+    process.exitCode = 2
+  })
+}
