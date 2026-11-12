@@ -38,7 +38,7 @@ status: draft
   - `DISABLE_AUTO_COMPACT` (仅禁用autocompact)
 - **用户配置**: `autoCompactEnabled` (全局配置)
 
-## 2. 设计决策与备选方案
+## 2. 设计理由与备选方案
 
 | 决策 | 实际机制 | 为什么采用 | 备选方案及不采用原因 | 代价 | 证据 |
 |---|---|---|---|---|---|
