@@ -732,21 +732,37 @@ interface HistoryEntry {
 
 | 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
 |---------|---------|----------------|---------|
-| 单个附件类型失败不阻塞整体 | `src/utils/attachments.ts: maybe() 函数` | 未找到直接测试 | 仅检查代码实现 |
-| 1 秒全局超时限制 | `src/utils/attachments.ts: AbortController + setTimeout(1000)` | 未找到直接测试 | 仅检查代码实现 |
-| 双重缓存去重（nested memory） | `src/utils/attachments.ts: memoryFilesToAttachments() 检查` | 未找到直接测试 | 仅检查代码实现 |
-| 仅 ENOENT 从 readFileState 驱逐 | `src/utils/attachments.ts: getChangedFiles() 错误处理` | 未找到直接测试 | 仅检查代码实现 |
-| 相关记忆异步预取 | `src/utils/attachments.ts: startRelevantMemoryPrefetch()、MemoryPrefetch 类型` | 未找到直接测试 | 仅检查代码实现 |
-| PDF 引用而非内联大文件 | `src/utils/attachments.ts: tryGetPDFReference()、generateFileAttachment()` | 未找到直接测试 | 仅检查代码实现 |
-| 日期变更作为附件而非修改前缀 | `src/utils/attachments.ts: getDateChangeAttachments()` | 未找到直接测试 | 仅检查代码实现 |
-| 结构化协议消息不从邮箱标记已读 | `src/utils/attachments.ts: getTeammateMailboxAttachments() 过滤` | 未找到直接测试 | 仅检查代码实现 |
-| 图片大小双重检查（resize + validation） | `src/utils/imageValidation.ts`、`src/utils/imagePaste.ts` | 未找到直接测试 | 仅检查代码实现 |
-| 计划/自动模式提醒按用户轮次计数 | `src/utils/attachments.ts: getPlanModeAttachmentTurnCount()` | 未找到直接测试 | 仅检查代码实现 |
-| 图片存储权限 0o600 | `src/utils/imageStore.ts` | 未找到直接测试 | 仅检查代码实现 |
-| 图片路径包含 uid + 随机值 | `src/utils/imageStore.ts` | 未找到直接测试 | 仅检查代码实现 |
-| 粘贴文本持久化（跨会话） | `src/utils/pasteStore.ts` | 未找到直接测试 | 仅检查代码实现 |
+| 单个附件类型失败不阻塞整体 | `src/utils/attachments.ts: maybe() 函数` | 无专门测试 | 仅检查代码实现 |
+| 1 秒全局超时限制 | `src/utils/attachments.ts: AbortController + setTimeout(1000)` | 无专门测试 | 仅检查代码实现 |
+| 双重缓存去重（nested memory） | `src/utils/attachments.ts: memoryFilesToAttachments() 检查` | 无专门测试 | 仅检查代码实现 |
+| 仅 ENOENT 从 readFileState 驱逐 | `src/utils/attachments.ts: getChangedFiles() 错误处理` | 无专门测试 | 仅检查代码实现 |
+| 相关记忆异步预取 | `src/utils/attachments.ts: startRelevantMemoryPrefetch()、MemoryPrefetch 类型` | 无专门测试 | 仅检查代码实现 |
+| PDF 引用而非内联大文件 | `src/utils/attachments.ts: tryGetPDFReference()、generateFileAttachment()` | 无专门测试 | 仅检查代码实现 |
+| 日期变更作为附件而非修改前缀 | `src/utils/attachments.ts: getDateChangeAttachments()` | 无专门测试 | 仅检查代码实现 |
+| 结构化协议消息不从邮箱标记已读 | `src/utils/attachments.ts: getTeammateMailboxAttachments() 过滤` | 无专门测试 | 仅检查代码实现 |
+| 图片大小双重检查（resize + validation） | `src/utils/imageValidation.ts`、`src/utils/imagePaste.ts` | 无专门测试 | 仅检查代码实现 |
+| 计划/自动模式提醒按用户轮次计数 | `src/utils/attachments.ts: getPlanModeAttachmentTurnCount()` | 无专门测试 | 仅检查代码实现 |
+| 图片存储权限 0o600 | `src/utils/imageStore.ts` | 无专门测试 | 仅检查代码实现 |
+| 图片路径包含 uid + 随机值 | `src/utils/imageStore.ts` | 无专门测试 | 仅检查代码实现 |
+| 粘贴文本持久化（跨会话） | `src/utils/pasteStore.ts` | 无专门测试 | 仅检查代码实现 |
 
-**测试缺口：** 当前附件系统无专门独立测试文件，所有测试都是集成的。
+### 7.1 现有相关测试
+
+虽然没有专门的 attachments 测试文件，但其他测试可能间接使用附件系统：
+
+| 测试文件 | 可能相关的功能 | 说明 |
+|---|---|---|
+| 多个集成测试 | 可能使用 @文件引用、粘贴等功能 | 但这些测试不专门验证附件系统本身 |
+
+### 7.2 未覆盖行为（基于代码阅读）
+
+- 附件系统无专门独立测试文件
+- 单个附件失败不阻塞整体的错误隔离测试缺失
+- 1 秒全局超时的边界测试缺失
+- 双重缓存去重的竞态条件测试缺失
+- 相关记忆异步预取的并发测试缺失
+- PDF 引用阈值的边界测试缺失
+- 没有外部 live 验证测试
 
 ## 8. 文件覆盖与相关子系统
 
@@ -778,7 +794,7 @@ interface HistoryEntry {
 
 | 优先级 | 触发场景与证据 | 建议方向 | 回归风险 | 验收方式 | 工作量 | 置信度 |
 |-------|---------------|---------|---------|--------|-------|-------|
-| P0 | 完全没有附件系统专门测试（第 7 节） | 添加核心路径单元测试：maybe() 错误隔离、超时、去重、图片处理、PDF 引用、日期变更 | 低（新增测试） | 测试覆盖主要场景 | M | 已证实 |
+| P1 | 附件系统无专门测试覆盖（第 7 节） | 添加核心路径单元测试：maybe() 错误隔离、超时、去重、图片处理、PDF 引用、日期变更 | 低（新增测试） | 测试覆盖主要场景 | M | 已证实 |
 | P1 | 1 秒全局超时可能导致某些有用附件偶尔缺失 | 考虑分层超时：关键附件快速完成，非关键附件可后台续传并在下回合注入 | 中（需要管理状态跨回合） | 慢速附件不超时，在下回合成功注入 | M | 设计推断 |
 | P1 | 相关记忆预取无可见性，用户不知道是否在运行 | 考虑添加遥测或调试日志，记录预取是否启动、是否完成、是否被消费 | 低（仅新增日志） | 预取行为可观测 | S | 已证实 |
 | P2 | 失败事件可能有多个会话的重试延迟 | 添加失败事件文件过期机制：删除超过 N 天的失败事件文件 | 低（仅删除旧文件） | 旧文件被自动清理 | S | 设计推断 |

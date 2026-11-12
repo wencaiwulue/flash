@@ -3,14 +3,6 @@ spec_id: native-installer
 spec: ../../superpowers/specs/2026-11-12-native-installer-design.md
 status: draft
 groups:
-  - id: additional-files
-    kind: source
-    section: 4
-    summary: Additional files
-    files:
-      - src/native-ts/color-diff/index.ts
-      - src/native-ts/file-index/index.ts
-      - src/native-ts/yoga-layout/enums.ts
   - id: native-installer-core
     kind: source
     section: 4

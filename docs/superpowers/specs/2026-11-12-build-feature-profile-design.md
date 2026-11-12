@@ -209,7 +209,6 @@ function generateSdkTypes(): Promise<void>  // 生成 coreTypes.generated.ts 和
 ### 现有实现
 - `scripts/build.ts`: 构建脚本
 - `scripts/externalFeatureProfile.ts`: 外部功能列表
-- `scripts/generate-sdk-types.ts`: SDK 类型生成
 - `src/runtimeMacros.ts`: 编译时宏
 - `src/entrypoints/cli.tsx`: CLI 入口
 - `src/entrypoints/agentSdkTypes.ts`: SDK 入口
@@ -220,6 +219,9 @@ function generateSdkTypes(): Promise<void>  // 生成 coreTypes.generated.ts 和
 - `tests/fixtures/verify-enabled-features.ts`: 验收验证
 - `tests/enabledFeatures.test.ts`: 功能验收测试
 - `tests/buildArtifacts.test.ts`: 构建产物验收测试
+
+### 共享证据但由其他 spec 主拥有的文件
+- `scripts/generate-sdk-types.ts`: 归属于 `sdk-type-generation` spec，本 spec 仅描述其在构建流程中的调用
 
 ### 未覆盖测试
 - 边界情况测试（新增功能、移除功能、功能重命名）

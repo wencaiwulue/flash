@@ -397,24 +397,32 @@ collapseBackgroundBashNotifications(messages)
 
 | 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
 |---------|---------|----------------|---------|
-| 单横幅 + 队列而非多横幅堆叠 | `src/context/notifications.tsx:54-93` processQueue()；`src/context/notifications.tsx:307-312` getNext() | 需补充测试 | 不支持通知历史或回顾 |
-| Immediate 优先级立即抢占并重新入队 | `src/context/notifications.tsx:98-151` immediate 分支；`src/hooks/notifs/useFastModeNotification.tsx:45-49,70-75` 使用 immediate | 需补充测试 | 不支持横幅用户操作 |
-| Fold 合并相同 key 通知而非替换 | `src/context/notifications.tsx:157-216` fold 处理 | 需补充测试 | 调用方需实现 fold 逻辑 |
-| Invalidates 机制主动移除过时通知 | `src/context/notifications.tsx:228-234` invalidates 处理；`src/hooks/notifs/useFastModeNotification.tsx:82-83,91` 使用 invalidates | 需补充测试 | 需要仔细处理状态更新分支 |
-| 后台任务通知只折叠成功完成 | `src/utils/collapseBackgroundBashNotifications.ts:22` 检查 status；`src/utils/collapseBackgroundBashNotifications.ts:41-84` 折叠逻辑 | 需补充测试 | 失败任务仍可能造成视觉噪声 |
-| Apple Terminal 禁用 bell 时反而发送 bell | `src/services/notifier.ts:110-161` isAppleTerminalBellDisabled()；`src/services/notifier.ts:83-103` sendAuto() | 需补充测试 | 逻辑反直觉，需要解释 |
-| PushNotificationTool webhook 失败不自动降级到 OS 通知 | `src/tools/PushNotificationTool/PushNotificationTool.ts:47-51` webhook 失败抛出；`src/tools/PushNotificationTool/PushNotificationTool.ts:52-58` OS 通知分支 | 需补充测试 | 用户可能预期通知能送达，实际未送达 |
-| 所有通知 Hook 都检查 getIsRemoteMode() | `src/hooks/notifs/useStartupNotification.ts:28`；`src/hooks/notifs/useFastModeNotification.tsx:27,56,69` 等所有 hooks | 需补充测试 | 每个 hook 重复相同检查，代码冗余 |
-| UseStartupNotification 封装通用模式 | `src/hooks/notifs/useStartupNotification.ts:19-41` 实现；多个 hooks 使用 | 需补充测试 | 增加一层抽象，灵活性略降 |
-| 横幅通知默认 8 秒超时 | `src/context/notifications.tsx:41` DEFAULT_TIMEOUT_MS = 8000 | 需补充测试 | 阅读慢的用户可能错过，阅读快的用户觉得等待久 |
+| 单横幅 + 队列而非多横幅堆叠 | `src/context/notifications.tsx:54-93` processQueue()；`src/context/notifications.tsx:307-312` getNext() | 无专门测试 | 不支持通知历史或回顾 |
+| Immediate 优先级立即抢占并重新入队 | `src/context/notifications.tsx:98-151` immediate 分支；`src/hooks/notifs/useFastModeNotification.tsx:45-49,70-75` 使用 immediate | 无专门测试 | 不支持横幅用户操作 |
+| Fold 合并相同 key 通知而非替换 | `src/context/notifications.tsx:157-216` fold 处理 | 无专门测试 | 调用方需实现 fold 逻辑 |
+| Invalidates 机制主动移除过时通知 | `src/context/notifications.tsx:228-234` invalidates 处理；`src/hooks/notifs/useFastModeNotification.tsx:82-83,91` 使用 invalidates | 无专门测试 | 需要仔细处理状态更新分支 |
+| 后台任务通知只折叠成功完成 | `src/utils/collapseBackgroundBashNotifications.ts:22` 检查 status；`src/utils/collapseBackgroundBashNotifications.ts:41-84` 折叠逻辑 | 无专门测试 | 失败任务仍可能造成视觉噪声 |
+| Apple Terminal 禁用 bell 时反而发送 bell | `src/services/notifier.ts:110-161` isAppleTerminalBellDisabled()；`src/services/notifier.ts:83-103` sendAuto() | 无专门测试 | 逻辑反直觉，需要解释 |
+| PushNotificationTool webhook 失败不自动降级到 OS 通知 | `src/tools/PushNotificationTool/PushNotificationTool.ts:47-51` webhook 失败抛出；`src/tools/PushNotificationTool/PushNotificationTool.ts:52-58` OS 通知分支 | 无专门测试 | 用户可能预期通知能送达，实际未送达 |
+| 所有通知 Hook 都检查 getIsRemoteMode() | `src/hooks/notifs/useStartupNotification.ts:28`；`src/hooks/notifs/useFastModeNotification.tsx:27,56,69` 等所有 hooks | 无专门测试 | 每个 hook 重复相同检查，代码冗余 |
+| UseStartupNotification 封装通用模式 | `src/hooks/notifs/useStartupNotification.ts:19-41` 实现；多个 hooks 使用 | 无专门测试 | 增加一层抽象，灵活性略降 |
+| 横幅通知默认 8 秒超时 | `src/context/notifications.tsx:41` DEFAULT_TIMEOUT_MS = 8000 | 无专门测试 | 阅读慢的用户可能错过，阅读快的用户觉得等待久 |
 
-### 未覆盖
+### 7.1 现有相关测试
 
-- notifications 专门测试文件缺失
+| 测试文件 | 覆盖内容 | 说明 |
+|---|---|---|
+| `tests/orgWarningNotification.test.ts` | 组织警告通知功能：Settings schema 验证、权限检查逻辑、通知添加行为、远程模式检查 | 验证了 useAntOrgWarningNotification hook 的核心逻辑 |
+
+### 7.2 未覆盖行为（基于代码阅读）
+
+- notifications 核心功能无专门测试文件
 - 各种通知场景（immediate 抢占、fold 合并、invalidates 移除、队列处理）
 - 跨终端 OS 通知兼容性测试
 - 远程模式通知行为测试
 - PushNotificationTool webhook 失败/成功测试
+- 后台任务通知折叠的完整测试
+- 没有外部 live 验证测试
 
 ## 8. 文件覆盖与相关子系统
 

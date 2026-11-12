@@ -356,16 +356,16 @@ type ModelCosts = {
 
 | 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
 |---|---|---|---|
-| 成本状态存储在 bootstrap/state | src/bootstrap/state.ts:51-67, 561-879 | 需查找相关测试 | 未找到直接测试覆盖 |
-| 模型成本分层配置 | src/utils/modelCost.ts:35-126 | 需查找相关测试 | 未找到直接测试覆盖 |
-| 按模型短名汇总显示 | src/cost-tracker.ts:188-210 | 需查找相关测试 | 未找到直接测试覆盖 |
-| 成本显示精度动态调整 | src/cost-tracker.ts:177-179 | 需查找相关测试 | 未找到直接测试覆盖 |
-| 成本持久化到项目 config | src/cost-tracker.ts:87-175 | 需查找相关测试 | 未找到直接测试覆盖 |
-| 权限控制检查 | src/utils/billing.ts:10-78 | 需查找相关测试 | 未找到直接测试覆盖 |
-| 限额状态从响应头提取 | src/services/claudeAiLimits.ts:472-515 | 需查找相关测试 | 未找到直接测试覆盖 |
-| 超额使用双路径流程 | src/commands/extra-usage/extra-usage-core.ts:18-118 | 需查找相关测试 | 未找到直接测试覆盖 |
-| 未知模型成本降级 | src/utils/modelCost.ts:156-163 | 需查找相关测试 | 未找到直接测试覆盖 |
-| Advisor 用量递归累加 | src/cost-tracker.ts:303-321 | 需查找相关测试 | 未找到直接测试覆盖 |
+| 成本状态存储在 bootstrap/state | src/bootstrap/state.ts:51-67, 561-879 | 无直接测试 | 未找到直接测试覆盖 |
+| 模型成本分层配置 | src/utils/modelCost.ts:35-126 | 无直接测试 | 未找到直接测试覆盖 |
+| 按模型短名汇总显示 | src/cost-tracker.ts:188-210 | 无直接测试 | 未找到直接测试覆盖 |
+| 成本显示精度动态调整 | src/cost-tracker.ts:177-179 | 无直接测试 | 未找到直接测试覆盖 |
+| 成本持久化到项目 config | src/cost-tracker.ts:87-175 | 无直接测试 | 未找到直接测试覆盖 |
+| 权限控制检查 | src/utils/billing.ts:10-78 | 无直接测试 | 未找到直接测试覆盖 |
+| 限额状态从响应头提取 | src/services/claudeAiLimits.ts:472-515 | 无直接测试 | 未找到直接测试覆盖 |
+| 超额使用双路径流程 | src/commands/extra-usage/extra-usage-core.ts:18-118 | 无直接测试 | 未找到直接测试覆盖 |
+| 未知模型成本降级 | src/utils/modelCost.ts:156-163 | 无直接测试 | 未找到直接测试覆盖 |
+| Advisor 用量递归累加 | src/cost-tracker.ts:303-321 | 无直接测试 | 未找到直接测试覆盖 |
 
 ### 7.1 核心模块
 

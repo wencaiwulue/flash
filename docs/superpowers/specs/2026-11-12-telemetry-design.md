@@ -279,14 +279,14 @@ const DEFAULT_FLUSH_INTERVAL_MS = 15000 // 默认刷新间隔
 
 | 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
 |---|---|---|---|
-| 事件队列化等待 sink | `src/services/analytics/index.ts:68-123` | 需补充测试 | 未找到直接测试覆盖 |
-| 类型标记防止敏感数据 | `src/services/analytics/index.ts:19-33` | 需补充测试 | 未找到直接测试覆盖 |
-| `_PROTO_` 字段过滤 | `src/services/analytics/index.ts:45-58` + `firstPartyEventLoggingExporter.ts:719-725` | 需补充测试 | 未找到直接测试覆盖 |
-| 失败事件持久化 + 二次退避 | `src/services/analytics/firstPartyEventLoggingExporter.ts:38-517` | 需补充测试 | 未找到直接测试覆盖 |
-| Datadog 允许列表 + 批处理 | `src/services/analytics/datadog.ts:19-317` | 需补充测试 | 未找到直接测试覆盖 |
-| OTLP 动态导入 | `src/utils/telemetry/instrumentation.ts:3-11` | 需补充测试 | 未找到直接测试覆盖 |
-| 工具名称消毒策略 | `src/services/analytics/metadata.ts:69-128` | 需补充测试 | 未找到直接测试覆盖 |
-| 生成类型边界 | `src/types/generated/events_mono/` | 需补充测试 | 未找到直接测试覆盖 |
+| 事件队列化等待 sink | `src/services/analytics/index.ts:68-123` | 无直接测试 | 未找到专门的队列化测试 |
+| 类型标记防止敏感数据 | `src/services/analytics/index.ts:19-33` | 无直接测试 | 类型标记主要在编译时起作用，无运行时测试 |
+| `_PROTO_` 字段过滤 | `src/services/analytics/index.ts:45-58` + `firstPartyEventLoggingExporter.ts:719-725` | 无直接测试 | `_PROTO_` 字段提取和过滤逻辑无专门测试 |
+| 失败事件持久化 + 二次退避 | `src/services/analytics/firstPartyEventLoggingExporter.ts:38-517` | 无直接测试 | 持久化和重试逻辑无专门测试 |
+| Datadog 允许列表 + 批处理 | `src/services/analytics/datadog.ts:19-317` | 无直接测试 | Datadog 导出逻辑无专门测试 |
+| OTLP 动态导入 | `src/utils/telemetry/instrumentation.ts:3-11` | 无直接测试 | 动态导入逻辑无专门测试 |
+| 工具名称消毒策略 | `src/services/analytics/metadata.ts:69-128` | `tests/antTraceCommand.test.ts` 验证了 MCP 工具名称被消毒为 `mcp_tool`，同时过滤了敏感属性 | antTrace 测试主要验证本地追踪导出，不是专门的遥测消毒测试 |
+| 生成类型边界 | `src/types/generated/events_mono/` | 无直接测试 | 生成类型仅作为类型边界，无运行时测试 |
 
 ### 7.1 核心模块
 
@@ -303,13 +303,20 @@ const DEFAULT_FLUSH_INTERVAL_MS = 15000 // 默认刷新间隔
 | `src/utils/telemetry/attributes.ts` | Telemetry 属性 | 遥测属性 |
 | `src/types/generated/events_mono/` | 生成类型 | 事件协议类型 |
 
-### 7.2 未覆盖行为（基于代码阅读）
+### 7.2 现有相关测试
 
-- telemetry 专门测试文件缺失
-- 真实网络条件下的重试测试
-- 隐私边界测试（`_PROTO_` 字段过滤、工具名称消毒）
-- 启动性能测试（队列化不阻塞）
-- 跨子系统集成测试
+| 测试文件 | 覆盖内容 | 说明 |
+|---|---|---|
+| `tests/antTraceCommand.test.ts` | 验证了 MCP 工具名称被消毒为 `mcp_tool`，敏感属性被过滤 | 这是本地追踪命令的测试，间接验证了消毒逻辑 |
+
+### 7.3 未覆盖行为（基于代码阅读）
+
+- telemetry 核心功能无专门测试文件
+- 真实网络条件下的重试测试缺失
+- 隐私边界测试（`_PROTO_` 字段过滤、工具名称消毒）无专门用例
+- 启动性能测试（队列化不阻塞）缺失
+- 跨子系统集成测试缺失
+- 没有外部 live 验证测试
 
 ## 8. 文件覆盖与相关子系统
 

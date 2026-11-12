@@ -392,19 +392,19 @@ type PackageManager =
 
 | 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
 |---|---|---|---|
-| 双重锁机制：PID 锁优先 + mtime 锁 fallback | `src/utils/nativeInstaller/pidLock.ts:35-49` | 需查找相关测试 | 未找到直接测试覆盖 |
-| 原子安装：staging 下载 + 原子移动 + 临时 symlink | `src/utils/nativeInstaller/installer.ts:300-448` | 需查找相关测试 | 未找到直接测试覆盖 |
-| 版本保留策略：保留最近两个未锁定版本 | `src/utils/nativeInstaller/installer.ts:1184-1439` | 需查找相关测试 | 未找到直接测试覆盖 |
-| 运行保护：lockCurrentVersion() 锁定正在运行的版本 | `src/utils/nativeInstaller/installer.ts:1048-1156` | 需查找相关测试 | 未找到直接测试覆盖 |
-| 包管理器检测：尊重 Homebrew/winget/pacman/deb/rpm/apk/mise/asdf | `src/utils/nativeInstaller/packageManagers.ts:302-336` | 需查找相关测试 | 未找到直接测试覆盖 |
-| 下载完整性校验：sha256（GCS）/ npm integrity（Artifactory） | `src/utils/nativeInstaller/download.ts:292-380` | 需查找相关测试 | 未找到直接测试覆盖 |
-| 下载去重：同进程内 inFlightInstall Promise 共享 | `src/utils/nativeInstaller/installer.ts:954-974` | 需查找相关测试 | 未找到直接测试覆盖 |
-| 下载 stall 检测：60 秒无数据则重试（最多 3 次） | `src/utils/nativeInstaller/download.ts:271-280` | 需查找相关测试 | 未找到直接测试覆盖 |
-| maxVersion 服务器端限制：可降级或跳过 | `src/utils/nativeInstaller/installer.ts:510-533` | 需查找相关测试 | 未找到直接测试覆盖 |
-| npm 安装与原生安装边界：installMethod 配置 + 禁用 legacy auto-updater | `src/utils/nativeInstaller/installer.ts:992-1017` | 需查找相关测试 | 未找到直接测试覆盖 |
-| Windows 上直接复制 + 旧文件重命名 + 启动时清理 | `src/utils/nativeInstaller/installer.ts:648-722` | 需查找相关测试 | 未找到直接测试覆盖 |
-| 过期 staging/tmp 文件清理：超过 1 小时的自动删除 | `src/utils/nativeInstaller/installer.ts:1188-1203` | 需查找相关测试 | 未找到直接测试覆盖 |
-| cleanupNpmInstallations() 清理旧 npm 安装但保留 node_modules 作为安全网 | `src/utils/nativeInstaller/installer.ts:1608-1709` | 需查找相关测试 | 未找到直接测试覆盖 |
+| 双重锁机制：PID 锁优先 + mtime 锁 fallback | `src/utils/nativeInstaller/pidLock.ts:35-49` | 无直接测试 | 未找到直接测试覆盖 |
+| 原子安装：staging 下载 + 原子移动 + 临时 symlink | `src/utils/nativeInstaller/installer.ts:300-448` | 无直接测试 | 未找到直接测试覆盖 |
+| 版本保留策略：保留最近两个未锁定版本 | `src/utils/nativeInstaller/installer.ts:1184-1439` | 无直接测试 | 未找到直接测试覆盖 |
+| 运行保护：lockCurrentVersion() 锁定正在运行的版本 | `src/utils/nativeInstaller/installer.ts:1048-1156` | 无直接测试 | 未找到直接测试覆盖 |
+| 包管理器检测：尊重 Homebrew/winget/pacman/deb/rpm/apk/mise/asdf | `src/utils/nativeInstaller/packageManagers.ts:302-336` | 无直接测试 | 未找到直接测试覆盖 |
+| 下载完整性校验：sha256（GCS）/ npm integrity（Artifactory） | `src/utils/nativeInstaller/download.ts:292-380` | 无直接测试 | 未找到直接测试覆盖 |
+| 下载去重：同进程内 inFlightInstall Promise 共享 | `src/utils/nativeInstaller/installer.ts:954-974` | 无直接测试 | 未找到直接测试覆盖 |
+| 下载 stall 检测：60 秒无数据则重试（最多 3 次） | `src/utils/nativeInstaller/download.ts:271-280` | 无直接测试 | 未找到直接测试覆盖 |
+| maxVersion 服务器端限制：可降级或跳过 | `src/utils/nativeInstaller/installer.ts:510-533` | 无直接测试 | 未找到直接测试覆盖 |
+| npm 安装与原生安装边界：installMethod 配置 + 禁用 legacy auto-updater | `src/utils/nativeInstaller/installer.ts:992-1017` | 无直接测试 | 未找到直接测试覆盖 |
+| Windows 上直接复制 + 旧文件重命名 + 启动时清理 | `src/utils/nativeInstaller/installer.ts:648-722` | 无直接测试 | 未找到直接测试覆盖 |
+| 过期 staging/tmp 文件清理：超过 1 小时的自动删除 | `src/utils/nativeInstaller/installer.ts:1188-1203` | 无直接测试 | 未找到直接测试覆盖 |
+| cleanupNpmInstallations() 清理旧 npm 安装但保留 node_modules 作为安全网 | `src/utils/nativeInstaller/installer.ts:1608-1709` | 无直接测试 | 未找到直接测试覆盖 |
 
 ### 7.1 核心模块
 
