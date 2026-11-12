@@ -72,13 +72,6 @@ groups:
       - src/tasks/InProcessTeammateTask/types.ts
       - src/tasks/InProcessTeammateTask/InProcessTeammateTask.tsx
 
-  - id: task-local-workflow
-    kind: source
-    section: 4
-    summary: LocalWorkflowTask 实现
-    files:
-      - src/tasks/LocalWorkflowTask/LocalWorkflowTask.ts
-
   - id: task-monitor-mcp
     kind: source
     section: 4

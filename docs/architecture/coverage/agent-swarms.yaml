@@ -117,11 +117,10 @@ groups:
   - id: teammate-helpers
     kind: source
     section: 4
-    summary: Teammate 检测、agent name/color 获取、session chain 恢复
+    summary: Teammate 检测、agent name/color 获取
     files:
       - src/utils/teammate.ts
       - src/utils/teammateContext.ts
-      - src/utils/sessionChainRecovery.ts
       - src/utils/inProcessTeammateHelpers.ts
       - src/utils/collapseTeammateShutdowns.ts
 
@@ -148,28 +147,6 @@ groups:
     summary: Agent swarms feature flag
     files:
       - src/utils/agentSwarmsEnabled.ts
-
-  - id: in-process-teammate-task
-    kind: source
-    section: 4
-    summary: In-process teammate 任务类型与消息追加
-    files:
-      - src/tasks/InProcessTeammateTask/types.ts
-      - src/tasks/InProcessTeammateTask/InProcessTeammateTask.tsx
-
-  - id: local-agent-task
-    kind: source
-    section: 4
-    summary: Local agent 任务管理、async agent 生命周期
-    files:
-      - src/tasks/LocalAgentTask/LocalAgentTask.ts
-
-  - id: remote-agent-task
-    kind: source
-    section: 4
-    summary: Remote agent 任务管理（CCA 远程隔离）
-    files:
-      - src/tasks/RemoteAgentTask/RemoteAgentTask.ts
 
   - id: swarm-commands
     kind: source

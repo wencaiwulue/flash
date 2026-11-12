@@ -118,14 +118,6 @@ groups:
       - src/utils/Shell.ts
       - src/utils/ShellCommand.ts
 
-  - id: task-output
-    kind: source
-    section: 4
-    summary: TaskOutput 输出文件管理、polling 机制
-    files:
-      - src/utils/task/TaskOutput.ts
-      - src/utils/task/diskOutput.ts
-
   - id: local-shell-task
     kind: source
     section: 4

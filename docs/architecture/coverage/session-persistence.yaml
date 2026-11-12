@@ -25,26 +25,12 @@ groups:
     files:
       - src/utils/fileHistory.ts
 
-  - id: session-dag-recovery
-    kind: source
-    section: 4
-    summary: 会话 DAG 并行分支恢复
-    files:
-      - src/utils/sessionChainRecovery.ts
-
   - id: state-management
     kind: source
     section: 4
     summary: 引导状态与会话切换（持久化 lease 归属 SDK）
     files:
       - src/bootstrap/state.ts
-
-  - id: session-ingress
-    kind: source
-    section: 6
-    summary: 远程会话持久化入口
-    files:
-      - src/services/api/sessionIngress.ts
 
   - id: session-transcript-services
     kind: source
@@ -67,12 +53,4 @@ groups:
     section: 4
     summary: 会话持久化核心测试
     files:
-      - tests/sdkSessions.test.ts
       - tests/sessionChainRecovery.test.ts
-
-  - id: sdk-rewind-tests
-    kind: test
-    section: 5
-    summary: SDK 文件回滚测试（仅涉及与会话持久化的集成边界）
-    files:
-      - tests/sdkRewind.test.ts

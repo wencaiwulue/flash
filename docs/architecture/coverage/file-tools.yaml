@@ -94,10 +94,3 @@ groups:
     files:
       - src/utils/glob.ts
       - src/utils/ripgrep.ts
-
-  - id: permission-utils
-    kind: source
-    section: 5
-    summary: File permission utilities for read/write access control
-    files:
-      - src/utils/permissions/filesystem.ts

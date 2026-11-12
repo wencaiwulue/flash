@@ -149,14 +149,6 @@ groups:
     files:
       - src/services/mcp/elicitationHandler.ts
 
-  - id: mcp-skills
-    kind: source
-    section: 4
-    summary: MCP技能集成
-    files:
-      - src/skills/mcpSkills.ts
-      - src/skills/mcpSkillBuilders.ts
-
   - id: mcp-server-approval
     kind: source
     section: 4
@@ -176,6 +168,5 @@ groups:
     section: 7
     summary: MCP测试文件
     files:
-      - tests/sdkMcp.test.ts
       - tests/monitorMcpTask.test.ts
       - tests/monitorMcpToolCall.test.ts

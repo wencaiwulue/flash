@@ -60,7 +60,6 @@ groups:
     summary: 分类器集成（auto mode classifier、bash classifier），包括 YOLO 分类器、bash 允许分类器
     files:
       - src/utils/permissions/yoloClassifier.ts
-      - src/utils/permissions/bashClassifier.ts
       - src/utils/permissions/classifierDecision.ts
       - src/utils/permissions/classifierShared.ts
       - src/utils/permissions/autoModeState.ts

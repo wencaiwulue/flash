@@ -33,7 +33,6 @@ groups:
     summary: 工具共享辅助逻辑
     files:
       - src/tools/shared/gitOperationTracking.ts
-      - src/tools/shared/spawnMultiAgent.ts
 
   - id: tool-tests
     kind: test
