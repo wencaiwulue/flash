@@ -1,0 +1,181 @@
+schema_version: 1
+spec_id: mcp
+spec: ../../superpowers/specs/2026-11-12-mcp-design.md
+status: draft
+
+groups:
+  - id: mcp-config
+    kind: source
+    section: 4
+    summary: MCP配置管理，配置发现、聚合、去重、持久化
+    files:
+      - src/services/mcp/config.ts
+      - src/services/mcp/types.ts
+
+  - id: mcp-client
+    kind: source
+    section: 4
+    summary: MCP客户端核心，连接管理、能力获取、工具调用、传输创建
+    files:
+      - src/services/mcp/client.ts
+
+  - id: mcp-auth
+    kind: source
+    section: 4
+    summary: MCP认证管理，OAuth流程、令牌刷新、XAA跨应用访问
+    files:
+      - src/services/mcp/auth.ts
+      - src/services/mcp/xaa.ts
+      - src/services/mcp/xaaIdpLogin.ts
+      - src/services/mcp/oauthPort.ts
+
+  - id: mcp-transport
+    kind: source
+    section: 4
+    summary: MCP传输层，InProcess、SdkControl、WebSocket传输实现
+    files:
+      - src/services/mcp/InProcessTransport.ts
+      - src/services/mcp/SdkControlTransport.ts
+      - src/utils/mcpWebSocketTransport.ts
+
+  - id: mcp-connection-management
+    kind: source
+    section: 4
+    summary: MCP连接管理React hooks和上下文
+    files:
+      - src/services/mcp/MCPConnectionManager.tsx
+      - src/services/mcp/useManageMcpConnections.ts
+
+  - id: mcp-utils
+    kind: source
+    section: 4
+    summary: MCP工具函数，名称规范化、字符串处理、头部辅助
+    files:
+      - src/services/mcp/normalization.ts
+      - src/services/mcp/mcpStringUtils.ts
+      - src/services/mcp/headersHelper.ts
+      - src/services/mcp/envExpansion.ts
+      - src/services/mcp/utils.ts
+      - src/utils/mcpInstructionsDelta.ts
+      - src/utils/mcpOutputStorage.ts
+      - src/utils/mcpValidation.ts
+
+  - id: mcp-claudeai
+    kind: source
+    section: 4
+    summary: Claude.ai MCP连接器集成
+    files:
+      - src/services/mcp/claudeai.ts
+
+  - id: mcp-permissions
+    kind: source
+    section: 4
+    summary: MCP权限和通道管理
+    files:
+      - src/services/mcp/channelAllowlist.ts
+      - src/services/mcp/channelPermissions.ts
+      - src/services/mcp/channelNotification.ts
+
+  - id: mcp-tools
+    kind: source
+    section: 4
+    summary: MCP专用工具实现
+    files:
+      - src/tools/MCPTool/MCPTool.ts
+      - src/tools/MCPTool/UI.tsx
+      - src/tools/MCPTool/prompt.ts
+      - src/tools/MCPTool/classifyForCollapse.ts
+      - src/tools/ListMcpResourcesTool/ListMcpResourcesTool.ts
+      - src/tools/ListMcpResourcesTool/UI.tsx
+      - src/tools/ListMcpResourcesTool/prompt.ts
+      - src/tools/ReadMcpResourceTool/ReadMcpResourceTool.ts
+      - src/tools/ReadMcpResourceTool/UI.tsx
+      - src/tools/ReadMcpResourceTool/prompt.ts
+      - src/tools/McpAuthTool/McpAuthTool.ts
+      - src/tools/MonitorTool/MonitorTool.ts
+
+  - id: mcp-components
+    kind: source
+    section: 4
+    summary: MCP UI组件
+    files:
+      - src/components/mcp/CapabilitiesSection.tsx
+      - src/components/mcp/ElicitationDialog.tsx
+      - src/components/mcp/MCPAgentServerMenu.tsx
+      - src/components/mcp/MCPListPanel.tsx
+      - src/components/mcp/MCPReconnect.tsx
+      - src/components/mcp/MCPRemoteServerMenu.tsx
+      - src/components/mcp/MCPSettings.tsx
+      - src/components/mcp/MCPStdioServerMenu.tsx
+      - src/components/mcp/MCPToolDetailView.tsx
+      - src/components/mcp/MCPToolListView.tsx
+      - src/components/mcp/McpParsingWarnings.tsx
+      - src/components/mcp/index.ts
+      - src/components/mcp/types.ts
+      - src/components/mcp/utils/reconnectHelpers.tsx
+      - src/components/MCPServerApprovalDialog.tsx
+      - src/components/MCPServerDesktopImportDialog.tsx
+      - src/components/MCPServerDialogCopy.tsx
+      - src/components/MCPServerMultiselectDialog.tsx
+
+  - id: mcp-commands
+    kind: source
+    section: 4
+    summary: MCP CLI命令
+    files:
+      - src/commands/mcp/addCommand.ts
+      - src/commands/mcp/index.ts
+      - src/commands/mcp/mcp.tsx
+      - src/commands/mcp/xaaIdpCommand.ts
+
+  - id: mcp-cli-handlers
+    kind: source
+    section: 4
+    summary: MCP CLI处理器
+    files:
+      - src/cli/handlers/mcp.tsx
+
+  - id: mcp-official-registry
+    kind: source
+    section: 4
+    summary: MCP官方服务器注册表
+    files:
+      - src/services/mcp/officialRegistry.ts
+
+  - id: mcp-elicitation
+    kind: source
+    section: 4
+    summary: MCP elicit请求处理
+    files:
+      - src/services/mcp/elicitationHandler.ts
+
+  - id: mcp-skills
+    kind: source
+    section: 4
+    summary: MCP技能集成
+    files:
+      - src/skills/mcpSkills.ts
+      - src/skills/mcpSkillBuilders.ts
+
+  - id: mcp-server-approval
+    kind: source
+    section: 4
+    summary: MCP服务器审批
+    files:
+      - src/services/mcpServerApproval.tsx
+
+  - id: mcp-entrypoints
+    kind: source
+    section: 4
+    summary: MCP入口点
+    files:
+      - src/entrypoints/mcp.ts
+
+  - id: mcp-tests
+    kind: test
+    section: 7
+    summary: MCP测试文件
+    files:
+      - tests/sdkMcp.test.ts
+      - tests/monitorMcpTask.test.ts
+      - tests/monitorMcpToolCall.test.ts
