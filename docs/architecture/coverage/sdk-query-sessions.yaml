@@ -1,0 +1,69 @@
+schema_version: 1
+spec_id: sdk-query-sessions
+spec: ../../superpowers/specs/2026-11-12-sdk-query-sessions-design.md
+status: draft
+
+groups:
+  - id: sdk-public-entrypoints
+    kind: source
+    section: 3
+    summary: SDK 公开入口点类型定义，暴露给 SDK 消费者的主要 API
+    files:
+      - src/entrypoints/agentSdkTypes.ts
+  - id: sdk-type-definitions
+    kind: source
+    section: 3
+    summary: SDK 类型定义模块，包含核心类型、运行时类型、控制类型
+    files:
+      - src/entrypoints/sdk/coreTypes.ts
+      - src/entrypoints/sdk/coreSchemas.ts
+      - src/entrypoints/sdk/runtimeTypes.ts
+      - src/entrypoints/sdk/sdkUtilityTypes.ts
+      - src/entrypoints/sdk/toolTypes.ts
+      - src/entrypoints/sdk/settingsTypes.generated.ts
+  - id: sdk-query-lifecycle
+    kind: source
+    section: 4
+    summary: SDK Query 生命周期管理，异步输入输出、中断清理、持久化租赁
+    files:
+      - src/utils/sdkQuery.ts
+  - id: sdk-session-conversation
+    kind: source
+    section: 5
+    summary: SDK Session 会话管理，创建/恢复/提示会话
+    files:
+      - src/utils/sdkSessionConversation.ts
+  - id: sdk-session-storage
+    kind: source
+    section: 5
+    summary: SDK Session 持久化与访问器，读取列表重命名标记分叉
+    files:
+      - src/utils/sdkSessions.ts
+  - id: sdk-control-plane
+    kind: source
+    section: 6
+    summary: SDK 控制面，上下文使用、设置应用、任务停止、插件重载
+    files:
+      - src/utils/sdkControl.ts
+  - id: session-dag-recovery
+    kind: source
+    section: 5
+    summary: 会话 DAG 恢复，并行分支与工具结果恢复
+    files:
+      - src/utils/sessionChainRecovery.ts
+  - id: file-checkpointing
+    kind: source
+    section: 7
+    summary: 文件检查点与回滚，按消息 ID 关联快照
+    files:
+      - src/utils/fileCheckpointing.ts
+  - id: sdk-tests
+    kind: test
+    section: 7
+    summary: SDK 测试，生命周期、会话、控制面、回滚
+    files:
+      - tests/sdkQueryLifecycle.test.ts
+      - tests/sdkSessions.test.ts
+      - tests/sdkControls.test.ts
+      - tests/sdkRewind.test.ts
+      - tests/sdkMcp.test.ts
