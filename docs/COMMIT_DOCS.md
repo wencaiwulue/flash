@@ -1,42 +1,26 @@
-# Commit documentation policy
+# Feature documentation policy
 
-每个 commit 必须有独立的**方案设计文档（SPEC）**、**步骤实施文档（PLAN）**和实现状态。文档不是 commit message、diffstat 或裸文件列表的改写。
+项目文档以**功能设计与实施**为单位，使用 Superpowers 的原生流程，不再按 commit 生成文档或维护 commit 映射。
 
-## 内容来源
+## 文档位置
 
-- `scripts/commit-docs/records/<short-sha>.ts`：一个历史提交一份完整设计记录，full SHA 与文件名必须对应。
-- `scripts/commit-docs/records/self.ts`：当前工作的设计记录，含稳定 `changeId`。
-- `docs/specs/<short-sha>-SPEC.md`：前置问题、目标/非目标、架构与数据流、设计决策、备选与取舍、安全协议、验收、证据和剩余范围。
-- `docs/plans/<short-sha>-PLAN.md`：前置条件、复用、按依赖排序的文件级步骤、兼容/迁移、风险、验证顺序和完成状态。
-- `docs/status/index.json` 与 `docs/INDEX.md`：机器可读状态和人工导航。
+- `docs/superpowers/specs/YYYY-MM-DD-<feature>-design.md`：经评审的功能设计，必须说明问题、**为什么这样设计**、备选方案及不采用原因、目标/非目标、架构、接口、数据流、失败语义、工程取舍和验收标准。
+- `docs/superpowers/plans/YYYY-MM-DD-<feature>.md`：经评审的实施计划，必须说明**为什么这样实施**，再提供文件级 TDD 步骤、测试、迁移与回滚。
 
-正文由人工依据实际 diff 编写和审核。**没有通用 fallback，也不允许从 commit 标题自动推断设计正文。** 相同标题的提交仍须分别记录自己的变更和迁移事实。
+## 编写原则
 
-状态为 `implemented`、`partial`、`unimplemented`，描述该提交的实现范围，不代表后来才执行的环境验证。新增测试不等于测试已经运行；后续 live 结果必须标为 later evidence，不能倒写成本提交证据。
+- 每个功能独立经历 brainstorming → design spec → user review → writing-plans。
+- 功能可以属于产品运行时、SDK、构建、测试、CI/Live 验证或工程工具。纯状态更新、发布记录和 finalization 不单独作为功能。
+- 每份 SPEC 必须有“设计理由与备选方案”：先写问题根因和约束，再写为什么选择当前架构、为什么不采用其他方案，最后才写模块与实现内容。
+- 每份 PLAN 必须有“实施理由与步骤依据”：解释为什么按此依赖顺序、为什么修改这些文件/接口、为什么选择这些测试与回滚方式，不能只罗列操作步骤。
+- 文档必须能独立回答“为什么这样设计”和“具体怎样实施”，不得从 commit 标题、diffstat 或文件名自动拼接正文。
+- 不设置 SHA frontmatter、commit 附录、commit 索引或 finalization 文件。Git 历史只用于实现时查证，不进入交付结构。
+- 不记录历史测试、命令、CI 或 live 执行结果；验收只写应满足的条件。
 
-历史 SPEC/PLAN 是回溯性设计重建。只有代码或当时记录支持时才陈述当时理由；其余取舍明确作为回溯工程分析，不虚构原作者意图。
+## 更新与验收
 
-## `self` 与 SHA
-
-一个 commit 无法在自身树中包含会改变该 SHA 的最终 SHA 文件，因此采用两种模式：
-
-- 正常模式：所有祖先使用 SHA 记录，当前 HEAD 使用 `self`。
-- `--next` 模式：包括当前 HEAD 在内的全部历史使用 SHA 记录，未提交的新工作使用 `self`。
-
-开始下一项工作时，先把旧 `self` 落实为上一 commit 的 full-SHA 记录，再编写新的 `self`。不要删除 `self`，也不要用它绕过历史记录。
-
-## 更新流程
-
-1. 阅读目标提交及父提交的 diff、实现、测试和当时的 `docs/STATUS.md`/`docs/RELEASE.md`。
-2. 编写或迁移对应的结构化记录，覆盖全部变更文件并注明复用与证据来源。
-3. 准备下一提交时运行 `bun run docs:generate -- --next` 和 `bun run docs:check -- --next`；提交后运行 `bun run docs:generate` 和 `bun run docs:check`。
-4. 审查渲染后的 SPEC/PLAN 是否真正解释“为什么这样设计”和“具体怎样实施”，再运行全量测试、typecheck 和 build。
-5. 将记录、生成文档、索引和校验修改一起提交。
-
-## CI 质量门禁
-
-CI 使用完整历史并只运行只读的 `bun run docs:check`，**不得先运行 generator**。否则 writer 会在检查前掩盖缺失或过期的 committed documents。
-
-检查包括：记录/SHA 全量覆盖、必需章节、非空内容、旧模板和占位文本、变更文件覆盖、路径与 symbol、证据来源、重复正文、敏感信息、索引和孤儿文档。单元测试覆盖这些失败分支。
-
-这些自动门禁只证明结构、引用和重复度约束，不能证明技术设计正确。每个 pair 仍需对照自己的 diff 做语义审查。OAuth、Cloud、remote-control 和原生桌面 live 状态仍以各自授权环境的真实结果为准。
+1. 先确定功能边界和用户价值，再设计模块、接口和失败语义。
+2. spec 经用户审阅后，再编写具有准确路径、代码示例和命令的实施计划。
+3. 每个实施任务执行对应测试，完成后再运行全量测试、typecheck 和 build。
+4. 缺少设计理由、备选方案不采用原因或实施顺序依据的文档不得通过评审，即使章节齐全、命令可执行。
+5. CI 不再运行 commit 级 `docs:check`。文档质量由逐功能评审和实际实施验证保证。
