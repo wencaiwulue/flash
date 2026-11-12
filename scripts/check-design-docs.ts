@@ -207,3 +207,129 @@ export async function checkOwnership({
   }
   return { errors, warnings }
 }
+
+export const REQUIRED_HEADINGS = [
+  '## 1. 问题与约束',
+  '## 2. 设计理由与备选方案',
+  '## 3. 目标与非目标',
+  '## 4. 架构、模块与数据流',
+  '## 5. 失败语义与工程取舍',
+  '## 6. 现状验收标准',
+  '## 7. 代码与测试证据',
+  '## 8. 文件覆盖与相关子系统',
+  '## 9. 改进建议',
+] as const
+
+export interface CheckOptions {
+  cwd: string
+  files?: string[]
+  requireApproved?: boolean
+}
+
+export async function listRepositoryFiles(cwd: string): Promise<string[]> {
+  const result = Bun.spawnSync({
+    cmd: [
+      'git', 'ls-files', '--cached', '--others', '--exclude-standard', '-z',
+      '--', ...ROOTS,
+    ],
+    cwd,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  if (result.exitCode !== 0) {
+    throw new Error(`git ls-files failed: ${result.stderr.toString()}`)
+  }
+  return result.stdout.toString().split('\0').filter(Boolean)
+    .map(normalizeRepoPath).sort()
+}
+
+function checkMarkdownLinks(
+  cwd: string,
+  path: string,
+  content: string,
+  errors: Diagnostic[],
+): void {
+  for (const match of content.matchAll(/\[[^\]]*\]\(([^)]+)\)/g)) {
+    const target = match[1].trim().replace(/^<|>$/g, '')
+    if (/^(https?:|mailto:|#)/.test(target)) continue
+    const pathPart = target.split('#')[0]
+    if (!pathPart || !existsSync(resolve(cwd, dirname(path), decodeURIComponent(pathPart)))) {
+      errors.push({ code: 'BROKEN_LINK', message: `${path} links to missing ${target}` })
+    }
+  }
+}
+
+async function checkSpecDocument(
+  cwd: string,
+  entry: SpecEntry,
+  indexContent: string,
+  errors: Diagnostic[],
+): Promise<void> {
+  if (!existsSync(resolve(cwd, entry.spec))) {
+    errors.push({ code: 'MISSING_SPEC', message: `Missing spec: ${entry.spec}` })
+    return
+  }
+  const content = await readFile(resolve(cwd, entry.spec), 'utf8')
+  const frontmatter = content.match(/^---\n([\s\S]*?)\n---\n/)
+  const metadata = frontmatter ? parse(frontmatter[1]) as Record<string, unknown> : {}
+  if (metadata.id !== entry.id || metadata.batch !== entry.batch || metadata.status !== entry.status) {
+    errors.push({ code: 'SPEC_METADATA', message: `Frontmatter does not match manifest: ${entry.id}` })
+  }
+
+  for (const heading of REQUIRED_HEADINGS) {
+    const start = content.indexOf(heading)
+    if (start < 0) {
+      errors.push({ code: 'MISSING_SECTION', message: `${entry.spec} lacks ${heading}` })
+      continue
+    }
+    const bodyStart = start + heading.length
+    const next = content.indexOf('\n## ', bodyStart)
+    const body = content.slice(bodyStart, next < 0 ? undefined : next).trim()
+    if (!body) errors.push({ code: 'EMPTY_SECTION', message: `${entry.spec} has empty ${heading}` })
+  }
+  if (/\b(TBD|TODO)\b/.test(content)) {
+    errors.push({ code: 'PLACEHOLDER', message: `Placeholder found in ${entry.spec}` })
+  }
+
+  const coverageLink = normalizeRepoPath(relative(
+    dirname(resolve(cwd, entry.spec)),
+    resolve(cwd, entry.coverage),
+  ))
+  if (!content.includes(`](${coverageLink})`)) {
+    errors.push({ code: 'SPEC_COVERAGE_LINK', message: `${entry.spec} must link ${coverageLink}` })
+  }
+  const indexLink = normalizeRepoPath(relative(
+    dirname(resolve(cwd, INDEX_PATH)),
+    resolve(cwd, entry.spec),
+  ))
+  if (!indexContent.includes(`](${indexLink})`)) {
+    errors.push({ code: 'INDEX_SPEC_LINK', message: `${INDEX_PATH} must link ${indexLink}` })
+  }
+  checkMarkdownLinks(cwd, entry.spec, content, errors)
+}
+
+export async function checkDesignDocs({
+  cwd,
+  files,
+  requireApproved = false,
+}: CheckOptions): Promise<CheckResult> {
+  const manifest = await loadManifest(cwd)
+  const result = await checkOwnership({
+    cwd,
+    manifest,
+    files: files ?? await listRepositoryFiles(cwd),
+    requireApproved,
+  })
+  if (!existsSync(resolve(cwd, INDEX_PATH))) {
+    result.errors.push({ code: 'MISSING_INDEX', message: `Missing ${INDEX_PATH}` })
+    return result
+  }
+  const indexContent = await readFile(resolve(cwd, INDEX_PATH), 'utf8')
+  checkMarkdownLinks(cwd, INDEX_PATH, indexContent, result.errors)
+  for (const entry of manifest.specs) {
+    if (entry.status !== 'planned') {
+      await checkSpecDocument(cwd, entry, indexContent, result.errors)
+    }
+  }
+  return result
+}
