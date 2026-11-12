@@ -3,7 +3,6 @@ spec_id: auth
 spec: ../../superpowers/specs/2026-11-12-auth-design.md
 status: draft
 groups:
-
   - id: additional-files
     kind: source
     section: 4
@@ -130,7 +129,8 @@ groups:
   - id: oauth-types
     kind: source
     section: 4
-    summary: OAuth 类型定义（OAuthTokens、OAuthProfileResponse、SubscriptionType、RateLimitTier 等）
+    summary: OAuth
+      类型定义（OAuthTokens、OAuthProfileResponse、SubscriptionType、RateLimitTier 等）
     files:
       - src/services/oauth/types.ts
   - id: cli-auth-handlers
@@ -139,11 +139,6 @@ groups:
     summary: /login、/logout、/auth 命令处理、installOAuthTokens 安装流程
     files:
       - src/cli/handlers/auth.ts
-  - id: cmd-oauth-refresh
-    kind: source
-    section: 4
-    summary: /oauth-refresh 命令实现、token redaction、状态显示
-    files:
   - id: test-auth
     kind: test
     section: 7

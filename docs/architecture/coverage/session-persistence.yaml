@@ -3,7 +3,6 @@ spec_id: session-persistence
 spec: ../../superpowers/specs/2026-11-12-session-persistence-design.md
 status: draft
 groups:
-
   - id: additional-files
     kind: source
     section: 4
@@ -58,21 +57,6 @@ groups:
     summary: 文件历史与快照（注意：fileCheckpointing.ts 归属 SDK 覆盖范围）
     files:
       - src/utils/fileHistory.ts
-  - id: state-management
-    kind: source
-    section: 4
-    summary: 引导状态与会话切换（持久化 lease 归属 SDK）
-    files:
-  - id: session-transcript-services
-    kind: source
-    section: 4
-    summary: 会话转录服务
-    files:
-  - id: cli-resume-commands
-    kind: source
-    section: 4
-    summary: CLI 恢复/继续/分叉命令实现
-    files:
   - id: session-storage-tests
     kind: test
     section: 4

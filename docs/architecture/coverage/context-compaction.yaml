@@ -10,12 +10,11 @@ groups:
     files:
       - src/commands/compact/compact.ts
       - src/commands/compact/index.ts
-      - src/commands/context-compact/index.ts
-      - src/commands/context-compact/contextCompact.ts
   - id: compact-core
     kind: source
     section: 4
-    summary: 核心压缩引擎 - compactConversation/partialCompactConversation/streamCompactSummary/prompt构建/附件恢复
+    summary: 核心压缩引擎 -
+      compactConversation/partialCompactConversation/streamCompactSummary/prompt构建/附件恢复
     files:
       - src/services/compact/compact.ts
       - src/services/compact/prompt.ts
@@ -46,7 +45,8 @@ groups:
   - id: context-collapse
     kind: source
     section: 4
-    summary: 上下文渐变与溢出恢复 - applyCollapsesIfNeeded/recoverFromOverflow/projection/commit/store
+    summary: 上下文渐变与溢出恢复 -
+      applyCollapsesIfNeeded/recoverFromOverflow/projection/commit/store
     files:
       - src/services/contextCollapse/index.ts
       - src/services/contextCollapse/store.ts

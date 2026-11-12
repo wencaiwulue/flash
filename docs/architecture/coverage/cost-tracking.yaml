@@ -3,13 +3,6 @@ spec_id: cost-tracking
 spec: ../../superpowers/specs/2026-11-12-cost-tracking-design.md
 status: draft
 groups:
-  - id: commands
-    kind: source
-    section: 4
-    summary: Command implementations
-    files:
-      - src/commands/tokens/index.ts
-      - src/commands/tokens/tokens.tsx
   - id: cost-tracker-core
     kind: source
     section: 4
@@ -75,8 +68,3 @@ groups:
       - src/commands/extra-usage/extra-usage.tsx
       - src/commands/extra-usage/extra-usage-noninteractive.ts
       - src/commands/extra-usage/index.ts
-  - id: bootstrap-cost-state
-    kind: source
-    section: 4
-    summary: bootstrap/state 中的成本相关状态与接口（totalCostUSD、modelUsage、hasUnknownModelCost、addToTotalCostState、resetCostState 等）
-    files:

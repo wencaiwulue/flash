@@ -3,7 +3,6 @@ spec_id: lsp
 spec: ../../superpowers/specs/2026-11-12-lsp-design.md
 status: draft
 groups:
-
   - id: additional-files
     kind: source
     section: 4
@@ -11,15 +10,3 @@ groups:
     files:
       - tests/lsp.test.ts
       - tests/lspLifecycle.test.ts
-  - id: commands
-    kind: source
-    section: 4
-    summary: Command implementations
-    files:
-      - src/commands/language-server/index.ts
-      - src/commands/language-server/languageServer.ts
-  - id: default
-    kind: source
-    section: 4
-    summary: Default group
-    files:

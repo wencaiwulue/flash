@@ -36,23 +36,6 @@ groups:
     files:
       - src/utils/hooks.ts
       - src/services/lsp/LSPDiagnosticRegistry.ts
-  - id: memory-retrieval
-    kind: source
-    section: 4
-    summary: 相关记忆检索
-    files:
-  - id: team-collaboration
-    kind: source
-    section: 4
-    summary: 团队协作
-    files:
-      - src/teammate/teammateMailbox.ts
-      - src/swarm/teamHelpers.ts
-  - id: permissions-security
-    kind: source
-    section: 4
-    summary: 权限与安全
-    files:
   - id: diagnostics-telemetry
     kind: source
     section: 4
@@ -60,8 +43,3 @@ groups:
     files:
       - src/services/analytics/index.ts
       - src/services/diagnosticTracking.ts
-  - id: file-read-tool
-    kind: source
-    section: 4
-    summary: 文件读取与工具集成
-    files:

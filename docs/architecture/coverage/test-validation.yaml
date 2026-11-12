@@ -3,7 +3,6 @@ spec_id: test-validation
 spec: ../../superpowers/specs/2026-11-12-test-validation-design.md
 status: draft
 groups:
-
   - id: additional-files
     kind: source
     section: 4
@@ -20,13 +19,6 @@ groups:
       - tests/perfIssueCommand.test.ts
       - tests/proactiveCoordinator.test.ts
       - tests/resetLimitsCommand.test.ts
-  - id: commands
-    kind: source
-    section: 4
-    summary: Command implementations
-    files:
-      - src/commands/live-validation/index.ts
-      - src/commands/live-validation/liveValidation.tsx
   - id: test-runner
     kind: source
     section: 5

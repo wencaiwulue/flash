@@ -3,7 +3,6 @@ spec_id: plan-worktree
 spec: ../../superpowers/specs/2026-11-12-plan-worktree-design.md
 status: draft
 groups:
-
   - id: additional-files
     kind: source
     section: 4
@@ -19,12 +18,8 @@ groups:
     section: 4
     summary: Command implementations
     files:
-      - src/commands/exit-plan-mode/exitPlanMode.tsx
-      - src/commands/exit-plan-mode/index.ts
       - src/commands/plan/index.ts
       - src/commands/plan/plan.tsx
-      - src/commands/worktree/index.ts
-      - src/commands/worktree/worktree.tsx
   - id: plan-tools
     kind: source
     section: 4
@@ -77,21 +72,6 @@ groups:
       - src/utils/ultraplan/ccrSession.ts
       - src/utils/ultraplan/keyword.ts
       - src/utils/ultraplan/prompt.txt
-  - id: permissions-setup
-    kind: source
-    section: 4
-    summary: 计划模式权限准备与恢复
-    files:
-  - id: bootstrap-state
-    kind: source
-    section: 4
-    summary: 计划模式与工作区相关的全局状态
-    files:
-  - id: components-permissions
-    kind: source
-    section: 4
-    summary: ExitPlanMode 权限请求 UI 组件
-    files:
   - id: constants-tools
     kind: source
     section: 4

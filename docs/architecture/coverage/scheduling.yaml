@@ -3,7 +3,6 @@ spec_id: scheduling
 spec: ../../superpowers/specs/2026-11-12-scheduling-design.md
 status: draft
 groups:
-
   - id: additional-files
     kind: source
     section: 4
@@ -11,13 +10,6 @@ groups:
     files:
       - tests/cronLifecycle.test.ts
       - tests/templateJobs.test.ts
-  - id: commands
-    kind: source
-    section: 4
-    summary: Command implementations
-    files:
-      - src/commands/template-job/index.ts
-      - src/commands/template-job/templateJob.ts
   - id: cron-core
     kind: source
     section: 4

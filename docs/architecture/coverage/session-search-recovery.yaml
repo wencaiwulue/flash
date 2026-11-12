@@ -3,13 +3,6 @@ spec_id: session-search-recovery
 spec: ../../superpowers/specs/2026-11-12-session-search-recovery-design.md
 status: draft
 groups:
-  - id: commands
-    kind: source
-    section: 4
-    summary: Command implementations
-    files:
-      - src/commands/session-backfill/index.ts
-      - src/commands/session-backfill/sessionBackfill.ts
   - id: session-search
     kind: source
     section: 4
@@ -46,11 +39,6 @@ groups:
     summary: 跨项目恢复检查
     files:
       - src/utils/crossProjectResume.ts
-  - id: ccshare-resume
-    kind: source
-    section: 4
-    summary: 共享会话恢复 — ID 解析、转录本下载、加载流程
-    files:
   - id: backfill-command
     kind: source
     section: 4

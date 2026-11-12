@@ -3,7 +3,6 @@ spec_id: help-feedback
 spec: ../../superpowers/specs/2026-11-12-help-feedback-design.md
 status: draft
 groups:
-
   - id: additional-files
     kind: source
     section: 4
@@ -24,10 +23,4 @@ groups:
       - src/commands/btw/index.ts
       - src/commands/help/help.tsx
       - src/commands/help/index.ts
-      - src/commands/issue/issue.tsx
       - src/commands/issue/index.ts
-  - id: default
-    kind: source
-    section: 4
-    summary: Default group
-    files:

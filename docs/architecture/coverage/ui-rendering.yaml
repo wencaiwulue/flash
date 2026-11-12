@@ -3,7 +3,6 @@ spec_id: ui-rendering
 spec: ../../superpowers/specs/2026-11-12-ui-rendering-design.md
 status: draft
 groups:
-
   - id: additional-files
     kind: source
     section: 4
@@ -267,8 +266,3 @@ groups:
     summary: 消息处理工具函数
     files:
       - src/utils/messages.ts
-  - id: logo-branding
-    kind: source
-    section: 4
-    summary: Logo 与品牌相关渲染
-    files:

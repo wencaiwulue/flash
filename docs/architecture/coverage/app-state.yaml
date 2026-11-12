@@ -18,7 +18,9 @@ groups:
   - id: app-state-react
     kind: source
     section: 4
-    summary: React 集成（AppStateProvider、useAppState、useSetAppState、useAppStateStore），使用 useSyncExternalStore
+    summary: React
+      集成（AppStateProvider、useAppState、useSetAppState、useAppStateStore），使用
+      useSyncExternalStore
     files:
       - src/state/AppState.tsx
   - id: app-state-on-change
@@ -45,13 +47,3 @@ groups:
     summary: Bootstrap State 管理（与 AppState 分离，会话级全局变量）
     files:
       - src/bootstrap/state.ts
-  - id: app-state-settings-change
-    kind: source
-    section: 4
-    summary: 设置变更应用工具函数（外部文件变更 → AppState）
-    files:
-  - id: app-state-tests
-    kind: test
-    section: 7
-    summary: AppState 相关测试
-    files:

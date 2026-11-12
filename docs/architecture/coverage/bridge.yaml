@@ -14,7 +14,8 @@ groups:
   - id: bridge-types
     kind: source
     section: 3
-    summary: Bridge 核心类型定义 — BridgeConfig、WorkSecret、SessionHandle、BridgeApiClient、SpawnMode
+    summary: Bridge 核心类型定义 —
+      BridgeConfig、WorkSecret、SessionHandle、BridgeApiClient、SpawnMode
     files:
       - src/bridge/types.ts
   - id: bridge-main
@@ -137,16 +138,6 @@ groups:
     summary: 迁移 — repl bridge enabled 到 remote-control at startup
     files:
       - src/migrations/migrateReplBridgeEnabledToRemoteControlAtStartup.ts
-  - id: remote-perm-bridge
-    kind: source
-    section: 7
-    summary: 远程权限桥接 — 远程权限回调
-    files:
-  - id: bridge-commands
-    kind: source
-    section: 4
-    summary: Bridge 命令 — /remote-control kick
-    files:
   - id: use-mailbox-bridge
     kind: source
     section: 4

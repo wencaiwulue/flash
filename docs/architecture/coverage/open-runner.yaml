@@ -34,11 +34,6 @@ groups:
     summary: MoreRight 本地笔记
     files:
       - src/moreright/useMoreRight.tsx
-  - id: open-backends-source
-    kind: source
-    section: 4
-    summary: Open Backends (Chrome/Computer Use)
-    files:
   - id: supporting-source
     kind: source
     section: 4

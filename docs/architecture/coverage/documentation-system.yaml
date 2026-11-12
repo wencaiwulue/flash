@@ -3,22 +3,11 @@ spec_id: documentation-system
 spec: ../../superpowers/specs/2026-11-12-codebase-design-docs-design.md
 status: draft
 groups:
-  - id: commands
-    kind: source
-    section: 4
-    summary: Command implementations
-    files:
-      - src/commands/design-docs/check.ts
-      - src/commands/design-docs/designDocs.ts
-      - src/commands/design-docs/index.ts
-      - src/commands/design-docs/model.ts
-      - src/commands/design-docs/ownership.ts
-      - src/commands/rewrite-commit-design-docs/rewriteCommitDesignDocs.ts
-      - src/commands/rewrite-commit-design-docs/index.ts
   - id: documentation-checker
     kind: script
     section: 4
-    summary: Registry, ownership, exclusion, spec, link, Git discovery, and CLI validation.
+    summary: Registry, ownership, exclusion, spec, link, Git discovery, and CLI
+      validation.
     files:
       - scripts/check-design-docs.ts
   - id: documentation-checker-tests

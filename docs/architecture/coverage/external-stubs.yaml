@@ -35,8 +35,3 @@ groups:
       - src/external-stubs/computer-use-swift.ts
       - src/external-stubs/computer-use-input.ts
       - src/external-stubs/computer-use-sentinel-apps.ts
-  - id: open-backends-test
-    kind: test
-    section: 7
-    summary: 公开后端集成测试
-    files:

@@ -3,22 +3,12 @@ spec_id: plugins
 spec: ../../superpowers/specs/2026-11-12-plugins-design.md
 status: draft
 groups:
-
   - id: additional-files
     kind: source
     section: 4
     summary: Additional files
     files:
       - tests/npmMarketplace.test.ts
-  - id: commands
-    kind: source
-    section: 4
-    summary: Command implementations
-    files:
-      - src/commands/npm-marketplace/index.ts
-      - src/commands/npm-marketplace/npmMarketplace.tsx
-      - src/commands/plugins/index.ts
-      - src/commands/plugins/plugins.tsx
   - id: types
     kind: source
     section: 4

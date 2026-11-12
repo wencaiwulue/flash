@@ -3,7 +3,6 @@ spec_id: commands-framework
 spec: ../../superpowers/specs/2026-11-12-commands-framework-design.md
 status: draft
 groups:
-
   - id: additional-files
     kind: source
     section: 4
@@ -84,8 +83,3 @@ groups:
       - src/commands/clear/clear.ts
       - src/commands/clear/conversation.ts
       - src/commands/clear/index.ts
-  - id: default
-    kind: source
-    section: 4
-    summary: Default group
-    files:

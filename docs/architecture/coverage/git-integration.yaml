@@ -3,7 +3,6 @@ spec_id: git-integration
 spec: ../../superpowers/specs/2026-11-12-git-integration-design.md
 status: draft
 groups:
-
   - id: additional-files
     kind: source
     section: 4
@@ -48,22 +47,12 @@ groups:
     summary: Git diff 解析、统计、hunks 处理、单文件 diff、未跟踪文件处理
     files:
       - src/utils/gitDiff.ts
-  - id: worktree
-    kind: source
-    section: 4
-    summary: Worktree 创建/恢复/清理、slug 验证、tmux 集成、stale agent worktree 回收、代理 Worktree
-    files:
   - id: github-integration
     kind: source
     section: 4
     summary: GitHub 认证状态、远程 URL 解析与标准化、仓库哈希
     files:
       - src/utils/github/ghAuthStatus.ts
-  - id: commit-attribution
-    kind: source
-    section: 4
-    summary: 提交贡献跟踪、计算、trailer 格式化、prepare-commit-msg 钩子集成、内部模型名白名单
-    files:
   - id: pr-reference
     kind: source
     section: 4

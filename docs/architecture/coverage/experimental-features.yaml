@@ -2,16 +2,4 @@ schema_version: 1
 spec_id: experimental-features
 spec: ../../superpowers/specs/2026-11-12-experimental-features-design.md
 status: draft
-groups:
-  - id: commands
-    kind: source
-    section: 4
-    summary: Command implementations
-    files:
-      - src/commands/experimental-features/index.ts
-      - src/commands/experimental-features/experimentalFeatures.ts
-  - id: default
-    kind: source
-    section: 4
-    summary: Default group
-    files:
+groups: []

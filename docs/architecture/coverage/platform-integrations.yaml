@@ -3,18 +3,12 @@ spec_id: platform-integrations
 spec: ../../superpowers/specs/2026-11-12-platform-integrations-design.md
 status: draft
 groups:
-
   - id: additional-files
     kind: source
     section: 4
     summary: Additional files
     files:
       - src/utils/platform.ts
-  - id: desktop-deeplink
-    kind: source
-    section: 4
-    summary: Desktop deep link 构建、安装检测、版本检查、会话迁移
-    files:
   - id: desktop-config
     kind: source
     section: 4
@@ -28,11 +22,6 @@ groups:
     files:
       - src/commands/desktop/desktop.tsx
       - src/commands/desktop/index.ts
-  - id: desktop-handoff
-    kind: source
-    section: 4
-    summary: Desktop handoff UI 组件、状态机、会话 flush、优雅退出
-    files:
   - id: desktop-upsell
     kind: source
     section: 4
@@ -116,8 +105,3 @@ groups:
     files:
       - src/utils/suggestions/slackChannelSuggestions.ts
       - src/components/messages/UserChannelMessage.tsx
-  - id: external-stubs
-    kind: source
-    section: 4
-    summary: Claude for Chrome MCP 外部存根
-    files:

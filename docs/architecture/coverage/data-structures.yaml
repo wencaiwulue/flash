@@ -3,7 +3,6 @@ spec_id: data-structures
 spec: ../../superpowers/specs/2026-11-12-data-structures-design.md
 status: draft
 groups:
-
   - id: additional-files
     kind: source
     section: 4
@@ -118,10 +117,6 @@ groups:
       - src/types/connectorText.ts
       - src/types/diff-augmentations.d.ts
       - src/types/fileSuggestion.ts
-      - src/types/generated/events_mono/claude_code/v1/claude_code_internal_event.ts
-      - src/types/generated/events_mono/common/v1/auth.ts
-      - src/types/generated/events_mono/growthbook/v1/growthbook_experiment_event.ts
-      - src/types/generated/google/protobuf/timestamp.ts
       - src/types/hooks.ts
       - src/types/ids.ts
       - src/types/logs.ts
@@ -314,7 +309,8 @@ groups:
   - id: memoize
     kind: source
     section: 7
-    summary: 记忆化缓存 - memoizeWithTTL（stale-while-revalidate）、memoizeWithTTLAsync（含 in-flight 去重）、memoizeWithLRU（基于 lru-cache）
+    summary: 记忆化缓存 - memoizeWithTTL（stale-while-revalidate）、memoizeWithTTLAsync（含
+      in-flight 去重）、memoizeWithLRU（基于 lru-cache）
     files:
       - src/utils/memoize.ts
   - id: lazy-schema
@@ -326,7 +322,8 @@ groups:
   - id: json-utils
     kind: source
     section: 9
-    summary: JSON/JSONC/JSONL 工具 - safeParseJSON（带 LRU 缓存）、safeParseJSONC、parseJSONL、readJSONLFile、addItemToJSONCArray
+    summary: JSON/JSONC/JSONL 工具 - safeParseJSON（带 LRU
+      缓存）、safeParseJSONC、parseJSONL、readJSONLFile、addItemToJSONCArray
     files:
       - src/utils/json.ts
   - id: json-read
@@ -338,23 +335,21 @@ groups:
   - id: frontmatter-parser
     kind: source
     section: 4
-    summary: Frontmatter 解析 - parseFrontmatter（YAML 失败自动 quote 重试）、splitPathInFrontmatter、expandBraces、类型转换辅助
+    summary: Frontmatter 解析 - parseFrontmatter（YAML 失败自动 quote
+      重试）、splitPathInFrontmatter、expandBraces、类型转换辅助
     files:
       - src/utils/frontmatterParser.ts
   - id: markdown-config-loader
     kind: source
     section: 4
-    summary: Markdown 配置加载 - 目录遍历（managed/user/project 优先级）、git 边界处理、dev+ino 去重、ripgrep/原生双实现
+    summary: Markdown 配置加载 - 目录遍历（managed/user/project 优先级）、git 边界处理、dev+ino
+      去重、ripgrep/原生双实现
     files:
       - src/utils/markdownConfigLoader.ts
   - id: hooks-schemas
     kind: source
     section: 4
-    summary: Hooks Zod Schemas - 独立模块打破循环依赖，包含 HookCommandSchema/HookMatcherSchema/HooksSchema，全部使用 lazySchema
+    summary: Hooks Zod Schemas - 独立模块打破循环依赖，包含
+      HookCommandSchema/HookMatcherSchema/HooksSchema，全部使用 lazySchema
     files:
       - src/schemas/hooks.ts
-  - id: design-docs-test
-    kind: test
-    section: 7
-    summary: 设计文档系统测试 - 包含 spec 格式验证，间接验证本 spec 格式
-    files:

@@ -3,7 +3,6 @@ spec_id: settings
 spec: ../../superpowers/specs/2026-11-12-settings-design.md
 status: draft
 groups:
-
   - id: additional-files
     kind: source
     section: 4
@@ -26,20 +25,9 @@ groups:
     files:
       - src/commands/env/env.ts
       - src/commands/env/index.ts
-      - src/commands/limits/index.ts
-      - src/commands/limits/limits.ts
       - src/commands/mock-limits/index.ts
-      - src/commands/mock-limits/mockLimits.ts
-      - src/commands/opus-mode/index.ts
-      - src/commands/opus-mode/opusMode.ts
       - src/commands/reset-limits/index.ts
-      - src/commands/reset-limits/resetLimits.ts
-      - src/commands/settings/index.ts
-      - src/commands/settings/settings.tsx
       - src/commands/theme/index.ts
-      - src/commands/theme/theme.ts
-      - src/commands/write-config/index.ts
-      - src/commands/write-config/writeConfig.ts
   - id: settings-types
     kind: source
     section: 4
@@ -96,11 +84,6 @@ groups:
     summary: 策略文件路径管理，managed-settings.json 和 managed-settings.d/ drop-in 目录
     files:
       - src/utils/settings/managedPath.ts
-  - id: settings-mdm
-    kind: source
-    section: 4
-    summary: MDM/注册表设置读取（平台相关），Windows HKLM/HKCU、macOS 配置文件
-    files:
   - id: settings-apply-change
     kind: source
     section: 4

@@ -3,7 +3,6 @@ spec_id: shell-tools
 spec: ../../superpowers/specs/2026-11-12-shell-tools-design.md
 status: draft
 groups:
-
   - id: additional-files
     kind: source
     section: 4
@@ -11,13 +10,6 @@ groups:
     files:
       - src/utils/shell/resolveDefaultShell.ts
       - src/utils/shellConfig.ts
-  - id: commands
-    kind: source
-    section: 4
-    summary: Command implementations
-    files:
-      - src/commands/shell/index.ts
-      - src/commands/shell/shell.tsx
   - id: bash-tool
     kind: source
     section: 4
@@ -123,11 +115,6 @@ groups:
     files:
       - src/utils/Shell.ts
       - src/utils/ShellCommand.ts
-  - id: local-shell-task
-    kind: source
-    section: 4
-    summary: LocalShellTask 后台任务管理、注册、通知
-    files:
   - id: terminal-capture
     kind: source
     section: 4

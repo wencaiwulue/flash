@@ -10,11 +10,6 @@ groups:
     files:
       - scripts/build.ts
       - scripts/generate-sdk-types.ts
-  - id: external-feature-profile
-    kind: source
-    section: 5
-    summary: 外部功能列表，生产构建与验收测试的唯一事实来源
-    files:
   - id: runtime-macros
     kind: source
     section: 5
@@ -35,19 +30,12 @@ groups:
     summary: SDK 类型 Schema 定义与生成产物
     files:
       - src/entrypoints/sdk/controlSchemas.ts
-      - src/entrypoints/sdk/coreTypes.generated.ts
-      - src/entrypoints/sdk/controlTypes.ts
   - id: entrypoints
     kind: source
     section: 5
     summary: CLI 与 SDK 入口点
     files:
       - src/entrypoints/cli.tsx
-  - id: acceptance-fixtures
-    kind: test
-    section: 5
-    summary: Feature Profile 验收 Fixtures
-    files:
   - id: acceptance-tests
     kind: test
     section: 5
@@ -55,8 +43,3 @@ groups:
     files:
       - tests/externalFeatures.test.ts
       - tests/externalFeatureProfile.test.ts
-  - id: package-config
-    kind: source
-    section: 5
-    summary: Package 配置与依赖锁定
-    files:

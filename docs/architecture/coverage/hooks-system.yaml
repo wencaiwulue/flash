@@ -3,7 +3,6 @@ spec_id: hooks-system
 spec: ../../superpowers/specs/2026-11-12-hooks-system-design.md
 status: draft
 groups:
-
   - id: additional-files
     kind: source
     section: 4
@@ -84,8 +83,3 @@ groups:
       - src/utils/hooks/registerFrontmatterHooks.ts
       - src/utils/hooks/sessionHooks.ts
       - src/utils/hooks/ssrfGuard.ts
-  - id: default
-    kind: source
-    section: 4
-    summary: Default group
-    files:

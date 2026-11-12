@@ -9,7 +9,6 @@ groups:
     summary: Command implementations
     files:
       - src/commands/voice/index.ts
-      - src/commands/voice/voice.tsx
   - id: voice-mode-enabled
     kind: source
     section: 4
@@ -43,7 +42,8 @@ groups:
   - id: use-voice
     kind: source
     section: 4
-    summary: 语音主 hook、hold-to-talk 逻辑、focus 模式逻辑、静默drop 重放、early error 重试、键释放检测、音频电平计算、语言归一化
+    summary: 语音主 hook、hold-to-talk 逻辑、focus 模式逻辑、静默drop 重放、early error
+      重试、键释放检测、音频电平计算、语言归一化
     files:
       - src/hooks/useVoice.ts
   - id: use-voice-enabled

@@ -46,8 +46,3 @@ groups:
     summary: /desktop 命令的 UI 交互流程
     files:
       - src/components/DesktopHandoff.tsx
-  - id: main-cli-integration
-    kind: source
-    section: 4
-    summary: CLI 入口中的深层链接处理分支
-    files:

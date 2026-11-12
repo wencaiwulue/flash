@@ -10,8 +10,3 @@ groups:
     files:
       - src/commands/onboarding/index.ts
       - src/commands/onboarding/onboarding.tsx
-  - id: default
-    kind: source
-    section: 4
-    summary: Default group
-    files:

@@ -3,15 +3,9 @@ spec_id: network-security
 spec: ../../superpowers/specs/2026-11-12-network-security-design.md
 status: draft
 groups:
-
   - id: additional-files
     kind: source
     section: 4
     summary: Additional files
     files:
       - tests/protectedNamespace.test.ts
-  - id: default
-    kind: source
-    section: 4
-    summary: Default group
-    files:

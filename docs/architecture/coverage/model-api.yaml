@@ -3,7 +3,6 @@ spec_id: model-api
 spec: ../../superpowers/specs/2026-11-12-model-api-design.md
 status: draft
 groups:
-
   - id: additional-files
     kind: source
     section: 4
@@ -70,11 +69,6 @@ groups:
     summary: 模型选择命令
     files:
       - src/commands/model/index.ts
-  - id: model-live-validation
-    kind: source
-    section: 4
-    summary: Live 模型验证脚本
-    files:
   - id: model-api-utilities
     kind: source
     section: 4

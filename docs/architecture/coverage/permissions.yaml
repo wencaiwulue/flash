@@ -3,7 +3,6 @@ spec_id: permissions
 spec: ../../superpowers/specs/2026-11-12-permissions-design.md
 status: draft
 groups:
-
   - id: additional-files
     kind: source
     section: 4
@@ -41,14 +40,14 @@ groups:
     section: 4
     summary: Command implementations
     files:
-      - src/commands/permission/index.ts
-      - src/commands/permission/permission.tsx
       - src/commands/permissions/index.ts
       - src/commands/permissions/permissions.tsx
   - id: permissions-types
     kind: source
     section: 4
-    summary: 权限类型定义，包括 PermissionMode、PermissionRule、PermissionDecision、PermissionDecisionReason 等核心类型
+    summary: 权限类型定义，包括
+      PermissionMode、PermissionRule、PermissionDecision、PermissionDecisionReason
+      等核心类型
     files:
       - src/types/permissions.ts
   - id: permissions-core
@@ -156,8 +155,3 @@ groups:
       - src/components/permissions/EnterPlanModePermissionRequest/EnterPlanModePermissionRequest.tsx
       - src/components/permissions/AskUserQuestionPermissionRequest/AskUserQuestionPermissionRequest.tsx
       - src/components/permissions/FilePermissionDialog/FilePermissionDialog.tsx
-  - id: permissions-commands
-    kind: source
-    section: 7
-    summary: 权限管理命令，/permissions 命令 UI
-    files:

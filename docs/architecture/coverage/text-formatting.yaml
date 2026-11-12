@@ -3,7 +3,6 @@ spec_id: text-formatting
 spec: ../../superpowers/specs/2026-11-12-text-formatting-design.md
 status: draft
 groups:
-
   - id: additional-files
     kind: source
     section: 4
@@ -24,8 +23,6 @@ groups:
     files:
       - src/commands/color/color.ts
       - src/commands/color/index.ts
-      - src/commands/snip/index.ts
-      - src/commands/snip/snip.tsx
   - id: format-utils
     kind: source
     section: 1
@@ -86,8 +83,3 @@ groups:
     summary: Markdown 终端渲染 - marked 词法分析、禁用删除线、代码高亮、issue 引用链接化、表格对齐、列表编号/字母/罗马数字
     files:
       - src/utils/markdown.ts
-  - id: tests
-    kind: test
-    section: 7
-    summary: 文本格式化相关测试
-    files:

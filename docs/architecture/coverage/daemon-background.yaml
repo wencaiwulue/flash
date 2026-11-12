@@ -3,7 +3,6 @@ spec_id: daemon-background
 spec: ../../superpowers/specs/2026-11-12-daemon-background-design.md
 status: draft
 groups:
-
   - id: additional-files
     kind: source
     section: 4
@@ -13,15 +12,3 @@ groups:
       - src/daemon/supervisor.ts
       - src/daemon/workerRegistry.ts
       - tests/daemon.test.ts
-  - id: commands
-    kind: source
-    section: 4
-    summary: Command implementations
-    files:
-      - src/commands/daemon/daemon.tsx
-      - src/commands/daemon/index.ts
-  - id: default
-    kind: source
-    section: 4
-    summary: Default group
-    files:

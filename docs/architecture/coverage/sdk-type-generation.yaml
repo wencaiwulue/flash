@@ -2,9 +2,4 @@ schema_version: 1
 spec_id: sdk-type-generation
 spec: ../../superpowers/specs/2026-11-12-sdk-type-generation-design.md
 status: planned
-groups:
-  - id: default
-    kind: source
-    section: 4
-    summary: Default group
-    files:
+groups: []

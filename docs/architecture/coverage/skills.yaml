@@ -120,11 +120,6 @@ groups:
     files:
       - src/components/SkillImprovementSurvey.tsx
       - src/components/skills/SkillsMenu.tsx
-  - id: skill-commands
-    kind: source
-    section: 4
-    summary: 技能CLI命令
-    files:
   - id: skill-telemetry
     kind: source
     section: 4
