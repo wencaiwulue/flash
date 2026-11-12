@@ -1,0 +1,137 @@
+schema_version: 1
+spec_id: permissions
+spec: ../../superpowers/specs/2026-11-12-permissions-design.md
+status: draft
+
+groups:
+  - id: permissions-types
+    kind: source
+    section: 4
+    summary: 权限类型定义，包括 PermissionMode、PermissionRule、PermissionDecision、PermissionDecisionReason 等核心类型
+    files:
+      - src/types/permissions.ts
+
+  - id: permissions-core
+    kind: source
+    section: 4
+    summary: 核心权限裁决逻辑，包括 hasPermissionsToUseTool、规则匹配、模式转换、分类器集成
+    files:
+      - src/utils/permissions/permissions.ts
+      - src/utils/permissions/PermissionResult.ts
+      - src/utils/permissions/PermissionRule.ts
+      - src/utils/permissions/permissionRuleParser.ts
+      - src/utils/permissions/shellRuleMatching.ts
+
+  - id: permissions-setup
+    kind: source
+    section: 4
+    summary: 权限上下文初始化、危险规则检测、权限加载
+    files:
+      - src/utils/permissions/permissionSetup.ts
+      - src/utils/permissions/permissionsLoader.ts
+      - src/utils/permissions/dangerousPatterns.ts
+      - src/utils/permissions/shadowedRuleDetection.ts
+
+  - id: permissions-denial-tracking
+    kind: source
+    section: 4
+    summary: 拒绝计数与回退逻辑，连续拒绝 3 次或总拒绝 20 次后回退到用户提示
+    files:
+      - src/utils/permissions/denialTracking.ts
+
+  - id: permissions-mode
+    kind: source
+    section: 4
+    summary: PermissionMode 枚举与工具函数，模式标题、颜色、外部模式转换
+    files:
+      - src/utils/permissions/PermissionMode.ts
+
+  - id: permissions-update
+    kind: source
+    section: 4
+    summary: 权限更新应用与持久化，添加/替换/删除规则、设置模式、添加工作目录
+    files:
+      - src/utils/permissions/PermissionUpdate.ts
+      - src/utils/permissions/PermissionUpdateSchema.ts
+
+  - id: permissions-classifier
+    kind: source
+    section: 4
+    summary: 分类器集成（auto mode classifier、bash classifier），包括 YOLO 分类器、bash 允许分类器
+    files:
+      - src/utils/permissions/yoloClassifier.ts
+      - src/utils/permissions/bashClassifier.ts
+      - src/utils/permissions/classifierDecision.ts
+      - src/utils/permissions/classifierShared.ts
+      - src/utils/permissions/autoModeState.ts
+
+  - id: permissions-explainer
+    kind: source
+    section: 7
+    summary: 权限解释器，解释权限请求的风险级别和原因
+    files:
+      - src/utils/permissions/permissionExplainer.ts
+
+  - id: permissions-filesystem
+    kind: source
+    section: 7
+    summary: 文件系统权限相关工具函数
+    files:
+      - src/utils/permissions/filesystem.ts
+      - src/utils/permissions/pathValidation.ts
+
+  - id: permissions-bypass-killswitch
+    kind: source
+    section: 7
+    summary: 绕过权限模式的 killswitch
+    files:
+      - src/utils/permissions/bypassPermissionsKillswitch.ts
+
+  - id: permissions-hooks
+    kind: source
+    section: 4
+    summary: React hooks 整合权限裁决与 UI，包括 useCanUseTool、PermissionContext、权限日志
+    files:
+      - src/hooks/useCanUseTool.tsx
+      - src/hooks/toolPermission/PermissionContext.ts
+      - src/hooks/toolPermission/permissionLogging.ts
+
+  - id: permissions-components
+    kind: source
+    section: 7
+    summary: 权限请求 UI 组件，包括各工具的特定权限弹窗、PermissionDialog、权限规则解释
+    files:
+      - src/components/permissions/PermissionRequest.tsx
+      - src/components/permissions/PermissionDialog.tsx
+      - src/components/permissions/PermissionPrompt.tsx
+      - src/components/permissions/PermissionRuleExplanation.tsx
+      - src/components/permissions/PermissionExplanation.tsx
+      - src/components/permissions/FallbackPermissionRequest.tsx
+      - src/components/permissions/SandboxPermissionRequest.tsx
+      - src/components/permissions/PermissionDecisionDebugInfo.tsx
+      - src/components/permissions/WorkerBadge.tsx
+      - src/components/permissions/PermissionRequestTitle.tsx
+      - src/components/permissions/utils.ts
+      - src/components/permissions/hooks.ts
+      - src/components/permissions/shellPermissionHelpers.tsx
+      - src/components/permissions/useShellPermissionFeedback.ts
+      - src/components/permissions/BashPermissionRequest/BashPermissionRequest.tsx
+      - src/components/permissions/PowerShellPermissionRequest/PowerShellPermissionRequest.tsx
+      - src/components/permissions/FilesystemPermissionRequest/FilesystemPermissionRequest.tsx
+      - src/components/permissions/FileEditPermissionRequest/FileEditPermissionRequest.tsx
+      - src/components/permissions/FileWritePermissionRequest/FileWritePermissionRequest.tsx
+      - src/components/permissions/NotebookEditPermissionRequest/NotebookEditPermissionRequest.tsx
+      - src/components/permissions/SedEditPermissionRequest/SedEditPermissionRequest.tsx
+      - src/components/permissions/WebFetchPermissionRequest/WebFetchPermissionRequest.tsx
+      - src/components/permissions/ExitPlanModePermissionRequest/ExitPlanModePermissionRequest.tsx
+      - src/components/permissions/EnterPlanModePermissionRequest/EnterPlanModePermissionRequest.tsx
+      - src/components/permissions/AskUserQuestionPermissionRequest/AskUserQuestionPermissionRequest.tsx
+      - src/components/permissions/FilePermissionDialog/FilePermissionDialog.tsx
+
+  - id: permissions-commands
+    kind: source
+    section: 7
+    summary: 权限管理命令，/permissions 命令 UI
+    files:
+      - src/commands/permissions/index.ts
+      - src/commands/permissions/permissions.tsx
