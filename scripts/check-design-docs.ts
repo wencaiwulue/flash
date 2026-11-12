@@ -253,7 +253,13 @@ function checkMarkdownLinks(
     const target = match[1].trim().replace(/^<|>$/g, '')
     if (/^(https?:|mailto:|#)/.test(target)) continue
     const pathPart = target.split('#')[0]
-    if (!pathPart || !existsSync(resolve(cwd, dirname(path), decodeURIComponent(pathPart)))) {
+    let resolvedPath: string
+    try {
+      resolvedPath = decodeURIComponent(pathPart)
+    } catch {
+      resolvedPath = pathPart
+    }
+    if (!pathPart || !existsSync(resolve(cwd, dirname(path), resolvedPath))) {
       errors.push({ code: 'BROKEN_LINK', message: `${path} links to missing ${target}` })
     }
   }

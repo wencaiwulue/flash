@@ -171,3 +171,17 @@ test('allows artifact-free planned entries normally and rejects them strictly', 
   expect(normal.warnings.map(issue => issue.code)).toContain('PLANNED_SPEC')
   expect(strict.errors.map(issue => issue.code)).toContain('PLANNED_SPEC')
 })
+
+test('handles percent signs in documentation links without throwing', async () => {
+  createCompleteFixture()
+  // Add a file with percent signs and link to it from the spec
+  put('docs/superpowers/specs/50% done.md', 'Progress file content')
+  put(
+    'docs/superpowers/specs/system-design.md',
+    specText() + '\n\nSee [50% done](50% done.md) for progress.',
+  )
+
+  // Should not throw and should have no errors about the link
+  const result = await checkDesignDocs({ cwd, files })
+  expect(result.errors).toEqual([])
+})
