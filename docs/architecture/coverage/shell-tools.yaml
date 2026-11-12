@@ -1,0 +1,158 @@
+schema_version: 1
+spec_id: shell-tools
+spec: ../../superpowers/specs/2026-11-12-shell-tools-design.md
+status: draft
+
+groups:
+  - id: bash-tool
+    kind: source
+    section: 4
+    summary: BashTool 主实现，包括工具定义、执行流程、UI 组件
+    files:
+      - src/tools/BashTool/BashTool.tsx
+      - src/tools/BashTool/UI.tsx
+      - src/tools/BashTool/BashToolResultMessage.tsx
+      - src/tools/BashTool/utils.ts
+      - src/tools/BashTool/prompt.ts
+      - src/tools/BashTool/toolName.ts
+      - src/tools/BashTool/commandSemantics.ts
+      - src/tools/BashTool/destructiveCommandWarning.ts
+
+  - id: bash-permissions
+    kind: source
+    section: 4
+    summary: Bash 权限检查，包括规则匹配、分类器集成、路径验证、只读验证、sed 验证
+    files:
+      - src/tools/BashTool/bashPermissions.ts
+      - src/tools/BashTool/bashCommandHelpers.ts
+      - src/tools/BashTool/bashSecurity.ts
+      - src/tools/BashTool/pathValidation.ts
+      - src/tools/BashTool/readOnlyValidation.ts
+      - src/tools/BashTool/sedValidation.ts
+      - src/tools/BashTool/modeValidation.ts
+      - src/tools/BashTool/shouldUseSandbox.ts
+
+  - id: bash-classifier
+    kind: source
+    section: 4
+    summary: Bash 分类器，调用小模型做自然语言描述匹配
+    files:
+      - src/utils/permissions/bashClassifier.ts
+
+  - id: bash-parser
+    kind: source
+    section: 4
+    summary: Bash 解析工具，包括 tree-sitter AST 解析、命令分割、shell 引用、前缀提取
+    files:
+      - src/utils/bash/ast.ts
+      - src/utils/bash/bashParser.ts
+      - src/utils/bash/commands.ts
+      - src/utils/bash/shellQuote.ts
+      - src/utils/bash/shellQuoting.ts
+      - src/utils/bash/parser.ts
+      - src/utils/bash/ParsedCommand.ts
+      - src/utils/bash/prefix.ts
+      - src/utils/bash/shellPrefix.ts
+      - src/utils/bash/treeSitterAnalysis.ts
+      - src/utils/bash/bashPipeCommand.ts
+      - src/utils/bash/registry.ts
+      - src/utils/bash/heredoc.ts
+      - src/utils/bash/shellCompletion.ts
+      - src/utils/bash/ShellSnapshot.ts
+
+  - id: powershell-tool
+    kind: source
+    section: 4
+    summary: PowerShellTool 主实现，权限检查、安全检查、路径验证
+    files:
+      - src/tools/PowerShellTool/PowerShellTool.tsx
+      - src/tools/PowerShellTool/powershellPermissions.ts
+      - src/tools/PowerShellTool/powershellSecurity.ts
+      - src/tools/PowerShellTool/pathValidation.ts
+      - src/tools/PowerShellTool/readOnlyValidation.ts
+      - src/tools/PowerShellTool/modeValidation.ts
+      - src/tools/PowerShellTool/gitSafety.ts
+      - src/tools/PowerShellTool/commandSemantics.ts
+      - src/tools/PowerShellTool/commonParameters.ts
+      - src/tools/PowerShellTool/UI.tsx
+      - src/tools/PowerShellTool/prompt.ts
+      - src/tools/PowerShellTool/destructiveCommandWarning.ts
+      - src/tools/PowerShellTool/toolName.ts
+      - src/tools/PowerShellTool/clmTypes.ts
+
+  - id: powershell-parser
+    kind: source
+    section: 4
+    summary: PowerShell 解析工具
+    files:
+      - src/utils/powershell/parser.ts
+      - src/utils/powershell/staticPrefix.ts
+      - src/utils/powershell/dangerousCmdlets.ts
+
+  - id: shell-provider
+    kind: source
+    section: 4
+    summary: ShellProvider 抽象接口，BashProvider 和 PowerShellProvider 实现
+    files:
+      - src/utils/shell/shellProvider.ts
+      - src/utils/shell/bashProvider.ts
+      - src/utils/shell/powershellProvider.ts
+      - src/utils/shell/powershellDetection.ts
+      - src/utils/shell/shellToolUtils.ts
+
+  - id: shell-utils
+    kind: source
+    section: 4
+    summary: Shell 工具函数，输出限制、只读命令验证、前缀处理
+    files:
+      - src/utils/shell/outputLimits.ts
+      - src/utils/shell/specPrefix.ts
+      - src/utils/shell/prefix.ts
+      - src/utils/shell/readOnlyCommandValidation.ts
+
+  - id: shell-core
+    kind: source
+    section: 4
+    summary: Shell 执行核心，进程管理、超时处理、输出收集
+    files:
+      - src/utils/Shell.ts
+      - src/utils/ShellCommand.ts
+
+  - id: task-output
+    kind: source
+    section: 4
+    summary: TaskOutput 输出文件管理、polling 机制
+    files:
+      - src/utils/task/TaskOutput.ts
+      - src/utils/task/diskOutput.ts
+
+  - id: local-shell-task
+    kind: source
+    section: 4
+    summary: LocalShellTask 后台任务管理、注册、通知
+    files:
+      - src/tasks/LocalShellTask/LocalShellTask.ts
+
+  - id: terminal-capture
+    kind: source
+    section: 4
+    summary: TerminalCaptureTool 终端捕获工具
+    files:
+      - src/tools/TerminalCaptureTool/TerminalCaptureTool.ts
+      - src/tools/TerminalCaptureTool/prompt.ts
+
+  - id: sandbox
+    kind: source
+    section: 4
+    summary: SandboxManager 沙箱适配器、配置转换、裸 Git 仓库防护
+    files:
+      - src/utils/sandbox/sandbox-adapter.ts
+      - src/utils/sandbox/sandbox-ui-utils.ts
+
+  - id: shell-tests
+    kind: test
+    section: 7
+    summary: Shell tools 测试文件
+    files:
+      - tests/bashClassifier.test.ts
+      - tests/bashPermissionsClassifier.test.ts
