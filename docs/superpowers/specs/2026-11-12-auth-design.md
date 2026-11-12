@@ -399,7 +399,7 @@ type AuthTokenSource =
 - **Config**：`oauthAccount` 信息存储在 global config（非敏感），本文描述与安全存储的边界
 - **Lockfile**：跨进程锁使用 lockfile 模块，本文只描述调用方式
 
-## 6. 失败语义与工程取舍
+## 5. 失败语义与工程取舍
 
 | 触发条件 | 检测位置 | 消息/异常如何传播 | 是否重试及上限 | 状态与资源清理 | 调用方可见结果 |
 |---|---|---|---|---|---|
@@ -427,7 +427,7 @@ type AuthTokenSource =
 | 托管会话隔离：不读取用户本地凭据 | isManagedOAuthContext() 多处检查 | 需要在多个检查点应用，容易遗漏 | 安全边界清晰，托管会话不被用户本地配置干扰 |
 | token redaction：错误消息中替换 token | safeRefreshError() 替换 token 为 <redacted> | 需要在所有输出 token 的地方应用，容易遗漏 | 防止敏感 token 意外出现在日志/终端 |
 
-## 7. 现状验收标准
+## 6. 现状验收标准
 
 | 初始状态与输入 | 执行场景 | 必须观察到的行为 | 禁止发生的副作用 |
 |---|---|---|---|
@@ -442,7 +442,7 @@ type AuthTokenSource =
 | apiKeyHelper 配置在 settings 中 | 调用 getApiKeyFromApiKeyHelper() | 执行 helper 命令，缓存结果（TTL 5 分钟） | 不应该每次调用都执行 helper |
 | policySettings 强制组织 UUID | 用户登录不同组织 | validateForceLoginOrg() 失败，显示错误，不保存 tokens | 不应该保存错误组织的 tokens |
 
-## 8. 代码与测试证据
+## 7. 代码与测试证据
 
 | 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
 |---|---|---|---|
@@ -458,7 +458,7 @@ type AuthTokenSource =
 | refresh 时 scope 扩展：Claude.ai 用户不指定 scope | `src/services/oauth/client.ts:146-273` | 需查找相关测试 | 未找到直接测试覆盖 |
 | 401 错误处理：对比 token + 并发去重 | `src/utils/auth.ts:1339-1392` | 需查找相关测试 | 未找到直接测试覆盖 |
 
-### 8.1 核心模块
+### 7.1 核心模块
 
 | 文件 | 关键符号 | 说明 |
 |---|---|---|
@@ -484,7 +484,7 @@ type AuthTokenSource =
 | `tests/oauthRefresh.test.ts` | (tests) | OAuth refresh 测试：并发去重、redaction、status 等 |
 | `tests/linuxSecretStorage.test.ts` | (tests) | Linux libsecret 存储测试：读写、fallback 等 |
 
-### 8.2 未覆盖行为（基于代码阅读）
+### 7.2 未覆盖行为（基于代码阅读）
 
 - macOS Keychain stale-while-error 行为测试
 - 跨进程文件锁刷新并发测试
@@ -496,11 +496,11 @@ type AuthTokenSource =
 - Keychain 预取与缓存 priming 测试
 - auth.ts 中 _apiKeyHelperEpoch 竞态避免测试
 
-## 9. 文件覆盖与相关子系统
+## 8. 文件覆盖与相关子系统
 
 [Coverage](../../architecture/coverage/auth.yaml)
 
-### 9.1 本 spec 主拥有的文件
+### 8.1 本 spec 主拥有的文件
 
 | 分组 | 主拥有职责 |
 |---|---|
