@@ -4,7 +4,7 @@ import { logForDebugging } from '../debug.js'
 import { errorMessage } from '../errors.js'
 import { withResolvers } from '../withResolvers.js'
 import { isLockHeldLocally, releaseComputerUseLock } from './computerUseLock.js'
-import { unregisterEscHotkey } from './escHotkey.js'
+import { getComputerUseBackendKind } from './gates.js'
 
 // cu.apps.unhide is NOT one of the four @MainActor methods wrapped by
 // drainRunLoop's 30s backstop. On abort paths (where the user hit Ctrl+C
@@ -61,6 +61,17 @@ export async function cleanupComputerUseAfterTurn(
     )
   }
 
+  if (getComputerUseBackendKind() === 'zavora') {
+    try {
+      const { closeComputerUseBackend } = await import('./wrapper.js')
+      await closeComputerUseBackend()
+    } catch (err) {
+      logForDebugging(
+        `[Computer Use MCP] Zavora session close failed: ${errorMessage(err)}`,
+      )
+    }
+  }
+
   // Zero-syscall pre-check so non-CU turns don't touch disk. Release is still
   // idempotent (returns false if already released or owned by another session).
   if (!isLockHeldLocally()) return
@@ -70,7 +81,10 @@ export async function cleanupComputerUseAfterTurn(
   // Swallow throws so a NAPI unregister error never prevents lock release —
   // a held lock blocks the next CU session with "in use by another session".
   try {
-    unregisterEscHotkey()
+    if (getComputerUseBackendKind() === 'native-adapter') {
+      const { unregisterEscHotkey } = await import('./escHotkey.js')
+      await unregisterEscHotkey()
+    }
   } catch (err) {
     logForDebugging(
       `[Computer Use MCP] unregisterEscHotkey failed: ${errorMessage(err)}`,

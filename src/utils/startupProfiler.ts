@@ -152,6 +152,30 @@ export function getStartupPerfLogPath(): string {
   return join(getClaudeConfigHomeDir(), 'startup-perf', `${getSessionId()}.txt`)
 }
 
+export function getStartupProfileData(): {
+  detailedEnabled: boolean
+  checkpointCount: number
+  phases: Array<{ name: string; durationMs: number }>
+  totalTimeMs: number
+} {
+  const marks = getPerformance().getEntriesByType('mark')
+  const times = new Map(marks.map(mark => [mark.name, mark.startTime]))
+  const phases: Array<{ name: string; durationMs: number }> = []
+  for (const [name, [start, end]] of Object.entries(PHASE_DEFINITIONS)) {
+    const startTime = times.get(start)
+    const endTime = times.get(end)
+    if (startTime !== undefined && endTime !== undefined) {
+      phases.push({ name, durationMs: Math.max(0, endTime - startTime) })
+    }
+  }
+  return {
+    detailedEnabled: DETAILED_PROFILING,
+    checkpointCount: marks.length,
+    phases,
+    totalTimeMs: phases.find(phase => phase.name === 'total_time')?.durationMs ?? 0,
+  }
+}
+
 /**
  * Log startup performance phases to Statsig.
  * Only logs if this session was sampled at startup.

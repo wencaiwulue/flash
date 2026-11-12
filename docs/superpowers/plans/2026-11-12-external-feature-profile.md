@@ -15,13 +15,13 @@
 - `USER_TYPE` remains `external`; `CLAUDE_CODE_VERIFY_PLAN` remains `false`.
 - Production and verification builds must consume the same feature list and external define. No internal-only feature is added.
 - Feature-profile checks run in a standalone Bun child process with `ANTHROPIC_API_KEY=offline-test-placeholder`, `ANTHROPIC_BASE_URL=https://api.anthropic.com`, `ENABLE_TOOL_SEARCH=true`, and `NODE_ENV=production` set after outer environment values.
-- Current profile contains 42 tools and zero null entries. Sleep starts disabled and enables with proactive; worker is background and does not include Agent.
+- Current profile contains 43 tools and zero null entries. Sleep starts disabled and enables with proactive; worker is background and does not include Agent.
 - Do not claim model, Cloud OAuth, desktop, or remote-registry validation. Do not record historical execution results.
 - Work in `/Users/fengcaiwen/GolandProjects/claude-code/.claude/worktrees/date-based-commit-docs`. Do not push until the user asks for a PR.
 
 ## File Structure
 
-- Create `scripts/externalFeatures.ts`: sole source of the external feature array.
+- Create `scripts/externalFeatureProfile.ts`: sole source of the external feature array.
 - Modify `scripts/build.ts`: consume the shared array for both product bundles.
 - Modify `tests/fixtures/verify-enabled-features.ts`: consume the same array for the verification bundle.
 - Create `tests/externalFeatures.test.ts`: verify shared-list identity and exact feature membership.
@@ -34,7 +34,7 @@
 ### Task 1: Single-Source External Features
 
 **Files:**
-- Create: `scripts/externalFeatures.ts`
+- Create: `scripts/externalFeatureProfile.ts`
 - Modify: `scripts/build.ts`
 - Modify: `tests/fixtures/verify-enabled-features.ts`
 - Test: `tests/externalFeatures.test.ts`
@@ -49,7 +49,7 @@ Create `tests/externalFeatures.test.ts`:
 
 ```ts
 import { expect, test } from 'bun:test'
-import { EXTERNAL_FEATURES } from '../scripts/externalFeatures.ts'
+import { EXTERNAL_FEATURES } from '../scripts/externalFeatureProfile.ts'
 
 test('production and verification builds share one exact external feature list', async () => {
   const build = await Bun.file('scripts/build.ts').text()
@@ -57,6 +57,7 @@ test('production and verification builds share one exact external feature list',
   expect(build).toContain('features: EXTERNAL_FEATURES')
   expect(verification).toContain('features: EXTERNAL_FEATURES')
   expect(EXTERNAL_FEATURES).toEqual([
+    'AGENT_MEMORY_SNAPSHOT',
     'AGENT_TRIGGERS',
     'AGENT_TRIGGERS_REMOTE',
     'VOICE_MODE',
@@ -65,6 +66,8 @@ test('production and verification builds share one exact external feature list',
     'FILE_PERSISTENCE',
     'KAIROS_BRIEF',
     'MONITOR_TOOL',
+    'TEMPLATES',
+    'OPEN_RUNNER',
     'OVERFLOW_TEST_TOOL',
     'TERMINAL_PANEL',
     'PROACTIVE',
@@ -74,7 +77,10 @@ test('production and verification builds share one exact external feature list',
     'DAEMON',
     'WORKFLOW_SCRIPTS',
     'CONTEXT_COLLAPSE',
+    'DIRECT_CONNECT',
+    'BG_SESSIONS',
     'REACTIVE_COMPACT',
+    'SSH_REMOTE',
     'BUDDY',
     'FORK_SUBAGENT',
     'HISTORY_SNIP',
@@ -82,6 +88,8 @@ test('production and verification builds share one exact external feature list',
     'KAIROS',
     'KAIROS_GITHUB_WEBHOOKS',
     'CHICAGO_MCP',
+    'COMMIT_ATTRIBUTION',
+    'BASH_CLASSIFIER',
     'WEB_BROWSER_TOOL',
   ])
 })
@@ -91,11 +99,11 @@ test('production and verification builds share one exact external feature list',
 
 Run: `bun test tests/externalFeatures.test.ts`
 
-Expected: FAIL because `scripts/externalFeatures.ts` does not exist.
+Expected: FAIL because `scripts/externalFeatureProfile.ts` does not exist.
 
 - [ ] **Step 3: Create the shared module**
 
-Create `scripts/externalFeatures.ts`:
+Create `scripts/externalFeatureProfile.ts`:
 
 ```ts
 export const EXTERNAL_FEATURES = [
@@ -133,25 +141,25 @@ export const EXTERNAL_FEATURES = [
 Add to `scripts/build.ts`:
 
 ```ts
-import { EXTERNAL_FEATURES } from './externalFeatures.ts'
+import { EXTERNAL_FEATURES } from './externalFeatureProfile.ts'
 ```
 
 Replace the complete `features: [...]` literal with:
 
 ```ts
-    features: EXTERNAL_FEATURES,
+    features: [...EXTERNAL_FEATURES],
 ```
 
 Add to `tests/fixtures/verify-enabled-features.ts`:
 
 ```ts
-import { EXTERNAL_FEATURES } from '../../scripts/externalFeatures.ts'
+import { EXTERNAL_FEATURES } from '../../scripts/externalFeatureProfile.ts'
 ```
 
 Replace its complete `features: [...]` literal with:
 
 ```ts
-  features: EXTERNAL_FEATURES,
+  features: [...EXTERNAL_FEATURES],
 ```
 
 Do not change `define`, loaders, entrypoints, or output names.
@@ -170,7 +178,7 @@ Expected: the shared-list test and typecheck PASS.
 - [ ] **Step 6: Commit Task 1**
 
 ```bash
-git add scripts/externalFeatures.ts scripts/build.ts tests/fixtures/verify-enabled-features.ts tests/externalFeatures.test.ts
+git add scripts/externalFeatureProfile.ts scripts/build.ts tests/fixtures/verify-enabled-features.ts tests/externalFeatures.test.ts
 git commit -m "Share external feature definitions"
 ```
 
@@ -289,9 +297,18 @@ test('packages an executable CLI, importable SDK, and matching declarations', as
   expect(await sdkFile.exists()).toBe(true)
   expect(await declarations.exists()).toBe(true)
 
-  const sdk = await import(join(root, 'dist/sdk.mjs'))
-  expect(typeof sdk.query).toBe('function')
-  expect(typeof sdk.createSdkMcpServer).toBe('function')
+  const smoke = Bun.spawnSync({
+    cmd: [
+      process.execPath,
+      '-e',
+      "const sdk=await import('./dist/sdk.mjs'); if(typeof sdk.query!=='function'||typeof sdk.createSdkMcpServer!=='function') throw new Error('Invalid SDK exports')",
+    ],
+    cwd: root,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  expect(smoke.stderr.toString()).toBe('')
+  expect(smoke.exitCode).toBe(0)
 
   const packageJson = await Bun.file(join(root, 'package.json')).json()
   expect(packageJson.exports['.'].import).toBe('./dist/sdk.mjs')
@@ -369,7 +386,7 @@ Replace the body of the existing test with:
 
 ```ts
 const profile = await runFeatureProfile()
-expect(profile.toolCount, JSON.stringify(profile)).toBe(42)
+expect(profile.toolCount, JSON.stringify(profile)).toBe(43)
 expect(profile.nullCount).toBe(0)
 expect(profile.toolNames).toEqual(expect.arrayContaining([
   'CronCreate', 'CronDelete', 'CronList', 'RemoteTrigger', 'Monitor',
@@ -416,7 +433,7 @@ This verifies that outer values are applied before the fixed test values and can
 
 Run: `bun test tests/enabledFeatures.test.ts`
 
-Expected: both profile tests PASS with 42 tools, zero null entries, and identical profiles. No live API request is required.
+Expected: both profile tests PASS with 43 tools, zero null entries, and identical profiles. No live API request is required.
 
 - [ ] **Step 4: Commit Task 4**
 
@@ -451,7 +468,7 @@ bun -e "const sdk=await import('./dist/sdk.mjs'); if(typeof sdk.query!=='functio
 git diff --check
 ```
 
-Expected: every command exits zero. The profile remains at 42 tools and zero null entries. The legacy commit-level `docs:check` is intentionally excluded: it is superseded by the feature-level documentation workflow and will be replaced in the documentation-tools feature cycle, not used as acceptance for this feature.
+Expected: every command exits zero. The profile remains at 43 tools and zero null entries. The legacy commit-level `docs:check` is intentionally excluded: it is superseded by the feature-level documentation workflow and will be replaced in the documentation-tools feature cycle, not used as acceptance for this feature.
 
 - [ ] **Step 3: Commit the implementation plan**
 

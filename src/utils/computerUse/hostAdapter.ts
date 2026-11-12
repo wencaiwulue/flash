@@ -30,10 +30,10 @@ class DebugLogger implements Logger {
 let cached: ComputerUseHostAdapter | undefined
 
 /**
- * Process-lifetime singleton. Built once on first CU tool call; native modules
- * (both `@ant/computer-use-input` and `@ant/computer-use-swift`) are loaded
- * here via the executor factory, which throws on load failure — there is no
- * degraded mode.
+ * Process-lifetime singleton for the explicit native-adapter backend. The
+ * executor uses the open JSON-lines Swift helper (CGEvent, ScreenCaptureKit,
+ * NSWorkspace and CoreGraphics). Helper/build or TCC failures surface as
+ * runtime health errors; this backend never falls back to Zavora.
  */
 export function getComputerUseHostAdapter(): ComputerUseHostAdapter {
   if (cached) return cached
@@ -46,8 +46,8 @@ export function getComputerUseHostAdapter(): ComputerUseHostAdapter {
     }),
     ensureOsPermissions: async () => {
       const cu = requireComputerUseSwift()
-      const accessibility = cu.tcc.checkAccessibility()
-      const screenRecording = cu.tcc.checkScreenRecording()
+      const accessibility = await cu.tcc.checkAccessibility()
+      const screenRecording = await cu.tcc.checkScreenRecording()
       return accessibility && screenRecording
         ? { granted: true }
         : { granted: false, accessibility, screenRecording }

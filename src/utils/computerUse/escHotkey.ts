@@ -1,18 +1,15 @@
 import { logForDebugging } from '../debug.js'
-import { releasePump, retainPump } from './drainRunLoop.js'
 import { requireComputerUseSwift } from './swiftLoader.js'
 
 /**
  * Global Escape → abort. Mirrors Cowork's `escAbort.ts` but without Electron:
- * CGEventTap via `@ant/computer-use-swift`. While registered, Escape is
+ * CGEventTap in the open native helper. While registered, Escape is
  * consumed system-wide (PI defense — a prompt-injected action can't dismiss
  * a dialog with Escape).
  *
  * Lifecycle: register on fresh lock acquire (`wrapper.tsx` `acquireCuLock`),
- * unregister on lock release (`cleanup.ts`). The tap's CFRunLoopSource sits
- * in .defaultMode on CFRunLoopGetMain(), so we hold a drainRunLoop pump
- * retain for the registration's lifetime — same refcounted setInterval as
- * the `@MainActor` methods.
+ * unregister on lock release (`cleanup.ts`). The helper owns the tap's main
+ * CFRunLoop for the whole registration, so no Node-side busy pump is needed.
  *
  * `notifyExpectedEscape()` punches a hole for model-synthesized Escapes: the
  * executor's `key("escape")` calls it before posting the CGEvent. Swift
@@ -22,33 +19,31 @@ import { requireComputerUseSwift } from './swiftLoader.js'
 
 let registered = false
 
-export function registerEscHotkey(onEscape: () => void): boolean {
+export async function registerEscHotkey(onEscape: () => void): Promise<boolean> {
   if (registered) return true
   const cu = requireComputerUseSwift()
-  if (!cu.hotkey.registerEscape(onEscape)) {
+  if (!(await cu.hotkey.registerEscape(onEscape))) {
     // CGEvent.tapCreate failed — typically missing Accessibility permission.
     // CU still works, just without ESC abort. Mirrors Cowork's escAbort.ts:81.
     logForDebugging('[cu-esc] registerEscape returned false', { level: 'warn' })
     return false
   }
-  retainPump()
   registered = true
   logForDebugging('[cu-esc] registered')
   return true
 }
 
-export function unregisterEscHotkey(): void {
+export async function unregisterEscHotkey(): Promise<void> {
   if (!registered) return
   try {
-    requireComputerUseSwift().hotkey.unregister()
+    await requireComputerUseSwift().hotkey.unregister()
   } finally {
-    releasePump()
     registered = false
     logForDebugging('[cu-esc] unregistered')
   }
 }
 
-export function notifyExpectedEscape(): void {
+export async function notifyExpectedEscape(): Promise<void> {
   if (!registered) return
-  requireComputerUseSwift().hotkey.notifyExpectedEscape()
+  await requireComputerUseSwift().hotkey.notifyExpectedEscape()
 }

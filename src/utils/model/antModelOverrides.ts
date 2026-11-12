@@ -1,3 +1,4 @@
+import { getInitialSettings } from '../settings/settings.js'
 import type { EffortLevel } from '../effort.js'
 
 export type AntModelInfo = {
@@ -17,16 +18,56 @@ export type AntModelOverrideConfig = {
   defaultModelEffortLevel?: EffortLevel
 }
 
-// Internal model catalogs are not bundled in the external build. Keeping the
-// disabled result explicit prevents accidental fallback to private model IDs.
+/* eslint-disable @typescript-eslint/no-require-imports */
+function getInternalModels(): typeof import('./antModels.js') | null {
+  // Keep the existing internal flag-backed catalog available to ant builds.
+  // External builds eliminate this branch and only read public settings.
+  return process.env.USER_TYPE === 'ant'
+    ? (require('./antModels.js') as typeof import('./antModels.js'))
+    : null
+}
+/* eslint-enable @typescript-eslint/no-require-imports */
+
 export function getAntModelOverrideConfig(): AntModelOverrideConfig | undefined {
-  return undefined
+  const internal = getInternalModels()?.getAntModelOverrideConfig()
+  if (internal) {
+    return internal
+  }
+  return getInitialSettings().modelCatalog
 }
 
 export function getAntModels(): AntModelInfo[] {
-  return []
+  const internal = getInternalModels()
+  if (internal) {
+    const models = internal.getAntModels()
+    if (models.length > 0) {
+      return models
+    }
+  }
+  return getInitialSettings().modelCatalog?.models ?? []
 }
 
-export function resolveAntModel(_model: string): AntModelInfo | undefined {
-  return undefined
+export function resolveAntModel(
+  model: string | undefined,
+): AntModelInfo | undefined {
+  if (model === undefined) {
+    return undefined
+  }
+  const normalized = model
+    .trim()
+    .toLowerCase()
+    .replace(/\[1m]$/i, '')
+    .trim()
+  if (!normalized) {
+    return undefined
+  }
+  return getAntModels().find(candidate => {
+    const alias = candidate.alias.toLowerCase()
+    const modelId = candidate.model.toLowerCase()
+    return (
+      alias === normalized ||
+      modelId === normalized ||
+      normalized.includes(modelId)
+    )
+  })
 }

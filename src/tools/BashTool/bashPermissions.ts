@@ -35,9 +35,11 @@ import type {
 } from '../../utils/permissions/bashClassifier.js'
 import {
   classifyBashCommand,
+  createClassifierCacheKey,
   getBashPromptAllowDescriptions,
   getBashPromptAskDescriptions,
   getBashPromptDenyDescriptions,
+  getBashPromptRuleConfigurationError,
   isClassifierPermissionsEnabled,
 } from '../../utils/permissions/bashClassifier.js'
 import type {
@@ -1459,7 +1461,7 @@ function checkSemanticsDeny(
 function buildPendingClassifierCheck(
   command: string,
   toolPermissionContext: ToolPermissionContext,
-): { command: string; cwd: string; descriptions: string[] } | undefined {
+): PendingClassifierCheck | undefined {
   if (!isClassifierPermissionsEnabled()) {
     return undefined
   }
@@ -1467,16 +1469,26 @@ function buildPendingClassifierCheck(
   if (feature('TRANSCRIPT_CLASSIFIER') && toolPermissionContext.mode === 'auto')
     return undefined
   if (toolPermissionContext.mode === 'bypassPermissions') return undefined
+  if (getBashPromptRuleConfigurationError(toolPermissionContext)) {
+    return undefined
+  }
 
   const allowDescriptions = getBashPromptAllowDescriptions(
     toolPermissionContext,
   )
   if (allowDescriptions.length === 0) return undefined
 
+  const cwd = getCwd()
   return {
     command,
-    cwd: getCwd(),
+    cwd,
     descriptions: allowDescriptions,
+    cacheKey: createClassifierCacheKey(
+      command,
+      cwd,
+      'allow',
+      allowDescriptions,
+    ),
   }
 }
 
@@ -1489,9 +1501,9 @@ const speculativeChecks = new Map<string, Promise<ClassifierResult>>()
  * consumeSpeculativeClassifierCheck.
  */
 export function peekSpeculativeClassifierCheck(
-  command: string,
+  pendingCheck: PendingClassifierCheck,
 ): Promise<ClassifierResult> | undefined {
-  return speculativeChecks.get(command)
+  return speculativeChecks.get(pendingCheck.cacheKey)
 }
 
 export function startSpeculativeClassifierCheck(
@@ -1500,21 +1512,18 @@ export function startSpeculativeClassifierCheck(
   signal: AbortSignal,
   isNonInteractiveSession: boolean,
 ): boolean {
-  // Same guards as buildPendingClassifierCheck
-  if (!isClassifierPermissionsEnabled()) return false
-  if (feature('TRANSCRIPT_CLASSIFIER') && toolPermissionContext.mode === 'auto')
-    return false
-  if (toolPermissionContext.mode === 'bypassPermissions') return false
-  const allowDescriptions = getBashPromptAllowDescriptions(
+  const pendingCheck = buildPendingClassifierCheck(
+    command,
     toolPermissionContext,
   )
-  if (allowDescriptions.length === 0) return false
+  if (!pendingCheck || speculativeChecks.has(pendingCheck.cacheKey)) {
+    return pendingCheck !== undefined
+  }
 
-  const cwd = getCwd()
   const promise = classifyBashCommand(
-    command,
-    cwd,
-    allowDescriptions,
+    pendingCheck.command,
+    pendingCheck.cwd,
+    pendingCheck.descriptions,
     'allow',
     signal,
     isNonInteractiveSession,
@@ -1522,20 +1531,20 @@ export function startSpeculativeClassifierCheck(
   // Prevent unhandled rejection if the signal aborts before this promise is consumed.
   // The original promise (which may reject) is still stored in the Map for consumers to await.
   promise.catch(() => {})
-  speculativeChecks.set(command, promise)
+  speculativeChecks.set(pendingCheck.cacheKey, promise)
   return true
 }
 
 /**
- * Consume a speculative classifier check result for the given command.
- * Returns the promise if one exists (and removes it from the map), or undefined.
+ * Consume a speculative classifier check only when command, cwd, behavior,
+ * and the complete ordered rule set all match. Removes it from the map.
  */
 export function consumeSpeculativeClassifierCheck(
-  command: string,
+  pendingCheck: PendingClassifierCheck,
 ): Promise<ClassifierResult> | undefined {
-  const promise = speculativeChecks.get(command)
+  const promise = speculativeChecks.get(pendingCheck.cacheKey)
   if (promise) {
-    speculativeChecks.delete(command)
+    speculativeChecks.delete(pendingCheck.cacheKey)
   }
   return promise
 }
@@ -1558,7 +1567,8 @@ export async function awaitClassifierAutoApproval(
   isNonInteractiveSession: boolean,
 ): Promise<PermissionDecisionReason | undefined> {
   const { command, cwd, descriptions } = pendingCheck
-  const speculativeResult = consumeSpeculativeClassifierCheck(command)
+  if (signal.aborted) throw new AbortError()
+  const speculativeResult = consumeSpeculativeClassifierCheck(pendingCheck)
   const classifierResult = speculativeResult
     ? await speculativeResult
     : await classifyBashCommand(
@@ -1569,13 +1579,17 @@ export async function awaitClassifierAutoApproval(
         signal,
         isNonInteractiveSession,
       )
+  if (signal.aborted) throw new AbortError()
 
   logClassifierResultForAnts(command, 'allow', descriptions, classifierResult)
 
   if (
     feature('BASH_CLASSIFIER') &&
+    classifierResult.available &&
     classifierResult.matches &&
-    classifierResult.confidence === 'high'
+    classifierResult.confidence === 'high' &&
+    classifierResult.matchedDescription !== undefined &&
+    descriptions.includes(classifierResult.matchedDescription)
   ) {
     return {
       type: 'classifier',
@@ -1603,17 +1617,16 @@ type AsyncClassifierCheckCallbacks = {
  * @param callbacks - Callbacks to check if we should continue and handle approval
  */
 export async function executeAsyncClassifierCheck(
-  pendingCheck: { command: string; cwd: string; descriptions: string[] },
+  pendingCheck: PendingClassifierCheck,
   signal: AbortSignal,
   isNonInteractiveSession: boolean,
   callbacks: AsyncClassifierCheckCallbacks,
 ): Promise<void> {
   const { command, cwd, descriptions } = pendingCheck
-  const speculativeResult = consumeSpeculativeClassifierCheck(command)
+  const speculativeResult = consumeSpeculativeClassifierCheck(pendingCheck)
 
-  let classifierResult: ClassifierResult
   try {
-    classifierResult = speculativeResult
+    const classifierResult = speculativeResult
       ? await speculativeResult
       : await classifyBashCommand(
           command,
@@ -1623,36 +1636,38 @@ export async function executeAsyncClassifierCheck(
           signal,
           isNonInteractiveSession,
         )
-  } catch (error: unknown) {
-    // When the coordinator session is cancelled, the abort signal fires and the
-    // classifier API call rejects with APIUserAbortError. This is expected and
-    // should not surface as an unhandled promise rejection.
-    if (error instanceof APIUserAbortError || error instanceof AbortError) {
-      callbacks.onComplete?.()
-      return
+    if (signal.aborted) return
+
+    logClassifierResultForAnts(command, 'allow', descriptions, classifierResult)
+
+    // A late result must not override a decision or interaction in the dialog.
+    if (!callbacks.shouldContinue()) return
+
+    if (
+      feature('BASH_CLASSIFIER') &&
+      classifierResult.available &&
+      classifierResult.matches &&
+      classifierResult.confidence === 'high' &&
+      classifierResult.matchedDescription !== undefined &&
+      descriptions.includes(classifierResult.matchedDescription)
+    ) {
+      callbacks.onAllow({
+        type: 'classifier',
+        classifier: 'bash_allow',
+        reason: `Allowed by prompt rule: "${classifierResult.matchedDescription}"`,
+      })
     }
-    callbacks.onComplete?.()
-    throw error
-  }
-
-  logClassifierResultForAnts(command, 'allow', descriptions, classifierResult)
-
-  // Don't auto-approve if user already made a decision or has interacted
-  // with the permission dialog (e.g., arrow keys, tab, typing)
-  if (!callbacks.shouldContinue()) return
-
-  if (
-    feature('BASH_CLASSIFIER') &&
-    classifierResult.matches &&
-    classifierResult.confidence === 'high'
-  ) {
-    callbacks.onAllow({
-      type: 'classifier',
-      classifier: 'bash_allow',
-      reason: `Allowed by prompt rule: "${classifierResult.matchedDescription}"`,
-    })
-  } else {
-    // No match — notify so the checking indicator is cleared
+  } catch (error: unknown) {
+    // Aborts and unexpected classifier failures both fail closed. classifyBashCommand
+    // already converts ordinary service failures to unavailable results.
+    if (!(error instanceof APIUserAbortError) && !(error instanceof AbortError)) {
+      logForDebugging(
+        `[bash-classifier] allow check failed: ${
+          error instanceof Error ? error.name : 'unknown error'
+        }`,
+      )
+    }
+  } finally {
     callbacks.onComplete?.()
   }
 }
@@ -1861,8 +1876,22 @@ export async function bashToolHasPermission(
     !(
       feature('TRANSCRIPT_CLASSIFIER') &&
       appState.toolPermissionContext.mode === 'auto'
-    )
+    ) &&
+    appState.toolPermissionContext.mode !== 'bypassPermissions'
   ) {
+    const configurationError = getBashPromptRuleConfigurationError(
+      appState.toolPermissionContext,
+    )
+    if (configurationError) {
+      return {
+        behavior: 'ask',
+        message: createPermissionRequestMessage(BashTool.name, {
+          type: 'other',
+          reason: configurationError,
+        }),
+        decisionReason: { type: 'other', reason: configurationError },
+      }
+    }
     const denyDescriptions = getBashPromptDenyDescriptions(
       appState.toolPermissionContext,
     )
@@ -1918,7 +1947,13 @@ export async function bashToolHasPermission(
       }
 
       // Deny takes precedence
-      if (denyResult?.matches && denyResult.confidence === 'high') {
+      if (
+        denyResult?.available &&
+        denyResult.matches &&
+        denyResult.confidence === 'high' &&
+        denyResult.matchedDescription !== undefined &&
+        denyDescriptions.includes(denyResult.matchedDescription)
+      ) {
         return {
           behavior: 'deny',
           message: `Denied by Bash prompt rule: "${denyResult.matchedDescription}"`,
@@ -1929,7 +1964,29 @@ export async function bashToolHasPermission(
         }
       }
 
-      if (askResult?.matches && askResult.confidence === 'high') {
+      if (
+        (denyResult !== null && !denyResult.available) ||
+        (askResult !== null && !askResult.available)
+      ) {
+        const reason =
+          'Bash prompt rule classification is unavailable; manual permission review is required.'
+        return {
+          behavior: 'ask',
+          message: createPermissionRequestMessage(BashTool.name, {
+            type: 'other',
+            reason,
+          }),
+          decisionReason: { type: 'other', reason },
+        }
+      }
+
+      if (
+        askResult?.available &&
+        askResult.matches &&
+        askResult.confidence === 'high' &&
+        askResult.matchedDescription !== undefined &&
+        askDescriptions.includes(askResult.matchedDescription)
+      ) {
         // Skip the Haiku call — the UI computes the prefix locally
         // and lets the user edit it. Still call the injected function
         // when tests override it.
@@ -1957,14 +2014,6 @@ export async function bashToolHasPermission(
             reason: `Required by Bash prompt rule: "${askResult.matchedDescription}"`,
           },
           suggestions,
-          ...(feature('BASH_CLASSIFIER')
-            ? {
-                pendingClassifierCheck: buildPendingClassifierCheck(
-                  input.command,
-                  appState.toolPermissionContext,
-                ),
-              }
-            : {}),
         }
       }
     }

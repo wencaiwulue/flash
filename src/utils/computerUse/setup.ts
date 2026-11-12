@@ -1,4 +1,7 @@
-import { listOpenComputerUseTools } from '@ant/computer-use-mcp'
+import {
+  buildComputerUseTools,
+  listOpenComputerUseTools,
+} from '@ant/computer-use-mcp'
 import { join } from 'path'
 import { fileURLToPath } from 'url'
 import { buildMcpToolName } from '../../services/mcp/mcpStringUtils.js'
@@ -6,6 +9,7 @@ import type { ScopedMcpServerConfig } from '../../services/mcp/types.js'
 
 import { isInBundledMode } from '../bundledMode.js'
 import { COMPUTER_USE_MCP_SERVER_NAME } from './common.js'
+import { getChicagoCoordinateMode, getComputerUseBackendKind } from './gates.js'
 
 /**
  * Build the dynamic MCP config + allowed tool names. Mirror of
@@ -23,7 +27,17 @@ export async function setupComputerUseMCP(): Promise<{
   mcpConfig: Record<string, ScopedMcpServerConfig>
   allowedTools: string[]
 }> {
-  const allowedTools = (await listOpenComputerUseTools()).map(t =>
+  const tools =
+    getComputerUseBackendKind() === 'native-adapter'
+      ? await (async () => {
+          const { getComputerUseHostAdapter } = await import('./hostAdapter.js')
+          return buildComputerUseTools(
+            getComputerUseHostAdapter().executor.capabilities,
+            getChicagoCoordinateMode(),
+          )
+        })()
+      : await listOpenComputerUseTools()
+  const allowedTools = tools.map(t =>
     buildMcpToolName(COMPUTER_USE_MCP_SERVER_NAME, t.name),
   )
 

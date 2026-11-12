@@ -1,11 +1,11 @@
 export type SentinelCategory = 'shell' | 'filesystem' | 'system_settings'
 
-const SENTINEL_APPS: Readonly<Record<string, SentinelCategory>> = {
+export const SENTINEL_APPS: Readonly<Record<string, SentinelCategory>> = Object.freeze({
   'com.apple.Terminal': 'shell',
   'com.googlecode.iterm2': 'shell',
   'com.apple.finder': 'filesystem',
   'com.apple.systempreferences': 'system_settings',
-}
+})
 
 export function getSentinelCategory(
   bundleId: string,

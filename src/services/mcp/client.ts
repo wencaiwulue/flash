@@ -21,6 +21,7 @@ import {
 } from '@modelcontextprotocol/sdk/shared/transport.js'
 import {
   CallToolResultSchema,
+  CreateTaskResultSchema,
   ElicitRequestSchema,
   type ElicitRequestURLParams,
   type ElicitResult,
@@ -45,6 +46,7 @@ import type { Command } from '../../commands.js'
 import { getOauthConfig } from '../../constants/oauth.js'
 import { PRODUCT_URL } from '../../constants/product.js'
 import type { AppState } from '../../state/AppState.js'
+import type { AgentId } from '../../types/ids.js'
 import {
   type Tool,
   type ToolCallProgress,
@@ -906,23 +908,43 @@ export const connectToServer = memoize(
         (serverRef.type === 'stdio' || !serverRef.type) &&
         isClaudeInChromeMCPServer(name)
       ) {
-        // Run the Chrome MCP server in-process to avoid spawning a ~325 MB subprocess
+        // Share only the real-Chrome cache. WebBrowser has a separate isolated
+        // client and cleanup function, so neither backend can close the other.
         const { createChromeContext } = await import(
           '../../utils/claudeInChrome/mcpServer.js'
         )
-        const { createClaudeForChromeMcpServer } = await import(
+        const { closeOpenChromeClient, getOpenChromeClient } = await import(
           '@ant/claude-for-chrome-mcp'
         )
-        const { createLinkedTransportPair } = await import(
-          './InProcessTransport.js'
-        )
         const context = createChromeContext(serverRef.env)
-        const server = await createClaudeForChromeMcpServer(context)
-        inProcessServer = server
-        const [clientTransport, serverTransport] = createLinkedTransportPair()
-        await server.connect(serverTransport)
-        transport = clientTransport
-        logMCPDebug(name, `In-process Chrome MCP server started`)
+        const client = await getOpenChromeClient(context)
+        const key = getServerCacheKey(name, serverRef)
+        const previousOnclose = client.onclose
+        client.onclose = () => {
+          connectToServer.cache.delete(key)
+          fetchToolsForClient.cache.delete(name)
+          fetchResourcesForClient.cache.delete(name)
+          fetchCommandsForClient.cache.delete(name)
+          previousOnclose?.()
+        }
+        const cleanup = async () => {
+          await closeOpenChromeClient(client)
+        }
+        const cleanupUnregister = registerCleanup(cleanup)
+        logMCPDebug(name, `In-process real Chrome CDP client connected`)
+        return {
+          name,
+          client,
+          type: 'connected' as const,
+          capabilities: client.getServerCapabilities() ?? {},
+          serverInfo: client.getServerVersion(),
+          instructions: client.getInstructions(),
+          config: serverRef,
+          cleanup: async () => {
+            cleanupUnregister?.()
+            await cleanup()
+          },
+        }
       } else if (
         feature('CHICAGO_MCP') &&
         (serverRef.type === 'stdio' || !serverRef.type) &&
@@ -1702,6 +1724,12 @@ export async function ensureConnectedClient(
       'MCP server not connected',
     )
   }
+  if (feature('MONITOR_TOOL') && connectedClient.client !== client.client) {
+    const { reconnectMonitorMcpTasksForServer } = await import(
+      '../../tasks/MonitorMcpTask/MonitorMcpTask.js'
+    )
+    await reconnectMonitorMcpTasksForServer(connectedClient)
+  }
   return connectedClient
 }
 
@@ -1813,7 +1841,17 @@ export const fetchToolsForClient = memoizeWithLRU(
               return classifyMcpToolForCollapse(client.name, tool.name)
             },
             inputJSONSchema: tool.inputSchema as Tool['inputJSONSchema'],
-            async checkPermissions() {
+            async checkPermissions(input) {
+              if (
+                isClaudeInChromeMCPServer(client.name) &&
+                'env' in client.config &&
+                client.config.env?.CLAUDE_CHROME_PERMISSION_MODE ===
+                  'skip_all_permission_checks'
+              ) {
+                return { behavior: 'allow' as const, updatedInput: input }
+              }
+              // ask and follow_a_plan stay in the host MCP permission flow;
+              // plan mode is enforced by the same wrapper as other MCP tools.
               return {
                 behavior: 'passthrough' as const,
                 message: 'MCPTool requires permission.',
@@ -1869,7 +1907,12 @@ export const fetchToolsForClient = memoizeWithLRU(
                     args,
                     meta,
                     signal: context.abortController.signal,
-                    setAppState: context.setAppState,
+                    getAppState: context.getAppState,
+                    setAppState:
+                      context.setAppStateForTasks ?? context.setAppState,
+                    toolUseId,
+                    agentId: context.agentId,
+                    taskSupport: tool.execution?.taskSupport,
                     onProgress:
                       onProgress && toolUseId
                         ? progressData => {
@@ -2819,7 +2862,12 @@ export async function callMCPToolWithUrlElicitationRetry({
   args,
   meta,
   signal,
+  getAppState,
   setAppState,
+  toolUseId,
+  agentId,
+  taskSupport,
+  taskMonitoringEnabled,
   onProgress,
   callToolFn = callMCPTool,
   handleElicitation,
@@ -2830,7 +2878,13 @@ export async function callMCPToolWithUrlElicitationRetry({
   args: Record<string, unknown>
   meta?: Record<string, unknown>
   signal: AbortSignal
+  getAppState?: () => AppState
   setAppState: (f: (prev: AppState) => AppState) => void
+  toolUseId?: string
+  agentId?: AgentId
+  taskSupport?: 'required' | 'optional' | 'forbidden'
+  /** @internal Test override; production defaults to the MONITOR_TOOL feature. */
+  taskMonitoringEnabled?: boolean
   onProgress?: (data: MCPProgress) => void
   /** Injectable for testing. Defaults to callMCPTool. */
   callToolFn?: (opts: {
@@ -2839,6 +2893,12 @@ export async function callMCPToolWithUrlElicitationRetry({
     args: Record<string, unknown>
     meta?: Record<string, unknown>
     signal: AbortSignal
+    getAppState?: () => AppState
+    setAppState: (f: (prev: AppState) => AppState) => void
+    toolUseId?: string
+    agentId?: AgentId
+    taskSupport?: 'required' | 'optional' | 'forbidden'
+    taskMonitoringEnabled?: boolean
     onProgress?: (data: MCPProgress) => void
   }) => Promise<MCPToolCallResult>
   /** Handler for URL elicitations when no hook handles them.
@@ -2858,6 +2918,12 @@ export async function callMCPToolWithUrlElicitationRetry({
         args,
         meta,
         signal,
+        getAppState,
+        setAppState,
+        toolUseId,
+        agentId,
+        taskSupport,
+        taskMonitoringEnabled,
         onProgress,
       })
     } catch (error) {
@@ -3029,11 +3095,17 @@ export async function callMCPToolWithUrlElicitationRetry({
 }
 
 async function callMCPTool({
-  client: { client, name, config },
+  client: connectedClient,
   tool,
   args,
   meta,
   signal,
+  getAppState,
+  setAppState,
+  toolUseId,
+  agentId,
+  taskSupport,
+  taskMonitoringEnabled,
   onProgress,
 }: {
   client: ConnectedMCPServer
@@ -3041,12 +3113,20 @@ async function callMCPTool({
   args: Record<string, unknown>
   meta?: Record<string, unknown>
   signal: AbortSignal
+  getAppState?: () => AppState
+  setAppState?: (f: (prev: AppState) => AppState) => void
+  toolUseId?: string
+  agentId?: AgentId
+  taskSupport?: 'required' | 'optional' | 'forbidden'
+  /** @internal Test override; production defaults to the MONITOR_TOOL feature. */
+  taskMonitoringEnabled?: boolean
   onProgress?: (data: MCPProgress) => void
 }): Promise<{
   content: MCPToolResult
   _meta?: Record<string, unknown>
   structuredContent?: Record<string, unknown>
 }> {
+  const { client, name, config } = connectedClient
   const toolStartTime = Date.now()
   let progressInterval: NodeJS.Timeout | undefined
 
@@ -3090,32 +3170,51 @@ async function callMCPTool({
       )
     })
 
+    const onprogress = onProgress
+      ? (sdkProgress: {
+          progress: number
+          total?: number
+          message?: string
+        }) => {
+          onProgress({
+            type: 'mcp_progress',
+            status: 'progress',
+            serverName: name,
+            toolName: tool,
+            progress: sdkProgress.progress,
+            total: sdkProgress.total,
+            progressMessage: sdkProgress.message,
+          })
+        }
+      : undefined
+    const monitorFeatureEnabled = feature('MONITOR_TOOL') ? true : false
+    const shouldCreateTask =
+      (taskMonitoringEnabled ?? monitorFeatureEnabled) &&
+      (taskSupport === 'required' || taskSupport === 'optional') &&
+      !!config &&
+      !!getAppState &&
+      !!setAppState &&
+      !!(client.getServerCapabilities() ?? connectedClient.capabilities).tasks
+        ?.requests?.tools?.call
     const result = await Promise.race([
-      client.callTool(
-        {
-          name: tool,
-          arguments: args,
-          _meta: meta,
-        },
-        CallToolResultSchema,
-        {
-          signal,
-          timeout: timeoutMs,
-          onprogress: onProgress
-            ? sdkProgress => {
-                onProgress({
-                  type: 'mcp_progress',
-                  status: 'progress',
-                  serverName: name,
-                  toolName: tool,
-                  progress: sdkProgress.progress,
-                  total: sdkProgress.total,
-                  progressMessage: sdkProgress.message,
-                })
-              }
-            : undefined,
-        },
-      ),
+      shouldCreateTask
+        ? client.request(
+            {
+              method: 'tools/call',
+              params: { name: tool, arguments: args, _meta: meta },
+            },
+            CreateTaskResultSchema,
+            { signal, timeout: timeoutMs, onprogress, task: {} },
+          )
+        : client.callTool(
+            {
+              name: tool,
+              arguments: args,
+              _meta: meta,
+            },
+            CallToolResultSchema,
+            { signal, timeout: timeoutMs, onprogress },
+          ),
       timeoutPromise,
     ]).finally(() => {
       if (timeoutId) {
@@ -3149,6 +3248,30 @@ async function callMCPTool({
         '_meta' in result && result._meta ? { _meta: result._meta } : undefined,
       )
     }
+    if (shouldCreateTask) {
+      const createResult = CreateTaskResultSchema.parse(result)
+      const { createMonitorMcpTask } = await import(
+        '../../tasks/MonitorMcpTask/MonitorMcpTask.js'
+      )
+      const monitor = createMonitorMcpTask({
+        server: connectedClient,
+        toolName: tool,
+        createResult,
+        getAppState: getAppState!,
+        setAppState: setAppState!,
+        toolUseId,
+        agentId,
+      })
+      if (!monitor) {
+        throw new Error(
+          'MCP server returned a task, but its Tasks capability or task identity could not be validated',
+        )
+      }
+      return {
+        content: `MCP task started with local task ID ${monitor.taskId}. The remote task is ${createResult.task.status}; final output will arrive in a task notification.`,
+      }
+    }
+
     const elapsed = Date.now() - toolStartTime
     const duration =
       elapsed < 1000

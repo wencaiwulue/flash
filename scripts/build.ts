@@ -1,7 +1,7 @@
 import { chmod } from 'node:fs/promises'
 import packageJson from '../package.json'
 import { generateSdkTypes } from './generate-sdk-types.ts'
-import { EXTERNAL_FEATURES } from './externalFeatures.ts'
+import { EXTERNAL_FEATURES } from './externalFeatureProfile.ts'
 
 generateSdkTypes()
 
@@ -37,7 +37,7 @@ for (const build of builds) {
     outdir,
     target: 'bun',
     format: 'esm',
-    features: EXTERNAL_FEATURES,
+    features: [...EXTERNAL_FEATURES],
     define,
     loader: {
       '.md': 'text',

@@ -1,7 +1,7 @@
 /**
- * CLI `ComputerExecutor` implementation. Wraps two native modules:
- *   - `@ant/computer-use-input` (Rust/enigo) — mouse, keyboard, frontmost app
- *   - `@ant/computer-use-swift` — SCContentFilter screenshots, NSWorkspace apps, TCC
+ * CLI `ComputerExecutor` implementation over the open native adapter:
+ *   - public CGEvent input and NSWorkspace frontmost application state
+ *   - ScreenCaptureKit screenshots, NSWorkspace apps and TCC preflight
  *
  * Contract: `packages/desktop/computer-use-mcp/src/executor.ts` in the apps
  * repo. The reference impl is Cowork's `apps/desktop/src/main/nest-only/
@@ -144,7 +144,7 @@ async function releasePressed(input: Input, pressed: string[]): Promise<void> {
  * actually landed, so a mid-press throw only releases what was pressed — no
  * stuck modifiers. The finally covers both press-phase and fn() throws.
  *
- * Caller must already be inside drainRunLoop() — key() dispatches to the
+ * Caller must already be inside drain() — key() dispatches to the
  * main queue and needs the pump to resolve.
  */
 async function withModifiers<T>(
@@ -259,6 +259,8 @@ async function animatedMove(
 export function createCliExecutor(opts: {
   getMouseAnimationEnabled: () => boolean
   getHideBeforeActionEnabled: () => boolean
+  input?: ReturnType<typeof requireComputerUseInput>
+  swift?: ReturnType<typeof requireComputerUseSwift>
 }): ComputerExecutor {
   if (process.platform !== 'darwin') {
     throw new Error(
@@ -267,10 +269,12 @@ export function createCliExecutor(opts: {
   }
 
   // Swift loaded once at factory time — every executor method needs it.
-  // Input loaded lazily via requireComputerUseInput() on first mouse/keyboard
+  // Input loaded lazily via getInput() on first mouse/keyboard
   // call — it caches internally, so screenshot-only flows never pull the
   // enigo .node.
-  const cu = requireComputerUseSwift()
+  const cu = opts.swift ?? requireComputerUseSwift()
+  const getInput = (): Input => opts.input ?? requireComputerUseInput()
+  const drain = <T>(fn: () => Promise<T>): Promise<T> => drainRunLoop(fn, cu)
 
   const { getMouseAnimationEnabled, getHideBeforeActionEnabled } = opts
   const terminalBundleId = getTerminalBundleId()
@@ -316,7 +320,7 @@ export function createCliExecutor(opts: {
       //
       // "Continue with action execution even if switching fails" — the
       // frontmost gate in toolCalls.ts catches any actual unsafe state.
-      return drainRunLoop(async () => {
+      return drain(async () => {
         try {
           const result = await cu.apps.prepareDisplay(
             allowlistBundleIds,
@@ -371,13 +375,13 @@ export function createCliExecutor(opts: {
       autoResolve: boolean
       doHide?: boolean
     }): Promise<ResolvePrepareCaptureResult> {
-      const d = cu.display.getSize(opts.preferredDisplayId)
+      const d = await cu.display.getSize(opts.preferredDisplayId)
       const [targetW, targetH] = computeTargetDims(
         d.width,
         d.height,
         d.scaleFactor,
       )
-      return drainRunLoop(() =>
+      return drain(() =>
         cu.resolvePrepareCapture(
           withoutTerminal(opts.allowedBundleIds),
           surrogateHost,
@@ -400,13 +404,13 @@ export function createCliExecutor(opts: {
       allowedBundleIds: string[]
       displayId?: number
     }): Promise<ScreenshotResult> {
-      const d = cu.display.getSize(opts.displayId)
+      const d = await cu.display.getSize(opts.displayId)
       const [targetW, targetH] = computeTargetDims(
         d.width,
         d.height,
         d.scaleFactor,
       )
-      return drainRunLoop(() =>
+      return drain(() =>
         cu.screenshot.captureExcluding(
           withoutTerminal(opts.allowedBundleIds),
           SCREENSHOT_JPEG_QUALITY,
@@ -422,13 +426,13 @@ export function createCliExecutor(opts: {
       allowedBundleIds: string[],
       displayId?: number,
     ): Promise<{ base64: string; width: number; height: number }> {
-      const d = cu.display.getSize(displayId)
+      const d = await cu.display.getSize(displayId)
       const [outW, outH] = computeTargetDims(
         regionLogical.w,
         regionLogical.h,
         d.scaleFactor,
       )
-      return drainRunLoop(() =>
+      return drain(() =>
         cu.screenshot.captureRegion(
           withoutTerminal(allowedBundleIds),
           regionLogical.x,
@@ -453,19 +457,19 @@ export function createCliExecutor(opts: {
      * nothing stuck. 8ms between iterations — 125Hz USB polling cadence.
      */
     async key(keySequence: string, repeat?: number): Promise<void> {
-      const input = requireComputerUseInput()
+      const input = getInput()
       const parts = keySequence.split('+').filter(p => p.length > 0)
       // Bare-only: the CGEventTap checks event.flags.isEmpty so ctrl+escape
       // etc. pass through without aborting.
       const isEsc = isBareEscape(parts)
       const n = repeat ?? 1
-      await drainRunLoop(async () => {
+      await drain(async () => {
         for (let i = 0; i < n; i++) {
           if (i > 0) {
             await sleep(8)
           }
           if (isEsc) {
-            notifyExpectedEscape()
+            await notifyExpectedEscape()
           }
           await input.keys(parts)
         }
@@ -473,7 +477,7 @@ export function createCliExecutor(opts: {
     },
 
     async holdKey(keyNames: string[], durationMs: number): Promise<void> {
-      const input = requireComputerUseInput()
+      const input = getInput()
       // Press/release each wrapped in drainRunLoop; the sleep sits outside so
       // durationMs isn't bounded by drainRunLoop's 30s timeout. `pressed`
       // tracks which presses landed so a mid-press throw still releases
@@ -487,13 +491,13 @@ export function createCliExecutor(opts: {
       const pressed: string[] = []
       let orphaned = false
       try {
-        await drainRunLoop(async () => {
+        await drain(async () => {
           for (const k of keyNames) {
             if (orphaned) return
             // Bare Escape: notify the CGEventTap so it doesn't fire the
             // abort callback for a model-synthesized press. Same as key().
             if (isBareEscape([k])) {
-              notifyExpectedEscape()
+              await notifyExpectedEscape()
             }
             await input.key(k, 'press')
             pressed.push(k)
@@ -502,15 +506,15 @@ export function createCliExecutor(opts: {
         await sleep(durationMs)
       } finally {
         orphaned = true
-        await drainRunLoop(() => releasePressed(input, pressed))
+        await drain(() => releasePressed(input, pressed))
       }
     },
 
     async type(text: string, opts: { viaClipboard: boolean }): Promise<void> {
-      const input = requireComputerUseInput()
+      const input = getInput()
       if (opts.viaClipboard) {
         // keys(['command','v']) inside needs the pump.
-        await drainRunLoop(() => typeViaClipboard(input, text))
+        await drain(() => typeViaClipboard(input, text))
         return
       }
       // `toolCalls.ts` handles the grapheme loop + 8ms sleeps and calls this
@@ -525,7 +529,7 @@ export function createCliExecutor(opts: {
     // ── Mouse ────────────────────────────────────────────────────────────
 
     async moveMouse(x: number, y: number): Promise<void> {
-      await moveAndSettle(requireComputerUseInput(), x, y)
+      await moveAndSettle(getInput(), x, y)
     },
 
     /**
@@ -542,10 +546,10 @@ export function createCliExecutor(opts: {
       count: 1 | 2 | 3,
       modifiers?: string[],
     ): Promise<void> {
-      const input = requireComputerUseInput()
+      const input = getInput()
       await moveAndSettle(input, x, y)
       if (modifiers && modifiers.length > 0) {
-        await drainRunLoop(() =>
+        await drain(() =>
           withModifiers(input, modifiers, () =>
             input.mouseButton(button, 'click', count),
           ),
@@ -556,15 +560,15 @@ export function createCliExecutor(opts: {
     },
 
     async mouseDown(): Promise<void> {
-      await requireComputerUseInput().mouseButton('left', 'press')
+      await getInput().mouseButton('left', 'press')
     },
 
     async mouseUp(): Promise<void> {
-      await requireComputerUseInput().mouseButton('left', 'release')
+      await getInput().mouseButton('left', 'release')
     },
 
     async getCursorPosition(): Promise<{ x: number; y: number }> {
-      return requireComputerUseInput().mouseLocation()
+      return getInput().mouseLocation()
     },
 
     /**
@@ -580,7 +584,7 @@ export function createCliExecutor(opts: {
       from: { x: number; y: number } | undefined,
       to: { x: number; y: number },
     ): Promise<void> {
-      const input = requireComputerUseInput()
+      const input = getInput()
       if (from !== undefined) {
         await moveAndSettle(input, from.x, from.y)
       }
@@ -598,7 +602,7 @@ export function createCliExecutor(opts: {
      * axis; a horizontal failure shouldn't lose the vertical.
      */
     async scroll(x: number, y: number, dx: number, dy: number): Promise<void> {
-      const input = requireComputerUseInput()
+      const input = getInput()
       await moveAndSettle(input, x, y)
       if (dy !== 0) {
         await input.mouseScroll(dy, 'vertical')
@@ -611,7 +615,7 @@ export function createCliExecutor(opts: {
     // ── App management ───────────────────────────────────────────────────
 
     async getFrontmostApp(): Promise<FrontmostApp | null> {
-      const info = requireComputerUseInput().getFrontmostAppInfo()
+      const info = await getInput().getFrontmostAppInfo()
       if (!info || !info.bundleId) return null
       return { bundleId: info.bundleId, displayName: info.appName }
     },
@@ -627,11 +631,11 @@ export function createCliExecutor(opts: {
       // `ComputerUseInstalledApp` is `{bundleId, displayName, path}`.
       // `InstalledApp` adds optional `iconDataUrl` — left unpopulated;
       // the approval dialog fetches lazily via getAppIcon() below.
-      return drainRunLoop(() => cu.apps.listInstalled())
+      return drain(() => cu.apps.listInstalled())
     },
 
     async getAppIcon(path: string): Promise<string | undefined> {
-      return cu.apps.iconDataUrl(path) ?? undefined
+      return (await cu.apps.iconDataUrl(path)) ?? undefined
     },
 
     async listRunningApps(): Promise<RunningApp[]> {

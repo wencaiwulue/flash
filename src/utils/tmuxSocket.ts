@@ -41,7 +41,7 @@ const CLAUDE_SOCKET_PREFIX = 'claude'
  * launch .exe files as native Win32 processes while stdin/stdout flow through
  * the WSL pty.
  */
-async function execTmux(
+export async function execTmux(
   args: string[],
   opts?: { useCwd?: boolean },
 ): Promise<{ stdout: string; stderr: string; code: number }> {

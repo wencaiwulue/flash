@@ -7,6 +7,12 @@ export const connectResponseSchema = lazySchema(() =>
     session_id: z.string(),
     ws_url: z.string(),
     work_dir: z.string().optional(),
+    protocol: z.literal('direct-connect-v1').optional(),
+    state: z
+      .enum(['starting', 'running', 'detached', 'stopping', 'stopped'])
+      .optional(),
+    resumed: z.boolean().optional(),
+    last_seq: z.number().int().nonnegative().optional(),
   }),
 )
 
@@ -21,6 +27,8 @@ export type ServerConfig = {
   maxSessions?: number
   /** Default workspace directory for sessions that don't specify cwd. */
   workspace?: string
+  /** Explicit server-side opt-in for permission bypass. */
+  allowDangerousSkipPermissions?: boolean
 }
 
 export type SessionState =
@@ -37,12 +45,24 @@ export type SessionInfo = {
   workDir: string
   process: ChildProcess | null
   sessionKey?: string
+  lastActiveAt: number
+  lastSeq: number
+  transcriptSessionId: string
+  permissionMode?: string
+  exit?: SessionExit
 }
 
 /**
  * Stable session key → session metadata. Persisted to ~/.claude/server-sessions.json
  * so sessions can be resumed across server restarts.
  */
+export type SessionExit = {
+  code: number | null
+  signal: string | null
+  reason?: string
+  endedAt: number
+}
+
 export type SessionIndexEntry = {
   /** Server-assigned session ID (matches the subprocess's claude session). */
   sessionId: string
@@ -52,6 +72,12 @@ export type SessionIndexEntry = {
   permissionMode?: string
   createdAt: number
   lastActiveAt: number
+  processStartToken?: string
+  state: SessionState
+  lastSeq: number
+  exit?: SessionExit | null
+  replayResetBeforeSeq?: number
+  ownerId?: string
 }
 
 export type SessionIndex = Record<string, SessionIndexEntry>

@@ -12,7 +12,54 @@ CLI 与 Agent SDK 共享 TypeScript 源码、查询、工具、权限和 session
 
 External feature profile 的目标是建立可复现的双产品交付链，并用真实 bundle 验证 external 功能边界。该功能只处理构建、类型、注册和离线行为，不验证真实模型、Cloud OAuth、桌面控制或远端 registry。
 
-## 2. 目标与非目标
+## 2. 为什么采用这套设计与实施顺序
+
+设计首先解决的是“交付结果不可信”，而不是“缺少一个构建脚本”。以下选择都直接对应这个根因。
+
+### 2.1 为什么共享源码与双入口构建
+
+CLI 与 SDK 的查询、工具、权限和 session 行为必须一致，分别实现会产生永久维护成本和语义漂移。共享源码并在入口层处理可执行 CLI 与可导入 SDK 的差异，可以把“行为一致”变成结构性约束。代价是两个入口必须一起评审生命周期和导出边界，不能只改其中一端。
+
+### 2.2 为什么从 schema 生成公共类型
+
+手写 declarations 会让公共 API 与真实校验规则逐渐不一致。以 `coreSchemas.ts` 和 `controlSchemas.ts` 为唯一事实来源，可以让调用方看到的类型与运行时接受的输入保持同源。当前生成器采用行首正则换取最小实现复杂度，因此必须显式接受 `export const ...Schema` 的命名约束；没有匹配项时失败，而不是生成一个看似完整的空文件。
+
+### 2.3 为什么生产与验收必须共享 feature 列表
+
+Bun feature flag 会参与 dead-code elimination。生产与验收各维护一份列表时，可能出现“测试验证了生产并不包含的代码”或“生产新增功能却没有验收”的假阳性。`externalFeatureProfile.ts` 是两类构建的唯一功能清单，新增功能必须同时通过实现、注册和 dist 验收。选择单一列表不是减少几行重复，而是让验收对象可信。
+
+### 2.4 为什么验收真实 bundle，而不是只测源码
+
+源码中的 `isEnabled()` 或 import 存在，不能证明代码最终进入 dist。验收构建再次编译 `feature-check.ts` 并在独立 Bun 子进程中加载，才能发现 feature 未启用、注册遗漏、空实现和打包后的模块初始化问题。独立子进程还避免 Bun test runner 对模块导入的拦截改变生产行为。
+
+### 2.5 为什么固定离线环境，并把在线验证分开
+
+外部服务和本机环境会让构建验收变慢且不确定。固定 `ANTHROPIC_BASE_URL`、`ENABLE_TOOL_SEARCH` 和占位凭据，是为了让失败只能来自构建或注册，而不是开发机差异。真实模型、Cloud OAuth、桌面和远端 registry 属于不同故障域，不能用它们阻塞基础交付，也不能用离线 profile 冒充这些能力已在线可用。
+
+### 2.6 为什么按这个顺序实施
+
+1. **先固定依赖与 exports**：后续产物才有稳定输入和可检查的消费路径。
+2. **再生成类型**：先得到 SDK 编译所需声明，错误不会被后续 bundle 掩盖。
+3. **再构建 CLI/SDK**：此时可以验证外部入口、权限和 dead-code elimination 的真实结果。
+4. **最后验证注册与状态**：工具、命令、worker、Sleep 和 skills 只有在 bundle 可加载后才有验收意义。
+5. **最后改变外层环境复验**：确认结果由构建配置决定，而不是被本机配置污染。
+
+这个顺序让每一步都有可验证产物和明确故障边界，不是形式上的“先代码后测试”。
+
+### 2.7 不采用哪些替代方案，以及为什么
+
+| 备选做法 | 不采用的原因 |
+|---|---|
+| CLI 与 SDK 各自实现 | 查询、工具与权限语义会重复并漂移 |
+| 手写 SDK declarations | 类型容易与 Zod 校验规则脱节 |
+| 生产与测试各维护 feature 列表 | 验收可能与实际交付配置不一致 |
+| 只做源码单元测试 | 无法发现 dead-code elimination 和打包初始化问题 |
+| 以真实外部服务作为基础构建验收 | 引入凭据、网络和平台差异，模糊故障边界 |
+| 固定工具数量作为唯一目标 | 数量只是当前快照，正确集合、无空实现和状态一致性才是目的 |
+
+当前 `main` 的 profile 是 43 个工具，但这个数字不是设计目标本身。新增功能时，数量应随 EXTERNAL_FEATURES 与真实注册共同变化；不能用改大或改小数字代替原因分析。
+
+## 3. 目标与非目标
 
 ### 目标
 
@@ -28,7 +75,7 @@ External feature profile 的目标是建立可复现的双产品交付链，并�
 - 不把源码存在、类型存在或构建成功等同于外部服务可用。
 - 不在该功能中处理模型、Cloud、桌面或远端 registry 的在线验收。
 
-## 3. 总体架构
+## 4. 总体架构
 
 ```text
 coreSchemas.ts / controlSchemas.ts
@@ -54,9 +101,9 @@ src/entrypoints/cli.tsx  src/entrypoints/agentSdkTypes.ts
 
 生产构建和验收构建共享 feature 集与 external define。`tests/fixtures/feature-check.ts` 导出真实注册表，`tests/fixtures/verify-enabled-features.ts` 再构建并加载它，避免只验证源码而不验证交付配置。
 
-## 4. 组件契约
+## 5. 组件契约
 
-### 4.1 依赖与公共导出
+### 5.1 依赖与公共导出
 
 `package.json`、`bun.lock`、`bunfig.toml` 和 `tsconfig.json` 固定工具链。CLI 通过 `bin` 与 `./cli` 指向 `dist/main.js`；SDK import 指向 `dist/sdk.mjs`，SDK types 指向 `dist/types/entrypoints/agentSdkTypes.d.ts`。
 
@@ -68,7 +115,7 @@ src/entrypoints/cli.tsx  src/entrypoints/agentSdkTypes.ts
 - `build`：先打包，再生成 declarations；
 - `dev`/`start`：进入 CLI 源码入口。
 
-### 4.2 SDK 类型生成
+### 5.2 SDK 类型生成
 
 `generate-sdk-types.ts` 处理两个目标：
 
@@ -81,7 +128,7 @@ src/entrypoints/cli.tsx  src/entrypoints/agentSdkTypes.ts
 
 该实现依赖命名约定，新增 schema 必须遵循 `export const ...Schema` 形式。
 
-### 4.3 双入口打包
+### 5.3 双入口打包
 
 `scripts/build.ts` 在打包前调用类型生成，再构建：
 
@@ -90,7 +137,7 @@ src/entrypoints/cli.tsx  src/entrypoints/agentSdkTypes.ts
 
 两者使用 Bun target、ESM format，并注入版本、包 URL、`USER_TYPE=external` 和 `CLAUDE_CODE_VERIFY_PLAN=false`。`features` 显式列出 external 功能，不能用默认全量内部实现替代。任一 `result.success` 为假时打印构建日志并非零退出。
 
-### 4.4 功能注册与运行时边界
+### 5.4 功能注册与运行时边界
 
 工具是否进入 bundle、命令是否注册、命令 availability 和运行时 `isEnabled` 是不同层次：
 
@@ -101,13 +148,13 @@ src/entrypoints/cli.tsx  src/entrypoints/agentSdkTypes.ts
 
 `ultraplan` 等命令可以同时具有 external 注册与 `claude-ai` availability，不能用 internal-only 列表或 `USER_TYPE==='ant'` 重复限制。
 
-### 4.5 Feature-profile 验收
+### 5.5 Feature-profile 验收
 
 `tests/fixtures/feature-check.ts` 导出 `getAllBaseTools`、`builtInCommandNames`、`getCoordinatorAgents`、`isReactiveCompactEnabled` 和 bundled skills/proactive 控制函数。
 
 `verify-enabled-features.ts` 使用同一 feature 集构建 fixture，并在独立 Bun 子进程中检查：
 
-- 工具总数当前为 42，且没有 null entry；
+- 工具总数当前为 43，且没有 null entry；
 - 指定工具、命令和 skills 均存在；
 - Sleep 初始 disabled，proactive 激活后 enabled；
 - worker 是后台 worker，具有 Bash 但不具有 Agent；
@@ -115,7 +162,7 @@ src/entrypoints/cli.tsx  src/entrypoints/agentSdkTypes.ts
 
 测试子进程固定 `ANTHROPIC_API_KEY=offline-test-placeholder`、`ANTHROPIC_BASE_URL=https://api.anthropic.com`、`ENABLE_TOOL_SEARCH=true` 和 `NODE_ENV=production`，避免外层环境改变 ToolSearch 注册结果。
 
-## 5. 失败语义
+## 6. 失败语义
 
 | 失败 | 处理 |
 |---|---|
@@ -127,7 +174,7 @@ src/entrypoints/cli.tsx  src/entrypoints/agentSdkTypes.ts
 | 外层环境覆盖测试输入 | 在子进程 env 中显式覆盖测试值，禁止 profile 漂移 |
 | 外部服务未授权 | 不属于本功能；不得用 offline profile 冒充在线可用 |
 
-## 6. 实施顺序
+## 7. 实施顺序
 
 1. 固定依赖、tsconfig、lockfile、入口和 exports。
 2. 实现 schema 类型生成及无匹配失败测试。
@@ -136,7 +183,7 @@ src/entrypoints/cli.tsx  src/entrypoints/agentSdkTypes.ts
 5. 实现 feature-profile fixture，覆盖正常注册、空实现、状态转换和递归限制。
 6. 在对立外层环境下重复验收，再执行全量工程检查。
 
-## 7. 验收标准
+## 8. 验收标准
 
 ### 构建与导出
 
@@ -147,7 +194,7 @@ src/entrypoints/cli.tsx  src/entrypoints/agentSdkTypes.ts
 
 ### Feature profile
 
-- 当前 profile 包含 42 个工具且 `nullCount===0`，指定工具和命令均存在。
+- 当前 profile 包含 43 个工具且 `nullCount===0`，指定工具和命令均存在。
 - Sleep 初始 disabled，proactive 激活后 enabled；worker 为后台 worker 且不含 Agent。
 - reactive compaction、hunter、assistant、ultraplan、voice、brief 等注册与 feature 集一致。
 - 外层 `ANTHROPIC_BASE_URL` 和 `ENABLE_TOOL_SEARCH` 取不同值时，profile 结果不发生变化。

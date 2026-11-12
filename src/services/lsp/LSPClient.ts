@@ -411,10 +411,20 @@ export function createLSPClient(
         }
       } catch (error) {
         const err = error as Error
-        logError(
-          new Error(`LSP server ${serverName} stop failed: ${err.message}`),
-        )
-        shutdownError = err
+        const alreadyClosed =
+          connectionClosed ||
+          (err as Error & { code?: number }).code === 1 ||
+          err.message === 'Connection is closed.'
+        if (alreadyClosed) {
+          logForDebugging(
+            `LSP server ${serverName} connection closed during shutdown`,
+          )
+        } else {
+          logError(
+            new Error(`LSP server ${serverName} stop failed: ${err.message}`),
+          )
+          shutdownError = err
+        }
         // Continue to cleanup despite shutdown failure
       } finally {
         if (forceKillTimer) clearTimeout(forceKillTimer)

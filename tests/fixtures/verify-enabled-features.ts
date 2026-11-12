@@ -1,5 +1,5 @@
 import { join, resolve } from 'path'
-import { EXTERNAL_FEATURES } from '../../scripts/externalFeatures.ts'
+import { EXTERNAL_FEATURES } from '../../scripts/externalFeatureProfile.ts'
 
 const root = resolve(import.meta.dir, '../..')
 const outdir = process.argv[2]
@@ -10,7 +10,7 @@ const result = await Bun.build({
   outdir,
   target: 'bun',
   format: 'esm',
-  features: EXTERNAL_FEATURES,
+  features: [...EXTERNAL_FEATURES],
   define: {
     'process.env.USER_TYPE': JSON.stringify('external'),
     'process.env.CLAUDE_CODE_VERIFY_PLAN': JSON.stringify('false'),
@@ -51,6 +51,7 @@ console.log(
     toolCount: tools.length,
     nullCount: tools.filter((tool: unknown) => !tool).length,
     toolNames: tools.map((tool: { name: string }) => tool.name),
+    commandNames: [...commandNames].sort(),
     sleepInitiallyEnabled,
     proactiveActive,
     sleepWhenActive,

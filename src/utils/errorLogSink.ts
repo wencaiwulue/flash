@@ -13,6 +13,8 @@
 import axios from 'axios'
 import { dirname, join } from 'path'
 import { getSessionId } from '../bootstrap/state.js'
+import { isEnvTruthy } from './envUtils.js'
+import { isEssentialTrafficOnly } from './privacyLevel.js'
 import { createBufferedWriter } from './bufferedWriter.js'
 import { CACHE_PATHS } from './cachePaths.js'
 import { registerCleanup } from './cleanupRegistry.js'
@@ -91,12 +93,12 @@ function getLogWriter(path: string): JsonlWriter {
       writeFn: (content: string) => {
         try {
           // Happy-path: directory already exists
-          getFsImplementation().appendFileSync(path, content)
+          getFsImplementation().appendFileSync(path, content, { mode: 0o600 })
         } catch {
           // If any error occurs, assume it was due to missing directory
-          getFsImplementation().mkdirSync(dir)
+          getFsImplementation().mkdirSync(dir, { mode: 0o700 })
           // Retry appending
-          getFsImplementation().appendFileSync(path, content)
+          getFsImplementation().appendFileSync(path, content, { mode: 0o600 })
         }
       },
       flushIntervalMs: 1000,
@@ -108,10 +110,20 @@ function getLogWriter(path: string): JsonlWriter {
   return writer
 }
 
+function shouldPersistLocalLogs(): boolean {
+  return !(
+    process.env.DISABLE_ERROR_REPORTING ||
+    isEssentialTrafficOnly() ||
+    isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK) ||
+    isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX) ||
+    isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY)
+  )
+}
+
 function appendToLog(path: string, message: object): void {
-  if (process.env.USER_TYPE !== 'ant') {
-    return
-  }
+  // Local diagnostics are not network reporting, but the same privacy switch
+  // opts out of retaining potentially sensitive error content on disk.
+  if (!shouldPersistLocalLogs()) return
 
   const messageWithTimestamp = {
     timestamp: new Date().toISOString(),
@@ -177,6 +189,7 @@ function logErrorImpl(error: Error): void {
  * Implementation for logMCPError - writes MCP error to debug log and file.
  */
 function logMCPErrorImpl(serverName: string, error: unknown): void {
+  if (!shouldPersistLocalLogs()) return
   // Not themed, to avoid having to pipe theme all the way down
   logForDebugging(`MCP server "${serverName}" ${error}`, { level: 'error' })
 
@@ -198,6 +211,7 @@ function logMCPErrorImpl(serverName: string, error: unknown): void {
  * Implementation for logMCPDebug - writes MCP debug message to log file.
  */
 function logMCPDebugImpl(serverName: string, message: string): void {
+  if (!shouldPersistLocalLogs()) return
   logForDebugging(`MCP server "${serverName}": ${message}`)
 
   const logFile = getMCPLogsPath(serverName)

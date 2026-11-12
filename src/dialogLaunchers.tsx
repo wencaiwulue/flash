@@ -15,6 +15,7 @@ import { renderAndRun, showSetupDialog } from './interactiveHelpers.js'
 import { KeybindingSetup } from './keybindings/KeybindingProviderSetup.js'
 import type { AppState } from './state/AppStateStore.js'
 import type { AgentMemoryScope } from './tools/AgentTool/agentMemory.js'
+import type { SnapshotUpdateChoice } from './components/agents/SnapshotUpdateDialog.js'
 import type { TeleportRemoteResponse } from './utils/conversationRecovery.js'
 import type { FpsMetrics } from './utils/fpsTracker.js'
 import type { ValidationError } from './utils/settings/validation.js'
@@ -37,7 +38,7 @@ type ResumeConversationProps = React.ComponentProps<
 
 /**
  * Site ~3173: SnapshotUpdateDialog (agent memory snapshot update prompt).
- * Original callback wiring: onComplete={done}, onCancel={() => done('keep')}.
+ * Cancellation is distinct from the explicit Keep local acknowledgement.
  */
 export async function launchSnapshotUpdateDialog(
   root: Root,
@@ -45,19 +46,21 @@ export async function launchSnapshotUpdateDialog(
     agentType: string
     scope: AgentMemoryScope
     snapshotTimestamp: string
+    onApply: (choice: SnapshotUpdateChoice) => Promise<void>
   },
-): Promise<'merge' | 'keep' | 'replace'> {
+): Promise<SnapshotUpdateChoice | 'cancel'> {
   if (!snapshotUpdateDialogModule) {
     throw new Error('Agent memory snapshots are not available in this build')
   }
   const { SnapshotUpdateDialog } = snapshotUpdateDialogModule
-  return showSetupDialog<'merge' | 'keep' | 'replace'>(root, done => (
+  return showSetupDialog<SnapshotUpdateChoice | 'cancel'>(root, done => (
     <SnapshotUpdateDialog
       agentType={props.agentType}
       scope={props.scope}
       snapshotTimestamp={props.snapshotTimestamp}
+      onApply={props.onApply}
       onComplete={done}
-      onCancel={() => done('keep')}
+      onCancel={() => done('cancel')}
     />
   ))
 }

@@ -1,5 +1,6 @@
 import '../runtimeMacros.js'
 import { feature } from 'bun:bundle'
+import { hasBackgroundFlag } from '../cli/bgArgs.js'
 
 // Bugfix for corepack auto-pinning, which adds yarnpkg to peoples' package.jsons
 // eslint-disable-next-line custom-rules/no-top-level-side-effects
@@ -44,6 +45,25 @@ if (feature('ABLATION_BASELINE') && process.env.CLAUDE_CODE_ABLATION_BASELINE) {
 async function main(): Promise<void> {
   const args = process.argv.slice(2)
 
+  // Git prepare-commit-msg fast-path: deliberately before the full CLI and all
+  // project hooks/model setup. Helper failures are non-blocking for the commit.
+  if (args[0] === '--internal-prepare-commit-msg-attribution') {
+    try {
+      const [{ enableConfigs }, { runPrepareCommitMsgAttribution }] =
+        await Promise.all([
+          import('../utils/config.js'),
+          import('../utils/postCommitAttribution.js'),
+        ])
+      enableConfigs()
+      if (!args[1] || !args[2]) throw new Error('Missing Git hook arguments')
+      await runPrepareCommitMsgAttribution(args[1], args[2])
+    } catch {
+      // Keep diagnostics path/content-free: Git hook stderr is user-visible.
+      console.error('Claude Code attribution failed; continuing commit.')
+    }
+    return
+  }
+
   // Fast-path for --version/-v: zero module loading needed
   if (
     args.length === 1 &&
@@ -84,12 +104,9 @@ async function main(): Promise<void> {
     await runClaudeInChromeMcpServer()
     return
   } else if (process.argv[2] === '--chrome-native-host') {
-    profileCheckpoint('cli_chrome_native_host_path')
-    const { runChromeNativeHost } = await import(
-      '../utils/claudeInChrome/chromeNativeHost.js'
+    throw new Error(
+      'Private Claude Chrome extension native messaging/pairing is not supported by the open CDP backend. Start a dedicated Chrome profile with loopback CDP and use --chrome.',
     )
-    await runChromeNativeHost()
-    return
   } else if (
     feature('CHICAGO_MCP') &&
     process.argv[2] === '--computer-use-mcp'
@@ -189,8 +206,7 @@ async function main(): Promise<void> {
       args[0] === 'logs' ||
       args[0] === 'attach' ||
       args[0] === 'kill' ||
-      args.includes('--bg') ||
-      args.includes('--background'))
+      hasBackgroundFlag(args))
   ) {
     profileCheckpoint('cli_bg_path')
     const { enableConfigs } = await import('../utils/config.js')
@@ -215,6 +231,14 @@ async function main(): Promise<void> {
     return
   }
 
+  if (feature('TEMPLATES') && args[0] === 'template-job-supervisor') {
+    const { templateJobSupervisorMain } = await import(
+      '../cli/handlers/templateJobs.js'
+    )
+    await templateJobSupervisorMain(args.slice(1))
+    return
+  }
+
   // Fast-path for template job commands.
   if (
     feature('TEMPLATES') &&
@@ -229,9 +253,24 @@ async function main(): Promise<void> {
     process.exit(0)
   }
 
-  // Fast-path for `claude environment-runner`: headless BYOC runner.
+  if (
+    feature('OPEN_RUNNER') &&
+    (args[0] === 'open-runner' || args[0] === 'open-runner-server')
+  ) {
+    profileCheckpoint('cli_open_runner_path')
+    if (args[0] === 'open-runner-server') {
+      const { openRunnerServerMain } = await import('../open-runner/main.js')
+      await openRunnerServerMain(args.slice(1))
+    } else {
+      const { openRunnerMain } = await import('../open-runner/main.js')
+      await openRunnerMain(args.slice(1))
+    }
+    return
+  }
+
+  // Fast-path for `claude environment-runner`: explicit Open Runner alias.
   // feature() must stay inline for build-time dead code elimination.
-  if (feature('BYOC_ENVIRONMENT_RUNNER') && args[0] === 'environment-runner') {
+  if (feature('OPEN_RUNNER') && args[0] === 'environment-runner') {
     profileCheckpoint('cli_environment_runner_path')
     const { environmentRunnerMain } = await import(
       '../environment-runner/main.js'
@@ -243,7 +282,7 @@ async function main(): Promise<void> {
   // Fast-path for `claude self-hosted-runner`: headless self-hosted-runner
   // targeting the SelfHostedRunnerWorkerService API (register + poll; poll IS
   // heartbeat). feature() must stay inline for build-time dead code elimination.
-  if (feature('SELF_HOSTED_RUNNER') && args[0] === 'self-hosted-runner') {
+  if (feature('OPEN_RUNNER') && args[0] === 'self-hosted-runner') {
     profileCheckpoint('cli_self_hosted_runner_path')
     const { selfHostedRunnerMain } = await import(
       '../self-hosted-runner/main.js'

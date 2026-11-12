@@ -126,7 +126,41 @@ function getSlowWarning(deltaMs: number, name: string): string {
 /**
  * Get a formatted report of all checkpoints for the current/last query
  */
-function getQueryProfileReport(): string {
+export type QueryProfileData = {
+  enabled: boolean
+  queryCount: number
+  checkpoints: Array<{ name: string; startTimeMs: number; durationMs: number }>
+  totalTimeMs: number
+}
+
+/** Read-only structured snapshot. Does not start profiling or create marks. */
+export function getQueryProfileData(): QueryProfileData {
+  const marks = ENABLED
+    ? getPerformance()
+        .getEntriesByType('mark')
+        .filter(mark => mark.name.startsWith('query_'))
+        .slice(-256)
+    : []
+  const baseline = marks[0]?.startTime ?? 0
+  let previous = baseline
+  const checkpoints = marks.map(mark => {
+    const checkpoint = {
+      name: mark.name,
+      startTimeMs: mark.startTime - baseline,
+      durationMs: mark.startTime - previous,
+    }
+    previous = mark.startTime
+    return checkpoint
+  })
+  return {
+    enabled: ENABLED,
+    queryCount,
+    checkpoints,
+    totalTimeMs: marks.length ? previous - baseline : 0,
+  }
+}
+
+export function getQueryProfileReport(): string {
   if (!ENABLED) {
     return 'Query profiling not enabled (set CLAUDE_CODE_PROFILE_QUERY=1)'
   }

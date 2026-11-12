@@ -62,7 +62,7 @@ export async function stopTask(
     )
   }
 
-  await taskImpl.kill(taskId, setAppState)
+  await taskImpl.kill(taskId, setAppState, getAppState)
 
   // Bash: suppress the "exit code 137" notification (noise). Agent tasks: don't
   // suppress — the AbortError catch sends a notification carrying

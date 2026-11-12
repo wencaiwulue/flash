@@ -1,8 +1,14 @@
-import type Anthropic from '@anthropic-ai/sdk'
-import type { Server } from '@modelcontextprotocol/sdk/server/index.js'
+import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+} from '@modelcontextprotocol/sdk/types.js'
 import { createConnection } from '@playwright/mcp'
+import { dirname } from 'path'
+import { fileURLToPath } from 'url'
 
 export type PermissionMode =
   | 'ask'
@@ -17,46 +23,21 @@ export type Logger = {
   error(message: string, ...args: unknown[]): void
 }
 
-export type AnthropicMessagesRequest = {
-  model: string
-  max_tokens: number
-  system: string
-  messages: Anthropic.MessageParam[]
-  stop_sequences?: string[]
-  signal?: AbortSignal
-}
-
-export type AnthropicMessagesResponse = {
-  content: Array<{ type: 'text'; text: string }>
-  stop_reason: string | null
-  usage?: { input_tokens: number; output_tokens: number }
-}
-
-export type ClaudeForChromeContext = {
+export type OpenChromeContext = {
+  kind: 'chrome-cdp'
   serverName: string
   logger: Logger
-  socketPath: string
-  getSocketPaths(): string[]
-  clientTypeId: string
-  onAuthenticationError(): void
+  cdpEndpoint: string
+  cdpTimeoutMs: number
+  allowedOrigins?: string[]
+  initialPermissionMode: PermissionMode
   onToolCallDisconnected(): string
-  onExtensionPaired(deviceId: string, name: string): void
-  getPersistedDeviceId(): string | undefined
-  bridgeConfig?: {
-    url: string
-    getUserId(): Promise<string | undefined>
-    getOAuthToken(): Promise<string>
-    devUserId?: string
-  }
-  initialPermissionMode?: PermissionMode
-  callAnthropicMessages?(
-    request: AnthropicMessagesRequest,
-  ): Promise<AnthropicMessagesResponse>
-  trackEvent(
-    eventName: string,
-    metadata?: Record<string, unknown>,
-  ): void
+  trackEvent(name: string, metadata?: Record<string, unknown>): void
 }
+
+// Keep the old exported name for source compatibility at call sites. The open
+// backend deliberately has no native socket, bridge, or extension pairing API.
+export type ClaudeForChromeContext = OpenChromeContext
 
 export type BrowserToolDescriptor = {
   name: string
@@ -64,54 +45,491 @@ export type BrowserToolDescriptor = {
   inputSchema?: Record<string, unknown>
 }
 
-function browserConfig() {
-  const allowedOrigins = process.env.PLAYWRIGHT_MCP_ALLOWED_ORIGINS?.split(',')
+type PlaywrightMcpConfig = NonNullable<Parameters<typeof createConnection>[0]>
+
+type ManagedConnection = {
+  client: Client
+  close(): Promise<void>
+}
+
+const PRIVATE_EXTENSION_FIELDS = [
+  'socketPath',
+  'getSocketPaths',
+  'clientTypeId',
+  'onAuthenticationError',
+  'onExtensionPaired',
+  'getPersistedDeviceId',
+  'bridgeConfig',
+  'callAnthropicMessages',
+] as const
+
+export const DEFAULT_OPEN_CHROME_CDP_ENDPOINT = 'http://127.0.0.1:9222'
+export const DEFAULT_OPEN_CHROME_CDP_TIMEOUT_MS = 30_000
+
+function allowedOriginsFromEnvironment(): string[] | undefined {
+  const origins = process.env.PLAYWRIGHT_MCP_ALLOWED_ORIGINS?.split(',')
     .map(value => value.trim())
     .filter(Boolean)
+  return origins && origins.length > 0 ? origins : undefined
+}
+
+export function createIsolatedBrowserConfig(options?: {
+  allowedOrigins?: string[]
+}): PlaywrightMcpConfig {
+  const allowedOrigins =
+    options?.allowedOrigins ?? allowedOriginsFromEnvironment()
   return {
     browser: {
       isolated: true,
       launchOptions: { headless: true },
     },
-    ...(allowedOrigins && allowedOrigins.length > 0 ? { allowedOrigins } : {}),
+    ...(allowedOrigins ? { network: { allowedOrigins } } : {}),
   }
 }
 
-export function createClaudeForChromeMcpServer(
-  _context: ClaudeForChromeContext,
-): Promise<Server> {
-  return createConnection(browserConfig())
+export function assertLoopbackCdpEndpoint(endpoint: string): string {
+  let url: URL
+  try {
+    url = new URL(endpoint)
+  } catch (error) {
+    throw new Error('Invalid Chrome CDP endpoint URL', { cause: error })
+  }
+
+  if (!['http:', 'https:', 'ws:', 'wss:'].includes(url.protocol)) {
+    throw new Error('Chrome CDP endpoint must use http(s) or ws(s)')
+  }
+  if (url.hostname !== '127.0.0.1' && url.hostname !== '[::1]') {
+    throw new Error(
+      'Chrome CDP endpoint must use loopback 127.0.0.1 or [::1]; non-loopback and 0.0.0.0 are not allowed',
+    )
+  }
+  if (url.username || url.password) {
+    throw new Error('Chrome CDP endpoint must not contain URL userinfo')
+  }
+  if (url.search || url.hash) {
+    throw new Error('Chrome CDP endpoint must not contain query or fragment data')
+  }
+  return endpoint
 }
 
-let browserClient: Promise<Client> | undefined
+function assertOpenChromeContext(context: OpenChromeContext): void {
+  if (context.kind !== 'chrome-cdp') {
+    throw new Error('Real Chrome requires an explicit chrome-cdp context')
+  }
+  for (const field of PRIVATE_EXTENSION_FIELDS) {
+    if ((context as unknown as Record<string, unknown>)[field] !== undefined) {
+      throw new Error(
+        `Open CDP does not support private extension pairing, native messaging, or bridge configuration (${field})`,
+      )
+    }
+  }
+  assertLoopbackCdpEndpoint(context.cdpEndpoint)
+  if (
+    !Number.isFinite(context.cdpTimeoutMs) ||
+    context.cdpTimeoutMs < 0
+  ) {
+    throw new Error('Chrome CDP timeout must be a non-negative finite number')
+  }
+}
+
+export function createOpenChromeConfig(
+  context: OpenChromeContext,
+): PlaywrightMcpConfig {
+  assertOpenChromeContext(context)
+  return {
+    browser: {
+      browserName: 'chromium',
+      isolated: false,
+      cdpEndpoint: context.cdpEndpoint,
+      cdpTimeout: context.cdpTimeoutMs,
+    },
+    ...(context.allowedOrigins
+      ? { network: { allowedOrigins: context.allowedOrigins } }
+      : {}),
+    timeouts: { idle: 0 },
+  }
+}
+
+async function preflightOpenChrome(context: OpenChromeContext): Promise<void> {
+  const endpoint = new URL(context.cdpEndpoint)
+  if (endpoint.protocol === 'ws:' || endpoint.protocol === 'wss:') return
+
+  const controller = new AbortController()
+  const timeout =
+    context.cdpTimeoutMs > 0
+      ? setTimeout(
+          () => controller.abort(new Error('Chrome CDP preflight timed out')),
+          context.cdpTimeoutMs,
+        )
+      : undefined
+  try {
+    const versionUrl = new URL('/json/version', endpoint)
+    const response = await fetch(versionUrl, { signal: controller.signal })
+    if (!response.ok) {
+      throw new Error(`Chrome CDP preflight returned HTTP ${response.status}`)
+    }
+    const version = (await response.json()) as {
+      Browser?: unknown
+      webSocketDebuggerUrl?: unknown
+    }
+    if (
+      typeof version.Browser !== 'string' ||
+      !/chrome|chromium/i.test(version.Browser) ||
+      typeof version.webSocketDebuggerUrl !== 'string'
+    ) {
+      throw new Error('Loopback endpoint is not a Chrome/Chromium CDP server')
+    }
+  } catch (error) {
+    throw new Error(
+      'Unable to connect to real Chrome over public CDP. Start the dedicated Chrome profile with loopback remote debugging enabled; no isolated browser fallback was started.',
+      { cause: error },
+    )
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+function chromeToolDescription(description: string | undefined): string {
+  return `Real Chrome over public CDP (not the private Claude Chrome extension). ${description ?? ''}`.trim()
+}
+
+const NODE_CDP_SIDECAR = String.raw`
+import { createConnection } from '@playwright/mcp'
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
+const server = await createConnection(JSON.parse(process.env.OPEN_CHROME_PLAYWRIGHT_CONFIG))
+await server.connect(new StdioServerTransport())
+`
+
+async function connectPlaywrightUpstream(
+  context: OpenChromeContext,
+): Promise<{ client: Client; server?: Server }> {
+  // Bun's node:http upgrade emulation currently cannot complete Playwright's
+  // ws-based CDP handshake. Keep the exact same public Playwright config and
+  // MCP protocol, but run only the upstream transport in Node when necessary.
+  if (typeof Bun !== 'undefined') {
+    const client = new Client({ name: context.serverName, version: '1.0.0' })
+    const transport = new StdioClientTransport({
+      command: process.env.CLAUDE_CHROME_NODE_EXECUTABLE ?? 'node',
+      args: ['--input-type=module', '--eval', NODE_CDP_SIDECAR],
+      cwd: dirname(fileURLToPath(import.meta.url)),
+      env: {
+        ...process.env,
+        OPEN_CHROME_PLAYWRIGHT_CONFIG: JSON.stringify(
+          createOpenChromeConfig(context),
+        ),
+      } as Record<string, string>,
+      stderr: 'pipe',
+    })
+    let stderr = ''
+    transport.stderr?.on('data', (chunk: Buffer) => {
+      if (stderr.length < 32_768) stderr += chunk.toString()
+    })
+    try {
+      await client.connect(transport)
+      return { client }
+    } catch (error) {
+      await client.close().catch(() => undefined)
+      context.logger.error(
+        `Node CDP sidecar failed${stderr ? `: ${stderr.slice(0, 1024)}` : ''}`,
+      )
+      throw error
+    }
+  }
+
+  const server = await createConnection(createOpenChromeConfig(context))
+  const client = new Client({ name: context.serverName, version: '1.0.0' })
+  const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair()
+  await server.connect(serverTransport)
+  await client.connect(clientTransport)
+  return { client, server }
+}
+
+/**
+ * Put a small MCP facade in front of Playwright. Besides making browser_close
+ * safe for an attached default context, this gives every transport (including
+ * stdio) the same filtered schemas, serialized calls, and error propagation.
+ */
+async function createOpenChromeProxyServer(
+  context: OpenChromeContext,
+): Promise<Server> {
+  assertOpenChromeContext(context)
+  context.trackEvent('open_chrome_connection', {
+    backend: 'chrome-cdp',
+    status: 'connecting',
+    permission_mode: context.initialPermissionMode,
+    origins_restricted: Boolean(context.allowedOrigins?.length),
+  })
+  context.logger.info('Connecting to real Chrome over public loopback CDP')
+  await preflightOpenChrome(context)
+
+  const { client: upstreamClient, server: upstreamServer } =
+    await connectPlaywrightUpstream(context)
+
+  const proxy = new Server(
+    { name: context.serverName, version: '1.0.0' },
+    { capabilities: { tools: { listChanged: true } } },
+  )
+  let closing = false
+  let disconnected = false
+  let toolQueue: Promise<unknown> = Promise.resolve()
+
+  const closeUpstream = async (): Promise<void> => {
+    await upstreamClient.close().catch(error => {
+      context.logger.warn('Error closing Chrome CDP MCP client', error)
+    })
+    await upstreamServer?.close().catch(error => {
+      context.logger.warn('Error closing Chrome CDP MCP server', error)
+    })
+  }
+
+  upstreamClient.onclose = () => {
+    disconnected = true
+    if (closing) return
+    const message = context.onToolCallDisconnected()
+    context.logger.error(message)
+    context.trackEvent('open_chrome_connection', {
+      backend: 'chrome-cdp',
+      status: 'disconnected',
+    })
+  }
+
+  proxy.onclose = () => {
+    closing = true
+    context.logger.info('Detaching from real Chrome; preserving its default context and tabs')
+    context.trackEvent('open_chrome_connection', {
+      backend: 'chrome-cdp',
+      status: 'detached',
+    })
+    void closeUpstream()
+  }
+
+  proxy.setRequestHandler(ListToolsRequestSchema, async () => {
+    const result = await upstreamClient.listTools()
+    return {
+      ...result,
+      tools: result.tools
+        .filter(tool => tool.name !== 'browser_close')
+        .map(tool => ({
+          ...tool,
+          description: chromeToolDescription(tool.description),
+        })),
+    }
+  })
+
+  proxy.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
+    const toolName = request.params.name
+    if (toolName === 'browser_close') {
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: 'browser_close is disabled for real Chrome. Detach the MCP connection instead, or explicitly close one tab with browser_tabs(close).',
+          },
+        ],
+        isError: true,
+      }
+    }
+
+    const startedAt = Date.now()
+    const call = toolQueue.then(async () => {
+      context.trackEvent('open_chrome_tool', {
+        tool_name: toolName,
+        status: 'started',
+      })
+      try {
+        const result = await upstreamClient.callTool(
+          {
+            name: toolName,
+            arguments: request.params.arguments ?? {},
+            ...(request.params._meta ? { _meta: request.params._meta } : {}),
+          },
+          undefined,
+          { signal: extra.signal },
+        )
+        context.trackEvent('open_chrome_tool', {
+          tool_name: toolName,
+          status: 'isError' in result && result.isError ? 'error' : 'succeeded',
+          duration_ms: Date.now() - startedAt,
+        })
+        return result
+      } catch (error) {
+        context.trackEvent('open_chrome_tool', {
+          tool_name: toolName,
+          status: 'error',
+          error_type: error instanceof Error ? error.name : 'unknown',
+          duration_ms: Date.now() - startedAt,
+        })
+        if (disconnected && !closing) {
+          throw new Error(context.onToolCallDisconnected(), { cause: error })
+        }
+        throw error
+      }
+    })
+    toolQueue = call.catch(() => undefined)
+    return call
+  })
+
+  return proxy
+}
+
+export async function createClaudeForChromeMcpServer(
+  context: ClaudeForChromeContext,
+): Promise<Server> {
+  try {
+    return await createOpenChromeProxyServer(context)
+  } catch (error) {
+    context.logger.error('Failed to connect real Chrome over public CDP', error)
+    context.trackEvent('open_chrome_connection', {
+      backend: 'chrome-cdp',
+      status: 'failed',
+      error_type: error instanceof Error ? error.name : 'unknown',
+    })
+    throw error
+  }
+}
+
+async function connectInMemory(
+  server: Server,
+  clientName: string,
+): Promise<ManagedConnection> {
+  const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair()
+  await server.connect(serverTransport)
+  const client = new Client({ name: clientName, version: '1.0.0' })
+  try {
+    await client.connect(clientTransport)
+  } catch (error) {
+    await server.close().catch(() => undefined)
+    throw error
+  }
+  return {
+    client,
+    async close() {
+      await client.close()
+      await server.close()
+    },
+  }
+}
+
+let isolatedGeneration = 0
+let isolatedConnection:
+  | { generation: number; promise: Promise<ManagedConnection> }
+  | undefined
 
 export async function getOpenBrowserClient(): Promise<Client> {
-  browserClient ??= (async () => {
-    const server = await createClaudeForChromeMcpServer({} as ClaudeForChromeContext)
-    const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair()
-    await server.connect(serverTransport)
-    const client = new Client({ name: 'flash-browser', version: '1.0.0' })
-    await client.connect(clientTransport)
-    return client
-  })().catch(error => {
-    browserClient = undefined
-    throw error
-  })
-  return browserClient
+  if (!isolatedConnection) {
+    const generation = ++isolatedGeneration
+    const promise = (async () => {
+      const server = await createConnection(createIsolatedBrowserConfig())
+      const connection = await connectInMemory(server, 'flash-browser')
+      if ((isolatedConnection as { generation: number } | undefined)?.generation !== generation) {
+        await connection.close()
+        throw new Error('Isolated browser connection was superseded')
+      }
+      return connection
+    })().catch(error => {
+      if (isolatedConnection?.generation === generation) {
+        isolatedConnection = undefined
+      }
+      throw error
+    })
+    isolatedConnection = { generation, promise }
+  }
+  return (await isolatedConnection.promise).client
 }
 
 export async function closeOpenBrowserClient(): Promise<void> {
-  const pending = browserClient
-  browserClient = undefined
-  if (pending) await (await pending).close()
+  const pending = isolatedConnection
+  isolatedConnection = undefined
+  ++isolatedGeneration
+  if (pending) await (await pending.promise).close()
 }
 
-export async function listBrowserTools(): Promise<BrowserToolDescriptor[]> {
-  const client = await getOpenBrowserClient()
-  const result = await client.listTools()
-  return result.tools.map(tool => ({
+let chromeGeneration = 0
+let chromeConnection:
+  | {
+      generation: number
+      promise: Promise<ManagedConnection>
+    }
+  | undefined
+
+export async function getOpenChromeClient(
+  context: OpenChromeContext,
+): Promise<Client> {
+  if (!chromeConnection) {
+    const generation = ++chromeGeneration
+    const promise = (async () => {
+      const server = await createClaudeForChromeMcpServer(context)
+      const connection = await connectInMemory(server, 'open-chrome-cdp')
+      connection.client.onclose = () => {
+        if (chromeConnection?.generation === generation) {
+          chromeConnection = undefined
+        }
+      }
+      if ((chromeConnection as { generation: number } | undefined)?.generation !== generation) {
+        await connection.close()
+        throw new Error('Open Chrome connection was superseded')
+      }
+      return connection
+    })().catch(error => {
+      if (chromeConnection?.generation === generation) {
+        chromeConnection = undefined
+      }
+      throw error
+    })
+    chromeConnection = { generation, promise }
+  }
+  return (await chromeConnection.promise).client
+}
+
+export async function closeOpenChromeClient(expectedClient?: Client): Promise<void> {
+  const pending = chromeConnection
+  if (!pending) return
+  if (expectedClient) {
+    const connection = await pending.promise.catch(() => undefined)
+    if (connection?.client !== expectedClient) return
+  }
+  if (chromeConnection === pending) {
+    chromeConnection = undefined
+    ++chromeGeneration
+  }
+  await (await pending.promise).close()
+}
+
+function descriptors(
+  tools: Awaited<ReturnType<Client['listTools']>>['tools'],
+): BrowserToolDescriptor[] {
+  return tools.map(tool => ({
     name: tool.name,
     description: tool.description,
     inputSchema: tool.inputSchema as Record<string, unknown>,
   }))
+}
+
+export async function listBrowserTools(): Promise<BrowserToolDescriptor[]> {
+  const client = await getOpenBrowserClient()
+  return descriptors((await client.listTools()).tools)
+}
+
+export async function listOpenChromeTools(
+  context: OpenChromeContext,
+): Promise<BrowserToolDescriptor[]> {
+  const client = await getOpenChromeClient(context)
+  return descriptors((await client.listTools()).tools)
+}
+
+export async function callOpenChromeTool(
+  context: OpenChromeContext,
+  name: string,
+  args: Record<string, unknown>,
+): Promise<{
+  content: unknown
+  isError?: boolean
+  [key: string]: unknown
+}> {
+  const client = await getOpenChromeClient(context)
+  return (await client.callTool({ name, arguments: args })) as {
+    content: unknown
+    isError?: boolean
+    [key: string]: unknown
+  }
 }

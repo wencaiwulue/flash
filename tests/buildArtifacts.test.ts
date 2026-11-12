@@ -13,9 +13,18 @@ test('packages an executable CLI, importable SDK, and matching declarations', as
   expect(await sdkFile.exists()).toBe(true)
   expect(await declarations.exists()).toBe(true)
 
-  const sdk = await import(join(root, 'dist/sdk.mjs'))
-  expect(typeof sdk.query).toBe('function')
-  expect(typeof sdk.createSdkMcpServer).toBe('function')
+  const smoke = Bun.spawnSync({
+    cmd: [
+      process.execPath,
+      '-e',
+      "const sdk=await import('./dist/sdk.mjs'); if(typeof sdk.query!=='function'||typeof sdk.createSdkMcpServer!=='function') throw new Error('Invalid SDK exports')",
+    ],
+    cwd: root,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  expect(smoke.stderr.toString()).toBe('')
+  expect(smoke.exitCode).toBe(0)
 
   const packageJson = await Bun.file(join(root, 'package.json')).json()
   expect(packageJson.exports['.'].import).toBe('./dist/sdk.mjs')

@@ -47,14 +47,17 @@ describe('enabled feature profile', () => {
     'includes real trigger, remote, voice, and brief implementations',
     async () => {
       const profile = await runFeatureProfile()
-      expect(profile.toolCount, JSON.stringify(profile)).toBe(42)
+      expect(profile.toolCount, JSON.stringify(profile)).toBe(43)
       expect(profile.nullCount).toBe(0)
-      expect(profile.toolNames).toEqual(expect.arrayContaining([
-        'CronCreate', 'CronDelete', 'CronList', 'RemoteTrigger', 'Monitor',
-        'OverflowTest', 'TerminalCapture', 'Sleep', 'ToolSearch', 'DiscoverSkills',
-        'ListPeers', 'Workflow', 'CtxInspect', 'Snip', 'ReviewArtifact',
-        'SendUserFile', 'PushNotification', 'SubscribePR', 'WebBrowser',
-      ]))
+      expect(profile.toolNames).toEqual(
+        expect.arrayContaining([
+          'CronCreate', 'CronDelete', 'CronList', 'RemoteTrigger', 'Monitor',
+          'OverflowTest', 'TerminalCapture', 'Sleep', 'ToolSearch',
+          'DiscoverSkills', 'ListPeers', 'Workflow', 'CtxInspect', 'Snip',
+          'ReviewArtifact', 'SendUserFile', 'PushNotification', 'SubscribePR',
+          'WebBrowser', 'Tungsten',
+        ]),
+      )
       expect(profile.sleepInitiallyEnabled).toBe(false)
       expect(profile.proactiveActive).toBe(true)
       expect(profile.sleepWhenActive).toBe(true)
@@ -63,14 +66,29 @@ describe('enabled feature profile', () => {
       expect(profile.workerHasBash).toBe(true)
       expect(profile.workerHasAgent).toBe(false)
       expect(profile.reactiveCompactEnabled).toBe(true)
-      for (const key of [
-        'hasHunterSkill', 'hasProactiveCommand', 'hasPeersCommand',
-        'hasRemoteControlServerCommand', 'hasWorkflowsCommand', 'hasBuddyCommand',
-        'hasForkCommand', 'hasForceSnipCommand', 'hasAssistantCommand',
-        'hasUltraplan', 'hasVoice', 'hasBrief',
-      ]) {
-        expect(profile[key]).toBe(true)
-      }
+      expect(profile.hasHunterSkill).toBe(true)
+      expect(profile.hasProactiveCommand).toBe(true)
+      expect(profile.hasPeersCommand).toBe(true)
+      expect(profile.hasRemoteControlServerCommand).toBe(true)
+      expect(profile.hasWorkflowsCommand).toBe(true)
+      expect(profile.hasBuddyCommand).toBe(true)
+      expect(profile.hasForkCommand).toBe(true)
+      expect(profile.hasForceSnipCommand).toBe(true)
+      expect(profile.hasAssistantCommand).toBe(true)
+      expect(profile.hasUltraplan).toBe(true)
+      expect(profile.hasVoice).toBe(true)
+      expect(profile.hasBrief).toBe(true)
+      expect(profile.commandNames).toEqual(
+        expect.arrayContaining([
+          'ant-trace', 'autofix-pr', 'backfill-sessions', 'break-cache',
+          'bughunter', 'ctx_viz', 'debug-tool-call', 'env', 'good-claude',
+          'issue', 'mock-limits', 'oauth-refresh', 'onboarding', 'perf-issue',
+          'reset-limits', 'share', 'summary', 'teleport',
+        ]),
+      )
+      expect(profile.commandNames).not.toEqual(
+        expect.arrayContaining(['commit', 'commit-push-pr', 'agents-platform']),
+      )
     },
     180_000,
   )

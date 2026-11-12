@@ -20,7 +20,7 @@ import {
  * env vars that the remote's ~/.claude settings.env MUST NOT clobber (see
  * isAnthropicAuthEnabled). Strip them from any settings-sourced env object.
  */
-function withoutSSHTunnelVars(
+export function withoutSSHTunnelVars(
   env: Record<string, string> | undefined,
 ): Record<string, string> {
   if (!env || !process.env.ANTHROPIC_UNIX_SOCKET) return env || {}

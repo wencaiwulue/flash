@@ -239,40 +239,60 @@ async function loadLogList(path: string): Promise<LogOption[]> {
   }
   const logData = await Promise.all(
     files.map(async (file, i) => {
+      if (!file.isFile()) return null
       const fullPath = join(path, file.name)
-      const content = await readFile(fullPath, { encoding: 'utf8' })
-      const messages = jsonParse(content) as SerializedMessage[]
-      const firstMessage = messages[0]
-      const lastMessage = messages[messages.length - 1]
-      const firstPrompt =
-        firstMessage?.type === 'user' &&
-        typeof firstMessage?.message?.content === 'string'
-          ? firstMessage?.message?.content
-          : 'No prompt'
+      try {
+        const content = await readFile(fullPath, { encoding: 'utf8' })
+        // Error sink files are JSONL, while older local logs are JSON arrays.
+        // Skip damaged JSONL records independently instead of discarding every
+        // useful diagnostic in the file.
+        const messages = (
+          file.name.endsWith('.jsonl')
+            ? content
+                .split('\n')
+                .filter(line => line.trim())
+                .flatMap(line => {
+                  try {
+                    return [jsonParse(line)]
+                  } catch {
+                    return []
+                  }
+                })
+            : jsonParse(content)
+        ) as SerializedMessage[]
+        if (!Array.isArray(messages) || messages.length === 0) return null
+        const firstMessage = messages[0]
+        const lastMessage = messages[messages.length - 1]
+        const firstPrompt =
+          firstMessage?.type === 'user' &&
+          typeof firstMessage?.message?.content === 'string'
+            ? firstMessage.message.content
+            : typeof (firstMessage as unknown as { error?: unknown })?.error === 'string'
+              ? (firstMessage as unknown as { error: string }).error
+              : 'No prompt'
 
-      // For new random filenames, we'll get stats from the file itself
-      const fileStats = await stat(fullPath)
+        const fileStats = await stat(fullPath)
+        const isSidechain = fullPath.includes('sidechain')
+        const date = dateToFilename(fileStats.mtime)
 
-      // Check if it's a sidechain by looking at filename
-      const isSidechain = fullPath.includes('sidechain')
-
-      // For new files, use the file modified time as date
-      const date = dateToFilename(fileStats.mtime)
-
-      return {
-        date,
-        fullPath,
-        messages,
-        value: i, // hack: overwritten after sorting, right below this
-        created: parseISOString(firstMessage?.timestamp || date),
-        modified: lastMessage?.timestamp
-          ? parseISOString(lastMessage.timestamp)
-          : parseISOString(date),
-        firstPrompt:
-          firstPrompt.split('\n')[0]?.slice(0, 50) +
-            (firstPrompt.length > 50 ? '…' : '') || 'No prompt',
-        messageCount: messages.length,
-        isSidechain,
+        return {
+          date,
+          fullPath,
+          messages,
+          value: i, // overwritten after sorting, right below this
+          created: parseISOString(firstMessage?.timestamp || date),
+          modified: lastMessage?.timestamp
+            ? parseISOString(lastMessage.timestamp)
+            : parseISOString(date),
+          firstPrompt:
+            firstPrompt.split('\n')[0]?.slice(0, 50) +
+              (firstPrompt.length > 50 ? '…' : '') || 'No prompt',
+          messageCount: messages.length,
+          isSidechain,
+        }
+      } catch {
+        // A partial or unreadable log must not hide the other valid logs.
+        return null
       }
     }),
   )
@@ -285,7 +305,7 @@ async function loadLogList(path: string): Promise<LogOption[]> {
 
 function parseISOString(s: string): Date {
   const b = s.split(/\D+/)
-  return new Date(
+  const parsed = new Date(
     Date.UTC(
       parseInt(b[0]!, 10),
       parseInt(b[1]!, 10) - 1,
@@ -296,6 +316,7 @@ function parseISOString(s: string): Date {
       parseInt(b[6]!, 10),
     ),
   )
+  return Number.isNaN(parsed.getTime()) ? new Date(0) : parsed
 }
 
 export function logMCPError(serverName: string, error: unknown): void {

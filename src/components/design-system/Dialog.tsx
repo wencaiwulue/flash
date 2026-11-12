@@ -16,6 +16,8 @@ type DialogProps = {
   subtitle?: React.ReactNode
   children: React.ReactNode
   onCancel: () => void
+  /** Optional first Ctrl+C handler; return true to consume instead of double-press exit. */
+  onInterrupt?: () => boolean
   color?: keyof Theme
   hideInputGuide?: boolean
   hideBorder?: boolean
@@ -36,6 +38,7 @@ export function Dialog({
   subtitle,
   children,
   onCancel,
+  onInterrupt,
   color = 'permission',
   hideInputGuide,
   hideBorder,
@@ -44,7 +47,7 @@ export function Dialog({
 }: DialogProps): React.ReactNode {
   const exitState = useExitOnCtrlCDWithKeybindings(
     undefined,
-    undefined,
+    onInterrupt,
     isCancelActive,
   )
 

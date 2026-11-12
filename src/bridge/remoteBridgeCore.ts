@@ -68,6 +68,7 @@ import {
   logEvent,
 } from '../services/analytics/index.js'
 import type { ReplBridgeHandle, BridgeState } from './replBridge.js'
+import type { InboundTransportMetadata } from './inboundMessages.js'
 import type { Message } from '../types/message.js'
 import type { SDKMessage } from '../entrypoints/agentSdkTypes.js'
 import type {
@@ -106,7 +107,10 @@ export type EnvLessBridgeParams = {
   toSDKMessages: (messages: Message[]) => SDKMessage[]
   initialHistoryCap: number
   initialMessages?: Message[]
-  onInboundMessage?: (msg: SDKMessage) => void | Promise<void>
+  onInboundMessage?: (
+    msg: SDKMessage,
+    transportMetadata?: InboundTransportMetadata,
+  ) => void | Promise<void>
   /**
    * Fired on each title-worthy user message seen in writeMessages() until
    * the callback returns true (done). Mirrors replBridge.ts's onUserMessage —

@@ -181,6 +181,7 @@ import {
 import { prependModeCharacterToInput } from '../components/PromptInput/inputModes.js'
 import { prependToShellHistoryCache } from '../utils/suggestions/shellHistoryCompletion.js'
 import { useApiKeyVerification } from '../hooks/useApiKeyVerification.js'
+import { useAntOrgWarningNotification } from '../hooks/notifs/useAntOrgWarningNotification.js'
 import { GlobalKeybindingHandlers } from '../hooks/useGlobalKeybindings.js'
 import { CommandKeybindingHandlers } from '../hooks/useCommandKeybindings.js'
 import { KeybindingSetup } from '../keybindings/KeybindingProviderSetup.js'
@@ -215,13 +216,6 @@ const useFrustrationDetection: typeof import('../components/FeedbackSurvey/useFr
     ? require('../components/FeedbackSurvey/useFrustrationDetection.js')
         .useFrustrationDetection
     : () => ({ state: 'closed', handleTranscriptSelect: () => {} })
-// Ant-only org warning. Conditional require so the org UUID list is
-// eliminated from external builds (one UUID is on excluded-strings).
-const useAntOrgWarningNotification: typeof import('../hooks/notifs/useAntOrgWarningNotification.js').useAntOrgWarningNotification =
-  process.env.USER_TYPE === 'ant'
-    ? require('../hooks/notifs/useAntOrgWarningNotification.js')
-        .useAntOrgWarningNotification
-    : () => {}
 // Dead code elimination: conditional import for coordinator mode
 const getCoordinatorUserContext: (
   mcpClients: ReadonlyArray<{ name: string }>,
@@ -540,16 +534,14 @@ import {
   type AutoRunIssueReason,
 } from '../utils/autoRunIssue.js'
 import type { HookProgress } from '../types/hooks.js'
-const TungstenLiveMonitor =
-  process.env.USER_TYPE === 'ant'
-    ? require('../tools/TungstenTool/TungstenLiveMonitor.js').TungstenLiveMonitor
-    : null
+const TungstenLiveMonitor = require('../tools/TungstenTool/TungstenLiveMonitor.js').TungstenLiveMonitor
 /* eslint-disable @typescript-eslint/no-require-imports */
 const WebBrowserPanelModule = feature('WEB_BROWSER_TOOL')
   ? (require('../tools/WebBrowserTool/WebBrowserPanel.js') as typeof import('../tools/WebBrowserTool/WebBrowserPanel.js'))
   : null
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { IssueFlagBanner } from '../components/PromptInput/IssueFlagBanner.js'
+import { MockLimitsBanner } from '../components/MockLimitsBanner.js'
 import { useIssueFlagBanner } from '../hooks/useIssueFlagBanner.js'
 import {
   CompanionSprite,
@@ -948,9 +940,7 @@ export function REPL({
     [],
   )
   const moreRightEnabled = useMemo(
-    () =>
-      process.env.USER_TYPE === 'ant' &&
-      isEnvTruthy(process.env.CLAUDE_MORERIGHT),
+    () => isEnvTruthy(process.env.CLAUDE_MORERIGHT),
     [],
   )
   const disableVirtualScroll = useMemo(
@@ -6824,6 +6814,7 @@ export function REPL({
                             setInputValue={setInputValue}
                           />
                         )}
+                      <MockLimitsBanner />
                       {showIssueFlagBanner && <IssueFlagBanner />}
                       {
                       }

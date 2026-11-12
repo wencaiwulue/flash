@@ -44,9 +44,27 @@ import { clearSessionEnvVars } from '../../utils/sessionEnvVars.js'
  *   state (pending permission callbacks, dump state, cache-break tracking) is left
  *   intact since it cannot be safely scoped to the main session.
  */
-export function clearSessionCaches(
+export type SessionCacheClearResult = {
+  completed: string[]
+  failed: Array<{ name: string; error: string }>
+}
+
+export async function clearSessionCaches(
   preservedAgentIds: ReadonlySet<string> = new Set(),
-): void {
+): Promise<SessionCacheClearResult> {
+  const completed = [
+    'context',
+    'file suggestions',
+    'commands and skills',
+    'prompt-cache detection',
+    'post-compaction state',
+    'memory',
+    'repository detection',
+    'session ingress',
+    'LSP diagnostics',
+    'session environment',
+  ]
+  const pending: Array<{ name: string; promise: Promise<void> }> = []
   const hasPreserved = preservedAgentIds.size > 0
   // Clear context caches
   getUserContext.cache.clear?.()
@@ -93,19 +111,25 @@ export function clearSessionCaches(
 
   // Clear tungsten session usage tracking
   if (process.env.USER_TYPE === 'ant') {
-    void import('../../tools/TungstenTool/TungstenTool.js').then(
-      ({ clearSessionsWithTungstenUsage, resetInitializationState }) => {
-        clearSessionsWithTungstenUsage()
-        resetInitializationState()
-      },
-    )
+    pending.push({
+      name: 'Tungsten sessions',
+      promise: import('../../tools/TungstenTool/TungstenTool.js').then(
+        ({ clearSessionsWithTungstenUsage, resetInitializationState }) => {
+          clearSessionsWithTungstenUsage()
+          resetInitializationState()
+        },
+      ),
+    })
   }
   // Clear attribution caches (file content cache, pending bash states)
   // Dynamic import to preserve dead code elimination for COMMIT_ATTRIBUTION feature flag
   if (feature('COMMIT_ATTRIBUTION')) {
-    void import('../../utils/attributionHooks.js').then(
-      ({ clearAttributionCaches }) => clearAttributionCaches(),
-    )
+    pending.push({
+      name: 'commit attribution',
+      promise: import('../../utils/attributionHooks.js').then(
+        ({ clearAttributionCaches }) => clearAttributionCaches(),
+      ),
+    })
   }
   // Clear repository detection caches
   clearRepositoryCaches()
@@ -126,19 +150,49 @@ export function clearSessionCaches(
   // Clear session environment variables
   clearSessionEnvVars()
   // Clear WebFetch URL cache (up to 50MB of cached page content)
-  void import('../../tools/WebFetchTool/utils.js').then(
-    ({ clearWebFetchCache }) => clearWebFetchCache(),
-  )
+  pending.push({
+    name: 'WebFetch',
+    promise: import('../../tools/WebFetchTool/utils.js').then(
+      ({ clearWebFetchCache }) => clearWebFetchCache(),
+    ),
+  })
   // Clear ToolSearch description cache (full tool prompts, ~500KB for 50 MCP tools)
-  void import('../../tools/ToolSearchTool/ToolSearchTool.js').then(
-    ({ clearToolSearchDescriptionCache }) => clearToolSearchDescriptionCache(),
-  )
+  pending.push({
+    name: 'ToolSearch descriptions',
+    promise: import('../../tools/ToolSearchTool/ToolSearchTool.js').then(
+      ({ clearToolSearchDescriptionCache }) => clearToolSearchDescriptionCache(),
+    ),
+  })
   // Clear agent definitions cache (accumulates per-cwd via EnterWorktreeTool)
-  void import('../../tools/AgentTool/loadAgentsDir.js').then(
-    ({ clearAgentDefinitionsCache }) => clearAgentDefinitionsCache(),
-  )
+  pending.push({
+    name: 'agent definitions',
+    promise: import('../../tools/AgentTool/loadAgentsDir.js').then(
+      ({ clearAgentDefinitionsCache }) => clearAgentDefinitionsCache(),
+    ),
+  })
   // Clear SkillTool prompt cache (accumulates per project root)
-  void import('../../tools/SkillTool/prompt.js').then(({ clearPromptCache }) =>
-    clearPromptCache(),
-  )
+  pending.push({
+    name: 'SkillTool prompts',
+    promise: import('../../tools/SkillTool/prompt.js').then(
+      ({ clearPromptCache }) => clearPromptCache(),
+    ),
+  })
+
+  const settled = await Promise.allSettled(pending.map(entry => entry.promise))
+  const failed: SessionCacheClearResult['failed'] = []
+  settled.forEach((result, index) => {
+    const name = pending[index]!.name
+    if (result.status === 'fulfilled') {
+      completed.push(name)
+    } else {
+      failed.push({
+        name,
+        error:
+          result.reason instanceof Error
+            ? result.reason.message
+            : String(result.reason),
+      })
+    }
+  })
+  return { completed, failed }
 }

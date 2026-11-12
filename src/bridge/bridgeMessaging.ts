@@ -26,6 +26,11 @@ import { stripDisplayTagsAllowEmpty } from '../utils/displayTags.js'
 import { errorMessage } from '../utils/errors.js'
 import type { PermissionMode } from '../utils/permissions/PermissionMode.js'
 import { jsonParse } from '../utils/slowOperations.js'
+import {
+  InboundEnvelopeError,
+  parseInboundUserEnvelope,
+  type InboundTransportMetadata,
+} from './inboundMessages.js'
 import type { ReplBridgeTransport } from './replBridgeTransport.js'
 
 // ─── Type guards ─────────────────────────────────────────────────────────────
@@ -133,9 +138,17 @@ export function handleIngressMessage(
   data: string,
   recentPostedUUIDs: BoundedUUIDSet,
   recentInboundUUIDs: BoundedUUIDSet,
-  onInboundMessage: ((msg: SDKMessage) => void | Promise<void>) | undefined,
+  onInboundMessage:
+    | ((
+        msg: SDKMessage,
+        transportMetadata?: InboundTransportMetadata,
+      ) => void | Promise<void>)
+    | undefined,
   onPermissionResponse?: ((response: SDKControlResponse) => void) | undefined,
   onControlRequest?: ((request: SDKControlRequest) => void) | undefined,
+  getTransportMetadata?: (
+    message: unknown,
+  ) => InboundTransportMetadata | undefined,
 ): void {
   try {
     const parsed: unknown = normalizeControlMessageKeys(jsonParse(data))
@@ -159,11 +172,26 @@ export function handleIngressMessage(
 
     if (!isSDKMessage(parsed)) return
 
-    // Check for UUID to detect echoes of our own messages
-    const uuid =
-      'uuid' in parsed && typeof parsed.uuid === 'string'
-        ? parsed.uuid
-        : undefined
+    let transportMetadata: InboundTransportMetadata | undefined
+    let uuid: string | undefined
+    if (parsed.type === 'user') {
+      transportMetadata = getTransportMetadata?.(parsed)
+      try {
+        uuid = parseInboundUserEnvelope(parsed, transportMetadata).uuid
+      } catch (error) {
+        const code =
+          error instanceof InboundEnvelopeError ? error.code : 'invalid_envelope'
+        logForDebugging(`[bridge:repl] Rejected inbound user message: ${code}`, {
+          level: 'warn',
+        })
+        return
+      }
+    } else {
+      uuid =
+        'uuid' in parsed && typeof parsed.uuid === 'string'
+          ? parsed.uuid
+          : undefined
+    }
 
     if (uuid && recentPostedUUIDs.has(uuid)) {
       logForDebugging(
@@ -194,7 +222,7 @@ export function handleIngressMessage(
         is_repl: true,
       })
       // Fire-and-forget — handler may be async (attachment resolution).
-      void onInboundMessage?.(parsed)
+      void onInboundMessage?.(parsed, transportMetadata)
     } else {
       logForDebugging(
         `[bridge:repl] Ignoring non-user inbound message: type=${parsed.type}`,
