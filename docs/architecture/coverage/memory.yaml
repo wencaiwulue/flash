@@ -1,0 +1,58 @@
+schema_version: 1
+spec_id: memory
+spec: ../../superpowers/specs/2026-11-12-memory-design.md
+status: draft
+
+groups:
+  - id: memdir-core
+    kind: source
+    section: 4
+    summary: 记忆系统核心 — 类型定义、索引截断、路径解析、提示构建、目录管理
+    files:
+      - src/memdir/memoryTypes.ts
+      - src/memdir/memdir.ts
+      - src/memdir/paths.ts
+      - src/memdir/teamMemPaths.ts
+      - src/memdir/findRelevantMemories.ts
+      - src/memdir/memoryScan.ts
+      - src/memdir/memoryAge.ts
+      - src/memdir/memoryShapeTelemetry.ts
+      - src/memdir/teamMemPrompts.ts
+
+  - id: session-memory
+    kind: source
+    section: 4
+    summary: 会话记忆 — 自动提取会话笔记、阈值检查、hook注册、手动提取
+    files:
+      - src/services/SessionMemory/sessionMemory.ts
+      - src/services/SessionMemory/prompts.ts
+      - src/services/SessionMemory/sessionMemoryUtils.ts
+
+  - id: extract-memories
+    kind: source
+    section: 4
+    summary: 自动记忆提取 — 会话结束时forked agent提取记忆、并发控制、工具权限、互斥检查
+    files:
+      - src/services/extractMemories/extractMemories.ts
+      - src/services/extractMemories/prompts.ts
+
+  - id: team-memory-sync
+    kind: source
+    section: 4
+    summary: 团队记忆同步 — 拉取/推送/双向同步、乐观锁、secret扫描、路径验证、批量delta
+    files:
+      - src/services/teamMemorySync/index.ts
+      - src/services/teamMemorySync/secretScanner.ts
+      - src/services/teamMemorySync/teamMemSecretGuard.ts
+      - src/services/teamMemorySync/types.ts
+      - src/services/teamMemorySync/watcher.ts
+
+  - id: auto-dream
+    kind: source
+    section: 4
+    summary: 自动记忆整理 — 三级门（时间/会话数/锁）、扫描节流、后台任务、锁管理
+    files:
+      - src/services/autoDream/autoDream.ts
+      - src/services/autoDream/config.ts
+      - src/services/autoDream/consolidationLock.ts
+      - src/services/autoDream/consolidationPrompt.ts
