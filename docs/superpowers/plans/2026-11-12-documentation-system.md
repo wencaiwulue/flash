@@ -1242,7 +1242,9 @@ status: draft | approved
 
 ## 8. 文件覆盖与相关子系统
 
-<链接本 spec 的 coverage YAML，列出上游、下游和共享证据>
+[Coverage](../../architecture/coverage/<subsystem-id>.yaml)
+
+<列出上游、下游和共享证据>
 
 ## 9. 改进建议
 

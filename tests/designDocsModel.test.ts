@@ -72,18 +72,63 @@ test('loads valid manifest and coverage contracts', async () => {
 })
 
 test('rejects malformed coverage groups with their field path', async () => {
-  const invalid = coverage()
-  invalid.groups = [{
-    id: 'bad',
+  // Test invalid section
+  const invalidSection = coverage()
+  invalidSection.groups = [{
+    id: 'good-id',
     kind: 'source',
     section: 10,
+    summary: 'Valid summary',
+    files: ['src/index.ts'],
+  }]
+  put('docs/architecture/coverage/system.yaml', stringify(invalidSection))
+  await expect(loadCoverage(cwd, 'docs/architecture/coverage/system.yaml')).rejects.toThrow('groups.0.section')
+
+  // Test invalid id
+  const invalidId = coverage()
+  invalidId.groups = [{
+    id: 'Bad-ID!',
+    kind: 'source',
+    section: 4,
+    summary: 'Valid summary',
+    files: ['src/index.ts'],
+  }]
+  put('docs/architecture/coverage/system.yaml', stringify(invalidId))
+  await expect(loadCoverage(cwd, 'docs/architecture/coverage/system.yaml')).rejects.toThrow('groups.0.id')
+
+  // Test invalid kind
+  const invalidKind = coverage()
+  invalidKind.groups = [{
+    id: 'good-id',
+    kind: 'invalid-kind',
+    section: 4,
+    summary: 'Valid summary',
+    files: ['src/index.ts'],
+  }]
+  put('docs/architecture/coverage/system.yaml', stringify(invalidKind))
+  await expect(loadCoverage(cwd, 'docs/architecture/coverage/system.yaml')).rejects.toThrow('groups.0.kind')
+
+  // Test empty summary
+  const invalidSummary = coverage()
+  invalidSummary.groups = [{
+    id: 'good-id',
+    kind: 'source',
+    section: 4,
     summary: '',
+    files: ['src/index.ts'],
+  }]
+  put('docs/architecture/coverage/system.yaml', stringify(invalidSummary))
+  await expect(loadCoverage(cwd, 'docs/architecture/coverage/system.yaml')).rejects.toThrow('groups.0.summary')
+
+  // Test empty files
+  const invalidFiles = coverage()
+  invalidFiles.groups = [{
+    id: 'good-id',
+    kind: 'source',
+    section: 4,
+    summary: 'Valid summary',
     files: [],
   }]
-  put('docs/architecture/coverage/system.yaml', stringify(invalid))
-
-  await expect(loadCoverage(
-    cwd,
-    'docs/architecture/coverage/system.yaml',
-  )).rejects.toThrow('groups.0.section')
+  put('docs/architecture/coverage/system.yaml', stringify(invalidFiles))
+  await expect(loadCoverage(cwd, 'docs/architecture/coverage/system.yaml')).rejects.toThrow('groups.0.files')
 })

@@ -278,8 +278,19 @@ async function checkSpecDocument(
   const content = await readFile(resolve(cwd, entry.spec), 'utf8')
   const frontmatter = content.match(/^---\n([\s\S]*?)\n---\n/)
   const metadata = frontmatter ? parse(frontmatter[1]) as Record<string, unknown> : {}
-  if (metadata.id !== entry.id || metadata.batch !== entry.batch || metadata.status !== entry.status) {
-    errors.push({ code: 'SPEC_METADATA', message: `Frontmatter does not match manifest: ${entry.id}` })
+
+  const mismatches: string[] = []
+  if (metadata.id !== entry.id) {
+    mismatches.push(`id: expected ${JSON.stringify(entry.id)}, got ${JSON.stringify(metadata.id)}`)
+  }
+  if (metadata.batch !== entry.batch) {
+    mismatches.push(`batch: expected ${entry.batch}, got ${metadata.batch}`)
+  }
+  if (metadata.status !== entry.status) {
+    mismatches.push(`status: expected ${JSON.stringify(entry.status)}, got ${JSON.stringify(metadata.status)}`)
+  }
+  if (mismatches.length > 0) {
+    errors.push({ code: 'SPEC_METADATA', message: `Frontmatter does not match manifest (${entry.id}): ${mismatches.join('; ')}` })
   }
 
   for (const heading of REQUIRED_HEADINGS) {
@@ -326,12 +337,13 @@ export async function checkDesignDocs({
     files: files ?? await listRepositoryFiles(cwd),
     requireApproved,
   })
+  let indexContent = ''
   if (!existsSync(resolve(cwd, INDEX_PATH))) {
     result.errors.push({ code: 'MISSING_INDEX', message: `Missing ${INDEX_PATH}` })
-    return result
+  } else {
+    indexContent = await readFile(resolve(cwd, INDEX_PATH), 'utf8')
+    checkMarkdownLinks(cwd, INDEX_PATH, indexContent, result.errors)
   }
-  const indexContent = await readFile(resolve(cwd, INDEX_PATH), 'utf8')
-  checkMarkdownLinks(cwd, INDEX_PATH, indexContent, result.errors)
   for (const entry of manifest.specs) {
     if (entry.status !== 'planned') {
       await checkSpecDocument(cwd, entry, indexContent, result.errors)

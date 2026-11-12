@@ -135,6 +135,8 @@ test('rejects metadata, section, backlink, INDEX, and Markdown failures', async 
     'docs/superpowers/specs/system-design.md',
     specText()
       .replace('id: system', 'id: other')
+      .replace('batch: 0', 'batch: 99')
+      .replace('status: approved', 'status: draft')
       .replace('## 2. 设计理由与备选方案', '## 2. Wrong')
       .replace('../../architecture/coverage/system.yaml', '../../architecture/coverage/missing.yaml'),
   )
@@ -151,6 +153,11 @@ test('rejects metadata, section, backlink, INDEX, and Markdown failures', async 
   ]) {
     expect(codes).toContain(code)
   }
+  // Check for field-specific messages in SPEC_METADATA
+  const metadataError = result.errors.find(e => e.code === 'SPEC_METADATA')
+  expect(metadataError?.message).toContain('id: expected "system", got "other"')
+  expect(metadataError?.message).toContain('batch: expected 0, got 99')
+  expect(metadataError?.message).toContain('status: expected "approved", got "draft"')
 })
 
 test('allows artifact-free planned entries normally and rejects them strictly', async () => {
@@ -184,6 +191,23 @@ test('handles percent signs in documentation links without throwing', async () =
   // Should not throw and should have no errors about the link
   const result = await checkDesignDocs({ cwd, files })
   expect(result.errors).toEqual([])
+})
+
+test('reports MISSING_INDEX but continues validating specs when INDEX.md is absent', async () => {
+  createCompleteFixture()
+  // Remove INDEX.md
+  rmSync(join(cwd, INDEX_PATH))
+  // Also modify the spec to have a metadata mismatch to test that validation still runs
+  put(
+    'docs/superpowers/specs/system-design.md',
+    specText().replace('id: system', 'id: wrong-id'),
+  )
+
+  const result = await checkDesignDocs({ cwd, files })
+  const codes = result.errors.map(issue => issue.code)
+  expect(codes).toContain('MISSING_INDEX')
+  expect(codes).toContain('SPEC_METADATA')
+  expect(codes).toContain('INDEX_SPEC_LINK') // Because indexContent is empty, the link is missing
 })
 
 test('repository documentation registry has no structural errors', async () => {
