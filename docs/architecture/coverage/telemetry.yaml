@@ -1,0 +1,87 @@
+# Telemetry Coverage
+# Generated files (src/types/generated/) are excluded as requested
+
+groups:
+  - name: analytics-index
+    coverage:
+      - path: src/services/analytics/index.ts
+        module: analytics-index
+        section: 1, 2.3, 4.1, 4.2, 4.3, 7
+
+  - name: analytics-metadata
+    coverage:
+      - path: src/services/analytics/metadata.ts
+        module: analytics-metadata
+        section: 1, 2.2, 2.7, 4.2, 4.3, 4.4, 7
+
+  - name: analytics-datadog
+    coverage:
+      - path: src/services/analytics/datadog.ts
+        module: analytics-datadog
+        section: 1, 2.5, 4.2, 4.4, 5, 7
+
+  - name: analytics-first-party
+    coverage:
+      - path: src/services/analytics/firstPartyEventLoggingExporter.ts
+        module: analytics-first-party
+        section: 1, 2.4, 2.6, 4.2, 4.3, 4.4, 5, 7
+
+  - name: analytics-sink
+    coverage:
+      - path: src/services/analytics/sink.ts
+        module: analytics-sink
+        section: 4.2, 7
+      - path: src/services/analytics/sinkKillswitch.ts
+        module: analytics-sink
+        section: 4.2, 5, 7
+
+  - name: analytics-config
+    coverage:
+      - path: src/services/analytics/config.ts
+        module: analytics-config
+        section: 4.2, 5, 7
+
+  - name: telemetry-instrumentation
+    coverage:
+      - path: src/utils/telemetry/instrumentation.ts
+        module: telemetry-instrumentation
+        section: 1, 2.1, 2.8, 4.1, 4.2, 4.3, 5, 7
+      - path: src/utils/telemetry/events.ts
+        module: telemetry-instrumentation
+        section: 4.1, 7
+      - path: src/utils/telemetry/logger.ts
+        module: telemetry-instrumentation
+        section: 4.2, 7
+
+  - name: telemetry-session-tracing
+    coverage:
+      - path: src/utils/telemetry/sessionTracing.ts
+        module: telemetry-session-tracing
+        section: 4.2, 7
+
+  - name: telemetry-beta-tracing
+    coverage:
+      - path: src/utils/telemetry/betaSessionTracing.ts
+        module: telemetry-beta-tracing
+        section: 2.1, 4.2, 4.3, 7
+
+  - name: telemetry-perfetto
+    coverage:
+      - path: src/utils/telemetry/perfettoTracing.ts
+        module: telemetry-perfetto
+        section: 4.2, 7
+
+  - name: telemetry-bigquery
+    coverage:
+      - path: src/utils/telemetry/bigqueryExporter.ts
+        module: telemetry-bigquery
+        section: 2.5, 4.2, 7
+
+  - name: telemetry-plugin
+    coverage:
+      - path: src/utils/telemetry/pluginTelemetry.ts
+        module: telemetry-plugin
+        section: 4.2, 7
+      - path: src/utils/telemetry/skillLoadedEvent.ts
+        module: telemetry-plugin
+        section: 4.2, 7
