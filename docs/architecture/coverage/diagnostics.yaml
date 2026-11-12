@@ -1,0 +1,117 @@
+# Diagnostics Coverage
+# Generated files (src/types/generated/) are excluded as requested
+
+groups:
+  - name: debug-system
+    coverage:
+      - path: src/utils/debug.ts
+        module: debug
+        section: 1, 2, 3, 4.1, 4.2, 4.3, 7
+      - path: src/utils/debugFilter.ts
+        module: debugFilter
+        section: 1, 2, 3, 4.1, 4.2, 7
+
+  - name: error-logging
+    coverage:
+      - path: src/utils/log.ts
+        module: log
+        section: 1, 2, 3, 4.1, 4.2, 4.3, 5, 7
+      - path: src/utils/errorLogSink.ts
+        module: errorLogSink
+        section: 1, 2, 3, 4.1, 4.2, 4.3, 5, 7
+
+  - name: diagnostic-logs
+    coverage:
+      - path: src/utils/diagLogs.ts
+        module: diagLogs
+        section: 1, 2, 3, 4.1, 4.2, 7
+      - path: src/utils/diagnosticExport.ts
+        module: diagnosticExport
+        section: 1, 2, 3, 4.1, 4.3, 7
+
+  - name: performance-profiling
+    coverage:
+      - path: src/utils/startupProfiler.ts
+        module: startupProfiler
+        section: 1, 2, 3, 4.1, 4.2, 4.3, 7
+      - path: src/utils/queryProfiler.ts
+        module: queryProfiler
+        section: 1, 2, 3, 4.1, 4.2, 4.3, 7
+      - path: src/utils/headlessProfiler.ts
+        module: headlessProfiler
+        section: 1, 2, 3, 4.1, 4.2, 4.3, 7
+      - path: src/utils/profilerBase.ts
+        module: profilerBase
+        section: 2, 4.2, 7
+
+  - name: memory-diagnostics
+    coverage:
+      - path: src/utils/heapDumpService.ts
+        module: heapDumpService
+        section: 1, 2, 3, 4.1, 4.2, 4.3, 4.4, 5, 7
+      - path: src/utils/eventLoopStallDetector.ts
+        module: eventLoopStallDetector
+        section: 1, 2, 7
+
+  - name: ide-diagnostic-tracking
+    coverage:
+      - path: src/services/diagnosticTracking.ts
+        module: diagnosticTracking
+        section: 1, 2, 3, 4.1, 4.2, 4.3, 5, 7
+
+  - name: doctor-commands
+    coverage:
+      - path: src/utils/doctorDiagnostic.ts
+        module: doctorDiagnostic
+        section: 1, 2, 3, 4.1, 4.2, 4.3, 5, 7
+      - path: src/utils/doctorContextWarnings.ts
+        module: doctorContextWarnings
+        section: 1, 2, 3, 4.1, 4.2, 4.3, 7
+      - path: src/commands/doctor/doctor.tsx
+        module: doctor-command
+        section: 3, 4.1, 4.3, 7
+      - path: src/commands/doctor/index.ts
+        module: doctor-command
+        section: 3, 4.1, 7
+
+  - name: perf-issue-command
+    coverage:
+      - path: src/commands/perf-issue/perf-issue.tsx
+        module: perf-issue
+        section: 1, 2, 3, 4.1, 4.3, 4.4, 5, 7
+      - path: src/commands/perf-issue/index.ts
+        module: perf-issue
+        section: 3, 4.1, 7
+
+  - name: heapdump-command
+    coverage:
+      - path: src/commands/heapdump/index.ts
+        module: heapdump-command
+        section: 3, 4.1, 7
+
+  - name: debug-tool-call-command
+    coverage:
+      - path: src/commands/debug-tool-call/index.ts
+        module: debug-tool-call
+        section: 3, 4.1, 7
+      - path: src/commands/debug-tool-call/debugToolCall.tsx
+        module: debug-tool-call
+        section: 1, 2, 3, 4.1, 4.3, 7
+      - path: src/commands/debug-tool-call/inspection.ts
+        module: debug-tool-call
+        section: 1, 2, 3, 4.1, 4.3, 7
+
+  - name: ctx-viz-command
+    coverage:
+      - path: src/commands/ctx-viz/index.ts
+        module: ctx-viz
+        section: 3, 4.1, 7
+
+  - name: diagnostics-tests
+    coverage:
+      - path: tests/debugToolCallCommand.test.ts
+        module: tests-debug-tool-call
+        section: 2, 3, 4.3, 7
+      - path: tests/perfIssueCommand.test.ts
+        module: tests-perf-issue
+        section: 2, 3, 4.3, 5, 7
