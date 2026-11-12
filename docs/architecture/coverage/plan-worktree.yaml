@@ -1,0 +1,100 @@
+schema_version: 1
+spec_id: plan-worktree
+spec: ../../superpowers/specs/2026-11-12-plan-worktree-design.md
+status: draft
+
+groups:
+  - id: plan-tools
+    kind: source
+    section: 4
+    summary: 计划模式工具（EnterPlanMode、ExitPlanModeV2）
+    files:
+      - src/tools/EnterPlanModeTool/EnterPlanModeTool.ts
+      - src/tools/EnterPlanModeTool/constants.ts
+      - src/tools/EnterPlanModeTool/prompt.ts
+      - src/tools/EnterPlanModeTool/UI.tsx
+      - src/tools/ExitPlanModeTool/ExitPlanModeV2Tool.ts
+      - src/tools/ExitPlanModeTool/constants.ts
+      - src/tools/ExitPlanModeTool/prompt.ts
+      - src/tools/ExitPlanModeTool/UI.tsx
+
+  - id: worktree-tools
+    kind: source
+    section: 4
+    summary: 工作区工具（EnterWorktree、ExitWorktree）
+    files:
+      - src/tools/EnterWorktreeTool/EnterWorktreeTool.ts
+      - src/tools/EnterWorktreeTool/constants.ts
+      - src/tools/EnterWorktreeTool/prompt.ts
+      - src/tools/EnterWorktreeTool/UI.tsx
+      - src/tools/ExitWorktreeTool/ExitWorktreeTool.ts
+      - src/tools/ExitWorktreeTool/constants.ts
+      - src/tools/ExitWorktreeTool/prompt.ts
+      - src/tools/ExitWorktreeTool/UI.tsx
+
+  - id: verify-plan-execution
+    kind: source
+    section: 4
+    summary: VerifyPlanExecutionTool（当前仅占位）
+    files:
+      - src/tools/VerifyPlanExecutionTool/constants.ts
+
+  - id: plans-utils
+    kind: source
+    section: 4
+    summary: 计划文件管理、slug 生成、会话恢复
+    files:
+      - src/utils/plans.ts
+
+  - id: worktree-utils
+    kind: source
+    section: 4
+    summary: 工作区创建、保留、删除、清理
+    files:
+      - src/utils/worktree.ts
+
+  - id: ultraplan-ccr
+    kind: source
+    section: 4
+    summary: Ultraplan 远程会话轮询与计划批准
+    files:
+      - src/utils/ultraplan/ccrSession.ts
+      - src/utils/ultraplan/keyword.ts
+      - src/utils/ultraplan/prompt.txt
+
+  - id: permissions-setup
+    kind: source
+    section: 4
+    summary: 计划模式权限准备与恢复
+    files:
+      - src/utils/permissions/permissionSetup.ts
+      - src/utils/permissions/autoModeState.ts
+
+  - id: bootstrap-state
+    kind: source
+    section: 4
+    summary: 计划模式与工作区相关的全局状态
+    files:
+      - src/bootstrap/state.ts
+
+  - id: components-permissions
+    kind: source
+    section: 4
+    summary: ExitPlanMode 权限请求 UI 组件
+    files:
+      - src/components/permissions/ExitPlanModePermissionRequest/ExitPlanModePermissionRequest.tsx
+
+  - id: constants-tools
+    kind: source
+    section: 4
+    summary: 工具常量与禁用列表
+    files:
+      - src/constants/tools.ts
+
+  - id: plan-tests
+    kind: test
+    section: 7
+    summary: 计划模式与 Ultraplan 相关测试
+    files:
+      - tests/exitPlanModePrompt.test.ts
+      - tests/ultraplanPoll.test.ts
