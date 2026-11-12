@@ -1,0 +1,92 @@
+# REPL Input 覆盖率定义
+# 对应文档: docs/superpowers/specs/2026-11-12-repl-input-design.md
+
+id: repl-input
+title: REPL Input 输入、补全与键盘交互设计
+sections:
+  - id: 1
+    title: 概述
+    files:
+      - src/components/PromptInput/PromptInput.tsx
+      - src/components/TextInput.tsx
+      - src/components/VimTextInput.tsx
+
+  - id: 2
+    title: 键盘事件流与优先级
+    files:
+      - src/components/PromptInput/PromptInput.tsx
+      - src/keybindings/KeybindingContext.tsx
+      - src/keybindings/useKeybindings.ts
+      - src/ink/use-input.ts
+
+  - id: 3
+    title: 文本状态管理
+    files:
+      - src/components/PromptInput/PromptInput.tsx
+      - src/hooks/useTextInput.ts
+      - src/hooks/useInputBuffer.ts
+      - src/utils/Cursor.ts
+
+  - id: 4
+    title: 历史导航与补全优先级
+    files:
+      - src/components/PromptInput/PromptInput.tsx
+      - src/hooks/useArrowKeyHistory.tsx
+      - src/hooks/useHistorySearch.ts
+      - src/hooks/useTypeahead.tsx
+
+  - id: 5
+    title: Vim 模式与普通模式集成
+    files:
+      - src/hooks/useVimInput.ts
+      - src/vim/transitions.ts
+      - src/vim/operators.ts
+      - src/vim/motions.ts
+      - src/vim/textObjects.ts
+      - src/vim/types.ts
+
+  - id: 6
+    title: 键绑定框架与解析
+    files:
+      - src/keybindings/types.ts
+      - src/keybindings/parser.ts
+      - src/keybindings/match.ts
+      - src/keybindings/resolver.ts
+      - src/keybindings/defaultBindings.ts
+      - src/keybindings/loadUserBindings.ts
+      - src/keybindings/useKeybindings.ts
+      - src/keybindings/KeybindingContext.tsx
+      - src/keybindings/reservedShortcuts.ts
+
+  - id: 7
+    title: 提交、取消与异步状态
+    files:
+      - src/components/PromptInput/PromptInput.tsx
+      - src/state/AppState.ts
+      - src/hooks/usePromptSuggestion.ts
+
+  - id: 8
+    title: 自动补全系统
+    files:
+      - src/hooks/useTypeahead.tsx
+      - src/utils/suggestions/commandSuggestions.ts
+      - src/utils/suggestions/directoryCompletion.ts
+      - src/utils/suggestions/slackChannelSuggestions.ts
+      - src/utils/suggestions/shellHistoryCompletion.ts
+      - src/hooks/fileSuggestions.ts
+      - src/hooks/unifiedSuggestions.ts
+
+  - id: 9
+    title: 粘贴处理
+    files:
+      - src/components/PromptInput/PromptInput.tsx
+      - src/components/PromptInput/inputPaste.ts
+      - src/utils/imagePaste.ts
+
+tests:
+  - src/hooks/useTextInput.test.ts
+  - src/hooks/useTypeahead.test.tsx
+  - src/vim/transitions.test.ts
+  - src/utils/Cursor.test.ts
+  - src/keybindings/match.test.ts
+  - src/keybindings/parser.test.ts
