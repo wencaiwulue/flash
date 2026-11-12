@@ -1,0 +1,167 @@
+schema_version: 1
+spec_id: bridge
+spec: ../../superpowers/specs/2026-11-12-bridge-design.md
+status: draft
+
+groups:
+  - id: bridge-types
+    kind: source
+    section: 3
+    summary: Bridge 核心类型定义 — BridgeConfig、WorkSecret、SessionHandle、BridgeApiClient、SpawnMode
+    files:
+      - src/bridge/types.ts
+
+  - id: bridge-main
+    kind: source
+    section: 3
+    summary: Standalone bridge 主循环 — 环境注册、轮询、会话 spawn、心跳、多会话管理、优雅关闭
+    files:
+      - src/bridge/bridgeMain.ts
+
+  - id: repl-bridge
+    kind: source
+    section: 11
+    summary: REPL bridge 实现 — 环境注册与轮询模式、perpetual mode、flush gate、消息转发
+    files:
+      - src/bridge/replBridge.ts
+      - src/bridge/remoteBridgeCore.ts
+      - src/bridge/flushGate.ts
+
+  - id: work-secret
+    kind: source
+    section: 5
+    summary: WorkSecret 解码、URL 构建、会话 ID 比较、worker 注册
+    files:
+      - src/bridge/workSecret.ts
+      - src/bridge/sessionIdCompat.ts
+
+  - id: session-runner
+    kind: source
+    section: 6
+    summary: 会话 spawner — 子进程启动、NDJSON 解析、活动跟踪、权限请求转发、token 更新
+    files:
+      - src/bridge/sessionRunner.ts
+
+  - id: bridge-api
+    kind: source
+    section: 3
+    summary: Bridge API 客户端 — 注册、轮询、确认、心跳、停止工作、归档、重连、权限响应
+    files:
+      - src/bridge/bridgeApi.ts
+      - src/bridge/codeSessionApi.ts
+
+  - id: bridge-config
+    kind: source
+    section: 3
+    summary: Bridge 配置 — OAuth token override、base URL、poll 配置、feature gate
+    files:
+      - src/bridge/bridgeConfig.ts
+      - src/bridge/envLessBridgeConfig.ts
+      - src/bridge/pollConfig.ts
+      - src/bridge/pollConfigDefaults.ts
+      - src/bridge/bridgeEnabled.ts
+
+  - id: bridge-pointer
+    kind: source
+    section: 9
+    summary: 崩溃恢复指针 — 读写清除、TTL 验证、跨 worktree 扫描、env-less 指针
+    files:
+      - src/bridge/bridgePointer.ts
+      - src/bridge/envLessBridgePointer.ts
+
+  - id: security
+    kind: source
+    section: 10
+    summary: 安全机制 — JWT 工具、token refresh scheduler、受信设备 token、权限回调类型
+    files:
+      - src/bridge/jwtUtils.ts
+      - src/bridge/trustedDevice.ts
+      - src/bridge/bridgePermissionCallbacks.ts
+
+  - id: messaging
+    kind: source
+    section: 4
+    summary: 消息处理 — SDK 消息类型守卫、入口消息验证与解析、附件解析、webhook 清理
+    files:
+      - src/bridge/bridgeMessaging.ts
+      - src/bridge/inboundMessages.ts
+      - src/bridge/inboundAttachments.ts
+      - src/bridge/webhookSanitizer.ts
+
+  - id: transport
+    kind: source
+    section: 11
+    summary: 传输抽象 — v1/v2 transport、repl bridge transport 接口、cross-session 消息
+    files:
+      - src/bridge/replBridgeTransport.ts
+      - src/bridge/crossSessionMessages.ts
+      - src/bridge/peerSessions.ts
+
+  - id: init-repl
+    kind: source
+    section: 11
+    summary: REPL bridge 初始化 — gate 检查、token 刷新、标题派生、v1/v2 分支选择
+    files:
+      - src/bridge/initReplBridge.ts
+
+  - id: ui-utils
+    kind: source
+    section: 6
+    summary: UI 工具 — 状态显示、日志、debug 工具、capacity wake
+    files:
+      - src/bridge/bridgeUI.ts
+      - src/bridge/bridgeStatusUtil.ts
+      - src/bridge/debugUtils.ts
+      - src/bridge/capacityWake.ts
+
+  - id: create-session
+    kind: source
+    section: 6
+    summary: 会话创建 API — 创建/获取/归档会话、标题更新
+    files:
+      - src/bridge/createSession.ts
+
+  - id: daemon-bridge
+    kind: source
+    section: 11
+    summary: Daemon bridge — 异步队列、核心桥接包装、状态监听
+    files:
+      - src/assistant/daemonBridge.ts
+
+  - id: bridge-tests
+    kind: test
+    section: 9
+    summary: Bridge 测试 — perpetual bridge、daemon bridge、peer sessions、inbound envelope
+    files:
+      - tests/perpetualBridge.test.ts
+      - tests/daemonBridge.test.ts
+      - tests/peerSessions.test.ts
+      - tests/inboundEnvelope.test.ts
+
+  - id: migrate-repl-bridge
+    kind: source
+    section: 11
+    summary: 迁移 — repl bridge enabled 到 remote-control at startup
+    files:
+      - src/migrations/migrateReplBridgeEnabledToRemoteControlAtStartup.ts
+
+  - id: remote-perm-bridge
+    kind: source
+    section: 7
+    summary: 远程权限桥接 — 远程权限回调
+    files:
+      - src/remote/remotePermissionBridge.ts
+
+  - id: bridge-commands
+    kind: source
+    section: 11
+    summary: Bridge 命令 — /remote-control kick
+    files:
+      - src/commands/bridge-kick.ts
+
+  - id: use-mailbox-bridge
+    kind: source
+    section: 11
+    summary: Mailbox bridge hook
+    files:
+      - src/hooks/useMailboxBridge.ts
