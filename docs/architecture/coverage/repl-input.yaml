@@ -1,52 +1,67 @@
-# REPL Input 覆盖率定义
-# 对应文档: docs/superpowers/specs/2026-11-12-repl-input-design.md
+schema_version: 1
+spec_id: repl-input
+spec: ../../superpowers/specs/2026-11-12-repl-input-design.md
+status: draft
 
-id: repl-input
-title: REPL Input 输入、补全与键盘交互设计
-sections:
+groups:
   - id: 1
-    title: 概述
+    kind: source
+    section: 4
+    summary: PromptInput 主组件和输入模式
     files:
       - src/components/PromptInput/PromptInput.tsx
+      - src/components/PromptInput/inputModes.ts
+      - src/components/PromptInput/inputPaste.ts
+
+  - id: 2
+    kind: source
+    section: 4
+    summary: 编辑器视图组件
+    files:
       - src/components/TextInput.tsx
       - src/components/VimTextInput.tsx
 
-  - id: 2
-    title: 键盘事件流与优先级
-    files:
-      - src/components/PromptInput/PromptInput.tsx
-      - src/keybindings/KeybindingContext.tsx
-      - src/keybindings/useKeybindings.ts
-      - src/ink/use-input.ts
-
   - id: 3
-    title: 文本状态管理
+    kind: source
+    section: 4
+    summary: 文本编辑核心 Hooks
     files:
-      - src/components/PromptInput/PromptInput.tsx
       - src/hooks/useTextInput.ts
+      - src/hooks/useVimInput.ts
       - src/hooks/useInputBuffer.ts
-      - src/utils/Cursor.ts
 
   - id: 4
-    title: 历史导航与补全优先级
+    kind: source
+    section: 4
+    summary: 自动补全和建议系统
     files:
-      - src/components/PromptInput/PromptInput.tsx
-      - src/hooks/useArrowKeyHistory.tsx
-      - src/hooks/useHistorySearch.ts
       - src/hooks/useTypeahead.tsx
+      - src/utils/suggestions/commandSuggestions.ts
+      - src/utils/suggestions/directoryCompletion.ts
+      - src/utils/suggestions/slackChannelSuggestions.ts
+      - src/utils/suggestions/shellHistoryCompletion.ts
+      - src/hooks/fileSuggestions.ts
+      - src/hooks/unifiedSuggestions.ts
 
   - id: 5
-    title: Vim 模式与普通模式集成
+    kind: source
+    section: 4
+    summary: 历史导航和搜索
     files:
-      - src/hooks/useVimInput.ts
-      - src/vim/transitions.ts
-      - src/vim/operators.ts
-      - src/vim/motions.ts
-      - src/vim/textObjects.ts
-      - src/vim/types.ts
+      - src/hooks/useArrowKeyHistory.tsx
+      - src/hooks/useHistorySearch.ts
 
   - id: 6
-    title: 键绑定框架与解析
+    kind: source
+    section: 4
+    summary: 提示建议和投机执行
+    files:
+      - src/hooks/usePromptSuggestion.ts
+
+  - id: 7
+    kind: source
+    section: 4
+    summary: 键绑定系统
     files:
       - src/keybindings/types.ts
       - src/keybindings/parser.ts
@@ -58,35 +73,36 @@ sections:
       - src/keybindings/KeybindingContext.tsx
       - src/keybindings/reservedShortcuts.ts
 
-  - id: 7
-    title: 提交、取消与异步状态
-    files:
-      - src/components/PromptInput/PromptInput.tsx
-      - src/state/AppState.ts
-      - src/hooks/usePromptSuggestion.ts
-
   - id: 8
-    title: 自动补全系统
+    kind: source
+    section: 4
+    summary: Vim 模式实现
     files:
-      - src/hooks/useTypeahead.tsx
-      - src/utils/suggestions/commandSuggestions.ts
-      - src/utils/suggestions/directoryCompletion.ts
-      - src/utils/suggestions/slackChannelSuggestions.ts
-      - src/utils/suggestions/shellHistoryCompletion.ts
-      - src/hooks/fileSuggestions.ts
-      - src/hooks/unifiedSuggestions.ts
+      - src/vim/types.ts
+      - src/vim/transitions.ts
+      - src/vim/operators.ts
+      - src/vim/motions.ts
+      - src/vim/textObjects.ts
 
   - id: 9
-    title: 粘贴处理
+    kind: source
+    section: 4
+    summary: 基础设施
     files:
-      - src/components/PromptInput/PromptInput.tsx
-      - src/components/PromptInput/inputPaste.ts
+      - src/utils/Cursor.ts
+      - src/utils/intl.ts
+      - src/ink/use-input.ts
+      - src/ink/events/input-event.ts
       - src/utils/imagePaste.ts
 
-tests:
-  - src/hooks/useTextInput.test.ts
-  - src/hooks/useTypeahead.test.tsx
-  - src/vim/transitions.test.ts
-  - src/utils/Cursor.test.ts
-  - src/keybindings/match.test.ts
-  - src/keybindings/parser.test.ts
+  - id: 10
+    kind: test
+    section: 7
+    summary: 测试套件
+    files:
+      - src/utils/Cursor.test.ts
+      - src/hooks/useTextInput.test.ts
+      - src/hooks/useTypeahead.test.tsx
+      - src/vim/transitions.test.ts
+      - src/keybindings/match.test.ts
+      - src/keybindings/parser.test.ts
