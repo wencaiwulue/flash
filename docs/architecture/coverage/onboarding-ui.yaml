@@ -1,0 +1,50 @@
+id: onboarding-ui
+title: Onboarding UI 首次引导、信任与设置确认
+sections:
+  - title: 核心引导框架
+    files:
+      - src/components/wizard/index.ts
+      - src/components/wizard/types.ts
+      - src/components/wizard/useWizard.ts
+      - src/components/wizard/WizardDialogLayout.tsx
+      - src/components/wizard/WizardNavigationFooter.tsx
+      - src/components/wizard/WizardProvider.tsx
+
+  - title: 首次启动引导
+    files:
+      - src/components/Onboarding.tsx
+      - src/commands/onboarding/index.ts
+      - src/commands/onboarding/onboarding.tsx
+
+  - title: 工作区信任与安全检查
+    files:
+      - src/components/TrustDialog/TrustDialog.tsx
+      - src/components/TrustDialog/utils.ts
+
+  - title: 托管设置审批
+    files:
+      - src/components/ManagedSettingsSecurityDialog/ManagedSettingsSecurityDialog.tsx
+      - src/components/ManagedSettingsSecurityDialog/utils.ts
+
+  - title: 项目级引导
+    files:
+      - src/projectOnboardingState.ts
+
+  - title: 辅助推荐与提示
+    files:
+      - src/components/DesktopUpsell/DesktopUpsellStartup.tsx
+      - src/components/LspRecommendation/LspRecommendationMenu.tsx
+      - src/utils/claudeCodeHints.ts
+      - src/utils/autoRunIssue.tsx
+
+  - title: 设置界面
+    files:
+      - src/components/Settings/Settings.tsx
+      - src/components/Settings/Config.tsx
+      - src/components/Settings/Status.tsx
+      - src/components/Settings/Usage.tsx
+      - src/components/Settings/Gates.tsx
+
+  - title: 测试
+    files:
+      - tests/issueOnboarding.test.ts
