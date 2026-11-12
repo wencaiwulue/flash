@@ -61,7 +61,7 @@ Claude Code 需要一套完整的诊断系统来解决以下问题：
 | 诊断日志明确禁止 PII | `logForDiagnosticsNoPII()` 明确禁止 PII，只接受 event 名和安全数据 | 诊断日志可能发送到环境管理器，必须确保无敏感信息；函数签名和注释明确强调这一点 | 调试信息有限，只能看到 event 流，看不到细节 | `src/utils/diagLogs.ts:26-57` |
 | Error sink 用 JSONL 格式 | 每行一个 JSON 对象，支持逐行解析 | 即使文件被截断或部分损坏，也能解析剩余行；append 操作简单；无需重写整个文件 | JSONL 不直观，需要工具查看；没有人类可读格式 | `src/utils/errorLogSink.ts:250-261` |
 | 诊断日志环境变量控制 | `CLAUDE_CODE_DIAGNOSTICS_FILE` 指定日志路径 | 环境管理器可以设置此变量来收集诊断；不设置时禁用诊断日志 | 需要外部设置才能启用 | `src/utils/diagLogs.ts:59-62` |
-| Event loop stall detector 占位 | `startEventLoopStallDetector()` 当前返回禁用 | 为未来功能预留接口；当前未实现但 API 已定义 | 无功能，只是占位 | `src/utils/eventLoopStallDetector.ts:1-6` |
+| Event loop stall detector **DISABLED/占位** | `startEventLoopStallDetector()` 当前返回 `{ enabled: false }` | 为未来功能预留接口；当前**未实现**，API 仅返回禁用状态 | 无实际功能，仅占位 | `src/utils/eventLoopStallDetector.ts:1-6` |
 
 ## 3. 目标与非目标
 
@@ -89,6 +89,7 @@ Claude Code 需要一套完整的诊断系统来解决以下问题：
 - **目标**：`queryProfiler` 记录 query 各阶段耗时，输出时间线
 - **目标**：`headlessProfiler` 在非交互模式下记录性能指标
 - **目标**：`getStartupProfileData()`、`getQueryProfileData()` 提供结构化性能数据
+- **DISABLED 非目标**：`eventLoopStallDetector` 仅为占位接口，当前不提供事件循环阻塞检测
 - **非目标**：不提供火焰图（但 checkpoint 可用于生成）
 
 ### 内存诊断
@@ -202,6 +203,7 @@ function checkContextWarnings(tools: Tool[], agentInfo: AgentDefinitionsResult |
 | `doctorDiagnostic.ts` | 无（纯函数） | `getDoctorDiagnostic`、`getCurrentInstallationType`、`detectMultipleInstallations`、`detectConfigurationIssues` | 自动修复（只提供建议） | 检查安装配置，提供诊断和修复建议 |
 | `doctorContextWarnings.ts` | 无（纯函数） | `checkContextWarnings`、`checkClaudeMdFiles`、`checkAgentDescriptions`、`checkMcpTools`、`checkUnreachableRules` | 自动修复（只提供建议） | 检查上下文问题，提供警告 |
 | `diagnosticTracking.ts` | `baseline` (Map)、`rightFileDiagnosticsState` (Map)、`lastProcessedTimestamps` (Map)、`initialized`、`mcpClient` | `beforeFileEdited`、`getNewDiagnostics`、`reset`、`formatDiagnosticsSummary` | 诊断自动修复（只检测） | 通过 MCP 与 IDE 通信，获取诊断 |
+| `eventLoopStallDetector.ts` | **无（DISABLED 占位）** | **`startEventLoopStallDetector()` 仅返回 `{ enabled: false }`** | **实际事件循环阻塞检测（未实现）** | **预留接口，当前无功能** |
 | `commands/doctor/` | 无（命令 UI） | `/doctor` 命令界面 | 实际诊断逻辑（委托给 doctorDiagnostic） | 渲染 Doctor 组件 |
 | `commands/perf-issue/` | 无（命令 UI） | `/perf-issue` 命令界面、`buildPerfIssueReport`、`sanitizeErrorForDiagnostics` | 诊断上传（用户手动） | 渲染 DiagnosticExportDialog 组件 |
 | `commands/heapdump/` | 无（命令入口） | `/heapdump` 命令 | heap dump 分析（需要外部工具） | 调用 performHeapDump |
@@ -624,6 +626,7 @@ type ContextWarnings = {
 - Error sink 用 JSONL 格式：每行一个 JSON 对象，支持逐行解析
 - 诊断日志环境变量控制：`CLAUDE_CODE_DIAGNOSTICS_FILE` 指定日志路径
 - 所有诊断文件权限 0o600：防止其他用户读取
+- **Event loop stall detector DISABLED**：`startEventLoopStallDetector()` 仅返回 `{ enabled: false }`，无实际检测功能
 
 ### 6.2 行为验收标准
 

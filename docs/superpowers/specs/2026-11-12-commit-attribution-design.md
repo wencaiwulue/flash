@@ -195,12 +195,18 @@ sanitizeModelName(modelName: string): string
 
 | 模块/对象 | 拥有的状态 | 主要操作 | 不承担的职责 | 与其他模块的接口 |
 |---|---|---|---|---|
-| `commitAttribution.ts` | AttributionState（内存） | 创建空状态、跟踪文件修改、批量跟踪、计算归因、快照/恢复、Git 工具辅助（getStagedFiles、getGitDiffSize、isFileDeleted、isGitTransientState） | Git 命令执行（由 git.ts 承担）、持久化（由 postCommitAttribution/会话存储承担） | 调用 git.ts、generatedFiles、model/model.ts |
-| `attributionHooks.ts` | fileContentCache（LRU，500 条目，15min 过期）、pendingBash（Map<toolUseId, PendingBash>，5min 过期）、lastHeadByRepo（Map<repoRoot, sha>）、sweepTimer | 注册钩子、preBash 快照、postBash 差异、reconcileCommitBaseline、清理缓存、flush 持久化队列 | 钩子执行机制（由 hooks.ts 承担） | 被 hooks 调用、调用 commitAttribution、postCommitAttribution |
+| `commitAttribution.ts` | 纯函数模块，无模块级状态 | 创建空状态（createEmptyAttributionState）、跟踪文件修改（trackFileModification）、批量跟踪（trackBulkFileChanges）、计算归因（calculateCommitAttribution）、快照/恢复（stateToSnapshotMessage、restoreAttributionStateFromSnapshots）、Git 工具辅助（getStagedFiles、getGitDiffSize、isFileDeleted、isGitTransientState、isInternalModelRepo、sanitizeModelName） | Git 命令执行（由 git.ts 承担）、持久化（由 postCommitAttribution/会话存储承担） | 调用 git.ts、generatedFiles、model/model.ts |
+| `attributionHooks.ts` | fileContentCache（LRU，500 条目，15min 过期）、pendingBash（Map<toolUseId, PendingBash>，5min 过期）、lastHeadByRepo（Map<repoRoot, sha>）、sweepTimer、persistence Promise | registerAttributionHooks、preBash 快照、postBash 差异、reconcileCommitBaseline、cleanupBashHook、sweepFileContentCache、clearAttributionCaches、updateAndPersist | 钩子执行机制（由 hooks.ts 承担）、核心归因计算 | 被 hooks 调用、调用 commitAttribution、postCommitAttribution、sessionStorage |
 | `attributionTrailer.ts` | 无（纯函数） | buildPRTrailers、nonNegativeDelta | 实际写入 commit message | 被 commitAttribution、postCommitAttribution 调用 |
 | `attribution.ts` | 无（纯函数为主） | getAttributionTexts、getEnhancedPRAttribution、countUserPromptsInMessages、countUserPromptsFromEntries、countMemoryFileAccessFromEntries、getTranscriptStats | 完整归因计算 | 调用 commitAttribution、attributionTrailer、会话存储、settings、model |
-| `postCommitAttribution.ts` | 无（模块级缓存为 0） | install/uninstall prepare-commit-msg、persistAttributionStateForGit、readAttributionStates、runPrepareCommitMsgAttribution、atomicWrite、resolveHooksDirectory、dispatcher | 完整 CLI 启动 | 调用 commitAttribution、attributionTrailer、git.ts、lockfile、execFileNoThrow |
-| `AppState.attribution` | 全局 AttributionState（每个会话） | updateAttributionState 回调更新 | 持久化（由 commitAttribution 快照 + 会话存储 + Git 侧持久化承担） | 被 attributionHooks 回调更新 |
+| `postCommitAttribution.ts` | 无（模块级缓存为 0） | install/uninstall prepare-commit-msg、persistAttributionStateForGit、readAttributionStates、runPrepareCommitMsgAttribution、atomicWrite、resolveHooksDirectory、dispatcher | 完整 CLI 启动、核心归因计算 | 调用 commitAttribution、attributionTrailer、git.ts、lockfile、execFileNoThrow |
+| `AppState.attribution` | AttributionState 序列化快照（仅用于持久化） | updateAttributionState 回调更新 | 状态所有权（实际状态在 attributionHooks 闭包中通过参数传递） | 被 attributionHooks 回调更新、用于会话恢复 |
+
+#### 状态所有权说明
+- 核心 AttributionState 通过显式参数传递，不在 commitAttribution.ts 模块级持有
+- attributionHooks.ts 在钩子执行期间通过闭包持有当前会话的 AttributionState
+- AppState.attribution 仅作为持久化快照，不参与运行时归因计算
+- Git 侧持久化通过 postCommitAttribution.ts 读写 `.git/claude-code/attribution/<sessionId>.json`
 
 ### 4.3 主控制流
 

@@ -12,7 +12,7 @@ status: draft
 
 ## 1. 问题与约束
 
-Claude Code 需要支持多种认证方式：OAuth 2.0（Claude.ai 用户）、API key（直接 API 用户）、环境变量、FD 传递（CCR 远程）、第三方服务（Bedrock/Vertex/Foundry）。同时需要安全地存储敏感凭据，避免意外泄露。如果没有统一的认证系统，会导致：
+Claude Code 需要支持多种认证方式：OAuth 2.0（Claude.ai 用户）、API key（直接 API 用户）、环境变量、FD 传递（CCR/Claude Desktop 远程会话）、第三方服务（Bedrock/Vertex/Foundry）。同时需要安全地存储敏感凭据，避免意外泄露。如果没有统一的认证系统，会导致：
 
 - 多种认证方式优先级不明确，用户不知道哪个生效
 - 令牌刷新并发不安全，多个刷新请求同时发起导致令牌失效
@@ -31,6 +31,17 @@ Claude Code 需要支持多种认证方式：OAuth 2.0（Claude.ai 用户）、A
 - 托管会话隔离：CCR/Claude Desktop 环境下不读取用户本地的 settings.json 中的凭据
 - 令牌过期预判：提前 5 分钟刷新，避免请求时才发现过期
 - fail-open 策略：安全存储写入失败时可以 fallback 到 plaintext，不阻止用户使用
+
+### OAuth 与 ccshare credential 的边界
+
+| 特性 | OAuth (Claude.ai) | ccshare credential |
+|---|---|---|
+| 用途 | 1P Claude.ai 用户认证 | 托管会话（CCR/Claude Desktop）传递已认证状态 |
+| 传递方式 | OAuth 授权码流程、refresh token 刷新 | FD 传递、文件持久化 |
+| 存储位置 | Keychain/libsecret/plaintext .credentials.json | CCR 已知路径：~/.claude/remote/.oauth_token / .api_key |
+| 刷新机制 | OAuth refresh token 流程 | 无刷新，由托管方更新 |
+| 隔离性 | 独立 CLI 会话使用 | 托管会话优先，隔离用户本地配置 |
+| 验证边界 | 验证 token 格式、非空、JSON 有效性 | 同左，应用于所有 credential 读取 |
 
 ## 2. 设计理由与备选方案
 
@@ -147,7 +158,44 @@ function getSecureStorage(): SecureStorage
 - **keychainCacheState** 放在 `macOsKeychainHelpers.ts` 模块级变量：Keychain 读取缓存 + generation 检测失效 + in-flight 去重
 - **keychainPrefetch** 状态放在 `keychainPrefetch.ts` 模块级变量：启动时一次性并行读取，结果供后续使用
 
-### 4.3 主控制流
+### 4.3 Credential 读取与验证
+
+#### 验证规则与模块边界
+
+| 验证项 | 应用场景 | 所属模块 | 验证内容 |
+|---|---|---|---|
+| regular file | 所有文件读取 | plainTextStorage、authFileDescriptor | 必须是常规文件，非目录/设备 |
+| 0o600 权限 | plaintext fallback、CCR 已知路径 | plainTextStorage、authFileDescriptor | 文件权限必须为 0o600，防止其他用户读取 |
+| ≤4096 字节 | macOS Keychain stdin 模式 | macOsKeychainStorage | 命令行长度不超过 4096-64 字节，超过则 fallback 到 argv |
+| 合法 JSON | 所有 credential 解析 | 所有存储模块 | 必须能解析为 SecureStorageData 结构 |
+| 非空 token | OAuth/API key 使用前 | auth.ts | access_token/api_key 不能为空字符串 |
+
+#### 验证流程
+
+```
+读取 credential
+  ↓
+验证是 regular file (非目录/设备)
+  ↓
+验证文件权限 0o600 (plaintext/CCR 路径)
+  ↓
+读取内容，验证 ≤4096 字节 (Keychain stdin 限制)
+  ↓
+JSON 解析，验证合法 SecureStorageData 结构
+  ↓
+验证 token 非空 (使用时)
+  ↓
+返回 credential 或 fallback
+```
+
+#### Keychain 特殊限制
+
+- macOS Keychain 使用 `security -i` 模式通过 stdin 输入命令，避免凭证出现在 ps/top
+- stdin 限制 4096 字节（实际使用 4096-64 字节作为安全边际）
+- 超过限制时 fallback 到 argv 模式（hex 编码，仍有泄露风险但比 plaintext 好）
+- 跨进程变更有 30 秒缓存窗口
+
+### 4.4 主控制流
 
 完整 OAuth 登录与 token 刷新流（端到端）：
 
@@ -270,7 +318,7 @@ security add-generic-password -U 更新
 返回结果
 ```
 
-### 4.4 数据结构与持久化
+### 4.5 数据结构与持久化
 
 关键数据结构：
 
@@ -343,7 +391,7 @@ type AuthTokenSource =
 - CCR 环境下优先从 FD 读取，失败则从已知路径文件读取
 - 缓存失效时重新读取存储
 
-### 4.5 跨子系统依赖
+### 4.6 跨子系统依赖
 
 - **Settings**：`apiKeyHelper`、`awsAuthRefresh`、`gcpAuthRefresh` 等配置从 settings 读取；auth 凭据本身绝不进入 settings 域
 - **OAuth Service**：`OAuthService` 负责授权流程，本文只描述 token 管理和存储；OAuth spec 主拥有授权流程
@@ -351,7 +399,7 @@ type AuthTokenSource =
 - **Config**：`oauthAccount` 信息存储在 global config（非敏感），本文描述与安全存储的边界
 - **Lockfile**：跨进程锁使用 lockfile 模块，本文只描述调用方式
 
-## 5. 失败语义与工程取舍
+## 6. 失败语义与工程取舍
 
 | 触发条件 | 检测位置 | 消息/异常如何传播 | 是否重试及上限 | 状态与资源清理 | 调用方可见结果 |
 |---|---|---|---|---|---|
@@ -379,7 +427,7 @@ type AuthTokenSource =
 | 托管会话隔离：不读取用户本地凭据 | isManagedOAuthContext() 多处检查 | 需要在多个检查点应用，容易遗漏 | 安全边界清晰，托管会话不被用户本地配置干扰 |
 | token redaction：错误消息中替换 token | safeRefreshError() 替换 token 为 <redacted> | 需要在所有输出 token 的地方应用，容易遗漏 | 防止敏感 token 意外出现在日志/终端 |
 
-## 6. 现状验收标准
+## 7. 现状验收标准
 
 | 初始状态与输入 | 执行场景 | 必须观察到的行为 | 禁止发生的副作用 |
 |---|---|---|---|
@@ -394,7 +442,7 @@ type AuthTokenSource =
 | apiKeyHelper 配置在 settings 中 | 调用 getApiKeyFromApiKeyHelper() | 执行 helper 命令，缓存结果（TTL 5 分钟） | 不应该每次调用都执行 helper |
 | policySettings 强制组织 UUID | 用户登录不同组织 | validateForceLoginOrg() 失败，显示错误，不保存 tokens | 不应该保存错误组织的 tokens |
 
-## 7. 代码与测试证据
+## 8. 代码与测试证据
 
 | 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
 |---|---|---|---|
@@ -410,7 +458,7 @@ type AuthTokenSource =
 | refresh 时 scope 扩展：Claude.ai 用户不指定 scope | `src/services/oauth/client.ts:146-273` | 需查找相关测试 | 未找到直接测试覆盖 |
 | 401 错误处理：对比 token + 并发去重 | `src/utils/auth.ts:1339-1392` | 需查找相关测试 | 未找到直接测试覆盖 |
 
-### 7.1 核心模块
+### 8.1 核心模块
 
 | 文件 | 关键符号 | 说明 |
 |---|---|---|
@@ -436,7 +484,7 @@ type AuthTokenSource =
 | `tests/oauthRefresh.test.ts` | (tests) | OAuth refresh 测试：并发去重、redaction、status 等 |
 | `tests/linuxSecretStorage.test.ts` | (tests) | Linux libsecret 存储测试：读写、fallback 等 |
 
-### 7.2 未覆盖行为（基于代码阅读）
+### 8.2 未覆盖行为（基于代码阅读）
 
 - macOS Keychain stale-while-error 行为测试
 - 跨进程文件锁刷新并发测试
@@ -448,11 +496,11 @@ type AuthTokenSource =
 - Keychain 预取与缓存 priming 测试
 - auth.ts 中 _apiKeyHelperEpoch 竞态避免测试
 
-## 8. 文件覆盖与相关子系统
+## 9. 文件覆盖与相关子系统
 
 [Coverage](../../architecture/coverage/auth.yaml)
 
-### 8.1 本 spec 主拥有的文件
+### 9.1 本 spec 主拥有的文件
 
 | 分组 | 主拥有职责 |
 |---|---|
