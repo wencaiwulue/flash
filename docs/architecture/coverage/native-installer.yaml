@@ -1,0 +1,54 @@
+schema_version: 1
+spec_id: native-installer
+spec: ../../superpowers/specs/2026-11-12-native-installer-design.md
+status: draft
+
+groups:
+  - id: native-installer-core
+    kind: source
+    section: 4
+    summary: 核心安装、更新、检查、清理逻辑，锁管理，symlink 管理，原子操作，版本保留策略，运行保护，npm 清理
+    files:
+      - src/utils/nativeInstaller/installer.ts
+
+  - id: native-installer-download
+    kind: source
+    section: 4
+    summary: 版本获取、下载、校验，支持 Artifactory（ant 用户）和 GCS（外部用户）双源，stall 检测（60 秒）与重试（最多 3 次）
+    files:
+      - src/utils/nativeInstaller/download.ts
+
+  - id: native-installer-pid-lock
+    kind: source
+    section: 4
+    summary: PID 锁实现，进程存活检测，stale 锁清理，双重锁机制（PID 锁优先 + mtime 锁 fallback）
+    files:
+      - src/utils/nativeInstaller/pidLock.ts
+
+  - id: native-installer-package-managers
+    kind: source
+    section: 4
+    summary: 包管理器检测，支持 Homebrew/winget/pacman/deb/rpm/apk/mise/asdf，Linux distro 检测（通过 /etc/os-release）
+    files:
+      - src/utils/nativeInstaller/packageManagers.ts
+
+  - id: native-installer-index
+    kind: source
+    section: 4
+    summary: 公共 API 导出（仅导出实际使用的符号，作为 barrel file）
+    files:
+      - src/utils/nativeInstaller/index.ts
+
+  - id: native-installer-cli-update
+    kind: source
+    section: 4
+    summary: /update 命令实现，根据安装类型路由到原生或 npm 更新，包管理器检测与提示，多安装警告
+    files:
+      - src/cli/update.ts
+
+  - id: native-installer-shared-autoupdater
+    kind: source
+    section: 4
+    summary: 共享的自动更新逻辑（getMaxVersion、shouldSkipVersion、assertMinVersion），与 nativeInstaller 配合使用
+    files:
+      - src/utils/autoUpdater.ts
