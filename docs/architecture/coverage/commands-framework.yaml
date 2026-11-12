@@ -1,0 +1,90 @@
+# Commands Framework 覆盖范围
+# 本文件记录 Commands Framework 设计文档对应的源码模块
+
+sections:
+  - id: 1
+    title: 概述
+    files:
+      - src/commands.ts
+      - src/types/command.ts
+
+  - id: 2
+    title: 系统架构
+    files:
+      - src/commands.ts
+      - src/types/command.ts
+      - src/utils/processUserInput/processUserInput.ts
+      - src/utils/processUserInput/processSlashCommand.tsx
+      - src/utils/processUserInput/processBashCommand.tsx
+      - src/utils/processUserInput/processTextPrompt.ts
+
+  - id: 3
+    title: 命令类型与来源聚合
+    files:
+      - src/types/command.ts
+      - src/commands.ts
+      - src/skills/loadSkillsDir.ts
+      - src/skills/bundledSkills.ts
+      - src/plugins/builtinPlugins.ts
+      - src/utils/plugins/loadPluginCommands.ts
+
+  - id: 4
+    title: 斜杠命令解析
+    files:
+      - src/utils/slashCommandParsing.ts
+      - src/utils/processUserInput/processSlashCommand.tsx
+
+  - id: 5
+    title: 命令执行模型
+    files:
+      - src/utils/processUserInput/processSlashCommand.tsx
+      - src/utils/processUserInput/processUserInput.ts
+      - src/utils/forkedAgent.ts
+      - src/tools/AgentTool/runAgent.ts
+
+  - id: 6
+    title: 消息与模型副作用
+    files:
+      - src/utils/messages.ts
+      - src/types/message.ts
+      - src/utils/hooks/registerSkillHooks.ts
+
+  - id: 7
+    title: 去重与错误边界
+    files:
+      - src/commands.ts
+      - src/utils/processUserInput/processSlashCommand.tsx
+      - src/utils/errors.ts
+
+  - id: 8
+    title: 远程控制安全模型
+    files:
+      - src/commands.ts
+      - src/utils/processUserInput/processUserInput.ts
+
+  - id: 9
+    title: 设计决策
+    files:
+      - src/commands.ts
+      - src/types/command.ts
+      - src/utils/processUserInput/processSlashCommand.tsx
+
+owners:
+  - name: Commands Framework
+    files:
+      - src/commands.ts
+      - src/types/command.ts
+      - src/utils/processUserInput/
+      - src/utils/slashCommandParsing.ts
+
+  - name: 通用内建命令
+    files:
+      - src/commands/clear/
+      - src/commands/resume/
+      - src/commands/session/
+      - src/commands/rename/
+      - src/commands/tag/
+      - src/commands/export/
+      - src/commands/diff/
+      - src/commands/status/
+      - src/commands/help/
