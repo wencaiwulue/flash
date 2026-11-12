@@ -1,0 +1,159 @@
+# Review & Analysis Coverage
+# 代码审查与上下文分析覆盖率
+
+schema_version: 1
+
+section: "Review & Analysis"
+description: "代码审查工具、上下文检查工具、会话洞察分析功能"
+issues_url: "https://github.com/anthropics/claude-code/issues"
+
+coverage:
+  - group: "review-artifact-tool"
+    description: "ReviewArtifactTool 独立代码审查工具"
+    files:
+      - path: "src/tools/ReviewArtifactTool/ReviewArtifactTool.ts"
+        coverage: "full"
+        lines: 1-183
+        owners: ["Review & Analysis"]
+    notes:
+      - "包含工具定义、审查代理调用、JSON 解析、权限检查复用"
+      - "defaultReviewer 函数启动独立的只读代理"
+
+  - group: "ctx-inspect-tool"
+    description: "CtxInspectTool 上下文检查工具"
+    files:
+      - path: "src/tools/CtxInspectTool/CtxInspectTool.ts"
+        coverage: "full"
+        lines: 1-62
+        owners: ["Review & Analysis"]
+    notes:
+      - "包含上下文数据格式化，不含 collectContextData 实现"
+
+  - group: "insights-command"
+    description: "/insights 会话洞察命令"
+    files:
+      - path: "src/commands/insights.ts"
+        coverage: "full"
+        lines: 1-2758
+        owners: ["Review & Analysis"]
+    notes:
+      - "包含洞察生成完整流程：扫描、缓存、facet 提取、聚合、报告生成"
+      - "包含多 Claude 检测、并行洞察生成、HTML 报告渲染"
+
+  - group: "session-meta"
+    description: "会话元数据提取与缓存"
+    files:
+      - path: "src/commands/insights/sessionMeta.ts"
+        coverage: "full"
+        lines: 1-495
+        owners: ["Review & Analysis"]
+    notes:
+      - "包含从会话日志提取丰富统计信息的逻辑"
+      - "包含原子写入缓存的实现"
+
+  - group: "tests"
+    description: "Review & Analysis 相关测试"
+    files:
+      - path: "tests/reviewArtifact.test.ts"
+        coverage: "partial"
+        lines: 1-110
+        owners: ["Review & Analysis"]
+        notes:
+          - "测试 ReviewArtifactTool 的基本路径"
+          - "测试 Hunter skill 集成"
+
+      - path: "tests/internalTools.test.ts"
+        coverage: "partial"
+        lines: 1-137
+        owners: ["Review & Analysis"]
+        notes:
+          - "测试 CtxInspectTool 的格式化函数"
+          - "其他内部工具测试不属于此 spec"
+
+dependencies:
+  - spec: "agent"
+    reason: "ReviewArtifactTool 使用 AgentTool 启动独立审查代理"
+    files:
+      - "src/tools/AgentTool/AgentTool.ts"
+      - "src/tools/AgentTool/built-in/generalPurposeAgent.ts"
+
+  - spec: "query-core"
+    reason: "CtxInspectTool 使用 collectContextData"
+    files:
+      - "src/commands/context/context-noninteractive.ts"
+
+  - spec: "permissions"
+    reason: "ReviewArtifactTool 复用 FileReadTool 权限检查"
+    files:
+      - "src/utils/permissions/filesystem.ts"
+
+  - spec: "file-tools"
+    reason: "ReviewArtifactTool 复用 FileReadTool"
+    files:
+      - "src/tools/FileReadTool/FileReadTool.ts"
+
+  - spec: "model-api"
+    reason: "insights 使用 queryWithModel 提取 facets"
+    files:
+      - "src/services/api/claude.ts"
+
+related_files:
+  - path: "src/skills/bundled/hunter.ts"
+    reason: "Hunter skill 使用 ReviewArtifactTool，属于技能系统"
+    owner_spec: "skills"
+
+  - path: "src/utils/analyzeContext.ts"
+    reason: "collectContextData 实现，属于查询核心"
+    owner_spec: "query-core"
+
+  - path: "src/services/contextCollapse/index.ts"
+    reason: "context collapse 统计，属于查询核心"
+    owner_spec: "query-core"
+
+test_gaps:
+  - description: "ReviewArtifactTool 无测试覆盖代理启动和 JSON 解析边缘情况"
+    severity: "high"
+    files:
+      - "src/tools/ReviewArtifactTool/ReviewArtifactTool.ts"
+    suggested_tests:
+      - "测试审查代理返回无 JSON"
+      - "测试审查代理返回无效 JSON"
+      - "测试审查代理返回 findings 缺少必要字段"
+      - "测试审查代理返回前后有额外文本"
+
+  - description: "insights 命令无端到端测试"
+    severity: "medium"
+    files:
+      - "src/commands/insights.ts"
+    suggested_tests:
+      - "测试完整流程：扫描 → 缓存 → facet 提取 → 聚合 → 报告生成"
+      - "测试会话分支去重逻辑"
+      - "测试多 Claude 检测逻辑"
+
+  - description: "sessionMeta 模块无测试"
+    severity: "medium"
+    files:
+      - "src/commands/insights/sessionMeta.ts"
+    suggested_tests:
+      - "测试工具错误分类逻辑"
+      - "测试响应时间计算（仅人类消息）"
+      - "测试原子写入缓存的崩溃恢复"
+
+change_risk:
+  "review-artifact-tool":
+    risk: "medium"
+    reason: "修改审查代理的工具列表或 system prompt 可能影响审查质量"
+    affected_paths:
+      - "src/tools/ReviewArtifactTool/ReviewArtifactTool.ts"
+
+  "session-meta":
+    risk: "low"
+    reason: "仅影响统计提取，缓存失效时会自动重新分析"
+    affected_paths:
+      - "src/commands/insights/sessionMeta.ts"
+
+  "insights-command":
+    risk: "medium"
+    reason: "修改 facet 提取 prompt 可能影响洞察质量；修改缓存逻辑可能导致缓存失效"
+    affected_paths:
+      - "src/commands/insights.ts"
