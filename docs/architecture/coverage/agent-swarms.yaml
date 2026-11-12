@@ -1,0 +1,187 @@
+schema_version: 1
+spec_id: agent-swarms
+spec: ../../superpowers/specs/2026-11-12-agent-swarms-design.md
+status: draft
+
+groups:
+  - id: agent-tool
+    kind: source
+    section: 4
+    summary: AgentTool 核心实现，包括 spawn agent、fork 子代理、同步/异步执行、worktree 隔离
+    files:
+      - src/tools/AgentTool/AgentTool.tsx
+      - src/tools/AgentTool/agentToolUtils.ts
+      - src/tools/AgentTool/forkSubagent.ts
+      - src/tools/AgentTool/runAgent.ts
+      - src/tools/AgentTool/loadAgentsDir.ts
+      - src/tools/AgentTool/agentColorManager.ts
+      - src/tools/AgentTool/agentMemory.ts
+      - src/tools/AgentTool/agentMemorySnapshot.ts
+      - src/tools/AgentTool/agentMemorySnapshotMerge.ts
+      - src/tools/AgentTool/builtInAgents.ts
+      - src/tools/AgentTool/UI.tsx
+      - src/tools/AgentTool/prompt.ts
+      - src/tools/AgentTool/constants.ts
+      - src/tools/AgentTool/resumeAgent.ts
+
+  - id: team-tools
+    kind: source
+    section: 4
+    summary: TeamCreateTool 和 TeamDeleteTool，用于创建和解散团队
+    files:
+      - src/tools/TeamCreateTool/TeamCreateTool.ts
+      - src/tools/TeamCreateTool/UI.tsx
+      - src/tools/TeamCreateTool/prompt.ts
+      - src/tools/TeamCreateTool/constants.ts
+      - src/tools/TeamDeleteTool/TeamDeleteTool.ts
+      - src/tools/TeamDeleteTool/UI.tsx
+      - src/tools/TeamDeleteTool/prompt.ts
+      - src/tools/TeamDeleteTool/constants.ts
+
+  - id: swarm-mailbox
+    kind: source
+    section: 4
+    summary: 基于文件系统的 mailbox 消息传递，支持跨进程和同进程通信
+    files:
+      - src/utils/teammateMailbox.ts
+
+  - id: swarm-team-helpers
+    kind: source
+    section: 4
+    summary: 团队文件读写、team directory 管理、团队发现
+    files:
+      - src/utils/swarm/teamHelpers.ts
+      - src/utils/swarm/constants.ts
+      - src/utils/teamDiscovery.ts
+
+  - id: swarm-permission-sync
+    kind: source
+    section: 4
+    summary: 团队权限同步，包括 UI bridge 和 mailbox 双路径
+    files:
+      - src/utils/swarm/permissionSync.ts
+      - src/utils/swarm/leaderPermissionBridge.ts
+
+  - id: swarm-in-process-runner
+    kind: source
+    section: 4
+    summary: in-process teammate 执行器、权限同步 bridge、teammate 初始化
+    files:
+      - src/utils/swarm/inProcessRunner.ts
+      - src/utils/swarm/teammateInit.ts
+      - src/utils/swarm/spawnInProcess.ts
+      - src/utils/swarm/spawnUtils.ts
+      - src/utils/swarm/It2SetupPrompt.tsx
+
+  - id: swarm-backends
+    kind: source
+    section: 4
+    summary: 多后端支持（in-process、tmux、iTerm2）
+    files:
+      - src/utils/swarm/backends/types.ts
+      - src/utils/swarm/backends/registry.ts
+      - src/utils/swarm/backends/inProcess.ts
+      - src/utils/swarm/backends/tmux.ts
+      - src/utils/swarm/backends/iterm2.ts
+
+  - id: swarm-layout
+    kind: source
+    section: 4
+    summary: teammate 布局管理、颜色分配
+    files:
+      - src/utils/swarm/teammateLayoutManager.ts
+      - src/utils/swarm/teammatePromptAddendum.ts
+      - src/utils/swarm/teammateModel.ts
+
+  - id: swarm-reconnection
+    kind: source
+    section: 4
+    summary: 团队重连逻辑
+    files:
+      - src/utils/swarm/reconnection.ts
+
+  - id: coordinator
+    kind: source
+    section: 4
+    summary: Coordinator 模式，包括系统提示、worker 能力说明、coordinator 用户上下文
+    files:
+      - src/coordinator/coordinatorMode.ts
+
+  - id: agent-context
+    kind: source
+    section: 4
+    summary: Agent 上下文管理、parent session 跟踪
+    files:
+      - src/utils/agentContext.ts
+
+  - id: teammate-helpers
+    kind: source
+    section: 4
+    summary: Teammate 检测、agent name/color 获取、session chain 恢复
+    files:
+      - src/utils/teammate.ts
+      - src/utils/teammateContext.ts
+      - src/utils/sessionChainRecovery.ts
+      - src/utils/inProcessTeammateHelpers.ts
+      - src/utils/collapseTeammateShutdowns.ts
+
+  - id: agent-id
+    kind: source
+    section: 4
+    summary: Agent ID 生成与格式化
+    files:
+      - src/utils/agentId.ts
+
+  - id: swarm-components
+    kind: source
+    section: 4
+    summary: Swarm UI 组件（teammate view、inbox、notifications）
+    files:
+      - src/components/TeammateViewHeader.tsx
+      - src/hooks/useTeammateViewAutoExit.ts
+      - src/hooks/notifs/useTeammateShutdownNotification.ts
+      - src/hooks/useSwarmPermissionPoller.ts
+
+  - id: agent-swarms-enabled
+    kind: source
+    section: 1
+    summary: Agent swarms feature flag
+    files:
+      - src/utils/agentSwarmsEnabled.ts
+
+  - id: in-process-teammate-task
+    kind: source
+    section: 4
+    summary: In-process teammate 任务类型与消息追加
+    files:
+      - src/tasks/InProcessTeammateTask/types.ts
+      - src/tasks/InProcessTeammateTask/InProcessTeammateTask.tsx
+
+  - id: local-agent-task
+    kind: source
+    section: 4
+    summary: Local agent 任务管理、async agent 生命周期
+    files:
+      - src/tasks/LocalAgentTask/LocalAgentTask.ts
+
+  - id: remote-agent-task
+    kind: source
+    section: 4
+    summary: Remote agent 任务管理（CCA 远程隔离）
+    files:
+      - src/tasks/RemoteAgentTask/RemoteAgentTask.ts
+
+  - id: swarm-commands
+    kind: source
+    section: 7
+    summary: Swarm 相关命令
+    files:
+      - src/commands/agents/index.ts
+      - src/commands/agents/agents.ts
+
+  - id: shared-spawn-multi-agent
+    kind: source
+    section: 4
+    summary: 共享的多 agent spawn 逻辑
+    files:
+      - src/tools/shared/spawnMultiAgent.ts
