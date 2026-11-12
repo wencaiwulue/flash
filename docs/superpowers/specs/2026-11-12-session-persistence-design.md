@@ -1,6 +1,6 @@
 ---
 id: session-persistence
-batch: 3
+batch: 2
 title: Session Persistence 会话记录、恢复与文件历史设计
 date: 2026-11-12
 status: draft

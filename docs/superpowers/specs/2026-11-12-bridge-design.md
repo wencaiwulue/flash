@@ -1,6 +1,6 @@
 ---
 id: bridge
-batch: 6
+batch: 2
 title: Bridge 环境桥接与远程工作生命周期设计
 date: 2026-11-12
 status: draft
@@ -14,8 +14,7 @@ status: draft
 
 Bridge 系统解决的核心问题是让 claude.ai 网页能安全地控制本地 Claude Code CLI 实例，同时保持可靠的会话生命周期管理、多会话隔离、权限回调和崩溃恢复。
 
-### 核心问题域
-
+核心问题域：
 - **环境注册与发现**：如何让服务器识别并路由到特定的本地 CLI 实例，同时支持重连恢复？
 - **轮询与重连策略**：在网络不稳定时如何保证不丢消息、不重复处理工作？
 - **工作秘密安全**：如何安全传递会话凭证，同时支持两个版本的协议？
@@ -25,484 +24,432 @@ Bridge 系统解决的核心问题是让 claude.ai 网页能安全地控制本�
 - **关闭与恢复**：干净退出和崩溃恢复的语义有何不同？
 - **安全边界**：OAuth、环境 secret、会话 JWT、受信设备 token 各层的职责是什么？
 
-### 约束条件
+约束条件：
+- 不能复制 remote-control、daemon 或 SDK 的设计文档，只写 bridge 模块
+- 需要支持两个主要实现：standalone `claude remote-control` 和内嵌的 REPL bridge
+- 需要同时支持 v1（env-based，轮询）和 v2（env-less，直接连接）两种协议
+- 崩溃恢复需要跨 worktree 查找指针，因为 REPL 可能在不同的 worktree 中运行
 
-- 不能复制 remote-control、daemon 或 SDK 的设计文档；只写 bridge 模块。
-- 需要支持两个主要实现：standalone `claude remote-control` 和内嵌的 REPL bridge。
-- 需要同时支持 v1（env-based，轮询）和 v2（env-less，直接连接）两种协议。
-- 崩溃恢复需要跨 worktree 查找指针，因为 REPL 可能在不同的 worktree 中运行。
+## 2. 设计理由与备选方案
 
-## 2. 设计概览
+| 决策维度 | 实际机制 | 为什么采用 | 备选方案及不采用原因 | 代价 | 证据 |
+|---------|---------|----------|-------------------|-----|------|
+| 幂等注册 | Client 生成 bridgeId 和 environmentId，携带 git 信息、worker_type、max_sessions、spawn_mode 注册 | Client 侧生成 UUID 确保重试幂等，携带 git 信息提升用户体验，worker_type 让服务器区分来源 | Server 生成所有 ID：重试无法幂等，需要额外去重；不携带 git 信息：体验下降 | Client 需要存储恢复 ID | bridgeApi.ts 中的注册请求 |
+| 恢复语义 | `--session-id` 和 `--continue` 使用 reuseEnvironmentId 重新注册，同时调用 reconnectSession 强制终止 stale worker | 用户期望回到同一会话，强制终止防止两个 bridge 同时处理 | 每次创建新环境：用户需要接受新 session URL | bridgeMain.ts 的 resume 分支，bridgeApi.ts 的 reconnectSession |
+| 轮询配置 | 不在容量时默认 2 秒轮询，在容量时默认 10 分钟轮询 + 可选心跳，回收窗口 5 秒 | 平衡响应速度和服务器负载，心跳提供更轻量的 liveness，回收窗口让崩溃实例快速被接管 | 仅心跳：需要持续连接；仅轮询：延迟高 | 配置复杂度增加 | pollConfigDefaults.ts、pollConfig.ts |
+| 安全规则 | 所有间隔 ≥ 100ms 防止 DDoS，在容量时至少一种 liveness 机制，Zod 验证配置回退默认值 | 深度防御防止配置错误导致问题，回退默认值保证可用性 | 无验证：可能导致严重问题 | pollConfig.ts 的 object-level refine |
+| 退避策略 | 连接错误：2s→4s→8s→…→120s cap，10 分钟后放弃；一般错误：500ms→…→30s cap；睡眠检测：间隙 > 2×cap 时重置错误预算 | 指数退避防止服务器过载，睡眠检测处理笔记本合盖场景，放弃窗口平衡可用性 | 无退避：服务器过载；无放弃：永久重试 | bridgeMain.ts 的 runBridgeLoop |
+| 心跳机制 | heartbeatWork 使用 session ingress JWT（无 DB 命中）延长租约，capacityWake 在会话结束时唤醒，auth 失败触发 reconnectSession | 心跳比轮询轻量，capacityWake 让新工作立即被接受，auth 失败主动恢复 | 仅轮询：负载高；仅心跳：无新工作唤醒 | bridgeMain.ts 的心跳循环，capacityWake.ts |
+| WorkSecret 结构 | version: 1，session_ingress_token，api_base_url，sources，auth，claude_code_args，mcp_config，environment_variables，use_code_sessions | 显式版本支持演进，use_code_sessions 让服务器渐进迁移 v2，session ingress token 与 OAuth 分离 | 无版本：难以演进；合并 token：安全边界不清晰 | types.ts 的 WorkSecret 定义，workSecret.ts 的 decodeWorkSecret |
+| URL 构建 | v1：buildSdkUrl → WebSocket URL，localhost 用 /v2/，生产用 /v1/；v2：buildCCRv2SdkUrl → HTTP URL，指向 /v1/code/sessions/{id} | 支持双协议渐进迁移，localhost 使用 v2 方便开发 | 统一用 /v1/：本地开发与生产不一致 | workSecret.ts 的三个 URL/ID 函数 |
+| ID 比较 | sameSessionId 比较 UUID 时忽略 session_ vs cse_ 前缀 | 处理兼容层 retag，防止 v2 迁移期间拒绝自己的会话 | 严格相等：可能误拒绝 | workSecret.ts 的 sameSessionId |
+| Token 刷新 | createTokenRefreshScheduler 在 JWT 过期前 5 分钟主动刷新，generation counter 让 stale in-flight refresh 失效，连续 3 次失败后放弃，60 秒重试延迟，子进程通过 stdin 的 update_environment_variables 消息接收新 token | 主动刷新避免请求中间 token 过期失败，generation counter 防止竞态，通过 stdin 推送简化子进程设计 | 被动刷新：用户请求可能失败；子进程拉取：复杂度高 | jwtUtils.ts，sessionRunner.ts 的 updateAccessToken |
+| Spawn 模式 | single-session（一个会话后退出）、same-dir（多会话共享 cwd）、worktree（每个会话独立 git worktree） | 灵活支持不同场景，single-session 简单，same-dir 快速原型，worktree 强隔离 | 仅一种模式：无法满足所有场景 | types.ts 的 SpawnMode，bridgeMain.ts 的 worktree 创建逻辑 |
+| 会话 Spawner | 子进程用 --print、--sdk-url、--session-id 启动，去掉 CLAUDE_CODE_OAUTH_TOKEN，设置 CLAUDE_CODE_ENVIRONMENT_KIND=bridge、CLAUDE_CODE_SESSION_ACCESS_TOKEN、v1/v2 标志，NDJSON 从 stdout 解析，stderr 调试，activity 环形缓冲区（最后 10 个活动），超时看门狗（默认 24 小时） | 剥离父 OAuth token 是安全边界，NDJSON 是简单可调试的 IPC，超时防止遗忘会话无限运行 | 继承 OAuth token：子进程权限过大；二进制 IPC：难以调试 | sessionRunner.ts 的 createSessionSpawner |
+| 活动跟踪 | 每秒更新状态显示，工具动词映射（Read→Reading，Write→Writing），最后 5 个活动 trail，多会话模式活动列表，标题派生从第一条真实用户消息（跳过 tool-result、synthetic） | 人类可读的动词友好，跳过工具结果防止标题无用 | 原始工具名：不够友好；第一条任意消息：标题可能是工具结果 | sessionRunner.ts 的 extractActivities，bridgeMain.ts 的状态更新循环 |
+| 权限回调 | 子进程发出 control_request（subtype: can_use_tool），bridge 通过 sendPermissionResponseEvent 转发到服务器，用户在网页批准/拒绝，服务器发送 control_response，bridge 通过 stdin 转发回子进程 | 权限请求由子进程发起（只有它知道完整上下文），bridge 仅透明路由 | Bridge 拦截权限请求：需要理解所有工具上下文 | sessionRunner.ts 的 control request 检测，bridgeMain.ts 的转发逻辑，bridgePermissionCallbacks.ts |
+| 容量管理 | 默认 32 个会话（SPAWN_SESSIONS_DEFAULT），--capacity 可配置，在容量时用心跳代替轮询或降低频率，capacityWake 在会话结束时唤醒 | 限制并发保证稳定性，容量时降低负载，capacityWake 快速响应 | 无容量限制：可能 OOM；无唤醒：新工作等待久 | bridgeMain.ts 的容量判断，capacityWake.ts |
+| Worktree 创建与清理 | 用 createAgentWorktree 创建隔离 git worktree，最佳努力清理会话结束时删除，hook-based 回退（git worktree 不可用时），--continue 扫描 sibling worktrees 查找 pointer | Worktree 提供强隔离，hook 回退保证可用性，跨 worktree 扫描是必须的（REPL 可能在不同 worktree 启动然后写入 pointer） | 所有会话用 worktree：UX 下降（初始不在用户期望目录）；无扫描：无法恢复 | bridgeMain.ts 的 worktree 逻辑，bridgePointer.ts 的 readBridgePointerAcrossWorktrees |
+| 干净关闭 | SIGINT/SIGTERM 或 controller abort 触发，给所有活跃会话发送 SIGTERM，等待最多 shutdown grace period（默认 30s），SIGKILL stragglers，对所有活跃工作项调用 stopWork（带重试），archive 所有会话（幂等），deregister 环境，清除 crash-recovery pointer，等待待清理的 promise（stopWork、worktree 删除） | 有序清理防止资源泄漏，幂等 archive 防止重复，清除 pointer 防止意外恢复 | 直接退出：资源泄漏，会话挂起 | bridgeMain.ts 的 teardown 逻辑（2435-2600+ 行） |
+| 崩溃恢复 | Pointer 文件：bridge-pointer.json（v1）或 env-less-bridge-pointer.json（v2），TTL 4 小时（与服务器 BRIDGE_LAST_POLL_TTL 匹配），包含 sessionId、environmentId、source、lastSequenceNum（v2），权限 0o600，perpetual 模式：pointer 在 teardown 时保留，不 archive 会话 | 4 小时 TTL 让恢复在合理时间可用，0o600 防止其他用户读取，perpetual 模式让 CLI 退出后会话继续，重启无缝恢复 | 无 TTL：stale pointer 累积；无权限：安全风险 | bridgePointer.ts，envLessBridgePointer.ts，perpetualBridge.test.ts |
+| 四层认证 | OAuth access token（环境注册、轮询）、environment secret JWT（工作认领）、session ingress JWT（会话特定操作：心跳、权限响应）、trusted device token（v2 elevated security tier） | 深度防御，每层职责明确 | 单层 token：安全风险高 | bridgeApi.ts、trustedDevice.ts |
+| 受信设备 Token | 登录后立即注册（服务器 gate 检查 account_session.created_at < 10min），存储在 keychain（macOS），作为 X-Trusted-Device-Token 头发送，90 天滚动过期，enrollment 永远不阻塞登录流程（最佳努力） | Elevated security tier 用于敏感操作，但 enrollment 不能成为登录障碍 | 必需 enrollment：登录流程复杂 | trustedDevice.ts |
+| 输入验证 | SAFE_ID_PATTERN：^[a-zA-Z0-9_-]+$ 防止路径遍历，MAX_INBOUND_TEXT_LENGTH：1MB，MAX_INBOUND_BASE64_LENGTH：20MB，MAX_INBOUND_ATTACHMENTS：20，envelope 严格验证字段白名单，不允许额外字段 | 严格输入验证是安全基础，即使服务器也验证，本地提供深度防御 | 宽松解析：可能注入攻击 | inboundMessages.ts、bridgeApi.ts |
+| Feature Gate 与权限检查 | isBridgeEnabled：需要 claude.ai 订阅 + tengu_ccr_bridge gate；isEnvLessBridgeEnabled：检查 tengu_bridge_repl_v2 gate；getBridgeDisabledReason：详细诊断为什么不可用（构建 flag？未订阅？token scope 不足？无 org UUID？gate 关闭？）；policy check：allow_remote_control 必须允许 | 分层 gate 让功能渐进发布（内部 dogfood→ant→beta→full），详细禁用原因避免用户困惑，帮助诊断问题 | 单一 gate：诊断路径不清晰 | bridgeEnabled.ts、initReplBridge.ts |
+| 两个 Bridge 实现 | Standalone：命令 claude remote-control，轮询/工作分发模型，多会话支持，子进程 spawn，状态显示；REPL bridge：通过 /remote-control 在交互式会话中调用，两个变体（v1 env-based 轮询，v2 env-less 直接连接），perpetual 模式（会话在 CLI 退出后存活，重启恢复），进程内消息转发（不 spawn 子进程），初始历史刷新带 cap（默认 200 条消息），flush gate（历史刷新期间排队实时写入） | Perpetual 模式让用户可以关闭 CLI 然后回来继续同一会话（符合网页会话直觉），flush gate 防止历史刷新与实时消息交错，保证一致性 | 仅有 standalone：无法在交互式会话中使用；仅进程内：无法隔离 | bridgeMain.ts，replBridge.ts，remoteBridgeCore.ts，initReplBridge.ts，flushGate.ts |
 
-### 2.1 架构分层
+## 3. 目标与非目标
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                   claude.ai Web UI                         │
-└──────────────────────────┬──────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│                  Claude.ai Server                          │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  Environments API (v1)  │  Code Sessions API (v2)   │  │
-│  │  - register             │  - create                 │  │
-│  │  - poll                 │  - events SSE             │  │
-│  │  - acknowledge          │  - worker POST            │  │
-│  │  - heartbeat            │  - worker JWT             │  │
-│  │  - stop                 │                           │  │
-│  └──────────────────────────────────────────────────────┘  │
-└──────────────────────────┬──────────────────────────────────┘
-                           │
-         ┌─────────────────┴─────────────────┐
-         │                                   │
-         ▼                                   ▼
-┌───────────────────────┐        ┌──────────────────────────┐
-│   Standalone Bridge   │        │      REPL Bridge        │
-│  (bridgeMain.ts)      │        │  (replBridge.ts +       │
-│  - poll/work-dispatch │        │   remoteBridgeCore.ts)  │
-│  - multi-session      │        │  - in-process           │
-│  - spawn child        │        │  - perpetual mode      │
-└───────────────────────┘        └──────────────────────────┘
-         │                                   │
-         └─────────────────┬─────────────────┘
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│                  Session Layer                             │
-│  ┌─────────────────┐  ┌──────────────────────────────────┐ │
-│  │ sessionRunner   │  │      createSession.ts           │ │
-│  │ - spawn child   │  │ - create/fetch/archive          │ │
-│  │ - NDJSON parse  │  │ - title derivation              │ │
-│  │ - activity track│  │                                 │ │
-│  └─────────────────┘  └──────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────┘
-```
+### 状态与生命周期
 
-### 2.2 关键概念
+目标：
+- 提供环境注册、轮询、确认、心跳、停止的完整 v1 API
+- 提供代码会话创建、事件 SSE、worker POST 的完整 v2 API
+- 管理子进程 spawn、activity 跟踪、超时看门狗
+- 实现崩溃恢复指针（跨 worktree 扫描，TTL）
+- 提供 perpetual 模式支持（CLI 退出后会话继续）
+- 权限请求透明路由
 
-| 概念 | 定义 |
-|------|------|
-| **Environment** | 一个 bridge 实例的逻辑标识，client 生成 UUID，server 分配 `environment_id` |
-| **Work Item** | 待处理的会话，包含 `WorkSecret` 和会话信息 |
-| **WorkSecret** | 编码的会话凭证，包含 `session_ingress_token`、`api_base_url` 等 |
-| **SessionHandle** | 运行中会话的句柄，支持杀死、写入 stdin、更新 token |
-| **SpawnMode** | `single-session` / `worktree` / `same-dir` 三种会话隔离模式 |
-| **BridgePointer** | 崩溃恢复指针，存储在 `.claude/bridge-pointer.json` |
-| **Transport** | v1 (HybridTransport) / v2 (SSE + CCRClient) 的抽象 |
+非目标：
+- 不处理代理执行逻辑（由 SDK 负责）
+- 不处理 OAuth 流程（由 auth 模块负责）
+- 不处理工具实现（由各工具模块负责）
 
-## 3. 环境注册与发现
+### 接口与数据
 
-### 3.1 注册流程
+目标：
+- WorkSecret 类型安全的解码与验证
+- SessionHandle 接口提供 kill、writeStdin、updateToken
+- BridgePointer 读写与跨 worktree 扫描
+- PollConfig Zod 验证与默认值回退
 
-**当前设计**：
-1. Client 生成 `bridgeId` (UUID) 和 `environmentId` (UUID)
-2. 发送注册请求，携带：
-   - `machine_name`：主机名
-   - `branch`/`git_repo_url`：git 信息
-   - `worker_type`：`claude_code` (standalone) 或 `claude_code_assistant` (REPL)
-   - `max_sessions`：容量
-   - `spawn_mode`：会话隔离模式
-   - `reuse_environment_id`：用于恢复（可选）
-3. Server 返回 `environment_id` 和 `environment_secret`（JWT）
+非目标：
+- 不提供 SDK 导出（仅内部使用）
+- 不暴露底层 WebSocket/HTTP 细节
 
-**证据位置**：`bridgeApi.ts` 中的 `registerBridgeEnvironment()`，`bridgeMain.ts` 中的初始注册逻辑。
+### 执行与环境
 
-**为什么这样设计**：
-- Client 侧生成 UUID 确保重试幂等，同时让 `reuseEnvironmentId` 可以引用之前注册的环境。
-- 携带 git 信息让网页能显示当前环境对应的仓库和分支，提升用户体验。
-- `worker_type` 让服务器能区分不同来源的 bridge，分别路由。
+目标：
+- 支持 standalone 和 REPL 两种模式
+- 支持 v1 和 v2 双协议
+- 支持 Unix 平台（macOS、Linux）
+- 支持 git worktree 隔离与回退
 
-**代价**：Client 需要存储 `reuseEnvironmentId` 用于恢复；如果丢失，只能创建新环境。
+非目标：
+- 不支持 Windows 原生（需要 WSL）
+- 不支持无 git 环境的 worktree 隔离
 
-**备选方案**：
-- 备选 1：Server 生成所有 ID。代价：重试无法幂等，需要额外的去重机制。
-- 备选 2：不携带 git 信息。代价：网页无法显示仓库上下文，体验下降。
+## 4. 架构、模块与数据流
 
-### 3.2 环境 ID 的重用与恢复
+### 4.1 入口与公共契约
 
-**当前设计**：
-- `--session-id` 和 `--continue` 使用 `reuseEnvironmentId` 重新注册到同一环境
-- 同时调用 `reconnectSession()` 强制终止该环境上的 stale worker 并重新入队会话
-- Shutdown 时跳过 archive/deregister，允许未来恢复
+Standalone 入口：`claude remote-control`
+REPL 入口：`/remote-control` 命令
 
-**证据位置**：`bridgeMain.ts` 中的 resume 逻辑（2307-2434 行），`bridgeApi.ts` 中的 `reconnectSession()`。
-
-**为什么这样设计**：
-- 用户期望 `--session-id` 能回到同一会话，而不是创建新会话。
-- 强制终止 stale worker 避免两个 bridge 同时处理同一会话。
-
-**设计决策 1：环境注册使用双 ID 模型（client UUID + server ID）**
-
-| 维度 | 选择 | 备选 | 代价 | 证据 |
-|------|------|------|------|------|
-| 幂等性 | Client 生成 `bridgeId`/`environmentId` | Server 只生成 ID | Client 需要存储恢复 ID | `bridgeApi.ts` 中的注册请求 |
-| 恢复语义 | `reuseEnvironmentId` + `reconnectSession()` | 每次创建新环境 | 用户需要接受新 session URL | `bridgeMain.ts` 的 resume 分支 |
-
-## 4. 轮询与重连策略
-
-### 4.1 轮询配置
-
-**当前设计**：
-- 不在容量时：默认 2 秒轮询
-- 在容量时：默认 10 分钟轮询 + 可选心跳
-- 多会话有三个阶段：未满 / 部分满 / 满
-- 回收窗口：默认 5 秒内未确认的工作可被其他实例回收
-
-**证据位置**：`pollConfigDefaults.ts`、`pollConfig.ts`。
-
-**安全规则**：
-- 所有间隔 ≥ 100ms，防止 fat-finger 配置导致 DDoS
-- 在容量时必须至少启用一个 liveness 机制（心跳或轮询），防止 tight loop
-- 配置用 Zod 验证，任何字段违规则回退到默认配置，不接受部分有效配置
-
-**为什么这样设计**：
-- 不在容量时低延迟轮询，在容量时减少请求以降低服务器负载。
-- 心跳是更轻量的 liveness 信号（无 DB 命中），可单独启用或与轮询并用。
-- 回收窗口让崩溃的实例快速被接管，同时避免竞争条件。
-
-### 4.2 错误恢复与退避
-
-**当前设计**：
-```
-连接错误：2s → 4s → 8s → ... → 120s cap，10 分钟后放弃
-一般错误：500ms → ... → 30s cap，10 分钟后放弃
-睡眠检测：间隙 > 2×backoff cap 时重置错误预算（系统睡眠唤醒）
-```
-
-**证据位置**：`bridgeMain.ts` 的 `runBridgeLoop()` 中的 backoff 逻辑。
-
-**为什么这样设计**：
-- 指数退避避免服务器过载。
-- 睡眠检测处理笔记本合盖等场景，避免唤醒后长时间等待退避。
-- 10 分钟放弃窗口平衡了可用性和资源占用。
-
-### 4.3 心跳机制
-
-**当前设计**：
-- `heartbeatWork()` 使用 session ingress JWT（无 DB 命中）延长租约
-- 在容量时可配置用心跳代替轮询
-- `capacityWake` 信号在会话结束时唤醒睡眠中的 poll loop
-- Auth 失败触发 `reconnectSession()` 获取新鲜 token
-
-**证据位置**：`bridgeMain.ts` 的心跳循环，`capacityWake.ts`。
-
-**为什么这样设计**：
-- 心跳比轮询更轻量，适合在容量时使用。
-- `capacityWake` 让新工作能立即被接受，而不是等到下次心跳/轮询。
-
-**设计决策 2：在容量时支持心跳 + 轮询双模式，并用 capacityWake 快速唤醒**
-
-| 维度 | 选择 | 备选 | 代价 | 证据 |
-|------|------|------|------|------|
-| Liveness | 心跳 + 轮询可配置 | 只用心跳或只用轮询 | 配置复杂度增加 | `pollConfig.ts` 的 object-level refine |
-| 唤醒信号 | `capacityWake` AbortController 组合 | 只依赖超时唤醒 | 新工作可能等待最长心跳间隔 | `capacityWake.ts` |
-| Auth 失败 | 触发 `reconnectSession()` | 直接退出 | 更激进的恢复尝试 | `bridgeMain.ts` 的心跳错误处理 |
-
-## 5. 工作秘密安全
-
-### 5.1 WorkSecret 结构
-
-**当前设计**：
+主要类型契约：
 ```typescript
-type WorkSecret = {
+// WorkSecret（v1 和 v2 共用）
+interface WorkSecret {
   version: 1
-  session_ingress_token: string    // JWT
+  session_ingress_token: string
   api_base_url: string
-  sources: Array<{ type: string; git_info?: {...} }>
-  auth: Array<{ type: string; token: string }>
+  sources?: Array<{type: string; git_info?: {...}}>
+  auth?: Array<{type: string; token: string}>
   claude_code_args?: Record<string, string>
   mcp_config?: unknown
   environment_variables?: Record<string, string>
-  use_code_sessions?: boolean      // server 选择 v1/v2
+  use_code_sessions?: boolean
+}
+
+// Spawn 模式
+type SpawnMode = 'single-session' | 'same-dir' | 'worktree'
+
+// Session 句柄
+interface SessionHandle {
+  kill(signal?: NodeJS.Signals): void
+  writeStdin(data: string): void
+  updateToken(token: string): void
+  readonly id: string
+  readonly exited: boolean
+}
+
+// Bridge 指针
+interface BridgePointer {
+  sessionId: string
+  environmentId: string
+  source: string
+  lastSequenceNum?: number
+  timestamp: number
 }
 ```
 
-**编码**：base64url 编码的 JSON，解码时验证 version 和必填字段。
-
-**证据位置**：`types.ts` 的 `WorkSecret` 定义，`workSecret.ts` 的 `decodeWorkSecret()`。
-
-**为什么这样设计**：
-- 显式 `version` 字段支持未来演进。
-- `use_code_sessions` 让服务器能逐步迁移到 v2，同时保持兼容性。
-- `session_ingress_token` 与 OAuth 分离，子进程不需要父进程的 OAuth token。
-
-### 5.2 URL 构建与协议选择
-
-**当前设计**：
-- v1：`buildSdkUrl()` → WebSocket URL，localhost 用 `/v2/`，生产用 `/v1/`
-- v2：`buildCCRv2SdkUrl()` → HTTP URL，指向 `/v1/code/sessions/{id}`
-- `sameSessionId()` 比较 UUID 时忽略 `session_` vs `cse_` 前缀
-
-**证据位置**：`workSecret.ts` 的三个 URL/ID 函数。
-
-**为什么这样设计**：
-- v1/v2 双协议支持渐进迁移，不需要一次性切换。
-- `sameSessionId()` 处理兼容层 retag，避免在 v2 迁移期间拒绝自己的会话。
-
-**设计决策 3：WorkSecret 包含协议选择标志，ID 比较忽略前缀**
-
-| 维度 | 选择 | 备选 | 代价 | 证据 |
-|------|------|------|------|------|
-| 协议选择 | `use_code_sessions` 标志 | 两个不同的 WorkSecret 类型 | 需要同时支持两个解码器 | `workSecret.ts` 的 `decodeWorkSecret()` |
-| ID 比较 | 忽略前缀，只比较 UUID | 严格相等 | 需要一个 ID 规范化函数 | `workSecret.ts` 的 `sameSessionId()` |
-| URL 构建 | localhost 用 `/v2/`，生产用 `/v1/` | 统一用 `/v1/` | 本地开发与生产不一致 | `workSecret.ts` 的 `buildSdkUrl()` |
-
-### 5.3 Token 刷新
-
-**当前设计**：
-- `createTokenRefreshScheduler()` 在 JWT 过期前 5 分钟主动刷新
-- Generation counter 让 stale in-flight refresh 失效
-- 连续 3 次失败后放弃，60 秒重试延迟
-- 子进程通过 stdin 的 `update_environment_variables` 消息接收新 token
-
-**证据位置**：`jwtUtils.ts`，`sessionRunner.ts` 的 `updateAccessToken()`。
-
-**为什么这样设计**：
-- 主动刷新避免请求中间 token 过期导致的失败。
-- Generation counter 避免并发 refresh 导致的竞态。
-- 通过 stdin 推送而不是让子进程自己拉取，简化子进程设计。
-
-## 6. 会话生命周期
-
-### 6.1 Spawn 模式
-
-**当前设计**：
-- `single-session`：一个会话，结束后 bridge 退出
-- `same-dir`：多会话共享同一 cwd（可能互相踩踏）
-- `worktree`：每个会话有独立的 git worktree
-
-**证据位置**：`types.ts` 的 `SpawnMode`，`bridgeMain.ts` 的 worktree 创建逻辑。
-
-**为什么这样设计**：
-- `single-session` 适合简单用例，符合用户直觉。
-- `same-dir` 适合快速原型，但不推荐生产使用。
-- `worktree` 提供真正的隔离，但需要 git 支持；初始会话仍在 cwd（UX 考虑）。
-
-### 6.2 会话 Spawner
-
-**当前设计**：
-- 子进程用 `--print`、`--sdk-url`、`--session-id` 启动
-- 环境变量：
-  - 去掉 `CLAUDE_CODE_OAUTH_TOKEN`（安全隔离）
-  - 设置 `CLAUDE_CODE_ENVIRONMENT_KIND=bridge`
-  - 设置 `CLAUDE_CODE_SESSION_ACCESS_TOKEN`
-  - v1：`CLAUDE_CODE_POST_FOR_SESSION_INGRESS_V2=1`
-  - v2：`CLAUDE_CODE_USE_CCR_V2=1` + `CLAUDE_CODE_WORKER_EPOCH`
-- NDJSON 从 stdout 解析，stderr 用于调试
-- Activity 环形缓冲区（最后 10 个活动）
-- 超时看门狗（默认 24 小时）
-
-**证据位置**：`sessionRunner.ts` 的 `createSessionSpawner()`。
-
-**为什么这样设计**：
-- 去掉父 OAuth token 是安全边界：子进程只能访问会话级 API，不能代表用户做其他操作。
-- NDJSON 管道是简单、可调试的 IPC 机制。
-- 24 小时超时防止遗忘的会话无限运行。
-
-### 6.3 活动跟踪与状态显示
-
-**当前设计**：
-- 每秒更新状态显示
-- 工具动词映射：`Read`→`Reading`，`Write`→`Writing` 等
-- 最后 5 个活动的 trail
-- 多会话模式：活动会话列表
-- 标题派生：`onFirstUserMessage` 从第一条真实用户消息派生（跳过 tool-result、synthetic）
-
-**证据位置**：`sessionRunner.ts` 的 `extractActivities()`，`bridgeMain.ts` 的状态更新循环。
-
-**为什么这样设计**：
-- 人类可读的动词比原始工具名更友好。
-- 跳过 tool-result 和 synthetic 消息避免标题为 "Here are the files you asked for" 等无用内容。
-
-**设计决策 4：会话隔离分层（环境变量剥离 + 可选 worktree），标题从第一条真实用户消息派生**
-
-| 维度 | 选择 | 备选 | 代价 | 证据 |
-|------|------|------|------|------|
-| 安全隔离 | 剥离父 OAuth token，仅会话 JWT | 让子进程继承 OAuth | 子进程权限过大 | `sessionRunner.ts` 的 env 构造 |
-| Worktree | 仅在需要时创建，初始会话在 cwd | 所有会话都用 worktree | UX 下降（初始不在用户期望的目录） | `bridgeMain.ts` 的 worktree 逻辑 |
-| 标题派生 | 跳过 tool-result/synthetic，取第一条真实消息 | 用第一条任意消息 | 标题常为上下文工具结果 | `sessionRunner.ts` 的 `onFirstUserMessage` 回调 |
-| 超时 | 默认 24 小时，可配置 | 无超时 | 会话可能无限运行 | `types.ts` 的 `DEFAULT_SESSION_TIMEOUT_MS` |
-
-## 7. 权限回调
-
-**当前设计**：
-1. 子进程发出 `control_request`，`subtype: 'can_use_tool'`
-2. Bridge 通过 `sendPermissionResponseEvent()` 转发到服务器
-3. 用户在网页批准/拒绝
-4. 服务器发送 `control_response`
-5. Bridge 通过 stdin 转发给子进程
-
-**证据位置**：`sessionRunner.ts` 的 control request 检测，`bridgeMain.ts` 的转发逻辑，`bridgePermissionCallbacks.ts`。
-
-**为什么这样设计**：
-- 权限请求由子进程发起（而不是 bridge 拦截），因为只有子进程知道完整的工具调用上下文。
-- Bridge 只是透明路由，不做决策，保持简单。
-
-## 8. 多会话与 Worktree
-
-### 8.1 容量管理
-
-**当前设计**：
-- 默认 32 个会话（`SPAWN_SESSIONS_DEFAULT`）
-- `--capacity` 可配置
-- 在容量时用心跳代替轮询，或降低轮询频率
-- `capacityWake` 在会话结束时唤醒
-
-**证据位置**：`bridgeMain.ts` 的容量判断，`capacityWake.ts`。
-
-### 8.2 Worktree 创建与清理
-
-**当前设计**：
-- 用 `createAgentWorktree()` 创建隔离的 git worktree
-- 最佳努力清理：会话结束时删除 worktree
-- Hook-based 回退：如果 git worktree 不可用
-- Worktree 扫描：`--continue` 扫描 sibling worktrees 查找 pointer
-
-**证据位置**：`bridgeMain.ts` 的 worktree 逻辑，`bridgePointer.ts` 的 `readBridgePointerAcrossWorktrees()`。
-
-**为什么这样设计**：
-- Worktree 提供强隔离，但不是所有用户都用 git；hook-based 回退保证可用性。
-- 跨 worktree 扫描是必须的，因为 REPL 可能在不同的 worktree 中启动，然后写入 pointer。
-
-## 9. 关闭与恢复
-
-### 9.1 干净关闭
-
-**当前设计**：
-1. `SIGINT`/`SIGTERM` 或 controller abort 触发
-2. 给所有活跃会话发送 `SIGTERM`
-3. 等待最多 shutdown grace period（默认 30 秒）
-4. `SIGKILL` stragglers
-5. 对所有活跃工作项调用 `stopWork()`（带重试）
-6. Archive 所有会话（幂等）
-7. Deregister 环境
-8. 清除 crash-recovery pointer
-9. 等待待清理的 promise（stopWork、worktree 删除）
-
-**证据位置**：`bridgeMain.ts` 的 teardown 逻辑（2435-2600+ 行）。
-
-### 9.2 崩溃恢复
-
-**当前设计**：
-- Pointer 文件：`bridge-pointer.json`（v1）或 `env-less-bridge-pointer.json`（v2）
-- TTL：4 小时（与服务器 `BRIDGE_LAST_POLL_TTL` 匹配）
-- 包含：`sessionId`、`environmentId`、`source`、`lastSequenceNum`（v2）
-- 权限：`0o600`（仅所有者读写）
-- Perpetual 模式：pointer 在 teardown 时保留，不 archive 会话
-
-**证据位置**：`bridgePointer.ts`、`envLessBridgePointer.ts`、`perpetualBridge.test.ts`。
-
-**为什么这样设计**：
-- 4 小时 TTL 让崩溃恢复在合理时间内可用，同时避免永久保留 stale pointer。
-- `0o600` 防止其他用户读取会话信息。
-- Perpetual 模式让 CLI 退出后会话继续存在，重启后能无缝恢复。
-
-**设计决策 5：用 TTLed pointer 文件做崩溃恢复，perpetual 模式保留 pointer 并跳过 archive**
-
-| 维度 | 选择 | 备选 | 代价 | 证据 |
-|------|------|------|------|------|
-| 恢复存储 | 每个目录的 pointer 文件，`0o600` | 全局存储 | 用户隐私风险 | `envLessBridgePointer.ts` |
-| TTL | 4 小时，与服务器匹配 | 无限期 | Stale pointer 累积 | `bridgePointer.ts` 的 TTL 检查 |
-| Perpetual teardown | 保留 pointer，不 archive | 与普通 teardown 相同 | 用户需要明确知道 perpetual 的语义 | `perpetualBridge.test.ts` 的测试场景 |
-| Worktree 扫描 | 扫描 sibling worktrees 找 pointer | 只看当前目录 | 从不同 worktree 启动时无法恢复 | `bridgePointer.ts` 的 `readBridgePointerAcrossWorktrees()` |
-
-## 10. 安全边界
-
-### 10.1 认证层
-
-**当前设计**：
-| 层级 | Token 类型 | 用途 |
-|------|-----------|------|
-| 1 | OAuth access token | 环境注册、轮询 |
-| 2 | Environment secret (JWT) | 工作认领 |
-| 3 | Session ingress JWT | 会话特定操作（心跳、权限响应） |
-| 4 | Trusted device token | Elevated security tier（v2） |
-
-**证据位置**：`bridgeApi.ts`、`trustedDevice.ts`。
-
-### 10.2 受信设备 Token
-
-**当前设计**：
-- 登录后立即注册（服务器 gate 检查 `account_session.created_at < 10min`）
-- 存储在 keychain（macOS）
-- 作为 `X-Trusted-Device-Token` 头发送
-- 90 天滚动过期
-- Enrollment 永远不阻塞登录流程（最佳努力）
-
-**证据位置**：`trustedDevice.ts`。
-
-**为什么这样设计**：
-- Elevated security tier 用于敏感操作，但 enrollment 不能成为登录的障碍。
-- Keychain 提供安全存储，避免明文写在磁盘上。
-
-### 10.3 输入验证
-
-**当前设计**：
-- `SAFE_ID_PATTERN`：`^[a-zA-Z0-9_-]+$`，防止路径遍历
-- `MAX_INBOUND_TEXT_LENGTH`：1MB
-- `MAX_INBOUND_BASE64_LENGTH`：20MB
-- `MAX_INBOUND_ATTACHMENTS`：20
-- Envelope 严格验证字段白名单，不允许额外字段
-
-**证据位置**：`inboundMessages.ts`、`bridgeApi.ts`。
-
-**为什么这样设计**：
-- 严格的输入验证是安全的基础，即使服务器也验证，本地验证提供深度防御。
-
-### 10.4 Feature Gate 与权限检查
-
-**当前设计**：
-- `isBridgeEnabled()`：需要 claude.ai 订阅 + `tengu_ccr_bridge` gate
-- `isEnvLessBridgeEnabled()`：检查 `tengu_bridge_repl_v2` gate
-- `getBridgeDisabledReason()`：详细诊断为什么不可用（构建 flag？未订阅？token scope 不足？无 org UUID？gate 关闭？）
-- Policy check：`allow_remote_control` 必须允许
-
-**证据位置**：`bridgeEnabled.ts`、`initReplBridge.ts`。
-
-**为什么这样设计**：
-- 分层 gate 让功能可以渐进发布（内部 dogfood → ant → beta → full）。
-- 详细的禁用原因避免用户困惑，帮助诊断问题。
-
-**设计决策 6：四层认证 + 严格输入验证 + 分层 feature gate，受信设备 enrollment 最佳努力不阻塞**
-
-| 维度 | 选择 | 备选 | 代价 | 证据 |
-|------|------|------|------|------|
-| 认证 | OAuth + env secret + session JWT + trusted device | 单层 token | 实现复杂度增加 | `bridgeApi.ts` 的 auth header 构造 |
-| 输入验证 | 严格字段白名单，拒绝额外字段 | 宽松解析，忽略额外字段 | 向后兼容性降低 | `inboundMessages.ts` 的 envelope 验证 |
-| Feature gate | 分层（构建 flag → 订阅 → scope → org → GB） | 单一 gate | 诊断路径变长 | `bridgeEnabled.ts` 的 `getBridgeDisabledReason()` |
-| Trusted device | 最佳努力，不阻塞登录 | 必需 enrollment | 登录流程更复杂 | `trustedDevice.ts` 的 enroll 逻辑 |
-
-## 11. 两个 Bridge 实现
-
-### 11.1 Standalone Bridge
-
-**当前设计**：
-- 命令：`claude remote-control`
-- 轮询/工作分发模型
-- 多会话支持（worktree/same-dir）
-- 子进程 spawn
-- 状态显示（shimmer、activity trail）
-
-**证据位置**：`bridgeMain.ts`。
-
-### 11.2 REPL Bridge
-
-**当前设计**：
-- 通过 `/remote-control` 在交互式会话中调用
-- 两个变体：
-  - v1：env-based，轮询/工作分发
-  - v2：env-less，直接 `/bridge` 端点，无轮询
-- Perpetual 模式：会话在 CLI 退出后存活，重启后恢复
-- 进程内消息转发（不 spawn 子进程）
-- 初始历史刷新带 cap（默认 200 条消息）
-- Flush gate：在历史刷新期间排队实时写入
-
-**证据位置**：`replBridge.ts`、`remoteBridgeCore.ts`、`initReplBridge.ts`、`flushGate.ts`。
-
-**为什么这样设计**：
-- Perpetual 模式让用户可以关闭 CLI 然后回来继续同一会话，符合网页会话的直觉。
-- Flush gate 避免历史刷新与实时消息交错，确保一致性。
-
-## 12. 覆盖范围
-
-相关覆盖定义见 [Coverage](../../architecture/coverage/bridge.yaml)。
+### 4.2 模块与状态所有权
+
+| 模块 | 拥有的状态 | 主要操作 | 不承担的职责 | 证据位置 |
+|-----|-----------|---------|----------|---------|
+| bridgeMain.ts | 活跃会话 Map、poll loop 状态、shutdown flag、capacityWake handle | 启动/关闭、注册环境、poll loop、会话 spawn/cleanup | OAuth 流程、工具执行 | bridgeMain.ts |
+| bridgeApi.ts | HTTP client 实例、token refresh scheduler | registerBridge、pollWork、ackWork、heartbeatWork、stopWork、reconnectSession | 权限决策 | bridgeApi.ts |
+| sessionRunner.ts | 子进程句柄、activity 环形缓冲区、超时计时器、token refresh 状态 | createSessionSpawner、spawn 子进程、解析 NDJSON、跟踪 activity、处理 control_request | 消息生成、工具执行 | sessionRunner.ts |
+| workSecret.ts | 无（纯函数） | decodeWorkSecret、buildSdkUrl、buildCCRv2SdkUrl、sameSessionId | 业务逻辑 | workSecret.ts |
+| bridgePointer.ts / envLessBridgePointer.ts | 无（文件 I/O） | writeBridgePointer、readBridgePointer、clearBridgePointer、readBridgePointerAcrossWorktrees | 业务逻辑 | bridgePointer.ts、envLessBridgePointer.ts |
+| capacityWake.ts | AbortController、waiters Set | wake、waitForWake | 业务逻辑 | capacityWake.ts |
+| pollConfig.ts / pollConfigDefaults.ts | 无（配置验证） | validatePollConfig、提供默认值 | 业务逻辑 | pollConfig.ts、pollConfigDefaults.ts |
+| bridgeEnabled.ts | 无（纯函数） | isBridgeEnabled、isEnvLessBridgeEnabled、getBridgeDisabledReason | 业务逻辑 | bridgeEnabled.ts |
+| trustedDevice.ts | keychain 状态 | enrollTrustedDevice、getTrustedDeviceToken、clearTrustedDeviceToken | OAuth 流程 | trustedDevice.ts |
+| replBridge.ts | 进程内 bridge 状态、perpetual 标志 | startReplBridge、stopReplBridge、flushGate 协调 | 子进程 spawn | replBridge.ts、remoteBridgeCore.ts |
+| flushGate.ts | flush flag、pending writes queue | holdWrites、releaseWrites、queueWrite | 业务逻辑 | flushGate.ts |
+| inboundMessages.ts | 无（验证） | validateInboundEnvelope、SAFE_ID_PATTERN、size constants | 业务逻辑 | inboundMessages.ts |
+| bridgePermissionCallbacks.ts | 无（回调路由） | sendPermissionResponseEvent、routeControlResponse | 权限决策 | bridgePermissionCallbacks.ts |
+
+### 4.3 主控制流
+
+#### 初始化流程（Standalone）
+
+```
+用户执行 `claude remote-control`
+  → 解析命令行参数（session-id、continue、capacity、spawn-mode 等）
+  → 检查 isBridgeEnabled（订阅、gate、token scope、org UUID）
+  → 尝试读取 bridge pointer（崩溃恢复）
+  → 生成 bridgeId、environmentId（或从 pointer 恢复）
+  → registerBridgeEnvironment（携带 git info、worker_type、max_sessions、spawn_mode、reuseEnvironmentId）
+  → 收到 environment_secret JWT
+  → 如果恢复中：reconnectSession（强制终止 stale worker）
+  → 初始化 capacityWake
+  → 启动 poll loop
+  → 启动 heartbeat loop（如果配置）
+  → 显示状态 UI
+  → 等待 SIGINT/SIGTERM 或 controller abort
+```
+
+#### Poll Loop 主流程（v1）
+
+```
+循环：
+  → 检查是否在容量（活跃会话数 >= max_sessions）
+  → 选择轮询间隔（容量时更长，用心跳代替）
+  → pollWork（带 lastSequenceNum）
+  → 收到工作项：
+    → decodeWorkSecret
+    → 检查是否已有同会话（去重）
+    → 如果需要：createAgentWorktree
+    → spawn 子进程（sessionRunner）
+    → 注册到活跃会话 Map
+    → capacityWake.wake()（如果从容量变为非容量）
+  → 处理错误：
+    → 退避逻辑（指数退避、睡眠检测、放弃窗口）
+  → 等待轮询间隔或 capacityWake
+```
+
+#### 会话执行流程
+
+```
+spawn 子进程（sessionRunner）
+  → 剥离 CLAUDE_CODE_OAUTH_TOKEN
+  → 设置 CLAUDE_CODE_ENVIRONMENT_KIND=bridge
+  → 设置 CLAUDE_CODE_SESSION_ACCESS_TOKEN
+  → 设置 v1/v2 标志
+  → 启动子进程（--print、--sdk-url、--session-id）
+  → 管道 stdout/stderr
+  → 解析 NDJSON 从 stdout
+  → 跟踪 activity（环形缓冲区、动词映射）
+  → 检测第一条真实用户消息，派生标题
+  → 检测 control_request，转发到服务器
+  → 处理 stdin 更新（token refresh 等）
+  → 启动超时看门狗（24 小时）
+  → 等待子进程退出
+  → 清理 worktree（最佳努力）
+  → archive 会话（幂等）
+  → 从活跃会话 Map 移除
+  → capacityWake.wake()
+```
+
+#### 权限回调流程
+
+```
+子进程发出 NDJSON：
+  {type: "control_request", subtype: "can_use_tool", ...payload...}
+  → sessionRunner 检测到
+  → 调用 sendPermissionResponseEvent
+  → bridgeApi 发送到服务器
+  → 用户在网页批准/拒绝
+  → 服务器发送 control_response（轮询或 SSE）
+  → bridge 接收
+  → 通过 stdin 写入子进程 NDJSON
+  → 子进程继续执行
+```
+
+#### Clean Shutdown 流程
+
+```
+SIGINT/SIGTERM 或 controller abort
+  → 设置 shutdown flag（停止接受新工作）
+  → 给所有活跃会话发送 SIGTERM
+  → 等待最多 shutdown grace period（默认 30s）
+  → 发送 SIGKILL 给 stragglers
+  → 对所有活跃工作项调用 stopWork（带重试）
+  → archive 所有会话（幂等）
+  → deregister 环境（最佳努力）
+  → 如果不是 perpetual 模式：清除 crash-recovery pointer
+  → 等待待清理的 promise（stopWork、worktree 删除）
+  → 退出
+```
+
+#### Perpetual 模式退出流程
+
+```
+用户在 REPL 中退出（非崩溃）
+  → 设置 shutdown flag
+  → 保留 bridge pointer（不清除）
+  → 不 archive 会话
+  → 保留子进程继续运行
+  → 退出 CLI
+  → 用户可以稍后继续，--continue 恢复
+```
+
+#### 崩溃恢复流程（--continue）
+
+```
+用户执行 `claude remote-control --continue`
+  → 扫描当前目录和 sibling worktrees 找 bridge pointer（TTL 4 小时内）
+  → 找到 pointer
+  → 使用 sessionId、environmentId 恢复
+  → registerBridgeEnvironment（reuseEnvironmentId）
+  → reconnectSession（强制终止 stale worker）
+  → 重新连接到同一会话
+  → 如果是 v2：从 lastSequenceNum 开始重放事件
+```
+
+#### REPL Bridge 初始化流程（v2）
+
+```
+用户执行 `/remote-control`
+  → 检查 isEnvLessBridgeEnabled
+  → 如果 perpetual pointer 存在：恢复
+  → 否则：创建新会话（createCodeSession）
+  → 建立 SSE 连接（事件流）
+  → 初始历史刷新（带 cap，默认 200 条消息）
+  → flushGate.holdWrites()
+  → 处理历史事件
+  → flushGate.releaseWrites()
+  → 处理排队的实时写入
+  → 进入交互模式
+```
+
+### 4.4 数据结构与持久化
+
+#### Bridge 指针文件
+
+位置：`~/.claude/bridge-pointer.json`（v1）或 `env-less-bridge-pointer.json`（v2）
+权限：0o600
+TTL：4 小时
+
+```typescript
+interface BridgePointer {
+  version: 1
+  sessionId: string
+  environmentId: string
+  source: string
+  lastSequenceNum?: number  // v2 only
+  timestamp: number  // for TTL check
+}
+```
+
+#### Poll 配置
+
+```typescript
+interface PollConfig {
+  pollIntervalEmptyMs: number  // default: 2000
+  pollIntervalPartialMs: number  // default: 5000
+  pollIntervalFullMs: number  // default: 600000 (10 minutes)
+  heartbeatIntervalMs?: number  // default: undefined
+  ackWindowSeconds: number  // default: 5
+  minIntervalMs: number  // default: 100 (safety floor)
+}
+```
+
+### 4.5 跨子系统依赖
+
+| 依赖方向 | 模块 | 职责描述 |
+|---------|-----|---------|
+| 上游 | auth | OAuth token 获取与刷新，不涉及 bridge 逻辑 |
+| 上游 | settings | 配置目录路径 |
+| 上游 | worktree | createAgentWorktree，由 bridge 调用 |
+| 下游 | SDK | 子进程内执行，bridge 仅 spawn 和路由 |
+| 共享 | remote-control | 共享会话基础设施，但职责独立 |
+| 共享 | daemon | 共享进程管理模式，但生命周期不同 |
+
+## 5. 失败语义与工程取舍
+
+| 触发条件 | 检测位置 | 消息/异常如何传播 | 是否重试及上限 | 状态与资源清理 | 调用方可见结果 |
+|---------|--------|-----------------|--------------|--------------|-------------|
+| 注册网络失败 | bridgeMain.ts 初始化 | 捕获异常，指数退避重试 | 10 分钟放弃窗口 | 无 | 用户看到重试状态 |
+| Poll 网络失败 | poll loop | 捕获异常，指数退避重试 | 10 分钟放弃窗口 | 保留已有会话 | 用户看到重试状态 |
+| Work decode 失败 | poll loop 收到工作项 | 记录错误，跳过该工作项 | 否（单个坏工作不影响其他） | 无 | 该工作项可能被其他实例认领 |
+| 子进程启动失败 | sessionRunner spawn | 记录错误，清理 worktree（如果有），archive 会话（幂等） | 否（单个会话失败不影响其他） | 清理 worktree，archive 会话 | 用户看到该会话失败状态 |
+| 子进程崩溃（非零退出） | sessionRunner wait | 记录错误，清理 worktree（如果有），archive 会话（幂等） | 否（会话不重试） | 清理 worktree，archive 会话 | 用户看到该会话崩溃状态 |
+| 权限回调网络失败 | bridgeApi sendPermissionResponseEvent | 记录错误，继续重试直到成功或会话结束 | 是（无限重试直到会话结束） | 无 | 用户看到 pending 状态 |
+| Auth 失败（401） | bridgeApi 任何请求 | 触发 reconnectSession，获取新 token | 是（reconnectSession 一次） | 清除旧 token | 自动恢复 |
+| Heartbeat 失败 | heartbeat loop | 记录警告，继续尝试 | 是（无限） | 无 | 用户看到警告 |
+| Worktree 创建失败 | bridgeMain spawn 会话前 | 尝试 hook-based 回退，如果仍失败用 same-dir 模式 | 否（回退而不是重试） | 清理部分创建的 worktree | 用户看到回退警告 |
+| Worktree 删除失败 | sessionRunner 清理 | 记录警告，忽略（最佳努力） | 否 | 无（用户可能需要手动清理） | 用户看到警告 |
+| StopWork 失败 | shutdown 流程 | 记录警告，继续重试最多 3 次 | 3 次 | 无（服务器可能最终超时） | 用户看到警告 |
+| Deregister 失败 | shutdown 流程 | 记录警告，忽略（最佳努力） | 否 | 无（服务器会最终超时清理） | 用户看到警告 |
+| Pointer 写入失败 | 启动/崩溃时 | 记录警告，忽略（不阻止启动） | 否 | 无（只是无法自动恢复） | 用户看到警告 |
+| Pointer 读取失败 | --continue 时 | 记录警告，当作无 pointer 处理 | 否 | 无 | 用户需要手动指定 session-id |
+| Envelope 验证失败 | inboundMessages.ts | 记录错误，断开连接/丢弃消息 | 否 | 无 | 安全保护 |
+
+工程取舍总结：
+| 取舍 | 当前选择 | 代价 | 收益 |
+|-----|---------|-----|------|
+| 幂等注册 vs 服务器生成 ID | Client 生成 UUID + reuseEnvironmentId | Client 需要存储恢复 ID | 重试安全，恢复友好 |
+| 双协议支持 vs 仅 v2 | v1+v2 同时支持 | 代码复杂度高 | 渐进迁移，向后兼容 |
+| Poll+heartbeat vs 仅一种 | 双模式可配置 | 配置复杂度高 | 灵活适应不同场景 |
+| Worktree 隔离 vs 无隔离 | 可选 worktree，初始在 cwd | UX 稍复杂 | 灵活平衡隔离与体验 |
+| Perpetual 模式 vs 总是清理 | 可配置保留会话 | 用户需要理解语义 | 网页式会话体验 |
+| 最佳努力清理 vs 保证清理 | 最佳努力，记录警告 | 可能有残留资源 | 不阻止退出，稳定 |
+| 四层认证 vs 单层 | OAuth+env secret+session JWT+trusted device | 复杂度高 | 深度防御，安全边界清晰 |
+| 严格输入验证 vs 宽松 | 白名单验证，拒绝额外字段 | 向后兼容性稍差 | 安全第一 |
+
+## 6. 现状验收标准
+
+给定 clean 环境：
+- 执行 `claude remote-control` 必须成功注册环境并开始轮询
+- 状态 UI 必须正确显示轮询间隔、容量状态、活动 trail
+
+给定有工作项到达：
+- 必须正确 decode WorkSecret
+- 必须 spawn 子进程（worktree 模式时创建 worktree）
+- 子进程退出后必须清理（最佳努力）、archive、从活跃列表移除
+- capacityWake 必须被唤醒
+
+给定权限请求：
+- 必须正确转发到服务器
+- 响应必须正确路由回子进程
+
+给定 SIGINT：
+- 必须给所有活跃会话发送 SIGTERM
+- 必须等待 grace period
+- 必须发送 SIGKILL 给 stragglers
+- 必须调用 stopWork（带重试）
+- 必须 archive 所有会话
+- 必须 deregister 环境
+- 必须清除 pointer（非 perpetual 模式）
+
+给定 `--continue`：
+- 必须扫描 sibling worktrees 找 pointer（TTL 4 小时内）
+- 必须恢复同一会话
+
+## 7. 代码与测试证据
+
+| 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
+|---------|---------|----------------|---------|
+| 幂等注册与恢复 | bridgeMain.ts 初始化逻辑，bridgeApi.ts registerBridge/reconnectSession | perpetualBridge.test.ts | 未覆盖并发恢复场景 |
+| Poll/heartbeat 双模式 | bridgeMain.ts poll loop，pollConfig.ts，capacityWake.ts | 需要查找相关测试 | 未覆盖极端负载场景 |
+| WorkSecret decode 与 URL 构建 | workSecret.ts | 需要查找相关测试 | 未覆盖所有协议迁移边缘情况 |
+| Token refresh scheduler | jwtUtils.ts，sessionRunner.ts updateAccessToken | 需要查找相关测试 | 未覆盖并发 refresh 竞态 |
+| 会话 spawn 与 activity 跟踪 | sessionRunner.ts | 需要查找相关测试 | 未覆盖所有工具动词映射 |
+| 权限回调路由 | bridgePermissionCallbacks.ts，sessionRunner.ts control request 检测 | 需要查找相关测试 | 未覆盖权限请求超时场景 |
+| 多会话容量管理 | bridgeMain.ts 容量判断，capacityWake.ts | 需要查找相关测试 | 未覆盖容量波动场景 |
+| Worktree 创建与清理 | bridgeMain.ts worktree 逻辑，bridgePointer.ts readBridgePointerAcrossWorktrees | 需要查找相关测试 | 未覆盖所有 git 错误回退场景 |
+| Clean shutdown 流程 | bridgeMain.ts teardown 逻辑（2435-2600+ 行） | 需要查找相关测试 | 未覆盖强制 kill 场景 |
+| 崩溃恢复 pointer | bridgePointer.ts，envLessBridgePointer.ts，perpetualBridge.test.ts | perpetualBridge.test.ts | 未覆盖跨 worktree 扫描所有边缘情况 |
+| 四层认证与输入验证 | bridgeApi.ts，trustedDevice.ts，inboundMessages.ts | 需要查找相关测试 | 未覆盖所有攻击向量 |
+| Feature gate 分层检查 | bridgeEnabled.ts，initReplBridge.ts | 需要查找相关测试 | 未覆盖所有禁用原因组合 |
+| REPL bridge v2 与 flush gate | replBridge.ts，remoteBridgeCore.ts，initReplBridge.ts，flushGate.ts | 需要查找相关测试 | 未覆盖历史刷新与实时写入交错场景 |
+
+## 8. 文件覆盖与相关子系统
+
+[Coverage](../../architecture/coverage/bridge.yaml)
+
+主要覆盖组：
+| 分组 | 主拥有职责 |
+|-----|-----------|
+| bridge-main | Standalone bridge 主入口、poll loop、shutdown、会话管理 |
+| bridge-api | 环境注册、poll/ack/heartbeat/stop、reconnectSession |
+| bridge-session-runner | 会话 spawn、NDJSON 解析、activity 跟踪、权限回调路由 |
+| bridge-work-secret | WorkSecret 解码、URL/ID 构建 |
+| bridge-pointer | Bridge 指针读写、跨 worktree 扫描 |
+| bridge-poll-config | Poll 配置验证、默认值 |
+| bridge-enabled | Feature gate 检查、禁用原因诊断 |
+| bridge-trusted-device | 受信设备 token 注册、获取、清除 |
+| bridge-repl | REPL bridge 入口、v2 协议、perpetual 模式、flush gate |
+| bridge-inbound-messages | 输入验证、安全常量 |
+| bridge-permission-callbacks | 权限回调路由 |
+
+相关子系统：
+- remote-control：共享会话基础设施，但职责独立
+- daemon：共享进程管理模式，但生命周期不同
+- SDK：bridge 仅 spawn 和路由，SDK 负责执行
+- worktree：bridge 调用 createAgentWorktree，不拥有实现
+
+## 9. 改进建议
+
+| 优先级 | 触发场景与证据 | 建议方向 | 回归风险 | 验收方式 | 工作量 | 置信度 |
+|-------|---------------|---------|---------|--------|-------|-------|
+| P1 | 当前无 Windows 原生支持，仅限 WSL | 实现 Windows 原生 bridge（无 tmux，使用 ConPTY/named pipes） | 低（仅新增平台） | Windows 上 `claude remote-control` 可用 | L | 设计推断 |
+| P1 | 当前 worktree 删除失败时用户可能需要手动清理 | 改进 worktree 清理策略（更激进，提供手动清理命令） | 低（仅改进清理） | 清理更可靠，残留更少 | M | 设计推断 |
+| P2 | 当前权限回调无超时，可能永久等待 | 为权限请求添加超时机制，回退默认决策 | 中（需要定义默认决策策略） | 权限请求不会永久挂起 | M | 设计推断 |
+| P2 | 当前测试覆盖不足，很多关键路径无测试 | 添加全面测试（并发恢复、极端负载、协议迁移、权限回调超时、git 回退、flush gate 交错等） | 低（仅新增测试） | 测试覆盖所有主要设计决策 | L | 设计推断 |
+| P2 | 当前 v1→v2 迁移路径不清晰 | 改进渐进迁移策略，更清晰的状态报告 | 中（协议变更） | 迁移更平滑，用户理解状态 | M | 设计推断 |
+| P3 | 当前无会话资源限制（CPU/内存） | 添加可选的 cgroup/resource limit | 中（可能影响某些会话） | 可以限制会话资源使用 | L | 设计推断 |
+| P3 | 当前状态 UI 较简单 | 改进状态 UI（更丰富的信息、更好的可视化） | 低（仅 UI 变更） | 用户看到更有用的状态 | M | 设计推断 |
