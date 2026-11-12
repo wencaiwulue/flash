@@ -1,431 +1,72 @@
-# Open Runner 架构覆盖率
-# 这是一个机器可读的覆盖率文件，用于追踪实现状态
-# 文档: ../specs/2026-11-12-open-runner-design.md
-
 schema_version: 1
-
----
-
-section:
-  title: 概述
-  slug: overview
-  items:
-    - title: Open Runner 定义
-      status: implemented
-      files:
-        - src/open-runner/protocol.ts
-        - src/open-runner/server.ts
-        - src/open-runner/worker.ts
-
-    - title: 与 remote-control/daemon 区别
-      status: documented
-      files: []
-
----
-
-section:
-  title: 架构
-  slug: architecture
-  items:
-    - title: Server 组件
-      status: implemented
-      files:
-        - src/open-runner/server.ts
-        - tests/openRunnerProtocol.test.ts
-
-    - title: Store 组件
-      status: implemented
-      files:
-        - src/open-runner/store.ts
-        - tests/openRunnerProtocol.test.ts
-
-    - title: Worker 组件
-      status: implemented
-      files:
-        - src/open-runner/worker.ts
-        - tests/openRunnerWorker.test.ts
-
-    - title: Client 组件
-      status: implemented
-      files:
-        - src/open-runner/client.ts
-
-    - title: Protocol 组件
-      status: implemented
-      files:
-        - src/open-runner/protocol.ts
-
----
-
-section:
-  title: 协议与 API 设计
-  slug: protocol
-  items:
-    - title: 协议版本标记
-      status: implemented
-      files:
-        - src/open-runner/protocol.ts
-        - src/open-runner/server.ts
-
-    - title: 错误码定义
-      status: implemented
-      files:
-        - src/open-runner/protocol.ts
-
-    - title: 健康检查端点
-      status: implemented
-      files:
-        - src/open-runner/server.ts
-
-    - title: Runner 注册
-      status: implemented
-      files:
-        - src/open-runner/server.ts
-        - src/open-runner/store.ts
-        - src/open-runner/client.ts
-        - tests/openRunnerProtocol.test.ts
-
-    - title: 作业提交
-      status: implemented
-      files:
-        - src/open-runner/server.ts
-        - src/open-runner/store.ts
-        - src/open-runner/client.ts
-        - tests/openRunnerProtocol.test.ts
-
-    - title: 作业拉取
-      status: implemented
-      files:
-        - src/open-runner/server.ts
-        - src/open-runner/store.ts
-        - src/open-runner/client.ts
-        - tests/openRunnerProtocol.test.ts
-
-    - title: 作业确认
-      status: implemented
-      files:
-        - src/open-runner/server.ts
-        - src/open-runner/store.ts
-        - src/open-runner/client.ts
-        - tests/openRunnerProtocol.test.ts
-
-    - title: 心跳
-      status: implemented
-      files:
-        - src/open-runner/server.ts
-        - src/open-runner/store.ts
-        - src/open-runner/client.ts
-        - src/open-runner/worker.ts
-        - tests/openRunnerProtocol.test.ts
-
-    - title: 追加事件
-      status: implemented
-      files:
-        - src/open-runner/server.ts
-        - src/open-runner/store.ts
-        - src/open-runner/client.ts
-        - src/open-runner/worker.ts
-        - tests/openRunnerProtocol.test.ts
-
-    - title: 完成作业
-      status: implemented
-      files:
-        - src/open-runner/server.ts
-        - src/open-runner/store.ts
-        - src/open-runner/client.ts
-        - src/open-runner/worker.ts
-        - tests/openRunnerProtocol.test.ts
-
-    - title: 取消作业
-      status: implemented
-      files:
-        - src/open-runner/server.ts
-        - src/open-runner/store.ts
-        - src/open-runner/client.ts
-        - tests/openRunnerProtocol.test.ts
-
-    - title: 查询作业
-      status: implemented
-      files:
-        - src/open-runner/server.ts
-        - src/open-runner/store.ts
-        - src/open-runner/client.ts
-
-    - title: 查询事件
-      status: implemented
-      files:
-        - src/open-runner/server.ts
-        - src/open-runner/store.ts
-        - src/open-runner/client.ts
-
-    - title: 列出作业
-      status: implemented
-      files:
-        - src/open-runner/server.ts
-        - src/open-runner/store.ts
-        - src/open-runner/client.ts
-
----
-
-section:
-  title: 状态机与并发模型
-  slug: state-machine
-  items:
-    - title: 作业状态定义
-      status: implemented
-      files:
-        - src/open-runner/protocol.ts
-
-    - title: 状态转移
-      status: implemented
-      files:
-        - src/open-runner/store.ts
-        - tests/openRunnerProtocol.test.ts
-
-    - title: 租期机制
-      status: implemented
-      files:
-        - src/open-runner/store.ts
-        - tests/openRunnerProtocol.test.ts
-
-    - title: Worker Epoch 隔离
-      status: implemented
-      files:
-        - src/open-runner/store.ts
-        - tests/openRunnerProtocol.test.ts
-
-    - title: 并发控制 (serialize)
-      status: implemented
-      files:
-        - src/open-runner/store.ts
-
----
-
-section:
-  title: Worker 生命周期与恢复
-  slug: worker-lifecycle
-  items:
-    - title: Worker 启动流程
-      status: implemented
-      files:
-        - src/open-runner/worker.ts
-        - tests/openRunnerWorker.test.ts
-
-    - title: 活动作业持久化
-      status: implemented
-      files:
-        - src/open-runner/worker.ts
-        - tests/openRunnerWorker.test.ts
-
-    - title: 阶段定义
-      status: implemented
-      files:
-        - src/open-runner/worker.ts
-
-    - title: 崩溃恢复
-      status: implemented
-      files:
-        - src/open-runner/worker.ts
-        - tests/openRunnerWorker.test.ts
-
-    - title: 进程身份验证 (start_token)
-      status: implemented
-      files:
-        - src/open-runner/worker.ts
-        - src/jobs/state.ts
-        - tests/openRunnerWorker.test.ts
-
----
-
-section:
-  title: 环境隔离与安全边界
-  slug: security
-  items:
-    - title: 子进程环境白名单
-      status: implemented
-      files:
-        - src/open-runner/worker.ts
-        - tests/openRunnerWorker.test.ts
-
-    - title: 环境变量黑名单
-      status: implemented
-      files:
-        - src/open-runner/worker.ts
-        - tests/openRunnerWorker.test.ts
-
-    - title: 工作目录验证
-      status: implemented
-      files:
-        - src/open-runner/protocol.ts
-        - tests/openRunnerProtocol.test.ts
-
-    - title: 令牌文件安全
-      status: implemented
-      files:
-        - src/open-runner/protocol.ts
-        - tests/openRunnerProtocol.test.ts
-
-    - title: 双令牌认证模型
-      status: implemented
-      files:
-        - src/open-runner/server.ts
-        - tests/openRunnerProtocol.test.ts
-
----
-
-section:
-  title: 上游代理与凭据注入
-  slug: upstream-proxy
-  items:
-    - title: Upstream Proxy 初始化
-      status: implemented
-      files:
-        - src/upstreamproxy/upstreamproxy.ts
-
-    - title: Relay 进程
-      status: implemented
-      files:
-        - src/upstreamproxy/relay.ts
-
-    - title: Protobuf 编码/解码
-      status: implemented
-      files:
-        - src/upstreamproxy/relay.ts
-
-    - title: Token 文件 unlink
-      status: implemented
-      files:
-        - src/upstreamproxy/upstreamproxy.ts
-
-    - title: prctl(PR_SET_DUMPABLE, 0)
-      status: implemented
-      files:
-        - src/upstreamproxy/upstreamproxy.ts
-
-    - title: CA 证书下载与合并
-      status: implemented
-      files:
-        - src/upstreamproxy/upstreamproxy.ts
-
-    - title: NO_PROXY 列表
-      status: implemented
-      files:
-        - src/upstreamproxy/upstreamproxy.ts
-
-    - title: 环境变量暴露
-      status: implemented
-      files:
-        - src/upstreamproxy/upstreamproxy.ts
-
-    - title: Bun Relay 实现
-      status: implemented
-      files:
-        - src/upstreamproxy/relay.ts
-
-    - title: Node Relay 实现
-      status: implemented
-      files:
-        - src/upstreamproxy/relay.ts
-
----
-
-section:
-  title: 入口点与 CLI
-  slug: entry-points
-  items:
-    - title: openRunnerMain
-      status: implemented
-      files:
-        - src/open-runner/main.ts
-
-    - title: openRunnerServerMain
-      status: implemented
-      files:
-        - src/open-runner/main.ts
-
-    - title: environmentRunnerMain
-      status: implemented
-      files:
-        - src/environment-runner/main.ts
-
-    - title: selfHostedRunnerMain
-      status: implemented
-      files:
-        - src/self-hosted-runner/main.ts
-
----
-
-section:
-  title: MoreRight 本地笔记
-  slug: moreright
-  items:
-    - title: useMoreRight Hook
-      status: implemented
-      files:
-        - src/moreright/useMoreRight.tsx
-
-    - title: 笔记持久化
-      status: not_implemented
-      files: []
-
----
-
-section:
-  title: Open Backends (Chrome / Computer Use)
-  slug: open-backends
-  items:
-    - title: Open Chrome 配置
-      status: implemented
-      files:
-        - src/external-stubs/claude-for-chrome-mcp.ts
-        - tests/openBackends.test.ts
-
-    - title: Loopback CDP 端点验证
-      status: implemented
-      files:
-        - src/external-stubs/claude-for-chrome-mcp.ts
-        - tests/openBackends.test.ts
-
-    - title: Chrome 工具列表
-      status: implemented
-      files:
-        - src/external-stubs/claude-for-chrome-mcp.ts
-        - tests/openBackends.test.ts
-
-    - title: Open Computer Use
-      status: implemented
-      files:
-        - src/external-stubs/computer-use-mcp.ts
-        - tests/openBackends.test.ts
-
-    - title: 独立浏览器客户端
-      status: implemented
-      files:
-        - tests/openBackends.test.ts
-
-    - title: Chrome 上下文保留
-      status: implemented
-      files:
-        - src/external-stubs/claude-for-chrome-mcp.ts
-        - tests/openBackends.test.ts
-
----
-
-section:
-  title: 测试覆盖
-  slug: tests
-  items:
-    - title: Open Runner Protocol 测试
-      status: implemented
-      files:
-        - tests/openRunnerProtocol.test.ts
-
-    - title: Open Runner Worker 测试
-      status: implemented
-      files:
-        - tests/openRunnerWorker.test.ts
-
-    - title: Open Backends 测试
-      status: implemented
-      files:
-        - tests/openBackends.test.ts
+spec_id: open-runner
+spec: ../../superpowers/specs/2026-11-12-open-runner-design.md
+status: draft
+groups:
+  - id: core-open-runner-source
+    kind: source
+    section: 4
+    summary: 核心 Open Runner 实现
+    files:
+      - src/open-runner/protocol.ts
+      - src/open-runner/server.ts
+      - src/open-runner/store.ts
+      - src/open-runner/worker.ts
+      - src/open-runner/client.ts
+      - src/open-runner/main.ts
+
+  - id: entry-points-source
+    kind: source
+    section: 4
+    summary: 入口点与 CLI
+    files:
+      - src/environment-runner/main.ts
+      - src/self-hosted-runner/main.ts
+
+  - id: upstream-proxy-source
+    kind: source
+    section: 4
+    summary: Upstream Proxy 实现
+    files:
+      - src/upstreamproxy/upstreamproxy.ts
+      - src/upstreamproxy/relay.ts
+
+  - id: moreright-source
+    kind: source
+    section: 4
+    summary: MoreRight 本地笔记
+    files:
+      - src/moreright/useMoreRight.tsx
+
+  - id: open-backends-source
+    kind: source
+    section: 4
+    summary: Open Backends (Chrome/Computer Use)
+    files:
+      - src/external-stubs/claude-for-chrome-mcp.ts
+      - src/external-stubs/computer-use-mcp.ts
+
+  - id: supporting-source
+    kind: source
+    section: 4
+    summary: 支持文件
+    files:
+      - src/jobs/state.ts
+      - src/utils/envUtils.ts
+      - src/utils/debug.ts
+      - src/utils/cleanupRegistry.ts
+
+  - id: core-tests
+    kind: test
+    section: 7
+    summary: 核心测试
+    files:
+      - tests/openRunnerProtocol.test.ts
+      - tests/openRunnerWorker.test.ts
+
+  - id: backends-tests
+    kind: test
+    section: 7
+    summary: Open Backends 测试
+    files:
+      - tests/openBackends.test.ts
