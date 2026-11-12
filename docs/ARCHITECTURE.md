@@ -53,3 +53,7 @@ Session files live below the configured Claude home's `projects/` directory. Por
 `USER_TYPE === 'ant'` and `feature(...)` guard internal functionality, including KAIROS/proactive workflows, internal compaction, browser/computer use, coordinator workflows, and remote daemon modes. The external build does not advertise these as stable capabilities.
 
 Disabled modules may return `false`, an empty collection, or an explicit unavailable error. They are intentionally different from completed implementations. Verification status belongs in `docs/STATUS.md`; release history belongs in `docs/RELEASE.md`.
+
+## Subsystem design specifications
+
+The retrospective subsystem designs, review status, and primary file ownership index are maintained in [Subsystem design specs](architecture/INDEX.md). This page remains the product-level summary; subsystem prose lives in the linked specs rather than being duplicated here.

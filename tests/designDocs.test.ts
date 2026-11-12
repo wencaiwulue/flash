@@ -185,3 +185,12 @@ test('handles percent signs in documentation links without throwing', async () =
   const result = await checkDesignDocs({ cwd, files })
   expect(result.errors).toEqual([])
 })
+
+test('repository documentation registry has no structural errors', async () => {
+  const result = await checkDesignDocs({ cwd: resolve(import.meta.dir, '..') })
+  expect(result.errors).toEqual([])
+  expect(result.warnings).toContainEqual({
+    code: 'UNCOVERED_FILE',
+    message: 'File has no primary spec or exclusion: src/entrypoints/sdk/settingsTypes.generated.ts',
+  })
+})

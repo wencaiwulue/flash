@@ -1,4 +1,6 @@
 ---
+id: documentation-system
+batch: 0
 title: 全项目代码设计文档体系
 date: 2026-11-12
 status: approved
@@ -217,7 +219,7 @@ Git 文件全集 + manifest 排除规则 + coverage 主归属 + spec/frontmatter
 
 显式文件清单比大范围 glob 更有维护成本，但能证明每个文件的归属经过判断。这个成本是覆盖可信度的必要交换。类似地，前期试点和归属冻结会推迟批量正文产出，却能降低大规模返工风险。
 
-## 6. 验收标准
+## 6. 现状验收标准
 
 ### 每批验收
 
@@ -265,7 +267,10 @@ git diff --check
 
 ## 8. 文件覆盖与相关子系统
 
-本总 spec 定义文档体系的政策、导航、coverage 和校验器设计。`documentation-system` coverage 最终主拥有以下纳入范围的文件：
+本总 spec 定义文档体系的政策、导航、coverage 和校验器设计。
+[Documentation-system coverage](../../architecture/coverage/documentation-system.yaml)
+
+`documentation-system` coverage 最终主拥有以下纳入范围的文件：
 
 - `scripts/check-design-docs.ts`。
 - `tests/designDocs.test.ts`。

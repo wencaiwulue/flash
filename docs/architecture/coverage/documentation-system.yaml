@@ -1,0 +1,20 @@
+schema_version: 1
+spec_id: documentation-system
+spec: ../../superpowers/specs/2026-11-12-codebase-design-docs-design.md
+status: approved
+groups:
+  - id: documentation-checker
+    kind: script
+    section: 4
+    summary: Registry, ownership, exclusion, spec, link, Git discovery, and CLI validation.
+    files:
+      - scripts/check-design-docs.ts
+  - id: documentation-checker-tests
+    kind: test
+    section: 7
+    summary: Schema, ownership, document, CLI, and real-repository verification.
+    files:
+      - tests/designDocsModel.test.ts
+      - tests/designDocsOwnership.test.ts
+      - tests/designDocs.test.ts
+      - tests/designDocsCli.test.ts
