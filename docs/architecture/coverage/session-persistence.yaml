@@ -1,0 +1,78 @@
+schema_version: 1
+spec_id: session-persistence
+spec: ../../superpowers/specs/2026-11-12-session-persistence-design.md
+status: draft
+
+groups:
+  - id: session-storage-core
+    kind: source
+    section: 3
+    summary: 核心会话持久化，JSONL 写入队列与 flush
+    files:
+      - src/utils/sessionStorage.ts
+
+  - id: session-storage-portable
+    kind: source
+    section: 2
+    summary: 可移植会话存储工具，JSONL 头尾读取、路径处理、轻量元数据提取
+    files:
+      - src/utils/sessionStoragePortable.ts
+
+  - id: file-history
+    kind: source
+    section: 5
+    summary: 文件历史与快照（注意：fileCheckpointing.ts 归属 SDK 覆盖范围）
+    files:
+      - src/utils/fileHistory.ts
+
+  - id: session-dag-recovery
+    kind: source
+    section: 4
+    summary: 会话 DAG 并行分支恢复
+    files:
+      - src/utils/sessionChainRecovery.ts
+
+  - id: state-management
+    kind: source
+    section: 4
+    summary: 引导状态与会话切换（持久化 lease 归属 SDK）
+    files:
+      - src/bootstrap/state.ts
+
+  - id: session-ingress
+    kind: source
+    section: 6
+    summary: 远程会话持久化入口
+    files:
+      - src/services/api/sessionIngress.ts
+
+  - id: session-transcript-services
+    kind: source
+    section: 4
+    summary: 会话转录服务
+    files:
+      - src/services/sessionTranscript/index.ts
+
+  - id: cli-resume-commands
+    kind: source
+    section: 4
+    summary: CLI 恢复/继续/分叉命令实现
+    files:
+      - src/commands/resume.ts
+      - src/commands/continue.ts
+      - src/commands/fork.ts
+
+  - id: session-storage-tests
+    kind: test
+    section: 4
+    summary: 会话持久化核心测试
+    files:
+      - tests/sdkSessions.test.ts
+      - tests/sessionChainRecovery.test.ts
+
+  - id: sdk-rewind-tests
+    kind: test
+    section: 5
+    summary: SDK 文件回滚测试（仅涉及与会话持久化的集成边界）
+    files:
+      - tests/sdkRewind.test.ts
