@@ -1,0 +1,402 @@
+---
+id: platform-integrations
+batch: 6
+title: Platform Integrations 桌面、移动与协作平台集成设计
+date: 2026-11-12
+status: draft
+---
+
+# Platform Integrations 桌面、移动与协作平台集成设计
+
+本文是对当前实现的回溯性设计说明，不冒充原始历史设计记录。
+
+## 1. 问题与约束
+
+Claude Code 需要支持跨多个平台的集成，提供一致的用户体验。主要挑战包括：
+
+- 桌面应用集成：CLI 会话无缝迁移到 Claude Desktop
+- 移动应用集成：提供 iOS/Android 应用的便捷访问
+- 浏览器集成：Claude in Chrome 扩展，支持多种 Chromium 浏览器
+- Slack 集成：安装 Slack 应用以增强协作
+- 跨平台兼容性：macOS、Windows、Linux、WSL 都需要支持
+- 环境检测：正确识别用户环境以提供正确的集成路径
+- 错误降级：当集成不可用时提供合理的回退方案
+- 不重复造轮子：不复制 auth、bridge、computer use 等模块的功能
+
+### 约束条件
+
+- Claude Desktop 最低支持版本：1.1.2396+
+- 桌面集成只在 macOS 和 Windows x64 上提供 upsell 提示
+- Claude in Chrome 仅在非 WSL 环境下完全支持
+- 需要安全地与浏览器进行本地通信（Unix sockets / Windows named pipes）
+
+## 2. 设计理由与备选方案
+
+### 决策 1：桌面集成使用 deep link 协议进行会话迁移
+
+**实际机制**：使用 `claude://resume?session={sessionId}&cwd={cwd}` 协议，开发模式下使用 `claude-dev://` 前缀。
+
+**为什么采用**：deep link 是各平台通用的标准机制，不需要复杂的 IPC 基础设施。会话存储通过文件系统共享，deep link 只传递会话 ID 和工作目录。
+
+**备选方案**：
+- 直接 IPC 通信（Unix socket / named pipe）：实现复杂，需要处理协议版本兼容性
+- 命令行参数传递：不支持无缝迁移已有会话
+
+**代价**：需要在各平台上实现协议处理器检测和版本检查。
+
+**证据**：`src/utils/desktopDeepLink.ts:35-41, 168-200`
+
+### 决策 2：桌面安装状态检测采用最佳 effort 策略
+
+**实际机制**：
+- macOS：检查 `/Applications/Claude.app` 是否存在
+- Windows：检查注册表 `HKEY_CLASSES_ROOT\claude`
+- Linux：检查 `xdg-mime` 中 `claude://` 协议的处理器
+- 版本检测失败时直接尝试 handoff（假设版本兼容）
+
+**为什么采用**：版本检测可能因为权限或非标准安装位置失败，此时不应阻止用户尝试 handoff。
+
+**备选方案**：
+- 严格要求版本检测成功：用户可能无法使用 handoff 功能
+- 完全跳过版本检测：可能导致与旧版本 Desktop 的兼容性问题
+
+**代价**：旧版本可能收到不理解的 deep link，导致错误。
+
+**证据**：`src/utils/desktopDeepLink.ts:137-162`
+
+### 决策 3：桌面 upsell 采用渐进式提示策略
+
+**实际机制**：最多显示 3 次，用户可以选择"Never"永久关闭，通过 GrowthBook 动态控制是否启用。
+
+**为什么采用**：避免过度打扰用户，同时允许产品团队逐步 rollout 功能。
+
+**备选方案**：
+- 每次启动都提示：用户体验差
+- 只提示一次：可能被用户意外忽略
+
+**代价**：需要维护全局配置中的计数和 dismiss 状态。
+
+**证据**：`src/components/DesktopUpsell/DesktopUpsellStartup.tsx:35-42, 54-62`
+
+### 决策 4：Claude in Chrome 支持多种 Chromium 浏览器
+
+**实际机制**：定义 `CHROMIUM_BROWSERS` 配置，包括 Chrome、Brave、Arc、Edge、Chromium、Vivaldi、Opera，按优先级检测可用浏览器。
+
+**为什么采用**：用户可能使用任何主流 Chromium 浏览器，不应限制为 Chrome 独家。
+
+**备选方案**：
+- 只支持 Chrome：排除大量用户
+- 让用户手动配置：用户体验差
+
+**代价**：需要维护各浏览器的路径和配置差异。
+
+**证据**：`src/utils/claudeInChrome/common.ts:39-216, 345-409`
+
+### 决策 5：浏览器通信采用 Unix socket / Windows named pipe
+
+**实际机制**：
+- Unix：`/tmp/claude-mcp-browser-bridge-{username}/{pid}.sock`
+- Windows：`\\.\pipe\claude-mcp-browser-bridge-{username}`
+
+**为什么采用**：这是最安全的本地通信方式，限制在同一用户内。
+
+**备选方案**：
+- 本地 HTTP 服务器：需要处理端口占用和安全认证
+- 文件轮询：延迟高，性能差
+
+**代价**：需要处理 Unix 和 Windows 的差异。
+
+**证据**：`src/utils/claudeInChrome/common.ts:474-540`
+
+### 决策 6：Slack 集成采用浏览器打开 Marketplace 页面
+
+**实际机制**：`/install-slack-app` 命令使用 `openBrowser()` 打开 Slack Marketplace 页面，并记录点击次数。
+
+**为什么采用**：Slack 应用安装流程需要在 Slack 界面中完成，命令行无法完成完整 OAuth 流程。
+
+**备选方案**：
+- 完整 OAuth 流程实现：复杂，需要维护回调服务器
+- 仅显示 URL：用户体验不如直接打开浏览器
+
+**代价**：依赖浏览器可用性，需要处理打开失败的回退。
+
+**证据**：`src/commands/install-slack-app/install-slack-app.ts:8-30`
+
+### 决策 7：移动集成使用 QR 码显示应用商店链接
+
+**实际机制**：预先生成 iOS 和 Android 的 QR 码，用户可以 tab 切换，支持键盘快捷键关闭。
+
+**为什么采用**：QR 码是从 CLI 到移动设备最便捷的过渡方式。
+
+**备选方案**：
+- 仅显示 URL：用户需要手动输入，体验差
+- 通过短信发送链接：需要手机号权限和短信服务
+
+**代价**：依赖 QR 码库，需要处理生成失败的情况。
+
+**证据**：`src/commands/mobile/mobile.tsx:25-120`
+
+### 决策 8：Claude Desktop 配置读取支持 macOS 和 WSL
+
+**实际机制**：
+- macOS：`~/Library/Application Support/Claude/claude_desktop_config.json`
+- WSL：尝试多种路径检测 Windows 配置文件位置
+
+**为什么采用**：WSL 用户可能在 Windows 侧安装了 Claude Desktop，需要能够跨环境读取配置。
+
+**备选方案**：
+- 仅支持原生平台：WSL 用户无法使用 Desktop MCP 服务器
+
+**代价**：WSL 路径检测逻辑复杂，需要处理多种情况。
+
+**证据**：`src/utils/claudeDesktop.ts:13-96`
+
+### 决策 9：Chrome Open CDP 连接采用 Playwright MCP + 持久化 profile
+
+**实际机制**：用户手动启动专用 Chrome 实例，通过 `--chrome` flag 或 `/chrome` 命令连接，支持重新连接而不关闭浏览器。
+
+**为什么采用**：安全隔离用户的日常浏览 profile，同时避免每次都重启浏览器。
+
+**备选方案**：
+- 自动启动浏览器：可能与用户现有实例冲突
+- 连接用户默认 profile：安全风险高
+
+**代价**：用户需要手动启动专用 Chrome 实例。
+
+**证据**：`src/commands/chrome/chrome.tsx:26-135`
+
+## 3. 目标与非目标
+
+### 目标
+
+- **桌面集成**：用户可以无缝将 CLI 会话迁移到 Claude Desktop
+- **移动访问**：提供便捷的 iOS/Android 应用安装引导
+- **浏览器集成**：支持 Claude in Chrome 扩展与多种 Chromium 浏览器
+- **Slack 集成**：简化 Slack 应用安装流程
+- **跨平台**：在 macOS、Windows、Linux、WSL 上提供相应的集成
+- **优雅降级**：当集成不可用时提供清晰的错误提示和回退方案
+
+### 非目标
+
+- 不实现完整的 Slack bot 功能（仅安装引导）
+- 不支持非 Chromium 浏览器（Firefox、Safari 等）
+- 不实现跨设备剪贴板同步
+- 不替换 auth 模块的认证功能
+- 不复制 bridge 模块的通信机制
+- 不复制 computer use 模块的浏览器控制功能
+
+## 4. 架构、模块与数据流
+
+### 4.1 入口与公共契约
+
+#### 命令入口
+
+| 命令 | 模块 | 功能 |
+|------|------|------|
+| `/desktop` | `src/commands/desktop/` | 将当前会话迁移到 Claude Desktop |
+| `/mobile` | `src/commands/mobile/` | 显示移动应用 QR 码 |
+| `/chrome` | `src/commands/chrome/` | Claude in Chrome 控制菜单 |
+| `/install-slack-app` | `src/commands/install-slack-app/` | 安装 Slack 应用 |
+
+#### 主要 API
+
+```typescript
+// 桌面集成
+function getDesktopInstallStatus(): Promise<DesktopInstallStatus>
+function openCurrentSessionInDesktop(): Promise<{ success: boolean; error?: string; deepLinkUrl?: string }>
+function getClaudeDesktopConfigPath(): Promise<string>
+function readClaudeDesktopMcpServers(): Promise<Record<string, McpServerConfig>>
+
+// Claude in Chrome
+function detectAvailableBrowser(): Promise<ChromiumBrowser | null>
+function openInChrome(url: string): Promise<boolean>
+function getSecureSocketPath(): string
+function getAllSocketPaths(): string[]
+
+// 浏览器工具
+function getOpenChromeLaunchCommand(): string
+function getOpenChromeProfileDir(): string
+```
+
+### 4.2 模块与状态所有权
+
+| 模块 | 拥有的状态 | 主要职责 | 不承担的职责 |
+|------|-----------|---------|------------|
+| `desktopDeepLink.ts` | 无（纯函数） | 构建 deep link、检测 Desktop 安装、版本检查、打开 deep link | Desktop 应用内的会话恢复 |
+| `claudeDesktop.ts` | 无（纯函数） | 读取 Desktop 配置路径、解析 MCP 服务器配置 | 实际 MCP 服务器连接 |
+| `claudeInChrome/common.ts` | `trackedTabIds` Set | 浏览器配置、路径检测、可用浏览器检测、socket 路径管理 | 实际 MCP 服务器实现 |
+| `DesktopUpsellStartup.tsx` | React 本地状态、全局配置 | 控制 upsell 提示显示、用户选择处理、seen count 管理 | Desktop 内的实际功能体验 |
+| `DesktopHandoff.tsx` | React 本地状态 | handoff 状态机、用户交互、会话 flush、优雅退出 | Desktop 会话恢复逻辑 |
+| `MobileQRCode.tsx` | React 本地状态、预生成 QR 码 | QR 码显示、平台切换、键盘处理 | 移动应用内的功能 |
+| `ClaudeInChromeMenu.tsx` | React 本地状态 | 显示连接状态、重新连接、切换默认启用 | 浏览器实际控制 |
+| `install-slack-app.ts` | 无（纯函数） | 打开 Slack Marketplace、记录点击计数 | Slack 应用内的功能 |
+
+### 4.3 主控制流
+
+#### 桌面 Handoff 流程
+
+```
+用户运行 /desktop
+  ↓
+检查 Desktop 安装状态
+  ├─ 未安装 → 提示下载 (y/n)
+  ├─ 版本过旧 → 提示更新 (y/n)
+  └─ 就绪 → 继续
+  ↓
+Flush session storage（确保 transcript 完全写入）
+  ↓
+构建 deep link URL (claude://resume?session=...&cwd=...)
+  ↓
+打开 deep link
+  ├─ 失败 → 显示错误，按任意键继续
+  └─ 成功 → 显示成功消息，500ms 后优雅退出
+```
+
+#### Claude in Chrome 设置流程
+
+```
+启动时检测是否启用 Claude in Chrome
+  ↓
+检测可用浏览器（按优先级顺序）
+  ↓
+设置 native messaging host（如需要）
+  ↓
+启动 MCP 服务器
+  ↓
+建立 socket/pipe 连接
+  ↓
+等待浏览器扩展连接
+```
+
+#### 移动应用 QR 码流程
+
+```
+用户运行 /mobile
+  ↓
+预生成 iOS 和 Android QR 码
+  ↓
+显示默认平台（iOS）的 QR 码
+  ↓
+用户可以：
+  ├─ Tab / ← / → → 切换平台
+  ├─ Esc / Ctrl+C / 任意键 → 关闭
+  └─ 用手机扫描 QR 码 → 打开应用商店
+```
+
+## 5. 接口与数据结构
+
+### 5.1 桌面集成类型
+
+```typescript
+type DesktopInstallStatus =
+  | { status: 'not-installed' }
+  | { status: 'version-too-old'; version: string }
+  | { status: 'ready'; version: string }
+
+type DesktopHandoffState =
+  | 'checking'
+  | 'prompt-download'
+  | 'flushing'
+  | 'opening'
+  | 'success'
+  | 'error'
+```
+
+### 5.2 浏览器集成类型
+
+```typescript
+type ChromiumBrowser =
+  | 'chrome'
+  | 'brave'
+  | 'arc'
+  | 'chromium'
+  | 'edge'
+  | 'vivaldi'
+  | 'opera'
+
+type BrowserConfig = {
+  name: string
+  macos: {
+    appName: string
+    dataPath: string[]
+    nativeMessagingPath: string[]
+  }
+  linux: {
+    binaries: string[]
+    dataPath: string[]
+    nativeMessagingPath: string[]
+  }
+  windows: {
+    dataPath: string[]
+    registryKey: string
+    useRoaming?: boolean
+  }
+}
+```
+
+### 5.3 全局配置键
+
+```typescript
+// Desktop upsell
+desktopUpsellDismissed?: boolean
+desktopUpsellSeenCount?: number
+
+// Claude in Chrome
+claudeInChromeDefaultEnabled?: boolean
+
+// Slack
+slackAppInstallCount?: number
+```
+
+## 6. 错误处理与降级策略
+
+### 6.1 桌面集成错误处理
+
+| 错误情况 | 处理策略 | 用户体验 |
+|---------|---------|---------|
+| Desktop 未安装 | 提示下载 (y/n)，y 打开浏览器 | 清晰的安装引导 |
+| 版本过旧 | 提示更新 (y/n)，y 打开浏览器 | 明确的版本要求 |
+| 版本检测失败 | 直接尝试 handoff | 最佳 effort，不阻止用户 |
+| Deep link 打开失败 | 显示错误消息，按任意键继续 | 提供手动打开备选 |
+
+### 6.2 Claude in Chrome 错误处理
+
+| 错误情况 | 处理策略 | 用户体验 |
+|---------|---------|---------|
+| 无可用浏览器 | 不启动 MCP 服务器 | 无提示（静默降级） |
+| Socket 创建失败 | 记录日志，不启动 | 无提示（静默降级） |
+| 连接断开 | 显示失败状态，可重新连接 | /chrome 命令提供重连选项 |
+
+### 6.3 移动集成错误处理
+
+| 错误情况 | 处理策略 | 用户体验 |
+|---------|---------|---------|
+| QR 码生成失败 | 留空，仍显示 URL | 用户可以手动访问 URL |
+
+### 6.4 Slack 集成错误处理
+
+| 错误情况 | 处理策略 | 用户体验 |
+|---------|---------|---------|
+| 浏览器打开失败 | 显示 URL 让用户手动访问 | 清晰的回退方案 |
+
+## 7. 测试与验证策略
+
+（当前无专门的 platform-integrations 测试文件，相关测试可能包含在其他模块中）
+
+## 8. 覆盖率
+
+见 [Coverage](../../architecture/coverage/platform-integrations.yaml)
+
+## 9. 未解决的问题与技术债务
+
+### 9.1 未解决的问题
+
+1. **Linux Desktop 支持**：当前 `isDesktopInstalled()` 对 Linux 有检测逻辑，但实际测试覆盖有限
+2. **WSL2 与 Windows Desktop 互操作**：Deep link 从 WSL 打开 Windows Desktop 的场景需要更多验证
+3. **Claude in Chrome 多用户隔离**：socket 目录包含用户名，但在共享系统上仍有潜在风险
+
+### 9.2 技术债务
+
+1. **`DesktopUpsellStartup.tsx:4`**：使用 raw `useInput` 而不是 `useKeybindings`，违反自定义规则
+2. **`common.ts:504`**：使用同步 `readdirSync`，违反 `no-sync-fs` 规则（外部回调要求同步）
+3. **版本检测逻辑**：macOS 和 Windows 的版本检测方法不一致，Windows 使用目录名解析
