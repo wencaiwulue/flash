@@ -99,20 +99,20 @@ groups:
       - src/utils/permissions/autoModeState.ts
   - id: permissions-explainer
     kind: source
-    section: 7
+    section: 4
     summary: 权限解释器，解释权限请求的风险级别和原因
     files:
       - src/utils/permissions/permissionExplainer.ts
   - id: permissions-filesystem
     kind: source
-    section: 7
+    section: 4
     summary: 文件系统权限相关工具函数
     files:
       - src/utils/permissions/filesystem.ts
       - src/utils/permissions/pathValidation.ts
   - id: permissions-bypass-killswitch
     kind: source
-    section: 7
+    section: 4
     summary: 绕过权限模式的 killswitch
     files:
       - src/utils/permissions/bypassPermissionsKillswitch.ts
@@ -126,7 +126,7 @@ groups:
       - src/hooks/toolPermission/permissionLogging.ts
   - id: permissions-components
     kind: source
-    section: 7
+    section: 4
     summary: 权限请求 UI 组件，包括各工具的特定权限弹窗、PermissionDialog、权限规则解释
     files:
       - src/components/permissions/PermissionRequest.tsx

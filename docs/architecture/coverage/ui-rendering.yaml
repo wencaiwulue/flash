@@ -256,7 +256,7 @@ groups:
       - src/components/design-system/ThemeProvider.tsx
   - id: error-boundaries
     kind: source
-    section: 5
+    section: 4
     summary: 错误边界与异常处理
     files:
       - src/components/SentryErrorBoundary.ts

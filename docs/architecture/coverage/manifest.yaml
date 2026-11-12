@@ -9,29 +9,351 @@ specs:
     coverage: docs/architecture/coverage/documentation-system.yaml
     batch: 0
     status: draft
+  - id: plugins
+    spec: docs/superpowers/specs/2026-11-12-plugins-design.md
+    coverage: docs/architecture/coverage/plugins.yaml
+    batch: 0
+    status: draft
   - id: query-core
     spec: docs/superpowers/specs/2026-11-12-query-core-design.md
     coverage: docs/architecture/coverage/query-core.yaml
+    batch: 0
+    status: draft
+  - id: sdk-query-sessions
+    spec: docs/superpowers/specs/2026-11-12-sdk-query-sessions-design.md
+    coverage: docs/architecture/coverage/sdk-query-sessions.yaml
     batch: 0
     status: draft
   - id: sdk-type-generation
     spec: docs/superpowers/specs/2026-11-12-sdk-type-generation-design.md
     coverage: docs/architecture/coverage/sdk-type-generation.yaml
     batch: 0
-    status: planned
+    status: draft
+  - id: cli-startup
+    spec: docs/superpowers/specs/2026-11-12-cli-startup-design.md
+    coverage: docs/architecture/coverage/cli-startup.yaml
+    batch: 1
+    status: draft
+  - id: context-compaction
+    spec: docs/superpowers/specs/2026-11-12-context-compaction-design.md
+    coverage: docs/architecture/coverage/context-compaction.yaml
+    batch: 1
+    status: draft
+  - id: model-api
+    spec: docs/superpowers/specs/2026-11-12-model-api-design.md
+    coverage: docs/architecture/coverage/model-api.yaml
+    batch: 1
+    status: draft
+  - id: attachments
+    spec: docs/superpowers/specs/2026-11-12-attachments-design.md
+    coverage: docs/architecture/coverage/attachments.yaml
+    batch: 2
+    status: draft
+  - id: bridge
+    spec: docs/superpowers/specs/2026-11-12-bridge-design.md
+    coverage: docs/architecture/coverage/bridge.yaml
+    batch: 2
+    status: draft
+  - id: buddy
+    spec: docs/superpowers/specs/2026-11-12-buddy-design.md
+    coverage: docs/architecture/coverage/buddy.yaml
+    batch: 2
+    status: draft
+  - id: computer-use
+    spec: docs/superpowers/specs/2026-11-12-computer-use-design.md
+    coverage: docs/architecture/coverage/computer-use.yaml
+    batch: 2
+    status: draft
+  - id: file-tools
+    spec: docs/superpowers/specs/2026-11-12-file-tools-design.md
+    coverage: docs/architecture/coverage/file-tools.yaml
+    batch: 2
+    status: draft
+  - id: lsp
+    spec: docs/superpowers/specs/2026-11-12-lsp-design.md
+    coverage: docs/architecture/coverage/lsp.yaml
+    batch: 2
+    status: draft
+  - id: mcp
+    spec: docs/superpowers/specs/2026-11-12-mcp-design.md
+    coverage: docs/architecture/coverage/mcp.yaml
+    batch: 2
+    status: draft
+  - id: onboarding-ui
+    spec: docs/superpowers/specs/2026-11-12-onboarding-ui-design.md
+    coverage: docs/architecture/coverage/onboarding-ui.yaml
+    batch: 2
+    status: draft
+  - id: permissions
+    spec: docs/superpowers/specs/2026-11-12-permissions-design.md
+    coverage: docs/architecture/coverage/permissions.yaml
+    batch: 2
+    status: draft
+  - id: session-persistence
+    spec: docs/superpowers/specs/2026-11-12-session-persistence-design.md
+    coverage: docs/architecture/coverage/session-persistence.yaml
+    batch: 2
+    status: draft
+  - id: shell-tools
+    spec: docs/superpowers/specs/2026-11-12-shell-tools-design.md
+    coverage: docs/architecture/coverage/shell-tools.yaml
+    batch: 2
+    status: draft
+  - id: tool-framework
+    spec: docs/superpowers/specs/2026-11-12-tool-framework-design.md
+    coverage: docs/architecture/coverage/tool-framework.yaml
+    batch: 2
+    status: draft
+  - id: auth
+    spec: docs/superpowers/specs/2026-11-12-auth-design.md
+    coverage: docs/architecture/coverage/auth.yaml
+    batch: 3
+    status: draft
+  - id: commit-attribution
+    spec: docs/superpowers/specs/2026-11-12-commit-attribution-design.md
+    coverage: docs/architecture/coverage/commit-attribution.yaml
+    batch: 3
+    status: draft
+  - id: git-integration
+    spec: docs/superpowers/specs/2026-11-12-git-integration-design.md
+    coverage: docs/architecture/coverage/git-integration.yaml
+    batch: 3
+    status: draft
+  - id: memory
+    spec: docs/superpowers/specs/2026-11-12-memory-design.md
+    coverage: docs/architecture/coverage/memory.yaml
+    batch: 3
+    status: draft
+  - id: notifications
+    spec: docs/superpowers/specs/2026-11-12-notifications-design.md
+    coverage: docs/architecture/coverage/notifications.yaml
+    batch: 3
+    status: draft
+  - id: session-search-recovery
+    spec: docs/superpowers/specs/2026-11-12-session-search-recovery-design.md
+    coverage: docs/architecture/coverage/session-search-recovery.yaml
+    batch: 3
+    status: draft
+  - id: sessions-share
+    spec: docs/superpowers/specs/2026-11-12-sessions-share-design.md
+    coverage: docs/architecture/coverage/sessions-share.yaml
+    batch: 3
+    status: draft
+  - id: settings
+    spec: docs/superpowers/specs/2026-11-12-settings-design.md
+    coverage: docs/architecture/coverage/settings.yaml
+    batch: 3
+    status: draft
+  - id: skills
+    spec: docs/superpowers/specs/2026-11-12-skills-design.md
+    coverage: docs/architecture/coverage/skills.yaml
+    batch: 3
+    status: draft
+  - id: app-state
+    spec: docs/superpowers/specs/2026-11-12-app-state-design.md
+    coverage: docs/architecture/coverage/app-state.yaml
+    batch: 4
+    status: draft
+  - id: assistant-ui
+    spec: docs/superpowers/specs/2026-11-12-assistant-ui-design.md
+    coverage: docs/architecture/coverage/assistant-ui.yaml
+    batch: 4
+    status: draft
+  - id: commands-framework
+    spec: docs/superpowers/specs/2026-11-12-commands-framework-design.md
+    coverage: docs/architecture/coverage/commands-framework.yaml
+    batch: 4
+    status: draft
+  - id: cost-tracking
+    spec: docs/superpowers/specs/2026-11-12-cost-tracking-design.md
+    coverage: docs/architecture/coverage/cost-tracking.yaml
+    batch: 4
+    status: draft
+  - id: ide-integration
+    spec: docs/superpowers/specs/2026-11-12-ide-integration-design.md
+    coverage: docs/architecture/coverage/ide-integration.yaml
+    batch: 4
+    status: draft
+  - id: ink-platform
+    spec: docs/superpowers/specs/2026-11-12-ink-platform-design.md
+    coverage: docs/architecture/coverage/ink-platform.yaml
+    batch: 4
+    status: draft
+  - id: repl-input
+    spec: docs/superpowers/specs/2026-11-12-repl-input-design.md
+    coverage: docs/architecture/coverage/repl-input.yaml
+    batch: 4
+    status: draft
+  - id: text-formatting
+    spec: docs/superpowers/specs/2026-11-12-text-formatting-design.md
+    coverage: docs/architecture/coverage/text-formatting.yaml
+    batch: 4
+    status: draft
+  - id: ui-rendering
+    spec: docs/superpowers/specs/2026-11-12-ui-rendering-design.md
+    coverage: docs/architecture/coverage/ui-rendering.yaml
+    batch: 4
+    status: draft
+  - id: voice-assistant
+    spec: docs/superpowers/specs/2026-11-12-voice-assistant-design.md
+    coverage: docs/architecture/coverage/voice-assistant.yaml
+    batch: 4
+    status: draft
+  - id: workspace-ui
+    spec: docs/superpowers/specs/2026-11-12-workspace-ui-design.md
+    coverage: docs/architecture/coverage/workspace-ui.yaml
+    batch: 4
+    status: draft
+  - id: agent-swarms
+    spec: docs/superpowers/specs/2026-11-12-agent-swarms-design.md
+    coverage: docs/architecture/coverage/agent-swarms.yaml
+    batch: 5
+    status: draft
+  - id: help-feedback
+    spec: docs/superpowers/specs/2026-11-12-help-feedback-design.md
+    coverage: docs/architecture/coverage/help-feedback.yaml
+    batch: 5
+    status: draft
+  - id: plan-worktree
+    spec: docs/superpowers/specs/2026-11-12-plan-worktree-design.md
+    coverage: docs/architecture/coverage/plan-worktree.yaml
+    batch: 5
+    status: draft
+  - id: review-analysis
+    spec: docs/superpowers/specs/2026-11-12-review-analysis-design.md
+    coverage: docs/architecture/coverage/review-analysis.yaml
+    batch: 5
+    status: draft
+  - id: scheduling
+    spec: docs/superpowers/specs/2026-11-12-scheduling-design.md
+    coverage: docs/architecture/coverage/scheduling.yaml
+    batch: 5
+    status: draft
+  - id: task-system
+    spec: docs/superpowers/specs/2026-11-13-task-system-design.md
+    coverage: docs/architecture/coverage/task-system.yaml
+    batch: 5
+    status: draft
+  - id: workflow
+    spec: docs/superpowers/specs/2026-11-12-workflow-design.md
+    coverage: docs/architecture/coverage/workflow.yaml
+    batch: 5
+    status: draft
+  - id: daemon-background
+    spec: docs/superpowers/specs/2026-11-12-daemon-background-design.md
+    coverage: docs/architecture/coverage/daemon-background.yaml
+    batch: 6
+    status: draft
+  - id: deep-link
+    spec: docs/superpowers/specs/2026-11-12-deep-link-design.md
+    coverage: docs/architecture/coverage/deep-link.yaml
+    batch: 6
+    status: draft
+  - id: open-runner
+    spec: docs/superpowers/specs/2026-11-12-open-runner-design.md
+    coverage: docs/architecture/coverage/open-runner.yaml
+    batch: 6
+    status: draft
+  - id: platform-integrations
+    spec: docs/superpowers/specs/2026-11-12-platform-integrations-design.md
+    coverage: docs/architecture/coverage/platform-integrations.yaml
+    batch: 6
+    status: draft
+  - id: remote-control
+    spec: docs/superpowers/specs/2026-11-12-remote-control-design.md
+    coverage: docs/architecture/coverage/remote-control.yaml
+    batch: 6
+    status: draft
+  - id: ssh
+    spec: docs/superpowers/specs/2026-11-12-ssh-design.md
+    coverage: docs/architecture/coverage/ssh.yaml
+    batch: 6
+    status: draft
+  - id: teleport
+    spec: docs/superpowers/specs/2026-11-12-teleport-design.md
+    coverage: docs/architecture/coverage/teleport.yaml
+    batch: 6
+    status: draft
+  - id: build-feature-profile
+    spec: docs/superpowers/specs/2026-11-12-build-feature-profile-design.md
+    coverage: docs/architecture/coverage/build-feature-profile.yaml
+    batch: 7
+    status: draft
+  - id: data-structures
+    spec: docs/superpowers/specs/2026-11-12-data-structures-design.md
+    coverage: docs/architecture/coverage/data-structures.yaml
+    batch: 7
+    status: draft
+  - id: diagnostics
+    spec: docs/superpowers/specs/2026-11-12-diagnostics-design.md
+    coverage: docs/architecture/coverage/diagnostics.yaml
+    batch: 7
+    status: draft
+  - id: experimental-features
+    spec: docs/superpowers/specs/2026-11-12-experimental-features-design.md
+    coverage: docs/architecture/coverage/experimental-features.yaml
+    batch: 7
+    status: draft
+  - id: external-stubs
+    spec: docs/superpowers/specs/2026-11-12-external-stubs-design.md
+    coverage: docs/architecture/coverage/external-stubs.yaml
+    batch: 7
+    status: draft
+  - id: hooks-system
+    spec: docs/superpowers/specs/2026-11-12-hooks-system-design.md
+    coverage: docs/architecture/coverage/hooks-system.yaml
+    batch: 7
+    status: draft
+  - id: magic-docs
+    spec: docs/superpowers/specs/2026-11-12-magic-docs-design.md
+    coverage: docs/architecture/coverage/magic-docs.yaml
+    batch: 7
+    status: draft
+  - id: messaging-primitives
+    spec: docs/superpowers/specs/2026-11-12-messaging-primitives-design.md
+    coverage: docs/architecture/coverage/messaging-primitives.yaml
+    batch: 7
+    status: draft
+  - id: native-installer
+    spec: docs/superpowers/specs/2026-11-12-native-installer-design.md
+    coverage: docs/architecture/coverage/native-installer.yaml
+    batch: 7
+    status: draft
+  - id: network-security
+    spec: docs/superpowers/specs/2026-11-12-network-security-design.md
+    coverage: docs/architecture/coverage/network-security.yaml
+    batch: 7
+    status: draft
+  - id: runtime-lifecycle
+    spec: docs/superpowers/specs/2026-11-12-runtime-lifecycle-design.md
+    coverage: docs/architecture/coverage/runtime-lifecycle.yaml
+    batch: 7
+    status: draft
   - id: telemetry
     spec: docs/superpowers/specs/2026-11-12-telemetry-design.md
     coverage: docs/architecture/coverage/telemetry.yaml
-    batch: 0
-    status: planned
+    batch: 7
+    status: draft
+  - id: test-validation
+    spec: docs/superpowers/specs/2026-11-12-test-validation-design.md
+    coverage: docs/architecture/coverage/test-validation.yaml
+    batch: 7
+    status: draft
+  - id: web-tools
+    spec: docs/superpowers/specs/2026-11-12-web-tools-design.md
+    coverage: docs/architecture/coverage/web-tools.yaml
+    batch: 7
+    status: draft
 exclusions:
   - glob: src/entrypoints/sdk/coreTypes.generated.ts
-    reason: Generated by scripts/generate-sdk-types.ts from src/entrypoints/sdk/coreSchemas.ts.
+    reason: Generated by scripts/generate-sdk-types.ts from
+      src/entrypoints/sdk/coreSchemas.ts.
     source_spec: sdk-type-generation
   - glob: src/entrypoints/sdk/controlTypes.ts
-    reason: Generated by scripts/generate-sdk-types.ts from src/entrypoints/sdk/controlSchemas.ts.
+    reason: Generated by scripts/generate-sdk-types.ts from
+      src/entrypoints/sdk/controlSchemas.ts.
     source_spec: sdk-type-generation
   - glob: src/types/generated/**
-    reason: protoc-gen-ts_proto output; source protobuf names are recorded in each generated file header.
+    reason: protoc-gen-ts_proto output; source protobuf names are recorded in each
+      generated file header.
     source_spec: telemetry
-# settingsTypes.generated.ts is a hand-written compatibility re-export, not an exclusion.

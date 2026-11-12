@@ -3,7 +3,6 @@ spec_id: tool-framework
 spec: ../../superpowers/specs/2026-11-12-tool-framework-design.md
 status: draft
 groups:
-
   - id: additional-files
     kind: source
     section: 4
@@ -37,7 +36,7 @@ groups:
       - src/services/tools/toolExecution.ts
   - id: tool-shared
     kind: source
-    section: 7
+    section: 4
     summary: 工具共享辅助逻辑
     files:
       - src/tools/shared/gitOperationTracking.ts

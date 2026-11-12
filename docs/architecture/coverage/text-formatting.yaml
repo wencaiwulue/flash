@@ -3,7 +3,7 @@ spec_id: text-formatting
 spec: ../../superpowers/specs/2026-11-12-text-formatting-design.md
 status: draft
 groups:
-  - id: additional-files
+  - id: additional-files-source
     kind: source
     section: 4
     summary: Additional files
@@ -14,6 +14,11 @@ groups:
       - src/utils/doctorContextWarnings.ts
       - src/utils/readEditContext.ts
       - src/utils/workloadContext.ts
+  - id: additional-files-test
+    kind: test
+    section: 7
+    summary: Additional files
+    files:
       - tests/snapshotUpdateDialog.test.tsx
       - tests/snip.test.ts
   - id: commands
@@ -25,19 +30,19 @@ groups:
       - src/commands/color/index.ts
   - id: format-utils
     kind: source
-    section: 1
+    section: 4
     summary: 纯显示格式化工具 - 文件大小、时间/持续时间、数字、相对时间、日志元数据格式化
     files:
       - src/utils/format.ts
   - id: cli-highlight
     kind: source
-    section: 2
+    section: 4
     summary: CLI 代码高亮 - cli-highlight/highlight.js 懒加载、语言检测、共享 Promise 缓存
     files:
       - src/utils/cliHighlight.ts
   - id: highlight-match
     kind: source
-    section: 3
+    section: 4
     summary: 搜索高亮 - 忽略大小写匹配、逆高亮、React 节点输出、保留原有文本
     files:
       - src/utils/highlightMatch.tsx
@@ -49,31 +54,31 @@ groups:
       - src/utils/displayTags.ts
   - id: heatmap
     kind: source
-    section: 5
+    section: 4
     summary: 活动热图 - GitHub 风格、百分比强度分级、月份标签、Claude 橙色、字符渐变（░▒▓█）
     files:
       - src/utils/heatmap.ts
   - id: horizontal-scroll
     kind: source
-    section: 6
+    section: 4
     summary: 水平滚动窗口 - 边缘滚动策略、箭头宽度计算、选中项可见保证、cumulativeWidths 优化
     files:
       - src/utils/horizontalScroll.ts
   - id: hyperlink
     kind: source
-    section: 7
+    section: 4
     summary: OSC 8 超链接 - 终端支持检测、蓝色着色、BEL 终止符、content/url 分离、不支持回退
     files:
       - src/utils/hyperlink.ts
   - id: modifiers
     kind: source
-    section: 8
+    section: 4
     summary: 修饰键检测 - macOS 专用、modifiers-napi 可选依赖、prewarm 预加载、isModifierPressed 同步检查
     files:
       - src/utils/modifiers.ts
   - id: logo-v2-utils
     kind: source
-    section: 9
+    section: 4
     summary: Logo v2 布局工具 - 水平/紧凑模式、optimalLeftWidth 计算、路径中间截断、model/billing 分行检测
     files:
       - src/utils/logoV2Utils.ts

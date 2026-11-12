@@ -3,7 +3,6 @@ spec_id: computer-use
 spec: ../../superpowers/specs/2026-11-12-computer-use-design.md
 status: draft
 groups:
-
   - id: additional-files
     kind: source
     section: 4

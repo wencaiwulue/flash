@@ -3,7 +3,6 @@ spec_id: ink-platform
 spec: ../../superpowers/specs/2026-11-12-ink-platform-design.md
 status: draft
 groups:
-
   - id: additional-files
     kind: source
     section: 4

@@ -459,9 +459,9 @@ interface LocalWorkflowTaskState extends TaskStateBase {
 | workflow-task | LocalWorkflowTask 实现、任务系统集成 | `tests/workflow.test.ts:233-261` | 其他任务类型不归本组 |
 
 相关子系统：
-- [Task System](../2026-11-13-task-system-design.md)：提供任务生命周期、状态管理、通知
-- [Query Core](../2026-11-12-query-core-design.md)：提供 runAgent()、getTools()
-- [Agent Swarms](../2026-11-12-agent-swarms-design.md)：提供 agentType 定义
+- [Task System](./2026-11-13-task-system-design.md)：提供任务生命周期、状态管理、通知
+- [Query Core](./2026-11-12-query-core-design.md)：提供 runAgent()、getTools()
+- [Agent Swarms](./2026-11-12-agent-swarms-design.md)：提供 agentType 定义
 
 ## 9. 改进建议
 

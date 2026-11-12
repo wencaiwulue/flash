@@ -3,7 +3,6 @@ spec_id: cli-startup
 spec: ../../superpowers/specs/2026-11-12-cli-startup-design.md
 status: draft
 groups:
-
   - id: additional-files
     kind: source
     section: 4

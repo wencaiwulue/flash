@@ -357,10 +357,10 @@ showDiffInIDE 中 IDE 断开
 | ide-types | IDE 类型定义、IdeType 枚举、支持的 IDE 配置 | 无直接测试 | 无 |
 
 **相关子系统：**
-- [mcp](../2026-11-12-mcp-design.md)：MCP 客户端、动态配置、工具调用
-- [settings](../2026-11-12-settings-design.md)：diffTool、autoConnectIde 等配置
-- [permissions](../2026-11-12-permissions-design.md)：文件权限对话框与 IDE diff 集成
-- [telemetry](../2026-11-12-telemetry-design.md)：IDE 相关分析事件
+- [mcp](./2026-11-12-mcp-design.md)：MCP 客户端、动态配置、工具调用
+- [settings](./2026-11-12-settings-design.md)：diffTool、autoConnectIde 等配置
+- [permissions](./2026-11-12-permissions-design.md)：文件权限对话框与 IDE diff 集成
+- [telemetry](./2026-11-12-telemetry-design.md)：IDE 相关分析事件
 
 ## 9. 改进建议
 

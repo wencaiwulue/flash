@@ -145,7 +145,7 @@ Markdown 方言约束：
 |---------|-----|
 | **实际机制** | `supportsHyperlinks()` 检测终端是否支持 OSC 8（缓存结果）；`createHyperlink(url, content?)` 创建链接：如果不支持，只返回 url；如果支持，返回 `OSC 8 ; url BEL content OSC 8 ; BEL`；content 可选，默认为 url；content 用 chalk.blue 着色（wrapAnsi 会保留）；`OSC8_START = '\x1b]8;;'`，`OSC8_END = '\x07'`（BEL，比 ST 更广泛支持） |
 | **为什么采用** | 支持检测避免在不支持的终端输出垃圾字符；回退到纯 URL 保证基本功能；BEL 终止符比 ST（`\x1b\\`）更广泛支持；蓝色着色符合用户对链接的预期 |
-| **备选方案及不采用原因** | 方案 A：总是输出 OSC 8 → 被否决，不支持的终端会显示乱码；方案 B：使用方括号 `[text](url)` → 被否决，用户体验差，不能点击；方案 C：使用 ST 终止符 → 被否决，某些终端不支持 |
+| **备选方案及不采用原因** | 方案 A：总是输出 OSC 8 → 被否决，不支持的终端会显示乱码；方案 B：使用方括号 `[text](https://example.com)` → 被否决，用户体验差，不能点击；方案 C：使用 ST 终止符 → 被否决，某些终端不支持 |
 | **代价** | 检测逻辑可能误判（某些终端声称支持但实际有问题）；wrapAnsi 需要正确处理 OSC 8（不在中间换行）；mailto: 链接需要特殊处理（不显示为链接，避免垃圾邮件） |
 | **证据** | `src/utils/hyperlink.ts:7-8` OSC8_START/OSC8_END 定义；`src/utils/hyperlink.ts:24-39` createHyperlink 实现（支持检测 + 着色）；`src/utils/markdown.ts:141-161` link token 处理（mailto 特殊处理）；`src/ink/supports-hyperlinks.ts` 支持检测实现（引用） |
 

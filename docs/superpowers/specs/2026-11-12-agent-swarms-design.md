@@ -462,9 +462,9 @@ type AppState = {
 | coordinator | Coordinator 模式、系统提示 | 未找到专用测试 | 协调业务逻辑不归本组 |
 
 相关子系统：
-- [Query Core](../2026-11-12-query-core-design.md)：子代理执行主循环
-- [Permissions](../2026-11-12-permissions-design.md)：权限决策与同步
-- [Shell Tools](../2026-11-12-shell-tools-design.md)：Bash 工具在子代理中的执行
+- [Query Core](./2026-11-12-query-core-design.md)：子代理执行主循环
+- [Permissions](./2026-11-12-permissions-design.md)：权限决策与同步
+- [Shell Tools](./2026-11-12-shell-tools-design.md)：Bash 工具在子代理中的执行
 
 ## 9. 改进建议
 

@@ -248,7 +248,7 @@ utils/markdownConfigLoader.ts → utils/frontmatterParser.ts
 | P1 | Memoize 键改进：当前只支持 JSON.stringify，不支持非序列化值 | 支持自定义键函数作为选项，而非仅 JSON.stringify | 低（新增选项，默认行为不变） | 可以传入自定义键函数 | S | 已证实 |
 | P1 | 测试缺口大（第 7 节无测试） | 添加单元测试：为核心工具添加单元测试，特别是边界情况 | 低（新增测试） | 每个核心工具都有对应测试文件 | M | 已证实 |
 | P1 | ContentArray 类型安全：当前使用 unknown，类型不安全 | 定义明确类型而非 unknown，使用类型守卫 | 低（类型改进，运行时行为不变） | ContentArray 有明确类型，类型守卫验证 | S | 已证实 |
-| P2 | Generators.all TODO：当前有 TODO 注释，undefined 值跳过逻辑需要确认 | 清理 undefined 值跳过逻辑，确认是否需要，或明确文档说明 | 低（澄清逻辑，或明确文档） | TODO 被清理，逻辑明确或文档化 | S | 已证实 |
+| P2 | `generators.all` 的 undefined 值处理：源码注释要求澄清跳过逻辑，当前行为缺少明确契约 | 明确 undefined 是否应跳过、保留或抛错，并补充边界测试 | 可能改变依赖当前跳过行为的调用方 | 新增 undefined 输入测试并固定预期行为 | S | 已证实 |
 | P2 | CircularBuffer clear 优化：当前清空 buffer，可能导致重新分配 | 考虑仅重置索引不清空数组作为选项 | 低（新增选项，默认行为不变） | 可以选择仅重置索引 | S | 已证实 |
 | P2 | JSONL parse 错误报告：当前跳过失败行，无错误报告 | 可选地返回失败行信息，用于调试 | 低（新增选项，默认行为不变） | 可以获取失败行信息 | M | 已证实 |
 | P2 | Brace expansion 增强：当前支持有限，不支持复杂嵌套模式和范围表达式 | 支持更复杂的嵌套模式和范围表达式 | 低（新增功能，现有用法不受影响） | 可以解析更复杂的 brace 模式 | M | 已证实 |

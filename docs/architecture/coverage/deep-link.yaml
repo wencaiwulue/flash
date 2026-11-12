@@ -17,7 +17,7 @@ groups:
       - src/utils/deepLink/protocolHandler.ts
   - id: deep-link-register
     kind: source
-    section: 7
+    section: 4
     summary: 跨平台协议注册、当前状态检查、自动注册逻辑
     files:
       - src/utils/deepLink/registerProtocol.ts

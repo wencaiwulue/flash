@@ -278,13 +278,13 @@ groups:
       - src/utils/zodToJsonSchema.ts
   - id: array-utils
     kind: source
-    section: 2
+    section: 4
     summary: 数组工具函数 - intersperse（插入分隔符）、count（计数）、uniq（去重）
     files:
       - src/utils/array.ts
   - id: circular-buffer
     kind: source
-    section: 3
+    section: 4
     summary: 环形缓冲区 - 固定大小、FIFO 逐出、add/addAll/getRecent/toArray/clear/length
     files:
       - src/utils/CircularBuffer.ts
@@ -296,32 +296,32 @@ groups:
       - src/utils/objectGroupBy.ts
   - id: content-array
     kind: source
-    section: 5
+    section: 4
     summary: 消息内容数组操作 - 在 tool_result 后插入块、自动追加文本延续
     files:
       - src/utils/contentArray.ts
   - id: generators
     kind: source
-    section: 6
+    section: 4
     summary: 异步生成器工具 - lastX（取最后值）、returnValue（取返回值）、all（并发控制）、toArray/fromArray
     files:
       - src/utils/generators.ts
   - id: memoize
     kind: source
-    section: 7
+    section: 4
     summary: 记忆化缓存 - memoizeWithTTL（stale-while-revalidate）、memoizeWithTTLAsync（含
       in-flight 去重）、memoizeWithLRU（基于 lru-cache）
     files:
       - src/utils/memoize.ts
   - id: lazy-schema
     kind: source
-    section: 8
+    section: 4
     summary: 延迟 Schema 初始化 - 模块加载时不创建，首次访问时调用 factory，避免循环依赖
     files:
       - src/utils/lazySchema.ts
   - id: json-utils
     kind: source
-    section: 9
+    section: 4
     summary: JSON/JSONC/JSONL 工具 - safeParseJSON（带 LRU
       缓存）、safeParseJSONC、parseJSONL、readJSONLFile、addItemToJSONCArray
     files:

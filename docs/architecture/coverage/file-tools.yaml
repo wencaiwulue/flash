@@ -3,7 +3,6 @@ spec_id: file-tools
 spec: ../../superpowers/specs/2026-11-12-file-tools-design.md
 status: draft
 groups:
-
   - id: additional-files
     kind: source
     section: 4
@@ -27,7 +26,8 @@ groups:
   - id: file-read-tool
     kind: source
     section: 4
-    summary: FileReadTool implementation for reading text, images, PDFs, and notebooks with caching and deduplication
+    summary: FileReadTool implementation for reading text, images, PDFs, and
+      notebooks with caching and deduplication
     files:
       - src/tools/FileReadTool/FileReadTool.ts
       - src/tools/FileReadTool/constants.ts
@@ -38,7 +38,8 @@ groups:
   - id: file-write-tool
     kind: source
     section: 4
-    summary: FileWriteTool implementation for creating and overwriting files with concurrent modification detection
+    summary: FileWriteTool implementation for creating and overwriting files with
+      concurrent modification detection
     files:
       - src/tools/FileWriteTool/FileWriteTool.ts
       - src/tools/FileWriteTool/constants.ts
@@ -47,7 +48,8 @@ groups:
   - id: file-edit-tool
     kind: source
     section: 4
-    summary: FileEditTool implementation for in-place file editing with exact string replacement and concurrent modification detection
+    summary: FileEditTool implementation for in-place file editing with exact string
+      replacement and concurrent modification detection
     files:
       - src/tools/FileEditTool/FileEditTool.ts
       - src/tools/FileEditTool/constants.ts
@@ -83,7 +85,8 @@ groups:
   - id: file-utils
     kind: source
     section: 4
-    summary: Shared file utilities including mtime handling, line endings, and dual-path file reading
+    summary: Shared file utilities including mtime handling, line endings, and
+      dual-path file reading
     files:
       - src/utils/file.ts
       - src/utils/fileRead.ts

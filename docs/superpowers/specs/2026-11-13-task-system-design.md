@@ -518,11 +518,11 @@ interface AppState {
 | task-components | 任务 UI 组件、hooks | 未找到专用测试 |  |
 
 相关子系统：
-- [Agent Swarms](../2026-11-12-agent-swarms-design.md)：使用 in_process_teammate 任务、团队 todo list
-- [Query Core](../2026-11-12-query-core-design.md)：使用 local_agent 任务执行 agent
-- [Shell Tools](../2026-11-12-shell-tools-design.md)：使用 local_bash 任务执行命令
-- [MCP](../2026-11-12-mcp-design.md)：使用 monitor_mcp 任务
-- [SDK Query Sessions](../2026-11-12-sdk-query-sessions-design.md)：消费任务事件
+- [Agent Swarms](./2026-11-12-agent-swarms-design.md)：使用 in_process_teammate 任务、团队 todo list
+- [Query Core](./2026-11-12-query-core-design.md)：使用 local_agent 任务执行 agent
+- [Shell Tools](./2026-11-12-shell-tools-design.md)：使用 local_bash 任务执行命令
+- [MCP](./2026-11-12-mcp-design.md)：使用 monitor_mcp 任务
+- [SDK Query Sessions](./2026-11-12-sdk-query-sessions-design.md)：消费任务事件
 
 ## 9. 改进建议
 

@@ -4,8 +4,8 @@ spec: ../../superpowers/specs/2026-11-12-plugins-design.md
 status: draft
 groups:
   - id: additional-files
-    kind: source
-    section: 4
+    kind: test
+    section: 7
     summary: Additional files
     files:
       - tests/npmMarketplace.test.ts

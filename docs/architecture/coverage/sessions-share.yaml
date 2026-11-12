@@ -5,7 +5,7 @@ status: draft
 groups:
   - id: share-commands
     kind: source
-    section: 2
+    section: 4
     summary: /share 命令实现，ShareDialog UI，HTML 生成与文件写入
     files:
       - src/commands/share/index.ts
@@ -14,20 +14,20 @@ groups:
       - src/commands/share/shareHtml.ts
   - id: export-commands
     kind: source
-    section: 2
+    section: 4
     summary: /export 命令实现，首条提示提取，文件名清理
     files:
       - src/commands/export/index.ts
       - src/commands/export/export.tsx
   - id: export-renderer
     kind: source
-    section: 2
+    section: 4
     summary: 通用会话渲染导出，分块流式渲染降低内存峰值
     files:
       - src/utils/exportRenderer.tsx
   - id: ccshare
     kind: source
-    section: 3
+    section: 4
     summary: ccshare 远程会话下载与恢复，链接解析，HTTPS 下载，重定向处理，边界限制
     files:
       - src/utils/ccshareResume.ts

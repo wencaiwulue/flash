@@ -3,7 +3,7 @@ spec_id: agent-swarms
 spec: ../../superpowers/specs/2026-11-12-agent-swarms-design.md
 status: draft
 groups:
-  - id: additional-files
+  - id: additional-files-source
     kind: source
     section: 4
     summary: Additional files
@@ -52,6 +52,11 @@ groups:
       - src/utils/swarm/backends/it2Setup.ts
       - src/utils/swarm/backends/teammateModeSnapshot.ts
       - src/utils/teamMemoryOps.ts
+  - id: additional-files-test
+    kind: test
+    section: 7
+    summary: Additional files
+    files:
       - tests/agentMemorySnapshot.test.ts
   - id: commands
     kind: source
@@ -182,7 +187,7 @@ groups:
       - src/hooks/useSwarmPermissionPoller.ts
   - id: agent-swarms-enabled
     kind: source
-    section: 1
+    section: 4
     summary: Agent swarms feature flag
     files:
       - src/utils/agentSwarmsEnabled.ts

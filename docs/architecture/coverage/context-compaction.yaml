@@ -38,7 +38,7 @@ groups:
       - src/services/compact/timeBasedMCConfig.ts
   - id: reactive-compact
     kind: source
-    section: 5
+    section: 4
     summary: 响应式错误恢复 - reactiveCompactOnPromptTooLong/tryReactiveCompact/错误检测
     files:
       - src/services/compact/reactiveCompact.ts

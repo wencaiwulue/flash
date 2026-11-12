@@ -5,7 +5,7 @@ status: draft
 groups:
   - id: magic-docs-core
     kind: source
-    section: 3
+    section: 4
     summary: Magic Docs 核心发现、跟踪与更新逻辑
     files:
       - src/services/MagicDocs/magicDocs.ts
@@ -17,13 +17,13 @@ groups:
       - src/services/MagicDocs/prompts.ts
   - id: magic-docs-init
     kind: source
-    section: 3
+    section: 4
     summary: Magic Docs 初始化与后台集成
     files:
       - src/utils/backgroundHousekeeping.ts
   - id: magic-docs-caches
     kind: source
-    section: 6
+    section: 4
     summary: Magic Docs 会话清理与缓存清除
     files:
       - src/commands/clear/caches.ts

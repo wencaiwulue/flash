@@ -3,7 +3,7 @@ spec_id: messaging-primitives
 spec: ../../superpowers/specs/2026-11-12-messaging-primitives-design.md
 status: draft
 groups:
-  - id: additional-files
+  - id: additional-files-source
     kind: source
     section: 4
     summary: Additional files
@@ -41,6 +41,11 @@ groups:
       - src/components/messages/UserToolResultMessage/UserToolSuccessMessage.tsx
       - src/components/messages/UserToolResultMessage/utils.tsx
       - src/components/messages/nullRenderingAttachments.ts
+  - id: additional-files-test
+    kind: test
+    section: 7
+    summary: Additional files
+    files:
       - tests/messageRenderers.test.ts
   - id: mailbox
     kind: source
@@ -50,74 +55,74 @@ groups:
       - src/utils/mailbox.ts
   - id: message-queue-manager
     kind: source
-    section: 3
+    section: 4
     summary: 统一命令队列 - 模块级单例队列，三级优先级（now/next/later），React useSyncExternalStore 兼容
     files:
       - src/utils/messageQueueManager.ts
   - id: peer-address
     kind: source
-    section: 2
+    section: 4
     summary: 对等地址解析 - URI 风格方案解析（uds:/bridge:），兼容旧式路径自动识别
     files:
       - src/utils/peerAddress.ts
   - id: direct-member-message
     kind: source
-    section: 2
+    section: 4
     summary: 团队成员直接消息 - @agent-name 语法解析，绕过模型直接写入邮箱
     files:
       - src/utils/directMemberMessage.ts
   - id: control-message-compat
     kind: source
-    section: 5
+    section: 4
     summary: 控制消息兼容性 - requestId → request_id 键名标准化，递归处理嵌套 response
     files:
       - src/utils/controlMessageCompat.ts
   - id: message-predicates
     kind: source
-    section: 2
+    section: 4
     summary: 消息谓词函数 - isHumanTurn 判断纯用户输入回合
     files:
       - src/utils/messagePredicates.ts
   - id: messages-mappers
     kind: source
-    section: 5
+    section: 4
     summary: SDK 消息映射 - 内部格式与 SDK 格式双向转换，工具名兼容、compact 元数据处理
     files:
       - src/utils/messages/mappers.ts
   - id: messages-system-init
     kind: source
-    section: 5
+    section: 4
     summary: 系统初始化消息 - 构建会话元数据（工具、MCP、模型、权限等），两个调用路径保证相同形状
     files:
       - src/utils/messages/systemInit.ts
   - id: message-types
     kind: source
-    section: 1
+    section: 4
     summary: 消息类型定义 - UserMessage/AssistantMessage/SystemMessage 及子类型，流式控制事件
     files:
       - src/types/message.ts
   - id: message-queue-types
     kind: source
-    section: 3
+    section: 4
     summary: 队列操作类型 - QueueOperation（enqueue/dequeue/remove/popAll）和
       QueueOperationMessage
     files:
       - src/types/messageQueueTypes.ts
   - id: uds-messaging-test
     kind: test
-    section: 6
+    section: 7
     summary: UDS 消息测试 - 验证真实 socket 服务、发现和清理，测试队列集成
     files:
       - tests/udsMessaging.test.ts
   - id: kairos-test
     kind: test
-    section: 3
+    section: 7
     summary: Kairos 通道测试 - 间接测试队列优先级和通道消息处理
     files:
       - tests/kairos.test.ts
   - id: monitor-test
     kind: test
-    section: 3
+    section: 7
     summary: 监控工具集成测试 - 间接验证队列在任务流中的行为
     files:
       - tests/monitorToolIntegration.test.ts

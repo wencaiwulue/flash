@@ -4,41 +4,34 @@ spec: ../../superpowers/specs/2026-11-12-build-feature-profile-design.md
 status: draft
 groups:
   - id: build-scripts
-    kind: source
-    section: 5
+    kind: script
+    section: 4
     summary: 构建脚本，负责 SDK 类型生成、CLI/SDK 打包
     files:
       - scripts/build.ts
-      - scripts/generate-sdk-types.ts
   - id: runtime-macros
     kind: source
-    section: 5
+    section: 4
     summary: 编译时宏与全局类型声明
     files:
       - src/runtimeMacros.ts
       - src/global.d.ts
   - id: feature-flag-usage
     kind: source
-    section: 5
+    section: 4
     summary: Feature Flag 在命令、工具、主入口中的使用
     files:
       - src/commands.ts
       - src/constants/betas.ts
-  - id: sdk-type-schemas
-    kind: source
-    section: 5
-    summary: SDK 类型 Schema 定义与生成产物
-    files:
-      - src/entrypoints/sdk/controlSchemas.ts
   - id: entrypoints
     kind: source
-    section: 5
+    section: 4
     summary: CLI 与 SDK 入口点
     files:
       - src/entrypoints/cli.tsx
   - id: acceptance-tests
     kind: test
-    section: 5
+    section: 7
     summary: Feature Profile 验收测试
     files:
       - tests/externalFeatures.test.ts

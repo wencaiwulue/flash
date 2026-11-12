@@ -3,7 +3,6 @@ spec_id: remote-control
 spec: ../../superpowers/specs/2026-11-12-remote-control-design.md
 status: draft
 groups:
-
   - id: additional-files
     kind: source
     section: 4

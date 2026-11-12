@@ -5,13 +5,15 @@ status: draft
 groups:
   - id: notifications-context
     kind: source
-    section: 3
-    summary: 横幅通知核心逻辑：useNotifications Hook、addNotification/removeNotification/processQueue 流程、优先级队列、fold/invalidates 机制、timeout 管理
+    section: 4
+    summary: 横幅通知核心逻辑：useNotifications
+      Hook、addNotification/removeNotification/processQueue
+      流程、优先级队列、fold/invalidates 机制、timeout 管理
     files:
       - src/context/notifications.tsx
   - id: notifications-hooks
     kind: source
-    section: 2
+    section: 4
     summary: 各类通知 Hook 实现：启动通知、Fast Mode、速率限制、设置错误、MCP、LSP、插件、IDE、模型迁移、npm 弃用等
     files:
       - src/hooks/notifs/useStartupNotification.ts
@@ -32,7 +34,8 @@ groups:
   - id: os-notifier
     kind: source
     section: 4
-    summary: OS 通知发送：多通道分发（auto/iterm2/kitty/ghostty/bell/disabled）、Apple Terminal bell 配置检测、通知钩子执行
+    summary: OS 通知发送：多通道分发（auto/iterm2/kitty/ghostty/bell/disabled）、Apple Terminal
+      bell 配置检测、通知钩子执行
     files:
       - src/services/notifier.ts
   - id: push-notification-tool
@@ -43,19 +46,21 @@ groups:
       - src/tools/PushNotificationTool/PushNotificationTool.ts
   - id: collapse-background-notifications
     kind: source
-    section: 5
-    summary: 后台任务通知折叠：通知识别（task-notification 标签、status、summary 前缀）、连续完成任务合并、fullscreen/verbose 模式控制
+    section: 4
+    summary: 后台任务通知折叠：通知识别（task-notification 标签、status、summary
+      前缀）、连续完成任务合并、fullscreen/verbose 模式控制
     files:
       - src/utils/collapseBackgroundBashNotifications.ts
   - id: notifications-xml
     kind: source
-    section: 5
-    summary: 任务通知 XML 标签定义：TASK_NOTIFICATION_TAG、STATUS_TAG、SUMMARY_TAG、BACKGROUND_BASH_SUMMARY_PREFIX
+    section: 4
+    summary: 任务通知 XML
+      标签定义：TASK_NOTIFICATION_TAG、STATUS_TAG、SUMMARY_TAG、BACKGROUND_BASH_SUMMARY_PREFIX
     files:
       - src/constants/xml.ts
   - id: notifications-tests
     kind: test
-    section: 3
+    section: 7
     summary: 通知相关测试：org warning notification 测试、headless hooks 测试等
     files:
       - tests/orgWarningNotification.test.ts

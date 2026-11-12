@@ -6,37 +6,43 @@ groups:
   - id: web-search-tool
     kind: source
     section: 4
-    summary: WebSearchTool implementation for searching the web via server_tool_use with streaming event handling
+    summary: WebSearchTool implementation for searching the web via server_tool_use
+      with streaming event handling
     files:
       - src/tools/WebSearchTool/WebSearchTool.ts
   - id: web-fetch-tool
     kind: source
     section: 4
-    summary: WebFetchTool implementation for fetching URLs with redirect handling, permissions, and content processing
+    summary: WebFetchTool implementation for fetching URLs with redirect handling,
+      permissions, and content processing
     files:
       - src/tools/WebFetchTool/WebFetchTool.ts
   - id: web-fetch-utils
     kind: source
     section: 4
-    summary: WebFetch utilities including URL validation, domain checking, caching, HTML→Markdown conversion, and content fetching
+    summary: WebFetch utilities including URL validation, domain checking, caching,
+      HTML→Markdown conversion, and content fetching
     files:
       - src/tools/WebFetchTool/utils.ts
   - id: web-fetch-preapproved
     kind: source
     section: 4
-    summary: Preapproved domain list and path-prefix matching for WebFetch (separate from sandbox network controls)
+    summary: Preapproved domain list and path-prefix matching for WebFetch (separate
+      from sandbox network controls)
     files:
       - src/tools/WebFetchTool/preapproved.ts
   - id: web-fetch-ui
     kind: source
     section: 4
-    summary: WebFetch UI components for tool use summary, progress rendering, and result display
+    summary: WebFetch UI components for tool use summary, progress rendering, and
+      result display
     files:
       - src/tools/WebFetchTool/UI.tsx
   - id: web-search-ui
     kind: source
     section: 4
-    summary: WebSearch UI components for tool use summary, progress rendering, and result display
+    summary: WebSearch UI components for tool use summary, progress rendering, and
+      result display
     files:
       - src/tools/WebSearchTool/UI.tsx
   - id: web-search-prompt
@@ -48,13 +54,15 @@ groups:
   - id: web-fetch-prompt
     kind: source
     section: 4
-    summary: WebFetch system prompt and secondary model prompt with different guidelines for preapproved vs non-preapproved domains
+    summary: WebFetch system prompt and secondary model prompt with different
+      guidelines for preapproved vs non-preapproved domains
     files:
       - src/tools/WebFetchTool/prompt.ts
   - id: brief-tool
     kind: source
     section: 4
-    summary: BriefTool implementation for sending user messages with attachments (briefly mentioned in this spec)
+    summary: BriefTool implementation for sending user messages with attachments
+      (briefly mentioned in this spec)
     files:
       - src/tools/BriefTool/BriefTool.ts
       - src/tools/BriefTool/prompt.ts

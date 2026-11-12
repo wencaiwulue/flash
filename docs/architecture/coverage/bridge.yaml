@@ -13,14 +13,14 @@ groups:
       - src/commands/bridge-kick.ts
   - id: bridge-types
     kind: source
-    section: 3
+    section: 4
     summary: Bridge 核心类型定义 —
       BridgeConfig、WorkSecret、SessionHandle、BridgeApiClient、SpawnMode
     files:
       - src/bridge/types.ts
   - id: bridge-main
     kind: source
-    section: 3
+    section: 4
     summary: Standalone bridge 主循环 — 环境注册、轮询、会话 spawn、心跳、多会话管理、优雅关闭
     files:
       - src/bridge/bridgeMain.ts
@@ -34,27 +34,27 @@ groups:
       - src/bridge/flushGate.ts
   - id: work-secret
     kind: source
-    section: 5
+    section: 4
     summary: WorkSecret 解码、URL 构建、会话 ID 比较、worker 注册
     files:
       - src/bridge/workSecret.ts
       - src/bridge/sessionIdCompat.ts
   - id: session-runner
     kind: source
-    section: 6
+    section: 4
     summary: 会话 spawner — 子进程启动、NDJSON 解析、活动跟踪、权限请求转发、token 更新
     files:
       - src/bridge/sessionRunner.ts
   - id: bridge-api
     kind: source
-    section: 3
+    section: 4
     summary: Bridge API 客户端 — 注册、轮询、确认、心跳、停止工作、归档、重连、权限响应
     files:
       - src/bridge/bridgeApi.ts
       - src/bridge/codeSessionApi.ts
   - id: bridge-config
     kind: source
-    section: 3
+    section: 4
     summary: Bridge 配置 — OAuth token override、base URL、poll 配置、feature gate
     files:
       - src/bridge/bridgeConfig.ts
@@ -64,7 +64,7 @@ groups:
       - src/bridge/bridgeEnabled.ts
   - id: bridge-pointer
     kind: source
-    section: 9
+    section: 4
     summary: 崩溃恢复指针 — 读写清除、TTL 验证、跨 worktree 扫描、env-less 指针
     files:
       - src/bridge/bridgePointer.ts
@@ -102,7 +102,7 @@ groups:
       - src/bridge/initReplBridge.ts
   - id: ui-utils
     kind: source
-    section: 6
+    section: 4
     summary: UI 工具 — 状态显示、日志、debug 工具、capacity wake
     files:
       - src/bridge/bridgeUI.ts
@@ -113,7 +113,7 @@ groups:
       - src/bridge/replBridgeHandle.ts
   - id: create-session
     kind: source
-    section: 6
+    section: 4
     summary: 会话创建 API — 创建/获取/归档会话、标题更新
     files:
       - src/bridge/createSession.ts
@@ -125,7 +125,7 @@ groups:
       - src/assistant/daemonBridge.ts
   - id: bridge-tests
     kind: test
-    section: 9
+    section: 7
     summary: Bridge 测试 — perpetual bridge、daemon bridge、peer sessions、inbound envelope
     files:
       - tests/perpetualBridge.test.ts

@@ -3,7 +3,6 @@ spec_id: native-installer
 spec: ../../superpowers/specs/2026-11-12-native-installer-design.md
 status: draft
 groups:
-
   - id: additional-files
     kind: source
     section: 4
@@ -33,7 +32,8 @@ groups:
   - id: native-installer-package-managers
     kind: source
     section: 4
-    summary: 包管理器检测，支持 Homebrew/winget/pacman/deb/rpm/apk/mise/asdf，Linux distro 检测（通过 /etc/os-release）
+    summary: 包管理器检测，支持 Homebrew/winget/pacman/deb/rpm/apk/mise/asdf，Linux distro
+      检测（通过 /etc/os-release）
     files:
       - src/utils/nativeInstaller/packageManagers.ts
   - id: native-installer-index
@@ -51,6 +51,7 @@ groups:
   - id: native-installer-shared-autoupdater
     kind: source
     section: 4
-    summary: 共享的自动更新逻辑（getMaxVersion、shouldSkipVersion、assertMinVersion），与 nativeInstaller 配合使用
+    summary: 共享的自动更新逻辑（getMaxVersion、shouldSkipVersion、assertMinVersion），与
+      nativeInstaller 配合使用
     files:
       - src/utils/autoUpdater.ts

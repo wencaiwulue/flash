@@ -358,10 +358,10 @@ type ProactiveControlState = {
 | remote-trigger-tool | RemoteTriggerTool实现 | （未找到专用测试） |  |
 
 相关子系统：
-- [Task System](../2026-11-13-task-system-design.md)：cron任务触发可能创建后台任务
-- [Commands Framework](../2026-11-12-commands-framework-design.md)：cron工具的实现依赖
-- [Tool Framework](../2026-11-12-tool-framework-design.md)：所有工具的基础框架
-- [Session Persistence](../2026-11-12-session-persistence-design.md)：cron任务触发可能恢复session
+- [Task System](./2026-11-13-task-system-design.md)：cron任务触发可能创建后台任务
+- [Commands Framework](./2026-11-12-commands-framework-design.md)：cron工具的实现依赖
+- [Tool Framework](./2026-11-12-tool-framework-design.md)：所有工具的基础框架
+- [Session Persistence](./2026-11-12-session-persistence-design.md)：cron任务触发可能恢复session
 
 ## 9. 改进建议
 

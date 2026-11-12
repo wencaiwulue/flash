@@ -1,7 +1,7 @@
 schema_version: 1
 spec_id: telemetry
 spec: ../../superpowers/specs/2026-11-12-telemetry-design.md
-status: planned
+status: draft
 groups:
   - id: telemetry-core
     kind: source

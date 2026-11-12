@@ -3,7 +3,7 @@ spec_id: session-persistence
 spec: ../../superpowers/specs/2026-11-12-session-persistence-design.md
 status: draft
 groups:
-  - id: additional-files
+  - id: additional-files-source
     kind: source
     section: 4
     summary: Additional files
@@ -31,6 +31,11 @@ groups:
       - src/utils/sessionTitle.ts
       - src/utils/sessionUrl.ts
       - src/utils/telemetry/sessionTracing.ts
+  - id: additional-files-test
+    kind: test
+    section: 7
+    summary: Additional files
+    files:
       - tests/backgroundSessions.test.ts
       - tests/backgroundSessionsDist.test.ts
   - id: commands
@@ -41,25 +46,25 @@ groups:
       - src/commands/backfill-sessions/index.ts
   - id: session-storage-core
     kind: source
-    section: 3
+    section: 4
     summary: 核心会话持久化，JSONL 写入队列与 flush
     files:
       - src/utils/sessionStorage.ts
   - id: session-storage-portable
     kind: source
-    section: 2
+    section: 4
     summary: 可移植会话存储工具，JSONL 头尾读取、路径处理、轻量元数据提取
     files:
       - src/utils/sessionStoragePortable.ts
   - id: file-history
     kind: source
-    section: 5
+    section: 4
     summary: 文件历史与快照（注意：fileCheckpointing.ts 归属 SDK 覆盖范围）
     files:
       - src/utils/fileHistory.ts
   - id: session-storage-tests
     kind: test
-    section: 4
+    section: 7
     summary: 会话持久化核心测试
     files:
       - tests/sessionChainRecovery.test.ts

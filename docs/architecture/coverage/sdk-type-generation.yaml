@@ -1,5 +1,25 @@
 schema_version: 1
 spec_id: sdk-type-generation
 spec: ../../superpowers/specs/2026-11-12-sdk-type-generation-design.md
-status: planned
-groups: []
+status: draft
+groups:
+  - id: sdk-type-generator
+    kind: script
+    section: 4
+    summary: Zod schema 到 TypeScript 类型声明的生成器与构建衔接
+    files:
+      - scripts/generate-sdk-types.ts
+  - id: sdk-type-sources
+    kind: source
+    section: 4
+    summary: 类型生成的源 schema 与手写 settings 兼容 re-export
+    files:
+      - src/entrypoints/sdk/coreSchemas.ts
+      - src/entrypoints/sdk/controlSchemas.ts
+      - src/entrypoints/sdk/settingsTypes.generated.ts
+  - id: sdk-type-generation-tests
+    kind: test
+    section: 7
+    summary: 类型生成与漂移检测测试
+    files:
+      - tests/sdkTypeGeneration.test.ts

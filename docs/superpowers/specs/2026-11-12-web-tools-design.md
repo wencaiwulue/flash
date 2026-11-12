@@ -277,7 +277,7 @@ WebFetchTool 在所有模式下行为一致，但预批准域名列表在内外 
 **实际机制：**
 - WebSearchTool.prompt() 返回的指南明确要求：
   - "After answering the user's question, you MUST include a 'Sources:' section at the end of your response"
-  - "In the Sources section, list all relevant URLs from the search results as markdown hyperlinks: [Title](URL)"
+  - "In the Sources section, list all relevant URLs from the search results as markdown hyperlinks: [Title](https://example.com)"
   - "This is MANDATORY - never skip including sources in your response"
 - mapToolResultToToolResultBlockParam 返回的结果中也提醒："REMINDER: You MUST include the sources above in your response to the user using markdown hyperlinks."
 
