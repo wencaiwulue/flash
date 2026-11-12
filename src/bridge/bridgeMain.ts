@@ -11,7 +11,7 @@ import {
   logEvent,
   logEventAsync,
 } from '../services/analytics/index.js'
-import { isInBundledMode } from '../utils/bundledMode.js'
+import { spawnScriptArgs } from '../utils/bundledMode.js'
 import { logForDebugging } from '../utils/debug.js'
 import { logForDiagnosticsNoPII } from '../utils/diagLogs.js'
 import { isEnvTruthy, isInProtectedNamespace } from '../utils/envUtils.js'
@@ -106,21 +106,6 @@ async function isMultiSessionSpawnEnabled(): Promise<boolean> {
  */
 function pollSleepDetectionThresholdMs(backoff: BackoffConfig): number {
   return backoff.connCapMs * 2
-}
-
-/**
- * Returns the args that must precede CLI flags when spawning a child claude
- * process. In compiled binaries, process.execPath is the claude binary itself
- * and args go directly to it. In npm installs (node running cli.js),
- * process.execPath is the node runtime — the child spawn must pass the script
- * path as the first arg, otherwise node interprets --sdk-url as a node option
- * and exits with "bad option: --sdk-url". See anthropics/claude-code#28334.
- */
-function spawnScriptArgs(): string[] {
-  if (isInBundledMode() || !process.argv[1]) {
-    return []
-  }
-  return [process.argv[1]]
 }
 
 /** Attempt to spawn a session; returns error string if spawn throws. */

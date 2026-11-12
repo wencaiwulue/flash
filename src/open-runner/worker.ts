@@ -4,6 +4,7 @@ import { once } from 'events'
 import { appendFile, chmod, mkdir, readdir, readFile, unlink } from 'fs/promises'
 import { join } from 'path'
 import { createInterface } from 'readline'
+import { spawnScriptArgs } from '../utils/bundledMode.js'
 import { getClaudeConfigHomeDir } from '../utils/envUtils.js'
 import { getProcessStartToken, probeProcessIdentity } from '../jobs/state.js'
 import { OpenRunnerClient } from './client.js'
@@ -335,7 +336,7 @@ export class OpenRunnerWorker {
     const argv = this.buildArgv(assignment)
     const command = this.options.buildChildCommand?.({ assignment, argv, cwd }) ?? {
       command: this.options.execPath ?? process.execPath,
-      args: [...(this.options.scriptArgs ?? [process.argv[1]!]), ...argv],
+      args: [...(this.options.scriptArgs ?? spawnScriptArgs()), ...argv],
     }
     let child: ChildProcess
     try {

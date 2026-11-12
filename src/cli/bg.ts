@@ -11,6 +11,7 @@ import {
 } from 'fs/promises'
 import { tmpdir } from 'os'
 import { basename, dirname, isAbsolute, join, resolve } from 'path'
+import { spawnScriptArgs } from '../utils/bundledMode.js'
 import {
   type BackgroundSessionRecord,
   type SessionRegistryRecord,
@@ -381,8 +382,7 @@ export async function launchBackgroundSession(
     fail('SESSION_CONFLICT', 'tmux session already exists')
   }
   const executable = options.executable ?? process.execPath
-  const executableArgs = options.executableArgs ??
-    (process.argv[1] ? [resolve(process.argv[1])] : [])
+  const executableArgs = options.executableArgs ?? spawnScriptArgs()
   const command = ['exec', shellQuote(executable), ...[...executableArgs, ...childArgs].map(shellQuote)].join(' ')
   const messagingSocketPath = join(
     tmpdir(),

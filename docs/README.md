@@ -6,6 +6,7 @@ This index separates current project documentation from historical records, forw
 
 - [Architecture](ARCHITECTURE.md) — CLI and SDK entrypoints, build artifacts, query and state flow, SDK composition, security, and external-build feature boundaries.
 - [Implementation Status](STATUS.md) — current capability status, verification evidence, known limitations, and remaining implementation work.
+- [Release Guide / 发布指南](RELEASING.md) — 可重复的中英文发布流程 / repeatable bilingual process for verified binary and GitHub releases.
 - [Release Record](RELEASE.md) — historical release notes. Use the implementation status document for current capabilities rather than relying on release history alone.
 
 ## Feature Design and Maintenance

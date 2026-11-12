@@ -3,6 +3,7 @@ import { once } from 'events'
 import { readFile } from 'fs/promises'
 import { createInterface } from 'readline'
 import { join, resolve } from 'path'
+import { spawnScriptArgs } from '../utils/bundledMode.js'
 import {
   childRecordSchema,
   JOB_ENV_KEY,
@@ -90,7 +91,7 @@ export async function spawnSupervisorProcess(
     accepted_at: new Date().toISOString(),
   })
   const child = (deps.spawnProcess ?? spawn)(deps.execPath ?? process.execPath, [
-    ...(deps.scriptArgs ?? [process.argv[1]!]),
+    ...(deps.scriptArgs ?? spawnScriptArgs()),
     'template-job-supervisor',
     jobDirectory,
   ], {
@@ -293,7 +294,7 @@ export async function runJobSupervisor(
       argv,
     }) ?? {
       command: deps.execPath ?? process.execPath,
-      args: [...(deps.scriptArgs ?? [process.argv[1]!]), ...argv],
+      args: [...(deps.scriptArgs ?? spawnScriptArgs()), ...argv],
     }
     let child: ChildProcess
     let childRecord: ChildRecord | null = null

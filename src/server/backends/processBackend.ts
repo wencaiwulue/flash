@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from 'child_process'
 import { EventEmitter } from 'events'
-import { resolve } from 'path'
+import { spawnScriptArgs } from '../../utils/bundledMode.js'
 
 export type BackendPermissionMode = 'default' | 'bypassPermissions'
 
@@ -211,8 +211,7 @@ export class ProcessBackend extends EventEmitter {
       throw new Error('Dangerous permission mode is disabled')
     }
     const args = [
-      ...this.options.executableArgs ??
-        (process.argv[1] ? [resolve(process.argv[1])] : []),
+      ...(this.options.executableArgs ?? spawnScriptArgs()),
       '--print',
       '--input-format',
       'stream-json',
