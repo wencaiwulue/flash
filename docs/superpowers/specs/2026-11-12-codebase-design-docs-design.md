@@ -1,7 +1,7 @@
 ---
 title: 全项目代码设计文档体系
 date: 2026-11-12
-status: draft
+status: approved
 ---
 
 # 全项目代码设计文档体系
