@@ -8,7 +8,12 @@ specs:
     spec: docs/superpowers/specs/2026-11-12-codebase-design-docs-design.md
     coverage: docs/architecture/coverage/documentation-system.yaml
     batch: 0
-    status: approved
+    status: draft
+  - id: query-core
+    spec: docs/superpowers/specs/2026-11-12-query-core-design.md
+    coverage: docs/architecture/coverage/query-core.yaml
+    batch: 0
+    status: draft
   - id: sdk-type-generation
     spec: docs/superpowers/specs/2026-11-12-sdk-type-generation-design.md
     coverage: docs/architecture/coverage/sdk-type-generation.yaml

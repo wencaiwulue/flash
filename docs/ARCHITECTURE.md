@@ -32,6 +32,8 @@ The external build uses `USER_TYPE=external` and `features: []`. Internal or exp
 
 `AppState` is the shared state container for model selection, permissions, MCP clients/tools, tasks, plugins, file history, and UI state. The SDK wraps this machinery in `src/utils/sdkQuery.ts`; it does not spawn the interactive Ink UI.
 
+For the concrete entry signatures, state ownership, persistence ordering, recovery branches, cleanup semantics, and design trade-offs behind this flow, read [Query Core 对话与工具执行设计](superpowers/specs/2026-11-12-query-core-design.md).
+
 ## SDK composition
 
 - `src/utils/sdkQuery.ts`: async query input/output, permissions, MCP lifecycle, model controls, and resource cleanup.

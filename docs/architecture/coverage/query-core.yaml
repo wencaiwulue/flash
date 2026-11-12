@@ -1,0 +1,14 @@
+schema_version: 1
+spec_id: query-core
+spec: ../../superpowers/specs/2026-11-12-query-core-design.md
+status: draft
+
+groups:
+  - id: query-core
+    kind: source
+    section: 4
+    summary: Query Core 核心执行模块，负责跨轮次状态管理、单轮模型工具循环、以及辅助函数
+    files:
+      - src/QueryEngine.ts
+      - src/query.ts
+      - src/utils/queryHelpers.ts

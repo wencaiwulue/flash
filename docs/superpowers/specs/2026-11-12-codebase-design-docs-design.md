@@ -1,292 +1,442 @@
 ---
 id: documentation-system
 batch: 0
-title: 全项目代码设计文档体系
+title: 文档系统注册、覆盖与校验设计
 date: 2026-11-12
-status: approved
+status: draft
 ---
 
-# 全项目代码设计文档体系
+# 文档系统注册、覆盖与校验设计
+
+本文是对当前实现的回溯性设计说明，不冒充原始历史设计记录。描述对象是已经存在的 `scripts/check-design-docs.ts`、registry、coverage 和测试，不再用“要建立文档体系”的目标陈述代替具体设计。
 
 ## 1. 问题与约束
 
-项目包含约 55 万行 TypeScript/TSX，覆盖 CLI、Agent SDK、查询引擎、工具、权限、MCP、会话持久化、终端 UI、多代理、远程运行和工程验证等多个子系统。现有 `docs/ARCHITECTURE.md` 提供产品级概览，`docs/superpowers/specs/` 只覆盖少数功能，尚不能回答每个代码文件的职责归属、关键数据流、失败语义和设计取舍。
+### 1.1 要解决的问题
 
-本设计解决的是**回溯性设计档案不完整**，而不是重新设计产品。目标是在不修改产品实现的前提下，让所有产品代码、测试和工程脚本都能追溯到内聚的子系统 spec，并由 spec 解释现状、为什么形成这种结构，以及有哪些有证据支持的改进方向。
+全项目设计文档需要同时满足两个容易冲突的要求：
 
-### 约束
+1. **设计正文按内聚职责组织。** 例如插件的命令、loader、UI 和 marketplace 应共享一份领域设计，而不是按目录拆成互不相干的说明。
+2. **文件覆盖可以机械证明。** 新增、移动或删除源码后，必须能发现哪个文件没有主 spec、被重复归属，或仍被失效 coverage 引用。
 
-- 采用领域子系统 spec 与全量文件覆盖索引，不按顶层目录机械拆分，也不为每个文件复制模板正文。
-- `src/`、`tests/`、`scripts/` 中的手写文件全部纳入；这三个根目录内的生成代码和二进制通过显式规则排除。`dist/` 与依赖目录不进入扫描根，无需重复登记排除项。
-- 生成代码被排除的是逐文件正文义务，不是可追溯性义务：必须由源 schema、生成器或构建流程所属 spec 解释其来源。
-- 沿用中文设计文档、现有 frontmatter 和 `docs/superpowers/specs/YYYY-MM-DD-<feature>-design.md` 命名。
-- 子系统 spec 描述当前实现；改进建议只记录和分级，不在本项目中顺带修改产品代码。
-- 历史动机必须有证据。无法从代码注释、既有 contract、schema、协议或已评审文档证实的内容，只能标为“设计推断”。
-- 自动检查负责完整性和一致性，不能替代逐批人工语义评审。
+只在 Markdown 中写“本 spec 覆盖某目录”无法证明第二点；只生成逐文件摘要又不能表达第一点。当前实现因此把**正文**与**覆盖元数据**分开，并用一个只读校验器连接二者。
+
+### 1.2 当前实现的精确范围
+
+- 文件全集仅来自 `src/`、`tests/`、`scripts/` 三个根目录。
+- Git 命令同时读取已跟踪文件和未忽略的新文件，避免新 checker/test 因尚未暂存而漏检。
+- `dist/`、`node_modules/` 不进入扫描根，不需要排除记录。
+- 扫描根内的生成代码和二进制必须显式排除；排除的是逐文件主归属义务，不是解释其来源的义务。
+- `src/entrypoints/sdk/settingsTypes.generated.ts` 是手写兼容 re-export，必须作为普通源码等待主归属，不能因文件名被排除。
+- spec 正文负责解释设计；coverage 负责主归属；manifest 负责注册和排除；INDEX 只负责导航。
+
+### 1.3 工程约束
+
+- 使用现有 Bun、TypeScript、Zod 和 `yaml`，不引入第二套运行时或测试框架。
+- 校验器只读，不自动修复文件，不修改 registry，不访问网络验证外部 URL。
+- 中间阶段允许覆盖不完整，但不能掩盖结构错误；最终阶段必须能用一个严格门禁拒绝所有未完成状态。
+- planned 不允许创建 spec/coverage 空壳。draft 和 approved 必须有真实正文及 coverage。
+- 自动检查只证明结构、路径和部分元数据，不能证明设计语义正确。
 
 ## 2. 设计理由与备选方案
 
-### 2.1 方案比较
+### 2.1 决策一：正文、coverage、manifest 和 INDEX 分离
 
-| 方案 | 优点 | 不采用原因 |
+| 选择 | 直接理由 | 备选方案及不采用原因 | 代价 |
+|---|---|---|---|
+| spec 保存设计正文，coverage 保存文件主归属 | 一组同职责文件可以共享正文，文件集合又能独立做集合运算 | 在 spec 中用 Markdown 列表兼任 coverage：仍可做文本解析，但会把路径维护混入架构叙述，且容易在改写正文时破坏机器契约 | 同一 spec 有两类文件需要同步，因此校验器强制双向链接和状态一致 |
+| manifest 集中注册 spec 和排除 | 校验器有唯一入口，不必递归猜测哪些 YAML 是 coverage | 扫描全部 YAML 并猜测用途：无法区分 planned、测试 fixture 和普通配置 | manifest 更新成为每次新增 spec 的必要步骤 |
+| INDEX 只做导航 | 避免产品概览、spec 正文和索引三处复制同一架构 | 在 INDEX 汇总所有子系统正文：最终会再次形成巨型文档 | 单独阅读 INDEX 不能理解子系统设计，必须进入 spec |
+
+这里的关键不是“文件更多就更清晰”，而是每种数据只设一个权威来源。coverage 不解释架构，INDEX 不复制正文，manifest 不保存文件全集。
+
+### 2.2 决策二：唯一主归属，引用不计入覆盖
+
+`covered` 是 `Map<file, specId>`。第二次遇到同一路径时产生 `DUPLICATE_FILE`，而不是覆盖旧值；这样错误消息仍能报告前后两个 spec。
+
+唯一主归属解决的是“谁负责解释这个文件”，不是“谁可以使用这个文件”。例如 `query-core` 可以引用 SDK query 入口解释调用链，但该入口仍由 SDK spec 主拥有。若允许多个主归属，文件移动后的更新责任和设计正文都会漂移；若禁止跨域引用，又会损失真实调用链。
+
+### 2.3 决策三：排除必须命中实际文件并关联 source_spec
+
+每个排除包含 `glob`、`reason`、`source_spec`。实现使用 `Bun.Glob.scan()` 找到磁盘文件，再与 Git 文件全集取交集：
+
+- 没有命中实际全集：`STALE_EXCLUSION`。
+- 同时出现在 coverage：`EXCLUSION_COVERED`。
+- 命中多个排除：`DUPLICATE_EXCLUSION`。
+- `source_spec` 未注册：`UNKNOWN_SOURCE_SPEC`。
+
+这比按扩展名或文件名统一排除更冗长，但能防止把手写 `.d.ts`、`controlTypes.ts` 或 `settingsTypes.generated.ts` 误判为同一类。`source_spec` 可以是 planned，因此排除可以先登记，解释正文随后交付；严格模式仍会拒绝 planned 状态。
+
+### 2.4 决策四：默认报告不完整，严格模式提升为错误
+
+`PLANNED_SPEC`、`DRAFT_SPEC`、`UNCOVERED_FILE` 经过统一的 `incomplete()` 通道：默认进入 `warnings`，`requireApproved=true` 时进入 `errors`。
+
+| 模式 | 用途 | 为什么不是始终严格 |
 |---|---|---|
-| 按顶层目录组织 | 文件统计直观，初期盘点快 | 会把插件、MCP 等跨目录功能拆散，并在 `utils`、`components` 下形成新的巨型文档 |
-| 按领域子系统组织，配合唯一文件主归属 | 能完整描述运行时职责、公共契约、生命周期和失败语义；覆盖与正文解耦 | 前期需要人工判断边界，并维护机器可读索引；这是本设计采用的方案 |
-| 每个文件、工具或组件一份 spec | 局部查找直接，映射简单 | 会产生大量重复正文，完整主流程仍需另行说明；自动从 AST 或文件名生成的内容也无法可靠解释设计动机 |
+| 默认 | 分批撰写期间持续检查重复、幽灵路径、断链和元数据 | 如果几千个未覆盖文件直接让命令失败，真正的结构错误会淹没在“尚未完成”中 |
+| `--require-approved` | 全量交付后的最终门禁 | 此时 planned、draft 和未覆盖都必须阻止通过 |
 
-领域方案的关键不是减少文档数量，而是让一份 spec 对应一个可独立理解和评审的责任边界。文件覆盖索引负责证明“没有遗漏”，spec 负责解释“为什么这样工作”，两者不能互相替代。
+备选方案是提供“忽略未覆盖”开关。当前没有采用，因为默认警告已经能区分阶段，额外开关会让调用方容易意外跳过完整性要求。
 
-### 2.2 为什么采用唯一主归属
+### 2.5 决策五：Zod 负责契约错误，Diagnostic 负责仓库一致性错误
 
-每个纳入范围的文件必须在所有 coverage 文件中出现恰好一次。归属按以下优先级确定：
+YAML 形状不合法时，`loadYaml()` 抛出包含字段路径的错误；文件重复、断链、状态不一致等可继续收集的问题进入 `CheckResult`。
 
-1. 运行时职责和公共契约，而非目录位置。
-2. 功能专用入口、命令、UI、hook 和测试随该功能归属。
-3. 注册表与聚合器归属于定义该层组合契约的 spec，不吞并被注册实现的正文。
-4. 真正服务多个不相关领域的通用模块才归共享基础能力 spec。
-5. 测试按主要验证的行为归属；跨领域测试归入口、构建或集成生命周期 spec。
-6. 非 TypeScript 的手写资源归其加载器或消费者所属功能。
+- 契约错误意味着输入无法安全解释，继续推断 ownership 可能产生误导性二次错误。
+- 仓库一致性错误彼此独立，应尽量一次报告多个，减少修复—运行循环。
+- CLI 将未捕获的读取、YAML、Git 或运行时异常映射为退出码 2，与“校验完成但有错误”的退出码 1 区分。
 
-其他 spec 可以链接这些文件作为依赖或证据，但不重复拥有。这样既避免漏项，也避免同一设计在多处漂移。
+### 2.6 决策六：planned 不允许存在正文产物
 
-### 2.3 为什么先试点再批量撰写
+planned 只表达“已在 manifest 预留责任边界”。如果 planned 文件存在，产生 `PLANNED_ARTIFACT`，而不是自动视为 draft。
 
-`query-core` 能验证核心生命周期和跨层数据流，`plugins` 能验证命令、服务、loader、marketplace 与 UI 的跨目录归属。两个试点覆盖不同的失败模式，适合在批量投入前暴露模板和边界问题。
-
-试点评审后才冻结完整 spec 注册表和文件归属。过早并行会造成重复归属、跨域流程断裂和模板化正文；先冻结归属则能让后续撰写按 spec ID 独立分工。
+这样设计是为了防止批量创建空 spec 后让导航看起来“已有文档”。状态迁移必须显式发生：创建完整正文时改为 draft，用户审阅后改为 approved，并在 manifest、coverage、frontmatter 和 INDEX 同步。
 
 ## 3. 目标与非目标
 
-### 目标
+### 3.1 当前承担的目标
 
-- 建立产品级领域导航，使读者能从架构入口找到所有子系统 spec。
-- 让 `src/`、`tests/`、`scripts/` 中每个手写文件恰好归属一份主 spec。
-- 每份 spec 解释问题、设计理由、备选方案、职责边界、接口、数据流、失败语义、工程取舍、验收标准和改进建议。
-- 让关键设计陈述能追溯到源码符号、协议约束或测试场景，并明确区分事实与推断。
-- 用自动校验发现遗漏、重复、幽灵路径、非法排除、断链和元数据不一致。
-- 按依赖关系分批交付，每批都是可独立评审的完整文档，而不是空壳占位文件。
+- 定义一套可解析的 spec 注册、覆盖分组和排除契约。
+- 计算实际文件、covered 文件和 excluded 文件之间的集合关系。
+- 保证每个主覆盖文件恰好属于一个非 planned spec。
+- 检查 spec frontmatter、九章正文、占位符、coverage 回链和 INDEX 导航。
+- 检查本地 Markdown 文件链接；原始 `%` 文件名在 URI 解码失败时按原路径处理。
+- 提供适合中间阶段的警告报告和最终严格门禁。
+- 用临时目录 fixture 和真实仓库测试固定上述行为。
 
-### 非目标
+### 3.2 明确不承担的目标
 
-- 不重写产品架构，不实施子系统 spec 中的重构或功能建议。
-- 不把 Git commit 标题、diffstat 或文件名自动拼接成设计理由。
-- 不恢复 commit SHA frontmatter、commit 附录或 commit 索引。
-- 不为生成代码和构建产物建立重复的逐文件设计正文。
-- 不把 mock 测试表述为真实模型、Cloud、OAuth、浏览器、桌面或 SSH live 验证。
-- 不用结构校验通过代替对架构语义、证据和“设计推断”的人工审查。
+- 不分析 import graph 或 AST 来自动判断设计归属。
+- 不验证 spec 中的架构叙述是否真实，不验证源码符号是否存在。
+- 不验证外部 URL、Markdown 锚点或 CommonMark 的全部语法。
+- 不自动生成设计正文，不把“有 coverage”视为“设计已完整”。
+- 不把 mock 测试升级为模型、Cloud、OAuth、桌面、浏览器或 SSH live 证据。
+- 不自动修复错误，不修改产品源码。
 
 ## 4. 架构、模块与数据流
 
-### 4.1 文档结构
+### 4.1 公共接口与常量
 
-```text
-docs/
-├── ARCHITECTURE.md
-│   └── 产品级架构摘要与领域文档入口
-├── STATUS.md
-│   └── 实际执行结果和在线/离线验证边界
-├── architecture/
-│   ├── INDEX.md
-│   │   └── 领域、子系统 spec、批次与状态导航
-│   └── coverage/
-│       ├── manifest.yaml
-│       │   └── 覆盖范围、spec 注册表、批次和排除规则
-│       └── <subsystem>.yaml
-│           └── 该 spec 主拥有的文件及职责分组
-└── superpowers/specs/
-    └── YYYY-MM-DD-<subsystem>-design.md
-        └── 现状设计、设计理由、证据和改进建议
+实现集中在 `scripts/check-design-docs.ts`，对外导出以下契约：
+
+```typescript
+const ROOTS = ['src', 'tests', 'scripts'] as const
+const MANIFEST_PATH = 'docs/architecture/coverage/manifest.yaml'
+const INDEX_PATH = 'docs/architecture/INDEX.md'
+
+interface Diagnostic {
+  code: string
+  message: string
+}
+
+interface CheckResult {
+  errors: Diagnostic[]
+  warnings: Diagnostic[]
+}
+
+loadManifest(cwd: string): Promise<Manifest>
+loadCoverage(cwd: string, path: string): Promise<Coverage>
+listRepositoryFiles(cwd: string): Promise<string[]>
+
+checkOwnership(options: {
+  cwd: string
+  manifest: Manifest
+  files: string[]
+  requireApproved?: boolean
+}): Promise<CheckResult>
+
+checkDesignDocs(options: {
+  cwd: string
+  files?: string[]
+  requireApproved?: boolean
+}): Promise<CheckResult>
 ```
 
-职责分离如下：
+`files` 是可注入的测试边界：fixture 显式传数组，生产调用省略它并由 `git ls-files` 构造。这样集合测试不需要初始化 Git；CLI 测试则故意使用临时 Git 仓库覆盖真实发现路径。
 
-- **spec**：唯一保存子系统设计正文，不复制其他领域的架构说明。
-- **INDEX.md**：只负责导航，不成为另一份巨型架构文档。
-- **manifest.yaml**：唯一注册 spec ID、文档路径、coverage 路径、批次、状态和排除规则。
-- **coverage YAML**：显式列出文件，按共同职责分组；不为每个文件重复一段模板文字。
-- **STATUS.md**：保存实际运行结果；spec 的验收标准只描述应满足的条件。
+### 4.2 Manifest 数据契约
 
-coverage 数据采用以下逻辑结构：
+```typescript
+type Status = 'planned' | 'draft' | 'approved'
+
+interface SpecEntry {
+  id: string                 // ^[a-z0-9-]+$
+  spec: string               // 仓库相对、非绝对、无反斜杠、无 .. 段
+  coverage: string           // 同上
+  batch: number              // 非负整数
+  status: Status
+}
+
+interface Exclusion {
+  glob: string               // 非空 Bun.Glob 表达式
+  reason: string             // 非空说明
+  source_spec: string        // 必须等于某个 SpecEntry.id
+}
+
+interface Manifest {
+  schema_version: 1
+  roots: ['src', 'tests', 'scripts']
+  specs: SpecEntry[]
+  exclusions: Exclusion[]
+}
+```
+
+`roots` 使用固定 tuple 而不是任意字符串数组，防止配置看似成功却扫描错误目录。`schema_version` 当前只接受字面量 `1`，未来结构变化必须显式升级而不是被旧校验器静默误读。
+
+### 4.3 Coverage 数据契约
+
+```typescript
+interface CoverageGroup {
+  id: string                         // ^[a-z0-9-]+$
+  kind: 'source' | 'test' | 'script'
+  section: number                    // 1..9 的整数
+  summary: string                    // 非空职责说明
+  files: string[]                    // 至少一个规范化仓库相对路径
+}
+
+interface Coverage {
+  schema_version: 1
+  spec_id: string
+  spec: string                       // 相对 coverage 文件所在目录的 spec 回链
+  status: Status
+  groups: CoverageGroup[]
+}
+```
+
+`kind` 与根目录有确定关系：`source → src/`、`test → tests/`、`script → scripts/`。不匹配产生 `KIND_MISMATCH`。`section` 是九章中的固定序号，不绑定标题文本；例如架构文件组使用 `4`，测试证据组使用 `7`。
+
+coverage 的 `spec` 允许 `..`，因为它必须从 `docs/architecture/coverage/` 回到 `docs/superpowers/specs/`；manifest 和 `files` 则禁止 `..`，防止逃逸仓库范围。
+
+当前 schema 不强制同一个 coverage 内的 `group.id` 唯一；唯一性约束仅覆盖文件主归属和 spec ID。这个限制及其改进方向见第 9 节。
+
+### 4.4 实际注册示例
+
+当前 `documentation-system` 的 coverage 主拥有 checker 和四个测试文件。它不包含 `docs/` 自身，因为文档元数据不属于 `src/tests/scripts` 的文件全集。
 
 ```yaml
 schema_version: 1
-spec_id: query-core
-spec: ../../superpowers/specs/2026-11-12-query-core-design.md
+spec_id: documentation-system
+spec: ../../superpowers/specs/2026-11-12-codebase-design-docs-design.md
 status: draft
 groups:
-  - id: conversation-lifecycle
-    kind: source
+  - id: documentation-checker
+    kind: script
     section: 4
-    summary: 对话状态、轮次和模型/工具循环
+    summary: Registry, ownership, exclusion, spec, link, Git discovery, and CLI validation.
     files:
-      - src/QueryEngine.ts
-      - src/query.ts
-  - id: lifecycle-tests
-    kind: test
-    section: 7
-    summary: 查询取消、恢复和工具编排证据
-    files:
-      - tests/sdkQueryLifecycle.test.ts
+      - scripts/check-design-docs.ts
 ```
 
-该结构允许一组同职责文件共享说明，同时仍能对每个文件执行精确集合校验。`section` 使用九章的固定序号（例如 `4` 表示架构、`7` 表示证据），避免依赖标题文本；coverage 不保存易漂移的源码行号。
+生成代码排除当前只有三类登记：两个 SDK 类型生成目标，以及 `src/types/generated/**` 下的 protobuf 输出。`settingsTypes.generated.ts` 没有排除记录，这是有意的测试边界。
 
-### 4.2 子系统 spec 内容契约
+### 4.5 总控执行顺序
 
-每份 spec 使用以下九章：
-
-1. **问题与约束**：当前行为、责任范围、internal/external 条件和成功标准。
-2. **设计理由与备选方案**：当前结构解决的问题、代价、备选方案及不采用原因。
-3. **目标与非目标**：该子系统当前承担和明确不承担的职责。
-4. **架构、模块与数据流**：入口、公共接口、状态所有权、控制流、持久化和跨 spec 依赖。
-5. **失败语义与工程取舍**：错误、取消、重试、并发、兼容性、安全、资源清理和性能。
-6. **现状验收标准**：可独立判断的行为条件，不记录历史执行结果。
-7. **代码与测试证据**：事实对应的源码路径、符号和测试意图。
-8. **文件覆盖与相关子系统**：coverage 双向链接、上游、下游和共享证据。
-9. **改进建议**：按优先级列出依据、失败场景、建议方向、代价和验收方式。
-
-文首注明这是回溯性设计说明，不冒充原始历史设计记录。大文件按生命周期或职责分节；只有存在独立入口、状态所有者、生命周期或安全边界时才继续拆分 spec，反之避免碎片化。
-
-### 4.3 证据与设计推断
-
-源码事实使用“仓库相对路径 + 符号”定位，必要时附行号。入口存在、静态 import、构建成功和运行时可用是不同陈述，不得相互替代。`feature()`、`USER_TYPE`、动态 import 和显式 unavailable 分支必须注明适用条件。
-
-以下内容可直接支持设计动机：解释动机的源码注释、已评审 spec、公开 contract、schema、协议约束和明确的接口不变量。只有代码结构、命名或测试表现时，可以说明当前结构产生的效果，但历史性的“当初为什么选择”必须写成“设计推断”。
-
-测试证据写明测试文件、场景和它覆盖的不变量。测试文件存在不等于测试已通过；实际结果只进入 `STATUS.md` 或专门验证记录。跨域测试可被多份 spec 引用，但仍只有一个主覆盖归属。
-
-### 4.4 改进建议模型
-
-优先级与证据置信度分开记录：
-
-| 级别 | 含义 | 要求 |
-|---|---|---|
-| P0 | 已确认的安全、数据丢失、核心正确性或协议边界问题 | 必须有直接代码或测试证据及具体失败场景 |
-| P1 | 高影响可靠性、生命周期、并发、性能或显著架构耦合 | 说明影响面、约束、建议方向和可衡量验收条件 |
-| P2 | 局部可维护性、重复实现、测试缺口和有边界的重构 | 限定局部路径，避免扩张为全仓重写 |
-| P3 | 可选体验、命名、风格和低收益优化 | 明确非紧急，不与真实缺陷混列 |
-
-每条建议包含证据位置、触发条件或可观察问题、建议方向、潜在回归、工程代价、验收方式和 S/M/L 粗略工作量，并标注“已证实”“待运行验证”或“设计推断”。P0/P1 不应仅依赖推测。
-
-### 4.5 分批交付与依赖
-
-| 批次 | 交付内容 |
-|---|---|
-| 0 | 扩展模板与政策；建立索引和校验器；完成 query-core 与 plugins 试点；冻结完整文件归属 |
-| 1 | CLI/headless、QueryEngine/query、模型流、消息与上下文、SDK、AppState |
-| 2 | 工具体系、文件/搜索、Bash/PowerShell、权限、MCP、LSP |
-| 3 | 会话与文件历史、记忆、配置/认证/安全存储、插件、技能 |
-| 4 | REPL、输入与 hooks、Ink UI、设计系统、通用命令族 |
-| 5 | Agent/tasks、coordinator/swarm、Workflow/jobs、cron、proactive |
-| 6 | Bridge、daemon/server、SSH/runner、浏览器/computer-use、安装更新 |
-| 7 | 共享基础能力、遥测、构建/feature profile、测试与 Live 验证、external stubs、文档工具和最终审计 |
-
-预计形成约 30–45 份子系统 spec，准确边界由试点和全量归属盘点确定。已有 SDK 与 external-stubs 文档应复用或补齐，不建立平行体系。每批可拥有独立实施计划；全局 INDEX 和 manifest 串行更新，避免并行撰写相互覆盖。
-
-### 4.6 覆盖计算与校验流程
-
-以 Git 工作树清单为基准，包含未暂存但未被忽略的新文件：
-
-```bash
-git ls-files --cached --others --exclude-standard -z -- src tests scripts
-```
-
-新增 `scripts/check-design-docs.ts` 和 `tests/designDocs.test.ts`，使用现有 Bun/TypeScript 工具链，不引入另一套测试框架。校验器执行以下数据流：
+`checkDesignDocs()` 的实际顺序如下：
 
 ```text
-Git 文件全集 + manifest 排除规则 + coverage 主归属 + spec/frontmatter + INDEX
-  → 集合相等与唯一性检查
-  → spec/coverage/INDEX 双向引用检查
-  → 必需章节、状态与本地链接检查
-  → 中间批次报告 / 最终 require-approved 严格门禁
+loadManifest(cwd)
+  ↓
+files 参数存在？
+  ├─ 是：使用注入的文件全集
+  └─ 否：git ls-files --cached --others --exclude-standard -z -- src tests scripts
+  ↓
+checkOwnership()
+  ├─ 注册表、状态和 coverage 检查
+  ├─ covered / excluded 集合检查
+  └─ 未覆盖文件报告
+  ↓
+读取 INDEX；缺失时记录 MISSING_INDEX，但以空字符串继续
+  ↓
+逐个检查非 planned spec
+  ├─ frontmatter
+  ├─ 九章与非空正文
+  ├─ 占位符
+  ├─ spec → coverage 回链
+  ├─ INDEX → spec 链接
+  └─ 本地 Markdown 链接
+  ↓
+返回 { errors, warnings }
 ```
+
+INDEX 缺失不提前返回，是刻意保留的聚合诊断行为：调用方同时还能看到 spec 缺章、元数据和回链问题，而不是每修一个错误才发现下一个。
+
+### 4.6 Ownership 算法
+
+`checkOwnership()` 维护三个核心集合：
+
+- `actual: Set<string>`：本次 Git 或注入输入的规范化路径。
+- `covered: Map<string, string>`：文件到主 spec ID。
+- `excluded: Map<string, string>`：文件到命中它的排除 glob。
+
+执行步骤：
+
+1. 检查重复 spec ID，保留集合用于排除引用验证。
+2. 检查输入是否越出三个根目录。
+3. planned 只报告状态并检查产物；draft 报告状态；其他状态加载 coverage。
+4. 比较 coverage 的 `spec_id/status` 与 manifest，并将 coverage 回链解析成仓库路径比较。
+5. 逐文件检查组类型、实际存在性和唯一主归属。
+6. 逐个 glob 扫描排除，检查来源、空匹配、覆盖冲突和重复排除。
+7. 对 `actual - covered - excluded` 的排序结果逐项产生 `UNCOVERED_FILE`。
+
+选择显式 Map/Set 而不是仅比较数量，是因为数量相等仍可能掩盖“一遗漏一重复”；路径级诊断才能指出具体冲突双方。
+
+### 4.7 Spec 与链接算法
+
+`checkSpecDocument()` 对非 planned spec 执行：
+
+1. 读取开头 `--- ... ---` frontmatter，逐字段比较 `id/batch/status`，错误消息包含期望值和实际值。
+2. 查找九个精确二级标题；标题存在但到下一个二级标题前没有正文时产生 `EMPTY_SECTION`。
+3. 只拒绝 `checkSpecDocument()` 占位正则中枚举的两个大写英文关键词，并要求词边界匹配；这不是通用占位符检测，具体枚举以该实现为准。
+4. 根据 spec 与 coverage 的实际相对路径计算必须出现的 Markdown 回链。
+5. 根据 INDEX 与 spec 的实际相对路径检查导航链接。
+6. 扫描 Markdown 行内链接，跳过 HTTP(S)、mailto 和纯锚点；本地路径先 URI decode，失败则使用原始路径，再检查文件存在性。
+
+这里只实现项目需要的链接子集。正则解析不是完整 Markdown parser，这是第 9 节列出的明确边界，而不是隐含的“支持所有 Markdown”。
+
+### 4.8 CLI 输入、输出与退出码
+
+```bash
+bun scripts/check-design-docs.ts [--require-approved]
+```
+
+| 情况 | 退出码 | 输出语义 |
+|---|---:|---|
+| 默认模式，无结构错误；允许有警告 | 0 | 警告写 stderr，汇总写 stdout |
+| 校验完成且 `errors` 非空 | 1 | 错误/警告分别输出，汇总包含准确总数 |
+| 未知参数 | 2 | 输出用法和未知参数 |
+| Git、读取、YAML 或未捕获运行时异常 | 2 | 输出异常消息，不伪装成普通 Diagnostic |
+
+每类诊断最多逐条打印 20 条，剩余只打印数量；总数不被截断。这样中间阶段几千个未覆盖警告不会淹没前 20 个结构问题。
+
+### 4.9 诊断目录
+
+| 错误码 | 触发条件 | 默认级别 |
+|---|---|---|
+| `DUPLICATE_SPEC` | manifest 中重复 spec ID | error |
+| `OUT_OF_SCOPE` | 输入文件不在 src/tests/scripts 下 | error |
+| `PLANNED_SPEC` | spec 为 planned | warning；strict 为 error |
+| `PLANNED_ARTIFACT` | planned 的 spec 或 coverage 文件已存在 | error |
+| `DRAFT_SPEC` | spec 为 draft | warning；strict 为 error |
+| `MISSING_COVERAGE` | draft/approved 没有 coverage | error |
+| `COVERAGE_METADATA` | coverage 的 ID/status 与 manifest 不同 | error |
+| `COVERAGE_BACKLINK` | coverage 的 spec 回链解析后不等于注册路径 | error |
+| `KIND_MISMATCH` | 文件根目录与 group.kind 不一致 | error |
+| `GHOST_COVERAGE` | coverage 文件不在实际 Git 全集 | error |
+| `DUPLICATE_FILE` | 同一路径有多个主归属 | error |
+| `UNKNOWN_SOURCE_SPEC` | 排除引用未注册的 source_spec | error |
+| `STALE_EXCLUSION` | 排除没有命中实际文件 | error |
+| `EXCLUSION_COVERED` | 文件同时被覆盖和排除 | error |
+| `DUPLICATE_EXCLUSION` | 文件命中多个排除 | error |
+| `UNCOVERED_FILE` | 文件既无覆盖也无排除 | warning；strict 为 error |
+| `MISSING_INDEX` | INDEX 不存在；仍继续其他 spec 检查 | error |
+| `MISSING_SPEC` | draft/approved 的 spec 不存在 | error |
+| `SPEC_METADATA` | frontmatter 的 id/batch/status 与注册不一致 | error |
+| `MISSING_SECTION` | 缺少任一必需的九章标题 | error |
+| `EMPTY_SECTION` | 必需标题下没有正文 | error |
+| `PLACEHOLDER` | spec 命中占位正则中两个大写英文关键词的词边界匹配 | error |
+| `SPEC_COVERAGE_LINK` | spec 没有正确的 coverage Markdown 回链 | error |
+| `INDEX_SPEC_LINK` | INDEX 没有正确的 spec Markdown 链接 | error |
+| `BROKEN_LINK` | 本地 Markdown 目标不存在 | error |
+
+### 4.10 设计证据的记录格式
+
+子系统 spec 中的事实引用采用：
+
+```text
+`path/to/file.ts` 的 `symbolName()`：具体行为或不变量。
+```
+
+- 路径用于找到文件，符号用于在文件漂移后复核，行号只作为可失效的定位辅助。
+- “测试证明什么”必须写到场景与不变量，不能只列测试文件。
+- 注释、公开 contract、schema 或协议可直接支持设计理由。
+- 仅从结构推导的动机必须写成“**设计推断：……**”。
+- “文件被覆盖”与“某证据支持设计决策”是两件事：前者进入 coverage，后者进入第 7 节正文。
 
 ## 5. 失败语义与工程取舍
 
-| 失败或边界 | 处理语义 |
-|---|---|
-| 文件没有任何主归属 | 校验失败，列出遗漏路径；不允许用“misc/其他”spec 消除错误 |
-| 文件出现在多个 coverage 中 | 校验失败，由人工按运行时职责确定唯一主归属 |
-| coverage 引用不存在的文件或 spec | 校验失败，不接受幽灵路径或失效双向链接 |
-| 文件确属生成物或二进制 | 在 manifest 登记有界路径/glob、原因、来源和负责解释它的 spec |
-| 排除 glob 过宽或匹配不到文件 | 校验失败，要求缩小规则或删除过期规则 |
-| 跨域测试被多份 spec 使用 | 允许引用为证据，但主覆盖只能出现一次 |
-| spec 尚处于 planned/draft | 中间批次允许注册，最终 `--require-approved` 必须拒绝 |
-| 历史动机没有直接证据 | 标为“设计推断”，不得改写成确定事实 |
-| 测试只覆盖 mock 或离线路径 | 只声称对应测试契约，不声称 live 能力已验证 |
-| 自动检查通过但正文语义错误 | 由逐批人工评审拦截；校验器不输出语义正确性结论 |
-| 源码路径或符号漂移 | coverage 路径检查捕获文件漂移；行号漂移由符号引用和批次复核辅助发现 |
+| 场景 | 当前行为 | 设计理由与代价 |
+|---|---|---|
+| YAML 字段类型或枚举不合法 | `loadYaml()` 抛出含字段路径的异常；CLI 退出 2 | 输入无法可靠解释时停止，避免级联误报；代价是会掩盖后续可独立报告的问题 |
+| Git 命令失败 | 抛出包含 stderr 的异常；CLI 退出 2 | 文件全集不可信，不能继续声称覆盖完整 |
+| INDEX 缺失 | 记录错误并继续 spec 检查 | 一次返回更多独立问题；INDEX 链接检查会因空索引额外失败，这是有意的诊断结果 |
+| spec 缺失 | `MISSING_SPEC` 后跳过该文件其余检查 | 没有正文可检查，避免读取异常 |
+| 原始 `%` 路径不是合法 URI 编码 | decode 失败时使用原始路径 | 合法 Unix 文件名不应让校验器崩溃；代价是 URI 编码路径与原始路径存在歧义时按文件系统实际存在性判断 |
+| planned 已创建文件 | `PLANNED_ARTIFACT` | 防止空壳文档；代价是状态与文件创建必须同一批修改 |
+| 生成文件删除后排除仍存在 | `STALE_EXCLUSION` | 强制清理过期规则；代价是重生成前必须先同步元数据 |
+| 大量文件未覆盖 | 默认逐条最多打印 20 个并汇总 | 保留中间阶段可用性；严格模式仍将全部视为错误 |
+| 外部 URL 失效 | 不检查 | 离线校验必须稳定；代价是外部链接需要另行验证 |
+| 架构正文写错但结构合法 | 自动检查不能发现 | 必须人工语义评审；增加更多章节检查也不能替代源码事实审查 |
 
-显式文件清单比大范围 glob 更有维护成本，但能证明每个文件的归属经过判断。这个成本是覆盖可信度的必要交换。类似地，前期试点和归属冻结会推迟批量正文产出，却能降低大规模返工风险。
+主要性能取舍是排除规则使用文件系统 glob 扫描，coverage 使用显式列表。前者减少手写排除清单，后者让每个主归属都可审查。当前排除数量很少，重复扫描成本可接受；规模风险列入改进建议而不是提前设计缓存。
 
 ## 6. 现状验收标准
 
-### 每批验收
+### 6.1 数据契约
 
-- 本批 spec 都是完整正文，并通过独立语义评审。
-- 本批文件在主索引中恰好出现一次，跨域引用不造成重复归属。
-- 主要架构、失败语义和改进建议具有对应证据；历史推断均明确标记。
-- 本地链接、双向引用和覆盖检查通过。
-- 不修改 `src/` 产品实现；变化仅限文档、文档工具及其测试。
-- 文档工具变化时运行专项测试和 typecheck。
+- 非 `schema_version: 1`、错误 roots、非法路径、错误 status/kind、越界 section、空 summary/files 必须被 schema 拒绝，并指出字段路径。
+- coverage 的 `spec` 回链必须解析到 manifest 注册的同一 spec；只比较字符串而不是路径解析会误判等价路径。
 
-### 最终验收
+### 6.2 集合与状态
 
-```bash
-bun test tests/designDocs.test.ts
-bun scripts/check-design-docs.ts --require-approved
-bun run typecheck
-bun run test
-bun run build
-git diff --check
-```
+- 完全覆盖加合法排除时，默认和严格模式均无错误、无警告。
+- 同文件重复归属、幽灵路径、覆盖与排除重叠、重复排除、过期排除和未知来源必须产生对应错误。
+- 新增未覆盖文件默认产生警告，严格模式产生错误。
+- planned 无产物时默认可继续，严格模式失败；planned 有产物时两种模式都失败。
 
-同时满足：
+### 6.3 文档与链接
 
-- 实际文件全集 = 主覆盖文件全集 + 明确排除全集。
-- 每个纳入文件恰好一个主归属，每个排除项都有原因和来源 spec。
-- 所有 spec 均为 approved，可从 `docs/architecture/INDEX.md` 到达。
-- INDEX、manifest、coverage、spec frontmatter 的 ID、批次和状态一致。
-- 没有 `utils/misc/其他` 巨型兜底 spec，没有 planned、draft 或空正文链接。
-- 每份 spec 都能回答现状、为什么这样设计、证据是什么以及如何改进。
-- 全量测试和 build 只作为回归检查，不被写成各子系统运行时能力证明。
+- approved spec 必须具备匹配的 frontmatter、九章非空正文、正确 coverage 回链和 INDEX 链接。
+- 缺章、空章、占位符、字段不匹配和断链分别产生可区分诊断。
+- INDEX 缺失不能阻止其他 spec 检查。
+- 含原始 `%` 的已存在文件链接不得导致 URIError。
+
+### 6.4 CLI 与真实仓库
+
+- 默认中间状态退出 0，结构错误退出 1，未知参数和运行时异常退出 2。
+- 诊断逐条输出最多 20 条，但汇总数量准确。
+- 真实仓库测试要求结构错误为空，并明确断言 `settingsTypes.generated.ts` 仍是未覆盖文件而不是排除项。
+- 完整交付前 `--require-approved` 必须失败；只有所有文件归属完成且所有 spec approved 后才允许转为通过。
 
 ## 7. 代码与测试证据
 
-本设计直接复用和扩展以下现有约束：
+| 设计行为 | 源码证据 | 测试证据及其证明边界 |
+|---|---|---|
+| Manifest/Coverage 形状 | `scripts/check-design-docs.ts` 的 `manifestSchema`、`coverageSchema`、`loadYaml()` | `tests/designDocsModel.test.ts` 验证合法加载和非法 group 字段路径；不证明任意 YAML 语义 |
+| 唯一归属与排除 | `checkOwnership()` 的 `covered/excluded` Map 和 glob 扫描 | `tests/designDocsOwnership.test.ts` 验证完整集合、重复、幽灵、过期排除和严格提升 |
+| 九章、元数据和链接 | `checkSpecDocument()`、`checkMarkdownLinks()` | `tests/designDocs.test.ts` 构造完整 fixture，再分别破坏元数据、章节和链接；原始 `%` 用例验证不抛 URIError |
+| INDEX 缺失聚合诊断 | `checkDesignDocs()` 使用空 `indexContent` 继续循环 | `tests/designDocs.test.ts` 验证 MISSING_INDEX 之外仍报告 spec 问题 |
+| Git 文件发现和 CLI | `listRepositoryFiles()`、`main()` | `tests/designDocsCli.test.ts` 初始化真实临时 Git 仓库，验证默认/严格/未知参数退出码 |
+| 真实注册和误排除边界 | 实际 manifest、coverage、INDEX、documentation-system spec | `tests/designDocs.test.ts` 的真实仓库用例要求结构错误为空，并检查手写 re-export 的警告 |
 
-- `docs/COMMIT_DOCS.md`：功能级 spec/plan、设计理由、用户审阅和不按 commit 组织文档的政策。
-- `docs/superpowers/specs/TEMPLATE.md`：frontmatter 和六个基础章节。
-- `docs/ARCHITECTURE.md`：CLI/SDK 产品边界、查询主链、构建入口和 external feature boundary。
-- `docs/STATUS.md`：实际验证状态与已知边界的记录位置。
-- `docs/superpowers/specs/2026-11-12-sdk-query-sessions-design.md`：现有中文功能 spec 的接口、数据流和失败语义写法。
-- `docs/external-stubs/contracts/`：external stub 和开放协议的现有契约来源。
-- `package.json`、`scripts/test.ts`：Bun 测试、typecheck 和 build 入口。
-
-后续每个子系统 spec 必须自行补充具体源码符号与测试场景，不能仅依赖本总 spec 的概览作为证据。
+这些测试证明校验器按本文契约工作，不证明其他子系统 spec 的设计正文正确，也不证明 planned 的 SDK/telemetry 功能已经实现。
 
 ## 8. 文件覆盖与相关子系统
 
-本总 spec 定义文档体系的政策、导航、coverage 和校验器设计。
 [Documentation-system coverage](../../architecture/coverage/documentation-system.yaml)
 
-`documentation-system` coverage 最终主拥有以下纳入范围的文件：
+本 spec 的主 coverage 只包含：
 
 - `scripts/check-design-docs.ts`。
+- `tests/designDocsModel.test.ts`。
+- `tests/designDocsOwnership.test.ts`。
 - `tests/designDocs.test.ts`。
+- `tests/designDocsCli.test.ts`。
 
-`docs/architecture/INDEX.md`、`docs/architecture/coverage/`、模板和政策文件属于文档体系自身，由 manifest 的 spec 注册表和文档政策管理，**不计入仅限 `src/`、`tests/`、`scripts/` 的源码覆盖集合**，避免实际文件全集与 coverage 全集采用不同范围。
+`docs/architecture/INDEX.md`、coverage YAML、模板和政策文件由 registry 与文档政策管理，不计入仅限 `src/tests/scripts` 的源码覆盖集合，避免分母口径不一致。
 
-`src/`、`tests/`、`scripts/` 的其余文件由对应领域 spec 主拥有。生成代码排除项由 SDK schema/type generation 或 build/feature-profile spec 解释；external stubs 与其现有 contracts 关联；测试与 Live 验证脚本由工程验证 spec 汇总其验证边界。
+相关子系统边界：
 
-本总 spec 不代替任何子系统正文，也不复制其文件清单。完整归属在批次 0 的两个试点评审后冻结。
+- `sdk-type-generation`：解释 `coreSchemas.ts`、`controlSchemas.ts` 到两个生成类型文件的流程，以及手写 `settingsTypes.generated.ts` 的兼容角色。
+- `telemetry`：解释 protobuf 生成契约、来源边界和生成文件使用方式。
+- `query-core` 及后续领域 spec：提供实际代码设计正文；本 spec 只定义它们如何注册和被校验，不代替其架构内容。
 
 ## 9. 改进建议
 
-| 优先级 | 建议 | 依据与触发场景 | 验收与代价 |
+| 优先级 | 触发场景与证据 | 建议方向 | 回归风险、验收与工作量 |
 |---|---|---|---|
-| P1 | 将语义评审设为每批明确交付物，记录评审发现的跨域流程、证据和推断问题 | 已证实：自动检查只能验证结构和引用，无法判断设计是否符合源码；S | 每批评审意见被处理后才进入下一批；代价是增加人工评审时间 |
-| P1 | 在新增、移动或删除源码时同步更新 coverage，并把严格检查用于最终完整性门禁 | 设计推断：显式归属会随文件演进漂移；若不更新会出现漏项和幽灵路径；S | 覆盖集合持续相等，严格模式拒绝未批准或失效归属；代价是文件变更需同步维护元数据 |
-| P2 | 对生成代码和排除规则做专项审计，避免宽泛 glob 误排除手写 `.d.ts` 或名称含 generated 的辅助模块 | 已证实：名称和扩展名不足以判断生成来源；S | 每个排除项都有有界匹配、生成器/来源和负责 spec，过期规则会报错 |
-| P2 | 源码事实优先使用符号引用，行号只作辅助定位 | 已证实：行号会随编辑漂移，而符号更适合复核；S | 关键陈述可由路径和符号定位，coverage 不保存行号；代价是需要人工选择稳定符号 |
-| P3 | 在完整覆盖稳定后评估导航体验，而不是预先生成逐文件正文 | 设计推断：领域入口和分组索引通常比逐文件重复摘要更有用；M | 只有真实导航问题出现时才增加视图，且生成视图不成为设计事实的第二来源 |
+| P2 | `loadYaml()` 在第一个损坏的 coverage 抛出，其他 spec 无法继续检查；证据：`checkOwnership()` 直接 await `loadCoverage()` | 将单个 coverage 的解析异常转换为带 spec ID 的 Diagnostic，并继续其他独立条目 | 风险是把根本契约错误与集合错误混在一起；验收为一个损坏 coverage 不掩盖其他错误且 CLI 仍退出 1；S；已证实 |
+| P2 | `CoverageGroup.id` 只检查格式，没有检查同文件内重复；证据：`coverageSchema.groups` 无唯一性约束 | 在 ownership 加载后检查同 coverage 内重复 group ID | 风险是旧 coverage 可能已有重复 ID；验收为重复组报清晰错误且不同 spec 可复用相同组 ID；S；已证实 |
+| P2 | Markdown 链接使用正则，带嵌套括号或标题的合法链接可能误判；证据：`checkMarkdownLinks()` 的 `matchAll()` | 在真实 spec 出现这些语法后引入小范围 Markdown tokenizer，而非提前替换全部解析 | 风险是新 parser 改变现有链接接受范围；先用嵌套括号和标题 fixture 驱动；M；设计推断 |
+| P2 | 每个排除都扫描文件系统，排除数量显著增长时会放大 I/O；证据：`checkOwnership()` 在排除循环内调用 `Bun.Glob.scan()` | 先基准测量，再考虑一次文件遍历匹配多个 glob | 风险是 Bun.Glob 与自定义匹配语义不一致；只有基准证明瓶颈后优化；M；待运行验证 |
+| P3 | `Diagnostic` 只有 code/message，调用方难以按文件或 spec 聚合；证据：`Diagnostic` 接口 | 如需 JSON 输出或 IDE 集成，再增加可选 path/specId 字段 | 风险是扩大当前 CLI 契约；只有出现实际消费者时实施；M；设计推断 |
+| P1 | 结构合法的设计正文仍可能虚构接口或动机，自动检查无法识别；证据：checker 只验证路径、章节和链接 | 后续每份领域 spec 必须经过源码符号审查和“设计推断”审查，关键控制流应有测试或源码证据 | 风险是把人工评审变成盖章；验收为抽查每个关键决策能回到具体符号/注释/测试；持续成本；已证实 |
