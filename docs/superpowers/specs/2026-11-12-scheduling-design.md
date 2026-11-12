@@ -327,16 +327,18 @@ type ProactiveControlState = {
 
 | 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
 | --- | --- | --- | --- |
-| cron表达式解析支持5字段标准格式 | src/utils/cron.ts:1-308 | （未找到直接测试） | 仅支持min/hour/dom/month/dow，不支持L/W/?/名字 |
-| 锁文件使用O_EXCL原子创建 | src/utils/cronTasksLock.ts:69-91 | （未找到直接测试） | 依赖Node.js fs.writeFile flag='wx' |
-| cron抖动：周期性任务使用frac*interval cap 15分钟 | src/utils/cronTasks.ts:381-398 | （未找到直接测试） | jitterFrac从task id计算，稳定 |
-| cron抖动：一次性任务在mod 30分钟时提前0-90秒 | src/utils/cronTasks.ts:421-445 | （未找到直接测试） | 可通过growthbook配置调整mod、max、floor |
-| 模板作业supervisor detached启动 | src/jobs/supervisor.ts:96-122 | （未找到直接测试） | detached=true，stdio='ignore' |
-| supervisor监控child进程stdout/stderr/close | src/jobs/supervisor.ts:356-422 | （未找到直接测试） | 所有事件追加到transcript |
-| proactive状态管理和subscribe | src/proactive/index.ts:1-96 | （未找到直接测试） | 仅内存，不持久化 |
-| SleepTool仅在proactive激活时启用 | src/tools/SleepTool/SleepTool.ts:53 | （未找到直接测试） | isEnabled()检查isProactiveActive() |
-| CronCreateTool验证cron表达式和MAX_JOBS=50 | src/tools/ScheduleCronTool/CronCreateTool.ts:25-116 | （未找到直接测试） | 验证parseCronExpression和nextCronRunMs |
-| RemoteTriggerTool调用claude.ai API管理triggers | src/tools/RemoteTriggerTool/RemoteTriggerTool.ts:46-161 | （未找到直接测试） | 需要oauth认证，beta API |
+| cron表达式解析支持5字段标准格式 | src/utils/cron.ts:1-308 | 未找到直接测试 | 仅支持min/hour/dom/month/dow，不支持L/W/?/名字 |
+| 锁文件使用O_EXCL原子创建 | src/utils/cronTasksLock.ts:69-91 | 未找到直接测试 | 依赖Node.js fs.writeFile flag='wx' |
+| cron抖动：周期性任务使用frac*interval cap 15分钟 | src/utils/cronTasks.ts:381-398 | 未找到直接测试 | jitterFrac从task id计算，稳定 |
+| cron抖动：一次性任务在mod 30分钟时提前0-90秒 | src/utils/cronTasks.ts:421-445 | 未找到直接测试 | 可通过growthbook配置调整mod、max、floor |
+| 模板作业supervisor detached启动 | src/jobs/supervisor.ts:96-122 | 未找到直接测试 | detached=true，stdio='ignore' |
+| supervisor监控child进程stdout/stderr/close | src/jobs/supervisor.ts:356-422 | 未找到直接测试 | 所有事件追加到transcript |
+| proactive状态管理和subscribe | src/proactive/index.ts:1-96 | 未找到直接测试 | 仅内存，不持久化 |
+| SleepTool仅在proactive激活时启用 | src/tools/SleepTool/SleepTool.ts:53 | 未找到直接测试 | isEnabled()检查isProactiveActive() |
+| CronCreateTool验证cron表达式和MAX_JOBS=50 | src/tools/ScheduleCronTool/CronCreateTool.ts:25-116 | 未找到直接测试 | 验证parseCronExpression和nextCronRunMs |
+| RemoteTriggerTool调用claude.ai API管理triggers | src/tools/RemoteTriggerTool/RemoteTriggerTool.ts:46-161 | 未找到直接测试 | 需要oauth认证，beta API |
+| Cron调度器生命周期 | src/utils/cronScheduler.ts | tests/cronLifecycle.test.ts：一次性任务触发、周期性任务调度、锁竞争接管 | 未覆盖多实例并发场景 |
+| Supervisor指数退避重启 | src/jobs/supervisor.ts | tests/daemon.test.ts：supervisor重启策略、maxRestarts限制、状态清理 | 未覆盖实际worker执行失败场景 |
 
 ## 8. 文件覆盖与相关子系统
 
@@ -344,18 +346,18 @@ type ProactiveControlState = {
 
 | 分组 | 主拥有职责 | 相关测试或共享证据 | 不拥有的相邻文件 |
 | --- | --- | --- | --- |
-| cron-core | cron表达式解析、抖动计算、missed检测 | （未找到专用测试） |  |
-| cron-tasks | 任务持久化CRUD、文件格式 | （未找到专用测试） |  |
-| cron-scheduler | 调度循环、锁管理、文件watch、任务触发 | （未找到专用测试） |  |
-| cron-lock | scheduler锁文件、PID存活检测 | （未找到专用测试） | computerUseLock.ts（相似模式） |
-| jobs-schema | 模板作业类型定义、Zod schema | （未找到专用测试） |  |
-| jobs-supervisor | supervisor进程管理、child spawn监控、状态合并 | （未找到专用测试） |  |
-| jobs-state | 作业目录、锁、原子写、transcript | （未找到专用测试） |  |
-| jobs-classifier | 任务分类逻辑 | （未找到专用测试） |  |
-| proactive-core | 主动唤醒状态管理、subscribe | （未找到专用测试） |  |
-| cron-tools | CronCreate/CronDelete/CronList工具 | （未找到专用测试） |  |
-| sleep-tool | SleepTool实现 | （未找到专用测试） |  |
-| remote-trigger-tool | RemoteTriggerTool实现 | （未找到专用测试） |  |
+| cron-core | cron表达式解析、抖动计算、missed检测 | tests/cronLifecycle.test.ts |  |
+| cron-tasks | 任务持久化CRUD、文件格式 | tests/cronLifecycle.test.ts |  |
+| cron-scheduler | 调度循环、锁管理、文件watch、任务触发 | tests/cronLifecycle.test.ts |  |
+| cron-lock | scheduler锁文件、PID存活检测 | tests/cronLifecycle.test.ts | computerUseLock.ts（相似模式） |
+| jobs-schema | 模板作业类型定义、Zod schema | tests/daemon.test.ts |  |
+| jobs-supervisor | supervisor进程管理、child spawn监控、状态合并 | tests/daemon.test.ts |  |
+| jobs-state | 作业目录、锁、原子写、transcript | tests/daemon.test.ts |  |
+| jobs-classifier | 任务分类逻辑 | tests/templateJobs.test.ts |  |
+| proactive-core | 主动唤醒状态管理、subscribe | 未找到专用测试 |  |
+| cron-tools | CronCreate/CronDelete/CronList工具 | tests/cronLifecycle.test.ts |  |
+| sleep-tool | SleepTool实现 | 未找到专用测试 |  |
+| remote-trigger-tool | RemoteTriggerTool实现 | 未找到专用测试 |  |
 
 相关子系统：
 - [Task System](./2026-11-13-task-system-design.md)：cron任务触发可能创建后台任务

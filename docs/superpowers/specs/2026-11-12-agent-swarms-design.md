@@ -449,6 +449,7 @@ type AppState = {
 | Worktree 隔离可选 | `src/tools/AgentTool/AgentTool.ts:850-953` | 未找到直接测试文件 | 未覆盖有变更保留 worktree 的场景 |
 | 异步/同步双路径 | `src/tools/AgentTool/AgentTool.ts:954-1669` | 未找到直接测试文件 | 未覆盖同步转后台的自动切换 |
 | 团队解散前检查活跃成员 | `src/tools/TeamDeleteTool/TeamDeleteTool.ts:71-139` | 未找到直接测试文件 | 未覆盖 member.isActive 的完整生命周期 |
+| Agent 内存快照管理 | `src/tools/AgentTool/agentMemorySnapshot.ts` + `src/tools/AgentTool/agentMemory.ts` | `tests/agentMemorySnapshot.test.ts`: 快照初始化、时间戳验证、保留变更、回滚机制、合并完成验证 | 未覆盖多 agent 同时合并的竞态场景 |
 
 ## 8. 文件覆盖与相关子系统
 

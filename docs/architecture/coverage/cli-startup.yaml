@@ -22,7 +22,6 @@ groups:
     section: 4
     summary: CLI entrypoints, bg/up/exit/rollback commands
     files:
-      - src/cli/bg.ts
       - src/cli/bgArgs.ts
       - src/cli/exit.ts
       - src/cli/print.ts

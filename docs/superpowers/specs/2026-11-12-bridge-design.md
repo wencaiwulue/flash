@@ -403,38 +403,40 @@ interface PollConfig {
 
 | 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
 |---------|---------|----------------|---------|
-| 幂等注册与恢复 | bridgeMain.ts 初始化逻辑，bridgeApi.ts registerBridge/reconnectSession | perpetualBridge.test.ts | 未覆盖并发恢复场景 |
-| Poll/heartbeat 双模式 | bridgeMain.ts poll loop，pollConfig.ts，capacityWake.ts | 需要查找相关测试 | 未覆盖极端负载场景 |
-| WorkSecret decode 与 URL 构建 | workSecret.ts | 需要查找相关测试 | 未覆盖所有协议迁移边缘情况 |
-| Token refresh scheduler | jwtUtils.ts，sessionRunner.ts updateAccessToken | 需要查找相关测试 | 未覆盖并发 refresh 竞态 |
-| 会话 spawn 与 activity 跟踪 | sessionRunner.ts | 需要查找相关测试 | 未覆盖所有工具动词映射 |
-| 权限回调路由 | bridgePermissionCallbacks.ts，sessionRunner.ts control request 检测 | 需要查找相关测试 | 未覆盖权限请求超时场景 |
-| 多会话容量管理 | bridgeMain.ts 容量判断，capacityWake.ts | 需要查找相关测试 | 未覆盖容量波动场景 |
-| Worktree 创建与清理 | bridgeMain.ts worktree 逻辑，bridgePointer.ts readBridgePointerAcrossWorktrees | 需要查找相关测试 | 未覆盖所有 git 错误回退场景 |
-| Clean shutdown 流程 | bridgeMain.ts teardown 逻辑（2435-2600+ 行） | 需要查找相关测试 | 未覆盖强制 kill 场景 |
+| 幂等注册与恢复 | bridgeMain.ts 初始化逻辑，bridgeApi.ts registerBridge/reconnectSession | perpetualBridge.test.ts：perpetual指针持久化、v1/v2路径选择、指针恢复 | 未覆盖并发恢复场景 |
+| Poll/heartbeat 双模式 | bridgeMain.ts poll loop，pollConfig.ts，capacityWake.ts | 未找到直接测试 | 未覆盖极端负载场景 |
+| WorkSecret decode 与 URL 构建 | workSecret.ts | 未找到直接测试 | 未覆盖所有协议迁移边缘情况 |
+| Token refresh scheduler | jwtUtils.ts，sessionRunner.ts updateAccessToken | 未找到直接测试 | 未覆盖并发 refresh 竞态 |
+| 会话 spawn 与 activity 跟踪 | sessionRunner.ts | 未找到直接测试 | 未覆盖所有工具动词映射 |
+| 权限回调路由 | bridgePermissionCallbacks.ts，sessionRunner.ts control request 检测 | 未找到直接测试 | 未覆盖权限请求超时场景 |
+| 多会话容量管理 | bridgeMain.ts 容量判断，capacityWake.ts | 未找到直接测试 | 未覆盖容量波动场景 |
+| Worktree 创建与清理 | bridgeMain.ts worktree 逻辑，bridgePointer.ts readBridgePointerAcrossWorktrees | 未找到直接测试 | 未覆盖所有 git 错误回退场景 |
+| Clean shutdown 流程 | bridgeMain.ts teardown 逻辑（2435-2600+ 行） | 未找到直接测试 | 未覆盖强制 kill 场景 |
 | 崩溃恢复 pointer | bridgePointer.ts，envLessBridgePointer.ts，perpetualBridge.test.ts | perpetualBridge.test.ts | 未覆盖跨 worktree 扫描所有边缘情况 |
-| 四层认证与输入验证 | bridgeApi.ts，trustedDevice.ts，inboundMessages.ts | 需要查找相关测试 | 未覆盖所有攻击向量 |
-| Feature gate 分层检查 | bridgeEnabled.ts，initReplBridge.ts | 需要查找相关测试 | 未覆盖所有禁用原因组合 |
-| REPL bridge v2 与 flush gate | replBridge.ts，remoteBridgeCore.ts，initReplBridge.ts，flushGate.ts | 需要查找相关测试 | 未覆盖历史刷新与实时写入交错场景 |
+| 四层认证与输入验证 | bridgeApi.ts，trustedDevice.ts，inboundMessages.ts | tests/inboundEnvelope.test.ts：输入信封验证 | 未覆盖所有攻击向量 |
+| Feature gate 分层检查 | bridgeEnabled.ts，initReplBridge.ts | 未找到直接测试 | 未覆盖所有禁用原因组合 |
+| REPL bridge v2 与 flush gate | replBridge.ts，remoteBridgeCore.ts，initReplBridge.ts，flushGate.ts | perpetualBridge.test.ts：perpetual模式指针管理 | 未覆盖历史刷新与实时写入交错场景 |
+| Daemon bridge集成 | assistant/daemonBridge.ts | tests/daemonBridge.test.ts：daemon bridge队列和状态 | 未覆盖长时间运行场景 |
 
 ## 8. 文件覆盖与相关子系统
 
 [Coverage](../../architecture/coverage/bridge.yaml)
 
 主要覆盖组：
-| 分组 | 主拥有职责 |
-|-----|-----------|
-| bridge-main | Standalone bridge 主入口、poll loop、shutdown、会话管理 |
-| bridge-api | 环境注册、poll/ack/heartbeat/stop、reconnectSession |
-| bridge-session-runner | 会话 spawn、NDJSON 解析、activity 跟踪、权限回调路由 |
-| bridge-work-secret | WorkSecret 解码、URL/ID 构建 |
-| bridge-pointer | Bridge 指针读写、跨 worktree 扫描 |
-| bridge-poll-config | Poll 配置验证、默认值 |
-| bridge-enabled | Feature gate 检查、禁用原因诊断 |
-| bridge-trusted-device | 受信设备 token 注册、获取、清除 |
-| bridge-repl | REPL bridge 入口、v2 协议、perpetual 模式、flush gate |
-| bridge-inbound-messages | 输入验证、安全常量 |
-| bridge-permission-callbacks | 权限回调路由 |
+| 分组 | 主拥有职责 | 相关测试或共享证据 |
+|-----|-----------|------------------|
+| bridge-main | Standalone bridge 主入口、poll loop、shutdown、会话管理 | perpetualBridge.test.ts |
+| bridge-api | 环境注册、poll/ack/heartbeat/stop、reconnectSession | perpetualBridge.test.ts |
+| bridge-session-runner | 会话 spawn、NDJSON 解析、activity 跟踪、权限回调路由 | perpetualBridge.test.ts |
+| bridge-work-secret | WorkSecret 解码、URL/ID 构建 | perpetualBridge.test.ts |
+| bridge-pointer | Bridge 指针读写、跨 worktree 扫描 | perpetualBridge.test.ts |
+| bridge-poll-config | Poll 配置验证、默认值 |  |
+| bridge-enabled | Feature gate 检查、禁用原因诊断 | perpetualBridge.test.ts |
+| bridge-trusted-device | 受信设备 token 注册、获取、清除 |  |
+| bridge-repl | REPL bridge 入口、v2 协议、perpetual 模式、flush gate | perpetualBridge.test.ts |
+| bridge-inbound-messages | 输入验证、安全常量 | tests/inboundEnvelope.test.ts |
+| bridge-permission-callbacks | 权限回调路由 |  |
+| daemon-bridge | Daemon bridge 异步队列、核心桥接包装 | tests/daemonBridge.test.ts |
 
 相关子系统：
 - remote-control：共享会话基础设施，但职责独立

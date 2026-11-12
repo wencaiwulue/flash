@@ -273,31 +273,33 @@ try {
 
 ## 7. 代码与测试证据
 
-### 现有实现
-- `src/services/lsp/manager.ts`: 服务入口
-- `src/services/lsp/LSPServerManager.ts`: 管理器实现
-- `src/services/lsp/LSPServerInstance.ts`: 服务器实例实现
-- `src/services/lsp/LSPClient.ts`: LSP 客户端实现（lazy load）
-- `src/services/lsp/config.ts`: 配置获取
-- `src/services/lsp/types.ts`: 类型定义
-- `src/services/lsp/passiveFeedback.ts`: 被动诊断注册
-- `src/tools/LSPTool/LSPTool.ts`: LSP 工具
-
-### 未覆盖测试
-- 服务器启动与初始化各种失败场景测试
-- 服务器崩溃自动重启测试
-- ContentModified 错误重试测试
-- 各种 LSP 操作（goToDefinition、findReferences、hover 等）集成测试
-- gitignored 结果过滤测试
-- 位置 1-based/0-based 转换测试
-- 被动诊断推送、去重、容量限制、跨回合记忆测试
-- 错误隔离测试（单个服务器崩溃不影响其他服务器，单个通知处理失败不影响其他通知）
-- 多服务器并发测试
-- 大型代码库性能测试
+| 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
+| --- | --- | --- | --- |
+| 全局单例管理器 | `src/services/lsp/LSPServerManager.ts` | 未找到直接测试 |  |
+| 配置仅来自插件 | `src/services/lsp/config.ts` | 未找到直接测试 |  |
+| lazy start + lazy load | `src/services/lsp/LSPServerInstance.ts`, `src/services/lsp/LSPClient.ts` | tests/lspLifecycle.test.ts：启动/初始化/停止、崩溃重启、超时强制kill | 未覆盖多个并发服务器场景 |
+| 结构化诊断注册表 | `src/services/lsp/passiveFeedback.ts` | 未找到直接测试 | 未覆盖诊断去重和容量限制场景 |
+| stdio传输为唯一支持 | `src/services/lsp/LSPServerInstance.ts` | tests/lsp.test.ts：配置解析和基本初始化 | 不支持socket传输 |
+| ContentModified自动重试 | `src/services/lsp/LSPServerInstance.ts` | tests/lspLifecycle.test.ts：崩溃后自动重启 | 未验证ContentModified具体重试逻辑 |
+| 位置1-based vs 0-based | `src/tools/LSPTool/LSPTool.ts` | 未找到直接测试 | 未验证所有操作的转换正确性 |
+| gitignored结果过滤 | `src/tools/LSPTool/LSPTool.ts` | 未找到直接测试 |  |
+| 错误隔离（服务器级别） | `src/services/lsp/LSPServerManager.ts` | 未找到直接测试 |  |
+| 崩溃自动重启 | `src/services/lsp/LSPServerInstance.ts` | tests/lspLifecycle.test.ts：重启策略验证 | 未验证maxRestarts=0情况 |
+| 通知处理错误隔离 | `src/services/lsp/passiveFeedback.ts` | 未找到直接测试 |  |
+| LSPTool实现 | `src/tools/LSPTool/LSPTool.ts` | 未找到直接测试 | 未覆盖所有LSP操作（goToDefinition、findReferences、hover等） |
 
 ## 8. 文件覆盖与相关子系统
 
 [Coverage](../../architecture/coverage/lsp.yaml)
+
+| 分组 | 主拥有职责 | 相关测试或共享证据 | 不拥有的相邻文件 |
+| --- | --- | --- | --- |
+| lsp-manager | LSP服务器管理器（单例、初始化、关闭、服务器路由） | tests/lspLifecycle.test.ts |  |
+| lsp-server-instance | LSP服务器实例（启动/停止、健康检查、请求发送、通知处理） | tests/lspLifecycle.test.ts |  |
+| lsp-client | LSP客户端（lazy load、vscode-jsonrpc封装） | tests/lspLifecycle.test.ts |  |
+| lsp-config | LSP配置获取（从插件加载） | tests/lsp.test.ts |  |
+| lsp-passive-feedback | 被动诊断注册、去重、容量限制 |  |  |
+| lsp-tool | LSP工具实现（所有LSP操作、位置转换、gitignore过滤） |  |  |
 
 相关子系统：
 - plugins: 提供 LSP 服务器配置

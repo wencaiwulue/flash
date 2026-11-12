@@ -3,28 +3,6 @@ spec_id: task-system
 spec: ../../superpowers/specs/2026-11-13-task-system-design.md
 status: draft
 groups:
-  - id: additional-files
-    kind: source
-    section: 4
-    summary: Additional files
-    files:
-      - src/commands/status/index.ts
-      - src/commands/status/status.tsx
-      - src/commands/statusline.tsx
-      - src/components/tasks/AsyncAgentDetailDialog.tsx
-      - src/components/tasks/BackgroundTask.tsx
-      - src/components/tasks/BackgroundTaskStatus.tsx
-      - src/components/tasks/BackgroundTasksDialog.tsx
-      - src/components/tasks/DreamDetailDialog.tsx
-      - src/components/tasks/InProcessTeammateDetailDialog.tsx
-      - src/components/tasks/MonitorMcpDetailDialog.tsx
-      - src/components/tasks/RemoteSessionDetailDialog.tsx
-      - src/components/tasks/RemoteSessionProgress.tsx
-      - src/components/tasks/ShellDetailDialog.tsx
-      - src/components/tasks/ShellProgress.tsx
-      - src/components/tasks/WorkflowDetailDialog.tsx
-      - src/components/tasks/renderToolActivity.tsx
-      - src/components/tasks/taskStatusUtils.tsx
   - id: task-core
     kind: source
     section: 4
@@ -43,7 +21,7 @@ groups:
   - id: task-disk-output
     kind: source
     section: 4
-    summary: 任务输出文件管理，包括 DiskTaskOutput、增量读取、输出 cap
+    summary: 任务输出文件管理，包括 DiskTaskOutput、增量读取、输出 cap、格式化
     files:
       - src/utils/task/diskOutput.ts
       - src/utils/task/TaskOutput.ts
@@ -88,6 +66,12 @@ groups:
     summary: LocalMainSessionTask 实现
     files:
       - src/tasks/LocalMainSessionTask.ts
+  - id: todo-tasks-core
+    kind: source
+    section: 4
+    summary: Todo list 任务持久化、claim/block 逻辑、task list 管理
+    files:
+      - src/utils/tasks.ts
   - id: task-create-tool
     kind: source
     section: 4
@@ -142,12 +126,6 @@ groups:
       - src/tools/TodoWriteTool/TodoWriteTool.ts
       - src/tools/TodoWriteTool/prompt.ts
       - src/tools/TodoWriteTool/constants.ts
-  - id: todo-tasks
-    kind: source
-    section: 4
-    summary: Todo list 任务持久化、claim/block 逻辑、task list 管理
-    files:
-      - src/utils/tasks.ts
   - id: task-hooks
     kind: source
     section: 4
@@ -157,16 +135,38 @@ groups:
       - src/hooks/useTaskListWatcher.ts
       - src/hooks/useScheduledTasks.ts
       - src/hooks/useBackgroundTaskNavigation.ts
-  - id: task-components
+  - id: task-ui-components
     kind: source
     section: 4
-    summary: 任务 UI 组件
+    summary: 任务 UI 组件（后台任务、列表、详情等）
     files:
       - src/components/TaskListV2.tsx
       - src/components/ResumeTask.tsx
+      - src/components/tasks/AsyncAgentDetailDialog.tsx
+      - src/components/tasks/BackgroundTask.tsx
+      - src/components/tasks/BackgroundTaskStatus.tsx
+      - src/components/tasks/BackgroundTasksDialog.tsx
+      - src/components/tasks/DreamDetailDialog.tsx
+      - src/components/tasks/InProcessTeammateDetailDialog.tsx
+      - src/components/tasks/MonitorMcpDetailDialog.tsx
+      - src/components/tasks/RemoteSessionDetailDialog.tsx
+      - src/components/tasks/RemoteSessionProgress.tsx
+      - src/components/tasks/ShellDetailDialog.tsx
+      - src/components/tasks/ShellProgress.tsx
+      - src/components/tasks/WorkflowDetailDialog.tsx
+      - src/components/tasks/renderToolActivity.tsx
+      - src/components/tasks/taskStatusUtils.tsx
   - id: task-summary
     kind: source
     section: 4
     summary: 任务摘要工具
     files:
       - src/utils/taskSummary.ts
+  - id: commands
+    kind: source
+    section: 4
+    summary: 状态相关命令实现
+    files:
+      - src/commands/status/index.ts
+      - src/commands/status/status.tsx
+      - src/commands/statusline.tsx

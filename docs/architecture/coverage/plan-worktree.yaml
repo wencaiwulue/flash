@@ -3,23 +3,6 @@ spec_id: plan-worktree
 spec: ../../superpowers/specs/2026-11-12-plan-worktree-design.md
 status: draft
 groups:
-  - id: additional-files
-    kind: source
-    section: 4
-    summary: Additional files
-    files:
-      - src/commands/ultraplan.tsx
-      - src/components/UltraplanChoiceDialog.tsx
-      - src/components/UltraplanLaunchDialog.tsx
-      - src/utils/planModeV2.ts
-      - src/utils/worktreeModeEnabled.ts
-  - id: commands
-    kind: source
-    section: 4
-    summary: Command implementations
-    files:
-      - src/commands/plan/index.ts
-      - src/commands/plan/plan.tsx
   - id: plan-tools
     kind: source
     section: 4
@@ -61,7 +44,7 @@ groups:
   - id: worktree-utils
     kind: source
     section: 4
-    summary: 工作区创建、保留、删除、清理
+    summary: 工作区创建、保留、删除、清理、symlink、include文件
     files:
       - src/utils/worktree.ts
   - id: ultraplan-ccr
@@ -72,16 +55,33 @@ groups:
       - src/utils/ultraplan/ccrSession.ts
       - src/utils/ultraplan/keyword.ts
       - src/utils/ultraplan/prompt.txt
+  - id: plan-mode-utils
+    kind: source
+    section: 4
+    summary: 计划模式相关工具
+    files:
+      - src/utils/planModeV2.ts
+      - src/utils/worktreeModeEnabled.ts
   - id: constants-tools
     kind: source
     section: 4
     summary: 工具常量与禁用列表
     files:
       - src/constants/tools.ts
-  - id: plan-tests
+  - id: commands
+    kind: source
+    section: 4
+    summary: 计划和ultraplan相关命令实现
+    files:
+      - src/commands/plan/index.ts
+      - src/commands/plan/plan.tsx
+      - src/commands/ultraplan.tsx
+      - src/components/UltraplanChoiceDialog.tsx
+      - src/components/UltraplanLaunchDialog.tsx
+  - id: plan-mode-tests
     kind: test
     section: 7
-    summary: 计划模式与 Ultraplan 相关测试
+    summary: 计划模式与Ultraplan测试（ExitPlanMode权限schema、OAuth刷新）
     files:
       - tests/exitPlanModePrompt.test.ts
       - tests/ultraplanPoll.test.ts

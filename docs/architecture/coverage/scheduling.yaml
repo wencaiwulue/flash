@@ -3,23 +3,16 @@ spec_id: scheduling
 spec: ../../superpowers/specs/2026-11-12-scheduling-design.md
 status: draft
 groups:
-  - id: additional-files
-    kind: test
-    section: 7
-    summary: Additional files
-    files:
-      - tests/cronLifecycle.test.ts
-      - tests/templateJobs.test.ts
   - id: cron-core
     kind: source
     section: 4
-    summary: cron表达式解析、计算下次触发时间、转自然语言
+    summary: cron表达式解析、抖动计算、missed检测
     files:
       - src/utils/cron.ts
   - id: cron-tasks
     kind: source
     section: 4
-    summary: 定时任务持久化CRUD、抖动计算、missed检测
+    summary: 定时任务持久化CRUD、文件格式
     files:
       - src/utils/cronTasks.ts
   - id: cron-scheduler
@@ -73,13 +66,13 @@ groups:
   - id: jobs-operations
     kind: source
     section: 4
-    summary: 作业操作（未细读）
+    summary: 作业操作
     files:
       - src/jobs/operations.ts
   - id: jobs-discovery
     kind: source
     section: 4
-    summary: 作业发现（未细读）
+    summary: 作业发现
     files:
       - src/jobs/discovery.ts
   - id: proactive-core
@@ -134,3 +127,15 @@ groups:
       - src/tools/RemoteTriggerTool/RemoteTriggerTool.ts
       - src/tools/RemoteTriggerTool/prompt.ts
       - src/tools/RemoteTriggerTool/UI.tsx
+  - id: cron-lifecycle-tests
+    kind: test
+    section: 7
+    summary: Cron生命周期测试（一次性任务、周期性任务、锁竞争）
+    files:
+      - tests/cronLifecycle.test.ts
+  - id: template-jobs-tests
+    kind: test
+    section: 7
+    summary: 模板作业测试
+    files:
+      - tests/templateJobs.test.ts

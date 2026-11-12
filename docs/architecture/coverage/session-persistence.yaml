@@ -8,8 +8,6 @@ groups:
     section: 4
     summary: Additional files
     files:
-      - src/commands/insights.ts
-      - src/commands/insights/sessionMeta.ts
       - src/commands/session/index.ts
       - src/commands/session/session.tsx
       - src/migrations/migrateFennecToOpus.ts
@@ -36,7 +34,6 @@ groups:
     section: 7
     summary: Additional files
     files:
-      - tests/backgroundSessions.test.ts
       - tests/backgroundSessionsDist.test.ts
   - id: commands
     kind: source

@@ -445,46 +445,34 @@ Line-based JSON frames:
 
 ## 7. 代码与测试证据
 
-### 现有测试
+| 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
+| --- | --- | --- | --- |
+| tmux作为后台会话容器 | `src/cli/bg.ts`, `src/cli/tmuxSocket.ts` | tests/backgroundSessions.test.ts：会话发现/附着/日志/终止、并发会话 | Windows仅支持WSL |
+| 多层身份验证 | `src/cli/processIdentity.ts`, `src/cli/bg.ts` | tests/backgroundSessions.test.ts：PID令牌验证、身份验证链、防止PID复用 | 未覆盖所有攻击向量 |
+| 原子文件操作+严格权限 | `src/utils/udsRegistry.ts`, `src/cli/concurrentSessions.ts` | tests/backgroundSessions.test.ts：原子注册表写入、权限0o600/0o700 | 未覆盖并发写竞态 |
+| Supervisor指数退避重启 | `src/daemon/supervisor.ts` | tests/daemon.test.ts：重启策略验证、maxRestarts限制 | 未覆盖实际worker崩溃场景 |
+| UDS作为消息通道 | `src/utils/udsMessaging.ts`, `src/utils/udsClient.ts` | tests/udsMessaging.test.ts：ping/pong发现、消息发送、帧限制、会话识别 | 未覆盖大量并发消息 |
+| 墓碑机制 | `src/cli/concurrentSessions.ts` | tests/backgroundSessions.test.ts：墓碑创建、查询、拒绝ID重用 | 无自动墓碑过期机制 |
+| 后台会话生命周期 | `src/cli/bg.ts` | tests/backgroundSessions.test.ts：启动/附着/日志/终止、墓碑机制 | 未实现--resume标志 |
+| 守护进程生命周期 | `src/daemon/main.ts` | tests/daemon.test.ts：启动/停止/状态查询、幂等启动、陈旧记录检测 | 无持久化日志 |
+| UDS服务器生命周期 | `src/utils/udsMessaging.ts` | tests/udsMessaging.test.ts：服务器启动/关闭、连接处理 | Socket路径长度限制（非Windows<100字节） |
 
-- `tests/daemon.test.ts`：守护进程测试
-  - 启动/停止/状态查询
-  - Supervisor 指数退避重启
-  - 幂等启动
-  - 陈旧记录检测
+## 8. 文件覆盖与相关子系统
 
-- `tests/backgroundSessions.test.ts`：后台会话测试
-  - 会话发现/附着/日志/终止
-  - 身份验证
-  - 墓碑机制
-  - 并发会话
+[Coverage](../../architecture/coverage/daemon-background.yaml)
 
-- `tests/udsMessaging.test.ts`：UDS 消息传递测试
-  - ping/pong 发现
-  - 消息发送
-  - 帧限制
-  - 会话识别
-
-### 实现证据
-
-- `src/daemon/main.ts`：守护进程命令与生命周期
-- `src/daemon/supervisor.ts`：Supervisor 指数退避重启
-- `src/daemon/workerRegistry.ts`：Worker 类型定义
-- `src/cli/bg.ts`：后台会话命令与生命周期
-- `src/cli/concurrentSessions.ts`：会话注册表与墓碑
-- `src/cli/tmuxSocket.ts`：tmux 抽象与验证
-- `src/cli/processIdentity.ts`：PID+令牌身份验证
-- `src/utils/udsRegistry.ts`：UDS 会话注册与发现
-- `src/utils/udsMessaging.ts`：UDS 服务器实现
-- `src/utils/udsClient.ts`：UDS 客户端实现
-
-### 未覆盖场景
-
-- Windows 原生后台会话（当前仅 WSL）
-- 守护进程持久化日志
-- 自动墓碑过期
-- `--resume` 标志实现
-- 远程后台会话（与 teleport 集成）
+| 分组 | 主拥有职责 | 相关测试或共享证据 | 不拥有的相邻文件 |
+| --- | --- | --- | --- |
+| daemon-main | 守护进程命令与生命周期、PID记录 | tests/daemon.test.ts |  |
+| daemon-supervisor | Supervisor指数退避重启、进程管理 | tests/daemon.test.ts |  |
+| daemon-worker-registry | Worker类型定义（assistant/remote-control） | tests/daemon.test.ts |  |
+| bg-cli | 后台会话命令与生命周期（launch/attach/logs/kill/ps） | tests/backgroundSessions.test.ts |  |
+| concurrent-sessions | 会话注册表与墓碑机制、原子文件操作 | tests/backgroundSessions.test.ts |  |
+| tmux-socket | tmux抽象与安全验证、会话管理 | tests/backgroundSessions.test.ts |  |
+| process-identity | PID+启动令牌的进程身份验证、防止PID复用 | tests/backgroundSessions.test.ts |  |
+| uds-registry | UDS会话注册与发现、原子操作、权限验证 | tests/udsMessaging.test.ts |  |
+| uds-messaging | UDS服务器实现、ping/pong、消息处理、帧限制 | tests/udsMessaging.test.ts |  |
+| uds-client | UDS客户端实现、ping、会话枚举、消息发送 | tests/udsMessaging.test.ts |  |
 
 ## 8. 文件覆盖与相关子系统
 

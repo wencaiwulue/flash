@@ -51,17 +51,3 @@ groups:
     summary: 系统初始化消息 - 构建会话元数据
     files:
       - src/utils/messages/systemInit.ts
-  - id: uds-messaging
-    kind: source
-    section: 4
-    summary: UDS 消息传递 - 域套接字消息传递
-    files:
-      - src/utils/udsMessaging.ts
-      - src/utils/udsRegistry.ts
-      - src/utils/udsClient.ts
-  - id: uds-messaging-test
-    kind: test
-    section: 7
-    summary: UDS 消息测试 - 验证真实 socket 服务
-    files:
-      - tests/udsMessaging.test.ts
