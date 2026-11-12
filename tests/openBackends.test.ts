@@ -136,7 +136,8 @@ async function startFakeChromeCdp(): Promise<{ endpoint: string }> {
   })
 
   let lastError: unknown
-  for (let attempt = 0; attempt < 100; attempt++) {
+  // The first headless Chrome launch on a hosted Linux runner can be cold.
+  for (let attempt = 0; attempt < 400; attempt++) {
     if (startupError) throw startupError
     if (child.exitCode !== null) {
       throw new Error(`Fake CDP Chromium exited with ${child.exitCode}`)
