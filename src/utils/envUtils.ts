@@ -1,6 +1,7 @@
 import memoize from 'lodash-es/memoize.js'
 import { homedir } from 'os'
 import { join } from 'path'
+import { checkProtectedNamespace } from './protectedNamespace.js'
 
 // Memoized: 150+ callers, many on hot paths. Keyed off CLAUDE_CONFIG_DIR so
 // tests that change the env var get a fresh value without explicit cache.clear.
@@ -134,16 +135,7 @@ export function isRunningOnHomespace(): boolean {
  * Used for telemetry to measure auto-mode usage in sensitive environments.
  */
 export function isInProtectedNamespace(): boolean {
-  // USER_TYPE is build-time --define'd; in external builds this block is
-  // DCE'd so the require() and namespace allowlist never appear in the bundle.
-  if (process.env.USER_TYPE === 'ant') {
-    /* eslint-disable @typescript-eslint/no-require-imports */
-    return (
-      require('./protectedNamespace.js') as typeof import('./protectedNamespace.js')
-    ).checkProtectedNamespace()
-    /* eslint-enable @typescript-eslint/no-require-imports */
-  }
-  return false
+  return checkProtectedNamespace()
 }
 
 // @[MODEL LAUNCH]: Add a Vertex region override env var for the new model.

@@ -140,7 +140,10 @@ import { isPolicyAllowed } from 'src/services/policyLimits/index.js'
 import type { ReplBridgeHandle } from 'src/bridge/replBridge.js'
 import { getRemoteSessionUrl } from 'src/constants/product.js'
 import { buildBridgeConnectUrl } from 'src/bridge/bridgeStatusUtil.js'
-import { extractInboundMessageFields } from 'src/bridge/inboundMessages.js'
+import {
+  InboundEnvelopeError,
+  prepareInboundMessage,
+} from 'src/bridge/inboundMessages.js'
 import { resolveAndPrepend } from 'src/bridge/inboundAttachments.js'
 import type { CanUseToolFn } from 'src/hooks/useCanUseTool.js'
 import { hasPermissionsToUseTool } from 'src/utils/permissions/permissions.js'
@@ -3933,17 +3936,34 @@ function runHeadlessStreaming(
                   'src/bridge/initReplBridge.js'
                 )
                 const handle = await initReplBridge({
-                  onInboundMessage(msg) {
-                    const fields = extractInboundMessageFields(msg)
-                    if (!fields) return
-                    const { content, uuid } = fields
-                    enqueue({
-                      value: content,
-                      mode: 'prompt' as const,
-                      uuid,
-                      skipSlashCommands: true,
-                    })
-                    void run()
+                  async onInboundMessage(msg, transportMetadata) {
+                    try {
+                      const { value, uuid, origin } = await prepareInboundMessage(
+                        msg,
+                        {
+                          resolveAttachments: resolveAndPrepend,
+                          transportMetadata,
+                        },
+                      )
+                      enqueue({
+                        value,
+                        mode: 'prompt' as const,
+                        uuid,
+                        skipSlashCommands: true,
+                        bridgeOrigin: true,
+                        origin,
+                      })
+                      void run()
+                    } catch (error) {
+                      const code =
+                        error instanceof InboundEnvelopeError
+                          ? error.code
+                          : 'prepare_failed'
+                      logForDebugging(
+                        `[bridge:sdk] Rejected inbound user message: ${code}`,
+                        { level: 'warn' },
+                      )
+                    }
                   },
                   onPermissionResponse(response) {
                     // Forward bridge permission responses into the

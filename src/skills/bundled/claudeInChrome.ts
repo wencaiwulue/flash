@@ -3,16 +3,16 @@ import { BASE_CHROME_PROMPT } from '../../utils/claudeInChrome/prompt.js'
 import { registerBundledSkill } from '../bundledSkills.js'
 
 const SKILL_ACTIVATION_MESSAGE = `
-This skill uses the open Playwright MCP backend in an isolated browser profile. Start by inspecting the current page or opening a new tab, then use the browser's accessibility tree for precise actions.
+This skill controls real Chrome over public loopback CDP with isolated:false and a dedicated persistent profile. It is not compatible with private extension pairing. Start with browser_tabs(list), then browser_snapshot on the current page. Reuse relevant existing tabs and preserve their cookies/login state; create a tab only when the task requires it. Disconnecting must not close Chrome or its default context.
 `
 
 export function registerClaudeInChromeSkill(): void {
   registerBundledSkill({
     name: 'claude-in-chrome',
     description:
-      'Automates an isolated Chromium browser with Playwright MCP: navigation, forms, screenshots, console logs, and accessibility-tree inspection.',
+      'Automates a dedicated real Chrome profile over public loopback CDP with Playwright MCP: existing tabs, cookies, navigation, forms, screenshots, console logs, and accessibility-tree inspection.',
     whenToUse:
-      'When the user wants to interact with web pages, automate browser tasks, capture screenshots, read console logs, or test a web application.',
+      'When the user explicitly wants the dedicated real-Chrome CDP session, its existing tabs, cookies, or authenticated state. Use WebBrowser instead for isolated local development.',
     allowedTools: [],
     userInvocable: true,
     isEnabled: () => true,

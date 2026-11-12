@@ -79,8 +79,43 @@ export type MockScenario =
   | 'extra-usage-required'
   | 'clear'
 
+/** Public, process-local scenarios. No arbitrary response headers are accepted. */
+export const MOCK_SCENARIOS: readonly Exclude<MockScenario, 'clear'>[] =
+  Object.freeze([
+    'normal',
+    'session-limit-reached',
+    'approaching-weekly-limit',
+    'weekly-limit-reached',
+    'overage-active',
+    'overage-warning',
+    'overage-exhausted',
+    'out-of-credits',
+    'org-zero-credit-limit',
+    'org-spend-cap-hit',
+    'member-zero-credit-limit',
+    'seat-tier-zero-credit-limit',
+    'opus-limit',
+    'opus-warning',
+    'sonnet-limit',
+    'sonnet-warning',
+    'fast-mode-limit',
+    'fast-mode-short-limit',
+    'extra-usage-required',
+  ])
+
+export function isMockLimitsEnabled(): boolean {
+  return process.env.CLAUDE_CODE_ENABLE_MOCK_LIMITS === '1'
+}
+
+export function getMockLimitsBanner(): string | null {
+  return mockEnabled && isMockLimitsEnabled()
+    ? 'MOCK LIMITS ACTIVE — simulated responses only; real provider limits are unchanged'
+    : null
+}
+
 let mockHeaders: MockHeaders = {}
 let mockEnabled = false
+let mockScenario: MockScenario | null = null
 let mockHeaderless429Message: string | null = null
 let mockSubscriptionType: SubscriptionType | null = null
 let mockFastModeRateLimitDurationMs: number | null = null
@@ -101,7 +136,7 @@ export function setMockHeader(
   key: MockHeaderKey,
   value: string | undefined,
 ): void {
-  if (process.env.USER_TYPE !== 'ant') {
+  if (!isMockLimitsEnabled()) {
     return
   }
 
@@ -250,7 +285,7 @@ export function addExceededLimit(
   type: 'five_hour' | 'seven_day' | 'seven_day_opus' | 'seven_day_sonnet',
   hoursFromNow: number,
 ): void {
-  if (process.env.USER_TYPE !== 'ant') {
+  if (!isMockLimitsEnabled()) {
     return
   }
 
@@ -278,7 +313,7 @@ export function setMockEarlyWarning(
   utilization: number,
   hoursFromNow?: number,
 ): void {
-  if (process.env.USER_TYPE !== 'ant') {
+  if (!isMockLimitsEnabled()) {
     return
   }
 
@@ -319,18 +354,19 @@ export function clearMockEarlyWarning(): void {
 }
 
 export function setMockRateLimitScenario(scenario: MockScenario): void {
-  if (process.env.USER_TYPE !== 'ant') {
+  if (!isMockLimitsEnabled()) {
     return
   }
 
   if (scenario === 'clear') {
-    mockHeaders = {}
-    mockHeaderless429Message = null
-    mockEnabled = false
+    clearMockHeaders()
     return
   }
 
   mockEnabled = true
+  mockScenario = scenario
+  mockFastModeRateLimitDurationMs = null
+  mockFastModeRateLimitExpiresAt = null
 
   // Set reset times for demos
   const fiveHoursFromNow = Math.floor(Date.now() / 1000) + 5 * 3600
@@ -600,7 +636,7 @@ export function setMockRateLimitScenario(scenario: MockScenario): void {
 }
 
 export function getMockHeaderless429Message(): string | null {
-  if (process.env.USER_TYPE !== 'ant') {
+  if (!isMockLimitsEnabled()) {
     return null
   }
   // Env var path for -p / SDK testing where slash commands aren't available
@@ -616,7 +652,7 @@ export function getMockHeaderless429Message(): string | null {
 export function getMockHeaders(): MockHeaders | null {
   if (
     !mockEnabled ||
-    process.env.USER_TYPE !== 'ant' ||
+    !isMockLimitsEnabled() ||
     Object.keys(mockHeaders).length === 0
   ) {
     return null
@@ -625,15 +661,14 @@ export function getMockHeaders(): MockHeaders | null {
 }
 
 export function getMockStatus(): string {
-  if (
-    !mockEnabled ||
-    (Object.keys(mockHeaders).length === 0 && !mockSubscriptionType)
-  ) {
-    return 'No mock headers active (using real limits)'
+  if (!mockEnabled || !isMockLimitsEnabled()) {
+    return 'No mock response active (using real limits)'
   }
 
   const lines: string[] = []
-  lines.push('Active mock headers:')
+  lines.push('Active mock response (local simulation only):')
+  if (mockScenario) lines.push(`  Scenario: ${mockScenario}`)
+  if (mockHeaderless429Message) lines.push('  Headerless 429 response configured')
 
   // Show subscription type - either explicitly set or default
   const effectiveSubscription =
@@ -677,6 +712,7 @@ export function getMockStatus(): string {
 
 export function clearMockHeaders(): void {
   mockHeaders = {}
+  mockScenario = null
   exceededLimits = []
   mockSubscriptionType = null
   mockFastModeRateLimitDurationMs = null
@@ -711,16 +747,17 @@ export function applyMockHeaders(
 // Check if we should process rate limits even without subscription
 // This is for Ant employees testing with mocks
 export function shouldProcessMockLimits(): boolean {
-  if (process.env.USER_TYPE !== 'ant') {
+  if (!isMockLimitsEnabled()) {
     return false
   }
   return mockEnabled || Boolean(process.env.CLAUDE_MOCK_HEADERLESS_429)
 }
 
 export function getCurrentMockScenario(): MockScenario | null {
-  if (!mockEnabled) {
+  if (!mockEnabled || !isMockLimitsEnabled()) {
     return null
   }
+  if (mockScenario) return mockScenario
 
   // Reverse lookup the scenario from current headers
   if (!mockHeaders) return null
@@ -806,7 +843,7 @@ export function getScenarioDescription(scenario: MockScenario): string {
 export function setMockSubscriptionType(
   subscriptionType: SubscriptionType | null,
 ): void {
-  if (process.env.USER_TYPE !== 'ant') {
+  if (!isMockLimitsEnabled()) {
     return
   }
   mockEnabled = true
@@ -814,7 +851,7 @@ export function setMockSubscriptionType(
 }
 
 export function getMockSubscriptionType(): SubscriptionType | null {
-  if (!mockEnabled || process.env.USER_TYPE !== 'ant') {
+  if (!mockEnabled || !isMockLimitsEnabled()) {
     return null
   }
   // Return the explicitly set subscription type, or default to 'max'
@@ -826,13 +863,13 @@ export function shouldUseMockSubscription(): boolean {
   return (
     mockEnabled &&
     mockSubscriptionType !== null &&
-    process.env.USER_TYPE === 'ant'
+    isMockLimitsEnabled()
   )
 }
 
 // Mock billing access (admin vs non-admin)
 export function setMockBillingAccess(hasAccess: boolean | null): void {
-  if (process.env.USER_TYPE !== 'ant') {
+  if (!isMockLimitsEnabled()) {
     return
   }
   mockEnabled = true

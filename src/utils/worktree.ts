@@ -13,6 +13,8 @@ import {
 import ignore from 'ignore'
 import { basename, dirname, join } from 'path'
 import { saveCurrentProjectConfig } from './config.js'
+import { parsePRReference } from './prReference.js'
+export { parsePRReference } from './prReference.js'
 import { getCwd } from './cwd.js'
 import { logForDebugging } from './debug.js'
 import { errorMessage, getErrnoCode } from './errors.js'
@@ -621,33 +623,6 @@ async function performPostCreationSetup(
         logForDebugging(`Failed to load postCommitAttribution module: ${error}`)
       })
   }
-}
-
-/**
- * Parses a PR reference from a string.
- * Accepts GitHub-style PR URLs (e.g., https://github.com/owner/repo/pull/123,
- * or GHE equivalents like https://ghe.example.com/owner/repo/pull/123)
- * or `#N` format (e.g., #123).
- * Returns the PR number or null if the string is not a recognized PR reference.
- */
-export function parsePRReference(input: string): number | null {
-  // GitHub-style PR URL: https://<host>/owner/repo/pull/123 (with optional trailing slash, query, hash)
-  // The /pull/N path shape is specific to GitHub — GitLab uses /-/merge_requests/N,
-  // Bitbucket uses /pull-requests/N — so matching any host here is safe.
-  const urlMatch = input.match(
-    /^https?:\/\/[^/]+\/[^/]+\/[^/]+\/pull\/(\d+)\/?(?:[?#].*)?$/i,
-  )
-  if (urlMatch?.[1]) {
-    return parseInt(urlMatch[1], 10)
-  }
-
-  // #N format
-  const hashMatch = input.match(/^#(\d+)$/)
-  if (hashMatch?.[1]) {
-    return parseInt(hashMatch[1], 10)
-  }
-
-  return null
 }
 
 export async function isTmuxAvailable(): Promise<boolean> {

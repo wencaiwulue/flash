@@ -247,14 +247,17 @@ function useCanUseTool(
                     .awaitAutomatedChecksBeforeDialog
                 ) {
                   const speculativePromise = peekSpeculativeClassifierCheck(
-                    (input as { command: string }).command,
+                    result.pendingClassifierCheck,
                   )
                   if (speculativePromise) {
                     const raceResult = await Promise.race([
-                      speculativePromise.then(r => ({
-                        type: 'result' as const,
-                        result: r,
-                      })),
+                      speculativePromise.then(
+                        r => ({
+                          type: 'result' as const,
+                          result: r,
+                        }),
+                        () => ({ type: 'error' as const }),
+                      ),
                       new Promise<{ type: 'timeout' }>(res =>
                         // eslint-disable-next-line no-restricted-syntax -- resolves with a value, not void
                         setTimeout(res, 2000, { type: 'timeout' as const }),
@@ -265,13 +268,18 @@ function useCanUseTool(
 
                     if (
                       raceResult.type === 'result' &&
+                      raceResult.result.available &&
                       raceResult.result.matches &&
                       raceResult.result.confidence === 'high' &&
+                      raceResult.result.matchedDescription !== undefined &&
+                      result.pendingClassifierCheck.descriptions.includes(
+                        raceResult.result.matchedDescription,
+                      ) &&
                       feature('BASH_CLASSIFIER')
                     ) {
                       // Classifier approved within grace period — skip dialog
                       void consumeSpeculativeClassifierCheck(
-                        (input as { command: string }).command,
+                        result.pendingClassifierCheck,
                       )
 
                       const matchedRule =

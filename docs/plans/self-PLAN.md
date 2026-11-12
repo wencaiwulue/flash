@@ -1,87 +1,87 @@
 ---
 commit: self
-changeId: substantive-commit-docs
-title: "Rebuild substantive per-commit design and implementation documentation"
+changeId: external-stub-restoration
+title: "Document and restore external stub capabilities"
 status: implemented
 kind: component
 ---
 
-# 实施计划：Rebuild substantive per-commit design and implementation documentation
+# 实施计划：Document and restore external stub capabilities
 
 > 本文按实际代码依赖重建实施顺序，用于说明怎样完成该提交；不伪称是历史提交当时保存的计划。
 
 ## 目标与前置条件
 
-这种结构只能证明文档存在且可由同一套模板复现，无法回答某个提交为什么采用特定架构、数据怎样流动、实施时先改哪个模块，也无法发现缺失记录被自动生成所掩盖。需要把技术正文变成强制、可核对的一等数据，并保留人工语义审查的位置。
+这些占位不是单一目录里的同名导出，而是分布在传输、权限、进程生命周期、原生适配、UI 和命令注册中。只开启 feature flag 会把用户导向运行时异常，只用 Playwright 或 Zavora fallback 又会掩盖真实 Chrome 与原生宿主能力的边界。需要先冻结完整清单和公开契约，再按依赖恢复实现、入口和验证证据。
 
-- 完整 Git 历史可用，旧生成器和代表性 SPEC/PLAN 已确认只提供结构完整性而没有设计深度。
-- 每项回填都能读取目标提交、父提交、测试以及对应 revision 的状态/发布记录。
+- 用户已批准全部 external stub 范围以及先写文档再实现的顺序。
+- 当前 typecheck 与 build 基线通过，全量测试的两项前置失败已记录，开始时不存在生产源码修改。
+- 设计只依据仓库可见调用方和类型，不把私有包名称或命令名称当作完整协议证据。
 
 ## 复用与兼容处理
 
 ### 复用现有实现
 
-- 复用现有 docs/specs、docs/plans、INDEX 和 status/index.json 的对外布局，避免破坏已有链接。
-- 复用 Bun/TypeScript 测试与构建链，不引入新的运行时依赖或文档服务。
-- 保留 self 解决 SHA 自引用的基本思想，但把清单计算统一到 head/next 两种模式。
+- 复用 docs/STATUS、commit-docs self 记录和 Bun 构建测试链，不另建平行的状态与验证系统。
+- 复用现有真实 client、transport、storage、attribution、snapshot、model query 和开放 MCP 后端。
+- 复用 enabledFeatures 和 openBackends 的 dist/profile 与真实后端测试模式。
 
 ### 兼容、迁移与生命周期
 
-- 保留原有文档路径和 seven-character short SHA 链接，历史 full SHA 只在结构化记录中成为强制值。
-- 后续工作将旧 self 迁移成刚落地 commit 的 SHA 记录，再创建新的 self，避免递归修改历史。
-- PR 使用 head SHA 而不是 synthetic merge SHA，保证 CI 的 HEAD 与 self 清单含义一致。
+- 新公开协议均带版本和明确名称；私有协议兼容性没有真实证据时保持未验证声明。
+- 现有 Playwright、Zavora、本地 UDS 和 local-shell Monitor 路径必须回归，不能被新实现替换成功能缩减。
+- 已存在用户 git hook、session、job、lockfile 和配置必须有幂等、迁移或保留语义。
 
 ## 文件级实施步骤
 
-### 1. 建立不可兜底的数据契约
+### 1. 冻结审计与全部公开契约
 
-先定义完整记录、证据和文件引用，再让加载器在缺记录或 SHA 不匹配时立即失败，从入口消除通用正文。
+先完成总审计、协议边界、逐模块契约和验证基线，再允许生产源码修改。
 
-涉及位置：`scripts/commit-docs/schema.ts`、`scripts/commit-docs/load.ts`
+涉及位置：`docs/status/external-stubs-audit.md`、`docs/external-stubs`
 
-### 2. 实现 Git 对照和质量门禁
+### 2. 恢复入站、renderer、状态与权限
 
-读取真实 diff 与 revision 内容，核对变更覆盖和引用，再对作者正文执行占位、证据、重复与敏感信息检查。
+先处理已开放路径的消息丢失和内容丢弃，再实现 snapshot、attribution、结构化权限分类和真实 MCP 取消。
 
-涉及位置：`scripts/commit-docs/git.ts`、`scripts/commit-docs/validate.ts`、`tests/commitDocs.test.ts`
+涉及位置：`src/bridge`、`src/components/messages`、`src/components/agents`、`src/utils/permissions`
 
-### 3. 分离渲染、写入和只读检查
+### 3. 恢复 peer、Chrome 与 Computer Use
 
-渲染器只转换已审核记录，writer 显式生成，checker 仅比较并报告孤儿文件；随后让 CI 只调用 checker。
+接通目标会话事件和真实浏览器/桌面后端，分离独立开放工具与私有入口并验证错误传播。
 
-涉及位置：`scripts/commit-docs/render.ts`、`scripts/document-commits.ts`、`scripts/check-commit-docs.ts`、`.github/workflows/ci.yml`
+涉及位置：`src/bridge/peerSessions.ts`、`src/utils/claudeInChrome`、`src/utils/computerUse`、`src/external-stubs`
 
-### 4. 以代表性提交校准内容标准
+### 4. 恢复服务、后台进程、SSH 与任务
 
-分别撰写大型恢复快照、Workflow、bridge/Cloud、CI 迁移、纯 rename 和元数据 finalization，审查通过后再批量回填。
+按版本化契约实现 Direct Connect、bg、SSH、本地模板任务与开放 runner，并接通进程恢复和安全边界。
 
-涉及位置：`scripts/commit-docs/records/ea80851.ts`、`scripts/commit-docs/records/02bc3c2.ts`、`scripts/commit-docs/records/5c56455.ts`
+涉及位置：`src/server`、`src/cli/bg.ts`、`src/ssh`、`src/cli/handlers/templateJobs.ts`、`src/environment-runner`、`src/self-hosted-runner`
 
-### 5. 全量回填并逐提交审查
+### 5. 恢复公开命令与剩余占位
 
-按时间顺序完成所有功能、修复、CI、证据和 finalization 记录，渲染后对照各自 diff 检查技术理由、步骤、时间和证据。
+按逐命令 SPEC 实现十八个 slash command 和总审计其他项，更新注册与统一 external feature profile。
 
-涉及位置：`scripts/commit-docs/records`、`docs/specs`、`docs/plans`、`docs/INDEX.md`、`docs/status/index.json`
+涉及位置：`src/commands.ts`、`src/commands`、`scripts/build.ts`、`tests/fixtures/verify-enabled-features.ts`
 
-### 6. 执行全量验证和交付
+### 6. 执行全量验证与状态收口
 
-先以 next 模式验证全部历史，再运行负向测试、typecheck、全量测试和 build；提交后用 head 模式及重复生成确认幂等，并把凭据文件 ignore 与状态修正纳入最终审查。
+运行专项、全量、typecheck、build、dist 和文档检查，在可用授权环境执行 live 验证并更新所有状态证据。
 
-涉及位置：`package.json`、`docs/COMMIT_DOCS.md`、`docs/STATUS.md`、`docs/RELEASE.md`、`.gitignore`
+涉及位置：`package.json`、`docs/STATUS.md`、`docs/RELEASE.md`、`docs/external-stubs/verification.md`
 
 ## 风险与处理
 
-- 历史回填可能把后来的理解误写成当时事实；通过 revision 证据、later-evidence 类型和回溯说明控制。
-- finalization 提交天然相似；重复门禁和逐提交计数/路径审查用于防止只替换 SHA 的伪独立文档。
-- 路径存在不代表架构描述正确，因此最终报告必须保留人工语义审查结论和自动检查的边界。
+- 范围横跨多个完整子系统，若只追求一次性清空 unavailable 字符串会产生浅实现；通过逐波契约和 dist 验收控制。
+- 私有扩展、runner 和原生能力缺少兼容环境，开放实现可能被误解为原协议恢复；通过文档命名和独立证据状态控制。
+- 后台进程、SSH、runner 和危险权限会放大认证与清理错误；通过默认最小权限、身份校验、资源清理和负向测试控制。
 
 ## 验证顺序
 
-1. 运行 tests/commitDocs.test.ts，先确认各类无效记录确实被拒绝。
-2. 运行 docs:generate -- --next 与 docs:check -- --next，核对 93 个历史和 self 的完整清单。
-3. 运行 typecheck、全量 bun test、build 和 git diff --check，排除工具改动造成的工程回归。
-4. 提交后运行普通 docs:check 和两次 docs:generate + git diff --exit-code，验证 head 清单和幂等性。
-5. 观察真实 GitHub Actions，只记录实际完成的结果。
+1. 文档阶段运行 docs:generate -- --next 和 docs:check -- --next，并审查契约是否覆盖总审计。
+2. 每波先运行专项失败测试，再运行实现后的专项、typecheck 和对应 dist 测试。
+3. 最终运行 bun test、bun run typecheck、bun run build、CLI help/version 和全部新增 dist 入口测试。
+4. 分开记录 offline 与 live；回归基线 cron/LSP 失败并保留任何环境 skipped。
 
 ## 完成状态与剩余工作
 
@@ -89,13 +89,14 @@ kind: component
 
 ### 已完成
 
-- 结构化 schema、显式加载、Git 对照、质量门禁、渲染和 head/next 入口已实现。
-- CI 写后查问题已移除，维护政策和模板已改成方案设计与文件级实施要求。
-- 93 个历史记录已全部回填，并成功执行过一次 188 份文档的 next 全量生成。
-- 十六个结构、证据、revision 与负向测试已在本地执行通过。
-- 93 个提交均完成独立语义复核，已修正多处证据、CI 门控、元数据谱系和实现边界误述，STATUS 已同步已知产品缺口。
-- 审查后 next 全量生成与检查、168/672 全量测试、typecheck、build 和 diff whitespace 检查均已通过。
+- 已建立 external-stubs README、验证记录与新的 self 设计记录，并迁移上一项 self 到 c69c271 完整 SHA。
+- 已冻结 82 项总审计及全部公开契约，覆盖 18 个 slash stub 和 9 个维护 handler。
+- 已完成入站与三个 renderer、snapshot/attribution、Bash/job 分类、公开 MCP Tasks、peer、Chrome CDP、开放 Computer Use 和 LSP 关闭竞态实现。
+- 已完成 Direct Connect、后台会话、SSH、本地模板任务、Open Runner、维护命令、Tungsten、MoreRight、ccshare 和其余五个小型公开能力。
+- 十八个 slash command 及维护功能均已注册，external profile 与生产构建共用同一事实源；测试按文件隔离以避免 mock、gate 和 cwd 污染。
+- 专项测试、真实 loopback/UDS/tmux/reference server/fake CDP/Swift 编译、typecheck、CLI/SDK/声明构建和多个 dist help/入口检查已执行并记录。
+- docs:generate -- --next 与 docs:check -- --next 已成功处理 192 份文档及索引，文档阶段 typecheck 和 diff whitespace 检查通过。
 
 ### 未完成或后续工作
 
-- 提交后的 head 幂等检查和 hosted GitHub Actions 结果尚待验证。
+- 真实授权环境中的 live 和私有协议兼容验证未声明完成；最终文档生成与只读检查待执行。

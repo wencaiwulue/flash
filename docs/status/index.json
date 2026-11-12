@@ -931,9 +931,29 @@
       "plan": "docs/plans/ab2d941-PLAN.md"
     },
     {
+      "fullSha": "c69c271db2278642918bce5caf9641108e4f6cab",
+      "shortSha": "c69c271",
+      "date": "2026-11-11T14:04:41+08:00",
+      "subject": "Rebuild substantive commit design documentation",
+      "status": "implemented",
+      "kind": "component",
+      "spec": "docs/specs/c69c271-SPEC.md",
+      "plan": "docs/plans/c69c271-PLAN.md"
+    },
+    {
+      "fullSha": "4909c0fccbf24736f5c670ef936bae317e52dd4c",
+      "shortSha": "4909c0f",
+      "date": "2026-11-11T16:01:00+08:00",
+      "subject": "Design date-based commit documentation",
+      "status": "implemented",
+      "kind": "component",
+      "spec": "docs/specs/4909c0f-SPEC.md",
+      "plan": "docs/plans/4909c0f-PLAN.md"
+    },
+    {
       "fullSha": "self",
-      "changeId": "substantive-commit-docs",
-      "subject": "Rebuild substantive per-commit design and implementation documentation",
+      "changeId": "external-stub-restoration",
+      "subject": "Document and restore external stub capabilities",
       "status": "implemented",
       "kind": "component",
       "spec": "docs/specs/self-SPEC.md",

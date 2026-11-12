@@ -2,7 +2,7 @@
 
 每份 SPEC 是回溯性方案设计，每份 PLAN 是文件级实施顺序。自动检查不替代逐提交的语义审查。
 
-- Implemented: 76
+- Implemented: 78
 - Partial: 17
 - Unimplemented: 0
 
@@ -101,4 +101,6 @@
 | 5c56455 | Finalize previous commit documentation | implemented | [SPEC](../docs/specs/5c56455-SPEC.md) | [PLAN](../docs/plans/5c56455-PLAN.md) |
 | 9525612 | Generate commit documentation before CI checks | implemented | [SPEC](../docs/specs/9525612-SPEC.md) | [PLAN](../docs/plans/9525612-PLAN.md) |
 | ab2d941 | Record commit documentation CI success | partial | [SPEC](../docs/specs/ab2d941-SPEC.md) | [PLAN](../docs/plans/ab2d941-PLAN.md) |
-| self (substantive-commit-docs) | Rebuild substantive per-commit design and implementation documentation | implemented | [SPEC](../docs/specs/self-SPEC.md) | [PLAN](../docs/plans/self-PLAN.md) |
+| c69c271 | Rebuild substantive commit design documentation | implemented | [SPEC](../docs/specs/c69c271-SPEC.md) | [PLAN](../docs/plans/c69c271-PLAN.md) |
+| 4909c0f | Design date-based commit documentation | implemented | [SPEC](../docs/specs/4909c0f-SPEC.md) | [PLAN](../docs/plans/4909c0f-PLAN.md) |
+| self (external-stub-restoration) | Document and restore external stub capabilities | implemented | [SPEC](../docs/specs/self-SPEC.md) | [PLAN](../docs/plans/self-PLAN.md) |

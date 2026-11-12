@@ -421,13 +421,11 @@ function PromptInput({
   // otherwise bridge becomes an invisible selection stop.
   const bridgeFooterVisible =
     replBridgeConnected && (replBridgeExplicit || replBridgeReconnecting)
-  // Tmux pill (ant-only) — visible when there's an active tungsten session
+  // Tmux pill — visible when there's an active tungsten session
   const hasTungstenSession = useAppState(
-    s =>
-      process.env.USER_TYPE === 'ant' && s.tungstenActiveSession !== undefined,
+    s => s.tungstenActiveSession !== undefined,
   )
-  const tmuxFooterVisible =
-    process.env.USER_TYPE === 'ant' && hasTungstenSession
+  const tmuxFooterVisible = hasTungstenSession
   // WebBrowser pill — visible when a browser is open
   const bagelFooterVisible = useAppState(s =>
         false,

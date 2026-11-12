@@ -1,10 +1,11 @@
 import type { BrowserToolDescriptor } from '@ant/claude-for-chrome-mcp'
+import { createChromeContext } from './mcpServer.js'
 
 let catalog: Promise<BrowserToolDescriptor[]> | undefined
 
 export function getBrowserTools(): Promise<BrowserToolDescriptor[]> {
   catalog ??= import('@ant/claude-for-chrome-mcp')
-    .then(module => module.listBrowserTools())
+    .then(module => module.listOpenChromeTools(createChromeContext()))
     .catch(error => {
       catalog = undefined
       throw error
@@ -18,6 +19,6 @@ export async function isClaudeInChromeMcpAvailable(): Promise<boolean> {
 
 export async function assertClaudeInChromeMcpAvailable(): Promise<void> {
   if (!(await isClaudeInChromeMcpAvailable())) {
-    throw new Error('Playwright MCP returned no browser tools')
+    throw new Error('Playwright MCP returned no real Chrome CDP tools')
   }
 }

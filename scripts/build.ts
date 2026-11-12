@@ -1,6 +1,7 @@
 import { chmod } from 'node:fs/promises'
 import packageJson from '../package.json'
 import { generateSdkTypes } from './generate-sdk-types.ts'
+import { EXTERNAL_FEATURES } from './externalFeatureProfile.ts'
 
 generateSdkTypes()
 
@@ -36,34 +37,7 @@ for (const build of builds) {
     outdir,
     target: 'bun',
     format: 'esm',
-    features: [
-      'AGENT_TRIGGERS',
-      'AGENT_TRIGGERS_REMOTE',
-      'VOICE_MODE',
-      'BRIDGE_MODE',
-      'ULTRAPLAN',
-      'FILE_PERSISTENCE',
-      'KAIROS_BRIEF',
-      'MONITOR_TOOL',
-      'OVERFLOW_TEST_TOOL',
-      'TERMINAL_PANEL',
-      'PROACTIVE',
-      'COORDINATOR_MODE',
-      'EXPERIMENTAL_SKILL_SEARCH',
-      'UDS_INBOX',
-      'DAEMON',
-      'WORKFLOW_SCRIPTS',
-      'CONTEXT_COLLAPSE',
-      'REACTIVE_COMPACT',
-      'BUDDY',
-      'FORK_SUBAGENT',
-      'HISTORY_SNIP',
-      'REVIEW_ARTIFACT',
-      'KAIROS',
-      'KAIROS_GITHUB_WEBHOOKS',
-      'CHICAGO_MCP',
-      'WEB_BROWSER_TOOL',
-    ],
+    features: [...EXTERNAL_FEATURES],
     define,
     loader: {
       '.md': 'text',

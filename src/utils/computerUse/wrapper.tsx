@@ -17,7 +17,9 @@
  */
 
 import {
-  bindSessionContext,
+  createNativeComputerUseBackend,
+  createZavoraComputerUseBackend,
+  type ComputerUseBackend,
   type ComputerUseSessionContext,
   type CuCallToolResult,
   type CuPermissionRequest,
@@ -34,16 +36,19 @@ import {
   checkComputerUseLock,
   tryAcquireComputerUseLock,
 } from './computerUseLock.js'
-import { registerEscHotkey } from './escHotkey.js'
-import { getChicagoCoordinateMode } from './gates.js'
-import { getComputerUseHostAdapter } from './hostAdapter.js'
+import { getChicagoCoordinateMode, getComputerUseBackendKind } from './gates.js'
 import { getComputerUseMCPRenderingOverrides } from './toolRendering.js'
 
 type CallOverride = Pick<Tool, 'call'>['call']
 
 type Binding = {
   ctx: ComputerUseSessionContext
-  dispatch: (name: string, args: unknown) => Promise<CuCallToolResult>
+  backend: ComputerUseBackend
+  dispatch: (
+    name: string,
+    args: unknown,
+    signal?: AbortSignal,
+  ) => Promise<CuCallToolResult>
 }
 
 /**
@@ -256,20 +261,27 @@ export function buildSessionContext(): ComputerUseSessionContext {
         throw new Error(formatLockHeld(r.by))
       }
       if (r.fresh) {
-        // Global Escape → abort. Consumes the event (PI defense — prompt
-        // injection can't dismiss dialogs with Escape). The CGEventTap's
-        // CFRunLoopSource is processed by the drainRunLoop pump, so this
-        // holds a pump retain until unregisterEscHotkey() in cleanup.ts.
-        const escRegistered = registerEscHotkey(() => {
-          logForDebugging('[cu-esc] user escape, aborting turn')
-          tuc().abortController.abort()
-        })
-        tuc().sendOSNotification?.({
-          message: escRegistered
-            ? 'Claude is using your computer · press Esc to stop'
-            : 'Claude is using your computer · press Ctrl+C to stop',
-          notificationType: 'computer_use_enter',
-        })
+        if (getComputerUseBackendKind() === 'native-adapter') {
+          // Native-only bare Escape. Zavora owns its status-card stop/pause
+          // control and must never share this CGEventTap state machine.
+          const { registerEscHotkey } = await import('./escHotkey.js')
+          const escRegistered = await registerEscHotkey(() => {
+            logForDebugging('[cu-esc] user escape, aborting turn')
+            tuc().abortController.abort()
+          })
+          tuc().sendOSNotification?.({
+            message: escRegistered
+              ? 'Claude is using your computer · press Esc to stop'
+              : 'Claude is using your computer · press Ctrl+C to stop',
+            notificationType: 'computer_use_enter',
+          })
+        } else {
+          tuc().sendOSNotification?.({
+            message:
+              'Claude is using your computer · use the Zavora status card or Ctrl+C to stop',
+            notificationType: 'computer_use_enter',
+          })
+        }
       }
     },
 
@@ -277,18 +289,39 @@ export function buildSessionContext(): ComputerUseSessionContext {
   }
 }
 
-function getOrBind(): Binding {
+async function getOrBind(): Promise<Binding> {
   if (binding) return binding
   const ctx = buildSessionContext()
-  binding = {
-    ctx,
-    dispatch: bindSessionContext(
+  let backend: ComputerUseBackend
+  if (getComputerUseBackendKind() === 'native-adapter') {
+    const { getComputerUseHostAdapter } = await import('./hostAdapter.js')
+    backend = createNativeComputerUseBackend(
       getComputerUseHostAdapter(),
       getChicagoCoordinateMode(),
-      ctx,
-    ),
+    )
+  } else {
+    backend = createZavoraComputerUseBackend()
+  }
+  binding = {
+    ctx,
+    backend,
+    dispatch: (name, args, signal) =>
+      backend.dispatch(
+        name,
+        args,
+        ctx,
+        signal ?? new AbortController().signal,
+      ),
   }
   return binding
+}
+
+/** Close the selected backend without touching the other implementation. */
+export async function closeComputerUseBackend(): Promise<void> {
+  const current = binding
+  binding = undefined
+  currentToolUseContext = undefined
+  await current?.backend.close()
 }
 
 /**
@@ -307,9 +340,13 @@ export function getComputerUseMCPToolOverrides(
 ): ComputerUseMCPToolOverrides {
   const call: CallOverride = async (args, context: ToolUseContext) => {
     currentToolUseContext = context
-    const { dispatch } = getOrBind()
+    const { dispatch } = await getOrBind()
 
-    const { telemetry, ...result } = await dispatch(toolName, args)
+    const { telemetry, ...result } = await dispatch(
+      toolName,
+      args,
+      context.abortController.signal,
+    )
 
     if (telemetry?.error_kind) {
       logForDebugging(
@@ -317,30 +354,37 @@ export function getComputerUseMCPToolOverrides(
       )
     }
 
-    // MCP content blocks → Anthropic API blocks. CU only produces text and
-    // pre-sized JPEG (executor.ts computeTargetDims → targetImageSize), so
-    // unlike the generic MCP path there's no resize needed — the MCP image
-    // shape just maps to the API's base64-source shape. The package's result
-    // type admits audio/resource too, but CU's handleToolCall never emits
-    // those; the fallthrough coerces them to empty text.
     const data = Array.isArray(result.content)
-      ? result.content.map(item =>
-          item.type === 'image'
-            ? {
-                type: 'image' as const,
-                source: {
-                  type: 'base64' as const,
-                  media_type: item.mimeType ?? 'image/jpeg',
-                  data: item.data,
-                },
-              }
-            : {
-                type: 'text' as const,
-                text: item.type === 'text' ? item.text : '',
+      ? result.content.map(item => {
+          if (item.type === 'image') {
+            return {
+              type: 'image' as const,
+              source: {
+                type: 'base64' as const,
+                media_type: item.mimeType ?? 'image/jpeg',
+                data: item.data,
               },
-        )
+            }
+          }
+          if (item.type === 'text') {
+            return { type: 'text' as const, text: item.text }
+          }
+          if (item.type === 'resource_link') {
+            return {
+              type: 'text' as const,
+              text: JSON.stringify({ uri: item.uri, name: item.name }),
+            }
+          }
+          return { type: 'text' as const, text: JSON.stringify(item) }
+        })
       : result.content
-    return { data }
+    return {
+      data,
+      ...(result.isError ? { isError: true } : {}),
+      ...(result.structuredContent
+        ? { mcpMeta: { structuredContent: result.structuredContent } }
+        : {}),
+    }
   }
 
   return {

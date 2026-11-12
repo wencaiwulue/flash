@@ -1,11 +1,15 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { setTeleportedSessionInfo } from 'src/bootstrap/state.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from 'src/services/analytics/index.js'
 import type { TeleportRemoteResponse } from 'src/utils/conversationRecovery.js'
-import type { CodeSession } from 'src/utils/teleport/api.js'
+
+export type TeleportResumeSession = {
+  id: string
+  title: string | null
+}
 import { errorMessage, TeleportOperationError } from '../utils/errors.js'
 import { teleportResumeCodeSession } from '../utils/teleport.js'
 
@@ -20,13 +24,16 @@ export type TeleportSource = 'cliArg' | 'localCommand'
 export function useTeleportResume(source: TeleportSource) {
   const [isResuming, setIsResuming] = useState(false)
   const [error, setError] = useState<TeleportResumeError | null>(null)
-  const [selectedSession, setSelectedSession] = useState<CodeSession | null>(
-    null,
-  )
+  const errorRef = useRef<TeleportResumeError | null>(null)
+  const [selectedSession, setSelectedSession] =
+    useState<TeleportResumeSession | null>(null)
 
   const resumeSession = useCallback(
-    async (session: CodeSession): Promise<TeleportRemoteResponse | null> => {
+    async (
+      session: TeleportResumeSession,
+    ): Promise<TeleportRemoteResponse | null> => {
       setIsResuming(true)
+      errorRef.current = null
       setError(null)
       setSelectedSession(session)
 
@@ -56,6 +63,7 @@ export function useTeleportResume(source: TeleportSource) {
               : undefined,
           isOperationError: err instanceof TeleportOperationError,
         }
+        errorRef.current = teleportError
         setError(teleportError)
         setIsResuming(false)
         return null
@@ -65,6 +73,7 @@ export function useTeleportResume(source: TeleportSource) {
   )
 
   const clearError = useCallback(() => {
+    errorRef.current = null
     setError(null)
   }, [])
 
@@ -74,5 +83,6 @@ export function useTeleportResume(source: TeleportSource) {
     error,
     selectedSession,
     clearError,
+    getError: () => errorRef.current,
   }
 }

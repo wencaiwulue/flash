@@ -1,5 +1,4 @@
 import { execFileSync } from 'child_process'
-import { diffLines } from 'diff'
 import { constants as fsConstants, type Dirent } from 'fs'
 import {
   copyFile,
@@ -12,13 +11,17 @@ import {
   writeFile,
 } from 'fs/promises'
 import { tmpdir } from 'os'
-import { extname, join } from 'path'
+import { join } from 'path'
 import type { Command } from '../commands.js'
-import { queryWithModel } from '../services/api/claude.js'
 import {
-  AGENT_TOOL_NAME,
-  LEGACY_AGENT_TOOL_NAME,
-} from '../tools/AgentTool/constants.js'
+  deduplicateSessionBranches,
+  hasValidDates,
+  loadCachedSessionMeta,
+  logToSessionMeta,
+  saveSessionMeta,
+  type SessionMeta,
+} from './insights/sessionMeta.js'
+import { queryWithModel } from '../services/api/claude.js'
 import type { LogOption } from '../types/logs.js'
 import { getClaudeConfigHomeDir } from '../utils/envUtils.js'
 import { toError } from '../utils/errors.js'
@@ -29,11 +32,9 @@ import { getDefaultOpusModel } from '../utils/model/model.js'
 import {
   getProjectsDir,
   getSessionFilesWithMtime,
-  getSessionIdFromLog,
   loadAllLogsFromSessionFile,
 } from '../utils/sessionStorage.js'
 import { jsonParse, jsonStringify } from '../utils/slowOperations.js'
-import { countCharInString } from '../utils/stringUtils.js'
 import { asSystemPrompt } from '../utils/systemPromptType.js'
 import { escapeXmlAttr as escapeHtml } from '../utils/xml.js'
 
@@ -225,37 +226,6 @@ const collectAllRemoteHostData: (destDir: string) => Promise<{
 // Types
 // ============================================================================
 
-type SessionMeta = {
-  session_id: string
-  project_path: string
-  start_time: string
-  duration_minutes: number
-  user_message_count: number
-  assistant_message_count: number
-  tool_counts: Record<string, number>
-  languages: Record<string, number>
-  git_commits: number
-  git_pushes: number
-  input_tokens: number
-  output_tokens: number
-  first_prompt: string
-  summary?: string
-  // New stats
-  user_interruptions: number
-  user_response_times: number[]
-  tool_errors: number
-  tool_error_categories: Record<string, number>
-  uses_task_agent: boolean
-  uses_mcp: boolean
-  uses_web_search: boolean
-  uses_web_fetch: boolean
-  // Additional stats
-  lines_added: number
-  lines_removed: number
-  files_modified: number
-  message_hours: number[]
-  user_message_timestamps: string[] // ISO timestamps for multi-clauding detection
-}
 
 type SessionFacets = {
   session_id: string
@@ -329,24 +299,6 @@ type AggregatedData = {
 // Constants
 // ============================================================================
 
-const EXTENSION_TO_LANGUAGE: Record<string, string> = {
-  '.ts': 'TypeScript',
-  '.tsx': 'TypeScript',
-  '.js': 'JavaScript',
-  '.jsx': 'JavaScript',
-  '.py': 'Python',
-  '.rb': 'Ruby',
-  '.go': 'Go',
-  '.rs': 'Rust',
-  '.java': 'Java',
-  '.md': 'Markdown',
-  '.json': 'JSON',
-  '.yaml': 'YAML',
-  '.yml': 'YAML',
-  '.sh': 'Shell',
-  '.css': 'CSS',
-  '.html': 'HTML',
-}
 
 // Label map for cleaning up category names (matching Python reference)
 const LABEL_MAP: Record<string, string> = {
@@ -423,9 +375,6 @@ function getDataDir(): string {
 function getFacetsDir(): string {
   return join(getDataDir(), 'facets')
 }
-function getSessionMetaDir(): string {
-  return join(getDataDir(), 'session-meta')
-}
 
 const FACET_EXTRACTION_PROMPT = `Analyze this Claude Code session and extract structured facets.
 
@@ -459,374 +408,6 @@ SESSION:
 // Helper Functions
 // ============================================================================
 
-function getLanguageFromPath(filePath: string): string | null {
-  const ext = extname(filePath).toLowerCase()
-  return EXTENSION_TO_LANGUAGE[ext] || null
-}
-
-function extractToolStats(log: LogOption): {
-  toolCounts: Record<string, number>
-  languages: Record<string, number>
-  gitCommits: number
-  gitPushes: number
-  inputTokens: number
-  outputTokens: number
-  // New stats
-  userInterruptions: number
-  userResponseTimes: number[]
-  toolErrors: number
-  toolErrorCategories: Record<string, number>
-  usesTaskAgent: boolean
-  usesMcp: boolean
-  usesWebSearch: boolean
-  usesWebFetch: boolean
-  // Additional stats
-  linesAdded: number
-  linesRemoved: number
-  filesModified: Set<string>
-  messageHours: number[]
-  userMessageTimestamps: string[] // ISO timestamps for multi-clauding detection
-} {
-  const toolCounts: Record<string, number> = {}
-  const languages: Record<string, number> = {}
-  let gitCommits = 0
-  let gitPushes = 0
-  let inputTokens = 0
-  let outputTokens = 0
-
-  // New stats
-  let userInterruptions = 0
-  const userResponseTimes: number[] = []
-  let toolErrors = 0
-  const toolErrorCategories: Record<string, number> = {}
-  let usesTaskAgent = false
-
-  // Additional stats
-  let linesAdded = 0
-  let linesRemoved = 0
-  const filesModified = new Set<string>()
-  const messageHours: number[] = []
-  const userMessageTimestamps: string[] = [] // For multi-clauding detection
-  let usesMcp = false
-  let usesWebSearch = false
-  let usesWebFetch = false
-  let lastAssistantTimestamp: string | null = null
-
-  for (const msg of log.messages) {
-    // Get message timestamp for response time calculation
-    const msgTimestamp = (msg as { timestamp?: string }).timestamp
-
-    if (msg.type === 'assistant' && msg.message) {
-      // Track timestamp for response time calculation
-      if (msgTimestamp) {
-        lastAssistantTimestamp = msgTimestamp
-      }
-
-      const usage = (
-        msg.message as {
-          usage?: { input_tokens?: number; output_tokens?: number }
-        }
-      ).usage
-      if (usage) {
-        inputTokens += usage.input_tokens || 0
-        outputTokens += usage.output_tokens || 0
-      }
-
-      const content = msg.message.content
-      if (Array.isArray(content)) {
-        for (const block of content) {
-          if (block.type === 'tool_use' && 'name' in block) {
-            const toolName = block.name as string
-            toolCounts[toolName] = (toolCounts[toolName] || 0) + 1
-
-            // Check for special tool usage
-            if (
-              toolName === AGENT_TOOL_NAME ||
-              toolName === LEGACY_AGENT_TOOL_NAME
-            )
-              usesTaskAgent = true
-            if (toolName.startsWith('mcp__')) usesMcp = true
-            if (toolName === 'WebSearch') usesWebSearch = true
-            if (toolName === 'WebFetch') usesWebFetch = true
-
-            const input = (block as { input?: Record<string, unknown> }).input
-
-            if (input) {
-              const filePath = (input.file_path as string) || ''
-              if (filePath) {
-                const lang = getLanguageFromPath(filePath)
-                if (lang) {
-                  languages[lang] = (languages[lang] || 0) + 1
-                }
-                // Track files modified by Edit/Write tools
-                if (toolName === 'Edit' || toolName === 'Write') {
-                  filesModified.add(filePath)
-                }
-              }
-
-              if (toolName === 'Edit') {
-                const oldString = (input.old_string as string) || ''
-                const newString = (input.new_string as string) || ''
-                for (const change of diffLines(oldString, newString)) {
-                  if (change.added) linesAdded += change.count || 0
-                  if (change.removed) linesRemoved += change.count || 0
-                }
-              }
-
-              // Track lines from Write tool (all added)
-              if (toolName === 'Write') {
-                const writeContent = (input.content as string) || ''
-                if (writeContent) {
-                  linesAdded += countCharInString(writeContent, '\n') + 1
-                }
-              }
-
-              const command = (input.command as string) || ''
-              if (command.includes('git commit')) gitCommits++
-              if (command.includes('git push')) gitPushes++
-            }
-          }
-        }
-      }
-    }
-
-    // Check user messages
-    if (msg.type === 'user' && msg.message) {
-      const content = msg.message.content
-
-      // Check if this is an actual human message (has text) vs just tool_result
-      // matching Python reference logic
-      let isHumanMessage = false
-      if (typeof content === 'string' && content.trim()) {
-        isHumanMessage = true
-      } else if (Array.isArray(content)) {
-        for (const block of content) {
-          if (block.type === 'text' && 'text' in block) {
-            isHumanMessage = true
-            break
-          }
-        }
-      }
-
-      // Only track message hours and response times for actual human messages
-      if (isHumanMessage) {
-        // Track message hour for time-of-day analysis and timestamp for multi-clauding
-        if (msgTimestamp) {
-          try {
-            const msgDate = new Date(msgTimestamp)
-            const hour = msgDate.getHours() // Local hour 0-23
-            messageHours.push(hour)
-            // Collect timestamp for multi-clauding detection (matching Python)
-            userMessageTimestamps.push(msgTimestamp)
-          } catch {
-            // Skip invalid timestamps
-          }
-        }
-
-        // Calculate response time (time from last assistant message to this user message)
-        // Only count gaps > 2 seconds (real user think time, not tool results)
-        if (lastAssistantTimestamp && msgTimestamp) {
-          const assistantTime = new Date(lastAssistantTimestamp).getTime()
-          const userTime = new Date(msgTimestamp).getTime()
-          const responseTimeSec = (userTime - assistantTime) / 1000
-          // Only count reasonable response times (2s-1 hour) matching Python
-          if (responseTimeSec > 2 && responseTimeSec < 3600) {
-            userResponseTimes.push(responseTimeSec)
-          }
-        }
-      }
-
-      // Process tool results (for error tracking)
-      if (Array.isArray(content)) {
-        for (const block of content) {
-          if (block.type === 'tool_result' && 'content' in block) {
-            const isError = (block as { is_error?: boolean }).is_error
-
-            // Count and categorize tool errors (matching Python reference logic)
-            if (isError) {
-              toolErrors++
-              const resultContent = (block as { content?: string }).content
-              let category = 'Other'
-              if (typeof resultContent === 'string') {
-                const lowerContent = resultContent.toLowerCase()
-                if (lowerContent.includes('exit code')) {
-                  category = 'Command Failed'
-                } else if (
-                  lowerContent.includes('rejected') ||
-                  lowerContent.includes("doesn't want")
-                ) {
-                  category = 'User Rejected'
-                } else if (
-                  lowerContent.includes('string to replace not found') ||
-                  lowerContent.includes('no changes')
-                ) {
-                  category = 'Edit Failed'
-                } else if (lowerContent.includes('modified since read')) {
-                  category = 'File Changed'
-                } else if (
-                  lowerContent.includes('exceeds maximum') ||
-                  lowerContent.includes('too large')
-                ) {
-                  category = 'File Too Large'
-                } else if (
-                  lowerContent.includes('file not found') ||
-                  lowerContent.includes('does not exist')
-                ) {
-                  category = 'File Not Found'
-                }
-              }
-              toolErrorCategories[category] =
-                (toolErrorCategories[category] || 0) + 1
-            }
-          }
-        }
-      }
-
-      // Check for interruptions (matching Python reference)
-      if (typeof content === 'string') {
-        if (content.includes('[Request interrupted by user')) {
-          userInterruptions++
-        }
-      } else if (Array.isArray(content)) {
-        for (const block of content) {
-          if (
-            block.type === 'text' &&
-            'text' in block &&
-            (block.text as string).includes('[Request interrupted by user')
-          ) {
-            userInterruptions++
-            break
-          }
-        }
-      }
-    }
-  }
-
-  return {
-    toolCounts,
-    languages,
-    gitCommits,
-    gitPushes,
-    inputTokens,
-    outputTokens,
-    // New stats
-    userInterruptions,
-    userResponseTimes,
-    toolErrors,
-    toolErrorCategories,
-    usesTaskAgent,
-    usesMcp,
-    usesWebSearch,
-    usesWebFetch,
-    // Additional stats
-    linesAdded,
-    linesRemoved,
-    filesModified,
-    messageHours,
-    userMessageTimestamps,
-  }
-}
-
-function hasValidDates(log: LogOption): boolean {
-  return (
-    !Number.isNaN(log.created.getTime()) &&
-    !Number.isNaN(log.modified.getTime())
-  )
-}
-
-function logToSessionMeta(log: LogOption): SessionMeta {
-  const stats = extractToolStats(log)
-  const sessionId = getSessionIdFromLog(log) || 'unknown'
-  const startTime = log.created.toISOString()
-  const durationMinutes = Math.round(
-    (log.modified.getTime() - log.created.getTime()) / 1000 / 60,
-  )
-
-  let userMessageCount = 0
-  let assistantMessageCount = 0
-  for (const msg of log.messages) {
-    if (msg.type === 'assistant') assistantMessageCount++
-    // Only count user messages that have actual text content (human messages)
-    // not just tool_result messages (matching Python reference)
-    if (msg.type === 'user' && msg.message) {
-      const content = msg.message.content
-      let isHumanMessage = false
-      if (typeof content === 'string' && content.trim()) {
-        isHumanMessage = true
-      } else if (Array.isArray(content)) {
-        for (const block of content) {
-          if (block.type === 'text' && 'text' in block) {
-            isHumanMessage = true
-            break
-          }
-        }
-      }
-      if (isHumanMessage) {
-        userMessageCount++
-      }
-    }
-  }
-
-  return {
-    session_id: sessionId,
-    project_path: log.projectPath || '',
-    start_time: startTime,
-    duration_minutes: durationMinutes,
-    user_message_count: userMessageCount,
-    assistant_message_count: assistantMessageCount,
-    tool_counts: stats.toolCounts,
-    languages: stats.languages,
-    git_commits: stats.gitCommits,
-    git_pushes: stats.gitPushes,
-    input_tokens: stats.inputTokens,
-    output_tokens: stats.outputTokens,
-    first_prompt: log.firstPrompt || '',
-    summary: log.summary,
-    // New stats
-    user_interruptions: stats.userInterruptions,
-    user_response_times: stats.userResponseTimes,
-    tool_errors: stats.toolErrors,
-    tool_error_categories: stats.toolErrorCategories,
-    uses_task_agent: stats.usesTaskAgent,
-    uses_mcp: stats.usesMcp,
-    uses_web_search: stats.usesWebSearch,
-    uses_web_fetch: stats.usesWebFetch,
-    // Additional stats
-    lines_added: stats.linesAdded,
-    lines_removed: stats.linesRemoved,
-    files_modified: stats.filesModified.size,
-    message_hours: stats.messageHours,
-    user_message_timestamps: stats.userMessageTimestamps,
-  }
-}
-
-/**
- * Deduplicate conversation branches within the same session.
- *
- * When a session file has multiple leaf messages (from retries or branching),
- * loadAllLogsFromSessionFile produces one LogOption per leaf. Each branch
- * shares the same root message, so its duration overlaps with sibling
- * branches. This keeps only the branch with the most user messages
- * (tie-break by longest duration) per session_id.
- */
-export function deduplicateSessionBranches(
-  entries: Array<{ log: LogOption; meta: SessionMeta }>,
-): Array<{ log: LogOption; meta: SessionMeta }> {
-  const bestBySession = new Map<string, { log: LogOption; meta: SessionMeta }>()
-  for (const entry of entries) {
-    const id = entry.meta.session_id
-    const existing = bestBySession.get(id)
-    if (
-      !existing ||
-      entry.meta.user_message_count > existing.meta.user_message_count ||
-      (entry.meta.user_message_count === existing.meta.user_message_count &&
-        entry.meta.duration_minutes > existing.meta.duration_minutes)
-    ) {
-      bestBySession.set(id, entry)
-    }
-  }
-  return [...bestBySession.values()]
-}
 
 function formatTranscriptForFacets(log: LogOption): string {
   const lines: string[] = []
@@ -973,30 +554,6 @@ async function saveFacets(facets: SessionFacets): Promise<void> {
   })
 }
 
-async function loadCachedSessionMeta(
-  sessionId: string,
-): Promise<SessionMeta | null> {
-  const metaPath = join(getSessionMetaDir(), `${sessionId}.json`)
-  try {
-    const content = await readFile(metaPath, { encoding: 'utf-8' })
-    return jsonParse(content)
-  } catch {
-    return null
-  }
-}
-
-async function saveSessionMeta(meta: SessionMeta): Promise<void> {
-  try {
-    await mkdir(getSessionMetaDir(), { recursive: true })
-  } catch {
-    // Directory may already exist
-  }
-  const metaPath = join(getSessionMetaDir(), `${meta.session_id}.json`)
-  await writeFile(metaPath, jsonStringify(meta, null, 2), {
-    encoding: 'utf-8',
-    mode: 0o600,
-  })
-}
 
 async function extractFacetsFromAPI(
   log: LogOption,

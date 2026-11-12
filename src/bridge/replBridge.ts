@@ -45,6 +45,7 @@ import {
   extractHttpStatus,
   logBridgeSkip,
 } from './debugUtils.js'
+import type { InboundTransportMetadata } from './inboundMessages.js'
 import type { Message } from '../types/message.js'
 import type { SDKMessage } from '../entrypoints/agentSdkTypes.js'
 import type { PermissionMode } from '../utils/permissions/PermissionMode.js'
@@ -175,7 +176,10 @@ export type BridgeCoreParams = {
   // Same REPL-flush machinery as InitBridgeOptions — daemon omits these.
   initialMessages?: Message[]
   previouslyFlushedUUIDs?: Set<string>
-  onInboundMessage?: (msg: SDKMessage) => void
+  onInboundMessage?: (
+    msg: SDKMessage,
+    transportMetadata?: InboundTransportMetadata,
+  ) => void | Promise<void>
   onPermissionResponse?: (response: SDKControlResponse) => void
   onInterrupt?: () => void
   onSetModel?: (model: string | undefined) => void

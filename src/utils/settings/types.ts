@@ -396,6 +396,47 @@ export const SettingsSchema = lazySchema(() =>
             'model ID (e.g. a Bedrock inference profile ARN). Typically set in managed settings by ' +
             'enterprise administrators.',
         ),
+      modelCatalog: z
+        .object({
+          defaultModel: z.string().min(1).optional(),
+          defaultModelEffortLevel: z
+            .enum(['low', 'medium', 'high', 'max'])
+            .optional(),
+          models: z
+            .array(
+              z.object({
+                alias: z.string().trim().min(1),
+                label: z.string().trim().min(1),
+                model: z.string().trim().min(1),
+                description: z.string().optional(),
+                contextWindow: z.number().int().positive().optional(),
+                defaultMaxTokens: z.number().int().positive().optional(),
+                upperMaxTokensLimit: z.number().int().positive().optional(),
+                defaultEffortLevel: z
+                  .enum(['low', 'medium', 'high', 'max'])
+                  .optional(),
+                defaultEffortValue: z.number().nonnegative().optional(),
+              }),
+            )
+            .optional(),
+        })
+        .optional()
+        .describe(
+          'Public catalog of administrator- or user-configured model aliases, ' +
+            'including optional context, output-token, and effort defaults. ' +
+            'Labels and descriptions are used for display instead of private model codenames.',
+        ),
+      organizationWarning: z
+        .object({
+          enabled: z.boolean().optional(),
+          allowedOrganizationUuids: z.array(z.string().trim().min(1)).min(1),
+          message: z.string().trim().min(1).max(2000).optional(),
+        })
+        .optional()
+        .describe(
+          'Warn when the authenticated account is not in an allowed organization. ' +
+            'Typically set in managed settings. No organization IDs are built in.',
+        ),
       // Whether to automatically approve all MCP servers in the project
       enableAllProjectMcpServers: z
         .boolean()

@@ -223,38 +223,42 @@ export { getCommandName, isCommandEnabled } from './types/command.js'
 
 // Commands that get eliminated from the external build
 export const INTERNAL_ONLY_COMMANDS = [
-  backfillSessions,
-  breakCache,
-  bughunter,
   commit,
   commitPushPr,
-  ctx_viz,
-  goodClaude,
-  issue,
   initVerifiers,
-  mockLimits,
   bridgeKick,
   version,
   ...(subscribePr ? [subscribePr] : []),
+  agentsPlatform,
+].filter(Boolean)
+
+const RESTORED_EXTERNAL_COMMANDS: Command[] = [
+  antTrace,
+  autofixPr,
+  backfillSessions,
+  breakCache,
+  bughunter,
+  ctx_viz,
+  debugToolCall,
+  env,
+  goodClaude,
+  issue,
+  mockLimits,
+  oauthRefresh,
+  onboarding,
+  perfIssue,
   resetLimits,
   resetLimitsNonInteractive,
-  onboarding,
   share,
   summary,
   teleport,
-  antTrace,
-  perfIssue,
-  env,
-  oauthRefresh,
-  debugToolCall,
-  agentsPlatform,
-  autofixPr,
-].filter(Boolean)
+]
 
 // Declared as a function so that we don't run this until getCommands is called,
 // since underlying functions read from config, which can't be read at module initialization time
 const COMMANDS = memoize((): Command[] => [
   addDir,
+  ...RESTORED_EXTERNAL_COMMANDS,
   advisor,
   agents,
   branch,

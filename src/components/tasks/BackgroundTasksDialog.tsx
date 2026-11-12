@@ -354,7 +354,11 @@ export function BackgroundTasksDialog({
         currentSelection.status === 'running' &&
         killMonitorMcp
       ) {
-        killMonitorMcp(currentSelection.id, setAppState)
+        void killMonitorMcp(
+          currentSelection.id,
+          toolUseContext.getAppState,
+          setAppState,
+        )
       } else if (
         currentSelection.type === 'dream' &&
         currentSelection.status === 'running'
@@ -559,7 +563,12 @@ export function BackgroundTasksDialog({
             task={task}
             onKill={
               task.status === 'running' && killMonitorMcp
-                ? () => killMonitorMcp(task.id, setAppState)
+                ? () =>
+                    killMonitorMcp(
+                      task.id,
+                      toolUseContext.getAppState,
+                      setAppState,
+                    )
                 : undefined
             }
             onBack={goBackToList}

@@ -1,6 +1,4 @@
-// External stub for ExitPlanModeTool prompt - excludes Ant-only allowedPrompts section
-
-// Hardcoded to avoid relative import issues in stub
+// Hardcoded to avoid a runtime dependency on the AskUserQuestion tool module
 const ASK_USER_QUESTION_TOOL_NAME = 'AskUserQuestion'
 
 export const EXIT_PLAN_MODE_V2_TOOL_PROMPT = `Use this tool when you are in plan mode and have finished writing your plan to the plan file and are ready for user approval.
@@ -20,6 +18,13 @@ Ensure your plan is complete and unambiguous:
 - Once your plan is finalized, use THIS tool to request approval
 
 **Important:** Do NOT use ${ASK_USER_QUESTION_TOOL_NAME} to ask "Is this plan okay?" or "Should I proceed?" - that's exactly what THIS tool does. ExitPlanMode inherently requests user approval of your plan.
+
+## Optional Bash Permissions
+If implementing the plan requires recurring categories of Bash actions, you may include \`allowedPrompts\`. Each entry must have \`tool: "Bash"\` and a short, semantic \`prompt\` such as \`{ "tool": "Bash", "prompt": "run tests" }\` or \`{ "tool": "Bash", "prompt": "install dependencies" }\`.
+- Request only the minimum categories needed for this plan; omit \`allowedPrompts\` when none are needed. Do not request broad or unrelated permissions.
+- These are categories of actions, not exact shell commands, automatic approval of every Bash command, or a way to bypass explicit deny rules and other permission checks.
+- The user will review the requested rules together with the plan. Rules are added only for the current session when the user approves them and prompt-based permissions are available.
+- The user can approve the plan without granting unnecessary permissions. Never treat an unapproved or unavailable prompt rule as authorization.
 
 ## Examples
 

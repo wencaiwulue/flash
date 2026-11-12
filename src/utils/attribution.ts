@@ -315,8 +315,8 @@ export async function getEnhancedPRAttribution(
 
   const settings = getInitialSettings()
 
-  // If user has custom PR attribution, use that
-  if (settings.attribution?.pr) {
+  // Custom attribution (including an explicit empty string) is authoritative.
+  if (settings.attribution?.pr !== undefined) {
     return settings.attribution.pr
   }
 
@@ -373,19 +373,16 @@ export async function getEnhancedPRAttribution(
       : ''
   const summary = `🤖 Generated with [Claude Code](${PRODUCT_URL}) (${claudePercent}% ${promptCount}-shotted by ${shortModelName}${memSuffix})`
 
-  // Append trailer lines for squash-merge survival. Only for allowlisted repos
-  // (INTERNAL_MODEL_REPOS) and only in builds with COMMIT_ATTRIBUTION enabled —
-  // attributionTrailer.ts contains excluded strings, so reach it via dynamic
-  // import behind feature(). When the repo is configured with
-  // squash_merge_commit_message=PR_BODY (cli, apps), the PR body becomes the
-  // squash commit body verbatim — trailer lines at the end become proper git
-  // trailers on the squash commit.
-  if (feature('COMMIT_ATTRIBUTION') && isInternal && attributionData) {
+  // Public trailers contain only numeric statistics, never paths or model IDs,
+  // so they are safe for both public and private repositories.
+  if (feature('COMMIT_ATTRIBUTION') && attributionData) {
     const { buildPRTrailers } = await import('./attributionTrailer.js')
     const trailers = buildPRTrailers(attributionData, appState.attribution)
-    const result = `${summary}\n\n${trailers.join('\n')}`
-    logForDebugging(`PR Attribution: returning with trailers: ${result}`)
-    return result
+    if (trailers.length > 0) {
+      const result = `${summary}\n\n${trailers.join('\n')}`
+      logForDebugging('PR Attribution: returning with public trailers')
+      return result
+    }
   }
 
   logForDebugging(`PR Attribution: returning summary: ${summary}`)

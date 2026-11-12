@@ -67,12 +67,16 @@ export type LocalShellSpawnInput = {
 }
 
 // What getTaskByType dispatches for: kill. spawn/render were never
-// called polymorphically (removed in #22546). All six kill implementations
-// use only setAppState — getAppState/abortController were dead weight.
+// called polymorphically (removed in #22546). MCP Tasks additionally need
+// getAppState to distinguish local task IDs from server-assigned remote IDs.
 export type Task = {
   name: string
   type: TaskType
-  kill(taskId: string, setAppState: SetAppState): Promise<void>
+  kill(
+    taskId: string,
+    setAppState: SetAppState,
+    getAppState?: () => AppState,
+  ): Promise<void>
 }
 
 // Task ID prefixes

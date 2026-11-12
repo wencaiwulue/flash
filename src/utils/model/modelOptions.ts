@@ -462,6 +462,21 @@ function getKnownModelOption(model: string): ModelOption | null {
 export function getModelOptions(fastMode = false): ModelOption[] {
   const options = getModelOptionsBase(fastMode)
 
+  // Public catalogs use the configured display metadata only. Never include
+  // the underlying model ID in a fallback description, where a private
+  // codename could otherwise be exposed by the model picker.
+  if (process.env.USER_TYPE !== 'ant') {
+    for (const model of getAntModels()) {
+      if (!options.some(existing => existing.value === model.alias)) {
+        options.push({
+          value: model.alias,
+          label: model.label,
+          description: model.description ?? model.label,
+        })
+      }
+    }
+  }
+
   // Add the custom model from the ANTHROPIC_CUSTOM_MODEL_OPTION env var
   const envCustomModel = process.env.ANTHROPIC_CUSTOM_MODEL_OPTION
   if (

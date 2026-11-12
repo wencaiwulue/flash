@@ -59,7 +59,7 @@ export function modelSupportsMaxEffort(model: string): boolean {
   if (model.toLowerCase().includes('opus-4-6')) {
     return true
   }
-  if (process.env.USER_TYPE === 'ant' && resolveAntModel(model)) {
+  if (resolveAntModel(model)) {
     return true
   }
   return false
@@ -280,23 +280,27 @@ export function getOpusDefaultEffortConfig(): OpusDefaultEffortConfig {
 export function getDefaultEffortForModel(
   model: string,
 ): EffortValue | undefined {
+  const config = getAntModelOverrideConfig()
+  const antModel = resolveAntModel(model)
+  const configuredDefault = config?.defaultModel
+  const isDefaultModel =
+    configuredDefault !== undefined &&
+    (model.toLowerCase() === configuredDefault.toLowerCase() ||
+      (antModel !== undefined &&
+        resolveAntModel(configuredDefault)?.model === antModel.model))
+  if (isDefaultModel && config?.defaultModelEffortLevel) {
+    return config.defaultModelEffortLevel
+  }
+  if (antModel) {
+    if (antModel.defaultEffortLevel) {
+      return antModel.defaultEffortLevel
+    }
+    if (antModel.defaultEffortValue !== undefined) {
+      return antModel.defaultEffortValue
+    }
+    return undefined
+  }
   if (process.env.USER_TYPE === 'ant') {
-    const config = getAntModelOverrideConfig()
-    const isDefaultModel =
-      config?.defaultModel !== undefined &&
-      model.toLowerCase() === config.defaultModel.toLowerCase()
-    if (isDefaultModel && config?.defaultModelEffortLevel) {
-      return config.defaultModelEffortLevel
-    }
-    const antModel = resolveAntModel(model)
-    if (antModel) {
-      if (antModel.defaultEffortLevel) {
-        return antModel.defaultEffortLevel
-      }
-      if (antModel.defaultEffortValue !== undefined) {
-        return antModel.defaultEffortValue
-      }
-    }
     // Always default ants to undefined/high
     return undefined
   }
