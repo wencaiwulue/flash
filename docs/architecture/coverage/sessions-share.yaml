@@ -1,0 +1,175 @@
+# Session Sharing 功能覆盖文档
+# 记录会话导出、共享与恢复模块的所有文件及其责任归属
+
+schema_version: 1
+
+system:
+  name: sessions-share
+  description: 会话导出、共享与恢复功能，支持 HTML/文本导出和 ccshare 远程恢复
+  owner: team-claude-code
+  status: active
+
+sections:
+  - id: share-commands
+    name: Share 命令层
+    description: /share 命令实现
+    files:
+      - path: src/commands/share/index.ts
+        responsibility: 注册 share 命令
+        owner: sessions-share-module
+        tests:
+          - tests/share.test.ts
+
+      - path: src/commands/share/share.tsx
+        responsibility: share 命令主逻辑，React UI 入口
+        owner: sessions-share-module
+        tests:
+          - tests/share.test.ts
+
+      - path: src/commands/share/ShareDialog.tsx
+        responsibility: Share 对话框，文件名选择与工具输出选项
+        owner: sessions-share-module
+        tests:
+          - tests/share.test.ts
+
+      - path: src/commands/share/shareHtml.ts
+        responsibility: |
+          HTML 生成与文件写入
+          - escapeHtml：HTML 转义
+          - getSharePreview：预览生成
+          - renderConversationToHtml：HTML 渲染
+          - resolveShareOutputPath：路径验证
+          - writeSharedHtml：文件写入
+        owner: sessions-share-module
+        tests:
+          - tests/share.test.ts
+
+  - id: export-commands
+    name: Export 命令层
+    description: /export 命令实现
+    files:
+      - path: src/commands/export/index.ts
+        responsibility: 注册 export 命令
+        owner: sessions-share-module
+        tests: []
+
+      - path: src/commands/export/export.tsx
+        responsibility: |
+          export 命令主逻辑
+          - extractFirstPrompt：提取首条提示
+          - sanitizeFilename：文件名清理
+          - exportWithReactRenderer：React 渲染导出
+        owner: sessions-share-module
+        tests: []
+
+  - id: export-renderer
+    name: 导出渲染器
+    description: 通用会话渲染导出工具
+    files:
+      - path: src/utils/exportRenderer.tsx
+        responsibility: |
+          会话渲染导出
+          - streamRenderedMessages：分块流式渲染
+          - renderMessagesToPlainText：纯文本渲染
+        owner: sessions-share-module
+        tests: []
+
+  - id: ccshare
+    name: ccshare 恢复
+    description: ccshare 远程会话下载与恢复
+    files:
+      - path: src/utils/ccshareResume.ts
+        responsibility: |
+          ccshare 核心逻辑
+          - parseCcshareId：链接解析
+          - loadCcshare：下载并加载会话
+          - fetchTranscript：HTTP 下载与重定向
+          - writeBoundedResponse：边界限制写入
+          - readCredential：凭证读取
+        owner: sessions-share-module
+        tests:
+          - tests/w6Ccshare.test.ts
+
+  - id: session-storage
+    name: 会话存储集成
+    description: ccshare 依赖的会话存储功能
+    files:
+      - path: src/utils/sessionStorage.ts
+        responsibility: |
+          loadTranscriptFromFile：JSONL 加载
+          isTranscriptMessage：消息类型判断
+        owner: session-persistence-module
+        tests:
+          - tests/share.test.ts
+
+dependencies:
+  - system: session-persistence
+    reason: ccshare 使用 loadTranscriptFromFile 加载转录
+    files:
+      - src/utils/sessionStorage.ts
+      - src/utils/sessionStoragePortable.ts
+
+  - system: ink-platform
+    reason: /export 使用 renderToAnsiString 渲染
+    files:
+      - src/utils/staticRender.tsx
+      - src/components/Messages.tsx
+
+  - system: settings
+    reason: 读取配置目录位置
+    files:
+      - src/utils/envUtils.ts
+
+  - system: ui-rendering
+    reason: ShareDialog 使用 Ink 组件
+    files:
+      - src/components/CustomSelect/select.ts
+      - src/components/design-system/Dialog.tsx
+      - src/components/TextInput.ts
+
+test_suite:
+  primary:
+    - tests/share.test.ts
+    - tests/w6Ccshare.test.ts
+  coverage_targets:
+    - src/commands/share/shareHtml.ts
+    - src/commands/share/ShareDialog.tsx
+    - src/utils/ccshareResume.ts
+    - src/utils/exportRenderer.tsx
+
+external_apis:
+  - name: ccshare HTTPS endpoint
+    endpoints:
+      - GET /ccshare/{id}
+    usage: 下载 JSONL 格式会话转录
+    content_type: application/x-ndjson, application/jsonl
+
+security_boundaries:
+  - share_path_restriction: /share 仅写入当前工作区，不允许 .. 或符号链接逃逸
+  - share_no_overwrite: 永不覆盖现有文件
+  - ccshare_https_only: 仅 HTTPS，禁止 HTTP
+  - ccshare_credential_mode: 凭证文件权限必须 0600
+  - ccshare_cross_origin_no_auth: 跨原点重定向不发送凭证
+  - ccshare_bounded_download: 下载有字节和行数限制
+  - ccshare_no_hook_execution: 远程转录不执行 hook
+  - ccshare_no_project_path: 不保留远程项目路径
+
+feature_flags:
+  - name: (none)
+    description: 本模块无功能标志
+
+telemetry:
+  events:
+    - (none)
+    description: 本模块当前无遥测事件
+
+known_integrations:
+  - component: ExportDialog
+    description: 导出对话框
+    path: src/components/ExportDialog.tsx
+    owner: sessions-share-module
+
+  - component: deepLink
+    description: ccshare 链接可能通过深度链接触发
+    path: src/utils/deepLink/
+    owner: sessions-share-module
