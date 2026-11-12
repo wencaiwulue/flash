@@ -3,6 +3,29 @@ spec_id: text-formatting
 spec: ../../superpowers/specs/2026-11-12-text-formatting-design.md
 status: draft
 groups:
+
+  - id: additional-files
+    kind: source
+    section: 4
+    summary: Additional files
+    files:
+      - src/components/ContextSuggestions.tsx
+      - src/components/ContextVisualization.tsx
+      - src/utils/analyzeContext.ts
+      - src/utils/doctorContextWarnings.ts
+      - src/utils/readEditContext.ts
+      - src/utils/workloadContext.ts
+      - tests/snapshotUpdateDialog.test.tsx
+      - tests/snip.test.ts
+  - id: commands
+    kind: source
+    section: 4
+    summary: Command implementations
+    files:
+      - src/commands/color/color.ts
+      - src/commands/color/index.ts
+      - src/commands/snip/index.ts
+      - src/commands/snip/snip.tsx
   - id: format-utils
     kind: source
     section: 1
@@ -68,4 +91,3 @@ groups:
     section: 7
     summary: 文本格式化相关测试
     files:
-      - src/FIXME.ts

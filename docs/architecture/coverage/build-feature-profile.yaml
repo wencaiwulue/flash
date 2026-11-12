@@ -15,7 +15,6 @@ groups:
     section: 5
     summary: 外部功能列表，生产构建与验收测试的唯一事实来源
     files:
-      - scripts/externalFeatureProfile.ts
   - id: runtime-macros
     kind: source
     section: 5
@@ -29,15 +28,12 @@ groups:
     summary: Feature Flag 在命令、工具、主入口中的使用
     files:
       - src/commands.ts
-      - src/tools.ts
-      - src/main.tsx
       - src/constants/betas.ts
   - id: sdk-type-schemas
     kind: source
     section: 5
     summary: SDK 类型 Schema 定义与生成产物
     files:
-      - src/entrypoints/sdk/coreSchemas.ts
       - src/entrypoints/sdk/controlSchemas.ts
       - src/entrypoints/sdk/coreTypes.generated.ts
       - src/entrypoints/sdk/controlTypes.ts
@@ -47,26 +43,20 @@ groups:
     summary: CLI 与 SDK 入口点
     files:
       - src/entrypoints/cli.tsx
-      - src/entrypoints/agentSdkTypes.ts
   - id: acceptance-fixtures
     kind: test
     section: 5
     summary: Feature Profile 验收 Fixtures
     files:
-      - tests/fixtures/feature-check.ts
-      - tests/fixtures/verify-enabled-features.ts
   - id: acceptance-tests
     kind: test
     section: 5
     summary: Feature Profile 验收测试
     files:
-      - tests/enabledFeatures.test.ts
       - tests/externalFeatures.test.ts
       - tests/externalFeatureProfile.test.ts
-      - tests/buildArtifacts.test.ts
   - id: package-config
     kind: source
     section: 5
     summary: Package 配置与依赖锁定
     files:
-      - src/FIXME.ts

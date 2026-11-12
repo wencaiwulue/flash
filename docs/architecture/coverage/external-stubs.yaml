@@ -40,4 +40,3 @@ groups:
     section: 7
     summary: 公开后端集成测试
     files:
-      - tests/openBackends.test.ts

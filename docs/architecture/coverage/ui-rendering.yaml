@@ -3,6 +3,193 @@ spec_id: ui-rendering
 spec: ../../superpowers/specs/2026-11-12-ui-rendering-design.md
 status: draft
 groups:
+
+  - id: additional-files
+    kind: source
+    section: 4
+    summary: Additional files
+    files:
+      - src/components/AgentProgressLine.tsx
+      - src/components/App.tsx
+      - src/components/ApproveApiKey.tsx
+      - src/components/AutoModeOptInDialog.tsx
+      - src/components/AutoUpdater.tsx
+      - src/components/AutoUpdaterWrapper.tsx
+      - src/components/AwsAuthStatusBox.tsx
+      - src/components/BaseTextInput.tsx
+      - src/components/BashModeProgress.tsx
+      - src/components/BridgeDialog.tsx
+      - src/components/BypassPermissionsModeDialog.tsx
+      - src/components/ChannelDowngradeDialog.tsx
+      - src/components/ClaudeCodeHint/PluginHintMenu.tsx
+      - src/components/ClaudeMdExternalIncludesDialog.tsx
+      - src/components/ClickableImageRef.tsx
+      - src/components/CompactSummary.tsx
+      - src/components/ConfigurableShortcutHint.tsx
+      - src/components/ConsoleOAuthFlow.tsx
+      - src/components/CoordinatorAgentStatus.tsx
+      - src/components/CostThresholdDialog.tsx
+      - src/components/CtrlOToExpand.tsx
+      - src/components/CustomSelect/use-multi-select-state.ts
+      - src/components/CustomSelect/use-select-input.ts
+      - src/components/CustomSelect/use-select-navigation.ts
+      - src/components/CustomSelect/use-select-state.ts
+      - src/components/DevBar.tsx
+      - src/components/DevChannelsDialog.tsx
+      - src/components/DiagnosticExportDialog.tsx
+      - src/components/DiagnosticsDisplay.tsx
+      - src/components/EffortCallout.tsx
+      - src/components/EffortIndicator.ts
+      - src/components/ExitFlow.tsx
+      - src/components/ExportDialog.tsx
+      - src/components/FallbackToolUseErrorMessage.tsx
+      - src/components/FallbackToolUseRejectedMessage.tsx
+      - src/components/FastIcon.tsx
+      - src/components/Feedback.tsx
+      - src/components/FeedbackSurvey/FeedbackSurvey.tsx
+      - src/components/FeedbackSurvey/FeedbackSurveyView.tsx
+      - src/components/FeedbackSurvey/TranscriptSharePrompt.tsx
+      - src/components/FeedbackSurvey/submitTranscriptShare.ts
+      - src/components/FeedbackSurvey/useFeedbackSurvey.tsx
+      - src/components/FeedbackSurvey/useFrustrationDetection.ts
+      - src/components/FeedbackSurvey/useMemorySurvey.tsx
+      - src/components/FeedbackSurvey/usePostCompactSurvey.tsx
+      - src/components/FeedbackSurvey/useSurveyState.tsx
+      - src/components/FeedbackSurvey/utils.ts
+      - src/components/FileEditToolUpdatedMessage.tsx
+      - src/components/FileEditToolUseRejectedMessage.tsx
+      - src/components/GlobalSearchDialog.tsx
+      - src/components/HelpV2/Commands.tsx
+      - src/components/HelpV2/General.tsx
+      - src/components/HelpV2/HelpV2.tsx
+      - src/components/HighlightedCode/Fallback.tsx
+      - src/components/HistorySearchDialog.tsx
+      - src/components/IdeAutoConnectDialog.tsx
+      - src/components/IdeOnboardingDialog.tsx
+      - src/components/IdeStatusIndicator.tsx
+      - src/components/IdleReturnDialog.tsx
+      - src/components/InterruptedByUser.tsx
+      - src/components/InvalidConfigDialog.tsx
+      - src/components/InvalidSettingsDialog.tsx
+      - src/components/KeybindingWarnings.tsx
+      - src/components/LanguagePicker.tsx
+      - src/components/LogSelector.tsx
+      - src/components/LogoV2/AnimatedAsterisk.tsx
+      - src/components/LogoV2/AnimatedClawd.tsx
+      - src/components/LogoV2/ChannelsNotice.tsx
+      - src/components/LogoV2/Clawd.tsx
+      - src/components/LogoV2/CondensedLogo.tsx
+      - src/components/LogoV2/EmergencyTip.tsx
+      - src/components/LogoV2/ExperimentEnrollmentNotice.tsx
+      - src/components/LogoV2/Feed.tsx
+      - src/components/LogoV2/FeedColumn.tsx
+      - src/components/LogoV2/GuestPassesUpsell.tsx
+      - src/components/LogoV2/LogoV2.tsx
+      - src/components/LogoV2/Opus1mMergeNotice.tsx
+      - src/components/LogoV2/OverageCreditUpsell.tsx
+      - src/components/LogoV2/VoiceModeNotice.tsx
+      - src/components/LogoV2/WelcomeV2.tsx
+      - src/components/LogoV2/feedConfigs.tsx
+      - src/components/LspRecommendation/LspRecommendationMenu.tsx
+      - src/components/ManagedSettingsSecurityDialog/ManagedSettingsSecurityDialog.tsx
+      - src/components/ManagedSettingsSecurityDialog/utils.ts
+      - src/components/MemoryUsageIndicator.tsx
+      - src/components/MessageModel.tsx
+      - src/components/MessageResponse.tsx
+      - src/components/MessageSelector.tsx
+      - src/components/MessageTimestamp.tsx
+      - src/components/MockLimitsBanner.tsx
+      - src/components/ModelPicker.tsx
+      - src/components/NativeAutoUpdater.tsx
+      - src/components/NotebookEditToolUseRejectedMessage.tsx
+      - src/components/Onboarding.tsx
+      - src/components/OutputStylePicker.tsx
+      - src/components/PackageManagerAutoUpdater.tsx
+      - src/components/Passes/Passes.tsx
+      - src/components/PrBadge.tsx
+      - src/components/PressEnterToContinue.tsx
+      - src/components/PromptInput/HistorySearchInput.tsx
+      - src/components/PromptInput/IssueFlagBanner.tsx
+      - src/components/PromptInput/Notifications.tsx
+      - src/components/PromptInput/PromptInputFooter.tsx
+      - src/components/PromptInput/PromptInputFooterSuggestions.tsx
+      - src/components/PromptInput/PromptInputHelpMenu.tsx
+      - src/components/PromptInput/PromptInputModeIndicator.tsx
+      - src/components/PromptInput/PromptInputQueuedCommands.tsx
+      - src/components/PromptInput/PromptInputStashNotice.tsx
+      - src/components/PromptInput/SandboxPromptFooterHint.tsx
+      - src/components/PromptInput/ShimmeredInput.tsx
+      - src/components/PromptInput/TungstenPill.tsx
+      - src/components/PromptInput/VoiceIndicator.tsx
+      - src/components/PromptInput/useMaybeTruncateInput.ts
+      - src/components/PromptInput/usePromptInputPlaceholder.ts
+      - src/components/PromptInput/useShowFastIconHint.ts
+      - src/components/PromptInput/useSwarmBanner.ts
+      - src/components/PromptInput/utils.ts
+      - src/components/RemoteCallout.tsx
+      - src/components/RemoteEnvironmentDialog.tsx
+      - src/components/SandboxViolationExpandedView.tsx
+      - src/components/ScrollKeybindingHandler.tsx
+      - src/components/SearchBox.tsx
+      - src/components/SessionBackgroundHint.tsx
+      - src/components/Settings/Config.tsx
+      - src/components/Settings/Gates.tsx
+      - src/components/Settings/Settings.tsx
+      - src/components/Settings/Status.tsx
+      - src/components/Settings/Usage.tsx
+      - src/components/Spinner/FlashingChar.tsx
+      - src/components/Spinner/GlimmerMessage.tsx
+      - src/components/Spinner/ShimmerChar.tsx
+      - src/components/Spinner/SpinnerAnimationRow.tsx
+      - src/components/Spinner/SpinnerGlyph.tsx
+      - src/components/Spinner/TeammateSpinnerLine.tsx
+      - src/components/Spinner/TeammateSpinnerTree.tsx
+      - src/components/Spinner/index.ts
+      - src/components/Spinner/types.ts
+      - src/components/Spinner/useShimmerAnimation.ts
+      - src/components/Spinner/useStalledAnimation.ts
+      - src/components/Spinner/utils.ts
+      - src/components/Stats.tsx
+      - src/components/StatusLine.tsx
+      - src/components/StatusNotices.tsx
+      - src/components/TagTabs.tsx
+      - src/components/TeleportError.tsx
+      - src/components/TeleportProgress.tsx
+      - src/components/TeleportRepoMismatchDialog.tsx
+      - src/components/TeleportResumeWrapper.tsx
+      - src/components/TeleportStash.tsx
+      - src/components/ThemePicker.tsx
+      - src/components/TokenWarning.tsx
+      - src/components/TrustDialog/TrustDialog.tsx
+      - src/components/TrustDialog/utils.ts
+      - src/components/ValidationErrorsList.tsx
+      - src/components/WorkflowMultiselectDialog.tsx
+      - src/components/WorktreeExitDialog.tsx
+      - src/components/design-system/Byline.tsx
+      - src/components/design-system/Dialog.tsx
+      - src/components/design-system/FuzzyPicker.tsx
+      - src/components/design-system/KeyboardShortcutHint.tsx
+      - src/components/design-system/ListItem.tsx
+      - src/components/design-system/LoadingState.tsx
+      - src/components/design-system/Pane.tsx
+      - src/components/design-system/ProgressBar.tsx
+      - src/components/design-system/Ratchet.tsx
+      - src/components/design-system/StatusIcon.tsx
+      - src/components/design-system/Tabs.tsx
+      - src/components/design-system/ThemedBox.tsx
+      - src/components/design-system/ThemedText.tsx
+      - src/components/design-system/color.ts
+      - src/components/grove/Grove.tsx
+      - src/components/sandbox/SandboxDoctorSection.tsx
+      - src/components/wizard/WizardDialogLayout.tsx
+      - src/components/wizard/WizardNavigationFooter.tsx
+      - src/components/wizard/index.ts
+      - src/components/wizard/types.ts
+      - src/components/wizard/useWizard.ts
+      - src/hooks/renderPlaceholder.ts
+      - src/utils/diff.ts
+      - src/utils/renderOptions.ts
+      - src/utils/uuid.ts
   - id: messages-core
     kind: source
     section: 4
@@ -32,7 +219,6 @@ groups:
     files:
       - src/components/Markdown.tsx
       - src/components/MarkdownTable.tsx
-      - src/utils/markdown.ts
   - id: streaming
     kind: source
     section: 4
@@ -45,7 +231,6 @@ groups:
     section: 4
     summary: Diff 高亮与语法着色
     files:
-      - src/components/StructuredDiff.tsx
       - src/components/HighlightedCode.tsx
       - src/utils/textHighlighting.ts
   - id: ansi-terminal
@@ -87,4 +272,3 @@ groups:
     section: 4
     summary: Logo 与品牌相关渲染
     files:
-      - src/FIXME.ts

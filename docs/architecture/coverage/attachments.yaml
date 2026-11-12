@@ -17,7 +17,6 @@ groups:
       - src/utils/imagePaste.ts
       - src/utils/imageStore.ts
       - src/utils/imageValidation.ts
-      - src/utils/imageResizer.ts
   - id: paste-store
     kind: source
     section: 4
@@ -29,7 +28,6 @@ groups:
     section: 4
     summary: 配置与常量类型
     files:
-      - src/utils/config.ts
       - src/constants/apiLimits.ts
   - id: hooks-integration
     kind: source
@@ -43,9 +41,6 @@ groups:
     section: 4
     summary: 相关记忆检索
     files:
-      - src/memdir/findRelevantMemories.ts
-      - src/memdir/memoryAge.ts
-      - src/memdir/paths.ts
   - id: team-collaboration
     kind: source
     section: 4
@@ -53,14 +48,11 @@ groups:
     files:
       - src/teammate/teammateMailbox.ts
       - src/swarm/teamHelpers.ts
-      - src/utils/task/framework.ts
-      - src/utils/task/diskOutput.ts
   - id: permissions-security
     kind: source
     section: 4
     summary: 权限与安全
     files:
-      - src/utils/permissions/filesystem.ts
   - id: diagnostics-telemetry
     kind: source
     section: 4
@@ -73,5 +65,3 @@ groups:
     section: 4
     summary: 文件读取与工具集成
     files:
-      - src/tools/FileReadTool/FileReadTool.ts
-      - src/utils/readFileInRange.ts

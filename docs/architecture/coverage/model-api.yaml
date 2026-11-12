@@ -3,6 +3,13 @@ spec_id: model-api
 spec: ../../superpowers/specs/2026-11-12-model-api-design.md
 status: draft
 groups:
+
+  - id: additional-files
+    kind: source
+    section: 4
+    summary: Additional files
+    files:
+      - src/services/compact/apiMicrocompact.ts
   - id: model-api-core
     kind: source
     section: 4
@@ -68,13 +75,11 @@ groups:
     section: 4
     summary: Live 模型验证脚本
     files:
-      - scripts/live-model-validation.ts
   - id: model-api-utilities
     kind: source
     section: 4
     summary: API 辅助工具模块
     files:
-      - src/services/api/usage.ts
       - src/services/api/emptyUsage.ts
       - src/services/api/firstTokenDate.ts
       - src/services/api/errorUtils.ts

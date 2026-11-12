@@ -3,6 +3,36 @@ spec_id: task-system
 spec: ../../superpowers/specs/2026-11-13-task-system-design.md
 status: draft
 groups:
+
+  - id: additional-files
+    kind: source
+    section: 4
+    summary: Additional files
+    files:
+      - src/commands/status/index.ts
+      - src/commands/status/status.tsx
+      - src/commands/statusline.tsx
+      - src/components/tasks/AsyncAgentDetailDialog.tsx
+      - src/components/tasks/BackgroundTask.tsx
+      - src/components/tasks/BackgroundTaskStatus.tsx
+      - src/components/tasks/BackgroundTasksDialog.tsx
+      - src/components/tasks/DreamDetailDialog.tsx
+      - src/components/tasks/InProcessTeammateDetailDialog.tsx
+      - src/components/tasks/MonitorMcpDetailDialog.tsx
+      - src/components/tasks/RemoteSessionDetailDialog.tsx
+      - src/components/tasks/RemoteSessionProgress.tsx
+      - src/components/tasks/ShellDetailDialog.tsx
+      - src/components/tasks/ShellProgress.tsx
+      - src/components/tasks/WorkflowDetailDialog.tsx
+      - src/components/tasks/renderToolActivity.tsx
+      - src/components/tasks/taskStatusUtils.tsx
+  - id: commands
+    kind: source
+    section: 4
+    summary: Command implementations
+    files:
+      - src/commands/todo/index.ts
+      - src/commands/todo/todo.tsx
   - id: task-core
     kind: source
     section: 4
@@ -46,13 +76,11 @@ groups:
     section: 4
     summary: LocalAgentTask 实现，包括 async agent、resume、消息管理
     files:
-      - src/FIXME.ts
   - id: task-remote-agent
     kind: source
     section: 4
     summary: RemoteAgentTask 实现（CCA 远程隔离）
     files:
-      - src/FIXME.ts
   - id: task-in-process-teammate
     kind: source
     section: 4
@@ -159,8 +187,6 @@ groups:
     section: 1
     summary: Cron 任务相关（明确不吞并）
     files:
-      - src/utils/cronTasks.ts
-      - src/utils/cronTasksLock.ts
   - id: task-summary
     kind: source
     section: 4

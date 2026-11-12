@@ -3,6 +3,18 @@ spec_id: tool-framework
 spec: ../../superpowers/specs/2026-11-12-tool-framework-design.md
 status: draft
 groups:
+
+  - id: additional-files
+    kind: source
+    section: 4
+    summary: Additional files
+    files:
+      - src/hooks/toolPermission/handlers/coordinatorHandler.ts
+      - src/hooks/toolPermission/handlers/interactiveHandler.ts
+      - src/utils/toolErrors.ts
+      - src/utils/toolResultStorage.ts
+      - src/utils/toolSchemaCache.ts
+      - src/utils/toolSearch.ts
   - id: tool-types
     kind: source
     section: 4

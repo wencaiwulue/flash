@@ -3,75 +3,14 @@ spec_id: telemetry
 spec: ../../superpowers/specs/2026-11-12-telemetry-design.md
 status: planned
 groups:
-  - id: group-1
+  - id: telemetry-core
     kind: source
     section: 4
-    summary: Group 1
+    summary: Telemetry core utilities
     files:
-      - src/FIXME.ts
-  - id: group-2
-    kind: source
-    section: 4
-    summary: Group 2
-    files:
-      - src/FIXME.ts
-  - id: group-3
-    kind: source
-    section: 4
-    summary: Group 3
-    files:
-      - src/FIXME.ts
-  - id: group-4
-    kind: source
-    section: 4
-    summary: Group 4
-    files:
-      - src/FIXME.ts
-  - id: group-5
-    kind: source
-    section: 4
-    summary: Group 5
-    files:
-      - src/FIXME.ts
-  - id: group-6
-    kind: source
-    section: 4
-    summary: Group 6
-    files:
-      - src/FIXME.ts
-  - id: group-7
-    kind: source
-    section: 4
-    summary: Group 7
-    files:
-      - src/FIXME.ts
-  - id: group-8
-    kind: source
-    section: 4
-    summary: Group 8
-    files:
-      - src/FIXME.ts
-  - id: group-9
-    kind: source
-    section: 4
-    summary: Group 9
-    files:
-      - src/FIXME.ts
-  - id: group-10
-    kind: source
-    section: 4
-    summary: Group 10
-    files:
-      - src/FIXME.ts
-  - id: group-11
-    kind: source
-    section: 4
-    summary: Group 11
-    files:
-      - src/FIXME.ts
-  - id: group-12
-    kind: source
-    section: 4
-    summary: Group 12
-    files:
-      - src/FIXME.ts
+      - src/utils/telemetry/betaSessionTracing.ts
+      - src/utils/telemetry/events.ts
+      - src/utils/telemetry/instrumentation.ts
+      - src/utils/telemetry/logger.ts
+      - src/utils/telemetry/perfettoTracing.ts
+      - src/utils/telemetryAttributes.ts

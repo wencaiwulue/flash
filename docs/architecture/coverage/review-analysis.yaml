@@ -3,9 +3,23 @@ spec_id: review-analysis
 spec: ../../superpowers/specs/2026-11-12-review-analysis-design.md
 status: draft
 groups:
+
+  - id: additional-files
+    kind: source
+    section: 4
+    summary: Additional files
+    files:
+      - src/components/SessionPreview.tsx
+      - tests/reviewArtifact.test.ts
+  - id: commands
+    kind: source
+    section: 4
+    summary: Command implementations
+    files:
+      - src/commands/review-artifact/index.ts
+      - src/commands/review-artifact/reviewArtifact.tsx
   - id: default
     kind: source
     section: 4
     summary: Default group
     files:
-      - src/FIXME.ts

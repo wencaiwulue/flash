@@ -3,6 +3,17 @@ spec_id: ide-integration
 spec: ../../superpowers/specs/2026-11-12-ide-integration-design.md
 status: draft
 groups:
+
+  - id: additional-files
+    kind: source
+    section: 4
+    summary: Additional files
+    files:
+      - src/components/LogoV2/GateOverridesWarning.tsx
+      - src/components/PromptInput/PromptInputFooterLeftSide.tsx
+      - src/components/wizard/WizardProvider.tsx
+      - src/utils/sideQuery.ts
+      - src/utils/sideQuestion.ts
   - id: ide-core
     kind: source
     section: 4

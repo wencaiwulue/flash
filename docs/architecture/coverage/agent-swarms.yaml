@@ -3,6 +3,64 @@ spec_id: agent-swarms
 spec: ../../superpowers/specs/2026-11-12-agent-swarms-design.md
 status: draft
 groups:
+
+  - id: additional-files
+    kind: source
+    section: 4
+    summary: Additional files
+    files:
+      - src/commands/fork/index.ts
+      - src/components/Spinner/teammateSelectHint.ts
+      - src/components/agents/AgentDetail.tsx
+      - src/components/agents/AgentEditor.tsx
+      - src/components/agents/AgentNavigationFooter.tsx
+      - src/components/agents/AgentsList.tsx
+      - src/components/agents/AgentsMenu.tsx
+      - src/components/agents/ColorPicker.tsx
+      - src/components/agents/ModelSelector.tsx
+      - src/components/agents/SnapshotUpdateDialog.tsx
+      - src/components/agents/ToolSelector.tsx
+      - src/components/agents/agentFileUtils.ts
+      - src/components/agents/generateAgent.ts
+      - src/components/agents/new-agent-creation/CreateAgentWizard.tsx
+      - src/components/agents/new-agent-creation/types.ts
+      - src/components/agents/new-agent-creation/wizard-steps/ColorStep.tsx
+      - src/components/agents/new-agent-creation/wizard-steps/ConfirmStep.tsx
+      - src/components/agents/new-agent-creation/wizard-steps/ConfirmStepWrapper.tsx
+      - src/components/agents/new-agent-creation/wizard-steps/DescriptionStep.tsx
+      - src/components/agents/new-agent-creation/wizard-steps/GenerateStep.tsx
+      - src/components/agents/new-agent-creation/wizard-steps/LocationStep.tsx
+      - src/components/agents/new-agent-creation/wizard-steps/MemoryStep.tsx
+      - src/components/agents/new-agent-creation/wizard-steps/MethodStep.tsx
+      - src/components/agents/new-agent-creation/wizard-steps/ModelStep.tsx
+      - src/components/agents/new-agent-creation/wizard-steps/PromptStep.tsx
+      - src/components/agents/new-agent-creation/wizard-steps/ToolsStep.tsx
+      - src/components/agents/new-agent-creation/wizard-steps/TypeStep.tsx
+      - src/components/agents/types.ts
+      - src/components/agents/utils.ts
+      - src/components/agents/validateAgent.ts
+      - src/components/messages/teamMemCollapsed.tsx
+      - src/components/messages/teamMemSaved.ts
+      - src/components/teams/TeamStatus.tsx
+      - src/components/teams/TeamsDialog.tsx
+      - src/coordinator/workerAgent.ts
+      - src/hooks/toolPermission/handlers/swarmWorkerHandler.ts
+      - src/utils/swarm/backends/ITermBackend.ts
+      - src/utils/swarm/backends/InProcessBackend.ts
+      - src/utils/swarm/backends/PaneBackendExecutor.ts
+      - src/utils/swarm/backends/TmuxBackend.ts
+      - src/utils/swarm/backends/detection.ts
+      - src/utils/swarm/backends/it2Setup.ts
+      - src/utils/swarm/backends/teammateModeSnapshot.ts
+      - src/utils/teamMemoryOps.ts
+      - tests/agentMemorySnapshot.test.ts
+  - id: commands
+    kind: source
+    section: 4
+    summary: Command implementations
+    files:
+      - src/commands/agents/agents.tsx
+      - src/commands/agents/index.ts
   - id: agent-tool
     kind: source
     section: 4
@@ -134,7 +192,6 @@ groups:
     section: 7
     summary: Swarm 相关命令
     files:
-      - src/commands/agents/index.ts
   - id: shared-spawn-multi-agent
     kind: source
     section: 4

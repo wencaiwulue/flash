@@ -39,17 +39,13 @@ groups:
     section: 4
     summary: Open Backends (Chrome/Computer Use)
     files:
-      - src/external-stubs/claude-for-chrome-mcp.ts
-      - src/external-stubs/computer-use-mcp.ts
   - id: supporting-source
     kind: source
     section: 4
     summary: 支持文件
     files:
-      - src/jobs/state.ts
       - src/utils/envUtils.ts
       - src/utils/debug.ts
-      - src/utils/cleanupRegistry.ts
   - id: core-tests
     kind: test
     section: 7

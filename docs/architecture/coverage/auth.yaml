@@ -3,6 +3,38 @@ spec_id: auth
 spec: ../../superpowers/specs/2026-11-12-auth-design.md
 status: draft
 groups:
+
+  - id: additional-files
+    kind: source
+    section: 4
+    summary: Additional files
+    files:
+      - src/commands/install-github-app/ApiKeyStep.tsx
+      - src/commands/install-github-app/CheckExistingSecretStep.tsx
+      - src/commands/install-github-app/CheckGitHubStep.tsx
+      - src/commands/install-github-app/ChooseRepoStep.tsx
+      - src/commands/install-github-app/CreatingStep.tsx
+      - src/commands/install-github-app/ErrorStep.tsx
+      - src/commands/install-github-app/ExistingWorkflowStep.tsx
+      - src/commands/install-github-app/InstallAppStep.tsx
+      - src/commands/install-github-app/OAuthFlowStep.tsx
+      - src/commands/install-github-app/SuccessStep.tsx
+      - src/commands/install-github-app/WarningsStep.tsx
+      - src/commands/install-github-app/index.ts
+      - src/commands/install-github-app/install-github-app.tsx
+      - src/commands/install-github-app/setupGitHubActions.ts
+      - src/commands/install-github-app/types.ts
+      - src/commands/login/index.ts
+      - src/commands/login/login.tsx
+      - src/commands/logout/index.ts
+      - src/commands/logout/logout.tsx
+  - id: commands
+    kind: source
+    section: 4
+    summary: Command implementations
+    files:
+      - src/commands/oauth-refresh/index.ts
+      - src/commands/oauth-refresh/oauthRefresh.ts
   - id: auth-core
     kind: source
     section: 4
@@ -112,8 +144,6 @@ groups:
     section: 4
     summary: /oauth-refresh 命令实现、token redaction、状态显示
     files:
-      - src/commands/oauth-refresh/oauthRefresh.ts
-      - src/commands/oauth-refresh/index.ts
   - id: test-auth
     kind: test
     section: 7

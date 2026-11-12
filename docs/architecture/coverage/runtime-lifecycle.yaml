@@ -3,6 +3,52 @@ spec_id: runtime-lifecycle
 spec: ../../superpowers/specs/2026-11-12-runtime-lifecycle-design.md
 status: draft
 groups:
+
+  - id: additional-files
+    kind: source
+    section: 4
+    summary: Additional files
+    files:
+      - src/services/AgentSummary/agentSummary.ts
+      - src/services/PromptSuggestion/promptSuggestion.ts
+      - src/services/PromptSuggestion/speculation.ts
+      - src/services/analytics/config.ts
+      - src/services/analytics/datadog.ts
+      - src/services/analytics/firstPartyEventLogger.ts
+      - src/services/analytics/firstPartyEventLoggingExporter.ts
+      - src/services/analytics/growthbook.ts
+      - src/services/analytics/metadata.ts
+      - src/services/analytics/sink.ts
+      - src/services/analytics/sinkKillswitch.ts
+      - src/services/awaySummary.ts
+      - src/services/claudeAiLimitsHook.ts
+      - src/services/compact/compactWarningHook.ts
+      - src/services/compact/snipCompact.ts
+      - src/services/compact/snipProjection.ts
+      - src/services/internalLogging.ts
+      - src/services/lsp/LSPClient.ts
+      - src/services/lsp/LSPServerInstance.ts
+      - src/services/lsp/LSPServerManager.ts
+      - src/services/lsp/config.ts
+      - src/services/lsp/manager.ts
+      - src/services/lsp/passiveFeedback.ts
+      - src/services/lsp/types.ts
+      - src/services/mockRateLimits.ts
+      - src/services/prSubscriptions.ts
+      - src/services/preventSleep.ts
+      - src/services/rateLimitMessages.ts
+      - src/services/rateLimitMocking.ts
+      - src/services/sessionTranscript/sessionTranscript.ts
+      - src/services/tips/tipHistory.ts
+      - src/services/tips/tipRegistry.ts
+      - src/services/tips/tipScheduler.ts
+      - src/services/tips/types.ts
+      - src/services/tokenEstimation.ts
+      - src/services/toolUseSummary/toolUseSummaryGenerator.ts
+      - src/services/tools/StreamingToolExecutor.ts
+      - src/services/tools/toolHooks.ts
+      - src/services/tools/toolOrchestration.ts
+      - src/services/vcr.ts
   - id: abort-controller
     kind: source
     section: 3

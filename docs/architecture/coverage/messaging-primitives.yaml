@@ -3,6 +3,46 @@ spec_id: messaging-primitives
 spec: ../../superpowers/specs/2026-11-12-messaging-primitives-design.md
 status: draft
 groups:
+
+  - id: additional-files
+    kind: source
+    section: 4
+    summary: Additional files
+    files:
+      - src/components/messageActions.tsx
+      - src/components/messages/AttachmentMessage.tsx
+      - src/components/messages/CompactBoundaryMessage.tsx
+      - src/components/messages/HookProgressMessage.tsx
+      - src/components/messages/PlanApprovalMessage.tsx
+      - src/components/messages/RateLimitMessage.tsx
+      - src/components/messages/ShutdownMessage.tsx
+      - src/components/messages/SnipBoundaryMessage.ts
+      - src/components/messages/SystemAPIErrorMessage.tsx
+      - src/components/messages/TaskAssignmentMessage.tsx
+      - src/components/messages/UserAgentNotificationMessage.tsx
+      - src/components/messages/UserBashInputMessage.tsx
+      - src/components/messages/UserBashOutputMessage.tsx
+      - src/components/messages/UserCommandMessage.tsx
+      - src/components/messages/UserCrossSessionMessage.ts
+      - src/components/messages/UserForkBoilerplateMessage.ts
+      - src/components/messages/UserGitHubWebhookMessage.ts
+      - src/components/messages/UserImageMessage.tsx
+      - src/components/messages/UserLocalCommandOutputMessage.tsx
+      - src/components/messages/UserMemoryInputMessage.tsx
+      - src/components/messages/UserPlanMessage.tsx
+      - src/components/messages/UserPromptMessage.tsx
+      - src/components/messages/UserResourceUpdateMessage.tsx
+      - src/components/messages/UserTeammateMessage.tsx
+      - src/components/messages/UserToolResultMessage/RejectedPlanMessage.tsx
+      - src/components/messages/UserToolResultMessage/RejectedToolUseMessage.tsx
+      - src/components/messages/UserToolResultMessage/UserToolCanceledMessage.tsx
+      - src/components/messages/UserToolResultMessage/UserToolErrorMessage.tsx
+      - src/components/messages/UserToolResultMessage/UserToolRejectMessage.tsx
+      - src/components/messages/UserToolResultMessage/UserToolResultMessage.tsx
+      - src/components/messages/UserToolResultMessage/UserToolSuccessMessage.tsx
+      - src/components/messages/UserToolResultMessage/utils.tsx
+      - src/components/messages/nullRenderingAttachments.ts
+      - tests/messageRenderers.test.ts
   - id: mailbox
     kind: source
     section: 4
@@ -80,12 +120,9 @@ groups:
     section: 3
     summary: 工作流测试 - 间接验证队列操作和消息传递
     files:
-      - tests/workflow.test.ts
   - id: monitor-test
     kind: test
     section: 3
     summary: 监控工具集成测试 - 间接验证队列在任务流中的行为
     files:
-      - tests/monitorMcpToolCall.test.ts
-      - tests/monitorMcpTask.test.ts
       - tests/monitorToolIntegration.test.ts

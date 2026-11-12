@@ -3,9 +3,89 @@ spec_id: commands-framework
 spec: ../../superpowers/specs/2026-11-12-commands-framework-design.md
 status: draft
 groups:
+
+  - id: additional-files
+    kind: source
+    section: 4
+    summary: Additional files
+    files:
+      - src/commands/createMovedToPluginCommand.ts
+      - src/commands/effort/effort.tsx
+      - src/commands/effort/index.ts
+      - src/commands/exit/exit.tsx
+      - src/commands/exit/index.ts
+      - src/commands/fast/fast.tsx
+      - src/commands/fast/index.ts
+      - src/commands/force-snip.ts
+      - src/commands/good-claude/goodClaude.tsx
+      - src/commands/good-claude/index.ts
+      - src/commands/hooks/hooks.tsx
+      - src/commands/hooks/index.ts
+      - src/commands/init-verifiers.ts
+      - src/commands/init.ts
+      - src/commands/install.tsx
+      - src/commands/keybindings/index.ts
+      - src/commands/keybindings/keybindings.ts
+      - src/commands/mock-limits/mock-limits.ts
+      - src/commands/model/model.tsx
+      - src/commands/output-style/index.ts
+      - src/commands/output-style/output-style.tsx
+      - src/commands/passes/index.ts
+      - src/commands/passes/passes.tsx
+      - src/commands/peers/index.ts
+      - src/commands/pr_comments/index.ts
+      - src/commands/privacy-settings/index.ts
+      - src/commands/privacy-settings/privacy-settings.tsx
+      - src/commands/proactive.ts
+      - src/commands/rate-limit-options/index.ts
+      - src/commands/rate-limit-options/rate-limit-options.tsx
+      - src/commands/release-notes/index.ts
+      - src/commands/release-notes/release-notes.ts
+      - src/commands/rename/generateSessionName.ts
+      - src/commands/rename/index.ts
+      - src/commands/rename/rename.ts
+      - src/commands/resume/index.ts
+      - src/commands/resume/resume.tsx
+      - src/commands/review.ts
+      - src/commands/review/UltrareviewOverageDialog.tsx
+      - src/commands/review/reviewRemote.ts
+      - src/commands/review/ultrareviewCommand.tsx
+      - src/commands/review/ultrareviewEnabled.ts
+      - src/commands/rewind/index.ts
+      - src/commands/rewind/rewind.ts
+      - src/commands/security-review.ts
+      - src/commands/stats/index.ts
+      - src/commands/stats/stats.tsx
+      - src/commands/stickers/index.ts
+      - src/commands/stickers/stickers.ts
+      - src/commands/subscribe-pr.ts
+      - src/commands/summary/index.ts
+      - src/commands/tag/index.ts
+      - src/commands/tag/tag.tsx
+      - src/commands/tasks/index.ts
+      - src/commands/tasks/tasks.tsx
+      - src/commands/terminalSetup/index.ts
+      - src/commands/terminalSetup/terminalSetup.tsx
+      - src/commands/thinkback-play/index.ts
+      - src/commands/thinkback-play/thinkback-play.ts
+      - src/commands/thinkback/index.ts
+      - src/commands/thinkback/thinkback.tsx
+      - src/commands/upgrade/index.ts
+      - src/commands/upgrade/upgrade.tsx
+      - src/commands/version.ts
+      - src/commands/vim/index.ts
+      - src/commands/vim/vim.ts
+      - src/commands/workflows/index.ts
+  - id: commands
+    kind: source
+    section: 4
+    summary: Command implementations
+    files:
+      - src/commands/clear/clear.ts
+      - src/commands/clear/conversation.ts
+      - src/commands/clear/index.ts
   - id: default
     kind: source
     section: 4
     summary: Default group
     files:
-      - src/FIXME.ts

@@ -3,6 +3,13 @@ spec_id: skills
 spec: ../../superpowers/specs/2026-11-12-skills-design.md
 status: draft
 groups:
+  - id: commands
+    kind: source
+    section: 4
+    summary: Command implementations
+    files:
+      - src/commands/skills/index.ts
+      - src/commands/skills/skills.tsx
   - id: skills-load
     kind: source
     section: 4
@@ -118,8 +125,6 @@ groups:
     section: 4
     summary: 技能CLI命令
     files:
-      - src/commands/skills/index.ts
-      - src/commands/skills/skills.tsx
   - id: skill-telemetry
     kind: source
     section: 4

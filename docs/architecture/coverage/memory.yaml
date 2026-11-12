@@ -3,6 +3,24 @@ spec_id: memory
 spec: ../../superpowers/specs/2026-11-12-memory-design.md
 status: draft
 groups:
+
+  - id: additional-files
+    kind: source
+    section: 4
+    summary: Additional files
+    files:
+      - src/components/memory/MemoryFileSelector.tsx
+      - src/components/memory/MemoryUpdateNotification.tsx
+      - src/utils/memory/types.ts
+      - src/utils/memory/versions.ts
+      - src/utils/memoryFileDetection.ts
+  - id: commands
+    kind: source
+    section: 4
+    summary: Command implementations
+    files:
+      - src/commands/memory/index.ts
+      - src/commands/memory/memory.tsx
   - id: memdir-core
     kind: source
     section: 4

@@ -3,6 +3,24 @@ spec_id: mcp
 spec: ../../superpowers/specs/2026-11-12-mcp-design.md
 status: draft
 groups:
+
+  - id: additional-files
+    kind: source
+    section: 4
+    summary: Additional files
+    files:
+      - src/services/mcp/useManageMCPConnections.ts
+      - src/services/mcp/vscodeSdkMcp.ts
+      - src/utils/mcp/dateTimeParser.ts
+      - src/utils/mcp/elicitationValidation.ts
+      - tests/monitorMcpDetailDialog.test.tsx
+  - id: commands
+    kind: source
+    section: 4
+    summary: Command implementations
+    files:
+      - src/commands/mcp/index.ts
+      - src/commands/mcp/mcp.tsx
   - id: mcp-config
     kind: source
     section: 4
@@ -112,8 +130,6 @@ groups:
     summary: MCP CLI命令
     files:
       - src/commands/mcp/addCommand.ts
-      - src/commands/mcp/index.ts
-      - src/commands/mcp/mcp.tsx
       - src/commands/mcp/xaaIdpCommand.ts
   - id: mcp-cli-handlers
     kind: source

@@ -50,11 +50,8 @@ groups:
     section: 4
     summary: 设置变更应用工具函数（外部文件变更 → AppState）
     files:
-      - src/utils/settings/applySettingsChange.ts
-      - src/utils/settings/changeDetector.ts
   - id: app-state-tests
     kind: test
     section: 7
     summary: AppState 相关测试
     files:
-      - src/FIXME.ts

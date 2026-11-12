@@ -3,9 +3,19 @@ spec_id: assistant-ui
 spec: ../../superpowers/specs/2026-11-12-assistant-ui-design.md
 status: draft
 groups:
-  - id: default
+  - id: commands
     kind: source
     section: 4
-    summary: Default group
+    summary: Command implementations
     files:
-      - src/FIXME.ts
+      - src/commands/assistant/assistant.tsx
+      - src/commands/assistant/index.ts
+  - id: assistant-ui-core
+    kind: source
+    section: 4
+    summary: Assistant session chooser, gate, history, index
+    files:
+      - src/assistant/AssistantSessionChooser.tsx
+      - src/assistant/gate.ts
+      - src/assistant/index.ts
+      - src/assistant/sessionHistory.ts

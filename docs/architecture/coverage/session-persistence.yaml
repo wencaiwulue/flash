@@ -3,6 +3,43 @@ spec_id: session-persistence
 spec: ../../superpowers/specs/2026-11-12-session-persistence-design.md
 status: draft
 groups:
+
+  - id: additional-files
+    kind: source
+    section: 4
+    summary: Additional files
+    files:
+      - src/commands/insights.ts
+      - src/commands/insights/sessionMeta.ts
+      - src/commands/session/index.ts
+      - src/commands/session/session.tsx
+      - src/migrations/migrateFennecToOpus.ts
+      - src/migrations/migrateLegacyOpusToCurrent.ts
+      - src/migrations/migrateOpusToOpus1m.ts
+      - src/migrations/migrateSonnet1mToSonnet45.ts
+      - src/migrations/migrateSonnet45ToSonnet46.ts
+      - src/migrations/resetAutoModeOptInForDefaultOffer.ts
+      - src/migrations/resetProToOpusDefault.ts
+      - src/utils/sessionActivity.ts
+      - src/utils/sessionDataUploader.ts
+      - src/utils/sessionEnvVars.ts
+      - src/utils/sessionEnvironment.ts
+      - src/utils/sessionFileAccessHooks.ts
+      - src/utils/sessionIngressAuth.ts
+      - src/utils/sessionRestore.ts
+      - src/utils/sessionStart.ts
+      - src/utils/sessionState.ts
+      - src/utils/sessionTitle.ts
+      - src/utils/sessionUrl.ts
+      - src/utils/telemetry/sessionTracing.ts
+      - tests/backgroundSessions.test.ts
+      - tests/backgroundSessionsDist.test.ts
+  - id: commands
+    kind: source
+    section: 4
+    summary: Command implementations
+    files:
+      - src/commands/backfill-sessions/index.ts
   - id: session-storage-core
     kind: source
     section: 3
@@ -26,19 +63,16 @@ groups:
     section: 4
     summary: 引导状态与会话切换（持久化 lease 归属 SDK）
     files:
-      - src/bootstrap/state.ts
   - id: session-transcript-services
     kind: source
     section: 4
     summary: 会话转录服务
     files:
-      - src/FIXME.ts
   - id: cli-resume-commands
     kind: source
     section: 4
     summary: CLI 恢复/继续/分叉命令实现
     files:
-      - src/FIXME.ts
   - id: session-storage-tests
     kind: test
     section: 4

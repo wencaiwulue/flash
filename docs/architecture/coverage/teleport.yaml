@@ -3,9 +3,26 @@ spec_id: teleport
 spec: ../../superpowers/specs/2026-11-12-teleport-design.md
 status: draft
 groups:
+
+  - id: additional-files
+    kind: source
+    section: 4
+    summary: Additional files
+    files:
+      - src/utils/teleport.tsx
+      - src/utils/teleport/api.ts
+      - src/utils/teleport/environmentSelection.ts
+      - src/utils/teleport/environments.ts
+      - tests/teleport.test.ts
+  - id: commands
+    kind: source
+    section: 4
+    summary: Command implementations
+    files:
+      - src/commands/teleport/index.ts
+      - src/commands/teleport/teleport.tsx
   - id: default
     kind: source
     section: 4
     summary: Default group
     files:
-      - src/FIXME.ts

@@ -3,9 +3,60 @@ spec_id: cli-startup
 spec: ../../superpowers/specs/2026-11-12-cli-startup-design.md
 status: draft
 groups:
-  - id: default
+
+  - id: additional-files
     kind: source
     section: 4
-    summary: Default group
+    summary: Additional files
     files:
-      - src/FIXME.ts
+      - src/entrypoints/init.ts
+      - src/entrypoints/sandboxTypes.ts
+  - id: commands
+    kind: source
+    section: 4
+    summary: Command implementations
+    files:
+      - src/commands/break-cache/break-cache.ts
+      - src/commands/break-cache/index.ts
+  - id: cli-core
+    kind: source
+    section: 4
+    summary: CLI entrypoints, bg/up/exit/rollback commands
+    files:
+      - src/cli/bg.ts
+      - src/cli/bgArgs.ts
+      - src/cli/exit.ts
+      - src/cli/print.ts
+      - src/cli/remoteIO.ts
+      - src/cli/rollback.ts
+      - src/cli/structuredIO.ts
+      - src/cli/up.ts
+  - id: cli-handlers
+    kind: source
+    section: 4
+    summary: CLI command handlers
+    files:
+      - src/cli/handlers/agents.ts
+      - src/cli/handlers/ant.ts
+      - src/cli/handlers/autoMode.ts
+      - src/cli/handlers/templateJobs.ts
+      - src/cli/handlers/util.tsx
+  - id: cli-transports
+    kind: source
+    section: 4
+    summary: CLI transport implementations (SSE, WebSocket, Hybrid)
+    files:
+      - src/cli/transports/HybridTransport.ts
+      - src/cli/transports/SSETransport.ts
+      - src/cli/transports/SerialBatchEventUploader.ts
+      - src/cli/transports/Transport.ts
+      - src/cli/transports/WebSocketTransport.ts
+      - src/cli/transports/WorkerStateUploader.ts
+      - src/cli/transports/ccrClient.ts
+      - src/cli/transports/transportUtils.ts
+  - id: cli-utils
+    kind: source
+    section: 4
+    summary: CLI utilities
+    files:
+      - src/cli/ndjsonSafeStringify.ts

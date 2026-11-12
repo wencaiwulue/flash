@@ -34,7 +34,6 @@ groups:
       - src/hooks/useTypeahead.tsx
       - src/utils/suggestions/commandSuggestions.ts
       - src/utils/suggestions/directoryCompletion.ts
-      - src/utils/suggestions/slackChannelSuggestions.ts
       - src/utils/suggestions/shellHistoryCompletion.ts
       - src/hooks/fileSuggestions.ts
       - src/hooks/unifiedSuggestions.ts
@@ -81,11 +80,3 @@ groups:
     files:
       - src/utils/Cursor.ts
       - src/utils/intl.ts
-      - src/ink/events/input-event.ts
-      - src/utils/imagePaste.ts
-  - id: group-10
-    kind: test
-    section: 7
-    summary: 测试套件
-    files:
-      - src/FIXME.ts

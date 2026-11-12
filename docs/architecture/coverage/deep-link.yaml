@@ -51,4 +51,3 @@ groups:
     section: 4
     summary: CLI 入口中的深层链接处理分支
     files:
-      - src/main.tsx

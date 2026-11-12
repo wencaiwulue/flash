@@ -3,6 +3,27 @@ spec_id: file-tools
 spec: ../../superpowers/specs/2026-11-12-file-tools-design.md
 status: draft
 groups:
+
+  - id: additional-files
+    kind: source
+    section: 4
+    summary: Additional files
+    files:
+      - src/commands/copy/copy.tsx
+      - src/commands/copy/index.ts
+      - src/commands/files/files.ts
+      - src/commands/files/index.ts
+      - src/utils/fileOperationAnalytics.ts
+      - src/utils/filePersistence/filePersistence.ts
+      - src/utils/filePersistence/outputsScanner.ts
+      - src/utils/filePersistence/types.ts
+      - src/utils/fileStateCache.ts
+      - src/utils/headlessProfiler.ts
+      - src/utils/hooks/fileChangedWatcher.ts
+      - src/utils/lockfile.ts
+      - src/utils/profilerBase.ts
+      - src/utils/startupProfiler.ts
+      - src/utils/tempfile.ts
   - id: file-read-tool
     kind: source
     section: 4

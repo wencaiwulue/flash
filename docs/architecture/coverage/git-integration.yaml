@@ -3,6 +3,26 @@ spec_id: git-integration
 spec: ../../superpowers/specs/2026-11-12-git-integration-design.md
 status: draft
 groups:
+
+  - id: additional-files
+    kind: source
+    section: 4
+    summary: Additional files
+    files:
+      - src/components/FeedbackSurvey/useDebouncedDigitInput.ts
+      - src/utils/gitSettings.ts
+      - src/utils/githubRepoPathMapping.ts
+      - src/utils/teleport/gitBundle.ts
+  - id: commands
+    kind: source
+    section: 4
+    summary: Command implementations
+    files:
+      - src/commands/autofix-pr/index.ts
+      - src/commands/branch/branch.ts
+      - src/commands/branch/index.ts
+      - src/commands/commit-push-pr.ts
+      - src/commands/commit.ts
   - id: git-core
     kind: source
     section: 4
@@ -33,23 +53,17 @@ groups:
     section: 4
     summary: Worktree 创建/恢复/清理、slug 验证、tmux 集成、stale agent worktree 回收、代理 Worktree
     files:
-      - src/utils/worktree.ts
   - id: github-integration
     kind: source
     section: 4
     summary: GitHub 认证状态、远程 URL 解析与标准化、仓库哈希
     files:
       - src/utils/github/ghAuthStatus.ts
-      - src/utils/git.ts
   - id: commit-attribution
     kind: source
     section: 4
     summary: 提交贡献跟踪、计算、trailer 格式化、prepare-commit-msg 钩子集成、内部模型名白名单
     files:
-      - src/utils/commitAttribution.ts
-      - src/utils/attributionTrailer.ts
-      - src/utils/attributionHooks.ts
-      - src/utils/attribution.ts
   - id: pr-reference
     kind: source
     section: 4

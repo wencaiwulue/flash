@@ -3,6 +3,47 @@ spec_id: ink-platform
 spec: ../../superpowers/specs/2026-11-12-ink-platform-design.md
 status: draft
 groups:
+
+  - id: additional-files
+    kind: source
+    section: 4
+    summary: Additional files
+    files:
+      - src/components/FilePathLink.tsx
+      - src/components/ThinkingToggle.tsx
+      - src/components/messages/HighlightedThinkingText.tsx
+      - src/hooks/useBlink.ts
+      - src/ink/bidi.ts
+      - src/ink/components/AppContext.ts
+      - src/ink/components/ClockContext.tsx
+      - src/ink/components/CursorDeclarationContext.ts
+      - src/ink/components/ErrorOverview.tsx
+      - src/ink/components/ScrollBox.tsx
+      - src/ink/components/StdinContext.ts
+      - src/ink/components/TerminalFocusContext.tsx
+      - src/ink/components/TerminalSizeContext.tsx
+      - src/ink/events/emitter.ts
+      - src/ink/events/focus-event.ts
+      - src/ink/events/keyboard-event.ts
+      - src/ink/events/paste-event.ts
+      - src/ink/events/resize-event.ts
+      - src/ink/events/terminal-event.ts
+      - src/ink/hooks/use-declared-cursor.ts
+      - src/ink/hooks/use-search-highlight.ts
+      - src/ink/layout/geometry.ts
+      - src/ink/line-width-cache.ts
+      - src/ink/root.ts
+      - src/ink/stringWidth.ts
+      - src/ink/termio.ts
+      - src/ink/termio/esc.ts
+      - src/ink/termio/parser.ts
+      - src/ink/termio/sgr.ts
+      - src/ink/useTerminalNotification.ts
+      - src/ink/widest-line.ts
+      - src/utils/errorLogSink.ts
+      - src/utils/ink.ts
+      - src/utils/sinks.ts
+      - src/utils/thinking.ts
   - id: ink-core
     kind: source
     section: 4

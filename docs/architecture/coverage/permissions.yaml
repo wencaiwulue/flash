@@ -3,6 +3,48 @@ spec_id: permissions
 spec: ../../superpowers/specs/2026-11-12-permissions-design.md
 status: draft
 groups:
+
+  - id: additional-files
+    kind: source
+    section: 4
+    summary: Additional files
+    files:
+      - src/components/permissions/AskUserQuestionPermissionRequest/PreviewBox.tsx
+      - src/components/permissions/AskUserQuestionPermissionRequest/PreviewQuestionView.tsx
+      - src/components/permissions/AskUserQuestionPermissionRequest/QuestionNavigationBar.tsx
+      - src/components/permissions/AskUserQuestionPermissionRequest/QuestionView.tsx
+      - src/components/permissions/AskUserQuestionPermissionRequest/SubmitQuestionsView.tsx
+      - src/components/permissions/AskUserQuestionPermissionRequest/use-multiple-choice-state.ts
+      - src/components/permissions/BashPermissionRequest/bashToolUseOptions.tsx
+      - src/components/permissions/ComputerUseApproval/ComputerUseApproval.tsx
+      - src/components/permissions/FilePermissionDialog/permissionOptions.tsx
+      - src/components/permissions/FilePermissionDialog/useFilePermissionDialog.ts
+      - src/components/permissions/FilePermissionDialog/usePermissionHandler.ts
+      - src/components/permissions/FileWritePermissionRequest/FileWriteToolDiff.tsx
+      - src/components/permissions/MonitorPermissionRequest/MonitorPermissionRequest.tsx
+      - src/components/permissions/NotebookEditPermissionRequest/NotebookEditToolDiff.tsx
+      - src/components/permissions/PowerShellPermissionRequest/powershellToolUseOptions.tsx
+      - src/components/permissions/ReviewArtifactPermissionRequest/ReviewArtifactPermissionRequest.tsx
+      - src/components/permissions/SkillPermissionRequest/SkillPermissionRequest.tsx
+      - src/components/permissions/WorkerPendingPermission.tsx
+      - src/components/permissions/rules/AddPermissionRules.tsx
+      - src/components/permissions/rules/PermissionRuleDescription.tsx
+      - src/components/permissions/rules/PermissionRuleInput.tsx
+      - src/components/permissions/rules/PermissionRuleList.tsx
+      - src/components/permissions/rules/RecentDenialsTab.tsx
+      - src/components/permissions/rules/RemoveWorkspaceDirectory.tsx
+      - src/components/permissions/rules/WorkspaceTab.tsx
+      - src/utils/permissions/PermissionPromptToolResultSchema.ts
+      - src/utils/permissions/getNextPermissionMode.ts
+  - id: commands
+    kind: source
+    section: 4
+    summary: Command implementations
+    files:
+      - src/commands/permission/index.ts
+      - src/commands/permission/permission.tsx
+      - src/commands/permissions/index.ts
+      - src/commands/permissions/permissions.tsx
   - id: permissions-types
     kind: source
     section: 4
@@ -119,5 +161,3 @@ groups:
     section: 7
     summary: 权限管理命令，/permissions 命令 UI
     files:
-      - src/commands/permissions/index.ts
-      - src/commands/permissions/permissions.tsx
