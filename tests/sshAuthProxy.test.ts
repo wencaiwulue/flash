@@ -14,6 +14,7 @@ const PROXY_ENV_KEYS = ['http_proxy', 'https_proxy', 'all_proxy', 'HTTP_PROXY', 
 const originalProxyEnv = new Map<string, string | undefined>(
   PROXY_ENV_KEYS.map(key => [key, process.env[key]]),
 )
+const originalApiKey = process.env.ANTHROPIC_API_KEY
 
 let root: string
 let upstream: http.Server
@@ -26,6 +27,7 @@ let upstreamRequests: Array<{
 }>
 
 beforeAll(async () => {
+  process.env.ANTHROPIC_API_KEY = 'offline-test-placeholder'
   for (const key of PROXY_ENV_KEYS) delete process.env[key]
   process.env.NO_PROXY = '*'
   process.env.no_proxy = '*'
@@ -55,6 +57,8 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
+  if (originalApiKey === undefined) delete process.env.ANTHROPIC_API_KEY
+  else process.env.ANTHROPIC_API_KEY = originalApiKey
   for (const key of PROXY_ENV_KEYS) {
     const value = originalProxyEnv.get(key)
     if (value === undefined) delete process.env[key]

@@ -1,7 +1,9 @@
 import { spawn } from 'child_process'
 import { createHash, randomUUID } from 'crypto'
 import {
+  access,
   chmod,
+  constants,
   lstat,
   mkdir,
   open,
@@ -461,6 +463,9 @@ export async function launchBackgroundSession(
       exit: null,
     }
     await writeSessionRegistryRecord(record)
+    // A missing executable fails in the pane shell after new-session returns.
+    // Check it here so cleanup does not depend on winning that process-exit race.
+    if (isAbsolute(executable)) await access(executable, constants.X_OK)
     const pipe = await execTmux([
       '-L',
       tmuxSocket,

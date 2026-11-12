@@ -28,13 +28,28 @@ function fakeInput(overrides: Partial<ComputerUseInputAPI> = {}) {
   return input
 }
 
+const platformDescriptor = Object.getOwnPropertyDescriptor(process, 'platform')!
+
+function withDarwinPlatform<T>(create: () => T): T {
+  Object.defineProperty(process, 'platform', { value: 'darwin' })
+  try {
+    return create()
+  } finally {
+    Object.defineProperty(process, 'platform', platformDescriptor)
+  }
+}
+
 function executor(input: ComputerUseInputAPI) {
-  return createCliExecutor({
-    input,
-    swift: fakeSwift(),
-    getMouseAnimationEnabled: () => false,
-    getHideBeforeActionEnabled: () => false,
-  })
+  // Native adapters are fully mocked, so the portable cleanup logic can be
+  // exercised on every CI platform without relaxing the production guard.
+  return withDarwinPlatform(() =>
+    createCliExecutor({
+      input,
+      swift: fakeSwift(),
+      getMouseAnimationEnabled: () => false,
+      getHideBeforeActionEnabled: () => false,
+    }),
+  )
 }
 
 describe('CLI executor input cleanup', () => {
@@ -107,12 +122,14 @@ describe('CLI executor input cleanup', () => {
       }),
       captureRegion: mock(async () => ({ base64: 'crop', width: 1, height: 1 })),
     }
-    const cli = createCliExecutor({
-      input,
-      swift,
-      getMouseAnimationEnabled: () => false,
-      getHideBeforeActionEnabled: () => false,
-    })
+    const cli = withDarwinPlatform(() =>
+      createCliExecutor({
+        input,
+        swift,
+        getMouseAnimationEnabled: () => false,
+        getHideBeforeActionEnabled: () => false,
+      }),
+    )
     const results = await Promise.all([
       cli.screenshot({ allowedBundleIds: ['example.A'], displayId: 7 }),
       cli.screenshot({ allowedBundleIds: ['example.A'], displayId: 7 }),

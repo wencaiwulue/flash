@@ -112,17 +112,24 @@ describe('public model catalog overrides', () => {
   })
 
   test('uses public labels instead of leaking the configured private codename', async () => {
-    await configureCatalog(catalog)
-    expect(renderModelName('custom')).toBe('Public Custom Model')
-    expect(renderModelName('custom[1m]')).toBe(
-      'Public Custom Model (1M context)',
-    )
-    const options = getModelOptions()
-    const custom = options.find(option => option.value === 'custom')
-    expect(custom).toMatchObject({
-      label: 'Public Custom Model',
-      description: 'Administrator configured model',
-    })
-    expect(JSON.stringify(custom)).not.toContain('private-codename-v9')
+    const originalApiKey = process.env.ANTHROPIC_API_KEY
+    process.env.ANTHROPIC_API_KEY = 'offline-test-placeholder'
+    try {
+      await configureCatalog(catalog)
+      expect(renderModelName('custom')).toBe('Public Custom Model')
+      expect(renderModelName('custom[1m]')).toBe(
+        'Public Custom Model (1M context)',
+      )
+      const options = getModelOptions()
+      const custom = options.find(option => option.value === 'custom')
+      expect(custom).toMatchObject({
+        label: 'Public Custom Model',
+        description: 'Administrator configured model',
+      })
+      expect(JSON.stringify(custom)).not.toContain('private-codename-v9')
+    } finally {
+      if (originalApiKey === undefined) delete process.env.ANTHROPIC_API_KEY
+      else process.env.ANTHROPIC_API_KEY = originalApiKey
+    }
   })
 })
