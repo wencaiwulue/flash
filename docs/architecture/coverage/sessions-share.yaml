@@ -2,7 +2,6 @@ schema_version: 1
 spec_id: sessions-share
 spec: ../../superpowers/specs/2026-11-12-sessions-share-design.md
 status: draft
-
 groups:
   - id: share-commands
     kind: source
@@ -13,7 +12,6 @@ groups:
       - src/commands/share/share.tsx
       - src/commands/share/ShareDialog.tsx
       - src/commands/share/shareHtml.ts
-
   - id: export-commands
     kind: source
     section: 2
@@ -21,28 +19,24 @@ groups:
     files:
       - src/commands/export/index.ts
       - src/commands/export/export.tsx
-
   - id: export-renderer
     kind: source
     section: 2
     summary: 通用会话渲染导出，分块流式渲染降低内存峰值
     files:
       - src/utils/exportRenderer.tsx
-
   - id: ccshare
     kind: source
     section: 3
     summary: ccshare 远程会话下载与恢复，链接解析，HTTPS 下载，重定向处理，边界限制
     files:
       - src/utils/ccshareResume.ts
-
   - id: share-test
     kind: test
     section: 7
     summary: /share HTML 导出测试，路径限制测试，覆盖测试
     files:
       - tests/share.test.ts
-
   - id: w6-ccshare-test
     kind: test
     section: 7

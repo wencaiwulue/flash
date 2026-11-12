@@ -2,7 +2,6 @@ schema_version: 1
 spec_id: sdk-query-sessions
 spec: ../../superpowers/specs/2026-11-12-sdk-query-sessions-design.md
 status: draft
-
 groups:
   - id: sdk-public-entrypoints
     kind: source

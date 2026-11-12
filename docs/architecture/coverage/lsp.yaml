@@ -1,61 +1,11 @@
-id: lsp
-title: LSP 语言服务与工具集成
-sections:
-  - id: 1
-    title: 概述
-    files: []
-
-  - id: 2
-    title: 入口与主要接口
+schema_version: 1
+spec_id: lsp
+spec: ../../superpowers/specs/2026-11-12-lsp-design.md
+status: draft
+groups:
+  - id: default
+    kind: source
+    section: 4
+    summary: Default group
     files:
-      - src/services/lsp/manager.ts
-      - src/services/lsp/LSPServerManager.ts
-      - src/services/lsp/LSPServerInstance.ts
-      - src/tools/LSPTool/LSPTool.ts
-
-  - id: 3
-    title: 服务器启停与请求生命周期
-    files:
-      - src/services/lsp/LSPServerInstance.ts
-      - src/services/lsp/LSPClient.ts
-      - tests/lspLifecycle.test.ts
-
-  - id: 4
-    title: 配置发现
-    files:
-      - src/services/lsp/config.ts
-      - src/services/lsp/types.ts
-      - src/utils/plugins/lspPluginIntegration.ts
-
-  - id: 5
-    title: 文档同步
-    files:
-      - src/services/lsp/LSPServerManager.ts
-      - src/tools/LSPTool/LSPTool.ts
-
-  - id: 6
-    title: 超时与取消
-    files:
-      - src/services/lsp/LSPServerInstance.ts
-      - src/services/lsp/LSPClient.ts
-
-  - id: 7
-    title: 错误隔离
-    files:
-      - src/services/lsp/LSPServerInstance.ts
-      - src/services/lsp/passiveFeedback.ts
-      - src/services/lsp/LSPDiagnosticRegistry.ts
-
-  - id: 8
-    title: 覆盖
-    files: []
-
-  - id: 9
-    title: 设计决策
-    files: []
-
-# LSP 专用模块（不包含 plugins/tool-framework）
-lsp_modules:
-  - src/services/lsp/
-  - src/tools/LSPTool/
-  - tests/lsp*.test.ts
+      - src/FIXME.ts

@@ -2,7 +2,6 @@ schema_version: 1
 spec_id: shell-tools
 spec: ../../superpowers/specs/2026-11-12-shell-tools-design.md
 status: draft
-
 groups:
   - id: bash-tool
     kind: source
@@ -17,7 +16,6 @@ groups:
       - src/tools/BashTool/toolName.ts
       - src/tools/BashTool/commandSemantics.ts
       - src/tools/BashTool/destructiveCommandWarning.ts
-
   - id: bash-permissions
     kind: source
     section: 4
@@ -31,14 +29,12 @@ groups:
       - src/tools/BashTool/sedValidation.ts
       - src/tools/BashTool/modeValidation.ts
       - src/tools/BashTool/shouldUseSandbox.ts
-
   - id: bash-classifier
     kind: source
     section: 4
     summary: Bash 分类器，调用小模型做自然语言描述匹配
     files:
       - src/utils/permissions/bashClassifier.ts
-
   - id: bash-parser
     kind: source
     section: 4
@@ -59,7 +55,6 @@ groups:
       - src/utils/bash/heredoc.ts
       - src/utils/bash/shellCompletion.ts
       - src/utils/bash/ShellSnapshot.ts
-
   - id: powershell-tool
     kind: source
     section: 4
@@ -79,7 +74,6 @@ groups:
       - src/tools/PowerShellTool/destructiveCommandWarning.ts
       - src/tools/PowerShellTool/toolName.ts
       - src/tools/PowerShellTool/clmTypes.ts
-
   - id: powershell-parser
     kind: source
     section: 4
@@ -88,7 +82,6 @@ groups:
       - src/utils/powershell/parser.ts
       - src/utils/powershell/staticPrefix.ts
       - src/utils/powershell/dangerousCmdlets.ts
-
   - id: shell-provider
     kind: source
     section: 4
@@ -99,7 +92,6 @@ groups:
       - src/utils/shell/powershellProvider.ts
       - src/utils/shell/powershellDetection.ts
       - src/utils/shell/shellToolUtils.ts
-
   - id: shell-utils
     kind: source
     section: 4
@@ -109,7 +101,6 @@ groups:
       - src/utils/shell/specPrefix.ts
       - src/utils/shell/prefix.ts
       - src/utils/shell/readOnlyCommandValidation.ts
-
   - id: shell-core
     kind: source
     section: 4
@@ -117,14 +108,12 @@ groups:
     files:
       - src/utils/Shell.ts
       - src/utils/ShellCommand.ts
-
   - id: local-shell-task
     kind: source
     section: 4
     summary: LocalShellTask 后台任务管理、注册、通知
     files:
-      - src/tasks/LocalShellTask/LocalShellTask.ts
-
+      - src/FIXME.ts
   - id: terminal-capture
     kind: source
     section: 4
@@ -132,7 +121,6 @@ groups:
     files:
       - src/tools/TerminalCaptureTool/TerminalCaptureTool.ts
       - src/tools/TerminalCaptureTool/prompt.ts
-
   - id: sandbox
     kind: source
     section: 4
@@ -140,7 +128,6 @@ groups:
     files:
       - src/utils/sandbox/sandbox-adapter.ts
       - src/utils/sandbox/sandbox-ui-utils.ts
-
   - id: shell-tests
     kind: test
     section: 7

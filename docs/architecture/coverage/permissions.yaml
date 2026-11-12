@@ -2,7 +2,6 @@ schema_version: 1
 spec_id: permissions
 spec: ../../superpowers/specs/2026-11-12-permissions-design.md
 status: draft
-
 groups:
   - id: permissions-types
     kind: source
@@ -10,7 +9,6 @@ groups:
     summary: 权限类型定义，包括 PermissionMode、PermissionRule、PermissionDecision、PermissionDecisionReason 等核心类型
     files:
       - src/types/permissions.ts
-
   - id: permissions-core
     kind: source
     section: 4
@@ -21,7 +19,6 @@ groups:
       - src/utils/permissions/PermissionRule.ts
       - src/utils/permissions/permissionRuleParser.ts
       - src/utils/permissions/shellRuleMatching.ts
-
   - id: permissions-setup
     kind: source
     section: 4
@@ -31,21 +28,18 @@ groups:
       - src/utils/permissions/permissionsLoader.ts
       - src/utils/permissions/dangerousPatterns.ts
       - src/utils/permissions/shadowedRuleDetection.ts
-
   - id: permissions-denial-tracking
     kind: source
     section: 4
     summary: 拒绝计数与回退逻辑，连续拒绝 3 次或总拒绝 20 次后回退到用户提示
     files:
       - src/utils/permissions/denialTracking.ts
-
   - id: permissions-mode
     kind: source
     section: 4
     summary: PermissionMode 枚举与工具函数，模式标题、颜色、外部模式转换
     files:
       - src/utils/permissions/PermissionMode.ts
-
   - id: permissions-update
     kind: source
     section: 4
@@ -53,7 +47,6 @@ groups:
     files:
       - src/utils/permissions/PermissionUpdate.ts
       - src/utils/permissions/PermissionUpdateSchema.ts
-
   - id: permissions-classifier
     kind: source
     section: 4
@@ -63,14 +56,12 @@ groups:
       - src/utils/permissions/classifierDecision.ts
       - src/utils/permissions/classifierShared.ts
       - src/utils/permissions/autoModeState.ts
-
   - id: permissions-explainer
     kind: source
     section: 7
     summary: 权限解释器，解释权限请求的风险级别和原因
     files:
       - src/utils/permissions/permissionExplainer.ts
-
   - id: permissions-filesystem
     kind: source
     section: 7
@@ -78,14 +69,12 @@ groups:
     files:
       - src/utils/permissions/filesystem.ts
       - src/utils/permissions/pathValidation.ts
-
   - id: permissions-bypass-killswitch
     kind: source
     section: 7
     summary: 绕过权限模式的 killswitch
     files:
       - src/utils/permissions/bypassPermissionsKillswitch.ts
-
   - id: permissions-hooks
     kind: source
     section: 4
@@ -94,7 +83,6 @@ groups:
       - src/hooks/useCanUseTool.tsx
       - src/hooks/toolPermission/PermissionContext.ts
       - src/hooks/toolPermission/permissionLogging.ts
-
   - id: permissions-components
     kind: source
     section: 7
@@ -126,7 +114,6 @@ groups:
       - src/components/permissions/EnterPlanModePermissionRequest/EnterPlanModePermissionRequest.tsx
       - src/components/permissions/AskUserQuestionPermissionRequest/AskUserQuestionPermissionRequest.tsx
       - src/components/permissions/FilePermissionDialog/FilePermissionDialog.tsx
-
   - id: permissions-commands
     kind: source
     section: 7

@@ -14,7 +14,6 @@ groups:
       - src/open-runner/worker.ts
       - src/open-runner/client.ts
       - src/open-runner/main.ts
-
   - id: entry-points-source
     kind: source
     section: 4
@@ -22,7 +21,6 @@ groups:
     files:
       - src/environment-runner/main.ts
       - src/self-hosted-runner/main.ts
-
   - id: upstream-proxy-source
     kind: source
     section: 4
@@ -30,14 +28,12 @@ groups:
     files:
       - src/upstreamproxy/upstreamproxy.ts
       - src/upstreamproxy/relay.ts
-
   - id: moreright-source
     kind: source
     section: 4
     summary: MoreRight 本地笔记
     files:
       - src/moreright/useMoreRight.tsx
-
   - id: open-backends-source
     kind: source
     section: 4
@@ -45,7 +41,6 @@ groups:
     files:
       - src/external-stubs/claude-for-chrome-mcp.ts
       - src/external-stubs/computer-use-mcp.ts
-
   - id: supporting-source
     kind: source
     section: 4
@@ -55,7 +50,6 @@ groups:
       - src/utils/envUtils.ts
       - src/utils/debug.ts
       - src/utils/cleanupRegistry.ts
-
   - id: core-tests
     kind: test
     section: 7
@@ -63,7 +57,6 @@ groups:
     files:
       - tests/openRunnerProtocol.test.ts
       - tests/openRunnerWorker.test.ts
-
   - id: backends-tests
     kind: test
     section: 7

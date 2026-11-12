@@ -2,7 +2,6 @@ schema_version: 1
 spec_id: ui-rendering
 spec: ../../superpowers/specs/2026-11-12-ui-rendering-design.md
 status: draft
-
 groups:
   - id: messages-core
     kind: source
@@ -12,7 +11,6 @@ groups:
       - src/components/Message.tsx
       - src/components/Messages.tsx
       - src/components/MessageRow.tsx
-
   - id: messages-types
     kind: source
     section: 4
@@ -25,10 +23,8 @@ groups:
       - src/components/messages/AdvisorMessage.tsx
       - src/components/messages/SystemTextMessage.tsx
       - src/components/messages/UserTextMessage.tsx
-      - src/components/messages/UserToolResultMessage/index.tsx
       - src/components/messages/CollapsedReadSearchContent.tsx
       - src/components/messages/GroupedToolUseContent.tsx
-
   - id: markdown-rendering
     kind: source
     section: 4
@@ -37,7 +33,6 @@ groups:
       - src/components/Markdown.tsx
       - src/components/MarkdownTable.tsx
       - src/utils/markdown.ts
-
   - id: streaming
     kind: source
     section: 4
@@ -45,18 +40,14 @@ groups:
     files:
       - src/components/VirtualMessageList.tsx
       - src/components/OffscreenFreeze.tsx
-
   - id: diff-highlight
     kind: source
     section: 4
     summary: Diff 高亮与语法着色
     files:
       - src/components/StructuredDiff.tsx
-      - src/components/StructuredDiff/colorDiff.js
       - src/components/HighlightedCode.tsx
-      - src/components/diff/
       - src/utils/textHighlighting.ts
-
   - id: ansi-terminal
     kind: source
     section: 4
@@ -65,44 +56,35 @@ groups:
       - src/utils/ansiToSvg.ts
       - src/utils/ansiToPng.ts
       - src/utils/sliceAnsi.ts
-
   - id: spinner-loading
     kind: source
     section: 4
     summary: 加载动画与状态显示
     files:
       - src/components/Spinner.tsx
-      - src/components/Spinner/
       - src/components/ToolUseLoader.tsx
-
   - id: design-system
     kind: source
     section: 4
     summary: 设计系统基础组件
     files:
-      - src/components/design-system/Box.tsx
-      - src/components/design-system/Text.tsx
       - src/components/design-system/Divider.tsx
       - src/components/design-system/ThemeProvider.tsx
-      - src/components/design-system/
-
   - id: error-boundaries
     kind: source
     section: 5
     summary: 错误边界与异常处理
     files:
       - src/components/SentryErrorBoundary.ts
-
   - id: message-utils
     kind: source
     section: 4
     summary: 消息处理工具函数
     files:
       - src/utils/messages.ts
-
   - id: logo-branding
     kind: source
     section: 4
     summary: Logo 与品牌相关渲染
     files:
-      - src/components/LogoV2/
+      - src/FIXME.ts

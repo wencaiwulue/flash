@@ -2,7 +2,6 @@ schema_version: 1
 spec_id: file-tools
 spec: ../../superpowers/specs/2026-11-12-file-tools-design.md
 status: draft
-
 groups:
   - id: file-read-tool
     kind: source
@@ -15,7 +14,6 @@ groups:
       - src/tools/FileReadTool/prompt.ts
       - src/tools/FileReadTool/UI.tsx
       - src/tools/FileReadTool/imageProcessor.ts
-
   - id: file-write-tool
     kind: source
     section: 4
@@ -25,7 +23,6 @@ groups:
       - src/tools/FileWriteTool/constants.ts
       - src/tools/FileWriteTool/prompt.ts
       - src/tools/FileWriteTool/UI.tsx
-
   - id: file-edit-tool
     kind: source
     section: 4
@@ -37,7 +34,6 @@ groups:
       - src/tools/FileEditTool/types.ts
       - src/tools/FileEditTool/UI.tsx
       - src/tools/FileEditTool/utils.ts
-
   - id: glob-tool
     kind: source
     section: 4
@@ -46,7 +42,6 @@ groups:
       - src/tools/GlobTool/GlobTool.ts
       - src/tools/GlobTool/prompt.ts
       - src/tools/GlobTool/UI.tsx
-
   - id: grep-tool
     kind: source
     section: 4
@@ -55,7 +50,6 @@ groups:
       - src/tools/GrepTool/GrepTool.ts
       - src/tools/GrepTool/prompt.ts
       - src/tools/GrepTool/UI.tsx
-
   - id: notebook-edit-tool
     kind: source
     section: 4
@@ -65,7 +59,6 @@ groups:
       - src/tools/NotebookEditTool/constants.ts
       - src/tools/NotebookEditTool/prompt.ts
       - src/tools/NotebookEditTool/UI.tsx
-
   - id: file-utils
     kind: source
     section: 4
@@ -76,7 +69,6 @@ groups:
       - src/utils/fileReadCache.ts
       - src/utils/fsOperations.ts
       - src/utils/readFileInRange.ts
-
   - id: notebook-pdf-image-utils
     kind: source
     section: 4
@@ -86,7 +78,6 @@ groups:
       - src/utils/pdf.ts
       - src/utils/pdfUtils.ts
       - src/utils/imageResizer.ts
-
   - id: search-utils
     kind: source
     section: 4

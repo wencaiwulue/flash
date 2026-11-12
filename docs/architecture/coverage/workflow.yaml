@@ -2,7 +2,6 @@ schema_version: 1
 spec_id: workflow
 spec: ../../superpowers/specs/2026-11-12-workflow-design.md
 status: draft
-
 groups:
   - id: workflow-schema
     kind: source
@@ -10,21 +9,18 @@ groups:
     summary: Workflow 定义解析、Zod schema、DAG 验证、提示插值
     files:
       - src/tools/WorkflowTool/schema.ts
-
   - id: workflow-executor
     kind: source
     section: 4
     summary: Workflow 执行引擎、DAG 调度、失败传播、重试/跳过/kill
     files:
       - src/tools/WorkflowTool/executor.ts
-
   - id: workflow-runner
     kind: source
     section: 4
     summary: 步骤执行、runAgent 集成、agentType 选择
     files:
       - src/tools/WorkflowTool/runner.ts
-
   - id: workflow-discovery
     kind: source
     section: 4
@@ -32,7 +28,6 @@ groups:
     files:
       - src/tools/WorkflowTool/discovery.ts
       - src/tools/WorkflowTool/createWorkflowCommand.ts
-
   - id: workflow-tool
     kind: source
     section: 4
@@ -41,14 +36,12 @@ groups:
       - src/tools/WorkflowTool/WorkflowTool.ts
       - src/tools/WorkflowTool/WorkflowPermissionRequest.ts
       - src/tools/WorkflowTool/constants.ts
-
   - id: workflow-task
     kind: source
     section: 4
     summary: LocalWorkflowTask 实现、任务系统集成、状态持久化
     files:
       - src/tasks/LocalWorkflowTask/LocalWorkflowTask.ts
-
   - id: workflow-tests
     kind: test
     section: 7

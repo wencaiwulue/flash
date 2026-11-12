@@ -1,46 +1,41 @@
-section: 6
-title: Computer Use 浏览器与桌面自动化
-files:
-  # 核心后端
-  - src/utils/computerUse/executor.ts
-  - src/utils/computerUse/wrapper.tsx
-  - src/utils/computerUse/hostAdapter.ts
-  - src/utils/computerUse/mcpServer.ts
-
-  # Native 辅助
-  - src/utils/computerUse/nativeHelper.ts
-  - src/utils/computerUse/swiftLoader.ts
-  - src/utils/computerUse/inputLoader.ts
-  - src/utils/computerUse/drainRunLoop.ts
-  - src/utils/computerUse/native/
-
-  # 锁与中止
-  - src/utils/computerUse/computerUseLock.ts
-  - src/utils/computerUse/escHotkey.ts
-
-  # 清理
-  - src/utils/computerUse/cleanup.ts
-
-  # 工具与门控
-  - src/utils/computerUse/toolRendering.tsx
-  - src/utils/computerUse/gates.ts
-  - src/utils/computerUse/common.ts
-  - src/utils/computerUse/appNames.ts
-  - src/utils/computerUse/setup.ts
-
-  # 外部存根
-  - src/external-stubs/computer-use-types.ts
-  - src/external-stubs/computer-use-native.ts
-  - src/external-stubs/computer-use-mcp.ts
-  - src/external-stubs/computer-use-swift.ts
-  - src/external-stubs/computer-use-input.ts
-  - src/external-stubs/computer-use-sentinel-apps.ts
-
-  # 浏览器相关
-  - src/utils/claudeInChrome/
-
-  # 测试
-  - tests/computerUseBackends.test.ts
-  - tests/computerUseExecutor.test.ts
-  - tests/computerUseNativeHelper.test.ts
-  - tests/computerUseWrapper.test.ts
+schema_version: 1
+spec_id: computer-use
+spec: ../../superpowers/specs/2026-11-12-computer-use-design.md
+status: draft
+groups:
+  - id: default-source
+    kind: source
+    section: 4
+    summary: default (source)
+    files:
+      - src/utils/computerUse/executor.ts
+      - src/utils/computerUse/wrapper.tsx
+      - src/utils/computerUse/hostAdapter.ts
+      - src/utils/computerUse/mcpServer.ts
+      - src/utils/computerUse/nativeHelper.ts
+      - src/utils/computerUse/swiftLoader.ts
+      - src/utils/computerUse/inputLoader.ts
+      - src/utils/computerUse/drainRunLoop.ts
+      - src/utils/computerUse/computerUseLock.ts
+      - src/utils/computerUse/escHotkey.ts
+      - src/utils/computerUse/cleanup.ts
+      - src/utils/computerUse/toolRendering.tsx
+      - src/utils/computerUse/gates.ts
+      - src/utils/computerUse/common.ts
+      - src/utils/computerUse/appNames.ts
+      - src/utils/computerUse/setup.ts
+      - src/external-stubs/computer-use-types.ts
+      - src/external-stubs/computer-use-native.ts
+      - src/external-stubs/computer-use-mcp.ts
+      - src/external-stubs/computer-use-swift.ts
+      - src/external-stubs/computer-use-input.ts
+      - src/external-stubs/computer-use-sentinel-apps.ts
+  - id: default-test
+    kind: test
+    section: 7
+    summary: default (test)
+    files:
+      - tests/computerUseBackends.test.ts
+      - tests/computerUseExecutor.test.ts
+      - tests/computerUseNativeHelper.test.ts
+      - tests/computerUseWrapper.test.ts

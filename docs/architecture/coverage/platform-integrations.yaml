@@ -2,7 +2,6 @@ schema_version: 1
 spec_id: platform-integrations
 spec: ../../superpowers/specs/2026-11-12-platform-integrations-design.md
 status: draft
-
 groups:
   - id: desktop-deeplink
     kind: source
@@ -10,14 +9,12 @@ groups:
     summary: Desktop deep link 构建、安装检测、版本检查、会话迁移
     files:
       - src/utils/desktopDeepLink.ts
-
   - id: desktop-config
     kind: source
     section: 4
     summary: Claude Desktop 配置路径解析、MCP 服务器配置读取
     files:
       - src/utils/claudeDesktop.ts
-
   - id: desktop-commands
     kind: source
     section: 4
@@ -25,28 +22,24 @@ groups:
     files:
       - src/commands/desktop/desktop.tsx
       - src/commands/desktop/index.ts
-
   - id: desktop-handoff
     kind: source
     section: 4
     summary: Desktop handoff UI 组件、状态机、会话 flush、优雅退出
     files:
       - src/components/DesktopHandoff.tsx
-
   - id: desktop-upsell
     kind: source
     section: 4
     summary: Desktop upsell 启动提示、显示控制、用户选择处理
     files:
       - src/components/DesktopUpsell/DesktopUpsellStartup.tsx
-
   - id: chrome-common
     kind: source
     section: 4
     summary: Claude in Chrome 浏览器配置、路径检测、socket 管理、工具函数
     files:
       - src/utils/claudeInChrome/common.ts
-
   - id: chrome-setup
     kind: source
     section: 4
@@ -54,42 +47,36 @@ groups:
     files:
       - src/utils/claudeInChrome/setup.ts
       - src/utils/claudeInChrome/setupPortable.ts
-
   - id: chrome-mcp
     kind: source
     section: 4
     summary: Claude in Chrome MCP 服务器实现
     files:
       - src/utils/claudeInChrome/mcpServer.ts
-
   - id: chrome-browser-tools
     kind: source
     section: 4
     summary: Claude in Chrome 浏览器工具集成
     files:
       - src/utils/claudeInChrome/browserTools.ts
-
   - id: chrome-native-host
     kind: source
     section: 4
     summary: Claude in Chrome native messaging host
     files:
       - src/utils/claudeInChrome/chromeNativeHost.ts
-
   - id: chrome-prompt
     kind: source
     section: 4
     summary: Claude in Chrome 提示相关工具
     files:
       - src/utils/claudeInChrome/prompt.ts
-
   - id: chrome-tool-rendering
     kind: source
     section: 4
     summary: Claude in Chrome 工具渲染组件
     files:
       - src/utils/claudeInChrome/toolRendering.tsx
-
   - id: chrome-commands
     kind: source
     section: 4
@@ -97,14 +84,12 @@ groups:
     files:
       - src/commands/chrome/chrome.tsx
       - src/commands/chrome/index.ts
-
   - id: chrome-onboarding
     kind: source
     section: 4
     summary: Claude in Chrome 引导组件
     files:
       - src/components/ClaudeInChromeOnboarding.tsx
-
   - id: mobile-commands
     kind: source
     section: 4
@@ -112,7 +97,6 @@ groups:
     files:
       - src/commands/mobile/mobile.tsx
       - src/commands/mobile/index.ts
-
   - id: slack-commands
     kind: source
     section: 4
@@ -120,7 +104,6 @@ groups:
     files:
       - src/commands/install-slack-app/install-slack-app.ts
       - src/commands/install-slack-app/index.ts
-
   - id: slack-integration
     kind: source
     section: 4
@@ -131,7 +114,6 @@ groups:
       - src/services/mcp/channelPermissions.ts
       - src/services/mcp/channelAllowlist.ts
       - src/components/messages/UserChannelMessage.tsx
-
   - id: external-stubs
     kind: source
     section: 4

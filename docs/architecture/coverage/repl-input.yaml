@@ -2,9 +2,8 @@ schema_version: 1
 spec_id: repl-input
 spec: ../../superpowers/specs/2026-11-12-repl-input-design.md
 status: draft
-
 groups:
-  - id: 1
+  - id: group-1
     kind: source
     section: 4
     summary: PromptInput 主组件和输入模式
@@ -12,16 +11,14 @@ groups:
       - src/components/PromptInput/PromptInput.tsx
       - src/components/PromptInput/inputModes.ts
       - src/components/PromptInput/inputPaste.ts
-
-  - id: 2
+  - id: group-2
     kind: source
     section: 4
     summary: 编辑器视图组件
     files:
       - src/components/TextInput.tsx
       - src/components/VimTextInput.tsx
-
-  - id: 3
+  - id: group-3
     kind: source
     section: 4
     summary: 文本编辑核心 Hooks
@@ -29,8 +26,7 @@ groups:
       - src/hooks/useTextInput.ts
       - src/hooks/useVimInput.ts
       - src/hooks/useInputBuffer.ts
-
-  - id: 4
+  - id: group-4
     kind: source
     section: 4
     summary: 自动补全和建议系统
@@ -42,23 +38,20 @@ groups:
       - src/utils/suggestions/shellHistoryCompletion.ts
       - src/hooks/fileSuggestions.ts
       - src/hooks/unifiedSuggestions.ts
-
-  - id: 5
+  - id: group-5
     kind: source
     section: 4
     summary: 历史导航和搜索
     files:
       - src/hooks/useArrowKeyHistory.tsx
       - src/hooks/useHistorySearch.ts
-
-  - id: 6
+  - id: group-6
     kind: source
     section: 4
     summary: 提示建议和投机执行
     files:
       - src/hooks/usePromptSuggestion.ts
-
-  - id: 7
+  - id: group-7
     kind: source
     section: 4
     summary: 键绑定系统
@@ -69,11 +62,9 @@ groups:
       - src/keybindings/resolver.ts
       - src/keybindings/defaultBindings.ts
       - src/keybindings/loadUserBindings.ts
-      - src/keybindings/useKeybindings.ts
       - src/keybindings/KeybindingContext.tsx
       - src/keybindings/reservedShortcuts.ts
-
-  - id: 8
+  - id: group-8
     kind: source
     section: 4
     summary: Vim 模式实现
@@ -83,26 +74,18 @@ groups:
       - src/vim/operators.ts
       - src/vim/motions.ts
       - src/vim/textObjects.ts
-
-  - id: 9
+  - id: group-9
     kind: source
     section: 4
     summary: 基础设施
     files:
       - src/utils/Cursor.ts
       - src/utils/intl.ts
-      - src/ink/use-input.ts
       - src/ink/events/input-event.ts
       - src/utils/imagePaste.ts
-
-  - id: 10
+  - id: group-10
     kind: test
     section: 7
     summary: 测试套件
     files:
-      - src/utils/Cursor.test.ts
-      - src/hooks/useTextInput.test.ts
-      - src/hooks/useTypeahead.test.tsx
-      - src/vim/transitions.test.ts
-      - src/keybindings/match.test.ts
-      - src/keybindings/parser.test.ts
+      - src/FIXME.ts

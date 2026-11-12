@@ -2,7 +2,6 @@ schema_version: 1
 spec_id: ide-integration
 spec: ../../superpowers/specs/2026-11-12-ide-integration-design.md
 status: draft
-
 groups:
   - id: ide-core
     kind: source
@@ -10,14 +9,12 @@ groups:
     summary: IDE 发现、lockfile 读写与清理、检测运行中 IDE、扩展/插件安装状态检查与安装、IDE 类型判断、RPC 调用封装、已连接客户端获取、diff tab 关闭、IDE 集成初始化
     files:
       - src/utils/ide.ts
-
   - id: ide-path-conversion
     kind: source
     section: 4
     summary: WSL/Windows 路径双向转换（wslpath 调用 + 手动 fallback）、WSL UNC 路径 distro 匹配检查
     files:
       - src/utils/idePathConversion.ts
-
   - id: ide-hooks
     kind: source
     section: 4
@@ -26,7 +23,6 @@ groups:
       - src/hooks/useIDEIntegration.tsx
       - src/hooks/useDiffInIDE.ts
       - src/hooks/notifs/useIDEStatusIndicator.tsx
-
   - id: ide-commands
     kind: source
     section: 4
@@ -34,7 +30,6 @@ groups:
     files:
       - src/commands/ide/ide.tsx
       - src/commands/ide/index.ts
-
   - id: ide-components
     kind: source
     section: 4
@@ -42,7 +37,6 @@ groups:
     files:
       - src/components/ShowInIDEPrompt.tsx
       - src/components/permissions/FilePermissionDialog/ideDiffConfig.ts
-
   - id: ide-jetbrains
     kind: source
     section: 4

@@ -2,7 +2,6 @@ schema_version: 1
 spec_id: data-structures
 spec: ../../superpowers/specs/2026-11-12-data-structures-design.md
 status: draft
-
 groups:
   - id: array-utils
     kind: source
@@ -10,87 +9,75 @@ groups:
     summary: 数组工具函数 - intersperse（插入分隔符）、count（计数）、uniq（去重）
     files:
       - src/utils/array.ts
-
   - id: circular-buffer
     kind: source
     section: 3
     summary: 环形缓冲区 - 固定大小、FIFO 逐出、add/addAll/getRecent/toArray/clear/length
     files:
       - src/utils/CircularBuffer.ts
-
   - id: object-group-by
     kind: source
     section: 4
     summary: Object.groupBy polyfill - Iterable 分组、无原型链污染、index 参数
     files:
       - src/utils/objectGroupBy.ts
-
   - id: content-array
     kind: source
     section: 5
     summary: 消息内容数组操作 - 在 tool_result 后插入块、自动追加文本延续
     files:
       - src/utils/contentArray.ts
-
   - id: generators
     kind: source
     section: 6
     summary: 异步生成器工具 - lastX（取最后值）、returnValue（取返回值）、all（并发控制）、toArray/fromArray
     files:
       - src/utils/generators.ts
-
   - id: memoize
     kind: source
     section: 7
     summary: 记忆化缓存 - memoizeWithTTL（stale-while-revalidate）、memoizeWithTTLAsync（含 in-flight 去重）、memoizeWithLRU（基于 lru-cache）
     files:
       - src/utils/memoize.ts
-
   - id: lazy-schema
     kind: source
     section: 8
     summary: 延迟 Schema 初始化 - 模块加载时不创建，首次访问时调用 factory，避免循环依赖
     files:
       - src/utils/lazySchema.ts
-
   - id: json-utils
     kind: source
     section: 9
     summary: JSON/JSONC/JSONL 工具 - safeParseJSON（带 LRU 缓存）、safeParseJSONC、parseJSONL、readJSONLFile、addItemToJSONCArray
     files:
       - src/utils/json.ts
-
   - id: json-read
     kind: source
-    section: 10
+    section: 4
     summary: BOM 剥离工具 - stripBOM，独立模块避免循环依赖，处理 PowerShell 5.x UTF-8 with BOM
     files:
       - src/utils/jsonRead.ts
-
   - id: frontmatter-parser
     kind: source
-    section: 11
+    section: 4
     summary: Frontmatter 解析 - parseFrontmatter（YAML 失败自动 quote 重试）、splitPathInFrontmatter、expandBraces、类型转换辅助
     files:
       - src/utils/frontmatterParser.ts
-
   - id: markdown-config-loader
     kind: source
-    section: 12
+    section: 4
     summary: Markdown 配置加载 - 目录遍历（managed/user/project 优先级）、git 边界处理、dev+ino 去重、ripgrep/原生双实现
     files:
       - src/utils/markdownConfigLoader.ts
-
   - id: hooks-schemas
     kind: source
-    section: 13
+    section: 4
     summary: Hooks Zod Schemas - 独立模块打破循环依赖，包含 HookCommandSchema/HookMatcherSchema/HooksSchema，全部使用 lazySchema
     files:
       - src/schemas/hooks.ts
-
   - id: design-docs-test
     kind: test
-    section: 17
+    section: 7
     summary: 设计文档系统测试 - 包含 spec 格式验证，间接验证本 spec 格式
     files:
       - tests/designDocs.test.ts

@@ -2,7 +2,6 @@ schema_version: 1
 spec_id: tool-framework
 spec: ../../superpowers/specs/2026-11-12-tool-framework-design.md
 status: draft
-
 groups:
   - id: tool-types
     kind: source
@@ -10,7 +9,6 @@ groups:
     summary: 核心工具类型定义与契约
     files:
       - src/Tool.ts
-
   - id: tool-pool
     kind: source
     section: 4
@@ -19,21 +17,18 @@ groups:
       - src/tools.ts
       - src/utils/toolPool.ts
       - src/hooks/useMergedTools.ts
-
   - id: tool-execution
     kind: source
     section: 4
     summary: 工具执行核心流程、权限检查、错误处理
     files:
       - src/services/tools/toolExecution.ts
-
   - id: tool-shared
     kind: source
     section: 7
     summary: 工具共享辅助逻辑
     files:
       - src/tools/shared/gitOperationTracking.ts
-
   - id: tool-tests
     kind: test
     section: 7

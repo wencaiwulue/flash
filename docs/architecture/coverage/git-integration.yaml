@@ -2,7 +2,6 @@ schema_version: 1
 spec_id: git-integration
 spec: ../../superpowers/specs/2026-11-12-git-integration-design.md
 status: draft
-
 groups:
   - id: git-core
     kind: source
@@ -10,7 +9,6 @@ groups:
     summary: Git 仓库发现、分支/HEAD 读取、远程 URL、状态读取、裸仓库防护、变更文件列表
     files:
       - src/utils/git.ts
-
   - id: git-filesystem
     kind: source
     section: 4
@@ -18,36 +16,31 @@ groups:
     files:
       - src/utils/git/gitFilesystem.ts
       - src/utils/git/gitConfigParser.ts
-
   - id: git-ignore
     kind: source
     section: 4
     summary: Gitignore 解析工具
     files:
       - src/utils/git/gitignore.ts
-
   - id: git-diff
     kind: source
     section: 4
     summary: Git diff 解析、统计、hunks 处理、单文件 diff、未跟踪文件处理
     files:
       - src/utils/gitDiff.ts
-
   - id: worktree
     kind: source
     section: 4
     summary: Worktree 创建/恢复/清理、slug 验证、tmux 集成、stale agent worktree 回收、代理 Worktree
     files:
       - src/utils/worktree.ts
-
   - id: github-integration
     kind: source
     section: 4
     summary: GitHub 认证状态、远程 URL 解析与标准化、仓库哈希
     files:
       - src/utils/github/ghAuthStatus.ts
-      - src/utils/git.ts # getGithubRepo、normalizeGitRemoteUrl、getRepoRemoteHash
-
+      - src/utils/git.ts
   - id: commit-attribution
     kind: source
     section: 4
@@ -57,14 +50,12 @@ groups:
       - src/utils/attributionTrailer.ts
       - src/utils/attributionHooks.ts
       - src/utils/attribution.ts
-
   - id: pr-reference
     kind: source
     section: 4
-    summary: PR 引用解析（如 #123、pr/123）
+    summary: PR 引用解析（如
     files:
       - src/utils/prReference.ts
-
   - id: git-tests
     kind: test
     section: 7

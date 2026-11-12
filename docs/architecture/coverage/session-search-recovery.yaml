@@ -1,274 +1,59 @@
-# Session Search & Recovery 会话发现与跨项目恢复设计覆盖
-schema: 1
-id: session-search-recovery
-title: Session Search & Recovery 会话发现与跨项目恢复设计
-sections:
-  - title: 1. 概述
-    items:
-      - path: src/utils/agenticSessionSearch.ts
-        lineStart: 146
-        lineEnd: 307
-        summary: agenticSessionSearch — AI 驱动的会话搜索
-      - path: src/utils/conversationRecovery.ts
-        lineStart: 456
-        lineEnd: 597
-        summary: loadConversationForResume — 会话恢复入口
-      - path: src/utils/listSessionsImpl.ts
-        lineStart: 439
-        lineEnd: 454
-        summary: listSessionsImpl — 会话列表入口
-
-  - title: 2. 架构设计
-    items:
-      - path: src/utils/listSessionsImpl.ts
-        lineStart: 169
-        lineEnd: 197
-        summary: listCandidates — 候选发现阶段
-      - path: src/utils/listSessionsImpl.ts
-        lineStart: 204
-        lineEnd: 216
-        summary: readCandidate — 读取候选
-      - path: src/utils/listSessionsImpl.ts
-        lineStart: 235
-        lineEnd: 271
-        summary: applySortAndLimit — 排序过滤阶段
-      - path: src/utils/listSessionsImpl.ts
-        lineStart: 278
-        lineEnd: 299
-        summary: readAllAndSort — 全量读取路径
-      - path: src/utils/agenticSessionSearch.ts
-        lineStart: 146
-        lineEnd: 307
-        summary: agenticSessionSearch — 搜索流程
-      - path: src/utils/conversationRecovery.ts
-        lineStart: 456
-        lineEnd: 597
-        summary: loadConversationForResume — 恢复流程
-
-  - title: 3. 核心功能设计
-    subsections:
-      - title: 3.1 会话发现
-        items:
-          - path: src/utils/listSessionsImpl.ts
-            lineStart: 79
-            lineEnd: 149
-            summary: parseSessionInfoFromLite — 从 head/tail 提取元数据
-          - path: src/utils/listSessionsImpl.ts
-            lineStart: 309
-            lineEnd: 401
-            summary: gatherProjectCandidates — 项目候选收集（含 worktree）
-          - path: src/utils/listSessionsImpl.ts
-            lineStart: 406
-            lineEnd: 423
-            summary: gatherAllCandidates — 全项目候选收集
-          - path: src/assistant/sessionDiscovery.ts
-            lineStart: 14
-            lineEnd: 60
-            summary: discoverAssistantSessions — 远程助手会话发现
-
-      - title: 3.2 会话搜索
-        items:
-          - path: src/utils/agenticSessionSearch.ts
-            lineStart: 113
-            lineEnd: 140
-            summary: logContainsQuery — 基础关键词过滤
-          - path: src/utils/agenticSessionSearch.ts
-            lineStart: 86
-            lineEnd: 108
-            summary: extractTranscript — 转录本提取
-          - path: src/utils/agenticSessionSearch.ts
-            lineStart: 15
-            lineEnd: 48
-            summary: SESSION_SEARCH_SYSTEM_PROMPT — AI 搜索提示词
-          - path: src/utils/agenticSessionSearch.ts
-            lineStart: 146
-            lineEnd: 307
-            summary: agenticSessionSearch — 完整搜索流程
-
-      - title: 3.3 会话恢复
-        items:
-          - path: src/utils/conversationRecovery.ts
-            lineStart: 154
-            lineEnd: 252
-            summary: deserializeMessagesWithInterruptDetection — 消息反序列化与中断检测
-          - path: src/utils/conversationRecovery.ts
-            lineStart: 272
-            lineEnd: 333
-            summary: detectTurnInterruption — 中断检测逻辑
-          - path: src/utils/conversationRecovery.ts
-            lineStart: 348
-            lineEnd: 373
-            summary: isTerminalToolResult — 终端工具结果判断
-          - path: src/utils/conversationRecovery.ts
-            lineStart: 382
-            lineEnd: 403
-            summary: restoreSkillStateFromMessages — 技能状态恢复
-          - path: src/utils/conversationRecovery.ts
-            lineStart: 416
-            lineEnd: 440
-            summary: loadMessagesFromJsonlPath — 从 jsonl 路径加载
-          - path: src/utils/crossProjectResume.ts
-            lineStart: 30
-            lineEnd: 75
-            summary: checkCrossProjectResume — 跨项目恢复检查
-
-      - title: 3.4 并发会话
-        items:
-          - path: src/utils/concurrentSessions.ts
-            lineStart: 81
-            lineEnd: 87
-            summary: getSessionRegistryDir / getSessionTombstoneDir — 目录定位
-          - path: src/utils/concurrentSessions.ts
-            lineStart: 103
-            lineEnd: 110
-            summary: writeSessionRegistryRecord — 写入注册记录
-          - path: src/utils/concurrentSessions.ts
-            lineStart: 112
-            lineEnd: 120
-            summary: writeSessionTombstone — 写入墓碑
-          - path: src/utils/concurrentSessions.ts
-            lineStart: 122
-            lineEnd: 139
-            summary: deleteSessionRegistryRecord — 删除注册记录
-          - path: src/utils/concurrentSessions.ts
-            lineStart: 142
-            lineEnd: 170
-            summary: readSessionRegistry — 读取注册表
-          - path: src/utils/concurrentSessions.ts
-            lineStart: 184
-            lineEnd: 266
-            summary: registerSession — 会话注册
-          - path: src/utils/concurrentSessions.ts
-            lineStart: 270
-            lineEnd: 288
-            summary: updatePidFile — 异步更新队列
-          - path: src/utils/concurrentSessions.ts
-            lineStart: 290
-            lineEnd: 307
-            summary: updateSessionName / updateSessionBridgeId / updateSessionActivity — 状态更新
-          - path: src/utils/concurrentSessions.ts
-            lineStart: 309
-            lineEnd: 333
-            summary: countConcurrentSessions — 并发计数
-
-      - title: 3.5 历史回填
-        items:
-          - path: src/commands/backfill-sessions/backfill-sessions.ts
-            summary: backfillSessionMetadata — 元数据重建（见 tests）
-          - path: tests/backfillSessionsCommand.test.ts
-            lineStart: 79
-            lineEnd: 92
-            summary: backfill 测试 — rebuild/valid/failed/duplicates
-          - path: tests/backfillSessionsCommand.test.ts
-            lineStart: 108
-            lineEnd: 126
-            summary: 原子写入测试 — 0600 权限、并发安全
-
-      - title: 3.6 共享会话恢复
-        items:
-          - path: src/utils/ccshareResume.ts
-            lineStart: 54
-            lineEnd: 75
-            summary: parseCcshareId — ccshare ID 解析
-          - path: src/utils/ccshareResume.ts
-            lineStart: 133
-            lineEnd: 205
-            summary: fetchTranscript — 转录本下载
-          - path: src/utils/ccshareResume.ts
-            lineStart: 207
-            lineEnd: 237
-            summary: writeBoundedResponse — 边界写入（大小/行数限制）
-          - path: src/utils/ccshareResume.ts
-            lineStart: 239
-            lineEnd: 271
-            summary: loadCcshare — 完整加载流程
-
-  - title: 4. 设计决策
-    items:
-      - path: src/utils/listSessionsImpl.ts
-        lineStart: 446
-        lineEnd: 447
-        summary: 决策 2 — doStat 条件判断
-      - path: src/utils/listSessionsImpl.ts
-        lineStart: 132
-        lineEnd: 136
-        summary: 决策 3 — tag 类型安全提取注释
-      - path: src/utils/conversationRecovery.ts
-        lineStart: 284
-        lineEnd: 289
-        summary: 决策 4 — 跳过 system/progress/API error
-      - path: src/utils/ccshareResume.ts
-        lineStart: 262
-        lineEnd: 262
-        summary: 决策 5 — projectPath: undefined
-      - path: src/utils/concurrentSessions.ts
-        lineStart: 89
-        lineEnd: 101
-        summary: 决策 6 — 原子写入实现
-      - path: src/utils/agenticSessionSearch.ts
-        lineStart: 37
-        lineEnd: 44
-        summary: 决策 7 — "When in doubt, INCLUDE"
-      - path: src/utils/crossProjectResume.ts
-        lineStart: 42
-        lineEnd: 51
-        summary: 决策 8 — USER_TYPE=ant 分阶段发布
-
-  - title: 5. 失败语义
-    items:
-      - path: src/utils/agenticSessionSearch.ts
-        lineStart: 302
-        lineEnd: 306
-        summary: 搜索失败处理 — catch 返回空数组
-      - path: src/utils/ccshareResume.ts
-        lineStart: 16
-        lineEnd: 22
-        summary: ccshare 失败选项 — timeout/maxBytes/maxLines/crossOriginConfirm
-
-  - title: 6. 历史回填与兼容
-    items:
-      - path: src/utils/conversationRecovery.ts
-        lineStart: 77
-        lineEnd: 132
-        summary: migrateLegacyAttachmentTypes — Legacy 格式迁移
-      - path: tests/backfillSessionsCommand.test.ts
-        lineStart: 79
-        lineEnd: 126
-        summary: 回填测试覆盖
-
-  - title: 7. 安全考虑
-    items:
-      - path: src/utils/concurrentSessions.ts
-        lineStart: 89
-        lineEnd: 101
-        summary: 原子写入权限 0600
-      - path: src/utils/ccshareResume.ts
-        lineStart: 103
-        lineEnd: 104
-        summary: ccshare 凭证权限 0600 检查
-      - path: src/utils/ccshareResume.ts
-        lineStart: 24
-        lineEnd: 46
-        summary: ccshare URL 安全验证
-      - path: src/utils/ccshareResume.ts
-        lineStart: 262
-        lineEnd: 262
-        summary: 共享会话 projectPath 清除
-
-files:
-  - path: src/utils/agenticSessionSearch.ts
-    description: 智能会话搜索实现
-  - path: src/utils/conversationRecovery.ts
-    description: 会话恢复与消息反序列化
-  - path: src/utils/crossProjectResume.ts
-    description: 跨项目恢复检查
-  - path: src/utils/concurrentSessions.ts
-    description: 并发会话注册与追踪
-  - path: src/utils/listSessionsImpl.ts
-    description: 会话列表实现（SDK 兼容）
-  - path: src/assistant/sessionDiscovery.ts
-    description: 远程助手会话发现
-  - path: src/utils/ccshareResume.ts
-    description: 共享会话恢复
-  - path: tests/backfillSessionsCommand.test.ts
-    description: 历史回填测试
+schema_version: 1
+spec_id: session-search-recovery
+spec: ../../superpowers/specs/2026-11-12-session-search-recovery-design.md
+status: draft
+groups:
+  - id: session-search
+    kind: source
+    section: 4
+    summary: 会话搜索 — AI 驱动的会话搜索、关键词过滤、转录本提取
+    files:
+      - src/utils/agenticSessionSearch.ts
+  - id: conversation-recovery
+    kind: source
+    section: 4
+    summary: 会话恢复 — 消息反序列化、中断检测、技能状态恢复
+    files:
+      - src/utils/conversationRecovery.ts
+  - id: session-listing
+    kind: source
+    section: 4
+    summary: 会话列表 — 候选发现、读取、排序、项目候选收集
+    files:
+      - src/utils/listSessionsImpl.ts
+  - id: assistant-discovery
+    kind: source
+    section: 4
+    summary: 远程助手会话发现
+    files:
+      - src/assistant/sessionDiscovery.ts
+  - id: concurrent-sessions
+    kind: source
+    section: 4
+    summary: 并发会话 — 注册、墓碑、更新、计数
+    files:
+      - src/utils/concurrentSessions.ts
+  - id: cross-project-resume
+    kind: source
+    section: 4
+    summary: 跨项目恢复检查
+    files:
+      - src/utils/crossProjectResume.ts
+  - id: ccshare-resume
+    kind: source
+    section: 4
+    summary: 共享会话恢复 — ID 解析、转录本下载、加载流程
+    files:
+      - src/utils/ccshareResume.ts
+  - id: backfill-command
+    kind: source
+    section: 4
+    summary: 历史回填命令
+    files:
+      - src/commands/backfill-sessions/backfill-sessions.ts
+  - id: recovery-tests
+    kind: test
+    section: 7
+    summary: 会话恢复与回填测试
+    files:
+      - tests/backfillSessionsCommand.test.ts

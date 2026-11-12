@@ -1,73 +1,11 @@
-id: hooks-system
-version: 1
-title: Hooks System Coverage
-sections:
-  - title: 核心执行与调度
+schema_version: 1
+spec_id: hooks-system
+spec: ../../superpowers/specs/2026-11-12-hooks-system-design.md
+status: draft
+groups:
+  - id: default
+    kind: source
+    section: 4
+    summary: Default group
     files:
-      - path: src/utils/hooks.ts
-        ownedBy: hooks-system
-      - path: src/utils/hooks/AsyncHookRegistry.ts
-        ownedBy: hooks-system
-      - path: src/utils/hooks/hookEvents.ts
-        ownedBy: hooks-system
-      - path: src/utils/hooks/hooksConfigManager.ts
-        ownedBy: hooks-system
-      - path: src/utils/hooks/hooksConfigSnapshot.ts
-        ownedBy: hooks-system
-      - path: src/utils/hooks/sessionHooks.ts
-        ownedBy: hooks-system
-
-  - title: 钩子类型执行
-    files:
-      - path: src/utils/hooks/execHttpHook.ts
-        ownedBy: hooks-system
-      - path: src/utils/hooks/execPromptHook.ts
-        ownedBy: hooks-system
-      - path: src/utils/hooks/execAgentHook.ts
-        ownedBy: hooks-system
-      - path: src/utils/hooks/hookHelpers.ts
-        ownedBy: hooks-system
-
-  - title: HTTP 钩子安全
-    files:
-      - path: src/utils/hooks/ssrfGuard.ts
-        ownedBy: hooks-system
-
-  - title: 配置与设置
-    files:
-      - path: src/utils/hooks/hooksSettings.ts
-        ownedBy: hooks-system
-
-  - title: 会话钩子与内部回调
-    files:
-      - path: src/utils/hooks/sessionHooks.ts
-        ownedBy: hooks-system
-      - path: src/utils/attributionHooks.ts
-        ownedBy: attribution
-      - path: src/utils/sessionFileAccessHooks.ts
-        ownedBy: session
-      - path: src/utils/classifierApprovalsHook.ts
-        ownedBy: permissions
-      - path: src/utils/hooks/postSamplingHooks.ts
-        ownedBy: hooks-system
-      - path: src/utils/hooks/registerFrontmatterHooks.ts
-        ownedBy: hooks-system
-      - path: src/utils/hooks/registerSkillHooks.ts
-        ownedBy: hooks-system
-
-  - title: 测试
-    files:
-      - path: tests/headlessHooks.test.ts
-        ownedBy: hooks-system
-
-  - title: 命令与 UI
-    files:
-      - path: src/commands/hooks/hooks.tsx
-        ownedBy: hooks-system
-      - path: src/commands/hooks/index.ts
-        ownedBy: hooks-system
-
-  - title: 平台支持
-    files:
-      - path: src/utils/hooks/apiQueryHookHelper.ts
-        ownedBy: hooks-system
+      - src/FIXME.ts

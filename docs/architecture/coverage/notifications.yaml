@@ -2,7 +2,6 @@ schema_version: 1
 spec_id: notifications
 spec: ../../superpowers/specs/2026-11-12-notifications-design.md
 status: draft
-
 groups:
   - id: notifications-context
     kind: source
@@ -10,7 +9,6 @@ groups:
     summary: 横幅通知核心逻辑：useNotifications Hook、addNotification/removeNotification/processQueue 流程、优先级队列、fold/invalidates 机制、timeout 管理
     files:
       - src/context/notifications.tsx
-
   - id: notifications-hooks
     kind: source
     section: 2
@@ -33,36 +31,30 @@ groups:
       - src/hooks/notifs/useCanSwitchToExistingSubscription.tsx
       - src/hooks/notifs/useDeprecationWarningNotification.tsx
       - src/hooks/notifs/useInstallMessages.tsx
-
   - id: os-notifier
     kind: source
     section: 4
     summary: OS 通知发送：多通道分发（auto/iterm2/kitty/ghostty/bell/disabled）、Apple Terminal bell 配置检测、通知钩子执行
     files:
       - src/services/notifier.ts
-
   - id: push-notification-tool
     kind: source
     section: 4
     summary: PushNotificationTool 工具定义：webhook 发送、OS 通知回退、超时与取消处理
     files:
       - src/tools/PushNotificationTool/PushNotificationTool.ts
-
   - id: collapse-background-notifications
     kind: source
     section: 5
     summary: 后台任务通知折叠：通知识别（task-notification 标签、status、summary 前缀）、连续完成任务合并、fullscreen/verbose 模式控制
     files:
       - src/utils/collapseBackgroundBashNotifications.ts
-
   - id: notifications-xml
     kind: source
     section: 5
     summary: 任务通知 XML 标签定义：TASK_NOTIFICATION_TAG、STATUS_TAG、SUMMARY_TAG、BACKGROUND_BASH_SUMMARY_PREFIX
     files:
       - src/constants/xml.ts
-      - src/tasks/LocalShellTask/LocalShellTask.ts
-
   - id: notifications-tests
     kind: test
     section: 3

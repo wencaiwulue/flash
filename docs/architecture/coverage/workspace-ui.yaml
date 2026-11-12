@@ -2,7 +2,6 @@ schema_version: 1
 spec_id: workspace-ui
 spec: ../../superpowers/specs/2026-11-12-workspace-ui-design.md
 status: draft
-
 groups:
   - id: add-dir-command
     kind: source
@@ -12,7 +11,6 @@ groups:
       - src/commands/add-dir/add-dir.tsx
       - src/commands/add-dir/validation.ts
       - src/commands/add-dir/index.ts
-
   - id: diff-command
     kind: source
     section: 4
@@ -20,7 +18,6 @@ groups:
     files:
       - src/commands/diff/diff.tsx
       - src/commands/diff/index.ts
-
   - id: sandbox-toggle-command
     kind: source
     section: 4
@@ -28,7 +25,6 @@ groups:
     files:
       - src/commands/sandbox-toggle/sandbox-toggle.tsx
       - src/commands/sandbox-toggle/index.ts
-
   - id: diff-components
     kind: source
     section: 4
@@ -37,7 +33,6 @@ groups:
       - src/components/diff/DiffDialog.tsx
       - src/components/diff/DiffFileList.tsx
       - src/components/diff/DiffDetailView.tsx
-
   - id: structured-diff
     kind: source
     section: 4
@@ -47,21 +42,18 @@ groups:
       - src/components/StructuredDiffList.tsx
       - src/components/StructuredDiff/colorDiff.ts
       - src/components/StructuredDiff/Fallback.tsx
-
   - id: add-workspace-directory
     kind: source
     section: 4
     summary: AddWorkspaceDirectory 对话框组件、路径输入和自动补全
     files:
       - src/components/permissions/rules/AddWorkspaceDirectory.tsx
-
   - id: fullscreen-layout
     kind: source
     section: 4
     summary: FullscreenLayout、useUnseenDivider、新消息药丸、粘性提示
     files:
       - src/components/FullscreenLayout.tsx
-
   - id: custom-select
     kind: source
     section: 4
@@ -69,14 +61,10 @@ groups:
     files:
       - src/components/CustomSelect/select.tsx
       - src/components/CustomSelect/SelectMulti.tsx
-      - src/components/CustomSelect/useSelectState.ts
-      - src/components/CustomSelect/useSelectNavigation.ts
-      - src/components/CustomSelect/useSelectInput.ts
       - src/components/CustomSelect/select-input-option.tsx
       - src/components/CustomSelect/select-option.tsx
       - src/components/CustomSelect/option-map.ts
       - src/components/CustomSelect/index.ts
-
   - id: sandbox-components
     kind: source
     section: 4
@@ -86,7 +74,6 @@ groups:
       - src/components/sandbox/SandboxConfigTab.tsx
       - src/components/sandbox/SandboxDependenciesTab.tsx
       - src/components/sandbox/SandboxOverridesTab.tsx
-
   - id: ui-components
     kind: source
     section: 4
@@ -96,7 +83,6 @@ groups:
       - src/components/ui/OrderedListItem.tsx
       - src/components/ui/TreeSelect.tsx
       - src/components/ui/option.ts
-
   - id: shell-components
     kind: source
     section: 4
@@ -106,14 +92,12 @@ groups:
       - src/components/shell/ShellProgressMessage.tsx
       - src/components/shell/ShellTimeDisplay.tsx
       - src/components/shell/ExpandShellOutputContext.tsx
-
   - id: file-edit-tool-diff
     kind: source
     section: 4
     summary: FileEditTool 的差异预览组件
     files:
       - src/components/FileEditToolDiff.tsx
-
   - id: quick-open-dialog
     kind: source
     section: 4

@@ -2,7 +2,6 @@ schema_version: 1
 spec_id: settings
 spec: ../../superpowers/specs/2026-11-12-settings-design.md
 status: draft
-
 groups:
   - id: settings-types
     kind: source
@@ -10,35 +9,30 @@ groups:
     summary: SettingsSchema、SettingsJson 类型定义、权限规则验证 schema、MCP 允许/拒绝条目 schema
     files:
       - src/utils/settings/types.ts
-
   - id: settings-core
     kind: source
     section: 4
     summary: 核心设置读取、合并、写入逻辑，包括多来源合并、自定义合并器、managed file settings 加载
     files:
       - src/utils/settings/settings.ts
-
   - id: settings-constants
     kind: source
     section: 4
     summary: SettingSource 枚举、来源优先级顺序、来源显示名称、enabled sources 获取
     files:
       - src/utils/settings/constants.ts
-
   - id: settings-cache
     kind: source
     section: 4
     summary: 会话级缓存管理，包括 parsed 文件缓存、source settings 缓存、合并结果缓存、缓存重置
     files:
       - src/utils/settings/settingsCache.ts
-
   - id: settings-change-detector
     kind: source
     section: 4
     summary: 文件变更监听（chokidar）、MDM 轮询、变更通知、删除-重建窗口处理、internal write 过滤
     files:
       - src/utils/settings/changeDetector.ts
-
   - id: settings-validation
     kind: source
     section: 4
@@ -46,7 +40,6 @@ groups:
     files:
       - src/utils/settings/validation.ts
       - src/utils/settings/validationTips.ts
-
   - id: settings-permission-validation
     kind: source
     section: 4
@@ -54,52 +47,42 @@ groups:
     files:
       - src/utils/settings/permissionValidation.ts
       - src/utils/settings/toolValidationConfig.ts
-
   - id: settings-internal-writes
     kind: source
     section: 4
     summary: 内部写入标记，避免自身写入触发变更检测
     files:
       - src/utils/settings/internalWrites.ts
-
   - id: settings-managed-path
     kind: source
     section: 4
     summary: 策略文件路径管理，managed-settings.json 和 managed-settings.d/ drop-in 目录
     files:
       - src/utils/settings/managedPath.ts
-
   - id: settings-mdm
     kind: source
     section: 4
     summary: MDM/注册表设置读取（平台相关），Windows HKLM/HKCU、macOS 配置文件
     files:
-      - src/utils/settings/mdm/mdm.ts
-      - src/utils/settings/mdm/mdmWindows.ts
-      - src/utils/settings/mdm/mdmDarwin.ts
-      - src/utils/settings/mdm/types.ts
-
+      - src/FIXME.ts
   - id: settings-apply-change
     kind: source
     section: 4
     summary: 设置变更应用工具函数
     files:
       - src/utils/settings/applySettingsChange.ts
-
   - id: settings-schema-output
     kind: source
     section: 7
     summary: JSON Schema 输出生成
     files:
       - src/utils/settings/schemaOutput.ts
-
   - id: settings-all-errors
     kind: source
     section: 7
     summary: 设置相关错误类型定义
     files:
       - src/utils/settings/allErrors.ts
-
   - id: remote-managed-settings
     kind: source
     section: 4
@@ -110,7 +93,6 @@ groups:
       - src/services/remoteManagedSettings/syncCache.ts
       - src/services/remoteManagedSettings/syncCacheState.ts
       - src/services/remoteManagedSettings/types.ts
-
   - id: policy-limits
     kind: source
     section: 4
@@ -118,7 +100,6 @@ groups:
     files:
       - src/services/policyLimits/index.ts
       - src/services/policyLimits/types.ts
-
   - id: settings-sync
     kind: source
     section: 4
@@ -126,7 +107,6 @@ groups:
     files:
       - src/services/settingsSync/index.ts
       - src/services/settingsSync/types.ts
-
   - id: settings-migrations
     kind: source
     section: 4
@@ -135,7 +115,6 @@ groups:
       - src/migrations/migrateAutoUpdatesToSettings.ts
       - src/migrations/migrateBypassPermissionsAcceptedToSettings.ts
       - src/migrations/migrateEnableAllProjectMcpServersToSettings.ts
-
   - id: global-config-boundary
     kind: source
     section: 4

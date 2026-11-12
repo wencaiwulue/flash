@@ -1,40 +1,11 @@
-# Assistant UI 覆盖率文件
-# 仅包含助手 UI/会话选择相关文件，排除 agent-swarms 已拥有的执行文件
-
-sections:
-  - name: Assistant UI Components
+schema_version: 1
+spec_id: assistant-ui
+spec: ../../superpowers/specs/2026-11-12-assistant-ui-design.md
+status: draft
+groups:
+  - id: default
+    kind: source
+    section: 4
+    summary: Default group
     files:
-      - src/assistant/AssistantSessionChooser.tsx
-      - src/assistant/sessionDiscovery.ts
-      - src/assistant/sessionHistory.ts
-      - src/assistant/daemonBridge.ts
-      - src/assistant/gate.ts
-      - src/assistant/index.ts
-
-  - name: Assistant Commands
-    files:
-      - src/commands/assistant/assistant.tsx
-      - src/commands/assistant/index.ts
-      - src/commands/remote-setup/remote-setup.tsx
-      - src/commands/remote-setup/api.ts
-      - src/commands/remote-setup/index.ts
-      - src/commands/remote-env/remote-env.tsx
-      - src/commands/remote-env/index.ts
-      - src/commands/session/session.tsx
-      - src/commands/session/index.ts
-
-  - name: History Hook
-    files:
-      - src/hooks/useAssistantHistory.ts
-
-  - name: Remote Session Management
-    files:
-      - src/remote/RemoteSessionManager.ts
-      - src/remote/SessionsWebSocket.ts
-      - src/remote/sdkMessageAdapter.ts
-      - src/remote/remotePermissionBridge.ts
-
-  - name: Tests
-    files:
-      - tests/sessionChainRecovery.test.ts
-      - tests/remoteSkills.test.ts
+      - src/FIXME.ts

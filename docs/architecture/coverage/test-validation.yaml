@@ -2,68 +2,59 @@ schema_version: 1
 spec_id: test-validation
 spec: ../../superpowers/specs/2026-11-12-test-validation-design.md
 status: draft
-
 groups:
   - id: test-runner
     kind: source
-    section: 5.1
+    section: 5
     summary: 测试运行器，逐文件隔离运行并注入 EXTERNAL_FEATURES
     files:
       - scripts/test.ts
-
   - id: external-feature-profile
     kind: source
-    section: 5.2
+    section: 5
     summary: 外部功能列表，测试运行器注入的唯一来源
     files:
       - scripts/externalFeatureProfile.ts
-
   - id: live-cloud-validation
     kind: source
-    section: 5.3.1
+    section: 4
     summary: Cloud Live 验证，需要 OAuth token 和组织 UUID
     files:
       - scripts/live-cloud-validation.ts
-
   - id: live-desktop-validation
     kind: source
-    section: 5.3.2
+    section: 4
     summary: Desktop Live 验证，需要 CLAUDE_DESKTOP_LIVE=1 和屏幕权限
     files:
       - scripts/live-desktop-validation.ts
-
   - id: live-model-validation
     kind: source
-    section: 5.3.3
+    section: 4
     summary: Model Live 验证，需要 ANTHROPIC_API_KEY 或 ANTHROPIC_AUTH_TOKEN（互斥）
     files:
       - scripts/live-model-validation.ts
-
   - id: live-skillhub-validation
     kind: source
-    section: 5.3.4
+    section: 4
     summary: SkillHub Live 验证，需要 Skill Registry URL
     files:
       - scripts/live-skillhub-validation.ts
-
   - id: smoke-tests
     kind: test
-    section: 5.4
+    section: 5
     summary: Smoke 测试，验证 CLI 可执行、SDK 可导入、类型声明存在
     files:
       - tests/buildArtifacts.test.ts
-
   - id: cross-cutting-acceptance
     kind: test
-    section: 5.5
+    section: 5
     summary: 跨领域验收测试，验证 Enabled Features 和 Public Prompt Commands
     files:
       - tests/enabledFeatures.test.ts
       - tests/publicPromptCommands.test.ts
-
   - id: test-fixtures
     kind: test
-    section: 5.6
+    section: 5
     summary: 测试 Fixtures，提供隔离环境和假实现
     files:
       - tests/fixtures/feature-check.ts

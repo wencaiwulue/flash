@@ -1,39 +1,11 @@
-id: buddy
-title: Buddy 伙伴会话与通知
-sections:
-  - title: 核心数据类型与骨骼生成
+schema_version: 1
+spec_id: buddy
+spec: ../../superpowers/specs/2026-11-12-buddy-design.md
+status: draft
+groups:
+  - id: default
+    kind: source
+    section: 4
+    summary: Default group
     files:
-      - src/buddy/types.ts
-      - src/buddy/companion.ts
-  - title: 观察者与 LLM 响应解析
-    files:
-      - src/buddy/companionObserver.ts
-  - title: UI 渲染与动画
-    files:
-      - src/buddy/CompanionSprite.tsx
-      - src/buddy/sprites.ts
-  - title: 通知与预告期
-    files:
-      - src/buddy/useBuddyNotification.tsx
-  - title: 主 Agent 提示集成
-    files:
-      - src/buddy/prompt.ts
-  - title: /buddy 命令
-    files:
-      - src/commands/buddy/index.ts
-  - title: 全局状态与配置
-    files:
-      - src/state/AppStateStore.ts
-      - src/utils/config.ts
-  - title: Attachments 集成
-    files:
-      - src/utils/attachments.ts
-  - title: 全屏布局集成
-    files:
-      - src/components/FullscreenLayout.tsx
-  - title: REPL 集成
-    files:
-      - src/screens/REPL.tsx
-  - title: 测试
-    files:
-      - tests/buddyFork.test.ts
+      - src/FIXME.ts

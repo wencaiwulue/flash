@@ -2,7 +2,6 @@ schema_version: 1
 spec_id: text-formatting
 spec: ../../superpowers/specs/2026-11-12-text-formatting-design.md
 status: draft
-
 groups:
   - id: format-utils
     kind: source
@@ -10,73 +9,63 @@ groups:
     summary: 纯显示格式化工具 - 文件大小、时间/持续时间、数字、相对时间、日志元数据格式化
     files:
       - src/utils/format.ts
-
   - id: cli-highlight
     kind: source
     section: 2
     summary: CLI 代码高亮 - cli-highlight/highlight.js 懒加载、语言检测、共享 Promise 缓存
     files:
       - src/utils/cliHighlight.ts
-
   - id: highlight-match
     kind: source
     section: 3
     summary: 搜索高亮 - 忽略大小写匹配、逆高亮、React 节点输出、保留原有文本
     files:
       - src/utils/highlightMatch.tsx
-
   - id: display-tags
     kind: source
     section: 4
     summary: 显示标签剥离 - 小写标签正则匹配、保留用户大写标签、空内容回退原文本、IDE 标签专用剥离
     files:
       - src/utils/displayTags.ts
-
   - id: heatmap
     kind: source
     section: 5
     summary: 活动热图 - GitHub 风格、百分比强度分级、月份标签、Claude 橙色、字符渐变（░▒▓█）
     files:
       - src/utils/heatmap.ts
-
   - id: horizontal-scroll
     kind: source
     section: 6
     summary: 水平滚动窗口 - 边缘滚动策略、箭头宽度计算、选中项可见保证、cumulativeWidths 优化
     files:
       - src/utils/horizontalScroll.ts
-
   - id: hyperlink
     kind: source
     section: 7
     summary: OSC 8 超链接 - 终端支持检测、蓝色着色、BEL 终止符、content/url 分离、不支持回退
     files:
       - src/utils/hyperlink.ts
-
   - id: modifiers
     kind: source
     section: 8
     summary: 修饰键检测 - macOS 专用、modifiers-napi 可选依赖、prewarm 预加载、isModifierPressed 同步检查
     files:
       - src/utils/modifiers.ts
-
   - id: logo-v2-utils
     kind: source
     section: 9
     summary: Logo v2 布局工具 - 水平/紧凑模式、optimalLeftWidth 计算、路径中间截断、model/billing 分行检测
     files:
       - src/utils/logoV2Utils.ts
-
   - id: markdown-renderer
     kind: source
-    section: 10
+    section: 4
     summary: Markdown 终端渲染 - marked 词法分析、禁用删除线、代码高亮、issue 引用链接化、表格对齐、列表编号/字母/罗马数字
     files:
       - src/utils/markdown.ts
-
   - id: tests
     kind: test
     section: 7
     summary: 文本格式化相关测试
     files:
-      - tests/displayTags.test.ts
+      - src/FIXME.ts

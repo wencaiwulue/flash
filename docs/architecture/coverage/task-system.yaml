@@ -2,7 +2,6 @@ schema_version: 1
 spec_id: task-system
 spec: ../../superpowers/specs/2026-11-13-task-system-design.md
 status: draft
-
 groups:
   - id: task-core
     kind: source
@@ -13,14 +12,12 @@ groups:
       - src/tasks.ts
       - src/tasks/types.ts
       - src/tasks/pillLabel.ts
-
   - id: task-framework
     kind: source
     section: 4
     summary: 任务框架，包括注册、更新、驱逐、轮询、attachments 生成
     files:
       - src/utils/task/framework.ts
-
   - id: task-disk-output
     kind: source
     section: 4
@@ -30,14 +27,12 @@ groups:
       - src/utils/task/TaskOutput.ts
       - src/utils/task/outputFormatting.ts
       - src/utils/task/sdkProgress.ts
-
   - id: task-stop
     kind: source
     section: 4
     summary: 统一的任务停止入口 StopTaskError、stopTask()
     files:
       - src/tasks/stopTask.ts
-
   - id: task-local-shell
     kind: source
     section: 4
@@ -46,24 +41,18 @@ groups:
       - src/tasks/LocalShellTask/LocalShellTask.tsx
       - src/tasks/LocalShellTask/guards.ts
       - src/tasks/LocalShellTask/killShellTasks.ts
-      - src/tasks/LocalShellTask/UI.tsx
-      - src/tasks/LocalShellTask/prompt.ts
-      - src/tasks/LocalShellTask/constants.ts
-
   - id: task-local-agent
     kind: source
     section: 4
     summary: LocalAgentTask 实现，包括 async agent、resume、消息管理
     files:
-      - src/tasks/LocalAgentTask/LocalAgentTask.ts
-
+      - src/FIXME.ts
   - id: task-remote-agent
     kind: source
     section: 4
     summary: RemoteAgentTask 实现（CCA 远程隔离）
     files:
-      - src/tasks/RemoteAgentTask/RemoteAgentTask.ts
-
+      - src/FIXME.ts
   - id: task-in-process-teammate
     kind: source
     section: 4
@@ -71,28 +60,24 @@ groups:
     files:
       - src/tasks/InProcessTeammateTask/types.ts
       - src/tasks/InProcessTeammateTask/InProcessTeammateTask.tsx
-
   - id: task-monitor-mcp
     kind: source
     section: 4
     summary: MonitorMcpTask 实现
     files:
       - src/tasks/MonitorMcpTask/MonitorMcpTask.ts
-
   - id: task-dream
     kind: source
     section: 4
     summary: DreamTask 实现
     files:
       - src/tasks/DreamTask/DreamTask.ts
-
   - id: task-local-main-session
     kind: source
     section: 4
     summary: LocalMainSessionTask 实现
     files:
       - src/tasks/LocalMainSessionTask.ts
-
   - id: task-create-tool
     kind: source
     section: 4
@@ -101,7 +86,6 @@ groups:
       - src/tools/TaskCreateTool/TaskCreateTool.ts
       - src/tools/TaskCreateTool/prompt.ts
       - src/tools/TaskCreateTool/constants.ts
-
   - id: task-get-tool
     kind: source
     section: 4
@@ -110,7 +94,6 @@ groups:
       - src/tools/TaskGetTool/TaskGetTool.ts
       - src/tools/TaskGetTool/prompt.ts
       - src/tools/TaskGetTool/constants.ts
-
   - id: task-list-tool
     kind: source
     section: 4
@@ -119,7 +102,6 @@ groups:
       - src/tools/TaskListTool/TaskListTool.ts
       - src/tools/TaskListTool/prompt.ts
       - src/tools/TaskListTool/constants.ts
-
   - id: task-update-tool
     kind: source
     section: 4
@@ -128,7 +110,6 @@ groups:
       - src/tools/TaskUpdateTool/TaskUpdateTool.ts
       - src/tools/TaskUpdateTool/prompt.ts
       - src/tools/TaskUpdateTool/constants.ts
-
   - id: task-stop-tool
     kind: source
     section: 4
@@ -137,15 +118,12 @@ groups:
       - src/tools/TaskStopTool/TaskStopTool.ts
       - src/tools/TaskStopTool/UI.tsx
       - src/tools/TaskStopTool/prompt.ts
-
   - id: task-output-tool
     kind: source
     section: 4
     summary: TaskOutputTool 实现
     files:
-      - src/tools/TaskOutputTool/TaskOutputTool.ts
       - src/tools/TaskOutputTool/constants.ts
-
   - id: todo-write-tool
     kind: source
     section: 4
@@ -154,14 +132,12 @@ groups:
       - src/tools/TodoWriteTool/TodoWriteTool.ts
       - src/tools/TodoWriteTool/prompt.ts
       - src/tools/TodoWriteTool/constants.ts
-
   - id: todo-tasks
     kind: source
     section: 4
     summary: Todo list 任务持久化、claim/block 逻辑、task list 管理
     files:
       - src/utils/tasks.ts
-
   - id: task-hooks
     kind: source
     section: 4
@@ -171,7 +147,6 @@ groups:
       - src/hooks/useTaskListWatcher.ts
       - src/hooks/useScheduledTasks.ts
       - src/hooks/useBackgroundTaskNavigation.ts
-
   - id: task-components
     kind: source
     section: 4
@@ -179,7 +154,6 @@ groups:
     files:
       - src/components/TaskListV2.tsx
       - src/components/ResumeTask.tsx
-
   - id: cron-tasks
     kind: source
     section: 1
@@ -187,7 +161,6 @@ groups:
     files:
       - src/utils/cronTasks.ts
       - src/utils/cronTasksLock.ts
-
   - id: task-summary
     kind: source
     section: 4

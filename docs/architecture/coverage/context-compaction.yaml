@@ -2,7 +2,6 @@ schema_version: 1
 spec_id: context-compaction
 spec: ../../superpowers/specs/2026-11-12-context-compaction-design.md
 status: draft
-
 groups:
   - id: compact-core
     kind: source
@@ -13,7 +12,6 @@ groups:
       - src/services/compact/prompt.ts
       - src/services/compact/grouping.ts
       - src/services/compact/postCompactCleanup.ts
-
   - id: auto-compact
     kind: source
     section: 4
@@ -21,7 +19,6 @@ groups:
     files:
       - src/services/compact/autoCompact.ts
       - src/services/compact/compactWarningState.ts
-
   - id: micro-compact
     kind: source
     section: 4
@@ -31,14 +28,12 @@ groups:
       - src/services/compact/cachedMicrocompact.ts
       - src/services/compact/cachedMCConfig.ts
       - src/services/compact/timeBasedMCConfig.ts
-
   - id: reactive-compact
     kind: source
     section: 5
     summary: 响应式错误恢复 - reactiveCompactOnPromptTooLong/tryReactiveCompact/错误检测
     files:
       - src/services/compact/reactiveCompact.ts
-
   - id: context-collapse
     kind: source
     section: 4
@@ -48,14 +43,12 @@ groups:
       - src/services/contextCollapse/store.ts
       - src/services/contextCollapse/operations.ts
       - src/services/contextCollapse/persist.ts
-
   - id: session-memory-compact
     kind: source
     section: 4
     summary: 会话记忆压缩 - trySessionMemoryCompaction
     files:
       - src/services/compact/sessionMemoryCompact.ts
-
   - id: compact-test
     kind: test
     section: 7

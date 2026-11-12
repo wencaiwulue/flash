@@ -2,7 +2,6 @@ schema_version: 1
 spec_id: skills
 spec: ../../superpowers/specs/2026-11-12-skills-design.md
 status: draft
-
 groups:
   - id: skills-load
     kind: source
@@ -10,7 +9,6 @@ groups:
     summary: 技能加载器，从目录加载技能、frontmatter解析、动态发现
     files:
       - src/skills/loadSkillsDir.ts
-
   - id: skills-bundled
     kind: source
     section: 4
@@ -36,7 +34,6 @@ groups:
       - src/skills/bundled/claudeInChrome.ts
       - src/skills/bundled/skillify.ts
       - src/skills/bundled/simplify.ts
-
   - id: skills-mcp
     kind: source
     section: 4
@@ -44,7 +41,6 @@ groups:
     files:
       - src/skills/mcpSkills.ts
       - src/skills/mcpSkillBuilders.ts
-
   - id: skill-tool
     kind: source
     section: 4
@@ -54,7 +50,6 @@ groups:
       - src/tools/SkillTool/prompt.ts
       - src/tools/SkillTool/constants.ts
       - src/tools/SkillTool/UI.tsx
-
   - id: discover-skills-tool
     kind: source
     section: 4
@@ -62,14 +57,12 @@ groups:
     files:
       - src/tools/DiscoverSkillsTool/DiscoverSkillsTool.ts
       - src/tools/DiscoverSkillsTool/prompt.ts
-
   - id: skill-search-local
     kind: source
     section: 4
     summary: 本地技能搜索、索引构建、可见性跟踪
     files:
       - src/services/skillSearch/localSearch.ts
-
   - id: skill-search-remote
     kind: source
     section: 4
@@ -79,7 +72,6 @@ groups:
       - src/services/skillSearch/remoteSkillLoader.ts
       - src/services/skillSearch/remoteSkillState.ts
       - src/services/skillSearch/skillhubClient.ts
-
   - id: skill-search-prefetch
     kind: source
     section: 4
@@ -87,28 +79,24 @@ groups:
     files:
       - src/services/skillSearch/prefetch.ts
       - src/services/skillSearch/signals.ts
-
   - id: skill-search-feature
     kind: source
     section: 4
     summary: 技能搜索功能开关
     files:
       - src/services/skillSearch/featureCheck.ts
-
   - id: skill-search-telemetry
     kind: source
     section: 4
     summary: 技能搜索遥测事件
     files:
       - src/services/skillSearch/telemetry.ts
-
   - id: skill-change-detector
     kind: source
     section: 4
     summary: 技能文件变更检测、自动重载、chokidar监听器
     files:
       - src/utils/skills/skillChangeDetector.ts
-
   - id: skill-hooks
     kind: source
     section: 4
@@ -118,7 +106,6 @@ groups:
       - src/hooks/useSkillImprovementSurvey.ts
       - src/utils/hooks/skillImprovement.ts
       - src/utils/hooks/registerSkillHooks.ts
-
   - id: skill-components
     kind: source
     section: 4
@@ -126,7 +113,6 @@ groups:
     files:
       - src/components/SkillImprovementSurvey.tsx
       - src/components/skills/SkillsMenu.tsx
-
   - id: skill-commands
     kind: source
     section: 4
@@ -134,7 +120,6 @@ groups:
     files:
       - src/commands/skills/index.ts
       - src/commands/skills/skills.tsx
-
   - id: skill-telemetry
     kind: source
     section: 4
@@ -142,7 +127,6 @@ groups:
     files:
       - src/utils/telemetry/skillLoadedEvent.ts
       - src/utils/suggestions/skillUsageTracking.ts
-
   - id: skills-tests
     kind: test
     section: 7

@@ -2,7 +2,6 @@ schema_version: 1
 spec_id: mcp
 spec: ../../superpowers/specs/2026-11-12-mcp-design.md
 status: draft
-
 groups:
   - id: mcp-config
     kind: source
@@ -11,14 +10,12 @@ groups:
     files:
       - src/services/mcp/config.ts
       - src/services/mcp/types.ts
-
   - id: mcp-client
     kind: source
     section: 4
     summary: MCP客户端核心，连接管理、能力获取、工具调用、传输创建
     files:
       - src/services/mcp/client.ts
-
   - id: mcp-auth
     kind: source
     section: 4
@@ -28,7 +25,6 @@ groups:
       - src/services/mcp/xaa.ts
       - src/services/mcp/xaaIdpLogin.ts
       - src/services/mcp/oauthPort.ts
-
   - id: mcp-transport
     kind: source
     section: 4
@@ -37,15 +33,12 @@ groups:
       - src/services/mcp/InProcessTransport.ts
       - src/services/mcp/SdkControlTransport.ts
       - src/utils/mcpWebSocketTransport.ts
-
   - id: mcp-connection-management
     kind: source
     section: 4
     summary: MCP连接管理React hooks和上下文
     files:
       - src/services/mcp/MCPConnectionManager.tsx
-      - src/services/mcp/useManageMcpConnections.ts
-
   - id: mcp-utils
     kind: source
     section: 4
@@ -59,14 +52,12 @@ groups:
       - src/utils/mcpInstructionsDelta.ts
       - src/utils/mcpOutputStorage.ts
       - src/utils/mcpValidation.ts
-
   - id: mcp-claudeai
     kind: source
     section: 4
     summary: Claude.ai MCP连接器集成
     files:
       - src/services/mcp/claudeai.ts
-
   - id: mcp-permissions
     kind: source
     section: 4
@@ -75,7 +66,6 @@ groups:
       - src/services/mcp/channelAllowlist.ts
       - src/services/mcp/channelPermissions.ts
       - src/services/mcp/channelNotification.ts
-
   - id: mcp-tools
     kind: source
     section: 4
@@ -93,7 +83,6 @@ groups:
       - src/tools/ReadMcpResourceTool/prompt.ts
       - src/tools/McpAuthTool/McpAuthTool.ts
       - src/tools/MonitorTool/MonitorTool.ts
-
   - id: mcp-components
     kind: source
     section: 4
@@ -117,7 +106,6 @@ groups:
       - src/components/MCPServerDesktopImportDialog.tsx
       - src/components/MCPServerDialogCopy.tsx
       - src/components/MCPServerMultiselectDialog.tsx
-
   - id: mcp-commands
     kind: source
     section: 4
@@ -127,42 +115,36 @@ groups:
       - src/commands/mcp/index.ts
       - src/commands/mcp/mcp.tsx
       - src/commands/mcp/xaaIdpCommand.ts
-
   - id: mcp-cli-handlers
     kind: source
     section: 4
     summary: MCP CLI处理器
     files:
       - src/cli/handlers/mcp.tsx
-
   - id: mcp-official-registry
     kind: source
     section: 4
     summary: MCP官方服务器注册表
     files:
       - src/services/mcp/officialRegistry.ts
-
   - id: mcp-elicitation
     kind: source
     section: 4
     summary: MCP elicit请求处理
     files:
       - src/services/mcp/elicitationHandler.ts
-
   - id: mcp-server-approval
     kind: source
     section: 4
     summary: MCP服务器审批
     files:
       - src/services/mcpServerApproval.tsx
-
   - id: mcp-entrypoints
     kind: source
     section: 4
     summary: MCP入口点
     files:
       - src/entrypoints/mcp.ts
-
   - id: mcp-tests
     kind: test
     section: 7

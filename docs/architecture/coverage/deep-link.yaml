@@ -2,58 +2,50 @@ schema_version: 1
 spec_id: deep-link
 spec: ../../superpowers/specs/2026-11-12-deep-link-design.md
 status: draft
-
 groups:
   - id: deep-link-parse
     kind: source
-    section: 4,5,8
+    section: 4
     summary: 深层链接协议解析与验证，参数安全检查
     files:
       - src/utils/deepLink/parseDeepLink.ts
-
   - id: deep-link-protocol
     kind: source
-    section: 4,6
+    section: 4
     summary: 协议处理主流程、cwd 解析、终端启动协调
     files:
       - src/utils/deepLink/protocolHandler.ts
-
   - id: deep-link-register
     kind: source
-    section: 4,7
+    section: 7
     summary: 跨平台协议注册、当前状态检查、自动注册逻辑
     files:
       - src/utils/deepLink/registerProtocol.ts
-
   - id: deep-link-terminal
     kind: source
-    section: 4,6
+    section: 4
     summary: 终端检测与偏好、跨终端启动策略、shell 引用
     files:
       - src/utils/deepLink/terminalLauncher.ts
       - src/utils/deepLink/terminalPreference.ts
-
   - id: deep-link-banner
     kind: source
-    section: 4,8,9
+    section: 4
     summary: 深层链接来源 banner 构建、仓库 freshness 读取
     files:
       - src/utils/deepLink/banner.ts
-
   - id: desktop-deep-link
     kind: source
-    section: 10
+    section: 4
     summary: 桌面应用双向深层链接（claude://）、会话转移
     files:
       - src/utils/desktopDeepLink.ts
-
   - id: desktop-handoff
     kind: source
-    section: 10
+    section: 4
     summary: /desktop 命令的 UI 交互流程
     files:
       - src/components/DesktopHandoff.tsx
-
   - id: main-cli-integration
     kind: source
     section: 4

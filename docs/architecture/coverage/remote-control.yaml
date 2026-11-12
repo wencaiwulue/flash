@@ -2,7 +2,6 @@ schema_version: 1
 spec_id: remote-control
 spec: ../../superpowers/specs/2026-11-12-remote-control-design.md
 status: draft
-
 groups:
   - id: remote-client
     kind: source
@@ -13,7 +12,6 @@ groups:
       - src/remote/SessionsWebSocket.ts
       - src/remote/sdkMessageAdapter.ts
       - src/remote/remotePermissionBridge.ts
-
   - id: remote-server
     kind: source
     section: 4
@@ -31,7 +29,6 @@ groups:
       - src/server/serverLog.ts
       - src/server/backends/processBackend.ts
       - src/server/backends/dangerousBackend.ts
-
   - id: remote-control-command
     kind: source
     section: 4
@@ -39,14 +36,12 @@ groups:
     files:
       - src/commands/remoteControlServer/index.ts
       - src/commands/remoteControlServer/server.ts
-
   - id: remote-sdk-control
     kind: source
     section: 4
     summary: SDK 远程控制适配层：连接 RemoteControlHandle 与内部查询
     files:
       - src/utils/sdkRemoteControl.ts
-
   - id: remote-transport
     kind: source
     section: 4
@@ -55,16 +50,9 @@ groups:
       - src/server/directConnectTransport.ts
       - src/transport/transport.ts
       - src/transport/processTransportTypes.ts
-
   - id: remote-tests
     kind: test
     section: 7
     summary: 远程控制与 direct-connect 测试：认证、幂等、重放、权限、空闲回收、Unix socket
     files:
       - tests/directConnect.test.ts
-
-notes:
-  - 不包含 src/bridge/*（Bridge 协议，独立设计）
-  - 不包含 src/ssh/*（SSH 隧道，独立设计）
-  - 不包含 src/utils/udsMessaging.ts、src/utils/udsClient.ts、src/utils/udsRegistry.ts（UDS 消息，其他 spec 负责）
-  - 不包含 src/utils/teleport/*（teleport API，外部依赖）

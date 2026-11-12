@@ -2,7 +2,6 @@ schema_version: 1
 spec_id: scheduling
 spec: ../../superpowers/specs/2026-11-12-scheduling-design.md
 status: draft
-
 groups:
   - id: cron-core
     kind: source
@@ -10,119 +9,102 @@ groups:
     summary: cron表达式解析、计算下次触发时间、转自然语言
     files:
       - src/utils/cron.ts
-
   - id: cron-tasks
     kind: source
     section: 4
     summary: 定时任务持久化CRUD、抖动计算、missed检测
     files:
       - src/utils/cronTasks.ts
-
   - id: cron-scheduler
     kind: source
     section: 4
     summary: 调度循环、锁管理、文件watch、任务触发
     files:
       - src/utils/cronScheduler.ts
-
   - id: cron-lock
     kind: source
     section: 4
     summary: scheduler锁文件、PID存活检测
     files:
       - src/utils/cronTasksLock.ts
-
   - id: cron-notification
     kind: source
     section: 4
     summary: 错过任务通知构建
     files:
       - src/utils/cronNotification.ts
-
   - id: cron-jitter-config
     kind: source
     section: 4
     summary: cron jitter配置（growthbook）
     files:
       - src/utils/cronJitterConfig.ts
-
   - id: jobs-schema
     kind: source
     section: 4
     summary: 模板作业类型定义、Zod schema
     files:
       - src/jobs/schema.ts
-
   - id: jobs-supervisor
     kind: source
     section: 4
     summary: supervisor进程管理、child spawn监控、状态合并
     files:
       - src/jobs/supervisor.ts
-
   - id: jobs-state
     kind: source
     section: 4
     summary: 作业目录、锁、原子写、transcript
     files:
       - src/jobs/state.ts
-
   - id: jobs-classifier
     kind: source
     section: 4
     summary: 任务分类逻辑
     files:
       - src/jobs/classifier.ts
-
   - id: jobs-operations
     kind: source
     section: 4
     summary: 作业操作（未细读）
     files:
       - src/jobs/operations.ts
-
   - id: jobs-discovery
     kind: source
     section: 4
     summary: 作业发现（未细读）
     files:
       - src/jobs/discovery.ts
-
   - id: proactive-core
     kind: source
     section: 4
     summary: 主动唤醒状态管理、subscribe
     files:
       - src/proactive/index.ts
-
   - id: proactive-hooks
     kind: source
     section: 4
     summary: proactive React hooks
     files:
       - src/proactive/useProactive.ts
-
   - id: cron-create-tool
     kind: source
     section: 4
     summary: CronCreateTool实现
     files:
       - src/tools/ScheduleCronTool/CronCreateTool.ts
-
   - id: cron-delete-tool
     kind: source
     section: 4
     summary: CronDeleteTool实现
     files:
       - src/tools/ScheduleCronTool/CronDeleteTool.ts
-
   - id: cron-list-tool
     kind: source
     section: 4
     summary: CronListTool实现
     files:
       - src/tools/ScheduleCronTool/CronListTool.ts
-
   - id: cron-tool-prompt
     kind: source
     section: 4
@@ -130,7 +112,6 @@ groups:
     files:
       - src/tools/ScheduleCronTool/prompt.ts
       - src/tools/ScheduleCronTool/UI.tsx
-
   - id: sleep-tool
     kind: source
     section: 4
@@ -138,7 +119,6 @@ groups:
     files:
       - src/tools/SleepTool/SleepTool.ts
       - src/tools/SleepTool/prompt.ts
-
   - id: remote-trigger-tool
     kind: source
     section: 4

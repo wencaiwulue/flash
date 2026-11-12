@@ -9,28 +9,24 @@ groups:
     summary: Chrome MCP 服务器与客户端实现
     files:
       - src/external-stubs/claude-for-chrome-mcp.ts
-
   - id: computer-use-types
     kind: source
     section: 4
     summary: Computer Use 公共类型定义
     files:
       - src/external-stubs/computer-use-types.ts
-
   - id: computer-use-native
     kind: source
     section: 4
     summary: 原生适配器后端实现
     files:
       - src/external-stubs/computer-use-native.ts
-
   - id: computer-use-mcp
     kind: source
     section: 4
     summary: Zavora MCP 后端实现
     files:
       - src/external-stubs/computer-use-mcp.ts
-
   - id: computer-use-stubs
     kind: source
     section: 4
@@ -39,7 +35,6 @@ groups:
       - src/external-stubs/computer-use-swift.ts
       - src/external-stubs/computer-use-input.ts
       - src/external-stubs/computer-use-sentinel-apps.ts
-
   - id: open-backends-test
     kind: test
     section: 7

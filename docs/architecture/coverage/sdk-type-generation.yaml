@@ -1,34 +1,11 @@
-id: sdk-type-generation
-title: SDK Type Generation Coverage
-sections:
-  - title: 生成器核心
+schema_version: 1
+spec_id: sdk-type-generation
+spec: ../../superpowers/specs/2026-11-12-sdk-type-generation-design.md
+status: planned
+groups:
+  - id: default
+    kind: source
+    section: 4
+    summary: Default group
     files:
-      - path: scripts/generate-sdk-types.ts
-        responsibility: Schema 发现、名称解析、类型生成、文件写入
-        owner: sdk-type-generation
-      - path: tests/sdkTypeGeneration.test.ts
-        responsibility: 测试生成器正常路径和错误处理
-        owner: sdk-type-generation
-  - title: 源 Schema 定义
-    files:
-      - path: src/entrypoints/sdk/coreSchemas.ts
-        responsibility: SDK 核心数据类型的 Zod Schema 定义
-        owner: sdk-type-generation
-      - path: src/entrypoints/sdk/controlSchemas.ts
-        responsibility: SDK 控制协议类型的 Zod Schema 定义
-        owner: sdk-type-generation
-  - title: 手写 Re-export
-    files:
-      - path: src/entrypoints/sdk/settingsTypes.generated.ts
-        responsibility: settings 类型的手写兼容层（文件名含 generated 但是手写的）
-        owner: sdk-type-generation
-  - title: 生成的类型文件（不纳入 coverage）
-    files:
-      - path: src/entrypoints/sdk/coreTypes.generated.ts
-        responsibility: 从 coreSchemas.ts 自动生成的类型
-        owner: generated
-        note: manifest 已排除，不纳入 coverage
-      - path: src/entrypoints/sdk/controlTypes.ts
-        responsibility: 从 controlSchemas.ts 自动生成的类型，re-export coreTypes
-        owner: generated
-        note: manifest 已排除，不纳入 coverage
+      - src/FIXME.ts

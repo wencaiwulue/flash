@@ -2,7 +2,6 @@ schema_version: 1
 spec_id: ssh
 spec: ../../superpowers/specs/2026-11-12-ssh-design.md
 status: draft
-
 groups:
   - id: ssh-session
     kind: source
@@ -10,56 +9,48 @@ groups:
     summary: SSH 会话创建：远程探测、工件加载/部署、认证代理启动、SSH 进程启动、本地会话
     files:
       - src/ssh/createSSHSession.ts
-
   - id: ssh-manager
     kind: source
     section: 4
     summary: SSH 会话管理器：状态机、连接/断开、消息路由、权限隔离、重连逻辑
     files:
       - src/ssh/SSHSessionManager.ts
-
   - id: ssh-auth-proxy
     kind: source
     section: 4
     summary: SSH 认证代理：Unix socket HTTP 服务、凭证解析/注入、header 过滤、上游代理、流式传输
     files:
       - src/ssh/sshAuthProxy.ts
-
   - id: ssh-artifact
     kind: source
     section: 4
     summary: SSH 工件：本地加载/验证、远程验证/部署、缓存目录管理
     files:
       - src/ssh/artifact.ts
-
   - id: ssh-argv
     kind: source
     section: 4
     summary: SSH 参数与验证：host/remote-cwd/version 验证、posix quoting、探测脚本、命令行构建、解析探测输出
     files:
       - src/ssh/argv.ts
-
   - id: ssh-errors
     kind: source
     section: 4
     summary: SSH 错误：错误码定义、SSHSessionError 类、asSSHError 辅助
     files:
       - src/ssh/errors.ts
-
   - id: ssh-openssh
     kind: source
     section: 4
     summary: OpenSSH 封装：运行命令、错误分类、diagnostic redaction、stderr tail
     files:
       - src/ssh/openSSH.ts
-
   - id: ssh-hooks
     kind: source
     section: 4
     summary: SSH React hooks：useSSHSession（UI 集成）
     files:
       - src/hooks/useSSHSession.ts
-
   - id: ssh-tests
     kind: test
     section: 7
@@ -67,10 +58,3 @@ groups:
     files:
       - tests/sshSession.test.ts
       - tests/sshAuthProxy.test.ts
-
-notes:
-  - 不包含 src/remote/*（CCR 远程控制，独立设计）
-  - 不包含 src/server/*（direct-connect 服务器，独立设计）
-  - 不包含 src/bridge/*（Bridge 协议，独立设计）
-  - SSH 工件（bun + main.js）由外部构建流程预填充，不在代码库中
-  - 仅支持 Linux glibc 远程目标和 macOS/Linux 本地主机
