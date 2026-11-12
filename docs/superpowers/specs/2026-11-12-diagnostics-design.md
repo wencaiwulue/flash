@@ -12,58 +12,56 @@ status: draft
 
 ## 1. 问题与约束
 
-Claude Code 需要一套完整的诊断系统，用于：开发调试、性能分析、问题报告、错误追踪、内存泄漏检测、IDE 诊断跟踪。如果没有统一的诊断系统，会导致：
+Claude Code 需要一套完整的诊断系统来解决以下问题：
 
-- 调试日志分散在各处，没有统一分类和过滤机制
-- 性能问题难以定位，没有时间线和 checkpoint
-- 错误发生后无法回溯，缺少上下文信息
-- 内存泄漏难以诊断，没有 heap dump 和分析工具
-- 用户报告问题时缺少结构化诊断数据
-- 诊断数据可能包含敏感信息（API key、file paths、用户代码），需要严格脱敏
-- 性能诊断不能影响正常使用，需要采样和可开关
+- 调试日志分散：日志分散在各处，没有统一分类和过滤机制
+- 性能问题难以定位：没有时间线和 checkpoint 来追踪性能瓶颈
+- 错误无法回溯：错误发生后缺少上下文信息，难以复现和诊断
+- 内存泄漏难以检测：没有 heap dump 和分析工具来识别内存问题
+- 用户问题报告困难：缺少结构化诊断数据，用户报告问题时信息不完整
+- 敏感信息泄露风险：诊断数据可能包含 API key、文件路径、用户代码等敏感信息，需要严格脱敏
+- 性能开销问题：性能诊断不能影响正常使用，需要采样和可开关
+- 启动早期错误丢失：错误日志 sink 可能还未初始化时就发生错误
+- IDE 诊断追踪：需要支持 LSP 诊断基线对比，检测编辑后的新增问题
+- 零默认开销：profiling 默认关闭，只有采样或显式开启时才产生开销
 
-因此本子系统必须在以下约束下完成诊断管理：
+关键约束条件：
 
-- **严格隐私边界**：诊断导出绝不包含用户代码、文件路径、API key、prompts 等敏感信息；仅包含错误分类、时间戳、性能指标、内存使用、checkpoint 名称
-- **多级别调试**：支持 `--debug`、`--debug=category`、`--debug-file`、`--debug-to-stderr` 等多种调试模式
-- **分层性能分析**：启动 profiling（采样）、query profiling（可开关）、headless profiling（非交互）
-- **内存诊断**：支持 heap dump + 内存指标采集，诊断优先于 heap snapshot（因为 snapshot 可能崩溃）
-- **错误隔离**：错误日志独立存储，支持 sink 模式，启动前的错误先排队后处理
-- **IDE 诊断跟踪**：支持 LSP 诊断基线对比，检测编辑后的新增问题
-- **零默认开销**：profiling 默认关闭，只有采样或显式开启时才产生开销
-- **调试日志分类过滤**：支持包含/排除模式，如 `--debug=api,git` 或 `--debug=!mcp`
-- **诊断导出**：`/perf-issue` 命令导出结构化诊断 JSON，用于问题报告
-- **工具调用调试**：`/debug-tool-call` 检查历史工具调用的输入 schema，不实际执行
-- **医生命令**：`/doctor` 检查安装配置、权限、上下文问题，提供修复建议
+- 严格隐私边界：诊断导出绝不包含用户代码、文件路径、API key、prompts 等敏感信息；仅包含错误分类、时间戳、性能指标、内存使用、checkpoint 名称
+- 多级别调试：支持 `--debug`、`--debug=category`、`--debug-file`、`--debug-to-stderr` 等多种调试模式
+- 分层性能分析：启动 profiling（采样）、query profiling（可开关）、headless profiling（非交互）
+- 内存诊断：支持 heap dump + 内存指标采集，诊断优先于 heap snapshot（因为 snapshot 可能崩溃）
+- 错误隔离：错误日志独立存储，支持 sink 模式，启动前的错误先排队后处理
+- IDE 诊断跟踪：支持 LSP 诊断基线对比，检测编辑后的新增问题
 
 ## 2. 设计理由与备选方案
 
 | 决策 | 实际机制 | 为什么采用 | 备选方案及不采用原因 | 代价 | 证据 |
-|---|---|---|---|---|---|
-| 调试日志分类过滤：`parseDebugFilter()` 解析 `--debug=pattern`，`extractDebugCategories()` 从消息提取分类，`shouldShowDebugMessage()` 判断 | 支持包含模式（`api,git`）和排除模式（`!mcp,!1p`）；从消息前缀提取分类如 `api: ...` 或 `[MCP] ...`；不支持混合模式 | 用户只想看某类日志时无需看全部；排除模式可屏蔽噪音；混合模式会造成歧义 | 需要在每个调试日志调用点正确标记分类，否则过滤无效 | `src/utils/debugFilter.ts:16-139` |
-| 调试日志写入模式：`immediateMode` vs 缓冲模式 | `isDebugMode()` 为 true 时用同步追加（保证崩溃时不丢失）；否则用 1 秒刷新缓冲（减少 I/O） | `--debug` 模式下需要立即看到日志；正常模式下缓冲减少开销 | 两种模式需要分别处理，增加复杂度 | `src/utils/debug.ts:155-196` |
-| 错误日志 sink 模式：`attachErrorLogSink()` 允许延迟初始化 | `logError()` 在 sink 未 attach 前先排队到 `errorQueue`，attach 后立即 drain；sink 提供 `logError`、`logMCPError`、`logMCPDebug`、路径获取 | 避免启动早期（sink 未初始化）的错误丢失；sink 可以独立替换（测试时用 mock） | 需要维护队列和 sink 两个路径，容易遗漏 | `src/utils/log.ts:82-135` |
-| 诊断导出严格脱敏：`sanitizeErrorForDiagnostics()` 只返回分类，不包含错误文本 | 先用 `redactSensitiveInfo()` 处理，然后只保留分类（`rate-limit`、`authentication`、`network`、`validation`、`permission`、`mcp`、`other`），不包含任何原始错误内容 | 防止诊断导出时泄露敏感信息（API key、用户代码、文件路径等） | 只能看到错误类型，无法看到具体错误细节，需要配合其他调试手段 | `src/commands/perf-issue/perf-issue.tsx:21-42` |
+|-----|---------|----------|---------------------|-----|------|
+| 调试日志分类过滤 | `parseDebugFilter()` 解析 `--debug=pattern`，`extractDebugCategories()` 从消息提取分类，`shouldShowDebugMessage()` 判断 | 支持包含模式（`api,git`）和排除模式（`!mcp,!1p`）；从消息前缀提取分类如 `api: ...` 或 `[MCP] ...`；不支持混合模式 | 用户只想看某类日志时无需看全部；排除模式可屏蔽噪音；混合模式会造成歧义 | 需要在每个调试日志调用点正确标记分类，否则过滤无效 | `src/utils/debugFilter.ts:16-139` |
+| 调试日志写入模式 | `immediateMode` vs 缓冲模式 | `isDebugMode()` 为 true 时用同步追加（保证崩溃时不丢失）；否则用 1 秒刷新缓冲（减少 I/O） | `--debug` 模式下需要立即看到日志；正常模式下缓冲减少开销 | 两种模式需要分别处理，增加复杂度 | `src/utils/debug.ts:155-196` |
+| 错误日志 sink 模式 | `attachErrorLogSink()` 允许延迟初始化 | `logError()` 在 sink 未 attach 前先排队到 `errorQueue`，attach 后立即 drain；sink 提供 `logError`、`logMCPError`、`logMCPDebug`、路径获取 | 避免启动早期（sink 未初始化）的错误丢失；sink 可以独立替换（测试时用 mock） | 需要维护队列和 sink 两个路径，容易遗漏 | `src/utils/log.ts:82-135` |
+| 诊断导出严格脱敏 | `sanitizeErrorForDiagnostics()` 只返回分类，不包含错误文本 | 先用 `redactSensitiveInfo()` 处理，然后只保留分类（`rate-limit`、`authentication`、`network`、`validation`、`permission`、`mcp`、`other`），不包含任何原始错误内容 | 防止诊断导出时泄露敏感信息（API key、用户代码、文件路径等） | 只能看到错误类型，无法看到具体错误细节，需要配合其他调试手段 | `src/commands/perf-issue/perf-issue.tsx:21-42` |
 | 诊断导出用 `writeNewDiagnosticJson()` 只写新文件 | 用 `fs.open(path, 'wx', 0o600)` 原子性创建，避免覆盖现有诊断文件 | 防止误覆盖用户已保存的诊断报告 | 需要用户提供未使用的路径，或自动生成带时间戳的文件名 | `src/utils/diagnosticExport.ts:3-16` |
-| Heap dump 先写诊断，后写 snapshot：`performHeapDump()` 顺序 | 先调用 `captureMemoryDiagnostics()` 并写入 JSON；再调用 `writeHeapSnapshot()`；诊断更可靠且体积小 | V8 heap snapshot 在大内存时可能崩溃或 OOM；先保存诊断至少能拿到内存指标 | 需要两次文件写入，但诊断很小，代价可接受 | `src/utils/heapDumpService.ts:214-278` |
-| 内存诊断包含泄漏指标：`captureMemoryDiagnostics()` 收集 detached contexts、active handles、file descriptors、smaps_rollup（Linux） | detached contexts 是 V8 泄漏的强信号；active handles 指示异步资源泄漏；file descriptors 指示资源泄漏；smaps_rollup 提供 Linux 详细内存分布 | 仅凭 heap snapshot 难以诊断 native 泄漏；需要多维度指标 | 需要读取 `/proc` 文件系统（Linux），跨平台差异大 | `src/utils/heapDumpService.ts:88-213` |
-| 启动 profiling 采样：100% ant 用户，0.5% 外部用户，模块加载时决策一次 | `STATSIG_LOGGING_SAMPLED = process.env.USER_TYPE === 'ant' || Math.random() < 0.005`，决策一次后不变；profiling 始终对采样用户启用 | 采样收集性能数据，不影响大部分用户；ant 用户需要 100% 覆盖以诊断内部问题；随机决策一次避免模块 reload 时改变行为 | 采样用户的启动有轻微开销（但比全量 profiler 小） | `src/utils/startupProfiler.ts:29-36` |
-| Query profiling 显式开关：`CLAUDE_CODE_PROFILE_QUERY=1` 启用 | 默认关闭，用户显式启用时才记录 checkpoint 和内存；每个 query 结束可输出时间线和 phase  breakdown | 避免每个 query 都产生开销；用户需要时才开启详细诊断 | 需要用户重启 CLI 启用，不够方便 | `src/utils/queryProfiler.ts:35-38` |
-| Startup profiler 内存快照用数组而不是 Map：`memorySnapshots: NodeJS.MemoryUsage[]` | checkpoint 可能重复触发（如 `loadSettingsFromDisk_start`），用 Map 会覆盖之前的 snapshot；数组按顺序记录，与 perf_hooks 的 mark 顺序一致 | 重复 checkpoint 名是合法的（同一阶段多次执行），需要分别记录每次的内存状态 | 需要同步维护 perf_hooks marks 和内存数组两个列表 | `src/utils/startupProfiler.ts:46-60` |
-| IDE 诊断跟踪用 `_claude_fs_right` URI：`DiagnosticTrackingService` 对比 file:// 和 _claude_fs_right URI 的诊断 | IDE 对 Claude 修改的文件（_claude_fs_right）提供诊断；优先用 _claude_fs_right 的诊断检测新增问题；同时跟踪 baseline（编辑前）诊断 | 可以检测 Claude 编辑引入的新问题，而不是文件中已有的问题 | 需要处理两个 URI 体系，路径归一化复杂 | `src/services/diagnosticTracking.ts:30-284` |
-| 诊断跟踪用 normalized path 做 key：`normalizeFileUri()` 去除协议前缀，用平台归一化路径 | Windows/macOS/Linux 路径格式不同；IDE 可能返回 file:// 或 _claude_fs_right:// 前缀；需要用统一 key 匹配 baseline | 同一文件的不同 URI 表示能正确匹配，避免 baseline 失效 | 需要在所有路径使用点调用 normalize，容易遗漏 | `src/services/diagnosticTracking.ts:78-97` |
-| `/doctor` 检查多维度问题：`getDoctorDiagnostic()` 包含安装类型、权限、多个安装、配置问题、上下文警告 | 一次性检查用户最常遇到的问题：多个安装冲突、PATH 配置、权限不足、自动更新状态、上下文大小超限、不可达权限规则 | 用户遇到问题时先跑 `/doctor`，能自助解决大部分常见问题 | 需要维护大量检查逻辑，跨平台差异大 | `src/utils/doctorDiagnostic.ts:514-625` |
-| 安装检测用多方验证：`getCurrentInstallationType()` 检查 bundled mode、环境、路径模式 | 先检查 NODE_ENV=development；再检查 bundled mode；再检查 npm 全局/本地路径；最后 fallback 到 unknown | 单一检测方式容易误判，多方验证更可靠 | 检测逻辑复杂，需要处理各种边缘情况 | `src/utils/doctorDiagnostic.ts:86-148` |
-| 多个安装检测主动扫描：`detectMultipleInstallations()` 检查 npm global、npm local、native、config | 扫描常见安装位置；区分 active 安装和 leftover 安装；对 leftover 提供卸载建议 | 用户可能同时安装多个版本而不自知，导致版本混乱 | 需要扫描多个位置，可能有 false positive | `src/utils/doctorDiagnostic.ts:205-315` |
-| 上下文警告用 async 并行检查：`checkContextWarnings()` 并行检查 CLAUDE.md、agent descriptions、MCP tools、不可达规则 | 各检查独立，并行执行更快；检查结果包含当前值、阈值、修复建议 | 同步检查会延迟 `/doctor` 响应 | 需要处理 Promise.all 的错误传播 | `src/utils/doctorContextWarnings.ts:246-265` |
-| `/debug-tool-call` 只验证 schema，不实际执行：`inspectSavedInputSchema()` 用 Zod schema 验证，不调用 `call()` 或 `checkPermissions()` | 安全地检查历史工具调用的输入是否符合当前 schema；不会产生副作用（如再次执行文件修改或命令）；不会触发权限检查 | 用户想知道为什么工具调用失败时，不需要重新执行就能诊断 | 需要工具定义完整的 inputSchema，否则无法验证 | `tests/debugToolCallCommand.test.ts:62-81` |
-| `/debug-tool-call` 配对 tool_use 和 tool_result：`collectToolCalls()` 按 ID 配对，支持多个 result | 同一 tool_use ID 可能有多个 tool_result（重试或多轮）；区分 success/error；计算 elapsed time | 完整呈现工具调用的生命周期 | 需要遍历整个消息历史，复杂度 O(n) | `tests/debugToolCallCommand.test.ts:46-60` |
-| Headless profiler 只在非交互模式启用：`getIsNonInteractiveSession()` 判断 | 非交互模式（`-p`、print mode）的性能问题更难诊断；交互模式有其他调试手段；避免交互模式下的额外开销 | 交互模式下无法使用 headless profiler | `src/utils/headlessProfiler.ts:62-68` |
-| 错误分类用正则匹配：`categorizeError()` 匹配错误文本中的关键词 | 快速将错误归类为常见类型，无需完整错误文本；即使错误被 redact 也能分类 | 分类可能不准确，依赖关键词匹配；新错误类型需要更新正则 | `src/commands/perf-issue/perf-issue.tsx:21-31` |
-| 诊断日志无 PII：`logForDiagnosticsNoPII()` 明确禁止 PII，只接受 event 名和安全数据 | 诊断日志可能发送到环境管理器，必须确保无敏感信息；函数签名和注释明确强调这一点 | 调试信息有限，只能看到 event 流，看不到细节 | `src/utils/diagLogs.ts:26-57` |
-| Error sink 用 JSONL 格式：每行一个 JSON 对象，支持逐行解析 | 即使文件被截断或部分损坏，也能解析剩余行；append 操作简单；无需重写整个文件 | JSONL 不直观，需要工具查看；没有人类可读格式 | `src/utils/errorLogSink.ts:250-261` |
-| 诊断日志环境变量控制：`CLAUDE_CODE_DIAGNOSTICS_FILE` 指定日志路径 | 环境管理器可以设置此变量来收集诊断；不设置时禁用诊断日志 | 需要外部设置才能启用 | `src/utils/diagLogs.ts:59-62` |
-| Event loop stall detector 占位：`startEventLoopStallDetector()` 当前返回禁用 | 为未来功能预留接口；当前未实现但 API 已定义 | 无功能，只是占位 | `src/utils/eventLoopStallDetector.ts:1-6` |
+| Heap dump 先写诊断，后写 snapshot | `performHeapDump()` 顺序 | 先调用 `captureMemoryDiagnostics()` 并写入 JSON；再调用 `writeHeapSnapshot()`；诊断更可靠且体积小 | V8 heap snapshot 在大内存时可能崩溃或 OOM；先保存诊断至少能拿到内存指标 | 需要两次文件写入，但诊断很小，代价可接受 | `src/utils/heapDumpService.ts:214-278` |
+| 内存诊断包含泄漏指标 | `captureMemoryDiagnostics()` 收集 detached contexts、active handles、file descriptors、smaps_rollup（Linux） | detached contexts 是 V8 泄漏的强信号；active handles 指示异步资源泄漏；file descriptors 指示资源泄漏；smaps_rollup 提供 Linux 详细内存分布 | 仅凭 heap snapshot 难以诊断 native 泄漏；需要多维度指标 | 需要读取 `/proc` 文件系统（Linux），跨平台差异大 | `src/utils/heapDumpService.ts:88-213` |
+| 启动 profiling 采样决策 | 模块加载时决策一次 | `STATSIG_LOGGING_SAMPLED = process.env.USER_TYPE === 'ant' || Math.random() < 0.005`，决策一次后不变；profiling 始终对采样用户启用 | 采样收集性能数据，不影响大部分用户；ant 用户需要 100% 覆盖以诊断内部问题；随机决策一次避免模块 reload 时改变行为 | 采样用户的启动有轻微开销（但比全量 profiler 小） | `src/utils/startupProfiler.ts:29-36` |
+| Query profiling 显式开关 | `CLAUDE_CODE_PROFILE_QUERY=1` 启用 | 默认关闭，用户显式启用时才记录 checkpoint 和内存；每个 query 结束可输出时间线和 phase breakdown | 避免每个 query 都产生开销；用户需要时才开启详细诊断 | 需要用户重启 CLI 启用，不够方便 | `src/utils/queryProfiler.ts:35-38` |
+| Startup profiler 内存快照用数组 | `memorySnapshots: NodeJS.MemoryUsage[]` | checkpoint 可能重复触发（如 `loadSettingsFromDisk_start`），用 Map 会覆盖之前的 snapshot；数组按顺序记录，与 perf_hooks 的 mark 顺序一致 | 重复 checkpoint 名是合法的（同一阶段多次执行），需要分别记录每次的内存状态 | 需要同步维护 perf_hooks marks 和内存数组两个列表 | `src/utils/startupProfiler.ts:46-60` |
+| IDE 诊断跟踪用 `_claude_fs_right` URI | `DiagnosticTrackingService` 对比 file:// 和 _claude_fs_right URI 的诊断 | IDE 对 Claude 修改的文件（_claude_fs_right）提供诊断；优先用 _claude_fs_right 的诊断检测新增问题；同时跟踪 baseline（编辑前）诊断 | 可以检测 Claude 编辑引入的新问题，而不是文件中已有的问题 | 需要处理两个 URI 体系，路径归一化复杂 | `src/services/diagnosticTracking.ts:30-284` |
+| 诊断跟踪用 normalized path 做 key | `normalizeFileUri()` 去除协议前缀，用平台归一化路径 | Windows/macOS/Linux 路径格式不同；IDE 可能返回 file:// 或 _claude_fs_right:// 前缀；需要用统一 key 匹配 baseline | 同一文件的不同 URI 表示能正确匹配，避免 baseline 失效 | 需要在所有路径使用点调用 normalize，容易遗漏 | `src/services/diagnosticTracking.ts:78-97` |
+| `/doctor` 检查多维度问题 | `getDoctorDiagnostic()` 包含安装类型、权限、多个安装、配置问题、上下文警告 | 一次性检查用户最常遇到的问题：多个安装冲突、PATH 配置、权限不足、自动更新状态、上下文大小超限、不可达权限规则 | 用户遇到问题时先跑 `/doctor`，能自助解决大部分常见问题 | 需要维护大量检查逻辑，跨平台差异大 | `src/utils/doctorDiagnostic.ts:514-625` |
+| 安装检测用多方验证 | `getCurrentInstallationType()` 检查 bundled mode、环境、路径模式 | 先检查 NODE_ENV=development；再检查 bundled mode；再检查 npm 全局/本地路径；最后 fallback 到 unknown | 单一检测方式容易误判，多方验证更可靠 | 检测逻辑复杂，需要处理各种边缘情况 | `src/utils/doctorDiagnostic.ts:86-148` |
+| 多个安装检测主动扫描 | `detectMultipleInstallations()` 检查 npm global、npm local、native、config | 扫描常见安装位置；区分 active 安装和 leftover 安装；对 leftover 提供卸载建议 | 用户可能同时安装多个版本而不自知，导致版本混乱 | 需要扫描多个位置，可能有 false positive | `src/utils/doctorDiagnostic.ts:205-315` |
+| 上下文警告用 async 并行检查 | `checkContextWarnings()` 并行检查 CLAUDE.md、agent descriptions、MCP tools、不可达规则 | 各检查独立，并行执行更快；检查结果包含当前值、阈值、修复建议 | 同步检查会延迟 `/doctor` 响应 | 需要处理 Promise.all 的错误传播 | `src/utils/doctorContextWarnings.ts:246-265` |
+| `/debug-tool-call` 只验证 schema | `inspectSavedInputSchema()` 用 Zod schema 验证，不调用 `call()` 或 `checkPermissions()` | 安全地检查历史工具调用的输入是否符合当前 schema；不会产生副作用（如再次执行文件修改或命令）；不会触发权限检查 | 用户想知道为什么工具调用失败时，不需要重新执行就能诊断 | 需要工具定义完整的 inputSchema，否则无法验证 | `tests/debugToolCallCommand.test.ts:62-82` |
+| `/debug-tool-call` 配对 tool_use 和 tool_result | `collectToolCalls()` 按 ID 配对，支持多个 result | 同一 tool_use ID 可能有多个 tool_result（重试或多轮）；区分 success/error；计算 elapsed time | 完整呈现工具调用的生命周期 | 需要遍历整个消息历史，复杂度 O(n) | `tests/debugToolCallCommand.test.ts:46-60` |
+| Headless profiler 只在非交互模式启用 | `getIsNonInteractiveSession()` 判断 | 非交互模式（`-p`、print mode）的性能问题更难诊断；交互模式有其他调试手段；避免交互模式下的额外开销 | 交互模式下无法使用 headless profiler | `src/utils/headlessProfiler.ts:62-68` |
+| 错误分类用正则匹配 | `categorizeError()` 匹配错误文本中的关键词 | 快速将错误归类为常见类型，无需完整错误文本；即使错误被 redact 也能分类 | 分类可能不准确，依赖关键词匹配；新错误类型需要更新正则 | `src/commands/perf-issue/perf-issue.tsx:21-31` |
+| 诊断日志明确禁止 PII | `logForDiagnosticsNoPII()` 明确禁止 PII，只接受 event 名和安全数据 | 诊断日志可能发送到环境管理器，必须确保无敏感信息；函数签名和注释明确强调这一点 | 调试信息有限，只能看到 event 流，看不到细节 | `src/utils/diagLogs.ts:26-57` |
+| Error sink 用 JSONL 格式 | 每行一个 JSON 对象，支持逐行解析 | 即使文件被截断或部分损坏，也能解析剩余行；append 操作简单；无需重写整个文件 | JSONL 不直观，需要工具查看；没有人类可读格式 | `src/utils/errorLogSink.ts:250-261` |
+| 诊断日志环境变量控制 | `CLAUDE_CODE_DIAGNOSTICS_FILE` 指定日志路径 | 环境管理器可以设置此变量来收集诊断；不设置时禁用诊断日志 | 需要外部设置才能启用 | `src/utils/diagLogs.ts:59-62` |
+| Event loop stall detector 占位 | `startEventLoopStallDetector()` 当前返回禁用 | 为未来功能预留接口；当前未实现但 API 已定义 | 无功能，只是占位 | `src/utils/eventLoopStallDetector.ts:1-6` |
 
 ## 3. 目标与非目标
 
@@ -187,18 +185,10 @@ function getDoctorDiagnostic(): Promise<DiagnosticInfo>
 function checkContextWarnings(tools: Tool[], agentInfo: AgentDefinitionsResult | null, getToolPermissionContext: () => Promise<ToolPermissionContext>): Promise<ContextWarnings>
 ```
 
-调用方式：
-
-1. **启动路径**：`main.tsx` 调用 `profileCheckpoint()` 记录启动各阶段；`initializeErrorLogSink()` 附加 sink；`profileReport()` 在启动结束时上报
-2. **请求路径**：query 开始调用 `startQueryProfile()`，各阶段调用 `queryCheckpoint()`，结束调用 `endQueryProfile()` 和 `logQueryProfileReport()`
-3. **调试路径**：用户用 `--debug` 或运行时 `/debug` 启用，`logForDebugging()` 写入日志，支持分类过滤
-4. **诊断路径**：`/perf-issue` 调用 `buildPerfIssueReport()` 和 `writeNewDiagnosticJson()` 导出；`/heapdump` 触发 heap dump；`/doctor` 运行检查；`/debug-tool-call` 检查历史调用
-5. **IDE 诊断路径**：编辑前调用 `beforeFileEdited()` 建立 baseline，编辑后调用 `getNewDiagnostics()` 获取新增问题
-
 ### 4.2 模块与状态所有权
 
-| 模块/对象 | 拥有的状态 | 主要操作 | 不承担的职责 | 与其他模块的接口 |
-|---|---|---|---|---|
+| 模块/对象 | 拥有的状态 | 主要职责 | 不承担的职责 | 与其他模块的接口 |
+|-----------|----------|---------|------------|----------------|
 | `debug.ts` | `runtimeDebugEnabled`、`debugWriter`、`pendingWrite`、`hasFormattedOutput` | `logForDebugging`、`isDebugMode`、`enableDebugLogging`、`getDebugLogPath` | 日志分类过滤（委托给 debugFilter） | 提供调试日志入口，调用 bufferedWriter |
 | `debugFilter.ts` | 无（纯函数） | `parseDebugFilter`、`extractDebugCategories`、`shouldShowDebugMessage` | 实际日志写入 | 被 debug.ts 调用 |
 | `log.ts` | `inMemoryErrorLog`、`errorQueue`、`errorLogSink` | `logError`、`logMCPError`、`logMCPDebug`、`attachErrorLogSink`、`getInMemoryErrors` | 实际文件写入（委托给 errorLogSink） | 提供错误日志入口，queue 早期错误 |
@@ -216,7 +206,6 @@ function checkContextWarnings(tools: Tool[], agentInfo: AgentDefinitionsResult |
 | `commands/perf-issue/` | 无（命令 UI） | `/perf-issue` 命令界面、`buildPerfIssueReport`、`sanitizeErrorForDiagnostics` | 诊断上传（用户手动） | 渲染 DiagnosticExportDialog 组件 |
 | `commands/heapdump/` | 无（命令入口） | `/heapdump` 命令 | heap dump 分析（需要外部工具） | 调用 performHeapDump |
 | `commands/debug-tool-call/` | 无（命令 UI） | `/debug-tool-call` 命令界面、`collectToolCalls`、`formatSavedToolCalls`、`inspectSavedInputSchema` | 工具调用重放（只验证） | 检查历史工具调用，验证 schema |
-| `commands/ctx-viz/` | 无（命令入口） | `/ctx-viz` 命令 | 上下文可视化 | 渲染上下文可视化（本文不详细展开） |
 
 状态位置与理由：
 
@@ -234,7 +223,7 @@ function checkContextWarnings(tools: Tool[], agentInfo: AgentDefinitionsResult |
 启动时检查 --debug/--debug=pattern/--debug-file/--debug-to-stderr
     ↓
 isDebugMode() = true → immediateMode（同步追加）
-isDebugMode() = false → bufferedMode（1秒刷新）
+isDebugMode() = false → bufferedMode（1 秒刷新）
     ↓
 logForDebugging("category: message", { level })
     ↓
@@ -332,12 +321,11 @@ formatDiagnosticsSummary() 生成人类可读输出
 用户运行 /perf-issue [path]
     ↓
 buildPerfIssueReport() 收集：
-  - startup profile data
-  - query profile data（checkpoints 截断到最近 256）
-  - recent errors（最多 20 条，只保留分类）
-  - MCP server count
-  - memory usage（rss/heapUsed/heapTotal/external/arrayBuffers）
-  - version, platform, arch, runtimeVersion
+    ├─ startup profile data
+    ├─ query profile data（checkpoints 截断到最近 256）
+    ├─ recent errors（最多 20 条，只保留分类）
+    ├─ MCP server count
+    └─ memory usage（rss/heapUsed/heapTotal/external/arrayBuffers）
     ↓
 sanitizeErrorForDiagnostics() 对每个错误脱敏
     ↓
@@ -352,20 +340,20 @@ writeNewDiagnosticJson() 原子性创建文件（wx 模式）
 用户运行 /heapdump
     ↓
 captureMemoryDiagnostics("manual", 0)
-  - sessionId, timestamp, trigger
-  - memoryUsage, memoryGrowthRate
-  - v8HeapStats（detached contexts, malloced memory）
-  - v8HeapSpaces（如果可用）
-  - resourceUsage（maxRSS, CPU time）
-  - activeHandles, activeRequests, openFileDescriptors（如果可用）
-  - smaps_rollup（Linux 仅）
-  - analysis.potentialLeaks
+    ├─ sessionId, timestamp, trigger
+    ├─ memoryUsage, memoryGrowthRate
+    ├─ v8HeapStats（detached contexts, malloced memory）
+    ├─ v8HeapSpaces（如果可用）
+    ├─ resourceUsage（maxRSS, CPU time）
+    ├─ activeHandles, activeRequests, openFileDescriptors（如果可用）
+    ├─ smaps_rollup（Linux 仅）
+    └─ analysis.potentialLeaks
     ↓
 写入 ~/Desktop/{sessionId}-diagnostics.json（先写，更可靠）
     ↓
 writeHeapSnapshot() 写入 ~/Desktop/{sessionId}.heapsnapshot
-  - Node.js：stream pipeline 到文件
-  - Bun：同步写入，然后 gc
+    ├─ Node.js：stream pipeline 到文件
+    └─ Bun：同步写入，然后 gc
     ↓
 logEvent("tengu_heap_dump", { trigger, success })
 ```
@@ -376,17 +364,16 @@ logEvent("tengu_heap_dump", { trigger, success })
 用户运行 /doctor
     ↓
 并行运行：
-  - getDoctorDiagnostic()
-    - getCurrentInstallationType()
-    - detectMultipleInstallations()
-    - detectConfigurationIssues()
-    - check ripgrep status
-    - check auto-update state
-  - checkContextWarnings()
-    - checkClaudeMdFiles()
-    - checkAgentDescriptions()
-    - checkMcpTools()
-    - checkUnreachableRules()
+    ├─ getDoctorDiagnostic()
+    │   ├─ getCurrentInstallationType()
+    │   ├─ detectMultipleInstallations()
+    │   ├─ detectConfigurationIssues()
+    │   └─ check ripgrep status / check auto-update state
+    └─ checkContextWarnings()
+        ├─ checkClaudeMdFiles()
+        ├─ checkAgentDescriptions()
+        ├─ checkMcpTools()
+        └─ checkUnreachableRules
     ↓
 渲染 Doctor 组件，显示所有问题和修复建议
 ```
@@ -397,20 +384,19 @@ logEvent("tengu_heap_dump", { trigger, success })
 用户运行 /debug-tool-call [tool-use-id] [--validate]
     ↓
 collectToolCalls(messages)
-  - 按 tool_use ID 分组
-  - 配对 tool_use 和 tool_result
-  - 支持多个 result
-  - 计算 elapsed time
+    ├─ 按 tool_use ID 分组
+    ├─ 配对 tool_use 和 tool_result
+    ├─ 支持多个 result
+    └─ 计算 elapsed time
     ↓
 如果提供 ID 且 --validate：
-  - inspectSavedInputSchema(toolCall, tool)
-  - 用 Zod schema 验证输入
-  - 返回 valid/invalid
+    ├─ inspectSavedInputSchema(toolCall, tool)
+    └─ 用 Zod schema 验证输入
     ↓
 formatSavedToolCalls() 格式化输出
-  - 显示工具名、输入、结果、耗时
-  - 截断大结果
-  - 不实际执行
+    ├─ 显示工具名、输入、结果、耗时
+    ├─ 截断大结果
+    └─ 不实际执行
 ```
 
 ### 4.4 数据结构
@@ -567,60 +553,211 @@ type ContextWarnings = {
 }
 ```
 
-## 5. 正确性与安全性
+## 5. 失败语义与工程取舍
 
-### 隐私边界
+### 5.1 隐私边界
 
 | 边界 | 如何执行 | 证据 |
-|---|---|---|---|
+|-----|---------|-----|
 | 诊断导出无 PII | `sanitizeErrorForDiagnostics()` 只返回分类，不包含错误文本；先用 `redactSensitiveInfo()` 处理 | `src/commands/perf-issue/perf-issue.tsx:33-42` |
 | 调试日志默认不记录（ant 用户例外） | `shouldLogDebugMessage()`：`USER_TYPE !== 'ant' && !isDebugMode()` 时不写入 | `src/utils/debug.ts:103-125` |
 | 诊断日志明确禁止 PII | `logForDiagnosticsNoPII()` 注释和函数签名强调无 PII；只接受 event 名和安全 data | `src/utils/diagLogs.ts:14-25` |
 | 错误日志不持久化（隐私模式） | `shouldPersistLocalLogs()`：禁用错误报告、essential traffic、Bedrock/Vertex/Foundry 时不写入 | `src/utils/errorLogSink.ts:112-121` |
 | 文件权限 0o600 | 诊断文件、heap snapshot、debug log 都用 0o600 权限 | `src/utils/diagnosticExport.ts:10`、`src/utils/heapDumpService.ts:250` |
 
-### 并发安全
+### 5.2 并发安全
 
 | 问题 | 如何解决 | 证据 |
-|---|---|---|---|
+|-----|---------|-----|
 | 错误 sink attach 前的错误丢失 | `errorQueue` 排队，attach 后立即 drain | `src/utils/log.ts:91-135` |
 | 调试日志并发写入 | `createBufferedWriter()` 处理缓冲和刷新 | `src/utils/debug.ts:155-196` |
 | 诊断跟踪单例 | `DiagnosticTrackingService.getInstance()` 确保全局唯一 | `src/services/diagnosticTracking.ts:44-49` |
 
-### 错误处理
+### 5.3 错误处理
 
 | 问题 | 如何处理 | 证据 |
-|---|---|---|---|
+|-----|---------|-----|
 | Heap snapshot 崩溃 | 先写诊断 JSON，再写 snapshot；诊断至少能保留 | `src/utils/heapDumpService.ts:214-278` |
 | 安全存储失败 | debug log 有 fallback，错误日志不阻塞主流程 | `src/utils/errorLogSink.ts:94-103` |
 | IDE 诊断不可用 | `getNewDiagnostics()` 返回空数组，不阻塞 | `src/services/diagnosticTracking.ts:188-209` |
 | 调试目录不存在 | 自动创建目录 | `src/utils/debug.ts:146-150`、`src/utils/errorLogSink.ts:94-103` |
 | 诊断文件已存在 | `writeNewDiagnosticJson()` 用 `wx` 模式，不覆盖 | `src/utils/diagnosticExport.ts:3-16` |
 
-## 6. 演进史
+### 5.4 工程取舍
 
-（根据 git 历史回溯，可能不完整）
+| 取舍 | 选择 | 理由 | 代价 |
+|-----|------|------|------|
+| Heap dump 顺序 | 先写诊断，再写 snapshot | 诊断更可靠且体积小，snapshot 可能崩溃 | 需要两次文件写入 |
+| 诊断脱敏策略 | 只保留错误分类 | 严格保护隐私，防止敏感信息泄露 | 只能看到错误类型，无法看到具体细节 |
+| 调试写入模式 | immediateMode vs bufferedMode | 调试模式立即写入防丢失，正常模式缓冲减 I/O | 两种模式需要分别处理 |
+| 启动 profiling | 采样决策一次 | 不影响大部分用户，ant 用户 100% 覆盖 | 采样用户有轻微开销 |
+| 诊断跟踪 key | normalized path | 解决跨平台、多 URI 格式的匹配问题 | 需要在所有路径调用 normalize |
+| 安装检测 | 多方验证 | 单一检测方式容易误判，多方验证更可靠 | 检测逻辑复杂，需要处理边缘情况 |
+| 上下文警告 | async 并行 | 各检查独立，并行执行更快 | 需要处理 Promise.all 的错误传播 |
+| Error sink 格式 | JSONL | 即使文件被截断也能解析剩余行，append 简单 | JSONL 不直观，需要工具查看 |
 
-- **诊断日志**：最初为环境管理器设计，用于容器内监控
-- **调试系统**：最初只有 `--debug`，后来增加分类过滤、`--debug-file`、`--debug-to-stderr`
-- **错误日志 sink**：为避免启动早期错误丢失，引入 queue + sink 模式
-- **Startup profiler**：从采样开始，后来增加详细模式
-- **Query profiler**：为诊断 TTFT 问题引入，支持 phase breakdown
-- **Heap dump**：最初只有 snapshot，后来增加诊断 JSON（先写诊断更可靠）
-- **IDE 诊断跟踪**：为检测 Claude 编辑引入的问题，支持 baseline 对比
-- **`/perf-issue`**：为用户问题报告设计，严格脱敏
-- **`/doctor`**：从安装检查开始，后来增加上下文警告
-- **`/debug-tool-call`**：为安全地诊断工具调用失败设计，不实际执行
+## 6. 现状验收标准
 
-## 7. 未解决问题与开放性讨论
+### 6.1 功能验收标准
 
-- **Event loop stall detector**：当前只是占位，未实现
-- **自动 heap dump**：`auto-1.5GB` trigger 已定义，但未自动触发
-- **诊断上传**：当前只导出本地文件，未自动上传（设计上有意避免，需要用户显式操作）
-- **交互模式 query profiler**：当前需要环境变量启用，未来可能支持 `/profile` 命令动态启用
-- **Heap snapshot 分析**：当前需要外部工具，未来可能提供基础分析
-- **调试日志分类覆盖率**：不是所有调试日志都有正确分类，需要逐步完善
+- 调试日志分类过滤：`parseDebugFilter()` 正确解析包含/排除模式；`extractDebugCategories()` 正确从消息前缀提取分类；`shouldShowDebugMessage()` 正确判断是否显示
+- 调试日志写入模式：`isDebugMode()` 为 true 时用同步追加；否则用 1 秒刷新缓冲
+- 错误日志 sink 模式：`logError()` 在 sink 未 attach 前先排队到 `errorQueue`；attach 后立即 drain
+- 诊断导出严格脱敏：`sanitizeErrorForDiagnostics()` 只返回分类，不包含错误文本；先用 `redactSensitiveInfo()` 处理
+- 诊断导出用 `writeNewDiagnosticJson()` 只写新文件：用 `fs.open(path, 'wx', 0o600)` 原子性创建
+- Heap dump 先写诊断，后写 snapshot：`performHeapDump()` 先调用 `captureMemoryDiagnostics()` 并写入 JSON；再调用 `writeHeapSnapshot()`
+- 内存诊断包含泄漏指标：`captureMemoryDiagnostics()` 收集 detached contexts、active handles、file descriptors、smaps_rollup（Linux）
+- 启动 profiling 采样决策：`STATSIG_LOGGING_SAMPLED` 在模块加载时决策一次
+- Query profiling 显式开关：`CLAUDE_CODE_PROFILE_QUERY=1` 启用，默认关闭
+- Startup profiler 内存快照用数组：`memorySnapshots` 按顺序记录，支持重复 checkpoint 名
+- IDE 诊断跟踪用 `_claude_fs_right` URI：优先用 _claude_fs_right 的诊断检测新增问题
+- 诊断跟踪用 normalized path 做 key：`normalizeFileUri()` 去除协议前缀，用平台归一化路径
+- `/doctor` 检查多维度问题：`getDoctorDiagnostic()` 包含安装类型、权限、多个安装、配置问题、上下文警告
+- 安装检测用多方验证：`getCurrentInstallationType()` 检查 bundled mode、环境、路径模式
+- 多个安装检测主动扫描：`detectMultipleInstallations()` 检查 npm global、npm local、native、config
+- 上下文警告用 async 并行检查：`checkContextWarnings()` 并行检查 CLAUDE.md、agent descriptions、MCP tools、不可达规则
+- `/debug-tool-call` 只验证 schema：`inspectSavedInputSchema()` 用 Zod schema 验证，不调用 `call()` 或 `checkPermissions()`
+- `/debug-tool-call` 配对 tool_use 和 tool_result：`collectToolCalls()` 按 ID 配对，支持多个 result
+- Headless profiler 只在非交互模式启用：`getIsNonInteractiveSession()` 判断
+- 错误分类用正则匹配：`categorizeError()` 匹配错误文本中的关键词
+- 诊断日志明确禁止 PII：`logForDiagnosticsNoPII()` 明确禁止 PII，只接受 event 名和安全数据
+- Error sink 用 JSONL 格式：每行一个 JSON 对象，支持逐行解析
+- 诊断日志环境变量控制：`CLAUDE_CODE_DIAGNOSTICS_FILE` 指定日志路径
+- 所有诊断文件权限 0o600：防止其他用户读取
 
-## 8. 覆盖范围
+### 6.2 行为验收标准
 
-本文覆盖范围在 [Coverage](../architecture/coverage/diagnostics.yaml) 中定义。
+- 启动早期错误不丢失：sink attach 后立即 drain errorQueue
+- Heap snapshot 崩溃时诊断已保存：先写诊断 JSON，再写 snapshot
+- 诊断导出不含 PII：只包含错误分类、时间戳、性能指标、内存使用、checkpoint 名称
+- 调试日志默认不记录（ant 用户例外）：`USER_TYPE !== 'ant' && !isDebugMode()` 时不写入
+- IDE 诊断正确匹配 baseline：用 normalized path 做 key，支持 file:// 和 _claude_fs_right:// URI
+- `/doctor` 并行检查，快速响应：`getDoctorDiagnostic()` 和 `checkContextWarnings()` 并行执行
+- `/debug-tool-call` 不产生副作用：不实际执行工具，不触发权限检查
+- 诊断文件不覆盖：`writeNewDiagnosticJson()` 用 `wx` 模式，已存在时失败
+
+## 7. 代码与测试证据
+
+### 7.1 关键代码证据
+
+调试系统：
+- `src/utils/debug.ts`：调试日志写入、模式切换
+- `src/utils/debugFilter.ts`：分类过滤、模式解析
+
+错误日志：
+- `src/utils/log.ts`：错误日志入口、队列管理
+- `src/utils/errorLogSink.ts`：JSONL 写入、文件管理
+
+诊断日志：
+- `src/utils/diagLogs.ts`：无 PII 诊断日志、计时包装
+
+性能分析：
+- `src/utils/startupProfiler.ts`：启动 checkpoint、采样上报
+- `src/utils/queryProfiler.ts`：Query checkpoint、时间线生成
+- `src/utils/headlessProfiler.ts`：非交互模式 profiling
+
+内存诊断：
+- `src/utils/heapDumpService.ts`：Heap dump、内存指标采集
+
+诊断导出：
+- `src/utils/diagnosticExport.ts`：原子性 JSON 写入
+- `src/commands/perf-issue/perf-issue.tsx`：诊断报告生成、脱敏
+
+IDE 诊断跟踪：
+- `src/services/diagnosticTracking.ts`：DiagnosticTrackingService 单例、基线对比
+
+医生检查：
+- `src/utils/doctorDiagnostic.ts`：安装检测、配置检查
+- `src/utils/doctorContextWarnings.ts`：上下文警告检查
+
+工具调用调试：
+- `src/commands/debug-tool-call/debug-tool-call.tsx`：历史调用检查、schema 验证
+
+### 7.2 测试覆盖现状
+
+现有测试：
+- `tests/debugToolCallCommand.test.ts`：`collectToolCalls()` 配对测试；`inspectSavedInputSchema()` schema 验证测试
+
+未覆盖场景：
+- 调试日志分类过滤的完整路径测试
+- 错误日志 sink queue+drain 的完整流程测试
+- 诊断导出脱敏的边界条件测试
+- 内存诊断指标采集的跨平台测试
+- Startup/query/headless profiler 的完整流程测试
+- IDE 诊断跟踪 baseline 对比的完整测试
+- `/doctor` 多维度检查的完整测试
+- `/perf-issue` 导出流程的完整测试
+- `/heapdump` 流程的完整测试
+- Event loop stall detector 的实现和测试（当前只是占位）
+- 自动 heap dump 触发（`auto-1.5GB` trigger 已定义，但未自动触发）
+- 交互模式 query profiler 动态开关（当前需要环境变量启用）
+- Heap snapshot 自动分析（当前需要外部工具）
+- 调试日志分类覆盖率检查（不是所有调试日志都有正确分类）
+
+## 8. 文件覆盖与相关子系统
+
+### 8.1 源文件覆盖
+
+| 文件 | 主要职责 | 公开接口 |
+|------|---------|---------|
+| `src/utils/debug.ts` | 调试日志系统 | `isDebugMode()`、`logForDebugging()`、`enableDebugLogging()` |
+| `src/utils/debugFilter.ts` | 调试日志分类过滤 | `parseDebugFilter()`、`shouldShowDebugMessage()` |
+| `src/utils/log.ts` | 错误日志入口 | `logError()`、`attachErrorLogSink()` |
+| `src/utils/errorLogSink.ts` | 错误日志 sink 实现 | `ErrorLogSink` 接口实现 |
+| `src/utils/diagLogs.ts` | 诊断日志 | `logForDiagnosticsNoPII()`、`withDiagnosticsTiming()` |
+| `src/utils/diagnosticExport.ts` | 诊断导出工具 | `writeNewDiagnosticJson()` |
+| `src/utils/startupProfiler.ts` | 启动性能分析 | `profileCheckpoint()`、`profileReport()` |
+| `src/utils/queryProfiler.ts` | Query 性能分析 | `startQueryProfile()`、`queryCheckpoint()` |
+| `src/utils/headlessProfiler.ts` | 非交互模式 profiling | `headlessProfilerStartTurn()` |
+| `src/utils/heapDumpService.ts` | 内存诊断 | `performHeapDump()`、`captureMemoryDiagnostics()` |
+| `src/utils/doctorDiagnostic.ts` | 医生检查诊断 | `getDoctorDiagnostic()` |
+| `src/utils/doctorContextWarnings.ts` | 上下文警告检查 | `checkContextWarnings()` |
+| `src/utils/eventLoopStallDetector.ts` | Event loop stall 检测（占位） | `startEventLoopStallDetector()` |
+| `src/services/diagnosticTracking.ts` | IDE 诊断跟踪 | `DiagnosticTrackingService` |
+| `src/commands/doctor/doctor.tsx` | `/doctor` 命令 | 命令 UI |
+| `src/commands/perf-issue/perf-issue.tsx` | `/perf-issue` 命令 | `buildPerfIssueReport()`、`sanitizeErrorForDiagnostics()` |
+| `src/commands/heapdump/heapdump.ts` | `/heapdump` 命令 | 命令入口 |
+| `src/commands/debug-tool-call/debug-tool-call.tsx` | `/debug-tool-call` 命令 | `collectToolCalls()`、`inspectSavedInputSchema()` |
+
+### 8.2 相关子系统
+
+- MCP 集成：`src/services/mcp/` 用于 IDE 诊断跟踪
+- 会话存储：用于错误日志、调试日志、性能日志持久化
+- 权限系统：`/doctor` 检查权限配置问题
+- 工具系统：`/debug-tool-call` 检查历史工具调用
+- Agent 系统：`checkContextWarnings()` 检查 agent descriptions
+- Statsig：启动 profiling 采样上报
+- IDE 扩展：通过 MCP 提供诊断数据
+
+[Coverage](../../architecture/coverage/diagnostics.yaml)
+
+## 9. 改进建议
+
+### 9.1 短期改进
+
+- 实现 Event loop stall detector：当前只是占位，需要实际实现
+- 增加调试日志分类覆盖率：确保所有调试日志都有正确的分类前缀
+- 为诊断系统增加完整的测试覆盖：特别是 profiler、诊断跟踪、医生检查等模块
+- 实现自动 heap dump 触发：`auto-1.5GB` trigger 已定义，但未自动触发
+- 增加 heap snapshot 基础分析：可以在诊断 JSON 中包含一些基础分析，而不只是原始 snapshot
+- 增加交互模式 query profiler 动态开关：支持 `/profile` 命令动态启用，而不需要环境变量
+
+### 9.2 中期改进
+
+- 诊断上传机制：在用户明确同意的前提下，提供一键上传诊断到支持渠道的功能
+- 火焰图生成：利用 checkpoint 数据自动生成火焰图，便于性能分析
+- 历史诊断对比：支持对比不同时间点的诊断数据，识别性能退化
+- 智能修复建议：在 `/doctor` 中增加一些可以自动修复的问题（如 PATH 配置）
+- 实时性能仪表板：在交互模式下提供实时的性能指标显示
+- 内存泄漏自动检测：利用 detached contexts、active handles 等指标自动检测和警告内存泄漏
+- 调试日志搜索工具：提供命令行工具搜索和分析调试日志
+
+### 9.3 长期考虑
+
+- 分布式追踪：支持跨多组件、多服务的分布式追踪
+- APM 集成：集成到主流 APM 系统（如 Datadog、New Relic）
+- 机器学习异常检测：利用 ML 自动检测性能异常和错误模式
+- 诊断即代码：允许用户编写自定义诊断检查
+- 跨会话诊断关联：将相关会话的诊断数据关联起来，提供更完整的视图
+- 性能预算：允许用户定义性能预算，超出时自动警告
+- 诊断数据可视化：提供图形化界面查看诊断数据和性能指标

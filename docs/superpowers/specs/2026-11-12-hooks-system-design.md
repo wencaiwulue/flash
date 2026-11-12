@@ -6,334 +6,39 @@ date: 2026-11-12
 status: draft
 ---
 
-## 1. 概述
-
-Hooks System 是 Claude Code 提供的强大扩展机制，允许用户配置自定义钩子（Hook）在系统的各种事件点执行，实现对系统行为的拦截、验证和增强。钩子可以是命令脚本、HTTP 请求、Prompt 或 Agent 调用，支持同步和异步执行模式。
-
-### 1.1 核心能力
-
-- **多事件点集成**：30+ 钩子事件点覆盖工具执行、会话生命周期、通知、配置变更等场景
-- **多类型钩子**：Command（Shell 脚本）、HTTP、Prompt（LLM 判断）、Agent（Agent 调用）
-- **事件匹配**：支持工具名、Agent 类型、通知类型等条件匹配
-- **同步/异步执行**：同步阻塞主流程、异步后台执行，支持 asyncRewake 唤醒
-- **输入/输出结构化**：JSON 格式输入输出，支持 permission decision、additional context 等
-- **失败隔离**：单个钩子失败不影响其他钩子执行，区分 blocking 和 non-blocking 错误
-
-### 1.2 设计原则
-
-1. **安全优先**：所有钩子（包括 SessionEnd）需要工作区信任确认
-2. **失败不崩溃**：钩子执行失败不应导致系统崩溃，提供清晰的错误反馈
-3. **隔离执行**：钩子在独立进程/上下文中执行，不能直接修改内部状态
-4. **配置驱动**：通过用户/项目/本地配置文件定义，无需代码修改
-5. **可观测性**：支持进度事件、输出捕获、超时控制和调试日志
-
-## 2. 钩子配置与事件匹配
-
-### 2.1 钩子类型
-
-| 类型 | 说明 | 配置字段 |
-|-----|------|---------|
-| Command | Shell 脚本/命令 | `command`、`shell`、`timeout`、`async`、`asyncRewake`、`if` |
-| HTTP | HTTP POST 请求 | `url`、`headers`、`allowedEnvVars`、`timeout`、`if` |
-| Prompt | LLM 判断 | `prompt`、`model`、`timeout`、`if` |
-| Agent | Agent 调用 | `prompt`、`timeout`、`if` |
-
-### 2.2 事件点元数据
-
-系统定义了 30+ 钩子事件，每个事件有匹配字段：
-
-| 事件组 | 事件 | 匹配字段 | 说明 |
-|-------|-----|---------|-----|
-| 工具执行 | PreToolUse | 工具名 | 工具执行前 |
-| | PostToolUse | 工具名 | 工具成功后 |
-| | PostToolUseFailure | 工具名 | 工具失败后 |
-| | PermissionDenied | 工具名 | 自动拒绝后 |
-| | PermissionRequest | 工具名 | 权限弹窗时 |
-| 会话 | SessionStart | source（startup/resume/clear/compact） | 会话开始 |
-| | SessionEnd | reason（clear/logout/prompt_input_exit/other） | 会话结束 |
-| | Setup | trigger（init/maintenance） | 仓库初始化 |
-| | InstructionsLoaded | load_reason | 指令文件加载 |
-| 流程 | Stop | - | 响应结束前 |
-| | StopFailure | error（rate_limit/authentication_failed/...） | API 错误 |
-| | PreCompact/PostCompact | trigger（manual/auto） | 会话压缩 |
-| | UserPromptSubmit | - | 用户提交前 |
-| 子 Agent | SubagentStart/Stop | agent_type | 子 Agent 生命周期 |
-| 团队协作 | TeammateIdle/TaskCreated/TaskCompleted | - | 队友事件 |
-| MCP | Elicitation/ElicitationResult | mcp_server_name | MCP 引导 |
-| 文件系统 | FileChanged | 文件名 | 文件变更 |
-| | CwdChanged | - | 工作目录变更 |
-| 配置 | ConfigChange | source（user_settings/project_settings/...） | 配置变更 |
-| 通知 | Notification | notification_type | 通知发送时 |
-| Worktree | WorktreeCreate/WorktreeRemove | - | 工作树操作 |
-
-### 2.3 匹配规则
-
-1. **简单匹配**：精确匹配，如 `"Write"`、`"Bash"`
-2. **管道列表**：多值匹配，如 `"Write|Edit|Read"`
-3. **正则表达式**：如 `"^Write.*"`、`".*"`、`"^(Write|Edit)$"`
-4. **legacy 工具名兼容**：自动检测并匹配旧工具名
-5. **`if` 条件**：支持 `ToolName(argument pattern)` 语法，如 `"Bash(git *)"`
-
-匹配器优先级：精确匹配 > 较短模式 > 较长模式，同一模式下本地配置 > 项目配置 > 用户配置。
-
-## 3. 钩子执行与超时
-
-### 3.1 执行流程
-
-```
-获取钩子配置快照
-  ↓
-匹配事件和条件
-  ↓
-去重（同一 source 内相同命令）
-  ↓
-并行执行所有匹配钩子
-  ↓
-解析 JSON 输出或文本
-  ↓
-聚合结果（preventContinuation、permissionBehavior、...）
-  ↓
-发出 HookResponse 事件
-```
-
-### 3.2 超时配置
-
-| 钩子类型 | 默认超时 | 配置方式 | 说明 |
-|---------|---------|---------|------|
-| Command/HTTP | 10 分钟 | `timeout` 字段（秒） | `TOOL_HOOK_EXECUTION_TIMEOUT_MS` |
-| SessionEnd | 1.5 秒 | 环境变量 `CLAUDE_CODE_SESSIONEND_HOOKS_TIMEOUT_MS` | 快速关闭路径 |
-| Prompt | 30 秒 | `timeout` 字段（秒） | `execPromptHook` 默认 |
-| Async 响应 | 15 秒 | `asyncTimeout` 输出字段 | 异步钩子默认 |
-
-超时使用 `createCombinedAbortSignal`，合并用户取消信号和超时信号。
-
-### 3.3 同步与异步
-
-#### 同步执行（默认）
-- 阻塞主流程，等待钩子完成
-- 直接使用返回的 JSON 输出或 exit code
-- 适用场景：权限校验、输入验证、必须立即执行的逻辑
-
-#### 异步执行
-两种方式：
-1. **配置驱动**：`async: true` 或 `asyncRewake: true`
-2. **输出驱动**：第一行输出 `{"async": true, "asyncTimeout": 30000}`
-
-异步钩子通过 `AsyncHookRegistry` 注册，`checkForAsyncHookResponses()` 定期检查完成状态。
-
-**asyncRewake 特性**：
-- 不调用 `shellCommand.background()`（避免 spill to disk）
-- 输出保留在内存中
-- 退出码为 2 时通过 `enqueuePendingNotification` 唤醒主流程
-- 硬取消（Escape）仍会终止钩子
-
-### 3.4 退出码约定
-
-| 退出码 | Command/HTTP | Prompt/Agent | 说明 |
-|-------|-------------|-------------|------|
-| 0 | success | ok: true | 成功，继续执行 |
-| 1 | non-blocking error | ok: false 或 JSON 无效 | 错误，继续执行（只显示给用户） |
-| 2 | blocking error | ok: false + reason | 阻塞错误，终止流程（显示给模型） |
-
-## 4. 输入输出与错误处理
-
-### 4.1 钩子输入结构
-
-所有钩子接收相同的基础输入：
-
-```json
-{
-  "hook_event_name": "PreToolUse",
-  "session_id": "uuid",
-  "transcript_path": "/path/to/transcript.jsonl",
-  "cwd": "/current/dir",
-  "permission_mode": "ask|allow|deny",
-  "agent_id": "agent-uuid",
-  "agent_type": "agent-type"
-}
-```
-
-事件特定字段：
-- PreToolUse/PostToolUse: `tool_name`, `tool_input`, `tool_use_id`, `tool_output`
-- SessionStart: `source`
-- Stop: `stop_hook_active`
-- UserPromptSubmit: `user_prompt`
-- FileChanged: `file_path`, `event`
-- PermissionRequest: `tool_name`, `tool_input`
-- Elicitation: `mcp_server_name`, `message`, `requested_schema`
-
-### 4.2 钩子输出规范
-
-同步响应：
-```json
-{
-  "continue": false,
-  "stopReason": "Security check failed",
-  "suppressOutput": true,
-  "systemMessage": "Additional context for the model",
-  "decision": "approve",
-  "reason": "Permission granted",
-  "permissionDecision": "allow",
-  "hookSpecificOutput": {
-    "hookEventName": "PreToolUse",
-    "permissionDecision": "allow",
-    "permissionDecisionReason": "Git command allowed",
-    "additionalContext": "Verified git repo",
-    "updatedInput": {"path": "/safe/path"},
-    "updatedMCPToolOutput": {},
-    "watchPaths": ["/file/to/watch"],
-    "initialUserMessage": "Override user prompt",
-    "retry": true
-  }
-}
-```
-
-异步响应（仅首行）：
-```json
-{"async": true, "asyncTimeout": 30000}
-```
-
-### 4.3 Prompt 请求交互
-
-Command 钩子可通过 stdout 行输出 Prompt Request 与模型交互：
-
-```json
-{"promptRequest": "What is 2 + 2?", "maxTokens": 100}
-```
-
-系统通过 stdin 返回 Prompt Response：
-```json
-{"response": "4"}
-```
-
-`requestPrompt` 回调在 `execCommandHook` 中绑定，用于 UI 上下文和工具输入摘要。
-
-### 4.4 错误分类
-
-| 错误类型 | 触发场景 | 处理方式 |
-|---------|---------|---------|
-| Blocking Error | 退出码 2、`decision: "block"`、`permissionDecision: "deny"` | 终止流程，显示给模型 |
-| Non-blocking Error | 退出码 1、JSON 验证失败、执行异常 | 继续执行，仅显示给用户 |
-| Cancelled | 用户取消（Escape）或超时 | 静默失败或显示取消 |
-| Trust Check Failed | 工作区未信任 | 跳过所有钩子（非交互模式除外） |
-
-### 4.5 输出解析流程
-
-1. 首行检查是否为 `{"async": true}`（异步钩子）
-2. 尝试 JSON 解析，通过 Zod schema 验证
-3. JSON 有效 → 提取 `hookSpecificOutput` 和通用字段
-4. JSON 无效 → 当作文本处理
-5. 根据 exit code 区分 success/blocking/non-blocking
-
-## 5. 钩子生命周期与失败隔离
-
-### 5.1 进程生命周期管理
-
-Command 钩子：
-- 包装在 `ShellCommand` 中管理子进程
-- stdin 写入 hook input JSON
-- stdout/stderr 流式捕获
-- `TaskOutput` 缓冲区支持内存模式或 spill to disk
-- 超时或取消时调用 `shellCommand.kill()`
-
-内部钩子（Callback）：
-- 直接函数调用，不创建进程
-- 快速路径：纯内部回调（attribution、sessionFileAccess）跳过度量和事件
-- 依然通过相同的超时和取消机制
-
-### 5.2 异步钩子注册表（AsyncHookRegistry）
-
-全局 `pendingHooks: Map<processId, PendingAsyncHook>` 管理：
-- 跟踪所有后台钩子的进程、超时、进度上报
-- `registerPendingAsyncHook()`：注册新钩子
-- `checkForAsyncHookResponses()`：检查完成，返回响应
-- `removeDeliveredAsyncHooks()`：清理已响应的钩子
-- `finalizePendingAsyncHooks()`：会话结束时强制完成/取消
-
-进度通过 `hookEvents` 模块发射 `HookProgressEvent`，间隔 1 秒上报。
-
-### 5.3 失败隔离设计
-
-关键隔离机制：
-1. **钩子间隔离**：`Promise.allSettled()` + 独立执行上下文，一个失败不影响其他
-2. **输出隔离**：每个钩子有独立的 stdout/stderr 缓冲区
-3. **错误聚合**：结果独立收集，最终合并，blocking 错误优先
-4. **权限隔离**：插件钩子使用独立的 pluginRoot 和 pluginId，环境变量隔离
-5. **超时隔离**：每个钩子有独立的超时计时器，不共享
-
-### 5.4 SessionEnd 钩子特殊处理
-
-SessionEnd 钩子在关闭路径，需要极快执行：
-- 默认超时 1.5 秒（非 10 分钟）
-- 环境变量可配置 `CLAUDE_CODE_SESSIONEND_HOOKS_TIMEOUT_MS`
-- `finalizePendingAsyncHooks()` 确保所有异步钩子被清理
-- 不在此阶段启动新钩子
-
-## 6. HTTP 钩子安全与代理
-
-### 6.1 SSRF 防护
-
-HTTP 钩子通过多层防护防止服务端请求伪造：
-1. **URL 允许列表**：`allowedHttpHookUrls` 配置支持通配符 `*`
-2. **SSRF 防护查找器**：`ssrfGuardedLookup()` 阻止私有/链路本地 IP（允许 localhost）
-3. **沙箱代理**：沙箱模式下通过 `SandboxManager` 网络代理路由
-4. **重定向限制**：`maxRedirects: 0`，禁止自动跟随重定向
-5. **Header 注入防护**：`sanitizeHeaderValue()` 移除 CR/LF/NUL
-
-### 6.2 环境变量插值
-
-Header 值支持 `$VAR` 或 `${VAR}` 插值：
-- 仅允许钩子配置的 `allowedEnvVars` 列表中的变量
-- 策略 `allowedEnvVars` 与钩子列表取交集
-- 未允许的变量替换为空字符串
-- 插值后再次 sanitize 防止 header injection
-
-### 6.3 代理配置
-
-三种代理路径：
-1. **沙箱代理**：`SandboxManager.getProxyPort()` → 强制路由，强制域检查
-2. **环境变量代理**：`HTTP_PROXY/HTTPS_PROXY/NO_PROXY` → 全局 axios 拦截器
-3. **直连**：无代理 → SSRF guard 检查 IP
-
-代理激活时跳过 SSRF guard（避免验证代理自身 IP）。
-
-## 7. Shell 与平台兼容性
-
-### 7.1 Shell 选择
-
-```
-hook.shell → DEFAULT_HOOK_SHELL（"bash"）
-              ↓
-         将来可扩展为 settings.defaultShell
-```
-
-| shell 选项 | 平台 | 执行方式 |
-|-----------|------|---------|
-| "bash" | Windows/macOS/Linux | Git Bash（Windows）或系统 bash |
-| "powershell" | 所有 | pwsh -NoProfile -NonInteractive -Command |
-
-### 7.2 Windows 路径处理
-
-Windows bash 需要 POSIX 路径：
-- `windowsPathToPosixPath("C:\\Users\\x")` → `"/c/Users/x"`
-- UNC 路径保留（`\\server\share` → `//server/share`）
-- PowerShell 使用原生路径，不转换
-
-路径转换封装在 `toHookPath` 函数中，应用于：
-- 环境变量：`CLAUDE_PROJECT_DIR`、`CLAUDE_PLUGIN_ROOT`、`CLAUDE_PLUGIN_DATA`
-- 命令插值：`${CLAUDE_PLUGIN_ROOT}`
-- `CLAUDE_ENV_FILE` 路径
-
-### 7.3 插件变量插值
-
-插件钩子支持：
-- `${CLAUDE_PLUGIN_ROOT}`：插件根目录
-- `${CLAUDE_PLUGIN_DATA}`：插件数据目录
-- `${user_config.VAR}`：插件配置变量（来自 manifest 声明）
-
-插值顺序：先插件变量，再用户配置变量（避免 `${CLAUDE_PLUGIN_ROOT}` 被用户配置解释）。
-
-## 8. 设计决策与权衡
+# Hooks System 事件钩子配置与执行设计
+
+本文是对当前实现的回溯性设计说明，不冒充原始历史设计记录。
+
+## 1. 问题与约束
+
+Claude Code 的 Hooks System 需要解决以下核心问题：
+
+- 事件驱动扩展：用户需要在系统各事件点插入自定义逻辑，无需修改核心代码
+- 多种钩子类型：支持命令脚本、HTTP 请求、Prompt 调用、Agent 调用等多种方式
+- 安全边界：钩子执行需要工作区信任确认，防止恶意代码执行
+- 失败隔离：单个钩子失败不应影响其他钩子或主流程
+- 同步/异步模式：支持同步阻塞主流程和异步后台执行两种模式
+- 权限决策：钩子可以影响工具执行权限（允许/拒绝/询问）
+- 超时控制：防止钩子执行时间过长阻塞系统
+- 事件匹配：支持按工具名、Agent 类型、通知类型等条件匹配
+- 输入输出结构化：JSON 格式输入输出，便于编程处理
+- 跨平台兼容：Windows/macOS/Linux 都需要支持，shell 选择需要适配
+- 异步唤醒：异步钩子执行完成后可以唤醒主流程继续
+- SSRF 防护：HTTP 钩子需要防止服务端请求伪造
+- 环境变量安全：防止敏感环境变量泄露
+
+关键约束条件：
+
+- 所有钩子（包括 SessionEnd）需要工作区信任确认
+- SessionEnd 钩子使用短超时（默认 1.5 秒），防止阻塞退出
+- HTTP 钩子不支持 SessionStart/Setup 事件（启动早期 UI/回调可能未就绪）
+- 同一 source 内相同命令去重执行
+- asyncRewake 不 spill to disk，保留内存缓冲
+- Header 插值仅允许白名单环境变量
+- 退出码约定：0=success，1=non-blocking error，2=blocking error
+
+## 2. 设计理由与备选方案
 
 ### 决策 1：所有钩子需要工作区信任（包括 SessionEnd）
 
@@ -363,7 +68,7 @@ Windows bash 需要 POSIX 路径：
 |-----|------|
 | 状态 | 采用 |
 | 问题 | 需要区分"停止流程"和"仅通知用户" |
-| 方案 | 0=success, 1=non-blocking, 2=blocking |
+| 方案 | 0=success，1=non-blocking，2=blocking |
 | 替代 | 仅通过 JSON 输出（对简单脚本不友好） |
 | 代价 | 用户需要记忆退出码约定 |
 | 证据 | `hooks.ts` 中 `result.status === 2` 检查 |
@@ -385,7 +90,7 @@ Windows bash 需要 POSIX 路径：
 |-----|------|
 | 状态 | 采用 |
 | 问题 | 用户/项目/本地配置可能重复定义相同钩子 |
-| 方案 | `hookDedupKey` = `source + command/prompt/url + if`，Map 去重 |
+| 方案 | `hookDedupKey = source + command/prompt/url + if`，Map 去重 |
 | 替代 | 完全不做去重（冗余执行）；强制用户手动去重（不友好） |
 | 代价 | 同一命令无法以不同 `if` 条件多次执行（用不同 matcher 解决） |
 | 证据 | `getMatchingHooks()` 中的 `uniqueCommandHooks`/`uniquePromptHooks` |
@@ -445,11 +150,362 @@ Windows bash 需要 POSIX 路径：
 | 代价 | 复杂的清理脚本可能超时 |
 | 证据 | `SESSION_END_HOOK_TIMEOUT_MS_DEFAULT` 和 `getSessionEndHookTimeoutMs()` |
 
-## 9. Coverage 与边界情况
+## 3. 目标与非目标
 
-[Coverage](../architecture/coverage/hooks-system.yaml)
+### 目标
 
-### 9.1 边界疑虑
+- **多事件点集成**：30+ 钩子事件点覆盖工具执行、会话生命周期、通知、配置变更等场景
+- **多类型钩子**：Command（Shell 脚本）、HTTP、Prompt（LLM 判断）、Agent（Agent 调用）
+- **事件匹配**：支持工具名、Agent 类型、通知类型等条件匹配
+- **同步/异步执行**：同步阻塞主流程、异步后台执行，支持 asyncRewake 唤醒
+- **输入/输出结构化**：JSON 格式输入输出，支持 permission decision、additional context 等
+- **失败隔离**：单个钩子失败不影响其他钩子执行，区分 blocking 和 non-blocking 错误
+- **安全优先**：所有钩子需要工作区信任确认，HTTP 钩子 SSRF 防护
+- **超时控制**：每个钩子有独立超时，SessionEnd 钩子有更短超时
+- **跨平台兼容**：支持 Windows/macOS/Linux，shell 选择适配
+- **权限决策**：钩子可以返回 permission decision（allow/deny/ask）影响工具执行
+
+### 非目标
+
+- 不实现钩子市场（用户自己管理钩子配置）
+- 不支持钩子热重载（需要重启 CLI）
+- 不实现钩子调试器（用户使用常规调试工具）
+- 不支持分布式钩子执行（仅本地）
+- 不实现钩子版本管理（用户自己负责版本）
+- 不替代 MCP（MCP 用于工具集成，钩子用于事件响应）
+
+## 4. 架构、模块与数据流
+
+### 4.1 入口与公共契约
+
+```typescript
+// 钩子执行入口
+function executeHooksForEvent(
+  event: HookEvent,
+  context: HookExecutionContext,
+  options?: ExecuteHooksOptions
+): Promise<HookExecutionResult>
+
+// 钩子配置加载
+function loadHooksConfig(): Promise<HooksConfig>
+function getMatchingHooks(
+  event: HookEvent,
+  context: HookMatchingContext
+): Hook[]
+
+// 异步钩子注册表
+class AsyncHookRegistry {
+  static getInstance(): AsyncHookRegistry
+  registerPendingAsyncHook(hook: PendingAsyncHook): void
+  checkForAsyncHookResponses(): Promise<AsyncHookResponse[]>
+  removeDeliveredAsyncHook(id: string): void
+  finalizePendingAsyncHooks(): Promise<void>
+}
+
+// 钩子类型定义
+type Hook = CommandHook | HttpHook | PromptHook | AgentHook
+
+type HookEvent =
+  | 'pre-tool-use'
+  | 'post-tool-use'
+  | 'post-tool-use-failure'
+  | 'permission-denied'
+  | 'permission-request'
+  | 'session-start'
+  | 'session-end'
+  | 'setup'
+  | 'instructions-loaded'
+  | 'stop'
+  | 'stop-failure'
+  | 'pre-compact'
+  | 'post-compact'
+  | 'user-prompt-submit'
+  | 'subagent-start'
+  | 'subagent-stop'
+  | 'teammate-idle'
+  | 'task-created'
+  | 'task-completed'
+  | 'elicitation'
+  | 'elicitation-result'
+  | 'file-changed'
+  | 'cwd-changed'
+  | 'config-change'
+  | 'notification'
+  | 'worktree-create'
+  | 'worktree-remove'
+
+// 钩子输出
+interface HookOutput {
+  continue?: boolean
+  stopReason?: string
+  suppressOutput?: boolean
+  systemMessage?: string
+  decision?: 'approve' | 'block' | 'ask'
+  reason?: string
+  permissionDecision?: 'allow' | 'deny' | 'ask'
+  hookSpecificOutput?: {
+    hookEventName: string
+    permissionDecision?: 'allow' | 'deny' | 'ask'
+    permissionDecisionReason?: string
+    additionalContext?: string
+    updatedInput?: Record<string, unknown>
+    updatedMCPToolOutput?: unknown
+    watchPaths?: string[]
+    initialUserMessage?: string
+    retry?: boolean
+  }
+}
+```
+
+### 4.2 模块与状态所有权
+
+| 模块 | 拥有的状态 | 主要职责 | 不承担的职责 |
+|-----|----------|---------|------------|
+| `hooks.ts` | 无（纯函数） | `executeHooksForEvent()`、`getMatchingHooks()`、结果聚合 | 具体钩子类型执行 |
+| `execCommandHook.ts` | 无（纯函数） | Command 钩子执行、shell 选择、路径转换 | 钩子匹配 |
+| `execHttpHook.ts` | 无（纯函数） | HTTP 钩子执行、SSRF 防护、Header 插值 | 钩子匹配 |
+| `execPromptHook.ts` | 无（纯函数） | Prompt 钩子执行、小模型选择 | 钩子匹配 |
+| `execAgentHook.ts` | 无（纯函数） | Agent 钩子执行 | 钩子匹配 |
+| `AsyncHookRegistry.ts` | `pendingHooks: Map` | 异步钩子注册、完成检查、清理 | 同步钩子执行 |
+| `hookEvents.ts` | 无（纯函数） | 钩子事件定义、事件数据构造 | 钩子执行 |
+| `hookTrust.ts` | 无（纯函数） | `shouldSkipHookDueToTrust()` 检查 | 钩子执行 |
+| `hookTimeout.ts` | 无（纯函数） | 超时计算、SessionEnd 特殊处理 | 钩子执行 |
+| `shellCommand.ts` | 子进程状态 | Shell 命令执行、输出缓冲、后台模式 | 钩子逻辑 |
+| `hooksConfig.ts` | 无（纯函数） | 配置加载、验证、合并 | 钩子执行 |
+
+### 4.3 主控制流
+
+#### 钩子执行主流程
+
+```
+事件触发（如 pre-tool-use）
+    ↓
+loadHooksConfig() 加载配置
+    ↓
+getMatchingHooks() 匹配钩子
+    ├─ 按事件类型匹配
+    ├─ 按工具名/Agent 类型/通知类型匹配
+    ├─ 去重（同一 source 相同命令）
+    └─ 过滤 HTTP 钩子（SessionStart/Setup 事件）
+    ↓
+shouldSkipHookDueToTrust() 检查信任
+    ├─ 未信任 → 跳过（非交互模式除外）
+    └─ 已信任 → 继续
+    ↓
+Promise.allSettled() 并行执行所有匹配钩子
+    ↓
+每个钩子执行：
+    ├─ 检查首行是否 {"async": true}
+    ├─ 同步 → 等待完成，解析输出
+    └─ 异步 → 注册到 AsyncHookRegistry，立即返回
+    ↓
+聚合结果：
+    ├─ 优先 blocking 错误
+    ├─ 合并 permission decision（deny > ask > allow）
+    ├─ 合并 system messages
+    └─ 合并 additional context
+    ↓
+发出 HookResponse 事件
+    ↓
+返回结果给调用者
+```
+
+#### Command 钩子执行流程
+
+```
+选择 shell（hook.shell → DEFAULT_HOOK_SHELL → bash）
+    ↓
+环境变量准备：
+    ├─ 插值插件变量（${CLAUDE_PLUGIN_ROOT} 等）
+    ├─ 路径转换（Windows bash 需要 POSIX 路径）
+    └─ 设置 CLAUDE_ENV_FILE（PowerShell 除外）
+    ↓
+构造命令行
+    ↓
+创建 ShellCommand
+    ↓
+asyncRewake=true → 跳过 background()，保留内存缓冲
+asyncRewake=false → 可选 background()，spill to disk
+    ↓
+写入 hook input JSON 到 stdin
+    ↓
+执行（超时 + 用户取消 signal 组合）
+    ↓
+读取 stdout/stderr
+    ↓
+解析输出：
+    ├─ 首行检查 {"async": true, asyncTimeout}
+    ├─ JSON 解析 + Zod 验证
+    └─ 无效 → 当作文本处理
+    ↓
+根据退出码判断：
+    ├─ 0 → success
+    ├─ 1 → non-blocking error
+    └─ 2 → blocking error
+```
+
+#### HTTP 钩子执行流程
+
+```
+SSRF 防护检查 URL
+    ├─ 沙箱模式 → 强制代理 + 域检查
+    └─ 非沙箱 → SSRF guard 检查 IP（允许 localhost）
+    ↓
+Header 插值：
+    ├─ 仅允许 allowedEnvVars 列表中的变量
+    ├─ 未允许的替换为空
+    └─ 插值后 sanitize（移除 CR/LF/NUL）
+    ↓
+构造请求：
+    ├─ POST 请求
+    ├─ Content-Type: application/json
+    ├─ Body: hook input JSON
+    └─ 超时 + 用户取消 signal 组合
+    ↓
+发送请求（maxRedirects: 0）
+    ↓
+解析响应 JSON
+    ↓
+返回结果
+```
+
+#### 异步钩子唤醒流程
+
+```
+主流程轮询 checkForAsyncHookResponses()
+    ↓
+检查每个 pending hook 是否完成
+    ↓
+完成的钩子：
+    ├─ 解析输出
+    ├─ exit code 2 → enqueuePendingNotification 唤醒
+    └─ 其他 → 仅显示通知
+    ↓
+用户看到通知，可选择查看结果
+    ↓
+removeDeliveredAsyncHook() 清理已送达的钩子
+    ↓
+会话结束时 finalizePendingAsyncHooks() 强制清理所有
+```
+
+### 4.4 数据结构
+
+```typescript
+// 钩子配置
+interface HooksConfig {
+  version: 1
+  hooks: Hook[]
+}
+
+// Command 钩子
+interface CommandHook {
+  type: 'command'
+  command: string
+  shell?: 'bash' | 'powershell'
+  timeout?: number
+  async?: boolean
+  asyncRewake?: boolean
+  if?: string
+  events: HookEvent[]
+  tools?: string[]
+  agents?: string[]
+  notifications?: string[]
+}
+
+// HTTP 钩子
+interface HttpHook {
+  type: 'http'
+  url: string
+  headers?: Record<string, string>
+  allowedEnvVars?: string[]
+  timeout?: number
+  if?: string
+  events: HookEvent[]
+  tools?: string[]
+  agents?: string[]
+  notifications?: string[]
+}
+
+// Prompt 钩子
+interface PromptHook {
+  type: 'prompt'
+  prompt: string
+  model?: string
+  timeout?: number
+  if?: string
+  events: HookEvent[]
+  tools?: string[]
+  agents?: string[]
+  notifications?: string[]
+}
+
+// Agent 钩子
+interface AgentHook {
+  type: 'agent'
+  prompt: string
+  timeout?: number
+  if?: string
+  events: HookEvent[]
+  tools?: string[]
+  agents?: string[]
+  notifications?: string[]
+}
+
+// 异步钩子
+interface PendingAsyncHook {
+  id: string
+  hook: Hook
+  event: HookEvent
+  startTime: number
+  timeout: number
+  shellCommand?: ShellCommand
+  asyncRewake: boolean
+}
+
+interface AsyncHookResponse {
+  id: string
+  output: HookOutput
+  exitCode: number
+  stdout: string
+  stderr: string
+}
+```
+
+## 5. 失败语义与工程取舍
+
+### 5.1 失败语义
+
+| 失败场景 | 处理方式 | 影响范围 |
+|---------|---------|---------|
+| 单个钩子执行失败 | `Promise.allSettled()` 隔离，其他钩子继续 | 仅该钩子失败 |
+| 钩子退出码 1 | 显示错误，继续主流程 | non-blocking error |
+| 钩子退出码 2 | 显示错误，终止主流程 | blocking error |
+| 钩子输出 JSON 无效 | 当作文本处理，继续主流程 | non-blocking |
+| 钩子超时 | 取消执行，显示错误，继续主流程 | non-blocking |
+| 用户按 Escape 取消 | 取消执行，静默或显示取消，继续主流程 | non-blocking |
+| 工作区未信任 | 跳过所有钩子，继续主流程 | 非交互模式除外 |
+| HTTP 钩子 SSRF 检查失败 | 拒绝执行，显示错误，继续主流程 | non-blocking |
+| Header 插值未允许变量 | 替换为空，继续执行 | non-blocking |
+| SessionEnd 钩子超时 | 强制终止，立即退出 | 不阻塞会话结束 |
+| asyncRewake 钩子崩溃 | 丢弃结果，不唤醒 | 仅不唤醒 |
+| 多个 permission 钩子冲突 | deny > ask > allow 优先级 | 取最严格的 |
+
+### 5.2 工程取舍
+
+| 取舍 | 选择 | 理由 | 代价 |
+|-----|------|------|------|
+| 执行模式 | Promise.allSettled() 并行 | 快速完成，失败隔离 | 钩子间不能依赖执行顺序 |
+| 异步检测 | 首行 JSON 协议 | 灵活，不需要配置 | 需要输出首行符合格式 |
+| asyncRewake 缓冲 | 内存缓冲，不 spill to disk | 唤醒时可重新读取输出 | 长时间运行占用内存 |
+| Shell 选择 | bash 默认，支持 powershell | 跨平台兼容 | Windows 需要 Git Bash |
+| SessionEnd 超时 | 1.5 秒默认 | 不阻塞用户退出 | 复杂清理脚本可能超时 |
+| HTTP 钩子重定向 | maxRedirects: 0 | SSRF 防护 | 需要服务器直接响应 |
+| Header 插值 | 白名单 env var | 安全防止泄露 | 用户需要显式声明 |
+| Prompt 模型 | Haiku 默认 | 快速低成本 | 复杂判断能力不足 |
+| 重复钩子处理 | 去重执行 | 避免冗余 | 相同命令不能用不同 if 条件 |
+| Permission 聚合 | deny > ask > allow | 安全优先 | 可能与用户期望不一致 |
+
+### 5.3 边界疑虑
 
 | 边界情况 | 风险 | 当前处理 | 改进空间 |
 |---------|-----|---------|---------|
@@ -463,17 +519,154 @@ Windows bash 需要 POSIX 路径：
 | HTTP 钩子在沙箱初始化前触发 | 代理不可用 | `SandboxManager.waitForNetworkInitialization()` | 已实现 |
 | PowerShell 钩子不支持 `CLAUDE_ENV_FILE` | 环境变量持久化不一致 | SessionStart/Setup/CwdChanged/FileChanged 钩子不设置 env file（PowerShell） | 考虑 PowerShell 格式的 env var 持久化 |
 
-### 9.2 测试覆盖
+## 6. 现状验收标准
 
-`tests/headlessHooks.test.ts` 覆盖：
-- prompt/agent stop hooks success/blocking/error 路径
-- 取消信号传播
-- 非 Stop 事件的模型钩子不支持
+### 6.1 功能验收标准
 
-未覆盖：
-- Command hooks（需要真实子进程）
-- HTTP hooks（需要测试服务器）
-- Async hooks（需要时间控制）
-- 权限决策聚合
-- `if` 条件匹配
-- 路径转换（Windows）
+- 所有钩子需要工作区信任（包括 SessionEnd）：`shouldSkipHookDueToTrust()` 在执行前检查
+- 异步钩子使用首行 JSON 协议 + 注册表：首行 `{"async": true}` 检测，`AsyncHookRegistry` 管理
+- 退出码约定：0=success，1=non-blocking error，2=blocking error
+- HTTP 钩子不支持 SessionStart/Setup 事件：在 `getMatchingHooks()` 中过滤
+- 同一 source 内相同命令去重：`hookDedupKey` 计算，Map 去重
+- asyncRewake 不 spill to disk：`asyncRewake: true` 跳过 `shellCommand.background()`
+- 组合 abort signal：`createCombinedAbortSignal(signal, {timeoutMs})` 同时处理用户取消和超时
+- HTTP 钩子 Header 仅允许白名单 env var：`allowedEnvVars` 显式列出，未允许的替换为空
+- Prompt 钩子使用小模型（Haiku）：`getSmallFastModel()` 默认，`model` 字段可覆盖
+- SessionEnd 钩子使用短超时（1.5 秒）：`SESSION_END_HOOK_TIMEOUT_MS_DEFAULT` 默认，环境变量可配置
+- 30+ 钩子事件点支持：覆盖工具执行、会话生命周期、通知、配置变更等
+- 4 种钩子类型支持：Command、HTTP、Prompt、Agent
+- 事件匹配支持：工具名、Agent 类型、通知类型、`if` 条件
+- 同步/异步执行支持：同步阻塞、异步后台、asyncRewake 唤醒
+- 结构化输入输出：JSON 格式，支持 permission decision、additional context 等
+- SSRF 防护：HTTP 钩子 URL 检查，沙箱代理，maxRedirects: 0
+- 跨平台兼容：Windows/macOS/Linux，bash/powershell 支持，路径转换
+
+### 6.2 行为验收标准
+
+- 单个钩子失败不影响其他钩子：`Promise.allSettled()` 隔离执行
+- 退出码 2 终止主流程：blocking error 优先
+- permission decision 聚合：deny > ask > allow 优先级
+- asyncRewake 钩子 exit code 2 时唤醒：通过 `enqueuePendingNotification` 唤醒
+- SessionEnd 钩子不阻塞退出：1.5 秒超时，超时强制终止
+- HTTP 钩子不跟随重定向：maxRedirects: 0
+- 未信任工作区跳过所有钩子：`shouldSkipHookDueToTrust()` 检查
+- 插件目录不存在时提前失败：先检查 `pathExists(pluginRoot)`
+- 工作区已删除时回退到 original cwd：检测并回退
+
+## 7. 代码与测试证据
+
+### 7.1 关键代码证据
+
+钩子执行核心：
+- `src/utils/hooks/hooks.ts`：`executeHooksForEvent()`、`getMatchingHooks()`、结果聚合
+- `src/utils/hooks/execCommandHook.ts`：Command 钩子执行
+- `src/utils/hooks/execHttpHook.ts`：HTTP 钩子执行、SSRF 防护
+- `src/utils/hooks/execPromptHook.ts`：Prompt 钩子执行
+- `src/utils/hooks/execAgentHook.ts`：Agent 钩子执行
+
+异步钩子管理：
+- `src/utils/hooks/AsyncHookRegistry.ts`：异步钩子注册、检查、清理
+
+安全与信任：
+- `src/utils/hooks/hookTrust.ts`：信任检查
+- `src/utils/hooks/ssrfGuard.ts`：SSRF 防护
+
+超时与取消：
+- `src/utils/hooks/hookTimeout.ts`：超时计算
+- `src/utils/hooks/combinedAbortSignal.ts`：组合 signal
+
+配置与类型：
+- `src/utils/hooks/hooksConfig.ts`：配置加载、验证
+- `src/utils/hooks/hookEvents.ts`：事件定义
+- `src/utils/hooks/types.ts`：类型定义
+
+Shell 命令：
+- `src/utils/shellCommand.ts`：Shell 命令执行、缓冲、后台模式
+
+### 7.2 测试覆盖现状
+
+现有测试：
+- `tests/headlessHooks.test.ts`：prompt/agent stop hooks success/blocking/error 路径；取消信号传播；非 Stop 事件的模型钩子不支持
+
+未覆盖场景：
+- Command hooks 完整测试（需要真实子进程）
+- HTTP hooks 完整测试（需要测试服务器）
+- Async hooks 完整测试（需要时间控制）
+- Permission decision 聚合测试
+- `if` 条件匹配测试
+- 路径转换测试（Windows）
+- SSRF 防护边界测试
+- Header 插值白名单测试
+- asyncRewake 唤醒测试
+- SessionEnd 钩子超时测试
+- 嵌套钩子调用防护测试
+- 跨平台 shell 选择测试
+- 钩子去重逻辑测试
+
+## 8. 文件覆盖与相关子系统
+
+### 8.1 源文件覆盖
+
+| 文件 | 主要职责 | 公开接口 |
+|------|---------|---------|
+| `src/utils/hooks/hooks.ts` | 钩子执行核心 | `executeHooksForEvent()`、`getMatchingHooks()` |
+| `src/utils/hooks/execCommandHook.ts` | Command 钩子执行 | `execCommandHook()` |
+| `src/utils/hooks/execHttpHook.ts` | HTTP 钩子执行 | `execHttpHook()` |
+| `src/utils/hooks/execPromptHook.ts` | Prompt 钩子执行 | `execPromptHook()` |
+| `src/utils/hooks/execAgentHook.ts` | Agent 钩子执行 | `execAgentHook()` |
+| `src/utils/hooks/AsyncHookRegistry.ts` | 异步钩子管理 | `AsyncHookRegistry` 类 |
+| `src/utils/hooks/hookTrust.ts` | 信任检查 | `shouldSkipHookDueToTrust()` |
+| `src/utils/hooks/hookTimeout.ts` | 超时计算 | `getHookTimeoutMs()` |
+| `src/utils/hooks/hookEvents.ts` | 事件定义 | `HookEvent` 类型、事件数据构造 |
+| `src/utils/hooks/hooksConfig.ts` | 配置加载 | `loadHooksConfig()` |
+| `src/utils/hooks/types.ts` | 类型定义 | 所有钩子类型 |
+| `src/utils/hooks/combinedAbortSignal.ts` | 组合 signal | `createCombinedAbortSignal()` |
+| `src/utils/hooks/ssrfGuard.ts` | SSRF 防护 | `ssrfGuardedLookup()` |
+| `src/utils/shellCommand.ts` | Shell 命令执行 | `ShellCommand` 类 |
+
+### 8.2 相关子系统
+
+- 工具系统：钩子在工具执行前后触发（pre-tool-use/post-tool-use）
+- 权限系统：钩子可以返回 permission decision 影响权限
+- Agent 系统：Agent 钩子调用子 agent，subagent-start/subagent-stop 事件
+- 会话系统：session-start/session-end/setup/instructions-loaded 事件
+- 通知系统：notification 事件，asyncRewake 通过通知唤醒
+- 配置系统：config-change 事件，钩子配置加载
+- 沙箱系统：HTTP 钩子沙箱代理网络
+- MCP 系统：elicitation/elicitation-result 事件
+
+[Coverage](../../architecture/coverage/hooks-system.yaml)
+
+## 9. 改进建议
+
+### 9.1 短期改进
+
+- 为 Hooks System 增加完整的测试覆盖，特别是 Command/HTTP/Async 钩子
+- 增加钩子调试模式：提供更详细的执行日志，便于调试钩子
+- 实现钩子热重载：配置变更后无需重启 CLI 即可生效
+- 增加钩子执行可视化：在 UI 中显示钩子执行状态、输出、结果
+- 改进错误信息：为常见钩子错误提供更友好的诊断和修复建议
+- 增加钩子验证工具：在执行前验证钩子配置和脚本正确性
+- 实现钩子优先级排序：允许用户定义钩子执行顺序
+
+### 9.2 中期改进
+
+- 钩子市场：提供官方钩子库，用户可以分享和发现钩子
+- 钩子调试器：专门的钩子调试工具，支持断点、单步执行
+- 分布式钩子执行：支持远程钩子执行，跨设备协作
+- 钩子版本管理：集成 Git，支持钩子版本跟踪和回滚
+- 钩子性能分析：提供钩子执行性能指标，识别慢钩子
+- 更多钩子类型：支持 Webhook、GraphQL、gRPC 等更多类型
+- 钩子测试框架：提供钩子单元测试和集成测试框架
+- 钩子文档生成：自动从钩子配置生成文档
+
+### 9.3 长期考虑
+
+- 钩子即代码：允许用 TypeScript 编写钩子，类型安全
+- 钩子沙箱：更严格的沙箱环境，限制钩子权限
+- 钩子市场治理：评分、审核、安全扫描
+- AI 钩子生成：用 LLM 自动生成钩子代码
+- 钩子组合：允许将多个钩子组合成工作流
+- 钩子事件溯源：完整的钩子执行历史和审计
+- 钩子性能预算：允许用户定义钩子性能预算，超出时警告
+- 跨平台钩子标准：定义行业标准的钩子协议
