@@ -1,0 +1,237 @@
+schema_version: 1
+spec_id: attachments
+spec_title: Attachments 附件、图片与上下文注入设计
+spec_url: ../superpowers/specs/2026-11-12-attachments-design.md
+status: draft
+coverage_groups:
+  - name: 核心附件处理
+    sections: [1, 2, 3, 4]
+    files:
+      - src/utils/attachments.ts:
+          - 核心函数: getAttachments, getAttachmentMessages, createAttachmentMessage
+          - 类型定义: Attachment, FileAttachment, PDFReferenceAttachment, etc.
+          - 包装器: maybe()
+      - src/utils/config.ts:
+          - 类型: PastedContent, HistoryEntry
+  - name: 图片处理
+    sections: [3]
+    files:
+      - src/utils/imagePaste.ts:
+          - hasImageInClipboard
+          - getImageFromClipboard
+          - getImagePathFromClipboard
+          - isImageFilePath
+          - asImageFilePath
+          - tryReadImageFromPath
+      - src/utils/imageStore.ts:
+          - cacheImagePath
+          - storeImage
+          - storeImages
+          - getStoredImagePath
+          - clearStoredImagePaths
+          - cleanupOldImageCaches
+      - src/utils/imageValidation.ts:
+          - ImageSizeError
+          - validateImagesForAPI
+      - src/utils/imageResizer.ts:
+          - maybeResizeAndDownsampleImageBuffer
+          - detectImageFormatFromBase64
+  - name: 文本粘贴存储
+    sections: [3.5]
+    files:
+      - src/utils/pasteStore.ts:
+          - hashPastedText
+          - storePastedText
+          - retrievePastedText
+          - cleanupOldPastes
+  - name: @文件引用处理
+    sections: [5]
+    files:
+      - src/utils/attachments.ts:
+          - extractAtMentionedFiles
+          - parseAtMentionedFileLines
+          - processAtMentionedFiles
+          - generateFileAttachment
+          - tryGetPDFReference
+  - name: 相关记忆预取
+    sections: [6]
+    files:
+      - src/utils/attachments.ts:
+          - startRelevantMemoryPrefetch
+          - collectSurfacedMemories
+          - readMemoriesForSurfacing
+          - filterDuplicateMemoryAttachments
+          - memoryHeader
+  - name: 嵌套内存与 CLAUDE.md 注入
+    sections: [7]
+    files:
+      - src/utils/attachments.ts:
+          - getDirectoriesToProcess
+          - memoryFilesToAttachments
+          - getNestedMemoryAttachmentsForFile
+          - getNestedMemoryAttachments
+  - name: 变更文件检测
+    sections: [8]
+    files:
+      - src/utils/attachments.ts:
+          - getChangedFiles
+  - name: MCP 资源引用
+    sections: [9]
+    files:
+      - src/utils/attachments.ts:
+          - extractMcpResourceMentions
+          - processMcpResourceAttachments
+  - name: 技能列表与动态技能
+    sections: [10]
+    files:
+      - src/utils/attachments.ts:
+          - getSkillListingAttachments
+          - getDynamicSkillAttachments
+          - filterToBundledAndMcp
+          - resetSentSkillNames
+          - suppressNextSkillListing
+  - name: 计划模式与自动模式
+    sections: [11]
+    files:
+      - src/utils/attachments.ts:
+          - getPlanModeAttachments
+          - getPlanModeExitAttachment
+          - getPlanModeAttachmentTurnCount
+          - countPlanModeAttachmentsSinceLastExit
+          - getAutoModeAttachments
+          - getAutoModeExitAttachment
+          - getAutoModeAttachmentTurnCount
+          - countAutoModeAttachmentsSinceLastExit
+  - name: 团队邮箱与代理群
+    sections: [12]
+    files:
+      - src/utils/attachments.ts:
+          - getTeammateMailboxAttachments
+          - getTeamContextAttachment
+  - name: 日期变更检测
+    sections: [13]
+    files:
+      - src/utils/attachments.ts:
+          - getDateChangeAttachments
+  - name: 钩子与异步响应
+    sections: [14]
+    files:
+      - src/utils/attachments.ts:
+          - getAsyncHookResponseAttachments
+          - getLSPDiagnosticAttachments
+          - getDiagnosticAttachments
+  - name: 队列命令附件
+    sections: [3, 4]
+    files:
+      - src/utils/attachments.ts:
+          - getQueuedCommandAttachments
+          - getAgentPendingMessageAttachments
+          - buildImageContentBlocks
+  - name: IDE 集成附件
+    sections: [2, 4]
+    files:
+      - src/utils/attachments.ts:
+          - getSelectedLinesFromIDE
+          - getOpenedFileFromIDE
+  - name: Token 与预算附件
+    sections: [2]
+    files:
+      - src/utils/attachments.ts:
+          - getTokenUsageAttachment
+          - getMaxBudgetUsdAttachment
+          - getOutputTokenUsageAttachment
+  - name: 提醒附件
+    sections: [2, 11]
+    files:
+      - src/utils/attachments.ts:
+          - getTodoReminderAttachments
+          - getTaskReminderAttachments
+          - getTodoReminderTurnCount
+          - getTaskReminderTurnCount
+          - getVerifyPlanReminderAttachment
+          - getCompactionReminderAttachment
+          - getContextEfficiencyAttachment
+  - name: 延迟工具与代理增量
+    sections: [2, 4]
+    files:
+      - src/utils/attachments.ts:
+          - getDeferredToolsDeltaAttachment
+          - getAgentListingDeltaAttachment
+          - getMcpInstructionsDeltaAttachment
+  - name: 配置与常量
+    sections: [3, 6, 11]
+    files:
+      - src/constants/apiLimits.ts:
+          - IMAGE_MAX_WIDTH
+          - IMAGE_MAX_HEIGHT
+          - IMAGE_TARGET_RAW_SIZE
+          - API_IMAGE_MAX_BASE64_SIZE
+          - PDF_AT_MENTION_INLINE_THRESHOLD
+  - name: 钩子系统集成
+    sections: [2, 14]
+    files:
+      - src/utils/hooks.ts:
+          - checkForAsyncHookResponses
+          - removeDeliveredAsyncHooks
+          - hasInstructionsLoadedHook
+          - executeInstructionsLoadedHook
+      - src/services/lsp/LSPDiagnosticRegistry.ts:
+          - checkForLSPDiagnostics
+          - clearAllLSPDiagnostics
+  - name: 相关记忆检索
+    sections: [6]
+    files:
+      - src/memdir/findRelevantMemories.ts:
+          - findRelevantMemories
+      - src/memdir/memoryAge.ts:
+          - memoryAge
+          - memoryFreshnessText
+      - src/memdir/paths.ts:
+          - getAutoMemEntrypoint
+  - name: 团队协作
+    sections: [12]
+    files:
+      - src/teammate/teammateMailbox.ts:
+          - readUnreadMessages
+          - markMessagesAsReadByPredicate
+          - isStructuredProtocolMessage
+          - isIdleNotification
+          - isShutdownApproved
+      - src/swarm/teamHelpers.ts:
+          - removeTeammateFromTeamFile
+      - src/utils/task/framework.ts:
+          - generateTaskAttachments
+          - applyTaskOffsetsAndEvictions
+      - src/utils/task/diskOutput.ts:
+          - getTaskOutputPath
+  - name: 权限与安全
+    sections: [16]
+    files:
+      - src/utils/permissions/filesystem.ts:
+          - isFileReadDenied
+          - pathInAllowedWorkingPath
+          - matchingRuleForInput
+  - name: 诊断与遥测
+    sections: [4, 14]
+    files:
+      - src/services/analytics/index.ts:
+          - logEvent
+      - src/services/diagnosticTracking.ts:
+          - diagnosticTracker
+          - getNewDiagnostics
+  - name: 文件读取与工具集成
+    sections: [5, 8]
+    files:
+      - src/tools/FileReadTool/FileReadTool.ts:
+          - FileReadTool
+          - readImageWithTokenBudget
+          - MaxFileReadTokenExceededError
+      - src/utils/readFileInRange.ts:
+          - readFileInRange
+          - FileTooLargeError
+excluded_files:
+  - dist/**
+  - src/__tests__/**
+  - src/**/*.test.ts
+  - src/**/*.spec.ts
+
