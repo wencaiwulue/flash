@@ -1,87 +1,64 @@
 ---
 commit: self
-changeId: external-stub-restoration
-title: "Document and restore external stub capabilities"
+changeId: include-superpowers-plan
+title: "Include the date-based documentation implementation plan"
 status: implemented
-kind: component
+kind: metadata-migration
 ---
 
-# 实施计划：Document and restore external stub capabilities
+# 实施计划：Include the date-based documentation implementation plan
 
 > 本文按实际代码依赖重建实施顺序，用于说明怎样完成该提交；不伪称是历史提交当时保存的计划。
 
 ## 目标与前置条件
 
-这些占位不是单一目录里的同名导出，而是分布在传输、权限、进程生命周期、原生适配、UI 和命令注册中。只开启 feature flag 会把用户导向运行时异常，只用 Playwright 或 Zavora fallback 又会掩盖真实 Chrome 与原生宿主能力的边界。需要先冻结完整清单和公开契约，再按依赖恢复实现、入口和验证证据。
+用户要求把该计划纳入提交并创建 PR。只把 Markdown 裸加到分支会缺少本次变更自己的结构化记录，也无法保持仓库要求的 self/SHA 文档连续性。需要先固化上一提交，再为计划纳入建立独立设计与实施记录。
 
-- 用户已批准全部 external stub 范围以及先写文档再实现的顺序。
-- 当前 typecheck 与 build 基线通过，全量测试的两项前置失败已记录，开始时不存在生产源码修改。
-- 设计只依据仓库可见调用方和类型，不把私有包名称或命令名称当作完整协议证据。
+- 上一提交 94038b1 已推送到功能分支，当前只有计划目录和本地会话目录未跟踪。
+- 计划全文已审阅，用户明确要求包含 docs/superpowers/plans 并创建 PR。
 
 ## 复用与兼容处理
 
 ### 复用现有实现
 
-- 复用 docs/STATUS、commit-docs self 记录和 Bun 构建测试链，不另建平行的状态与验证系统。
-- 复用现有真实 client、transport、storage、attribution、snapshot、model query 和开放 MCP 后端。
-- 复用 enabledFeatures 和 openBackends 的 dist/profile 与真实后端测试模式。
+- 复用上一提交的 external-stub 设计正文、结构化渲染器和 head/next 文档门禁。
+- 复用已存在的日期命名迁移实施计划，不重写其技术内容或执行其任务。
 
 ### 兼容、迁移与生命周期
 
-- 新公开协议均带版本和明确名称；私有协议兼容性没有真实证据时保持未验证声明。
-- 现有 Playwright、Zavora、本地 UDS 和 local-shell Monitor 路径必须回归，不能被新实现替换成功能缩减。
-- 已存在用户 git hook、session、job、lockfile 和配置必须有幂等、迁移或保留语义。
+- 不修改上一提交或远程分支历史；新提交只追加计划及其设计记录。
+- self 机制继续避免在当前提交中预写自身 SHA，后续工作再将本 self 固化。
 
 ## 文件级实施步骤
 
-### 1. 冻结审计与全部公开契约
+### 1. 固化上一提交记录
 
-先完成总审计、协议边界、逐模块契约和验证基线，再允许生产源码修改。
+将 external-stub self 复制为 94038b1 的完整 SHA 记录，并按真实 diff 统计添加 src、tests、docs、scripts 分组。
 
-涉及位置：`docs/status/external-stubs-audit.md`、`docs/external-stubs`
+涉及位置：`scripts/commit-docs/records/94038b1.ts`
 
-### 2. 恢复入站、renderer、状态与权限
+### 2. 建立计划纳入记录并生成文档
 
-先处理已开放路径的消息丢失和内容丢弃，再实现 snapshot、attribution、结构化权限分类和真实 MCP 取消。
+以新的 self 说明纳入目标和非实施边界，加入计划文件后运行 next 生成与只读检查。
 
-涉及位置：`src/bridge`、`src/components/messages`、`src/components/agents`、`src/utils/permissions`
+涉及位置：`scripts/commit-docs/records/self.ts`、`docs/superpowers/plans/2026-11-11-date-based-commit-documentation.md`、`docs/specs`、`docs/plans`、`docs/INDEX.md`、`docs/status/index.json`
 
-### 3. 恢复 peer、Chrome 与 Computer Use
+### 3. 提交并创建 PR
 
-接通目标会话事件和真实浏览器/桌面后端，分离独立开放工具与私有入口并验证错误传播。
+仅暂存计划及对应记录，提交后运行 head 检查、推送当前功能分支并创建 PR。
 
-涉及位置：`src/bridge/peerSessions.ts`、`src/utils/claudeInChrome`、`src/utils/computerUse`、`src/external-stubs`
-
-### 4. 恢复服务、后台进程、SSH 与任务
-
-按版本化契约实现 Direct Connect、bg、SSH、本地模板任务与开放 runner，并接通进程恢复和安全边界。
-
-涉及位置：`src/server`、`src/cli/bg.ts`、`src/ssh`、`src/cli/handlers/templateJobs.ts`、`src/environment-runner`、`src/self-hosted-runner`
-
-### 5. 恢复公开命令与剩余占位
-
-按逐命令 SPEC 实现十八个 slash command 和总审计其他项，更新注册与统一 external feature profile。
-
-涉及位置：`src/commands.ts`、`src/commands`、`scripts/build.ts`、`tests/fixtures/verify-enabled-features.ts`
-
-### 6. 执行全量验证与状态收口
-
-运行专项、全量、typecheck、build、dist 和文档检查，在可用授权环境执行 live 验证并更新所有状态证据。
-
-涉及位置：`package.json`、`docs/STATUS.md`、`docs/RELEASE.md`、`docs/external-stubs/verification.md`
+涉及位置：`scripts/commit-docs/records`、`docs/superpowers/plans`、`docs/specs`、`docs/plans`、`docs/INDEX.md`、`docs/status/index.json`
 
 ## 风险与处理
 
-- 范围横跨多个完整子系统，若只追求一次性清空 unavailable 字符串会产生浅实现；通过逐波契约和 dist 验收控制。
-- 私有扩展、runner 和原生能力缺少兼容环境，开放实现可能被误解为原协议恢复；通过文档命名和独立证据状态控制。
-- 后台进程、SSH、runner 和危险权限会放大认证与清理错误；通过默认最小权限、身份校验、资源清理和负向测试控制。
+- 把计划中的完成定义误读为当前实现状态会造成误报，因此在记录中明确这是未执行的未来迁移。
+- 大范围历史记录分组计数错误会被校验器发现，必须用上一提交的真实 diff 统计而不是估计值。
 
 ## 验证顺序
 
-1. 文档阶段运行 docs:generate -- --next 和 docs:check -- --next，并审查契约是否覆盖总审计。
-2. 每波先运行专项失败测试，再运行实现后的专项、typecheck 和对应 dist 测试。
-3. 最终运行 bun test、bun run typecheck、bun run build、CLI help/version 和全部新增 dist 入口测试。
-4. 分开记录 offline 与 live；回归基线 cron/LSP 失败并保留任何环境 skipped。
+1. 运行 docs:generate -- --next 和 docs:check -- --next，检查上一提交的分组覆盖及新 self 的结构。
+2. 提交后运行普通 docs:generate 和 docs:check，再确认工作树只剩未要求的本地目录。
+3. 核对推送提交和 PR 的文件范围及链接。
 
 ## 完成状态与剩余工作
 
@@ -89,14 +66,9 @@ kind: component
 
 ### 已完成
 
-- 已建立 external-stubs README、验证记录与新的 self 设计记录，并迁移上一项 self 到 c69c271 完整 SHA。
-- 已冻结 82 项总审计及全部公开契约，覆盖 18 个 slash stub 和 9 个维护 handler。
-- 已完成入站与三个 renderer、snapshot/attribution、Bash/job 分类、公开 MCP Tasks、peer、Chrome CDP、开放 Computer Use 和 LSP 关闭竞态实现。
-- 已完成 Direct Connect、后台会话、SSH、本地模板任务、Open Runner、维护命令、Tungsten、MoreRight、ccshare 和其余五个小型公开能力。
-- 十八个 slash command 及维护功能均已注册，external profile 与生产构建共用同一事实源；测试按文件隔离以避免 mock、gate 和 cwd 污染。
-- 专项测试、真实 loopback/UDS/tmux/reference server/fake CDP/Swift 编译、typecheck、CLI/SDK/声明构建和多个 dist help/入口检查已执行并记录。
-- docs:generate -- --next 与 docs:check -- --next 已成功处理 192 份文档及索引，文档阶段 typecheck 和 diff whitespace 检查通过。
+- 已固化上一提交设计记录，并为计划纳入建立独立 self 记录。
+- 已审阅完整实施计划，明确不执行其迁移任务或纳入本地会话文件。
 
 ### 未完成或后续工作
 
-- 真实授权环境中的 live 和私有协议兼容验证未声明完成；最终文档生成与只读检查待执行。
+- 计划文件及记录仍需提交、推送和创建 PR；日期命名迁移实施本身不在本次范围。

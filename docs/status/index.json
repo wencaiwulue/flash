@@ -951,11 +951,21 @@
       "plan": "docs/plans/4909c0f-PLAN.md"
     },
     {
-      "fullSha": "self",
-      "changeId": "external-stub-restoration",
-      "subject": "Document and restore external stub capabilities",
+      "fullSha": "94038b1fb81840137487963a184f158ddcc57c9b",
+      "shortSha": "94038b1",
+      "date": "2026-11-12T09:07:43+08:00",
+      "subject": "Restore external stub capabilities",
       "status": "implemented",
       "kind": "component",
+      "spec": "docs/specs/94038b1-SPEC.md",
+      "plan": "docs/plans/94038b1-PLAN.md"
+    },
+    {
+      "fullSha": "self",
+      "changeId": "include-superpowers-plan",
+      "subject": "Include the date-based documentation implementation plan",
+      "status": "implemented",
+      "kind": "metadata-migration",
       "spec": "docs/specs/self-SPEC.md",
       "plan": "docs/plans/self-PLAN.md"
     }

@@ -2,7 +2,7 @@
 
 每份 SPEC 是回溯性方案设计，每份 PLAN 是文件级实施顺序。自动检查不替代逐提交的语义审查。
 
-- Implemented: 78
+- Implemented: 79
 - Partial: 17
 - Unimplemented: 0
 
@@ -103,4 +103,5 @@
 | ab2d941 | Record commit documentation CI success | partial | [SPEC](../docs/specs/ab2d941-SPEC.md) | [PLAN](../docs/plans/ab2d941-PLAN.md) |
 | c69c271 | Rebuild substantive commit design documentation | implemented | [SPEC](../docs/specs/c69c271-SPEC.md) | [PLAN](../docs/plans/c69c271-PLAN.md) |
 | 4909c0f | Design date-based commit documentation | implemented | [SPEC](../docs/specs/4909c0f-SPEC.md) | [PLAN](../docs/plans/4909c0f-PLAN.md) |
-| self (external-stub-restoration) | Document and restore external stub capabilities | implemented | [SPEC](../docs/specs/self-SPEC.md) | [PLAN](../docs/plans/self-PLAN.md) |
+| 94038b1 | Restore external stub capabilities | implemented | [SPEC](../docs/specs/94038b1-SPEC.md) | [PLAN](../docs/plans/94038b1-PLAN.md) |
+| self (include-superpowers-plan) | Include the date-based documentation implementation plan | implemented | [SPEC](../docs/specs/self-SPEC.md) | [PLAN](../docs/plans/self-PLAN.md) |
