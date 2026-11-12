@@ -1,0 +1,209 @@
+# CLI Startup Coverage
+# 覆盖的文件列表
+# This file maps source files to the design spec at:
+# docs/superpowers/specs/2026-11-12-cli-startup-design.md
+
+version: "1.0"
+date: "2026-11-12"
+specId: "cli-startup"
+
+sections:
+  - id: 1
+    name: "问题与约束"
+    files: []
+
+  - id: 2
+    name: "设计理由与备选方案"
+    files:
+      - path: "src/entrypoints/cli.tsx"
+        responsibility: "快速路径判断、动态 import、顶部环境准备"
+      - path: "src/utils/startupProfiler.ts"
+        responsibility: "启动性能 checkpoint 与报告"
+      - path: "src/main.tsx"
+        responsibility: "并行预取、模式判断、初始化流程 orchestration"
+      - path: "src/entrypoints/init.ts"
+        responsibility: "初始化步骤、两阶段环境变量、安全检查"
+      - path: "src/utils/gracefulShutdown.ts"
+        responsibility: "优雅退出、信号处理"
+      - path: "src/utils/cleanupRegistry.ts"
+        responsibility: "清理函数注册与执行"
+      - path: "src/utils/earlyInput.ts"
+        responsibility: "早期输入捕获"
+      - path: "src/utils/envUtils.ts"
+        responsibility: "--bare 模式判断、环境工具函数"
+      - path: "src/setup.ts"
+        responsibility: "Setup 流程、worktree、后台任务"
+
+  - id: 3
+    name: "目标与非目标"
+    files: []
+
+  - id: 4
+    name: "架构、模块与数据流"
+    files:
+      - path: "src/entrypoints/cli.tsx"
+        responsibility: "单一入口点、快速路径"
+      - path: "src/main.tsx"
+        responsibility: "主运行逻辑、commander 命令定义、action handler"
+      - path: "src/entrypoints/init.ts"
+        responsibility: "初始化 orchestration、memoized 初始化"
+      - path: "src/setup.ts"
+        responsibility: "Setup 流程 orchestration"
+      - path: "src/replLauncher.tsx"
+        responsibility: "REPL 启动"
+      - path: "src/utils/startupProfiler.ts"
+        responsibility: "Checkpoint API"
+      - path: "src/utils/gracefulShutdown.ts"
+        responsibility: "优雅退出 API"
+      - path: "src/utils/cleanupRegistry.ts"
+        responsibility: "Cleanup 注册 API"
+      - path: "src/utils/earlyInput.ts"
+        responsibility: "早期输入 API"
+      - path: "src/utils/envUtils.ts"
+        responsibility: "环境判断 API"
+      - path: "src/bootstrap/state.ts"
+        responsibility: "全局启动状态存取 API"
+      - path: "src/utils/settings/mdm/rawRead.ts"
+        responsibility: "MDM 并行预取"
+      - path: "src/utils/secureStorage/keychainPrefetch.ts"
+        responsibility: "钥匙串并行预取"
+      - path: "src/utils/apiPreconnect.ts"
+        responsibility: "API 预连接"
+
+  - id: 5
+    name: "失败语义与工程取舍"
+    files:
+      - path: "src/utils/gracefulShutdown.ts"
+        responsibility: "信号处理与退出流程"
+      - path: "src/utils/cleanupRegistry.ts"
+        responsibility: "清理执行"
+      - path: "src/entrypoints/init.ts"
+        responsibility: "初始化错误处理"
+
+  - id: 6
+    name: "现状验收标准"
+    files: []
+
+  - id: 7
+    name: "代码与测试证据"
+    files:
+      - path: "src/entrypoints/cli.tsx"
+        responsibility: "CLI 入口点完整实现"
+      - path: "src/main.tsx"
+        responsibility: "主运行逻辑完整实现"
+      - path: "src/entrypoints/init.ts"
+        responsibility: "初始化逻辑完整实现"
+      - path: "src/setup.ts"
+        responsibility: "Setup 逻辑完整实现"
+      - path: "src/replLauncher.tsx"
+        responsibility: "REPL 启动逻辑"
+      - path: "src/utils/startupProfiler.ts"
+        responsibility: "性能分析实现"
+      - path: "src/utils/gracefulShutdown.ts"
+        responsibility: "优雅退出实现"
+      - path: "src/utils/cleanupRegistry.ts"
+        responsibility: "清理注册实现"
+      - path: "src/utils/earlyInput.ts"
+        responsibility: "早期输入实现"
+      - path: "src/utils/envUtils.ts"
+        responsibility: "环境工具实现"
+      - path: "src/bootstrap/state.ts"
+        responsibility: "全局状态实现"
+      - path: "src/utils/settings/mdm/rawRead.ts"
+        responsibility: "MDM 预取实现"
+      - path: "src/utils/secureStorage/keychainPrefetch.ts"
+        responsibility: "钥匙串预取实现"
+      - path: "src/utils/apiPreconnect.ts"
+        responsibility: "API 预连接实现"
+
+  - id: 8
+    name: "文件覆盖与相关子系统"
+    files: []
+
+  - id: 9
+    name: "改进建议"
+    files: []
+
+# 主拥有的核心文件
+ownedFiles:
+  - path: "src/entrypoints/cli.tsx"
+    coverage: "cli-entrypoint"
+    owner: "cli-startup"
+  - path: "src/main.tsx"
+    coverage: "main-runtime"
+    owner: "cli-startup"
+  - path: "src/entrypoints/init.ts"
+    coverage: "init-system"
+    owner: "cli-startup"
+  - path: "src/setup.ts"
+    coverage: "setup-system"
+    owner: "cli-startup"
+  - path: "src/replLauncher.tsx"
+    coverage: "repl-launcher"
+    owner: "cli-startup"
+  - path: "src/utils/startupProfiler.ts"
+    coverage: "startup-profiler"
+    owner: "cli-startup"
+  - path: "src/utils/gracefulShutdown.ts"
+    coverage: "graceful-shutdown"
+    owner: "cli-startup"
+  - path: "src/utils/cleanupRegistry.ts"
+    coverage: "cleanup-registry"
+    owner: "cli-startup"
+  - path: "src/utils/earlyInput.ts"
+    coverage: "early-input"
+    owner: "cli-startup"
+  - path: "src/bootstrap/state.ts"
+    coverage: "bootstrap-state"
+    owner: "cli-startup"
+  - path: "src/utils/settings/mdm/rawRead.ts"
+    coverage: "parallel-prefetch"
+    owner: "cli-startup"
+  - path: "src/utils/secureStorage/keychainPrefetch.ts"
+    coverage: "parallel-prefetch"
+    owner: "cli-startup"
+  - path: "src/utils/apiPreconnect.ts"
+    coverage: "parallel-prefetch"
+    owner: "cli-startup"
+  - path: "src/utils/envUtils.ts"
+    coverage: "env-utils"
+    owner: "cli-startup"
+
+# 共享证据但由其他 spec 主拥有的文件
+sharedFiles:
+  - path: "src/commands.ts"
+    owner: "commands-framework"
+    note: "命令定义，本文只描述加载"
+  - path: "src/commands/**"
+    owner: "commands-framework"
+    note: "命令实现，本文只描述加载"
+  - path: "src/utils/model/**"
+    owner: "model-api"
+    note: "模型 API，本文只描述预连接"
+  - path: "src/utils/permissions/**"
+    owner: "permissions"
+    note: "权限系统，本文只描述初始化检查"
+  - path: "src/utils/settings/**"
+    owner: "settings"
+    note: "设置系统，本文只描述 eager loading"
+  - path: "src/services/session-persistence/**"
+    owner: "session-persistence"
+    note: "会话持久化，本文只描述恢复"
+  - path: "src/utils/swarm/**"
+    owner: "agent-swarms"
+    note: "Agent swarms，本文只描述初始化"
+  - path: "src/utils/worktree.ts"
+    owner: "other"
+    note: "Worktree，本文只描述启动时创建"
+  - path: "src/services/plugins/**"
+    owner: "plugins"
+    note: "插件系统，本文只描述初始化"
+  - path: "src/skills/**"
+    owner: "skills"
+    note: "技能系统，本文只描述初始化"
+  - path: "src/services/mcp/**"
+    owner: "mcp"
+    note: "MCP 系统，本文只描述快速路径和配置加载"
+
+# 直接测试
+directTests: []
