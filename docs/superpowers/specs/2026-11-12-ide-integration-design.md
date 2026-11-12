@@ -25,7 +25,6 @@ status: draft
 - SSE 或 WebSocket 两种传输协议（由 lockfile 中的 `transport` 字段决定）
 - 自动安装扩展/插件（VS Code 支持，JetBrains 只提示）
 - 在滚动渲染期间不执行耗时的 lockfile 扫描，避免卡顿
-- 不修改 `manifest/INDEX`（本 spec 任务约束）
 
 ## 2. 设计理由与备选方案
 
@@ -332,16 +331,18 @@ showDiffInIDE 中 IDE 断开
 
 | 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
 |---|---|---|---|
-| 通过 lockfile 发现 IDE，支持 SSE 和 WebSocket 传输 | src/utils/ide.ts:298-433 | 无直接测试 | 设计推断 |
-| 路径 NFC 规范化和 WSL 转换 | src/utils/ide.ts:678-679; src/utils/idePathConversion.ts:25-73 | 无直接测试 | 设计推断 |
-| 祖先 PID 检查消歧义 | src/utils/ide.ts:689-690,770-782 | 无直接测试 | 设计推断 |
-| 30 秒轮询 + scroll draining 暂停 | src/utils/ide.ts:626-657 | 无直接测试 | 设计推断 |
-| stale lockfile 清理策略 | src/utils/ide.ts:522-581 | 无直接测试 | 设计推断 |
-| diff 同步使用 openDiff RPC 和三种结果消息 | src/hooks/useDiffInIDE.ts:216-327 | 无直接测试 | 设计推断 |
-| VS Code 自动安装，JetBrains 只提示 | src/utils/ide.ts:590-622,879-911 | 无直接测试 | 设计推断 |
-| IDE 连接作为动态 MCP 配置 | src/hooks/useIDEIntegration.tsx:25-88; src/commands/ide/ide.tsx:544-555 | 无直接测试 | 设计推断 |
-| 通知系统显示 IDE 状态和错误 | src/hooks/notifs/useIDEStatusIndicator.tsx:24-159 | 无直接测试 | 设计推断 |
-| /ide 命令管理连接和选择 | src/commands/ide/ide.tsx:315-580 | 无直接测试 | 设计推断 |
+| 通过 lockfile 发现 IDE，支持 SSE 和 WebSocket 传输 | `src/utils/ide.ts:298-433` | 无直接覆盖 | 手动验证 lockfile 发现逻辑 |
+| 路径 NFC 规范化和 WSL 转换 | `src/utils/ide.ts:678-679; src/utils/idePathConversion.ts:25-73` | 无直接覆盖 | 手动验证路径转换逻辑 |
+| 祖先 PID 检查消歧义 | `src/utils/ide.ts:689-690,770-782` | 无直接覆盖 | 手动验证祖先 PID 检查逻辑 |
+| 30 秒轮询 + scroll draining 暂停 | `src/utils/ide.ts:626-657` | 无直接覆盖 | 手动验证轮询和暂停逻辑 |
+| stale lockfile 清理策略 | `src/utils/ide.ts:522-581` | 无直接覆盖 | 手动验证 stale 清理逻辑 |
+| diff 同步使用 openDiff RPC 和三种结果消息 | `src/hooks/useDiffInIDE.ts:216-327` | 无直接覆盖 | 手动验证 diff 同步逻辑 |
+| VS Code 自动安装，JetBrains 只提示 | `src/utils/ide.ts:590-622,879-911` | 无直接覆盖 | 手动验证扩展安装逻辑 |
+| IDE 连接作为动态 MCP 配置 | `src/hooks/useIDEIntegration.tsx:25-88; src/commands/ide/ide.tsx:544-555` | 无直接覆盖 | 手动验证动态 MCP 配置逻辑 |
+| 通知系统显示 IDE 状态和错误 | `src/hooks/notifs/useIDEStatusIndicator.tsx:24-159` | 无直接覆盖 | 手动验证通知显示逻辑 |
+| /ide 命令管理连接和选择 | `src/commands/ide/ide.tsx:315-580` | 无直接覆盖 | 手动验证 /ide 命令逻辑 |
+| lockfile 没有并发锁，多 Claude Code 实例可能竞争写入或读取 | `src/utils/ide.ts:522-581` | 无直接覆盖 | 手动验证多实例并发行为 |
+| showDiffInIDE 在进程崩溃时可能遗留 IDE diff tab | `src/hooks/useDiffInIDE.ts:216-327` | 无直接覆盖 | 手动验证崩溃后 diff tab 清理逻辑 |
 
 ## 8. 文件覆盖与相关子系统
 

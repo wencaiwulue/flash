@@ -682,13 +682,13 @@ type SandboxDependencyCheck = {
 | DiffDialog 视图模式相关的方向键行为 | `src/components/diff/DiffDialog.tsx:118-136` | 无直接测试 | 注释说明视图模式相关 |
 | DiffFileList 只显示 5 个文件，带上下指示器 | `src/components/diff/DiffFileList.tsx:9, 53-74` | 无直接测试 | MAX_VISIBLE_FILES = 5 |
 | FullscreenLayout pillVisible 用 useSyncExternalStore | `src/components/FullscreenLayout.tsx:326-338` | 无直接测试 | 订阅 ScrollBox，非标准 React 模式 |
-| useUnseenDivider snapshot scrollHeight，支持 shift | `src/components/FullscreenLayout.tsx:99-214` | 无直接测试 | dividerYRef 是 ref，dividerIndex 是 state |
-| countUnseenAssistantTurns 跳过纯 tool-use 轮次 | `src/components/FullscreenLayout.tsx:224-243` | 无直接测试 | 检查 message.content 块 |
-| onRepin 延迟清除 dividerYRef 避免竞态 | `src/components/FullscreenLayout.tsx:187-194` | 无直接测试 | useEffect 在状态提交后清除 |
-| SandboxSettings 根据依赖检查动态显示标签页 | `src/components/sandbox/SandboxSettings.tsx:132-151` | 无直接测试 | errors → 仅 Dependencies；warnings → 全部；无问题 → 无 Dependencies |
-| CustomSelect 支持键盘导航、Enter 确认、Esc 取消 | `src/components/CustomSelect/select.tsx` 及相关 hooks | 无直接测试 | Settings 上下文的快捷键 |
-| useRegisterOverlay 禁用聊天快捷键 | `src/components/diff/DiffDialog.tsx:105` | 无直接测试 | 覆盖层 spec 有详细说明 |
-| 未读分隔线支持 prepend shift | `src/components/FullscreenLayout.tsx:197-214` | 无直接测试 | 无限滚动历史消息时使用 |
+| useUnseenDivider snapshot scrollHeight，支持 shift | `src/components/FullscreenLayout.tsx:99-214` | 无直接覆盖 | dividerYRef 是 ref，dividerIndex 是 state |
+| countUnseenAssistantTurns 跳过纯 tool-use 轮次 | `src/components/FullscreenLayout.tsx:224-243` | 无直接覆盖 | 检查 message.content 块 |
+| onRepin 延迟清除 dividerYRef 避免竞态 | `src/components/FullscreenLayout.tsx:187-194` | 无直接覆盖 | useEffect 在状态提交后清除 |
+| SandboxSettings 根据依赖检查动态显示标签页 | `src/components/sandbox/SandboxSettings.tsx:132-151` | 无直接覆盖 | errors → 仅 Dependencies；warnings → 全部；无问题 → 无 Dependencies |
+| CustomSelect 支持键盘导航、Enter 确认、Esc 取消 | `src/components/CustomSelect/select.tsx` 及相关 hooks | 无直接覆盖 | Settings 上下文的快捷键 |
+| useRegisterOverlay 禁用聊天快捷键 | `src/components/diff/DiffDialog.tsx:105, src/context/overlayContext.tsx:37-72` | 无直接覆盖 | useRegisterOverlay 注册活动覆盖层，在 overlay 活动时禁用聊天快捷键，关闭时强制下一次渲染使用 full-damage diff 而不是 blit 避免幽灵残留 |
+| 未读分隔线支持 prepend shift | `src/components/FullscreenLayout.tsx:197-214` | 无直接覆盖 | 无限滚动历史消息时使用 |
 
 ## 8. 文件覆盖与相关子系统
 
@@ -713,7 +713,7 @@ type SandboxDependencyCheck = {
 - **权限系统**：负责目录访问控制，本 spec 仅描述 add-dir 如何调用 applyPermissionUpdate/persistPermissionUpdate
 - **沙箱系统**：负责 Bash 命令隔离，本 spec 仅描述如何刷新配置和设置模式
 - **Git 集成**：负责 diff 计算，本 spec 仅描述 useDiffData 的使用
-- **覆盖层系统**：负责模态对话框管理，本 spec 仅描述 useRegisterOverlay 的使用
+- **覆盖层系统**：负责模态对话框管理，本 spec 仅描述 useRegisterOverlay 的使用，具体实现在 `src/context/overlayContext.tsx`
 - **快捷键系统**：负责全局快捷键注册，本 spec 仅描述上下文相关的快捷键使用
 - **消息渲染**：负责渲染对话消息，本 spec 仅描述 useTurnDiffs 的使用和未读分隔线计算
 

@@ -39,15 +39,14 @@ Claude Code 作为 CLI 工具，需要提供便捷的语音输入方式，让用
 
 | 决策 | 实际机制 | 为什么采用 | 备选方案及不采用原因 | 代价 | 证据 |
 |---|---|---|---|---|---|
-| 延迟加载音频模块 | voice.ts 只在第一次使用时才 import，而 not 启动时 import | 加载 audio-capture-napi 会触发权限弹窗，且同步 open 阻塞 event loop 数百毫秒，启动时加载会导致启动延迟 | 启动时预加载：权限弹窗过早出现，阻塞启动，影响体验 | 用户第一次按键需要等待模块加载 | `src/hooks/useVoice.ts:23-26` |
+| 延迟加载音频模块 | voice.ts 只在第一次使用时才 import，不在启动时 import | 加载 audio-capture-napi 会触发权限弹窗，且同步 open 阻塞 event loop 数百毫秒，启动时加载会导致启动延迟 | 启动时预加载：权限弹窗过早出现，阻塞启动，影响体验 | 用户第一次按键需要等待模块加载 | `src/hooks/useVoice.ts:136-141, src/services/voice.ts:40-60` |
 | 音频缓冲 + 并行连接 | 同时启动录音和连接 voice_stream WebSocket，音频先缓冲，连接成功后 flush | 避免连接延迟 300-1000 毫秒，用户体验更流畅 | 先连接再录音：用户按住键后等待连接成功才开始录，体验差 | 需要处理连接失败时丢弃缓冲的音频 | `src/hooks/useVoice.ts:626-632` |
 | 静默drop 检测与重放 | fullAudioRef 缓存完整音频，finalize() 检测 no-data timeout 且有音频信号时重放一遍 | 约 1% 会话遇到 conversation-engine pod 静默drop bug，重放一遍可以解决问题 | 不重放：用户白录音，体验差；每次都重放：延迟增加，不必要 | 内存占用 2MB 左右（32KB/s × 60s max） | `src/hooks/useVoice.ts:336-369` |
 | 键释放检测：两个 timeout（auto-repeat）+ 一个 fallback 定时器 | 收到 auto-repeat 事件后启动 releaseTimer，间隔 > RELEASE_TIMEOUT_MS (200ms) 视为释放；fallback 处理没 auto-repeat 的情况 | 终端自动重复键事件的间隔通常 30-80ms，200ms 足够区分按住 vs 正常打字；fallback 处理 modifier 组合键等没有 auto-repeat 的情况 | 只用键盘按下/弹起事件：终端没有弹起事件，不可靠；只用一个 timer：容易误触发或漏触发 | 需要维护多个 timer，处理竞态条件 | `src/hooks/useVoice.ts:160-167, 1092-1098, 1108-1119` |
 | Key terms 提升 STT 准确率：全局术语 + 项目名 + 分支名 + 最近文件名 | getVoiceKeyterms() 生成最多 50 个术语，通过 query 参数传给 voice_stream endpoint | Deepgram 对特定领域术语识别率低，提升可以显著提升准确率；自动适配当前项目上下文 | 不用 key terms：术语识别错误多 | 需要合理拆分标识符为单词，限制 50 个避免溢出 | `src/services/voiceKeyterms.ts:66-106` |
 | 录音可用性预检查：probe arecord 等，检测环境 | checkRecordingAvailability() 检查权限、是否有可用音频设备 | 避免用户按了键才发现无法录音 | 不预检查：用户体验差 | 需要 probe，Linux arecord probe 有竞态条件，需要 memoize 结果 | `src/services/voice.ts:282-336` |
-| 静默 静默静默 静默静默 静默 静默 静默 静默，静默 检测禁用 | 静默 静默 检测 静默检测 静默 | 静默 静默 静默 静默检测 静默 静默 静默检测 静默检测 静默 静默 静默 静默 静默 静默 静默 静默 静默 静默 | 静默 静默检测 静默检测 静默 静默 静默 静默检测 静默检测 | 静默检测 静默检测 静默 静默 静默 静默 | 静默 静默 静默 静默 | `src/services/voice.ts:359-416` |
-| 静默检测静默 静默检测 静默 | 静默静默 | 静默 静默 静默 静默 静默静默检测 静默检测 | 静默 静默 静默 | 静默 静默静默 静默 静默 | 静默静默 静默 静默 | `src/context/voice.tsx` |
-| 静默检测 静默 静默 | 静默检测 静默 静默检测 静默静默检测 静默 静默 静默 静默 | 静默 静默 静默 静默 静默 静默 | 静默静默 静默 静默 | 静默 静默 静默检测 | 静默 静默检测 | `src/hooks/useVoiceIntegration.tsx` |
+| Focus 模式 5s 静默超时：focus 模式下停止录音机制 | focusSilenceTimer 在 5s 静默超时后调用 finishRecording() | 避免无限期保持录音浪费资源，用户停顿后需要重新触发（通过按键或重新 focus） | 无超时：无限期保持连接；更短超时：用户易被打断 | Focus 模式静默超时硬编码为 5s | `src/hooks/useVoice.ts:234-239` |
+| 语音 API 端点自带 silence detection：voice_stream 使用 Deepgram 语音活动检测 | 通过 voice_stream 的 endpointing_ms（300ms）和 utterance_end_ms（1000ms）参数配置 | Deepgram 内置 VAD 自动检测语音结束，提升转录准确率 | 无端点检测：需要手动确定何时结束语音 | 端点检测参数通过 voice_stream WebSocket URL 传递 | `src/services/voiceStreamSTT.ts:145-150` |
 
 ## 3. 目标与非目标
 
@@ -375,15 +374,16 @@ type NormalizedLanguage = {
 
 | 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
 |---|---|---|---|
-| 延迟加载音频模块：第一次按键才 import voice.ts | `src/hooks/useVoice.ts:136-141, 530-536` | 需查找相关测试 | 未找到直接测试覆盖 |
-| 音频缓冲 + 并行连接：同时启动录音和连接 WebSocket | `src/hooks/useVoice.ts:626-632, 686-710, 906-953` | 需查找相关测试 | 未找到直接测试覆盖 |
-| 静默drop 检测与重放：fullAudioRef 缓存完整音频，finalize() 检测 no-data timeout 且有音频信号时重放一遍 | `src/hooks/useVoice.ts:336-369, 246-248` | 需查找相关测试 | 未找到直接测试覆盖 |
-| 键释放检测：两个 timeout（releaseTimer + repeatFallbackTimer）+ 看到 auto-repeat 才启动 releaseTimer | `src/hooks/useVoice.ts:160-167, 1092-1098, 1108-1119` | 需查找相关测试 | 未找到直接测试覆盖 |
-| Key terms 提升 STT 准确率：全局术语 + 项目名 + 分支名 + 最近文件名 | `src/services/voiceKeyterms.ts:66-106` | 需查找相关测试 | 未找到直接测试覆盖 |
-| 录音可用性预检查：probe arecord 等，检测环境 | `src/services/voice.ts:282-336, 99-142` | 需查找相关测试 | 未找到直接测试覆盖 |
-| silenceDetection 选项控制是否启用静默检测：push-to-talk 禁用，避免提前结束 | `src/services/voice.ts:359-416, 422-490, 492-537` | 需查找相关测试 | 未找到直接测试覆盖 |
-| 语音状态共享：VoiceContext + useVoiceState() 钩子 | `src/context/voice.tsx` | 需查找相关测试 | 未找到直接测试覆盖 |
-| 终端输入集成：stripTrailing() 清理占位空格，handleVoiceTranscript() 插入最终文本，锚定前缀后缀 | `src/hooks/useVoiceIntegration.tsx:163-213, 306-338, 405-710` | 需查找相关测试 | 未找到直接测试覆盖 |
+| 延迟加载音频模块：第一次按键才 import voice.ts | `src/hooks/useVoice.ts:136-141, src/services/voice.ts:40-60` | 无直接测试覆盖 | 手动验证第一次按键触发权限弹窗 |
+| 音频缓冲 + 并行连接：同时启动录音和连接 WebSocket | `src/hooks/useVoice.ts:626-632` | 无直接测试覆盖 | 手动验证音频在连接前被缓冲 |
+| 静默drop 检测与重放：fullAudioRef 缓存完整音频，finalize() 检测 no-data timeout 且有音频信号时重放一遍 | `src/hooks/useVoice.ts:336-369` | 无直接测试覆盖 | 手动验证静默drop 时重放逻辑 |
+| 键释放检测：两个 timeout（releaseTimer + repeatFallbackTimer）+ 看到 auto-repeat 才启动 releaseTimer | `src/hooks/useVoice.ts:160-167, 1092-1098, 1108-1119` | 无直接测试覆盖 | 手动验证按键释放检测逻辑 |
+| Key terms 提升 STT 准确率：全局术语 + 项目名 + 分支名 + 最近文件名 | `src/services/voiceKeyterms.ts:66-106` | 无直接测试覆盖 | 手动验证 key terms 通过 query 参数传递 |
+| 录音可用性预检查：probe arecord 等，检测环境 | `src/services/voice.ts:282-336, 99-142` | 无直接测试覆盖 | 手动验证 arecord probe 逻辑 |
+| Focus 模式 5s 静默超时：focus 模式下停止录音机制 | `src/hooks/useVoice.ts:234-239` | 无直接测试覆盖 | 手动验证 Focus 模式静默超时 |
+| 语音 API 端点自带 silence detection：voice_stream 使用 Deepgram 语音活动检测 | `src/services/voiceStreamSTT.ts:145-150` | 无直接测试覆盖 | 手动验证端点检测参数传递 |
+| 语音状态共享：VoiceContext + useVoiceState() 钩子 | `src/context/voice.tsx` | 无直接测试覆盖 | 手动验证状态共享机制 |
+| 终端输入集成：stripTrailing() 清理占位空格，handleVoiceTranscript() 插入最终文本，锚定前缀后缀 | `src/hooks/useVoiceIntegration.tsx:163-213, 306-338, 405-710` | 无直接测试覆盖 | 手动验证输入集成逻辑 |
 
 ### 7.1 核心模块
 
