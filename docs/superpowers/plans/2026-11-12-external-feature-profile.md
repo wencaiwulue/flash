@@ -8,6 +8,14 @@
 
 **Tech Stack:** Bun 1.3+, TypeScript, Bun test, Bun.build, Zod schemas, existing `scripts/build.ts` and `tests/fixtures/*`.
 
+## Why This Implementation Order
+
+- **先共享 `externalFeatureProfile.ts`**：如果生产和验收使用不同 feature 列表，后续通过只能证明验收环境可用，不能证明交付产物可用。先消除这个假阳性来源，后续测试才有意义。
+- **先做真实类型生成与构建验收**：schema 类型和 exports 是 SDK/CLI 的编译前置条件，先验证它们可以把错误定位在输入契约，而不是被 bundle 或注册问题掩盖。
+- **再验收实际 bundle**：feature flag 会改变 dead-code elimination，只有重新构建并加载 fixture 才能证明代码真正进入 dist；不能只凭源码存在判断功能可用。
+- **最后比较不同外层环境**：离线固定值用于隔离构建和注册错误，环境不变性用于证明结果不是由开发机配置决定。真实模型、Cloud、桌面和远端 registry 属于其他故障域，不纳入本功能的验收。
+- **测试进程保持隔离**：独立 Bun 子进程和临时配置目录用于避免测试 runner 的模块拦截、全局配置和副作用改变生产行为，不是为了形式上的“多跑一次”。
+
 ## Global Constraints
 
 - Approved spec: `docs/superpowers/specs/2026-11-12-external-feature-profile-design.md`.
