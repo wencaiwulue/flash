@@ -16,7 +16,7 @@
 - Intermediate checks report uncovered files and planned/draft specs as warnings; `--require-approved` promotes those warnings to errors. Structural errors always fail.
 - Planned registry entries have neither spec nor coverage files. Draft/approved entries require real spec and coverage files; no empty placeholder documents.
 - Specs use nine numbered sections, frontmatter `id`, `batch`, and `status`, and a bidirectional coverage link. Actual command results belong in `STATUS.md`, not in specs.
-- Do not modify product implementation under `src/`; only docs, `scripts/check-design-docs.ts`, and `tests/designDocs*.test.ts` may change.
+- Do not modify product implementation under `src/`; only docs, `scripts/check-design-docs.ts`, `tests/designDocs*.test.ts`, and `.gitignore` (to allow tracking `docs/architecture/coverage/`) may change.
 - Use the existing Bun test discovery in `scripts/test.ts`; do not add dependencies or a second test runner.
 - Commits are local only; do not push.
 
@@ -40,6 +40,7 @@
 - Modify `docs/superpowers/specs/2026-11-12-codebase-design-docs-design.md`: registry metadata, section-six title, and coverage backlink.
 - Modify `docs/COMMIT_DOCS.md`: ownership, evidence, exclusion, and review policy.
 - Modify `docs/ARCHITECTURE.md`: link to subsystem navigation.
+- Modify `.gitignore`: change `coverage/` to `/coverage/` so `docs/architecture/coverage/` can be tracked in Git.
 
 ---
 
@@ -1142,6 +1143,7 @@ git commit -m "Add design documentation checker CLI" -m "Co-Authored-By: Kimi <n
 - Modify: `docs/superpowers/specs/TEMPLATE.md`
 - Modify: `docs/COMMIT_DOCS.md`
 - Modify: `docs/ARCHITECTURE.md`
+- Modify: `.gitignore`
 - Create: `docs/architecture/INDEX.md`
 - Create: `docs/architecture/coverage/manifest.yaml`
 - Create: `docs/architecture/coverage/documentation-system.yaml`
@@ -1344,6 +1346,8 @@ groups:
       - tests/designDocsCli.test.ts
 ```
 
+3h. Modify `.gitignore`: change `coverage/` to `/coverage/` so `docs/architecture/coverage/` can be tracked in Git (the former ignores any `coverage/` directory anywhere in the tree; the latter only ignores the top-level `coverage/` directory).
+
 - [ ] **Step 4: Verify the real registry and full repository regression**
 
 Run the focused tests first:
@@ -1370,7 +1374,7 @@ Expected: typecheck, all tests, build, and whitespace checks exit 0; the final c
 - [ ] **Step 5: Commit**
 
 ```bash
-git add docs/ARCHITECTURE.md docs/COMMIT_DOCS.md docs/architecture/INDEX.md docs/architecture/coverage/manifest.yaml docs/architecture/coverage/documentation-system.yaml docs/superpowers/specs/TEMPLATE.md docs/superpowers/specs/2026-11-12-codebase-design-docs-design.md tests/designDocs.test.ts
+git add docs/ARCHITECTURE.md docs/COMMIT_DOCS.md docs/architecture/INDEX.md docs/architecture/coverage/manifest.yaml docs/architecture/coverage/documentation-system.yaml docs/superpowers/specs/TEMPLATE.md docs/superpowers/specs/2026-11-12-codebase-design-docs-design.md tests/designDocs.test.ts .gitignore
 git commit -m "Bootstrap subsystem documentation registry" -m "Co-Authored-By: Kimi <noreply@anthropic.com>"
 ```
 
