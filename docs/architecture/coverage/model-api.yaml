@@ -1,0 +1,108 @@
+schema_version: 1
+spec_id: model-api
+spec: ../../superpowers/specs/2026-11-12-model-api-design.md
+status: draft
+
+groups:
+  - id: model-api-core
+    kind: source
+    section: 4
+    summary: API 客户端与请求构造核心模块
+    files:
+      - src/services/api/claude.ts
+      - src/services/api/client.ts
+      - src/services/api/errors.ts
+      - src/services/api/withRetry.ts
+      - src/services/api/logging.ts
+      - src/services/api/promptCacheBreakDetection.ts
+      - src/utils/api.ts
+
+  - id: model-config
+    kind: source
+    section: 4
+    summary: 模型配置、选择与解析模块
+    files:
+      - src/utils/model/model.ts
+      - src/utils/model/modelOptions.ts
+      - src/utils/model/providers.ts
+      - src/utils/model/configs.ts
+      - src/utils/model/aliases.ts
+      - src/utils/model/modelStrings.ts
+
+  - id: model-validation
+    kind: source
+    section: 4
+    summary: 模型验证与白名单模块
+    files:
+      - src/utils/model/validateModel.ts
+      - src/utils/model/modelAllowlist.ts
+
+  - id: model-provider-bedrock
+    kind: source
+    section: 4
+    summary: Bedrock 提供商特定适配
+    files:
+      - src/utils/model/bedrock.ts
+
+  - id: model-capabilities
+    kind: source
+    section: 4
+    summary: 模型能力与特性检测
+    files:
+      - src/utils/model/modelCapabilities.ts
+      - src/utils/model/modelSupportOverrides.ts
+      - src/utils/model/check1mAccess.ts
+      - src/utils/model/contextWindowUpgradeCheck.ts
+      - src/utils/model/deprecation.ts
+
+  - id: model-internal
+    kind: source
+    section: 4
+    summary: Ant 内部模型配置与覆盖
+    files:
+      - src/utils/model/antModels.ts
+      - src/utils/model/antModelOverrides.ts
+      - src/utils/model/agent.ts
+
+  - id: model-commands
+    kind: source
+    section: 4
+    summary: 模型选择命令
+    files:
+      - src/commands/model/index.ts
+      - src/commands/model/model.ts
+
+  - id: model-live-validation
+    kind: source
+    section: 4
+    summary: Live 模型验证脚本
+    files:
+      - scripts/live-model-validation.ts
+
+  - id: model-api-utilities
+    kind: source
+    section: 4
+    summary: API 辅助工具模块
+    files:
+      - src/services/api/usage.ts
+      - src/services/api/emptyUsage.ts
+      - src/services/api/firstTokenDate.ts
+      - src/services/api/errorUtils.ts
+      - src/services/api/sessionIngress.ts
+      - src/services/api/adminRequests.ts
+      - src/services/api/bootstrap.ts
+      - src/services/api/dumpPrompts.ts
+      - src/services/api/filesApi.ts
+      - src/services/api/grove.ts
+      - src/services/api/metricsOptOut.ts
+      - src/services/api/overageCreditGrant.ts
+      - src/services/api/referral.ts
+      - src/services/api/ultrareviewQuota.ts
+
+  - id: model-api-tests
+    kind: test
+    section: 7
+    summary: 模型 API 相关测试
+    files:
+      - tests/antModelOverrides.test.ts
+      - tests/sdkControls.test.ts
