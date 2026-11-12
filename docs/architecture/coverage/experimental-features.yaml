@@ -1,0 +1,35 @@
+id: experimental-features
+title: Experimental Features Coverage
+sections:
+  - title: Internal Testing Tools
+    files:
+      - src/tools/OverflowTestTool/OverflowTestTool.ts
+      - src/tools/SyntheticOutputTool/SyntheticOutputTool.ts
+      - src/tools/SyntheticOutputTool/constants.ts
+      - src/tools/testing/TestingPermissionTool.tsx
+  - title: Debug and Diagnostics Tools
+    files:
+      - src/tools/CtxInspectTool/CtxInspectTool.ts
+      - src/tools/SleepTool/SleepTool.ts
+      - src/tools/MonitorTool/MonitorTool.ts
+  - title: Experimental Commands
+    files:
+      - src/commands/good-claude/index.ts
+      - src/commands/good-claude/goodClaude.tsx
+      - src/commands/bughunter/index.ts
+  - title: Tool Registration
+    files:
+      - src/tools.ts
+      - src/commands.ts
+      - src/main.tsx
+  - title: Tests
+    files:
+      - tests/internalTools.test.ts
+      - tests/goodClaude.test.ts
+      - tests/bughunter.test.ts
+      - tests/w6Tungsten.test.ts
+      - tests/w6TungstenFixture.tsx
+      - tests/w6Logs.test.ts
+      - tests/w6MoreRight.test.tsx
+      - tests/w6Ccshare.test.ts
+      - tests/w6Maintenance.test.ts
