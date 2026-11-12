@@ -21,8 +21,6 @@ jobs:
         run: bun run generate:sdk-types
       - name: Typecheck
         run: bun run typecheck
-      - name: Check commit documentation
-        run: bun run docs:check
       - name: Test
         run: bun test
       - name: Build

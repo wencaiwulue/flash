@@ -1,34 +1,23 @@
-# Commit documentation policy
+# Feature documentation policy
 
-每个 commit 必须有独立的**方案设计文档（SPEC）**和**步骤实施文档（PLAN）**。正文必须依据该提交的 parent/current revision、实现和测试独立撰写，不是 commit message、diffstat 或裸文件列表的改写。
+项目文档以**功能设计与实施**为单位，使用 Superpowers 的原生流程，不再按 commit 生成文档或维护 commit 映射。
 
-## 内容来源与文件命名
+## 文档位置
 
-- `docs/specs/YYYY-MM-DD-<feature-slug>-SPEC.md`：前置问题、实际方案、控制流/数据流、接口关系、取舍与验收标准。
-- `docs/plans/YYYY-MM-DD-<feature-slug>-PLAN.md`：前置条件、复用、文件级实施顺序、风险与验收顺序。
-- 日期取 committer date 的自然日；slug 显式使用小写 kebab-case，同日同功能按 topo 顺序使用空、`-02`、`-03` 等后缀。
-- full SHA 保留在 frontmatter 和索引中。SPEC 与 PLAN 必须使用相同日期、slug 和 commit。
-- `docs/specs/self-SPEC.md`、`docs/plans/self-PLAN.md`：当前工作，包含稳定 `changeId`。
+- `docs/superpowers/specs/YYYY-MM-DD-<feature>-design.md`：经评审的功能设计，说明问题、目标/非目标、架构、接口、数据流、失败语义、工程取舍和验收标准。
+- `docs/superpowers/plans/YYYY-MM-DD-<feature>.md`：经评审的实施计划，提供文件级 TDD 步骤、测试、迁移与回滚。
 
-功能提交写具体控制流、接口、失败语义和可执行验收。元数据提交只写实际身份迁移、索引与 self，不硬套产品架构。大型快照不虚构开发顺序。文档不保存历史测试、命令、CI 或 live 执行结果。
+## 编写原则
 
-## 人工正文与只读索引器
+- 每个功能独立经历 brainstorming → design spec → user review → writing-plans。
+- 功能可以属于产品运行时、SDK、构建、测试、CI/Live 验证或工程工具。纯状态更新、发布记录和 finalization 不单独作为功能。
+- 文档必须能独立回答“为什么这样设计”和“具体怎样实施”，不得从 commit 标题、diffstat 或文件名自动拼接正文。
+- 不设置 SHA frontmatter、commit 附录、commit 索引或 finalization 文件。Git 历史只用于实现时查证，不进入交付结构。
+- 不记录历史测试、命令、CI 或 live 执行结果；验收只写应满足的条件。
 
-人工 SPEC/PLAN 是正文来源。`scripts/commit-docs/manual.ts` 只读取 frontmatter、检查身份与结构并生成 `docs/INDEX.md` 和 `docs/status/index.json`，**不得自动生成或改写设计正文**。
+## 更新与验收
 
-检查包括：full SHA 覆盖、日期、slug、同日序号、SPEC/PLAN 配对、self、旧通用步骤、验证证据章节、缺失文件和索引过期。结构检查不能替代语义审查。
-
-## self 与模式
-
-- head 模式：所有祖先使用历史文档，当前 HEAD 使用 self。
-- `--next` 模式：包括当前 HEAD 在内的全部历史使用历史文档，未提交的新工作使用 self。
-
-开始下一项工作时，先把旧 self 落实为上一 commit 的历史文档，再编写新的 self。不要在 commit 自身树中写入会改变自身 SHA 的最终记录。
-
-## 更新流程
-
-1. 阅读目标提交及父提交的 diff、实现和测试。
-2. 独立撰写或修订对应 SPEC/PLAN，禁止通用 fallback、复制正文和虚构设计理由。
-3. 准备下一提交时运行 `bun run docs:generate -- --next` 和 `bun run docs:check -- --next`；提交后运行默认 head 模式检查。
-4. 抽查各类代表文档，再运行全量测试、typecheck 和 build。
-5. 将人工文档与索引一起提交。CI 只运行只读 `bun run docs:check`，不得在检查前生成正文。
+1. 先确定功能边界和用户价值，再设计模块、接口和失败语义。
+2. spec 经用户审阅后，再编写具有准确路径、代码示例和命令的实施计划。
+3. 每个实施任务执行对应测试，完成后再运行全量测试、typecheck 和 build。
+4. CI 不再运行 commit 级 `docs:check`。文档质量由逐功能评审和实际实施验证保证。
