@@ -298,6 +298,9 @@ function padAligned(
 // stringWidth.ts
 function stringWidth(str: string): number
 
+// sliceAnsi.ts
+function sliceAnsi(str: string, start: number, end?: number): string
+
 // truncate.ts
 function truncateToWidth(text: string, maxWidth: number): string
 function truncateStartToWidth(text: string, maxWidth: number): string
@@ -350,8 +353,14 @@ function wrapText(text: string, width: number): string[]
 **错误与兼容**
 - 不抛异常：maxWidth ≤ 0 时返回 "…" 或空字符串
 - 不切开字素簇：emoji、组合标记、CJK 等完整保留
-- sliceAnsi 不存在于本模块，直接通过字素分割自然处理
 - ANSI 序列完全不计宽度（stripAnsi 后计算）
+
+**sliceAnsi 模块说明**
+sliceAnsi 用于安全截断含 ANSI 序列的字符串，不破坏样式：
+- 使用 @alcalzone/ansi-tokenize 正确 tokenize OSC 8 hyperlink 序列
+- 按显示宽度（stringWidth）而非字符数追踪位置
+- 保留活跃 ANSI 状态，在切片开头重建样式，在末尾正确清理
+- 正确处理零宽字符（组合标记、ZWJ、VS16）：组合标记跟随基字符
 
 **设计取舍/备选**
 - 为什么用 Bun.stringWidth？
@@ -362,10 +371,13 @@ function wrapText(text: string, width: number): string[]
   → 避免切开 emoji 或组合字符（如 "à" = "a" + "`"）
 - 备选：使用 string-width 库 → 被否决，某些字符宽度判断错误（如 ⚠）
 - 备选：二分查找截断位置 → 被否决，字素分割更直接且准确
+- 为什么自定义 sliceAnsi 而非使用 slice-ansi 包？
+  → 正确处理 OSC 8 hyperlink 序列；按显示宽度追踪位置
 
 **源码测试证据**
 - `src/ink/stringWidth.ts:20-90`: stringWidthJavaScript 完整实现
 - `src/ink/stringWidth.ts:129-203`: isZeroWidth 零宽字符判断
+- `src/utils/sliceAnsi.ts:26-91`: sliceAnsi 完整实现
 - `src/utils/truncate.ts:16-55`: truncatePathMiddle 路径中间截断
 - `src/utils/truncate.ts:63-75`: truncateToWidth 字素安全截断
 - `src/utils/truncate.ts:108-123`: truncateToWidthNoEllipsis 无省略号版本

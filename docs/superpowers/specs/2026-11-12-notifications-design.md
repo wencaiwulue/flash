@@ -43,6 +43,27 @@ Claude Code 需要处理三类通知场景：
 - 重要信息需要立即可见，低优先级信息可以排队或延迟
 - 后台命令完成通知高频但低价值，需要折叠减少视觉噪声
 
+### 通知来源表
+
+通知来自以下来源：
+
+| 来源 | Hook/代码文件 | 用途 |
+|------|----------------|------|
+| 启动通知 | `useStartupNotification.ts` | 一次性通知基础设施，被其他 hooks 复用 |
+| Fast Mode | `useFastModeNotification.tsx` | fast mode 可用性、冷却、超量使用 |
+| 速率限制 | `useRateLimitWarningNotification.tsx` | 额度接近、进入超量模式 |
+| 设置错误 | `useSettingsErrors.tsx` | 配置验证失败 |
+| MCP | `useMCPConnectivityStatus.tsx` | MCP 连接失败、需要认证 |
+| LSP | `useLSPInitializationNotification.tsx` | LSP 服务器错误 |
+| 插件 | `usePluginInstallationStatus.tsx`、`usePluginAutoupdateNotification.tsx` | 安装失败、更新可用 |
+| IDE | `useIDEStatusIndicator.tsx` | IDE 连接状态提示 |
+| 模型迁移 | `useModelMigrationNotifications.tsx` | 模型版本迁移提示 |
+| npm 弃用 | `useNpmDeprecationNotification.tsx` | 过时 npm 包警告 |
+| Ant Org | `useAntOrgWarningNotification.ts` | Anthropic 组织配置警告 |
+| Auto Mode | `useAutoModeUnavailableNotification.ts` | auto mode 不可用提示 |
+| 队友生命周期 | `useTeammateShutdownNotification.ts` | agent swarm 队友启动/关闭通知 |
+| 订阅切换 | `useCanSwitchToExistingSubscription.tsx` | 订阅变更提示 |
+
 ### Feature Gates 与 Disabled 机制
 
 - 环境变量：`CLAUDE_NOTIFICATION_WEBHOOK_URL`（配置 webhook）
@@ -170,6 +191,33 @@ Claude Code 需要处理三类通知场景：
 - 不支持 PushNotificationTool 自动重试
 
 ## 4. 架构、模块与数据流
+
+### 4.0 通知 Hook 模式
+
+大多数通知 hooks 遵循统一模式：
+
+```typescript
+// 1. 获取 addNotification
+const { addNotification } = useNotifications()
+
+// 2. 检查远程模式：远程模式不显示通知
+if (getIsRemoteMode()) return
+
+// 3. 监听相关状态变化
+useEffect(() => {
+  if (condition) {
+    addNotification({
+      key: 'unique-key',      // 唯一标识，用于去重/移除
+      priority: 'medium',     // 优先级
+      text: 'message',        // 或 jsx: <Text>...</Text>
+      color: 'warning',       // 可选颜色
+      timeoutMs: 8000,        // 可选超时，默认 8000
+      invalidates: ['other-key'], // 可选，使其他通知失效
+      fold: (acc, inc) => merged, // 可选，合并相同 key 的通知
+    })
+  }
+}, [addNotification, dependencies])
+```
 
 ### 4.1 入口与公共契约
 

@@ -138,6 +138,36 @@ initUpstreamProxy(opts?: {...}): Promise<UpstreamProxyState>  // 初始化上游
 getUpstreamProxyEnv(): Record<string, string>  // 获取上游代理环境变量
 ```
 
+### HTTP API 函数清单
+
+网络安全层还提供以下 HTTP API 工具函数：
+
+```typescript
+// User-Agent 生成
+getUserAgent(): string  // 用于 Anthropic API 请求，包含 claude-cli 版本、用户类型、entrypoint、agent-sdk 版本等
+getMCPUserAgent(): string  // 用于 MCP 请求
+getWebFetchUserAgent(): string  // 用于 WebFetch 任意网站请求
+
+// 认证头
+type AuthHeaders  = {
+  headers: Record<string, string>
+  error?: string
+}
+getAuthHeaders(): AuthHeaders  // 根据用户类型返回 OAuth Bearer 或 x-api-key
+
+// OAuth 401 重试
+withOAuth401Retry<T>(request: () => Promise<T>, opts?: { also403Revoked?: boolean }): Promise<T>
+  // 捕获 401（或可选的 403 + revoked 消息）
+  // 调用 handleOAuth401Error 强制刷新 token
+  // 重试一次请求
+```
+
+**证据**：
+- `src/utils/http.ts` User-Agent 生成函数
+- `src/utils/aws.ts` AWS STS 辅助函数
+- `src/utils/http.ts:115-136` withOAuth401Retry OAuth 401 重试实现
+- `src/utils/http.ts:69-99` getAuthHeaders 实现
+
 ---
 
 ## 模块设计卡
