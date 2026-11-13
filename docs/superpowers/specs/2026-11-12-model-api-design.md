@@ -271,19 +271,846 @@ async function* withRetry<T>(
 ): AsyncGenerator<SystemAPIErrorMessage, T>
 ```
 
-### 4.2 模块与状态所有权
+### 4.2 模块设计卡片
+
+#### 4.2.1 `model.ts` — 模型选择与解析
+
+**真实入口签名：**
+```typescript
+export type ModelName = string
+export type ModelAlias = 'opus' | 'sonnet' | 'haiku' | 'best' | 'opusplan'
+export type ModelSetting = ModelName | ModelAlias | null
+
+export function getMainLoopModel(): ModelName
+export function getUserSpecifiedModelSetting(): ModelSetting | undefined
+export function parseUserSpecifiedModel(modelInput: ModelName | ModelAlias): ModelName
+export function resolveSkillModelOverride(skillModel: string, currentModel: string): string
+export function normalizeModelStringForAPI(model: string): string
+export function getCanonicalName(fullModelName: ModelName): ModelShortName
+export function renderModelName(model: ModelName): string
+export function getDefaultOpusModel(): ModelName
+export function getDefaultSonnetModel(): ModelName
+export function getDefaultHaikuModel(): ModelName
+export function isNonCustomOpusModel(model: ModelName): boolean
+export function isLegacyModelRemapEnabled(): boolean
+export function getSmallFastModel(): ModelName
+```
+
+**关键类型：**
+```typescript
+type ModelShortName = string
+type ModelName = string
+type ModelSetting = ModelName | ModelAlias | null
+```
+
+**输入输出：**
+- 输入：用户配置（环境变量、设置、命令行参数、会话覆盖）
+- 输出：解析后的完整模型ID（含[1m]后缀）
+- 输入输出示例：
+  - `parseUserSpecifiedModel('opus')` → `'claude-opus-4-6[1m]'`
+  - `parseUserSpecifiedModel('sonnet[1m]')` → `'claude-sonnet-4-6[1m]'`
+  - `normalizeModelStringForAPI('claude-opus-4-6[1m]')` → `'claude-opus-4-6'`
+
+**状态与配置来源：**
+- 无持久化状态（纯函数）
+- 配置来源优先级：
+  1. 会话覆盖：`getMainLoopModelOverride()`
+  2. 环境变量：`ANTHROPIC_MODEL`
+  3. 保存设置：`settings.model`
+  4. 内置默认：订阅层级相关
+- Allowlist检查：`isModelAllowed()`
+
+**设计取舍/备选：**
+- 选择：多层别名+后缀分离方案
+- 理由：用户友好，跨提供商统一
+- 代价：转换链复杂，需注意每一层的输入输出
+- 备选：直接使用完整模型ID
+- 备选缺点：用户体验差，不易记忆
+- 选择理由：用户体验优先级高于实现复杂度
+
+**源码测试证据：**
+- `tests/antModelOverrides.test.ts`：验证模型覆盖、别名解析、[1m]处理
+- 证据边界：不包含实际API调用，仅测试逻辑
+
+**职责说明：**
+- ✅ 模型别名解析
+- ✅ [1m]后缀处理
+- ✅ 订阅层级默认模型选择
+- ✅ 旧版模型重定向
+- ❌ 模型可用性验证
+- ❌ API调用
+- ❌ 对话恢复
+
+---
+
+#### 4.2.2 `providers.ts` — API提供商确定
+
+**真实入口签名：**
+```typescript
+export type APIProvider = 'firstParty' | 'bedrock' | 'vertex' | 'foundry'
+
+export function getAPIProvider(): APIProvider
+export function getAPIProviderForStatsig(): AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
+export function isFirstPartyAnthropicBaseUrl(): boolean
+```
+
+**关键类型：**
+```typescript
+type APIProvider = 'firstParty' | 'bedrock' | 'vertex' | 'foundry'
+```
+
+**输入输出：**
+- 输入：环境变量
+- 输出：提供商类型
+- 输入输出示例：
+  - `CLAUDE_CODE_USE_BEDROCK=1` → `'bedrock'`
+  - `CLAUDE_CODE_USE_VERTEX=1` → `'vertex'`
+  - `CLAUDE_CODE_USE_FOUNDRY=1` → `'foundry'`
+  - 无环境变量 → `'firstParty'`
+
+**状态与配置来源：**
+- 无持久化状态
+- 纯环境变量驱动（优先级互斥）：
+  - `CLAUDE_CODE_USE_BEDROCK`
+  - `CLAUDE_CODE_USE_VERTEX`
+  - `CLAUDE_CODE_USE_FOUNDRY`
+- `ANTHROPIC_BASE_URL`用于`isFirstPartyAnthropicBaseUrl()`
+
+**设计取舍/备选：**
+- 选择：互斥环境变量开关
+- 理由：简单明确，用户一次只使用一个提供商
+- 代价：不能同时测试多个提供商
+- 备选：配置文件或SDK参数
+- 备选缺点：增加复杂度
+- 选择理由：用户通常只使用一个提供商，简单更好
+
+**源码测试证据：**
+- 无独立测试，集成在其他测试中
+
+**职责说明：**
+- ✅ 确定当前API提供商
+- ✅ 检查是否为第一方API端点
+- ❌ 认证凭证管理
+- ❌ 提供商特定客户端创建
+- ❌ API调用
+
+---
+
+#### 4.2.3 `configs.ts` — 模型配置映射
+
+**真实入口签名：**
+```typescript
+export type ModelConfig = Record<APIProvider, ModelName>
+export type ModelKey = keyof typeof ALL_MODEL_CONFIGS
+export type CanonicalModelId = (typeof ALL_MODEL_CONFIGS)[ModelKey]['firstParty']
+
+export const ALL_MODEL_CONFIGS: Record<string, ModelConfig>
+export const CANONICAL_MODEL_IDS: [CanonicalModelId, ...CanonicalModelId[]]
+export const CANONICAL_ID_TO_KEY: Record<CanonicalModelId, ModelKey>
+```
+
+**关键类型：**
+```typescript
+type ModelConfig = {
+  firstParty: ModelName
+  bedrock: ModelName
+  vertex: ModelName
+  foundry: ModelName
+}
+```
+
+**输入输出：**
+- 输入：配置键（如`'opus46'`、`'sonnet45'`）
+- 输出：各提供商对应的完整模型ID
+- 输入输出示例：
+  - `ALL_MODEL_CONFIGS.opus46.firstParty` → `'claude-opus-4-6'`
+  - `ALL_MODEL_CONFIGS.opus46.bedrock` → `'us.anthropic.claude-opus-4-6-v1'`
+  - `ALL_MODEL_CONFIGS.sonnet45.vertex` → `'claude-sonnet-4-5@20250929'`
+
+**状态与配置来源：**
+- 编译时常量表（无运行时状态）
+- 维护约定：新模型发布时更新，标记`@[MODEL LAUNCH]`
+
+**设计取舍/备选：**
+- 选择：集中式常量配置表
+- 理由：单一事实来源，易于更新和验证
+- 代价：发布新模型时需多处更新
+- 备选：分散在各模块
+- 备选缺点：容易遗漏，难以追踪
+- 选择理由：可维护性优先级高于便利性（通过标记辅助）
+
+**源码测试证据：**
+- 无独立测试（配置表本身是规范）
+- 测试边界：仅验证配置结构，不验证实际模型可用性
+
+**职责说明：**
+- ✅ 第一方ID与各提供商ID映射
+- ✅ 规范模型键定义
+- ❌ 运行时配置加载
+- ❌ 模型可用性验证
+- ❌ 模型选择逻辑
+
+---
+
+#### 4.2.4 `validateModel.ts` — 模型可用性验证
+
+**真实入口签名：**
+```typescript
+export async function validateModel(model: string): Promise<{
+  valid: boolean
+  error?: string
+}>
+```
+
+**关键类型：**
+```typescript
+type ValidationResult = {
+  valid: boolean
+  error?: string
+}
+```
+
+**输入输出：**
+- 输入：模型名称/别名
+- 输出：验证结果（有效/无效 + 错误消息）
+- 输入输出示例：
+  - `validateModel('opus')` → `{ valid: true }`
+  - `validateModel('invalid-model')` → `{ valid: false, error: "Model 'invalid-model' not found" }`
+
+**状态与配置来源：**
+- 缓存：`validModelCache: Map<string, boolean>`（内存缓存，避免重复API调用）
+- 验证流程：
+  1. 检查allowlist：`isModelAllowed()`
+  2. 检查已知别名：`MODEL_ALIASES`
+  3. 检查自定义模型：`ANTHROPIC_CUSTOM_MODEL_OPTION`
+  4. 检查缓存
+  5. 实际API调用：`sideQuery()`（max_tokens=1）
+
+**Live与Mock的验证差异：**
+- Live：真实API调用，`scripts/live-model-validation.ts`独立脚本
+- Mock：测试使用VCR（`withVCR`/`withStreamingVCR`），不依赖网络
+
+**设计取舍/备选：**
+- 选择：最小API调用验证（max_tokens=1）
+- 理由：快速验证，成本低
+- 代价：不能验证模型所有能力（但足以验证存在性和权限）
+- 备选：完整测试调用
+- 备选缺点：慢，成本高
+- 选择理由：验证存在性即可，完整能力在实际使用中验证
+
+**源码测试证据：**
+- 无独立测试，集成在模型选择器中
+- 证据边界：不包含实际API调用（测试使用Mock）
+
+**职责说明：**
+- ✅ 验证模型存在性和权限
+- ✅ 3P提供商降级建议
+- ❌ 模型能力验证
+- ❌ 对话恢复
+
+---
+
+#### 4.2.5 `bedrock.ts` — Bedrock特定适配
+
+**真实入口签名：**
+```typescript
+export const getBedrockInferenceProfiles: memoize(async function (): Promise<string[]>)
+export function findFirstMatch(profiles: string[], substring: string): string | null
+export async function getInferenceProfileBackingModel(profileId: string): Promise<string | null>
+export function isFoundationModel(modelId: string): boolean
+export function extractModelIdFromArn(modelId: string): string
+export type BedrockRegionPrefix = 'us' | 'eu' | 'apac' | 'global'
+export function getBedrockRegionPrefix(modelId: string): BedrockRegionPrefix | undefined
+export function applyBedrockRegionPrefix(modelId: string, prefix: BedrockRegionPrefix): string
+export async function createBedrockClient(): Promise<BedrockClient>
+export async function createBedrockRuntimeClient(): Promise<BedrockRuntimeClient>
+```
+
+**关键类型：**
+```typescript
+type BedrockRegionPrefix = 'us' | 'eu' | 'apac' | 'global'
+```
+
+**输入输出：**
+- 输入：模型ID、区域前缀、ARN
+- 输出：处理后的模型ID、推理配置文件列表、Backing model
+- 输入输出示例：
+  - `applyBedrockRegionPrefix('anthropic.claude-sonnet-4-5-v1:0', 'eu')` → `'eu.anthropic.claude-sonnet-4-5-v1:0'`
+  - `getBedrockRegionPrefix('us.anthropic.claude-opus-4-6-v1')` → `'us'`
+  - `extractModelIdFromArn('arn:aws:bedrock:us-east-1:123:inference-profile/global.anthropic.claude-opus-4-6-v1')` → `'global.anthropic.claude-opus-4-6-v1'`
+
+**状态与配置来源：**
+- 缓存：`getBedrockInferenceProfiles()`使用`lodash-es/memoize`
+- 环境变量：
+  - `AWS_REGION`/`AWS_DEFAULT_REGION`
+  - `ANTHROPIC_BEDROCK_BASE_URL`
+  - `AWS_BEARER_TOKEN_BEDROCK`
+  - `CLAUDE_CODE_SKIP_BEDROCK_AUTH`
+- 认证：`refreshAndGetAwsCredentials()`（来自`auth.ts`）
+
+**设计取舍/备选：**
+- 选择：跨区域推理前缀方案
+- 理由：灵活支持Bedrock多区域部署
+- 代价：模型ID格式复杂，需特殊处理
+- 备选：每种组合单独配置
+- 备选缺点：配置爆炸，难以维护
+- 选择理由：动态前缀方案更灵活
+
+**源码测试证据：**
+- 无独立测试，集成在Bedrock客户端中
+- 证据边界：不包含实际AWS API调用
+
+**职责说明：**
+- ✅ Bedrock客户端创建
+- ✅ 推理配置文件查询
+- ✅ 区域前缀处理
+- ✅ ARN解析
+- ✅ Backing model查找
+- ❌ Vertex/Foundry适配
+- ❌ 通用API客户端创建
+
+---
+
+#### 4.2.6 `client.ts` — Anthropic客户端创建
+
+**真实入口签名：**
+```typescript
+export async function getAnthropicClient(options: {
+  apiKey?: string
+  maxRetries: number
+  model?: string
+  fetchOverride?: ClientOptions['fetch']
+  source?: string
+}): Promise<Anthropic>
+
+export const CLIENT_REQUEST_ID_HEADER = 'x-client-request-id'
+```
+
+**关键类型：**
+```typescript
+type ClientOptions = Anthropic.ClientOptions | Bedrock.BedrockClientOptions | Vertex.VertexClientOptions | Foundry.FoundryClientOptions
+```
+
+**输入输出：**
+- 输入：API密钥、最大重试次数、模型、fetch覆盖、来源标识
+- 输出：对应提供商的Anthropic SDK客户端
+- 输入输出示例：
+  - `getAnthropicClient({ maxRetries: 10, model: 'claude-opus-4-6' })` → `Anthropic`实例（first-party）
+  - `CLAUDE_CODE_USE_BEDROCK=1` → `AnthropicBedrock`实例（类型伪装）
+
+**状态与配置来源：**
+- 无持久化状态
+- 提供商配置不可变：启动后不能切换
+- 运行时覆盖：认证错误时重建客户端
+- 环境变量驱动（优先级互斥）：
+  - `CLAUDE_CODE_USE_BEDROCK`
+  - `CLAUDE_CODE_USE_VERTEX`
+  - `CLAUDE_CODE_USE_FOUNDRY`
+- 其他配置：
+  - `ANTHROPIC_API_KEY`
+  - `ANTHROPIC_BASE_URL`
+  - `CLAUDE_CODE_CONTAINER_ID`
+  - `CLAUDE_CODE_REMOTE_SESSION_ID`
+  - `CLAUDE_AGENT_SDK_CLIENT_APP`
+  - `ANTHROPIC_CUSTOM_HEADERS`
+  - `CLAUDE_CODE_ADDITIONAL_PROTECTION`
+- 认证来源：
+  - `getAnthropicApiKey()`（API key）
+  - `getClaudeAIOAuthTokens()`（OAuth token）
+  - `refreshAndGetAwsCredentials()`（Bedrock）
+  - `refreshGcpCredentialsIfNeeded()`（Vertex）
+
+**设计取舍/备选：**
+- 选择：类型伪装统一接口（Bedrock/Vertex/Foundry SDK都伪装成Anthropic）
+- 理由：调用层无需感知提供商差异
+- 代价：类型系统不安全，需小心维护
+- 备选：各提供商独立接口
+- 备选缺点：调用层复杂，条件分支多
+- 选择理由：调用层简洁性优先级高于类型安全（通过测试保证）
+
+**源码测试证据：**
+- 无独立测试，集成在API调用中
+- 证据边界：不包含实际网络请求
+
+**职责说明：**
+- ✅ 四提供商客户端创建（first-party/Bedrock/Vertex/Foundry）
+- ✅ 认证配置
+- ✅ 代理配置
+- ✅ 自定义Header注入
+- ✅ Client Request ID生成（用于超时关联）
+- ❌ API请求构造
+- ❌ 响应处理
+
+---
+
+#### 4.2.7 `claude.ts` — API请求构造与模型调用
+
+**真实入口签名（简化）：**
+```typescript
+export async function* queryModel(options: Options): AsyncGenerator<...>
+export async function* queryModelWithStreaming(options: Options): AsyncGenerator<...>
+export async function queryModelWithoutStreaming(options: Options): Promise<AssistantMessage>
+export async function* executeNonStreamingRequest(...): AsyncGenerator<SystemAPIErrorMessage, BetaMessage>
+export function getExtraBodyParams(betaHeaders?: string[]): JsonObject
+export function getPromptCachingEnabled(model: string): boolean
+export function getCacheControl(options: { scope?: CacheScope; querySource?: QuerySource }): {...}
+export function userMessageToMessageParam(...): MessageParam
+export function assistantMessageToMessageParam(...): MessageParam
+export async function verifyApiKey(apiKey: string, isNonInteractiveSession: boolean): Promise<boolean>
+export function getAPIMetadata(): { user_id: string }
+
+export type Options = {
+  getToolPermissionContext: () => Promise<ToolPermissionContext>
+  model: string
+  toolChoice?: BetaToolChoiceTool | BetaToolChoiceAuto | undefined
+  isNonInteractiveSession: boolean
+  extraToolSchemas?: BetaToolUnion[]
+  maxOutputTokensOverride?: number
+  fallbackModel?: string
+  onStreamingFallback?: () => void
+  querySource: QuerySource
+  agents: AgentDefinition[]
+  allowedAgentTypes?: string[]
+  hasAppendSystemPrompt: boolean
+  fetchOverride?: ClientOptions['fetch']
+  enablePromptCaching?: boolean
+  skipCacheWrite?: boolean
+  temperatureOverride?: number
+  effortValue?: EffortValue
+  mcpTools: Tools
+  hasPendingMcpServers?: boolean
+  queryTracking?: QueryChainTracking
+  agentId?: AgentId
+  outputFormat?: BetaJSONOutputFormat
+  fastMode?: boolean
+  advisorModel?: string
+  addNotification?: (notif: Notification) => void
+  taskBudget?: { total: number; remaining?: number }
+}
+```
+
+**关键类型：**
+```typescript
+type QuerySource =
+  | 'repl_main_thread'
+  | 'repl_main_thread:outputStyle:custom'
+  | 'repl_main_thread:outputStyle:Explanatory'
+  | 'repl_main_thread:outputStyle:Learning'
+  | 'sdk'
+  | 'agent:custom'
+  | 'agent:default'
+  | 'agent:builtin'
+  | 'compact'
+  | 'hook_agent'
+  | 'hook_prompt'
+  | 'verification_agent'
+  | 'side_question'
+  | 'auto_mode'
+  | 'model_validation'
+  | 'bash_classifier'
+```
+
+**输入输出：**
+- 输入：完整查询选项（消息、工具、配置等）
+- 输出：流式/非流式响应
+- **Usage/Stream Event边界：**
+  - Usage仅在最终事件中提供完整统计
+  - Stream Event逐个产生，`content_block_delta`累积
+  - `content_block_stop`标记块完成
+  - `message_delta`提供最终usage和stop_reason
+
+**状态与配置来源：**
+- 闭包状态：流式过程中累积`contentBlocks`
+- 无持久化状态
+- Beta Headers：动态根据功能和模型注入
+- Prompt Caching：`getPromptCachingEnabled()` + `cache_control`配置
+- Fast Mode：`getFastModeHeaderLatched()`（粘性开关）
+- Thinking：`modelSupportsThinking()` + `modelSupportsAdaptiveThinking()`
+- 缓存编辑：`consumePendingCacheEdits()` + `getPinnedCacheEdits()`
+
+**请求/流式响应生命周期：**
+```
+1. 参数准备（paramsFromContext）
+   ├─ Beta headers组装
+   ├─ Output config（effort、taskBudget、outputFormat）
+   ├─ Thinking配置
+   ├─ Prompt Caching控制
+   └─ Cache edits注入
+2. 客户端获取（通过withRetry）
+3. 流式请求发起
+   ├─ message_start → 初始化partialMessage、usage
+   ├─ content_block_start → 初始化contentBlock
+   ├─ content_block_delta → 累积text/input/signature
+   ├─ content_block_stop → 完成块，yield assistantMessage
+   ├─ message_delta → 更新usage、stop_reason
+   └─ message_stop → 结束
+4. 失败处理
+   ├─ 流中断 → 降级到非流式重试
+   ├─ 看门狗超时（STREAM_IDLE_TIMEOUT_MS）→ 中断+重试
+   └─ 其他错误 → 传递给withRetry
+```
+
+**设计取舍/备选：**
+- 选择：流式优先 + 非流式降级
+- 理由：流式用户体验好，非流式更可靠
+- 代价：双路径维护，行为可能不一致
+- 备选：仅非流式
+- 备选缺点：用户体验差
+- 选择理由：用户体验优先级高于维护成本
+
+**源码测试证据：**
+- 无独立单元测试，集成在完整流程中
+- **query-core的恢复逻辑只作调用方，不复制：** query-core处理压缩、历史管理等对话恢复，model-api只负责API层
+
+**职责说明：**
+- ✅ API请求参数构造
+- ✅ 流式响应处理
+- ✅ 非流式降级
+- ✅ Prompt Caching配置
+- ✅ Beta Headers管理
+- ✅ Thinking配置
+- ✅ Fast Mode控制
+- ❌ 对话历史管理
+- ❌ 对话恢复（query-core负责）
+- ❌ 工具执行
+
+---
+
+#### 4.2.8 `withRetry.ts` — 重试与降级逻辑
+
+**真实入口签名：**
+```typescript
+export const DEFAULT_MAX_RETRIES = 10
+export const MAX_529_RETRIES = 3
+export const BASE_DELAY_MS = 500
+
+export interface RetryContext {
+  maxTokensOverride?: number
+  model: string
+  thinkingConfig: ThinkingConfig
+  fastMode?: boolean
+}
+
+export interface RetryOptions {
+  maxRetries?: number
+  model: string
+  fallbackModel?: string
+  thinkingConfig: ThinkingConfig
+  fastMode?: boolean
+  signal?: AbortSignal
+  querySource?: QuerySource
+  initialConsecutive529Errors?: number
+}
+
+export class CannotRetryError extends Error {
+  constructor(public readonly originalError: unknown, public readonly retryContext: RetryContext)
+}
+
+export class FallbackTriggeredError extends Error {
+  constructor(public readonly originalModel: string, public readonly fallbackModel: string)
+}
+
+export async function* withRetry<T>(
+  getClient: () => Promise<Anthropic>,
+  operation: (client: Anthropic, attempt: number, context: RetryContext) => Promise<T>,
+  options: RetryOptions
+): AsyncGenerator<SystemAPIErrorMessage, T>
+
+export function getRetryDelay(attempt: number, retryAfterHeader?: string | null, maxDelayMs?: number): number
+export function parseMaxTokensContextOverflowError(error: APIError): { inputTokens: number; maxTokens: number; contextLimit: number } | undefined
+export function is529Error(error: unknown): boolean
+export function getDefaultMaxRetries(): number
+```
+
+**关键类型：**
+```typescript
+interface RetryContext {
+  maxTokensOverride?: number
+  model: string
+  thinkingConfig: ThinkingConfig
+  fastMode?: boolean
+}
+
+interface RetryOptions {
+  maxRetries?: number
+  model: string
+  fallbackModel?: string
+  thinkingConfig: ThinkingConfig
+  fastMode?: boolean
+  signal?: AbortSignal
+  querySource?: QuerySource
+  initialConsecutive529Errors?: number
+}
+
+class CannotRetryError extends Error {
+  originalError: unknown
+  retryContext: RetryContext
+}
+
+class FallbackTriggeredError extends Error {
+  originalModel: string
+  fallbackModel: string
+}
+```
+
+**输入输出：**
+- 输入：客户端工厂、操作函数、重试选项
+- 输出：成功结果或错误，中间yield SystemAPIErrorMessage
+- 输入输出示例：
+  - 529前台源 → 重试（最多10次），Opus连续3次 → FallbackTriggeredError
+  - 529后台源 → 直接失败（CannotRetryError）
+  - 401 → 清除缓存+刷新凭证+重试
+  - 429 → 非订阅/企业版重试，订阅用户不重试
+  - 连接错误（ECONNRESET/EPIPE）→ 禁用keep-alive+重试
+  - Max tokens溢出 → 调整maxTokensOverride+重试
+
+**状态与配置来源：**
+- 闭包状态：
+  - `retryContext`（可变，每次尝试可调整）
+  - `consecutive529Errors`（计数Opus连续529）
+- **529重试白名单：**
+  ```typescript
+  const FOREGROUND_529_RETRY_SOURCES = new Set<QuerySource>([
+    'repl_main_thread',
+    'repl_main_thread:outputStyle:custom',
+    'repl_main_thread:outputStyle:Explanatory',
+    'repl_main_thread:outputStyle:Learning',
+    'sdk',
+    'agent:custom',
+    'agent:default',
+    'agent:builtin',
+    'compact',
+    'hook_agent',
+    'hook_prompt',
+    'verification_agent',
+    'side_question',
+    'auto_mode',
+    'bash_classifier',
+  ])
+  ```
+- 环境变量配置：
+  - `CLAUDE_CODE_MAX_RETRIES`（覆盖DEFAULT_MAX_RETRIES）
+  - `CLAUDE_CODE_UNATTENDED_RETRY`（持久重试模式，无限+心跳）
+  - `FALLBACK_FOR_ALL_PRIMARY_MODELS`（扩展降级触发范围）
+
+**请求/流式响应生命周期：**
+```
+1. 初始化
+   ├─ 确定maxRetries
+   ├─ 初始化retryContext
+   ├─ 初始化consecutive529Errors（来自initialConsecutive529Errors）
+   └─ 客户端为null（首次获取）
+2. 尝试循环
+   ├─ 检查signal.aborted
+   ├─ 检查mock限流
+   ├─ 获取客户端（首次或认证错误后重建）
+   ├─ 执行operation
+   ├─ 成功 → 返回
+   └─ 失败 → 错误处理分支
+3. 错误处理
+   ├─ Fast Mode处理
+   │  ├─ 429/529且retry-after短 → 重试（保持fast mode）
+   │  ├─ 429/529且retry-after长 → 进入cooldown（禁用fast mode）
+   │  └─ fast mode不支持 → 禁用+重试
+   ├─ 529处理
+   │  ├─ 后台源 → 直接失败
+   │  ├─ 前台源 → 计数consecutive529Errors
+   │  ├─ Opus且≥3次且有fallbackModel → FallbackTriggeredError
+   │  └─ 否则 → 继续重试
+   ├─ 检查是否可重试
+   │  ├─ Persistent模式：429/529始终重试
+   │  ├─ x-should-retry: true → 非订阅/企业版重试
+   │  ├─ x-should-retry: false → 仅ANT且5xx重试
+   │  ├─ 401 → 清除缓存+重试
+   │  ├─ 403 OAuth revoked → 刷新+重试
+   │  ├─ 连接错误 → 重试
+   │  ├─ 408/409 → 重试
+   │  ├─ 5xx → 重试
+   │  └─ 其他 → 不可重试 → CannotRetryError
+   ├─ Max tokens溢出调整
+   │  ├─ 解析error获取inputTokens/contextLimit
+   │  ├─ 计算adjustedMaxTokens（预留safety buffer + thinking budget）
+   │  ├─ 设置retryContext.maxTokensOverride
+   │  └─ 继续重试
+   ├─ 指数退避等待
+   │  ├─ 读取Retry-After header（优先）
+   │  ├─ 否则：BASE_DELAY_MS × 2^(attempt-1)，上限maxDelayMs
+   │  ├─ 加随机抖动
+   │  └─ Persistent模式：429可等待到reset time，上限6小时
+   ├─ Persistent模式心跳
+   │  ├─ 延迟>60s时，每30s yield SystemAPIErrorMessage
+   │  └─ 保持会话活跃，避免被宿主环境关闭
+   └─ 超过maxRetries → CannotRetryError
+```
+
+**重试/Fallback与错误映射：**
+
+| 错误类型 | 触发条件 | 重试策略 | Fallback | 调用方可见结果 |
+|---------|---------|---------|---------|--------------|
+| 529/overloaded_error | 前台源 | 最多10次，指数退避 | Opus连续3次触发 | SystemAPIErrorMessage；FallbackTriggeredError |
+| 529/overloaded_error | 后台源 | 不重试 | - | CannotRetryError |
+| 429 | 非订阅/企业版 | 最多10次，指数退避 | - | SystemAPIErrorMessage |
+| 429 | 订阅用户（非企业） | 不重试 | - | 直接错误 |
+| 401 | 认证失败 | 清除缓存+刷新凭证+重试 | - | 重试后仍失败 → 认证错误 |
+| 403 | OAuth revoked | 刷新token+重试 | - | 重试后仍失败 → 认证错误 |
+| 400 | prompt too long | 不重试 | - | 由query-core withhold并处理恢复 |
+| 400 | max tokens溢出 | 调整maxTokensOverride+重试 | - | 调整后重试 |
+| 连接错误 | ECONNRESET/EPIPE | 禁用keep-alive+重试 | - | 重试 |
+| 408/409 | 超时/锁冲突 | 重试 | - | 重试 |
+| 5xx | 服务器错误 | 重试 | - | 重试 |
+| 流式失败 | 任意流式错误 | 降级到非流式重试 | - | 非流式响应 |
+
+**设计取舍/备选：**
+- 选择：529前台/后台二分决策
+- 理由：用户等待的请求值得重试，后台任务失败不影响体验，避免过载放大
+- 代价：需维护来源白名单
+- 备选：统一策略（都重试或都不重试）
+- 备选缺点：要么用户体验差，要么过载放大
+- 选择理由：平衡用户体验与系统稳定性
+- 选择：Opus 3次529降级硬编码阈值
+- 理由：Opus容量更受限，快速降级保持可用性
+- 代价：可能过于敏感或不够敏感
+- 备选：动态阈值或配置
+- 备选缺点：增加复杂度
+- 选择理由：简单有效，当前经验3次合适
+
+**源码测试证据：**
+- 无独立测试，集成在API调用中
+- 证据边界：降级后的对话适配在query-core（tombstone、重建StreamingToolExecutor等）
+
+**职责说明：**
+- ✅ 重试策略执行
+- ✅ 529前台/后台区分
+- ✅ Opus降级触发
+- ✅ Fast Mode cooldown
+- ✅ Max tokens溢出调整
+- ✅ Persistent模式心跳
+- ❌ 降级后的对话适配
+- ❌ 模型切换逻辑
+- ❌ 错误用户友好化（errors.ts负责）
+
+---
+
+#### 4.2.9 `errors.ts` — 错误分类与用户友好消息
+
+**真实入口签名：**
+```typescript
+export const API_ERROR_MESSAGE_PREFIX = 'API Error'
+export const PROMPT_TOO_LONG_ERROR_MESSAGE = 'Prompt is too long'
+export const CREDIT_BALANCE_TOO_LOW_ERROR_MESSAGE = 'Credit balance is too low'
+export const INVALID_API_KEY_ERROR_MESSAGE = 'Not logged in · Please run /login'
+export const INVALID_API_KEY_ERROR_MESSAGE_EXTERNAL = 'Invalid API key · Fix external API key'
+export const ORG_DISABLED_ERROR_MESSAGE_ENV_KEY_WITH_OAUTH = 'Your ANTHROPIC_API_KEY belongs to a disabled organization · Unset the environment variable to use your subscription instead'
+export const ORG_DISABLED_ERROR_MESSAGE_ENV_KEY = 'Your ANTHROPIC_API_KEY belongs to a disabled organization · Update or unset the environment variable'
+export const TOKEN_REVOKED_ERROR_MESSAGE = 'OAuth token revoked · Please run /login'
+export const CUSTOM_OFF_SWITCH_MESSAGE = 'Opus is experiencing high load, please use /model to switch to Sonnet'
+export const API_TIMEOUT_ERROR_MESSAGE = 'Request timed out'
+
+export function startsWithApiErrorPrefix(text: string): boolean
+export function isPromptTooLongMessage(msg: AssistantMessage): boolean
+export function parsePromptTooLongTokenCounts(rawMessage: string): { actualTokens: number | undefined; limitTokens: number | undefined }
+export function getPromptTooLongTokenGap(msg: AssistantMessage): number | undefined
+export function isMediaSizeError(raw: string): boolean
+export function isMediaSizeErrorMessage(msg: AssistantMessage): boolean
+export function getPdfTooLargeErrorMessage(): string
+export function getPdfPasswordProtectedErrorMessage(): string
+export function getPdfInvalidErrorMessage(): string
+export function getImageTooLargeErrorMessage(): string
+export function getRequestTooLargeErrorMessage(): string
+export function getTokenRevokedErrorMessage(): string
+export function getOauthOrgNotAllowedErrorMessage(): string
+
+export function getAssistantMessageFromError(
+  error: unknown,
+  model: string,
+  options?: {
+    messages?: Message[]
+    messagesForAPI?: (UserMessage | AssistantMessage)[]
+  }
+): AssistantMessage
+
+export function classifyAPIError(error: unknown): string
+export function categorizeRetryableAPIError(error: APIError): SDKAssistantMessageError
+export function getErrorMessageIfRefusal(stopReason: BetaStopReason | null, model: string): AssistantMessage | undefined
+export function isValidAPIMessage(value: unknown): value is BetaMessage
+export function extractUnknownErrorFormat(value: unknown): string | undefined
+```
+
+**关键类型：**
+```typescript
+type AssistantMessage = {
+  type: 'assistant'
+  message: BetaMessage
+  isApiErrorMessage?: boolean
+  errorDetails?: string
+  requestId?: string
+}
+```
+
+**输入输出：**
+- 输入：原始错误（SDK Error、APIError、任意unknown）
+- 输出：用户友好AssistantMessage
+- 输入输出示例：
+  - 401认证失败 → `{ content: "Not logged in · Please run /login · API Error: ...", error: "authentication_failed" }`
+  - 404模型不存在 → `{ content: "The model claude-invalid is not available...", error: "invalid_request" }`
+  - 429限流 → `{ content: "Rate limit reached...", error: "rate_limit" }`
+  - 529过载 → `{ content: "Opus is experiencing high load...", error: "rate_limit" }`
+  - prompt too long → `{ content: "Prompt is too long", error: "invalid_request", errorDetails: "..." }`
+
+**Live与Mock的验证差异：**
+- Live：真实API错误格式，需与API保持同步
+- Mock：VCR磁带可能过期，需定期更新
+- 错误匹配脆弱：依赖字符串匹配，API消息变更可能导致匹配失败
+
+**模型Alias/Family匹配：**
+- 3P降级建议：`get3PFallbackSuggestion()`
+  - Opus 4.6 → Opus 4.1
+  - Sonnet 4.6 → Sonnet 4.5
+  - Sonnet 4.5 → Sonnet 4.0
+- 匹配：大小写不敏感，支持`-`和`_`分隔符
+
+**设计取舍/备选：**
+- 选择：集中式`getAssistantMessageFromError()`转换
+- 理由：单一错误处理点，用户消息一致
+- 代价：函数庞大，分支多
+- 备选：分散式错误处理
+- 备选缺点：消息不一致，容易遗漏
+- 选择理由：用户体验一致性优先级高于代码组织
+- 选择：字符串匹配错误分类
+- 理由：SDK不总是传递正确的status code（特别是流式529）
+- 代价：脆弱，API消息变更可能破坏
+- 备选：仅依赖status code
+- 备选缺点：流式场景不可靠
+- 选择理由：可靠性优先级高于脆弱性（通过测试监控）
+
+**源码测试证据：**
+- 无独立测试，集成在API调用流程中
+- 证据边界：可恢复错误由query-core withhold，不立即显示
+
+**职责说明：**
+- ✅ 错误分类
+- ✅ 用户友好消息生成
+- ✅ 3P降级建议
+- ✅ prompt too long token解析
+- ✅ media size错误检测
+- ❌ 错误恢复
+- ❌ 重试逻辑
+
+---
+
+### 4.3 模块与状态所有权
 
 | 模块 | 拥有的状态 | 主要操作 | 不承担的职责 |
 |------|-----------|---------|------------|
-| `model.ts` | 默认模型配置、模型名称映射 | 解析别名、选择默认模型、渲染显示名 | 验证模型可用性 |
+| `model.ts` | 无（纯函数） | 解析别名、选择默认模型、渲染显示名、后缀处理 | 验证模型可用性 |
 | `modelOptions.ts` | 无（纯函数） | 生成模型选项列表、升级提示 | UI 渲染 |
-| `providers.ts` | 无（环境变量驱动） | 确定当前提供商 | 认证管理 |
-| `bedrock.ts` | `getBedrockInferenceProfiles()` 缓存 | Bedrock 客户端创建、推理配置文件查询 | Vertex/Foundry 适配 |
-| `validateModel.ts` | `validModelCache` | 模型可用性验证 | 对话恢复 |
-| `client.ts` | 无 | 创建 Anthropic 客户端（支持各提供商） | 请求构造 |
-| `claude.ts` | 无（纯函数 + 闭包） | 构造 API 请求、处理流式响应 | 对话历史管理 |
-| `withRetry.ts` | `retryContext`（闭包）、`consecutive529Errors` | 重试逻辑、降级触发 | 降级后的对话适配 |
-| `errors.ts` | 无 | 错误分类与用户友好消息生成 | 错误恢复 |
+| `providers.ts` | 无（环境变量驱动） | 确定当前提供商、检查第一方端点 | 认证管理 |
+| `bedrock.ts` | `getBedrockInferenceProfiles()` 缓存 | Bedrock 客户端创建、推理配置文件查询、区域前缀处理、ARN解析 | Vertex/Foundry 适配 |
+| `validateModel.ts` | `validModelCache` | 模型可用性验证、3P降级建议 | 对话恢复 |
+| `client.ts` | 无 | 创建 Anthropic 客户端（支持四提供商）、认证配置、代理配置 | 请求构造 |
+| `claude.ts` | 无（纯函数 + 闭包） | 构造 API 请求、处理流式响应、非流式降级、Beta管理 | 对话历史管理、对话恢复 |
+| `withRetry.ts` | `retryContext`（闭包）、`consecutive529Errors` | 重试逻辑、降级触发、Fast Mode cooldown、Persistent模式心跳 | 降级后的对话适配、模型切换 |
+| `errors.ts` | 无 | 错误分类与用户友好消息生成、token解析、media检测 | 错误恢复、重试逻辑 |
 | `api.ts` | 无 | 工具 schema 转换、系统提示分块 | 模型调用 |
 
 ### 4.3 主控制流
@@ -453,19 +1280,39 @@ type APIProvider = 'firstParty' | 'bedrock' | 'vertex' | 'foundry'
 
 ### 8.1 本 spec 主拥有的文件
 
-- `src/services/api/claude.ts`：API 请求构造与模型调用
-- `src/services/api/client.ts`：Anthropic 客户端创建与配置
-- `src/services/api/errors.ts`：错误分类与用户友好消息
-- `src/services/api/withRetry.ts`：重试逻辑与降级触发
-- `src/utils/model/model.ts`：模型选择与解析
-- `src/utils/model/modelOptions.ts`：模型选项列表生成
-- `src/utils/model/providers.ts`：API 提供商确定
-- `src/utils/model/bedrock.ts`：Bedrock 特定逻辑
-- `src/utils/model/validateModel.ts`：模型验证
-- `src/utils/model/configs.ts`：模型配置常量
-- `src/utils/model/modelAllowlist.ts`：模型白名单
-- `src/commands/model/`：模型选择命令
-- `scripts/live-model-validation.ts`：Live 模型验证脚本
+| 文件 | 职责 | 模块设计卡 |
+|------|------|-----------|
+| `src/services/api/claude.ts` | API 请求构造、流式响应处理、非流式降级 | 4.2.7 |
+| `src/services/api/client.ts` | 四提供商（first-party/Bedrock/Vertex/Foundry）客户端创建、认证配置、代理配置 | 4.2.6 |
+| `src/services/api/errors.ts` | 错误分类、用户友好消息生成、3P降级建议 | 4.2.9 |
+| `src/services/api/withRetry.ts` | 重试逻辑、529前台/后台区分、Opus降级触发、Fast Mode cooldown、Persistent模式心跳 | 4.2.8 |
+| `src/utils/model/model.ts` | 模型别名解析、[1m]后缀处理、订阅层级默认模型选择、旧版模型重定向 | 4.2.1 |
+| `src/utils/model/modelOptions.ts` | 模型选项列表生成、升级提示 | - |
+| `src/utils/model/providers.ts` | API提供商确定、第一方端点检查 | 4.2.2 |
+| `src/utils/model/bedrock.ts` | Bedrock客户端创建、推理配置文件查询、区域前缀处理、ARN解析、Backing model查找 | 4.2.5 |
+| `src/utils/model/validateModel.ts` | 模型可用性验证、3P降级建议 | 4.2.4 |
+| `src/utils/model/configs.ts` | 四提供商模型ID映射、规范模型键定义 | 4.2.3 |
+| `src/utils/model/modelAllowlist.ts` | 模型白名单匹配（家族/版本/精确ID三层） | - |
+| `src/commands/model/` | 模型选择命令UI | - |
+| `scripts/live-model-validation.ts` | Live模型验证独立脚本 | 4.2.4（Live与Mock差异） |
+
+### 8.2 附加API文件说明
+
+| 文件 | 职责 | 与本spec关系 |
+|------|------|------------|
+| `src/services/api/api.ts` | 工具schema转换、系统提示分块 | 被`claude.ts`使用 |
+| `src/services/api/logging.ts` | API请求/响应日志记录 | 被`claude.ts`使用 |
+| `src/services/api/errorUtils.ts` | 错误提取与格式化工具 | 被`errors.ts`使用 |
+| `src/services/api/rateLimitMocking.ts` | 限流Mock工具（测试用） | 被`withRetry.ts`使用 |
+| `src/utils/model/aliases.ts` | 模型别名定义常量 | 被`model.ts`使用 |
+| `src/utils/model/modelStrings.ts` | 模型字符串常量 | 被`model.ts`使用 |
+| `src/utils/model/modelSupportOverrides.ts` | 模型支持覆盖配置 | 被`model.ts`使用 |
+| `src/utils/model/agent.ts` | Agent模型配置 | 被`model.ts`使用 |
+| `src/utils/model/check1mAccess.ts` | 1M上下文访问检查 | 被`model.ts`使用 |
+| `src/utils/model/contextWindowUpgradeCheck.ts` | 上下文窗口升级检查 | 被`model.ts`使用 |
+| `src/utils/model/deprecation.ts` | 模型弃用配置 | 被`model.ts`使用 |
+| `src/utils/model/antModels.ts` | ANT内部模型配置 | 被`model.ts`使用 |
+| `src/utils/model/antModelOverrides.ts` | ANT模型覆盖配置 | 被`model.ts`使用 |
 
 ## 9. 改进建议
 
