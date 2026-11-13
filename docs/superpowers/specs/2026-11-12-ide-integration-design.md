@@ -146,7 +146,567 @@ function hasAccessToIDEExtensionDiffFeature(
 - showDiffInIDE 等待 IDE 端 RPC 返回，可通过 toolUseContext.abortController 取消
 - showDiffInIDE 在进程 beforeExit 时也会尝试清理 tab
 
-### 4.2 模块与状态所有权
+### 4.2 模块设计卡
+
+#### 模块 1：IDE 发现与 Lockfile 管理
+
+**真实入口签名/关键类型：**
+```typescript
+async function detectIDEs(includeInvalid: boolean): Promise<DetectedIDEInfo[]>
+async function findAvailableIDE(): Promise<DetectedIDEInfo | null>
+async function cleanupStaleIdeLockfiles(): Promise<void>
+async function getSortedIdeLockfiles(): Promise<string[]>
+async function getIdeLockfilesPaths(): Promise<string[]>
+
+type LockfileJsonContent = {
+  workspaceFolders?: string[]
+  pid?: number
+  ideName?: string
+  transport?: 'ws' | 'sse'
+  runningInWindows?: boolean
+  authToken?: string
+}
+
+type IdeLockfileInfo = {
+  workspaceFolders: string[]
+  port: number
+  pid?: number
+  ideName?: string
+  useWebSocket: boolean
+  runningInWindows: boolean
+  authToken?: string
+}
+
+type DetectedIDEInfo = {
+  name: string
+  port: number
+  workspaceFolders: string[]
+  url: string
+  isValid: boolean
+  authToken?: string
+  ideRunningInWindows?: boolean
+}
+```
+
+**输入输出：**
+- 输入：`includeInvalid`（是否返回 workspace 不匹配的 IDE）、环境变量 `CLAUDE_CODE_SSE_PORT`、`CLAUDE_CODE_IDE_SKIP_VALID_CHECK`
+- 输出：`DetectedIDEInfo[]` 数组，按 lockfile mtime 降序排列
+- 副作用：读取 `~/.claude/ide/<port>.lock` 文件，WSL 下还读取 Windows 用户目录下的 lockfile
+
+**状态与缓存：**
+- 无持久化状态
+- 单次调用内通过 `makeAncestorPidLookup()` 闭包缓存祖先 PID（避免多次 `ps` 调用）
+- WSL host IP 通过 `memoize` 缓存，key 为 `(runningInWindows, port)`
+- `getIdeLockfilesPaths` 在 WSL 下缓存 `getWindowsUserProfile()` 结果
+
+**发现流程：**
+```
+detectIDEs(includeInvalid)
+  → 获取 cwd 并 normalize('NFC')
+  → getSortedIdeLockfiles()
+    → getIdeLockfilesPaths()
+      → 非 WSL：仅 [~/.claude/ide]
+      → WSL：[~/.claude/ide, /mnt/c/Users/<user>/.claude/ide, ...]
+    → 并行 stat 所有 lockfile，按 mtime 降序排序
+  → 并行 readIdeLockfile() 读取所有 lockfile
+    → 尝试 JSON parse，失败则按旧格式（纯文本行）解析
+  → 对每个 lockfile：
+    → 检查是否 skip valid check（env var）
+    → 检查端口是否匹配 CLAUDE_CODE_SSE_PORT
+    → 否则检查 workspaceFolders 是否包含 cwd
+      → normalize('NFC') 比较
+      → WSL 下尝试原始路径和转换后路径
+      → Windows 下忽略盘符大小写
+    → 如需要：祖先 PID 检查（非 WSL 且 supported terminal）
+      → lockfile.pid 必须在祖先链中
+      → 使用 getAncestorPidAsync() 从 process.ppid 向上遍历 10 层
+    → detectHostIP()
+      → 非 WSL：127.0.0.1
+      → WSL 且 runningInWindows：尝试 gateway IP（ip route show default），fallback 到 127.0.0.1
+    → 构建 url：ws://<host>:<port> 或 http://<host>:<port>/sse
+  → 如 !includeInvalid 且有 CLAUDE_CODE_SSE_PORT，优先返回端口匹配的 IDE
+  → 返回 isValid 匹配的 IDE
+```
+
+**Lockfile Stale 清理流程：**
+```
+cleanupStaleIdeLockfiles()
+  → getSortedIdeLockfiles()
+  → 对每个 lockfile：
+    → readIdeLockfile()
+    → 如读取失败 → delete lockfile
+    → 否则：
+      → detectHostIP()
+      → 如有 pid：
+        → 非 WSL：检查 isProcessRunning(pid)（kill -0）
+        → WSL：仅检查端口响应（pid 不可靠）
+      → 如无 pid：
+        → 检查端口响应（createConnection 连接超时 500ms）
+      → 如进程不存在或端口不响应 → delete lockfile
+```
+
+**祖先 PID 检查细节：**
+```
+makeAncestorPidLookup() → 返回 () => Promise<Set<number>>
+  → 闭包内缓存 promise，单次 detectIDEs 调用内只计算一次
+  → getAncestorPidAsync(process.ppid, 10)：向上遍历 10 层祖先进程
+  → 返回 Set<number> 包含所有祖先 PID
+  → 检查：lockfile.pid 在 Set 中 或 lockfile.pid === process.ppid
+```
+
+**错误降级：**
+- 单个 lockfile 读取/parse 失败 → catch 并跳过，继续处理下一个 lockfile
+- 祖先 PID 检查失败 → 跳过该 IDE，不返回
+- WSL gateway IP 检测失败 → fallback 到 127.0.0.1
+- checkIdeConnection 失败 → 标记为 stale 并删除 lockfile
+- 所有 lockfile 都无效 → 返回空数组，findAvailableIDE 继续轮询
+
+**设计取舍/备选：**
+| 决策 | 理由 | 备选方案 | 代价 |
+|---|---|---|---|
+| lockfile 按 mtime 排序 | 最近使用的 IDE 最可能是用户想要的 | 用固定优先级、用 workspace 匹配度排序 | 不能区分同时运行的多个 IDE 的使用频率 |
+| 祖先 PID 检查仅在 supported terminal 且非 WSL 启用 | WSL 中 pid namespace 不同，外部终端没有 IDE 祖先进程 | 始终检查、从不检查 | 外部终端中可能连接到错误的 IDE 窗口 |
+| 无文件锁，多实例可能竞争读写 | 简单，lockfile 写入频率低（仅 IDE 插件启动/关闭），冲突概率低 | 使用 flock、使用临时文件 rename | 增加复杂度，rename 在跨平台下仍可能有竞态 |
+| lockfile 包含完整 workspaceFolders | 可以精确匹配当前 cwd | 仅包含端口和 pid，workspace 匹配通过 IDE RPC 查询 | 增加 lockfile 大小，但避免了需要连接后才能知道 workspace 是否匹配 |
+| 支持旧格式（纯文本）向后兼容 | 旧版本 IDE 插件生成的 lockfile 仍可读取 | 强制用户升级插件 | 破坏向后兼容 |
+
+**源码测试证据：**
+- 实现位置：src/utils/ide.ts:298-433 (getSortedIdeLockfiles/readIdeLockfile/checkIdeConnection)、src/utils/ide.ts:462-581 (cleanupStaleIdeLockfiles/detectIDEs)
+- 测试覆盖：无直接覆盖，手动验证 lockfile 读写、stale 清理、祖先 PID 检查
+- 边界情况处理：
+  - WSL 下 Windows lockfile 路径检测失败 → catch 并跳过
+  - macOS NFD 路径 vs IDE NFC 路径 → normalize('NFC') 比较
+  - Windows 盘符大小写不敏感 → 统一转大写比较
+  - 多个 IDE 窗口有相同 workspace → 祖先 PID 检查消歧
+
+---
+
+#### 模块 2：IDE 选择与连接
+
+**真实入口签名/关键类型：**
+```typescript
+type IdeType = 'cursor' | 'windsurf' | 'vscode' | 'pycharm' | 'intellij' | 'webstorm' | 'phpstorm' | 'rubymine' | 'clion' | 'goland' | 'rider' | 'datagrip' | 'appcode' | 'dataspell' | 'aqua' | 'gateway' | 'fleet' | 'androidstudio'
+
+async function initializeIdeIntegration(
+  onIdeDetected: (ide: DetectedIDEInfo | null) => void,
+  ideToInstallExtension: IdeType | null,
+  onShowIdeOnboarding: () => void,
+  onInstallationComplete: (status: IDEExtensionInstallationStatus | null) => void
+): Promise<void>
+
+async function maybeInstallIDEExtension(
+  ideType: IdeType
+): Promise<IDEExtensionInstallationStatus | null>
+
+async function isIDEExtensionInstalled(ideType: IdeType): Promise<boolean>
+
+let currentIDESearch: AbortController | null
+```
+
+**输入输出：**
+- 输入：全局配置 `autoInstallIdeExtension`、`autoConnectIde`，环境变量 `TERM_PROGRAM`、`TERMINAL_EMULATOR`
+- 输出：动态 MCP 配置 `{ide: {type: 'sse-ide'|'ws-ide', url, ideName, authToken, ideRunningInWindows}}`
+- 副作用：可能调用 `code --install-extension`，修改全局配置 `diffTool` 为 'auto'
+
+**状态与缓存：**
+- `currentIDESearch: AbortController | null`（顶层，可取消前一次搜索）
+- `cachedRunningIDEs: IdeType[] | null`（顶层，detectRunningIDEs 缓存）
+- `isSupportedTerminal()` 结果通过 `memoize` 缓存
+- `isSupportedVSCodeTerminal()`、`isSupportedJetBrainsTerminal()` 同理
+
+**连接流程：**
+```
+initializeIdeIntegration()
+  → 并行：
+    1. findAvailableIDE() → 后台轮询最多 30 秒
+      → 每次循环：
+        → getIsScrollDraining() ? 跳过扫描只 sleep :
+          → cleanupStaleIdeLockfiles()
+          → detectIDEs(false)
+          → 如果恰好一个 valid IDE → onIdeDetected(ide) → setDynamicMcpConfig
+        → sleep(1000, signal)
+        → 检查 signal.aborted → 是则返回 null
+    2. 如 autoInstallIdeExtension 且 supported terminal：
+      → ideType = getTerminalIdeType()
+      → isIDEExtensionInstalled(ideType)
+        → VS Code：exec `code --list-extensions`，检查是否包含 anthropic.claude-code
+        → JetBrains：调用 isJetBrainsPluginInstalledCached()
+      → 如未安装 → maybeInstallIDEExtension(ideType)
+        → VS Code：exec `code --force --install-extension anthropic.claude-code`
+        → JetBrains：仅提示，不自动安装
+        → 成功：saveGlobalConfig({diffTool: 'auto'})
+        → onInstallationComplete(status)
+        → 如首次安装成功 → onShowIdeOnboarding()
+  → MCP 客户端连接到 ide url
+  → 连接成功后 AppState.mcp.clients 中出现 name='ide'、type='connected' 的客户端
+
+/ide 命令连接流：
+  → detectIDEs(true)
+  → 用户选择 IDE
+  → onChangeDynamicMcpConfig({ide: {type, url, ideName, authToken, ideRunningInWindows}})
+  → 等待 MCP 连接（最多 35 秒超时）
+  → 显示连接结果
+
+/ide 断开流：
+  → 用户选择 'None'
+  → ideClient.client.onclose = () => {}（禁用自动重连）
+  → clearServerCache('ide', ideClient.config)
+  → 从 AppState 移除 ide client、tools、commands
+  → onChangeDynamicMcpConfig(删除 ide 配置)
+```
+
+**SSE/WebSocket Transport 边界：**
+- Transport 类型由 lockfile `transport` 字段决定：'ws' → WebSocket，'sse' → SSE
+- URL 格式：
+  - SSE：`http://<host>:<port>/sse`
+  - WebSocket：`ws://<host>:<port>`
+- MCP 配置类型：
+  - SSE：`{type: 'sse-ide', url, ...}`
+  - WebSocket：`{type: 'ws-ide', url, ...}`
+- 传输层由 MCP 客户端统一管理，ide 模块不区分 transport 类型
+- callIdeRpc 通过 ConnectedMCPServer 调用，与 transport 无关
+
+**错误降级：**
+- findAvailableIDE 被新调用取消 → currentIDESearch.abort()，旧搜索停止
+- 扩展安装失败 → catch 错误，返回 IDEExtensionInstallationStatus 包含 error，不向上抛出
+- VS Code 命令不可用 → 跳过安装，仅提示
+- MCP 连接失败 → AppState.mcp.clients 中出现 type='failed' 的客户端，显示失败通知
+- /ide 连接超时（35 秒） → 显示超时消息，不重试
+
+**设计取舍/备选：**
+| 决策 | 理由 | 备选方案 | 代价 |
+|---|---|---|---|
+| 自动连接仅在恰好一个 IDE 时触发 | 避免在多 IDE 环境下连接到错误的 IDE | 始终自动连接最近使用的 | 用户可能需要频繁手动切换 |
+| scroll draining 期间跳过 lockfile 扫描 | 避免与终端滚动渲染争用事件循环，防止卡顿 | 降低扫描频率、后台线程扫描 | 自动连接可能延迟最多 1 秒 |
+| 30 秒轮询超时 | 足够 IDE 插件启动并写入 lockfile，太长会让用户等待 | 永久轮询、更短超时 | 错过 IDE 启动或让用户等待太久 |
+| currentIDESearch 可取消 | 避免多次调用 findAvailableIDE 时有多个并发轮询 | 忽略新调用、串行执行 | 浪费资源或响应慢 |
+| VS Code 自动安装，JetBrains 只提示 | VS Code CLI 稳定且市场公开，JetBrains 需要 IDE 内安装或 native build 限制 | 都不自动安装、都尝试自动安装 | VS Code 首次使用体验差或 JetBrains 安装失败率高 |
+| 连接超时 35 秒，比 MCP 30 秒稍长 | 给 MCP 连接足够时间，同时不会让用户无限等待 | 用 MCP 超时值、更短/更长 | 超时时间不匹配或用户等待太久 |
+
+**源码测试证据：**
+- 实现位置：src/utils/ide.ts:626-657 (findAvailableIDE)、src/utils/ide.ts:590-622 (maybeInstallIDEExtension)、src/utils/ide.ts:879-1494 (installIDEExtension)、src/commands/ide/ide.tsx:506-565 (IDECommandFlow.handleSelectIDE)
+- 测试覆盖：无直接覆盖，手动验证自动连接、手动选择、扩展安装
+- 边界情况处理：
+  - Linux 下 Cursor 可能错误实现 code 命令 → 清空 DISPLAY 环境变量
+  - Windows 下 VS Code 1.110.0+ PATH 问题 → 显式调用 code.cmd
+  - macOS 下从父进程路径推导 code 命令 → 通过 ps 检查并验证可执行文件存在
+
+---
+
+#### 模块 3：Diff 同步
+
+**真实入口签名/关键类型：**
+```typescript
+function useDiffInIDE({
+  onChange(option: PermissionOption, input: {file_path: string, edits: FileEdit[]}): void,
+  toolUseContext: ToolUseContext,
+  filePath: string,
+  edits: FileEdit[],
+  editMode: 'single' | 'multiple'
+}): {
+  closeTabInIDE: () => void
+  showingDiffInIDE: boolean
+  ideName: string
+  hasError: boolean
+}
+
+async function showDiffInIDE(
+  file_path: string,
+  edits: FileEdit[],
+  toolUseContext: ToolUseContext,
+  tab_name: string
+): Promise<{oldContent: string, newContent: string}>
+
+async function callIdeRpc<T>(
+  method: string,
+  params: unknown,
+  ideClient: ConnectedMCPServer
+): Promise<T>
+
+async function closeTabInIDE(tabName: string, ideClient?: MCPServerConnection): Promise<void>
+
+function computeEditsFromContents(
+  filePath: string,
+  oldContent: string,
+  newContent: string,
+  editMode: 'single' | 'multiple'
+): FileEdit[]
+```
+
+**输入输出：**
+- 输入：`filePath`、`edits`、`toolUseContext.mcpClients`、`toolUseContext.abortController`、全局配置 `diffTool`
+- 输出：三种可能结果（FILE_SAVED/TAB_CLOSED/DIFF_REJECTED），返回 `{oldContent, newContent}`
+- 副作用：在 IDE 中打开 diff tab，可能关闭 tab，修改文件内容（仅在用户确认后）
+
+**状态与缓存：**
+- `isUnmounted: MutableRefObject<boolean>`（组件内，避免 unmount 后 setState）
+- `sha: string`（useMemo，randomUUID().slice(0,6)）
+- `tabName: string`（useMemo，`✻ [Claude Code] <basename> (<sha>) ⧉`）
+- `hasError: boolean`（useState，IDE 断开时设置）
+
+**Open Diff 流程：**
+```
+useDiffInIDE effect → showDiffInIDE()
+  → 读取旧文件内容 oldContent（如文件不存在则为空）
+  → 注册 cleanup 回调：
+    → toolUseContext.abortController.signal.addEventListener('abort', cleanup)
+    → process.on('beforeExit', cleanup)
+  → getPatchForEdits() 生成 updatedFile
+  → 检查 ideClient.config.ideRunningInWindows（WSL 场景）
+    → 是：WindowsToWSLConverter.toIDEPath() 转换路径
+  → callIdeRpc('openDiff', {
+      old_file_path: ideOldPath,
+      new_file_path: ideOldPath,
+      new_file_contents: updatedFile,
+      tab_name: tabName
+    })
+  → 等待 RPC 结果，解析为三种消息类型
+```
+
+**OpenDiff 三种结果处理：**
+```typescript
+// 结果 1：FILE_SAVED - 用户在 IDE 中保存了文件
+function isSaveMessage(data: unknown): data is [{text: 'FILE_SAVED'}, {text: string}]
+  → newContent = data[1].text（用户可能在 IDE 中做了额外编辑）
+  → computeEditsFromContents(oldContent, newContent, editMode) 重新计算 edits
+  → onChange({type: 'accept-once'}, {file_path, edits: newEdits})
+  → cleanup()（关闭 tab）
+
+// 结果 2：TAB_CLOSED - 用户关闭了 diff tab
+function isClosedMessage(data: unknown): data is {text: 'TAB_CLOSED'}
+  → newContent = updatedFile（接受原始编辑，不做额外修改）
+  → onChange({type: 'accept-once'}, {file_path, edits})
+  → cleanup()（tab 已由用户关闭，再调用 close_tab 确保清理）
+
+// 结果 3：DIFF_REJECTED - 用户拒绝了编辑
+function isRejectedMessage(data: unknown): data is {text: 'DIFF_REJECTED'}
+  → newContent = oldContent（不应用任何修改）
+  → computeEditsFromContents 返回空数组
+  → cleanup()（关闭 tab）
+  → onChange({type: 'reject'}, {file_path, edits})
+```
+
+**Cleanup / 进程崩溃清理流程：**
+```
+cleanup()
+  → 幂等：isCleanedUp 标志防止重复调用
+  → 尝试 closeTabInIDE(tabName, ideClient)
+    → callIdeRpc('close_tab', {tab_name: tabName}, ideClient)
+    → catch 错误但不抛出（cleanup 是最佳努力）
+  → process.off('beforeExit', cleanup)
+  → toolUseContext.abortController.signal.removeEventListener('abort', cleanup)
+
+进程崩溃清理：
+  → beforeExit 事件可能在崩溃时不触发
+  → 下次启动时旧 tab 仍然存在
+  → 但 tabName 包含 UUID，下次 openDiff 会用新 UUID，不冲突
+  → 没有自动清理旧 tab 的机制（需要 IDE 插件配合）
+```
+
+**错误降级：**
+- showDiffInIDE 抛出错误 → setHasError(true)，回退到终端 diff
+- callIdeRpc 失败 → catch 并 cleanup，向上抛出错误触发回退
+- IDE 断开后调用 closeTabInIDE → catch 错误但不抛出
+- 组件 unmount 后收到 RPC 结果 → isUnmounted ref 检查，跳过 setState
+
+**设计取舍/备选：**
+| 决策 | 理由 | 备选方案 | 代价 |
+|---|---|---|---|
+| tabName 包含 UUID | 避免多个文件编辑时 tab 名冲突，进程崩溃后旧 tab 不影响新会话 | 用递增计数器、用文件名 | 冲突概率高或需要持久化状态 |
+| 三种消息类型覆盖所有用户交互 | FILE_SAVED（接受并可能修改）、TAB_CLOSED（接受原样）、DIFF_REJECTED（拒绝） | 仅两种状态（接受/拒绝） | 无法区分用户是否做了额外修改，或用户关闭 tab 是接受还是取消 |
+| cleanup 在 abort 和 beforeExit 都注册 | 用户按 Esc 取消或进程退出时清理 IDE tab，避免遗留 | 不清理、仅在一个地方清理 | tab 遗留或资源泄漏 |
+| 重新计算 edits（computeEditsFromContents） | 用户可能在 IDE 中做了额外修改，需要同步这些修改 | 直接使用原始 edits | 丢弃用户修改，造成困惑 |
+| 幂等 cleanup | 防止多个触发路径导致重复调用 | 不检查重复调用 | 可能调用 close_tab 多次，IDE 插件需处理 |
+| 回退到终端 diff | IDE 断开或出错时仍可继续工作 | 阻塞或中断流程 | 用户体验差 |
+
+**源码测试证据：**
+- 实现位置：src/hooks/useDiffInIDE.ts:216-327 (showDiffInIDE)、src/hooks/useDiffInIDE.ts:370-379 (isSaveMessage/isClosedMessage/isRejectedMessage)、src/hooks/useDiffInIDE.ts:170-200 (computeEditsFromContents)
+- 测试覆盖：无直接覆盖，手动验证三种结果处理、cleanup、错误回退
+- 边界情况处理：
+  - 文件不存在（ENOENT） → oldContent 为空
+  - 组件 unmount 后收到 RPC → isUnmounted ref 检查，跳过 setState
+  - WSL 路径转换 → WindowsToWSLConverter 双向转换
+  - 用户在 IDE 中做了额外修改 → computeEditsFromContents 重新计算 diff
+
+---
+
+#### 模块 4：WSL 路径转换
+
+**真实入口签名/关键类型：**
+```typescript
+interface IDEPathConverter {
+  toLocalPath(idePath: string): string
+  toIDEPath(localPath: string): string
+}
+
+class WindowsToWSLConverter implements IDEPathConverter {
+  constructor(private wslDistroName: string | undefined)
+  toLocalPath(windowsPath: string): string
+  toIDEPath(wslPath: string): string
+}
+
+function checkWSLDistroMatch(
+  windowsPath: string,
+  wslDistroName: string
+): boolean
+```
+
+**输入输出：**
+- 输入：Windows 路径或 WSL 路径，环境变量 `WSL_DISTRO_NAME`
+- 输出：转换后的路径
+- 副作用：可能 exec `wslpath -u` 或 `wslpath -w`
+
+**状态与缓存：**
+- 无状态，纯函数（除了 exec wslpath）
+- `getWindowsUserProfile()` 通过 `memoize` 缓存（会话内只调用一次）
+
+**路径转换流程：**
+```
+toLocalPath(windowsPath): WSL 路径
+  → 检查 WSL UNC 路径：
+    → 正则：/^\\\\wsl(?:\.localhost|\$)\\([^\\]+)(.*)$/
+    → 如匹配且 distroName !== this.wslDistroName → 不转换，返回原路径
+  → 尝试 exec `wslpath -u <windowsPath>`
+    → 成功：返回结果
+    → 失败：手动替换
+      → `\` → `/`
+      → `<drive>:` → `/mnt/<drive lowercased>`
+
+toIDEPath(wslPath): Windows 路径
+  → 尝试 exec `wslpath -w <wslPath>`
+    → 成功：返回结果
+    → 失败：返回原路径
+
+checkWSLDistroMatch(windowsPath, wslDistroName): boolean
+  → 匹配 WSL UNC 正则
+  → 如匹配且 distro 不同 → false
+  → 否则 → true
+```
+
+**WSL UNC 路径处理：**
+- UNC 路径格式：`\\wsl$\<distro>\<path>` 或 `\\wsl.localhost\<distro>\<path>`
+- 检查：`checkWSLDistroMatch()` 确保 distro 匹配
+- 不同 distro 的 UNC 路径 → 不转换，避免打开错误 distro 的文件
+- 路径比较时：同时检查原始路径和转换后路径
+
+**错误降级：**
+- wslpath exec 失败 → 手动转换（仅基础路径格式）
+- WSL UNC distro 不匹配 → 跳过该 lockfile，不返回该 IDE
+- 路径比较失败 → 继续检查下一个 lockfile
+
+**设计取舍/备选：**
+| 决策 | 理由 | 备选方案 | 代价 |
+|---|---|---|---|
+| 优先用 wslpath，fallback 到手动转换 | wslpath 处理复杂情况（如 UNC、网络驱动器）更准确，手动转换作为兜底 | 仅用 wslpath、仅手动转换 | 依赖外部工具或覆盖不全 |
+| 检查 WSL UNC distro 匹配 | 避免连接到运行在其他 distro 的 IDE 或打开其他 distro 的文件 | 忽略 distro 检查 | 可能打开错误的文件或连接错误的 IDE |
+| 路径比较时同时检查原始和转换后路径 | IDE 可能报告任一格式，确保匹配成功 | 仅检查转换后路径 | 可能匹配失败 |
+| getWindowsUserProfile 用 memoize 缓存 | powershell 调用慢（500ms-2s 冷启动），会话内只调用一次 | 每次都调用、用静态值 | 启动慢或在用户目录改变时出错 |
+
+**源码测试证据：**
+- 实现位置：src/utils/idePathConversion.ts:25-91 (WindowsToWSLConverter/checkWSLDistroMatch)、src/utils/ide.ts:435-453 (getWindowsUserProfile)
+- 测试覆盖：无直接覆盖，手动验证 WSL 路径双向转换、UNC distro 检查
+- 边界情况处理：
+  - WSL UNC 路径不同 distro → 不转换，返回原路径
+  - wslpath 调用失败 → 手动替换反斜杠和盘符
+  - Windows 用户目录检测失败 → catch 并跳过 Windows lockfile 路径
+
+---
+
+#### 模块 5：通知与生命周期
+
+**真实入口签名/关键类型：**
+```typescript
+// useIDEStatusIndicator（无导出，内部 hook）
+// useIdeConnectionStatus（其他 spec 可能拥有）
+
+type IDEDiffConfig = {
+  supported: boolean
+  showPrompt: boolean
+  ideName: string | null
+}
+
+// 通知类型：
+// - 'ide-status-hint'：提示用户使用 /ide（最多 5 次）
+// - 'ide-status-disconnected'：IDE 已断开连接
+// - 'ide-status-jetbrains-disconnected'：JetBrains IDE 已断开连接
+// - 'ide-status-install-error'：扩展安装错误
+```
+
+**输入输出：**
+- 输入：全局配置 `ideHintShownCount`、MCP 客户端连接状态、IDE 扩展安装状态
+- 输出：调用 addNotification/removeNotification
+- 副作用：可能修改全局配置 `ideHintShownCount`（最多 5 次）
+
+**状态与缓存：**
+- `hasShownHintRef: MutableRefObject<boolean>`（单次会话有效，避免重复显示）
+- 全局配置 `ideHintShownCount: number`（持久化，最多 5 次）
+
+**通知生命周期流程：**
+```
+useIDEStatusIndicator effect：
+  → 监听 MCP 客户端连接状态
+    → 连接断开 → 添加 'ide-status-disconnected' 或 'ide-status-jetbrains-disconnected' 通知
+    → 连接成功 → 移除断开通知
+
+  → 检查是否显示 hint：
+    → hasAccessToIDEExtensionDiffFeature()？
+    → diffTool === 'auto'？
+    → ideHintShownCount < 5？
+    → !hasShownHintRef.current？
+    → getIsScrollDraining()？
+    → 在 supported terminal？
+    → 延迟 3 秒后显示 'ide-status-hint' 通知
+    → saveGlobalConfig({ideHintShownCount: ideHintShownCount + 1})
+
+  → 检查扩展安装状态：
+    → 安装失败 → 添加 'ide-status-install-error' 通知
+
+通知移除：
+  → IDE 重新连接 → 移除断开通知
+  → 用户与通知交互 → 通知系统自动移除
+  → 组件 unmount → 移除所有添加的通知
+```
+
+**IDE 集成生命周期：**
+```
+启动 → initializeIdeIntegration()
+  → findAvailableIDE() 轮询最多 30 秒
+  → 如找到一个 IDE → setDynamicMcpConfig
+  → MCP 客户端连接 → connected 状态
+  → useIDEStatusIndicator 显示连接状态
+  → FileEditTool 调用 → useDiffInIDE → showDiffInIDE
+    → openDiff RPC → 等待用户决定
+    → 三种结果之一 → cleanup
+  → 用户输入 /ide → 选择/切换 IDE
+  → 用户退出 → beforeExit → cleanup diff tabs
+  → 进程崩溃 → diff tab 遗留（下次启动用新 UUID，不影响）
+```
+
+**错误降级：**
+- 通知添加失败 → catch 错误，继续执行
+- 全局配置保存失败 → catch 错误，hint 计数可能不准确
+- IDE 断开后用户继续使用 → 回退到终端 diff，不阻塞
+
+**设计取舍/备选：**
+| 决策 | 理由 | 备选方案 | 代价 |
+|---|---|---|---|
+| hint 最多显示 5 次 | 避免频繁提示打扰用户 | 无限显示、仅显示 1 次 | 用户可能忽略或过度打扰 |
+| hint 延迟 3 秒显示 | 避免在启动/滚动期间打扰用户 | 立即显示、更长延迟 | 用户可能已经开始输入 |
+| scroll draining 期间不显示 hint/不扫描 lockfile | 避免与终端滚动渲染争用事件循环，防止卡顿 | 降低优先级、后台线程 | 滚动卡顿或 hint 显示时机不佳 |
+| 仅在非 supported terminal 显示 hint | supported terminal 下会自动连接，不需要提示 | 始终显示、从不显示 | 冗余提示或用户不知道 /ide 命令 |
+| 断开通知区分 VS Code 和 JetBrains | JetBrains 插件连接可能有不同问题，需要不同提示 | 统一通知 | 用户可能不知道如何解决 JetBrains 特定问题 |
+
+**源码测试证据：**
+- 实现位置：src/hooks/notifs/useIDEStatusIndicator.tsx:24-159、src/hooks/useIDEIntegration.tsx:25-88
+- 测试覆盖：无直接覆盖，手动验证通知显示/移除、hint 计数
+- 边界情况处理：
+  - hint 计数达到 5 → 不再显示
+  - scroll draining 期间 → 跳过 hint 显示和 lockfile 扫描
+  - 全局配置保存失败 → catch 错误，继续执行
+
+---
+
+### 4.3 模块与状态所有权
 
 | 模块/对象 | 拥有的状态 | 主要操作 | 不承担的职责 | 与其他模块的接口 |
 |---|---|---|---|---|
@@ -165,9 +725,9 @@ function hasAccessToIDEExtensionDiffFeature(
 - isUnmounted ref 在 useDiffInIDE 内部：只在组件生命周期内有效，避免 unmount 后调用 setState
 - 祖先 PID 缓存使用 makeAncestorPidLookup 闭包：只在单次 detectIDEs 调用内有效，避免 PID 回收后 stale 缓存
 
-### 4.3 主控制流
+### 4.4 主控制流
 
-#### 4.3.1 启动时 IDE 自动发现与连接流
+#### 4.4.1 启动时 IDE 自动发现与连接流
 
 ```
 启动
@@ -194,7 +754,7 @@ function hasAccessToIDEExtensionDiffFeature(
     → MCP 客户端连接到 IDE → 连接成功后 AppState.mcp.clients 中出现 name='ide' 的 connected 客户端
 ```
 
-#### 4.3.2 IDE diff 同步流
+#### 4.4.2 IDE diff 同步流
 
 ```
 FileEditTool 请求用户确认
@@ -215,7 +775,7 @@ FileEditTool 请求用户确认
     → 否则：显示普通终端 diff
 ```
 
-#### 4.3.3 /ide 命令选择与连接流
+#### 4.4.3 /ide 命令选择与连接流
 
 ```
 用户输入 /ide
@@ -235,7 +795,7 @@ FileEditTool 请求用户确认
     → 否则：提示手动打开
 ```
 
-#### 4.3.4 失败分支
+#### 4.4.4 失败分支
 
 ```
 detectIDEs 中某个 lockfile 读取失败
@@ -251,7 +811,7 @@ showDiffInIDE 中 IDE 断开
   → 显示超时消息
 ```
 
-### 4.4 数据结构与持久化
+### 4.5 数据结构与持久化
 
 **Lockfile 格式（~/.claude/ide/<port>.lock）：**
 ```json
@@ -290,7 +850,7 @@ showDiffInIDE 中 IDE 断开
 - 没有持久化的 IDE 连接状态，每次启动重新发现和连接
 - showDiffInIDE 在 abort 或 beforeExit 时尝试关闭 tab，但如果进程崩溃可能遗留 tab（下次 openDiff 时旧 tab 不影响，因为 UUID 不同）
 
-### 4.5 跨子系统依赖
+### 4.6 跨子系统依赖
 
 | 子系统 | 调用方式 | 职责边界 | 相关 spec |
 |---|---|---|---|
