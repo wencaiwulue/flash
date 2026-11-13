@@ -1,6 +1,7 @@
 import { spawn } from 'child_process'
 import { mkdir, readFile, unlink, writeFile } from 'fs/promises'
 import { dirname, join } from 'path'
+import { spawnScriptArgs } from '../utils/bundledMode.js'
 import { getClaudeConfigHomeDir } from '../utils/envUtils.js'
 import { DaemonSupervisor } from './supervisor.js'
 
@@ -51,9 +52,7 @@ export async function startDaemon(kind = 'assistant', registryDir?: string): Pro
   const existing = await readRecord(kind, registryDir)
   if (existing && isAlive(existing.pid)) return existing
   if (existing) await unlink(recordPath(kind, registryDir)).catch(() => {})
-  const script = process.argv[1]
-  if (!script) throw new Error('Cannot locate the CLI entrypoint')
-  const child = spawn(process.execPath, [script, 'daemon', 'run', kind], {
+  const child = spawn(process.execPath, [...spawnScriptArgs(), 'daemon', 'run', kind], {
     detached: true,
     stdio: 'ignore',
     env: process.env,
@@ -82,11 +81,9 @@ export async function stopDaemon(kind = 'assistant', registryDir?: string): Prom
 }
 
 async function runForeground(kind: string): Promise<void> {
-  const script = process.argv[1]
-  if (!script) throw new Error('Cannot locate the CLI entrypoint')
   const supervisor = new DaemonSupervisor({
     spawn: workerKind =>
-      spawn(process.execPath, [script, '--daemon-worker', workerKind], {
+      spawn(process.execPath, [...spawnScriptArgs(), '--daemon-worker', workerKind], {
         stdio: 'inherit',
         env: process.env,
       }),

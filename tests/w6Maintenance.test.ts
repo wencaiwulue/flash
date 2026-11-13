@@ -107,30 +107,37 @@ describe('task maintenance handlers', () => {
 
 describe('export and completion handlers', () => {
   test('exports a real JSON transcript without overwriting', async () => {
-    const id = '11111111-1111-4111-8111-111111111111'
-    const source = join(temporary, 'input.json')
-    const output = join(temporary, 'output.txt')
-    await writeFile(
-      source,
-      JSON.stringify([
-        {
-          type: 'user',
-          uuid: id,
-          timestamp: '2026-01-02T03:04:05.000Z',
-          sessionId: id,
-          cwd: temporary,
-          userType: 'external',
-          version: '1.0.0',
-          message: { role: 'user', content: 'hello from export' },
-        },
-      ]),
-    )
-    await exportHandler(source, output)
-    expect(await readFile(output, 'utf8')).toContain('hello from export')
-    expect((await stat(output)).mode & 0o777).toBe(0o600)
-    const before = await readFile(output, 'utf8')
-    await expect(exportHandler(source, output)).rejects.toMatchObject({ code: 'EEXIST' })
-    expect(await readFile(output, 'utf8')).toBe(before)
+    const originalApiKey = process.env.ANTHROPIC_API_KEY
+    process.env.ANTHROPIC_API_KEY = 'offline-test-placeholder'
+    try {
+      const id = '11111111-1111-4111-8111-111111111111'
+      const source = join(temporary, 'input.json')
+      const output = join(temporary, 'output.txt')
+      await writeFile(
+        source,
+        JSON.stringify([
+          {
+            type: 'user',
+            uuid: id,
+            timestamp: '2026-01-02T03:04:05.000Z',
+            sessionId: id,
+            cwd: temporary,
+            userType: 'external',
+            version: '1.0.0',
+            message: { role: 'user', content: 'hello from export' },
+          },
+        ]),
+      )
+      await exportHandler(source, output)
+      expect(await readFile(output, 'utf8')).toContain('hello from export')
+      expect((await stat(output)).mode & 0o777).toBe(0o600)
+      const before = await readFile(output, 'utf8')
+      await expect(exportHandler(source, output)).rejects.toMatchObject({ code: 'EEXIST' })
+      expect(await readFile(output, 'utf8')).toBe(before)
+    } finally {
+      if (originalApiKey === undefined) delete process.env.ANTHROPIC_API_KEY
+      else process.env.ANTHROPIC_API_KEY = originalApiKey
+    }
   })
 
   test('generates escaped nested bash/zsh/fish completions and rejects unknown shells', async () => {

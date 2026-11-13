@@ -1,5 +1,6 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import { randomUUID } from 'crypto'
+import { EventEmitter } from 'events'
 import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
@@ -14,7 +15,7 @@ import {
   withJobLock,
   writeJobState,
 } from '../src/jobs/state.js'
-import { runJobSupervisor } from '../src/jobs/supervisor.js'
+import { runJobSupervisor, spawnSupervisorProcess } from '../src/jobs/supervisor.js'
 import { loadMarkdownFilesForSubdir } from '../src/utils/markdownConfigLoader.js'
 
 const roots = new Set<string>()
@@ -133,6 +134,32 @@ describe('local-template-jobs-v1', () => {
     const id = requestDirs.find(name => name.length === 36)
     jobId = id!
     expect((await readJobState(join(config, 'jobs', jobId))).status).toBe('failed')
+  })
+
+  test('preserves an explicitly empty supervisor script args override', async () => {
+    const { config, cwd } = await fixture()
+    await writeFile(join(config, 'templates', 'review.md'), 'Review\n')
+    const created = await createTemplateJob(
+      { template: 'review', cwd },
+      { spawnSupervisor: noSpawn },
+    )
+    const child = Object.assign(new EventEmitter(), {
+      pid: 999_998,
+      unref: () => {},
+    })
+    const spawnProcess = mock((..._args: unknown[]) => {
+      queueMicrotask(() => child.emit('spawn'))
+      return child
+    })
+    await spawnSupervisorProcess(created.jobDirectory, null, {
+      scriptArgs: [],
+      spawnProcess: spawnProcess as never,
+    })
+    expect(spawnProcess).toHaveBeenCalledWith(
+      process.execPath,
+      ['template-job-supervisor', created.jobDirectory],
+      expect.objectContaining({ detached: true }),
+    )
   })
 
   test('runs a real fake child and falls back to waiting when classification is unavailable', async () => {

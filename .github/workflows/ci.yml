@@ -2,7 +2,13 @@ name: ci
 
 on:
   push:
+    branches:
+      - '**'
   pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
 
 jobs:
   verify:
@@ -21,10 +27,10 @@ jobs:
         run: bun run generate:sdk-types
       - name: Typecheck
         run: bun run typecheck
-      - name: Test
-        run: bun test
       - name: Build
         run: bun run build
+      - name: Test
+        run: bun run test
       - name: CLI smoke test
         run: |
           bun dist/main.js --version

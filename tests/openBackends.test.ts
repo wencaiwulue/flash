@@ -90,12 +90,32 @@ async function startFakeChromeCdp(): Promise<{ endpoint: string }> {
   const port = await unusedPort()
   const endpoint = `http://127.0.0.1:${port}`
   fakeProfile = await mkdtemp(join(tmpdir(), 'open-chrome-cdp-test-'))
-  const systemChrome = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
-  const executable = process.env.CLAUDE_CHROME_TEST_EXECUTABLE ??
-    (process.platform === 'darwin' && existsSync(systemChrome)
-      ? systemChrome
-      : chromium.executablePath())
-  fakeChild = spawn(
+  const systemChrome =
+    process.platform === 'darwin'
+      ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+      : process.platform === 'linux'
+        ? '/opt/google/chrome/chrome'
+        : undefined
+  let executable = process.env.CLAUDE_CHROME_TEST_EXECUTABLE
+  if (!executable && systemChrome && existsSync(systemChrome)) {
+    executable = systemChrome
+  }
+  if (!executable) {
+    // Playwright MCP defaults to the system Chrome channel. Use that same
+    // browser on CI instead of assuming its separately downloaded Chromium
+    // revision is present; retain the bundled path as the final fallback.
+    for (const command of [
+      'google-chrome',
+      'google-chrome-stable',
+      'chromium',
+      'chromium-browser',
+    ]) {
+      executable = Bun.which(command) ?? undefined
+      if (executable) break
+    }
+  }
+  executable ??= chromium.executablePath()
+  const child = spawn(
     executable,
     [
       '--headless=new',
@@ -109,11 +129,18 @@ async function startFakeChromeCdp(): Promise<{ endpoint: string }> {
     ],
     { stdio: 'ignore' },
   )
+  fakeChild = child
+  let startupError: unknown
+  child.once('error', error => {
+    startupError = error
+  })
 
   let lastError: unknown
-  for (let attempt = 0; attempt < 100; attempt++) {
-    if (fakeChild.exitCode !== null) {
-      throw new Error(`Fake CDP Chromium exited with ${fakeChild.exitCode}`)
+  // The first headless Chrome launch on a hosted Linux runner can be cold.
+  for (let attempt = 0; attempt < 400; attempt++) {
+    if (startupError) throw startupError
+    if (child.exitCode !== null) {
+      throw new Error(`Fake CDP Chromium exited with ${child.exitCode}`)
     }
     try {
       const response = await fetch(`${endpoint}/json/version`)

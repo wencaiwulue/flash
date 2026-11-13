@@ -1,7 +1,9 @@
 import { spawn } from 'child_process'
 import { createHash, randomUUID } from 'crypto'
 import {
+  access,
   chmod,
+  constants,
   lstat,
   mkdir,
   open,
@@ -11,6 +13,7 @@ import {
 } from 'fs/promises'
 import { tmpdir } from 'os'
 import { basename, dirname, isAbsolute, join, resolve } from 'path'
+import { spawnScriptArgs } from '../utils/bundledMode.js'
 import {
   type BackgroundSessionRecord,
   type SessionRegistryRecord,
@@ -381,8 +384,7 @@ export async function launchBackgroundSession(
     fail('SESSION_CONFLICT', 'tmux session already exists')
   }
   const executable = options.executable ?? process.execPath
-  const executableArgs = options.executableArgs ??
-    (process.argv[1] ? [resolve(process.argv[1])] : [])
+  const executableArgs = options.executableArgs ?? spawnScriptArgs()
   const command = ['exec', shellQuote(executable), ...[...executableArgs, ...childArgs].map(shellQuote)].join(' ')
   const messagingSocketPath = join(
     tmpdir(),
@@ -461,6 +463,9 @@ export async function launchBackgroundSession(
       exit: null,
     }
     await writeSessionRegistryRecord(record)
+    // A missing executable fails in the pane shell after new-session returns.
+    // Check it here so cleanup does not depend on winning that process-exit race.
+    if (isAbsolute(executable)) await access(executable, constants.X_OK)
     const pipe = await execTmux([
       '-L',
       tmuxSocket,

@@ -26,8 +26,10 @@ import {
 let root: string
 let fixturePath: string
 const children = new Set<ChildProcess>()
+const originalApiKey = process.env.ANTHROPIC_API_KEY
 
 beforeAll(async () => {
+  process.env.ANTHROPIC_API_KEY = 'offline-test-placeholder'
   root = await mkdtemp(join(tmpdir(), 'claude-ssh-session-'))
   fixturePath = join(root, 'manager-fixture.ts')
   await writeFile(
@@ -86,6 +88,8 @@ process.stdin.on('data', chunk => {
 })
 
 afterAll(async () => {
+  if (originalApiKey === undefined) delete process.env.ANTHROPIC_API_KEY
+  else process.env.ANTHROPIC_API_KEY = originalApiKey
   for (const child of children) {
     if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
   }

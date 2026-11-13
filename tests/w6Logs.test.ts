@@ -90,6 +90,7 @@ describe('conversation and error log handlers', () => {
         USERPROFILE: root,
         XDG_CACHE_HOME: join(root, 'cache'),
         CLAUDE_CONFIG_DIR: join(root, 'config'),
+        ANTHROPIC_API_KEY: 'offline-test-placeholder',
         DISABLE_ERROR_REPORTING: '',
         CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '',
         DISABLE_TELEMETRY: '',

@@ -160,7 +160,9 @@ beforeEach(async () => {
     HOME: process.env.HOME,
     GIT_CONFIG_NOSYSTEM: process.env.GIT_CONFIG_NOSYSTEM,
     GIT_CONFIG_GLOBAL: process.env.GIT_CONFIG_GLOBAL,
+    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
   }
+  process.env.ANTHROPIC_API_KEY = 'offline-test-placeholder'
   process.env.CLAUDE_CONFIG_DIR = join(root, 'config')
   process.env.HOME = join(root, 'home')
   process.env.GIT_CONFIG_NOSYSTEM = '1'
