@@ -142,7 +142,129 @@ function cleanupShellAliases(): Promise<SetupMessage[]>
 - **版本状态** 放在文件系统（`~/.local/share/claude/versions/`）：持久化版本
 - **symlink/可执行文件** 放在 `~/.local/bin/`：用户 PATH 可访问
 
-### 4.3 主控制流
+### 4.3 模块设计卡
+
+#### 4.3.1 版本检测模块
+
+| 属性 | 描述 |
+|------|------|
+| **入口签名** | `getLatestVersion(channelOrVersion: string): Promise<string>` |
+| **关键类型** | `ReleaseChannel = 'stable' \| 'latest'` |
+| **输入** | `channelOrVersion`: 可以是 'stable'/'latest' 渠道，也可以是具体版本号（如 '1.2.3' 或 '1.2.3-dev.shaf4937ce'） |
+| **输出** | 规范化的版本号字符串（不带前导 'v'） |
+| **安装与锁状态** | 只读操作，不获取锁，不修改安装状态 |
+| **双源路由** | `USER_TYPE=ant` → Artifactory npm 包；外部用户 → GCS 二进制仓库 |
+| **检测流程** | 1. 若输入匹配版本格式 → 直接返回规范化版本；2. 验证渠道合法性；3. 根据用户类型路由到对应源获取最新版本；4. 禁止 99.99.x 测试版本（除非启用 ALLOW_TEST_VERSIONS） |
+| **GCS 源流程** | 调用 `getLatestVersionFromBinaryRepo(channel, GCS_BUCKET_URL)` → GET `${GCS_BUCKET_URL}/${channel}` → 返回纯文本版本号 → 超时 30s |
+| **Artifactory 源流程** | 调用 `getLatestVersionFromArtifactory(npmTag)` → `npm view ${MACRO.NATIVE_PACKAGE_URL}@${tag} version --registry ${ARTIFACTORY_REGISTRY_URL}` → 超时 30s |
+| **错误与恢复** | 网络错误/超时直接抛出，不重试；返回 `npm view` 失败记录 `tengu_version_check_failure` 事件 |
+| **设计取舍** | 直接版本输入不验证版本存在性（安装阶段再验证）；禁止测试版本避免误安装 |
+| **源码位置** | `src/utils/nativeInstaller/download.ts:112-149` |
+| **测试证据** | 无直接测试覆盖 |
+
+---
+
+#### 4.3.2 下载与校验模块
+
+| 属性 | 描述 |
+|------|------|
+| **入口签名** | `downloadVersion(version: string, stagingPath: string): Promise<'npm' \| 'binary'>` |
+| **关键类型** | `StallTimeoutError extends Error`, `MAX_DOWNLOAD_RETRIES = 3`, `STALL_TIMEOUT_MS = 60000` |
+| **输入** | `version`: 目标版本号；`stagingPath`: staging 目录路径 |
+| **输出** | 下载类型：'npm' 或 'binary' |
+| **安装与锁状态** | 在锁保护下调用（除非 ENABLE_LOCKLESS_UPDATES），清空已有 staging 目录 |
+| **双源路由** | `USER_TYPE=ant` → Artifactory npm 包（完整性由 npm 验证）；外部用户 → GCS 二进制（sha256 校验） |
+| **下载流程** | 1. 清空 staging 目录；2. 根据用户类型路由到对应下载函数；3. GCS 源：fetch manifest.json → 获取 checksum → 下载二进制 → 校验 sha256；4. Artifactory 源：fetch integrity → 创建临时 package.json/package-lock.json → npm ci（自动校验 integrity） |
+| **Stall 检测** | `downloadAndVerifyBinary` 使用 AbortController，每次 onDownloadProgress 重置计时器，60s 无数据触发 StallTimeoutError，最多重试 3 次，每次重试前 sleep 1s |
+| **Staging 重命名** | 先下载到 `~/.cache/claude/staging/${version}`，原子性由原子性保证半下载不污染 versions 目录 |
+| **错误与恢复** | Stall 超时自动重试；checksum 不匹配不重试直接抛错；网络错误不重试；HTTP 错误不重试 |
+| **设计取舍** | 60s 超时平衡网络卡顿与用户等待；3 次重试平衡成功率与用户体验；Artifactory 使用 npm ci 而非直接下载二进制，利用 npm 的完整性校验和缓存；GCS 直接二进制更轻量 |
+| **源码位置** | `src/utils/nativeInstaller/download.ts:487-518`, `downloadAndVerifyBinary:293-380` |
+| **测试证据** | 无直接测试覆盖 |
+
+---
+
+#### 4.3.3 安装原子性模块
+
+| 属性 | 描述 |
+|------|------|
+| **入口签名** | `performVersionUpdate(version: string, forceReinstall: boolean): Promise<boolean>` |
+| **关键类型** | 无特殊导出类型，内部使用 stagingPath, installPath |
+| **输入** | `version`: 目标版本；`forceReinstall`: 是否强制重新安装 |
+| **输出** | 是否执行了新安装（true）或仅更新 symlink（false） |
+| **安装与锁状态** | 在锁保护下调用（除非 ENABLE_LOCKLESS_UPDATES）；创建/更新版本文件；更新 symlink/复制可执行文件 |
+| **原子性保证** | 1. 先下载到 staging；2. 复制到 `${installPath}.tmp.${pid}.${timestamp}`；3. chmod 0o755；4. 原子 rename 到最终 installPath；5. symlink 更新：先创建临时 symlink，再原子 rename |
+| **Windows 特殊处理** | 不使用 symlink，直接复制可执行文件；若旧文件存在，先重命名为 `claude.exe.old.${timestamp}`，复制新文件后尝试删除旧文件（非阻塞） |
+| **Staging 重命名** | 支持 lockless 模式：`stagingPath = baseStagingPath + '.' + pid + '.' + timestamp` |
+| **可执行文件验证** | 更新后验证：检查文件存在且可执行；失败则抛出错误 |
+| **错误与恢复** | 原子 rename 失败清理临时文件；symlink 更新失败保留旧版本；权限不足抛出错误不重试 |
+| **设计取舍** | staging 与 versions 可能跨文件系统，故用 copy+rename 而非直接 rename；Windows 不用 symlink 避免权限问题和正在运行文件无法覆盖问题 |
+| **源码位置** | `src/utils/nativeInstaller/installer.ts:441-488`, `atomicMoveToInstallPath:300-326`, `updateSymlink:639-798` |
+| **测试证据** | 无直接测试覆盖 |
+
+---
+
+#### 4.3.4 PID 锁模块
+
+| 属性 | 描述 |
+|------|------|
+| **入口签名** | `withLock(versionPath: string, lockFilePath: string, callback: () => void \| Promise<void>): Promise<boolean>`; `acquireProcessLifetimeLock(versionPath: string, lockFilePath: string): Promise<boolean>`; `tryWithVersionLock(versionFilePath: string, callback: () => void \| Promise<void>, retries?: number): Promise<boolean>` |
+| **关键类型** | `VersionLockContent = { pid: number; version: string; execPath: string; acquiredAt: number }`; `LockInfo = { version: string; pid: number; isProcessRunning: boolean; execPath: string; acquiredAt: Date; lockFilePath: string }` |
+| **输入** | `versionPath`: 版本文件路径；`lockFilePath`: 锁文件路径；`callback`: 持有锁时执行的回调；`retries`: 重试次数（默认 0） |
+| **输出** | `withLock`/`tryWithVersionLock`: 是否成功获取锁并执行回调；`acquireProcessLifetimeLock`: 是否成功获取进程生命周期锁 |
+| **安装与锁状态** | 锁文件位于 `~/.local/state/claude/locks/${version}.lock`；进程生命周期锁在启动时获取，退出时释放；版本更新时获取锁保护安装操作 |
+| **PID+mtime 双锁策略** | PID 锁优先：检查锁文件内容中的 PID，验证进程存活且是 Claude 进程；mtime 锁 fallback：使用 proper-lockfile，7 天 stale 超时；可通过 `ENABLE_PID_BASED_VERSION_LOCKING` 环境变量或 GrowthBook 开关控制 |
+| **进程命令身份校验** | `isClaudeProcess(pid, expectedExecPath)`：检查进程命令包含 'claude' 或期望的 execPath；处理 PID 复用场景；若无法获取命令，保守返回 true |
+| **锁获取流程** | 1. 检查锁文件是否存在且活跃；2. 原子写入锁文件（临时文件 → rename）；3. 验证锁是否被其他进程抢占；4. 返回释放函数 |
+| **锁释放流程** | 仅当仍持有锁时才删除锁文件 |
+| **错误与恢复** | 锁获取失败返回 false 不抛出；锁获取失败记录 `tengu_version_lock_failure` 事件；tryWithVersionLock 支持指数退避重试（min 1s，max 5s） |
+| **设计取舍** | PID 锁可立即检测崩溃进程，避免 30 天等待；PID 锁优先但保留 mtime 锁作为兼容性 fallback；锁文件单独存放避免版本清理时误删；进程生命周期锁失败不阻止启动，失败开放设计 |
+| **源码位置** | `src/utils/nativeInstaller/pidLock.ts:1-433`, `tryWithVersionLock:181-298` |
+| **测试证据** | 无直接测试覆盖 |
+
+---
+
+#### 4.3.5 包管理器检测模块
+
+| 属性 | 描述 |
+|------|------|
+| **入口签名** | `getPackageManager(): Promise<PackageManager>` |
+| **关键类型** | `PackageManager = 'homebrew' \| 'winget' \| 'pacman' \| 'deb' \| 'rpm' \| 'apk' \| 'mise' \| 'asdf' \| 'unknown'` |
+| **输入** | 无显式输入，使用 `process.execPath` |
+| **输出** | 检测到的包管理器类型，'unknown' 表示未检测到 |
+| **安装与锁状态** | 只读操作，不获取锁，不修改安装状态；检测结果 memoize 缓存 |
+| **检测流程** | 1. `detectHomebrew()`: 检查路径包含 '/Caskroom/'；2. `detectWinget()`: 检查路径包含 WinGet Patterns；3. `detectMise()`/`detectAsdf()`: 检查路径包含对应 installs 目录；4. `detectPacman()`/`detectDeb()`/`detectRpm()`/`detectApk()`: 先检查发行版家族，再查询包管理器数据库 |
+| **Linux 发行版路由** | `/etc/os-release` 解析 `ID` 和 `ID_LIKE`；Arch 家族→pacman；Debian 家族→deb；Fedora/RHEL/SUSE→rpm；Alpine→apk；避免误调用游戏 pacman |
+| **边界处理** | Homebrew 检测仅匹配 Caskroom，避免与 npm global 混淆；各检测均超时 5s；结果 memoize 避免重复调用 |
+| **错误与恢复** | 检测失败不抛出，返回 'unknown'；包管理器安装的版本不自更新，提示用户使用包管理器更新 |
+| **设计取舍** | 路径检测优先于数据库查询（更快）；Linux 先查发行版避免误调用同名命令；memoize 避免重复昂贵的数据库查询 |
+| **源码位置** | `src/utils/nativeInstaller/packageManagers.ts:302-336` |
+| **测试证据** | 无直接测试覆盖 |
+
+---
+
+#### 4.3.6 回滚与清理模块
+
+| 属性 | 描述 |
+|------|------|
+| **入口签名** | `cleanupOldVersions(): Promise<void>`; `lockCurrentVersion(): Promise<void>`; `cleanupNpmInstallations(): Promise<{ removed: number; errors: string[]; warnings: string[] }>`; `removeInstalledSymlink(): Promise<void>` |
+| **关键类型** | `VERSION_RETENTION_COUNT = 2`；1 小时超时用于 staging/tmp/Windows 旧文件清理 |
+| **输入** | 无显式输入，使用当前进程信息 |
+| **输出** | `cleanupOldVersions()` 无返回值（后台执行）；`cleanupNpmInstallations()` 返回删除数量和错误警告；`lockCurrentVersion()` 无返回值 |
+| **安装与锁状态** | `lockCurrentVersion()` 获取进程生命周期锁；`cleanupOldVersions()` 删除版本时先获取锁；清理操作不抛出，尽力而为；后台执行不阻塞主流程 |
+| **最近两个版本保留策略** | 1. 获取所有版本文件按 mtime 排序；2. 保护当前运行版本（进程 execPath 匹配）；3. 保护 symlink 指向版本；4. 保护有活跃锁版本；5. 删除超过最近两个的未保护版本 |
+| **Stale 锁清理** | PID 锁：检查进程不存活立即清理；mtime 锁：7 天后视为 stale；同时清理 legacy 遗留的目录锁 |
+| **过期 Staging/Tmp 清理** | 超过 1 小时的 staging 目录删除；超过 1 小时的 `.tmp.${pid}.${timestamp}` 文件删除；Windows 旧文件 `.old.${timestamp}` 超过 1 小时删除 |
+| **Windows 旧文件清理** | 更新时旧文件重命名为 `.old.${timestamp}`；下次启动时清理超过 1 小时的旧文件；更新时尝试立即删除旧文件（非阻塞，可能被占用） |
+| **Npm 安装清理** | `npm uninstall -g @anthropic-ai/claude-code`；失败时尝试手动删除可执行文件/链接；保留 node_modules 作为安全网；也清理 `~/.claude/local` |
+| **错误与恢复** | 所有清理操作 try/catch 包裹，不抛出；删除版本时锁获取失败跳过该版本；记录 `tengu_native_version_cleanup` 等事件 |
+| **设计取舍** | 保留最近两个版本支持快速回滚；保留 node_modules 避免误删用户数据；清理操作尽力而为不阻塞主流程；版本按 mtime 排序而非 semver（简单可靠）；不提供显式回滚命令，用户手动切换 symlink |
+| **源码位置** | `src/utils/nativeInstaller/installer.ts:1048-1439`, `cleanupOldVersions:1184-1439`, `lockCurrentVersion:1048-1156`, `cleanupNpmInstallations:1609-1708` |
+| **测试证据** | 无直接测试覆盖 |
+
+---
+
+### 4.4 主控制流
 
 完整原生安装与更新流（端到端）：
 
@@ -330,7 +452,7 @@ type PackageManager =
 - 启动时清理 Windows 旧 .old 文件
 - checkInstall() 可以检测并提示修复常见问题（PATH 缺失、symlink 损坏等）
 
-### 4.5 跨子系统依赖
+### 4.6 跨子系统依赖
 
 - **autoUpdater**：原生安装后禁用 legacy auto-updater，防止冲突
 - **config**：`installMethod` 存储在 global config，用于检测安装类型
