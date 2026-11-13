@@ -72,7 +72,7 @@ Onboarding UI 系统解决的核心问题是新用户首次使用 Claude Code �
 | Onboarding | 首次引导多步流程：Preflight、Theme、API Key Approval、OAuth Flow、Security Notes、Terminal Setup | `src/components/Onboarding.tsx` |
 | TrustDialog | 工作区安全检查与信任确认，区分非 home 与 home 目录 | `src/components/TrustDialog/` |
 | ManagedSettingsSecurityDialog | 托管设置审批，仅展示名称不展示值 | `src/components/ManagedSettingsSecurityDialog/` |
-| DesktopUpsellStartup | 桌面端升级推荐，支持“现在不”“不再询问”或跳转 | `src/components/DesktopUpsell/` |
+| DesktopUpsellStartup | 桌面端升级推荐，支持”现在不””不再询问”或跳转 | `src/components/DesktopUpsell/` |
 | LspRecommendationMenu | LSP 插件推荐，30 秒自动消失，支持按插件/全局禁用 | `src/components/LspRecommendation/` |
 | ClaudeCodeHint | 提示协议，检测 claude-code-hint 标签 | `src/utils/claudeCodeHints.ts` |
 | Project Onboarding | 项目级引导，检查 CLAUDE.md 和空目录，最多显示 4 次 | `src/projectOnboardingState.ts` |
@@ -85,7 +85,7 @@ Onboarding UI 系统解决的核心问题是新用户首次使用 Claude Code �
 | 工作区信任（非 home） | `projectConfig.hasTrustDialogAccepted` | 当前目录 | 永久信任 |
 | 工作区信任（home） | `sessionTrustAccepted` | 内存/会话 | 仅本次会话 |
 | 项目引导可见次数 | `projectConfig.projectOnboardingSeenCount` | 当前目录 | 最多显示 4 次 |
-| 桌面端推荐状态 | `globalConfig.desktopUpsellSeenCount` / `desktopUpsellDismissed` | 用户全局 | 最多显示 3 次，支持“不再询问” |
+| 桌面端推荐状态 | `globalConfig.desktopUpsellSeenCount` / `desktopUpsellDismissed` | 用户全局 | 最多显示 3 次，支持”不再询问” |
 
 ### 首次启动完整流程
 
@@ -114,6 +114,388 @@ Onboarding UI 系统解决的核心问题是新用户首次使用 Claude Code �
 - `confirm:yes`（默认 Enter）→ 确认
 - `confirm:no`（默认 Esc）→ 取消/退出
 - `Ctrl+C` / `Ctrl+D` → 退出流程
+
+---
+
+### 模块设计卡：Onboarding 首次启动向导
+
+#### 真实入口签名/关键类型
+```typescript
+// src/components/Onboarding.tsx
+type StepId = 'preflight' | 'theme' | 'oauth' | 'api-key' | 'security' | 'terminal-setup'
+interface OnboardingStep { id: StepId; component: React.ReactNode }
+type Props = { onDone(): void }
+export function Onboarding({ onDone }: Props): React.ReactNode
+
+// src/interactiveHelpers.tsx
+export function completeOnboarding(): void
+export async function showSetupScreens(
+  root: Root,
+  permissionMode: PermissionMode,
+  allowDangerouslySkipPermissions: boolean,
+  commands?: Command[],
+  claudeInChrome?: boolean,
+  devChannels?: ChannelEntry[],
+): Promise<boolean>
+```
+
+#### 输入输出
+- **输入触发条件**：`!globalConfig.hasCompletedOnboarding || !globalConfig.theme`
+- **输出副作用**：设置 `globalConfig.theme`、`globalConfig.hasCompletedOnboarding = true`、`globalConfig.lastOnboardingVersion`
+- **退出路径**：正常完成调用 `onDone()`；用户按 `Ctrl+C`/`Ctrl+D` 调用 `gracefulShutdownSync(1)`
+
+#### 引导状态与用户选择
+- **步骤状态机**：线性流程，通过 `currentStepIndex` 追踪，无分支跳转（仅条件性包含/跳过某些步骤）
+- **用户选择点**：
+  - 主题选择：亮色/暗色/系统
+  - API Key 审批：批准/拒绝（拒绝不阻止流程）
+  - OAuth 流程：可通过 API Key 审批跳过
+  - 终端设置：接受/跳过
+
+#### 启动/确认/跳过/持久化流程
+- **启动检测**：`showSetupScreens` 中检查 `globalConfig.hasCompletedOnboarding` 和 `globalConfig.theme`
+- **步骤跳过条件**：
+  - Preflight：OAuth 未启用
+  - API Key：`!process.env.ANTHROPIC_API_KEY || isRunningOnHomespace()` 或不是新 key
+  - OAuth：已通过 API Key 审批
+  - Terminal Setup：`shouldOfferTerminalSetup()` 返回 false
+- **持久化时机**：最后一步完成后立即调用 `completeOnboarding()`
+
+#### 错误与降级
+- **Terminal Setup 失败**：内部吞掉错误，继续流程
+- **重复调用 onDone**：幂等处理，`completeOnboarding()` 调用多次仅设置一次状态
+- **StrictMode 计数**：无影响，纯状态更新
+
+#### 设计取舍/备选
+| 取舍维度 | 当前选择 | 代价 | 收益 | 备选方案 |
+|---------|---------|-----|------|---------|
+| 流程控制 | 内部线性步骤数组 | 灵活性较低 | 简单可预测 | 使用 WizardProvider |
+| 步骤条件 | 启动时一次性计算 | 动态响应差 | 避免渲染时抖动 | 动态条件检查 |
+| 退出处理 | 统一使用 `useExitOnCtrlCDWithKeybindings` | 组件耦合 | 一致的用户体验 | 各步骤独立处理 |
+
+#### 源码测试证据
+- **源码位置**：`src/components/Onboarding.tsx`、`src/interactiveHelpers.tsx`
+- **测试覆盖**：`tests/issueOnboarding.test.ts` 仅验证幂等性和 /onboarding 命令行为
+- **未覆盖**：各步骤的条件包含逻辑、主题选择持久化、终端设置执行
+
+---
+
+### 模块设计卡：TrustDialog 工作区信任确认
+
+#### 真实入口签名/关键类型
+```typescript
+// src/components/TrustDialog/TrustDialog.tsx
+type Props = { onDone(): void; commands?: Command[] }
+export function TrustDialog({ onDone, commands }: Props): React.ReactNode
+
+// src/utils/config.ts
+export function checkHasTrustDialogAccepted(): boolean
+
+// src/bootstrap/state.ts
+export function setSessionTrustAccepted(value: boolean): void
+```
+
+#### 输入输出
+- **检测项输入**：项目级 MCP servers、hooks、bash 权限、apiKeyHelper、aws/gcp commands、otelHeadersHelper、dangerous env vars
+- **输出副作用**：
+  - 非 home 目录：`projectConfig.hasTrustDialogAccepted = true`
+  - home 目录：仅设置 `sessionTrustAccepted = true`（内存）
+  - **不写入** MCP 服务器批准状态（由后续 `handleMcpjsonServerApprovals` 单独处理）
+
+#### 引导状态与用户选择
+- **信任二元状态**：信任/不信任，无中间状态
+- **选择后不可撤销**：当前会话内无法撤销信任决定
+- **用户选择**：”Yes, I trust this folder” 或 “No, exit”
+
+#### 启动/确认/跳过/持久化流程
+- **快速路径**：`checkHasTrustDialogAccepted() === true` → 跳过渲染，直接 `setTimeout(onDone)`
+- **检测范围**：仅项目级和项目本地级设置（不信任用户级设置）
+- **持久化策略区分**：
+  - 非 home 目录：持久化到 `projectConfig`
+  - home 目录：仅内存 `sessionTrustAccepted`，防误操作扩大风险
+
+#### Trust 与 MCP Approval 的区别
+| 维度 | TrustDialog | MCP Approval |
+|-----|-------------|--------------|
+| 作用范围 | 整个工作区权限边界 | 单个 MCP 服务器 |
+| 持久化 | 项目配置或会话内存 | 项目配置 |
+| 时机 | 进入 REPL 前 | TrustDialog 之后，设置无误时 |
+| 粒度 | 二元全有/全无 | 逐个服务器 |
+| 依赖关系 | MCP Approval 依赖 Trust 已建立 | Trust 不自动批准 MCP |
+
+#### 错误与降级
+- **检测失败**：保守处理，显示对话框（不视为已信任）
+- **用户按 Esc**：等同于选择 “No, exit”，调用 `gracefulShutdownSync(0)`
+- **用户按 Ctrl+C/Ctrl+D**：调用 `gracefulShutdownSync(1)`
+
+#### 设计取舍/备选
+| 取舍维度 | 当前选择 | 代价 | 收益 | 备选方案 |
+|---------|---------|-----|------|---------|
+| home 目录策略 | 仅内存不持久化 | 用户每次需确认 | 安全优先 | 可配置持久化 |
+| MCP 分离 | Trust 不自动批准 MCP | 多一步交互 | 保留细粒度控制 | 合并审批 |
+| 检测范围 | 仅项目/本地设置 | 可能遗漏用户级风险 | 减少误报 | 包含用户级 |
+
+#### 源码测试证据
+- **源码位置**：`src/components/TrustDialog/TrustDialog.tsx`、`src/components/TrustDialog/utils.ts`
+- **测试覆盖**：无直接测试
+- **分析点**：Line 153-156 明确注释不写入 MCP 设置；Line 141-151 区分 home/非 home 持久化
+
+---
+
+### 模块设计卡：ManagedSettingsSecurityDialog 托管设置安全确认
+
+#### 真实入口签名/关键类型
+```typescript
+// src/components/ManagedSettingsSecurityDialog/ManagedSettingsSecurityDialog.tsx
+type Props = {
+  settings: SettingsJson
+  onAccept: () => void
+  onReject: () => void
+}
+export function ManagedSettingsSecurityDialog({ settings, onAccept, onReject }: Props): React.ReactNode
+
+// src/components/ManagedSettingsSecurityDialog/utils.ts
+export function extractDangerousSettings(settings: SettingsJson): DangerousSetting[]
+export function formatDangerousSettingsList(dangerous: DangerousSetting[]): string[]
+```
+
+#### 输入输出
+- **输入**：完整 `SettingsJson`（托管设置）
+- **输出**：
+  - 接受：调用 `onAccept()`，继续启动流程
+  - 拒绝：调用 `onReject()`，退出程序
+- **展示策略**：仅展示设置名称，不展示值（防敏感信息泄露）
+
+#### 组织策略显示
+- **提示上下文**：明确告知”Your organization has configured managed settings”
+- **风险描述**：”could allow execution of arbitrary code or interception of your prompts and responses”
+- **用户指导**：”Only accept if you trust your organization's IT administration”
+- **设置列表**：使用 `formatDangerousSettingsList` 格式化为项目符号列表
+
+#### 启动/确认/跳过/持久化流程
+- **调用位置**：`showSetupScreens` 中，TrustDialog 之后
+- **触发条件**：托管设置包含危险项且有变更（具体检测逻辑在调用方）
+- **无持久化**：对话框本身不持久化任何状态（接受后启动流程继续）
+
+#### 错误与降级
+- **按 Esc**：等同于拒绝，调用 `onReject()`
+- **按 Ctrl+C/Ctrl+D**：通过 `useExitOnCtrlCDWithKeybindings` 处理
+
+#### 设计取舍/备选
+| 取舍维度 | 当前选择 | 代价 | 收益 | 备选方案 |
+|---------|---------|-----|------|---------|
+| 展示内容 | 仅名称不展示值 | 用户不知具体配置 | 防敏感泄露 | 展示非敏感部分 |
+| 决策粒度 | 全有/全无 | 无法选择性接受 | 简单安全 | 逐项批准 |
+
+#### 源码测试证据
+- **源码位置**：`src/components/ManagedSettingsSecurityDialog/`
+- **测试覆盖**：无直接测试
+- **未覆盖**：危险设置提取逻辑、列表格式化、各种危险设置组合
+
+---
+
+### 模块设计卡：WizardProvider 通用向导框架
+
+#### 真实入口签名/关键类型
+```typescript
+// src/components/wizard/WizardProvider.tsx
+export interface WizardContextValue<T extends Record<string, unknown>> {
+  currentStepIndex: number
+  totalSteps: number
+  wizardData: T
+  setWizardData: React.Dispatch<React.SetStateAction<T>>
+  updateWizardData: (updates: Partial<T>) => void
+  goNext: () => void
+  goBack: () => void
+  goToStep: (index: number) => void
+  cancel: () => void
+  title?: string
+  showStepCounter: boolean
+}
+
+export interface WizardProviderProps<T extends Record<string, unknown>> {
+  steps: React.ComponentType[]
+  initialData?: T
+  onComplete: (data: T) => void | Promise<void>
+  onCancel?: () => void
+  children?: ReactNode
+  title?: string
+  showStepCounter?: boolean
+}
+
+export function WizardProvider<T extends Record<string, unknown>>({
+  steps,
+  initialData = {} as T,
+  onComplete,
+  onCancel,
+  children,
+  title,
+  showStepCounter = true,
+}: WizardProviderProps<T>): ReactNode
+```
+
+#### 输入输出
+- **输入**：`steps` 组件数组、`initialData`、`onComplete`、`onCancel`
+- **输出**：通过 `wizardData` 累积用户输入，最终传递给 `onComplete`
+- **导航操作**：`goNext`、`goBack`、`goToStep`、`cancel`
+
+#### 引导状态与用户选择
+- **线性与非线性混合**：
+  - 默认：线性 `currentStepIndex` 递增/递减
+  - 非线性：`goToStep` 跳转到任意步骤，同时维护 `navigationHistory`
+- **历史追踪**：`navigationHistory` 数组记录跳转来源，支持返回
+- **数据累积**：`wizardData` 在步骤间共享，通过 `updateWizardData` 增量更新
+
+#### 启动/确认/跳过/持久化流程
+- **启动**：从 `initialData` 和 `currentStepIndex = 0` 开始
+- **完成**：最后一步 `goNext` → `isCompleted = true` → `onComplete(wizardData)`
+- **取消**：`cancel()` → 清空历史 → `onCancel()`（如果提供）
+- **无内部持久化**：WizardProvider 自身不持久化，由调用方决定何时保存
+
+#### 错误与降级
+- **步骤越界**：`goToStep` 忽略无效索引（`index < 0 || index >= steps.length`）
+- **完成后渲染**：`isCompleted = true` 时返回 `null`
+- **useEffect 完成触发**：避免父组件渲染期间更新
+
+#### 设计取舍/备选
+| 取舍维度 | 当前选择 | 代价 | 收益 | 备选方案 |
+|---------|---------|-----|------|---------|
+| 历史管理 | `navigationHistory` 数组 | 内存占用 | 支持非线性返回 | 无历史仅线性 |
+| 数据更新 | `updateWizardData` 增量 | 需手动合并 | 灵活易用 | 仅 `setWizardData` |
+| 完成触发 | useEffect 延迟 | 多一次渲染 | 避免渲染循环 | 同步调用 |
+
+#### 源码测试证据
+- **源码位置**：`src/components/wizard/WizardProvider.tsx`、`src/components/wizard/types.ts`
+- **测试覆盖**：无直接测试
+- **未覆盖**：非线性导航、历史回溯、数据累积、边界情况
+
+---
+
+### 模块设计卡：Project Onboarding 项目级引导
+
+#### 真实入口签名/关键类型
+```typescript
+// src/projectOnboardingState.ts
+export type Step = {
+  key: string
+  text: string
+  isComplete: boolean
+  isCompletable: boolean
+  isEnabled: boolean
+}
+
+export function getSteps(): Step[]
+export function isProjectOnboardingComplete(): boolean
+export function maybeMarkProjectOnboardingComplete(): void
+export function shouldShowProjectOnboarding(): boolean  // memoized
+export function incrementProjectOnboardingSeenCount(): void
+```
+
+#### 输入输出
+- **输入检测**：当前目录是否为空、是否存在 `CLAUDE.md`
+- **输出状态**：
+  - `projectConfig.projectOnboardingSeenCount`：显示次数计数
+  - `projectConfig.hasCompletedProjectOnboarding`：完成标记
+- **步骤内容**：
+  - 空目录：建议创建应用或克隆仓库
+  - 非空目录：建议运行 `/init` 创建 `CLAUDE.md`
+
+#### 项目 onboarding 状态与 fail-open 边界
+- **显示条件（AND）**：
+  - `!hasCompletedProjectOnboarding`
+  - `projectOnboardingSeenCount < 4`
+  - `!IS_DEMO`
+  - `!isProjectOnboardingComplete()`（即有启用且未完成的步骤）
+- **Fail-open 边界**：
+  - 显示计数达到 4 → 永久隐藏（不再打扰）
+  - 步骤完成 → 标记 `hasCompletedProjectOnboarding = true`
+  - **无重置机制**：计数和完成标记一旦设置无法清除（除手动编辑配置）
+- **memoize 优化**：`shouldShowProjectOnboarding` 使用 lodash memoize，避免每次渲染 hit 文件系统
+
+#### 启动/确认/跳过/持久化流程
+- **显示时机**：REPL 首次渲染时
+- **计数递增**：每次显示调用 `incrementProjectOnboardingSeenCount()`
+- **完成检测**：每次 prompt submit 调用 `maybeMarkProjectOnboardingComplete()`
+- **文件系统缓存**：先检查配置中的缓存状态，再 hit 文件系统
+
+#### 错误与降级
+- **文件系统读取失败**：通过 `getFsImplementation()` 抽象，失败时保守处理
+- **StrictMode 双重调用**：`maybeMarkProjectOnboardingComplete()` 有缓存保护，重复调用无影响
+
+#### 设计取舍/备选
+| 取舍维度 | 当前选择 | 代价 | 收益 | 备选方案 |
+|---------|---------|-----|------|---------|
+| 显示上限 | 最多 4 次 | 用户可能错过 | 平衡体验与打扰 | 可配置次数 |
+| 完成判断 | 纯文件系统状态 | 可能误判 | 无需用户确认 | 用户手动关闭 |
+| memoize | 缓存显示决策 | 状态变更延迟 | 性能优化 | 每次重新计算 |
+
+#### 源码测试证据
+- **源码位置**：`src/projectOnboardingState.ts`
+- **测试覆盖**：无直接测试
+- **未覆盖**：计数逻辑、文件系统检测、完成标记、memoize 行为
+
+---
+
+### 模块设计卡：issueOnboarding 路径
+
+#### 真实入口签名/关键类型
+```typescript
+// src/commands/onboarding/onboarding.tsx
+export async function call(
+  onDone: (result: string) => void,
+  context: LocalJSXCommandContext,
+  arg: string,
+): Promise<React.ReactNode>
+
+// src/commands/onboarding/index.ts
+export default {
+  name: 'onboarding',
+  isHidden: false,
+  description: 'Show the onboarding wizard again',
+  load: async () => import('./onboarding.js'),
+}
+
+// src/commands/issue/index.ts
+export default {
+  name: 'issue',
+  isHidden: undefined,
+  load: async () => import('../feedback/feedback.js'),
+}
+```
+
+#### 输入输出
+- **`/onboarding` 命令输入**：无参数或 `--reset`（拒绝）
+- **输出**：渲染 `Onboarding` 组件，或显示用法提示
+- **`/issue` 命令**：别名指向 `/feedback`，与 onboarding 无关
+
+#### 引导状态与用户选择
+- **幂等性保证**：`completeOnboarding()` 可调用多次，仅第一次有效果
+- **无重置支持**：`--reset` 参数被拒绝，显示 “Usage: /onboarding”
+- **重新触发**：`/onboarding` 命令可重新显示向导，但完成后不会重复设置状态
+
+#### 启动/确认/跳过/持久化流程
+- **命令调用流程**：`/onboarding` → 渲染 `Onboarding` → 用户完成 → `completeOnboarding()` → `onDone()`
+- **与启动流程区别**：命令调用不经过 `showSetupScreens`，直接显示向导
+- **持久化行为**：与首次启动相同，设置 `globalConfig.hasCompletedOnboarding`
+
+#### 错误与降级
+- **`--reset` 拒绝**：不修改状态，返回用法提示
+- **重复完成**：幂等处理，多次调用 `onDone()` 仅触发一次 `completeOnboarding()`
+
+#### 设计取舍/备选
+| 取舍维度 | 当前选择 | 代价 | 收益 | 备选方案 |
+|---------|---------|-----|------|---------|
+| 重置功能 | 不支持 `--reset` | 无法重置 | 防止误操作 | 支持重置 |
+| issue 别名 | 指向 feedback | 与命名不符 | 历史兼容性 | 重命名命令 |
+
+#### 源码测试证据
+- **源码位置**：`src/commands/onboarding/`、`src/commands/issue/index.ts`
+- **测试覆盖**：`tests/issueOnboarding.test.ts` 验证：
+  - `/issue` 正确加载 `/feedback` 流程
+  - `/onboarding` 返回 `Onboarding` 组件
+  - `/onboarding` 幂等性
+  - `/onboarding --reset` 被拒绝
+- **证据边界**：仅验证命令路由，未验证向导实际行为
 
 ## 5. 失败语义与工程取舍
 
