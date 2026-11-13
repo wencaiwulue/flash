@@ -1,6 +1,6 @@
 import { z } from 'zod/v4'
 import { buildTool, type ToolDef } from '../../Tool.js'
-import { getOpenBrowserClient, listBrowserTools } from '@ant/claude-for-chrome-mcp'
+import { closeOpenBrowserClient, getOpenBrowserClient, listBrowserTools } from '@ant/claude-for-chrome-mcp'
 import { jsonStringify } from '../../utils/slowOperations.js'
 
 const inputSchema = z.strictObject({
@@ -37,7 +37,23 @@ export const WebBrowserTool = buildTool({
   },
   async call({ action, arguments: args }) {
     const client = await getOpenBrowserClient()
-    const result = await client.callTool({ name: action, arguments: args })
+    let result: Awaited<ReturnType<typeof client.callTool>>
+    try {
+      result = await client.callTool({ name: action, arguments: args })
+    } catch (error) {
+      if (action === 'browser_close') {
+        try {
+          await closeOpenBrowserClient(client)
+        } catch (closeError) {
+          throw new AggregateError(
+            [error, closeError],
+            'Browser action and cleanup both failed',
+          )
+        }
+      }
+      throw error
+    }
+    if (action === 'browser_close') await closeOpenBrowserClient(client)
     return {
       data: {
         content: result.content,
