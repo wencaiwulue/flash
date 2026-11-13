@@ -93,6 +93,592 @@ function initializeTelemetry(): Promise<void>
 function flushTelemetry(): Promise<void>
 ```
 
+---
+
+### 模块设计卡 1：事件契约与入口模块 (`src/services/analytics/index.ts`)
+
+#### 真实入口签名与关键类型
+
+```typescript
+// 编译期类型标记：防止未验证字符串泄露
+export type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS = never
+export type AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED = never
+
+// 内部事件队列类型
+type QueuedEvent = {
+  eventName: string
+  metadata: LogEventMetadata
+  async: boolean
+}
+
+// 真实 LogEventMetadata 不允许直接传入未标记字符串
+type LogEventMetadata = { [key: string]: boolean | number | undefined }
+
+export interface AnalyticsSink {
+  logEvent(eventName: string, metadata: LogEventMetadata): void
+  logEventAsync(eventName: string, metadata: LogEventMetadata): Promise<void>
+}
+```
+
+#### 输入输出
+
+| 入口 | 输入 | 输出 | 副作用 |
+|---|---|---|---|
+| `logEvent(name, meta)` | 事件名、元数据（无未标记字符串） | void | sink 已附加则转发，否则入队 |
+| `logEventAsync(name, meta)` | 事件名、元数据 | Promise&lt;void&gt; | 同上，异步版本 |
+| `attachAnalyticsSink(sink)` | AnalyticsSink 实现 | void | 替换全局 sink，异步重放队列 |
+| `stripProtoFields(meta)` | 带 `_PROTO_` 的元数据 | 过滤后的元数据 | 无（返回新对象，原对象不变） |
+
+#### 事件与队列状态
+
+| 状态项 | 类型 | 初始化 | 变更时机 | 访问方式 |
+|---|---|---|---|---|
+| `eventQueue` | `QueuedEvent[]` | `[]` | sink 未附加时调用 `logEvent()`/`logEventAsync()`；重放后清空 | 内部私有 |
+| `sink` | `AnalyticsSink \| null` | `null` | `attachAnalyticsSink()` 调用时设置 | 内部私有 |
+
+队列行为：
+- sink 为 null 时，所有事件入队，标记同步/异步
+- `attachAnalyticsSink()` 后，通过 `queueMicrotask()` 异步重放
+- ant 用户在重放前触发 `analytics_sink_attached` 事件记录队列长度
+
+#### 构造/过滤/导出/关闭流程
+
+**构造流程**：
+- 模块无显式初始化函数，状态在闭包中创建
+- 无循环依赖：仅依赖自身状态
+
+**过滤流程**：
+- `stripProtoFields()`：遍历键，以 `_PROTO_` 开头的删除
+- 无 `_PROTO_` 键时返回原引用，否则返回新对象
+
+**导出流程**：
+- 不做实际导出，仅转发给 sink
+- sink 路由到具体后端
+
+**关闭流程**：
+- 无关闭函数，`_resetForTesting()` 仅用于测试重置
+
+#### 错误与隐私
+
+| 维度 | 设计 |
+|---|---|
+| 错误处理 | 无异常抛出，队列静默处理；sink 错误由 sink 自身处理 |
+| 隐私边界 | 类型系统防止未验证字符串；`stripProtoFields()` 作为单一控制点 |
+| 数据泄露防护 | 队列在内存中，进程退出后丢失（无持久化） |
+
+#### 设计取舍与备选
+
+| 决策 | 取舍 | 备选方案 | 不选理由 |
+|---|---|---|---|
+| 队列与 sink 分离 | 模块无依赖，避免循环依赖；但早期事件可能延迟发送 | 要求先初始化 sink | 早期事件会丢失；增加耦合 |
+| 类型标记用 `never` | 编译期检查，无运行时开销；但需要开发者显式转换 | 运行时检查 | 性能开销；容易漏过 |
+| `queueMicrotask()` 异步重放 | 不阻塞启动；但事件发送延后 | 同步重放 | 阻塞启动路径 |
+| `attachAnalyticsSink()` 幂等 | 允许多处调用；但无错误提示重复调用 | 重复调用抛错 | 增加调用方复杂度 |
+
+#### 源码测试证据
+
+- 源码位置：`src/services/analytics/index.ts`
+- 覆盖证据：[Coverage](../../architecture/coverage/telemetry.yaml)
+- 现有测试：无专门单元测试；`tests/antTraceCommand.test.ts` 间接验证某些路径
+- 缺口：队列重放、幂等行为无测试
+
+---
+
+### 模块设计卡 2：采样与 GrowthBook 模块 (`src/services/analytics/sink.ts`, `src/services/analytics/firstPartyEventLogger.ts`)
+
+#### 真实入口签名与关键类型
+
+```typescript
+// sink.ts
+const DATADOG_GATE_NAME = 'tengu_log_datadog_events'
+let isDatadogGateEnabled: boolean | undefined = undefined
+
+// firstPartyEventLogger.ts
+// （实际代码中引用，详细实现在独立文件中）
+```
+
+#### 输入输出
+
+| 入口 | 输入 | 输出 | 副作用 |
+|---|---|---|---|
+| `initializeAnalyticsGates()` | 无 | void | 更新 `isDatadogGateEnabled` 缓存 |
+| `initializeAnalyticsSink()` | 无 | void | 调用 `attachAnalyticsSink()` 附加路由 sink |
+| `shouldSampleEvent(name)` | 事件名 | `number \| null`（采样率） | 可能更新采样配置缓存 |
+| `logEventImpl(name, meta)` | 事件名、元数据 | void | 采样通过则转发到 Datadog 和 1P |
+
+#### 事件与队列状态
+
+| 状态项 | 类型 | 初始化 | 变更时机 | 访问方式 |
+|---|---|---|---|---|
+| `isDatadogGateEnabled` | `boolean \| undefined` | `undefined` | `initializeAnalyticsGates()` 调用时设置 | 内部私有 |
+
+Feature Gates 状态：
+- 启动时用缓存值（`checkStatsigFeatureGate_CACHED_MAY_BE_STALE`）
+- `initializeAnalyticsGates()` 从服务器更新
+- killswitch 可独立禁用：`isSinkKilled('datadog')`
+
+#### 构造/过滤/导出/关闭流程
+
+**构造流程**：
+- `initializeAnalyticsGates()`：从 GrowthBook 读取门控状态
+- `initializeAnalyticsSink()`：附加路由 sink
+
+**过滤流程**：
+1. 采样：`shouldSampleEvent()` → 0 则丢弃；否则加 `sample_rate` 元数据
+2. Datadog 门控：`shouldTrackDatadog()` → false 则跳过 Datadog
+3. Proto 字段：`stripProtoFields()` 后才发往 Datadog
+4. 1P 接收完整 payload（含 `_PROTO_*`）
+
+**导出流程**：
+- sink 路由模式：`logEventImpl()` → 并发调用 `trackDatadogEvent()` 和 `logEventTo1P()`
+- `logEventAsyncImpl()` 仅是同步版本包装（当前无实际异步 sink）
+
+**关闭流程**：
+- 无独立关闭，依赖各 sink 自身关闭
+
+#### 错误与隐私
+
+| 维度 | 设计 |
+|---|---|
+| Feature Disabled 行为 | Datadog 门控关闭时静默跳过；killswitch 激活时也跳过 |
+| 错误处理 | sink 路由不抛错，各 sink 自行处理错误 |
+| 隐私保护 | `_PROTO_*` 仅发往 1P，Datadog 自动过滤 |
+
+#### 设计取舍与备选
+
+| 决策 | 取舍 | 备选方案 | 不选理由 |
+|---|---|---|---|
+| 早期事件用缓存门控 | 不丢失数据；但可能用旧配置 | 等待门控初始化 | 阻塞启动 |
+| 采样在 sink 层统一做 | 单一控制点；但所有事件先进入系统 | 各 sink 自己采样 | 重复逻辑；不一致行为 |
+| 异步实现同步包装 | 接口向后兼容；但名称误导 | 移除异步接口 | 破坏性变更 |
+
+#### 源码测试证据
+
+- 源码位置：`src/services/analytics/sink.ts`、`src/services/analytics/firstPartyEventLogger.ts`
+- 现有测试：无专门单元测试
+
+---
+
+### 模块设计卡 3：工具名称消毒与元数据模块 (`src/services/analytics/metadata.ts`)
+
+#### 真实入口签名与关键类型
+
+```typescript
+// 消毒入口
+export function sanitizeToolNameForAnalytics(
+  toolName: string
+): AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
+
+// 详细工具名开关
+export function isToolDetailsLoggingEnabled(): boolean
+export function isAnalyticsToolDetailsLoggingEnabled(
+  mcpServerType: string | undefined,
+  mcpServerBaseUrl: string | undefined
+): boolean
+
+// MCP 工具详情提取
+export function mcpToolDetailsForAnalytics(
+  toolName: string,
+  mcpServerType: string | undefined,
+  mcpServerBaseUrl: string | undefined
+): {
+  mcpServerName?: AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
+  mcpToolName?: AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
+}
+export function extractMcpToolDetails(toolName: string): {
+  serverName: AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
+  mcpToolName: AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
+} | undefined
+
+// Skill 名提取
+export function extractSkillName(
+  toolName: string,
+  input: unknown
+): AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS | undefined
+
+// 元数据格式化
+export function getEventMetadata(options?: EnrichMetadataOptions): Promise<EventMetadata>
+export function to1PEventFormat(
+  metadata: EventMetadata,
+  userMetadata: CoreUserData,
+  additionalMetadata?: Record<string, unknown>
+): FirstPartyEventLoggingMetadata
+```
+
+#### 输入输出
+
+| 入口 | 输入 | 输出 | 副作用 |
+|---|---|---|---|
+| `sanitizeToolNameForAnalytics(name)` | 原始工具名 | 消毒后的工具名（类型标记） | 无 |
+| `isAnalyticsToolDetailsLoggingEnabled(type, url)` | MCP 服务器类型、URL | boolean | 无 |
+| `mcpToolDetailsForAnalytics(name, type, url)` | 完整工具名、服务器类型、URL | 可选服务器名+工具名对象 | 无 |
+| `getEventMetadata(options)` | 可选模型、betas、附加元数据 | 丰富后的事件元数据 | 无（memoized 部分可能缓存） |
+| `to1PEventFormat(meta, userMeta, addMeta)` | 核心元数据、用户元数据、附加元数据 | 1P 格式元数据 | 无 |
+
+#### 事件与队列状态
+
+| 状态项 | 类型 | 初始化 | 变更时机 | 访问方式 |
+|---|---|---|---|---|
+| `buildEnvContext` memoize | 内部 | 首次调用 | 永不（进程级缓存） | 内部私有 |
+| `prevCpuUsage` / `prevWallTimeMs` | `NodeJS.CpuUsage \| null` / `number \| null` | `null` / `null` | `buildProcessMetrics()` 每次调用更新 | 内部私有 |
+
+工具名称消毒策略：
+- 格式：`mcp__<server>__<tool>` → 拆分为 `serverName` + `mcpToolName`
+- 默认消毒为 `mcp_tool`（除非满足以下任一条件）：
+  - 入口点为 `local-agent`（Cowork）
+  - MCP 服务器类型为 `claudeai-proxy`
+  - MCP 服务器 URL 在官方注册表中
+  - 是内置 MCP 服务器（如 `computerUse`，feature-gated）
+- OTel 工具详情单独开关：`OTEL_LOG_TOOL_DETAILS=1`
+
+#### 构造/过滤/导出/关闭流程
+
+**构造流程**：
+- 模块无显式初始化，纯函数为主
+- `buildEnvContext()`、`getModelBetas()` 等用 memoize 缓存
+
+**过滤流程**：
+1. 工具名消毒：`sanitizeToolNameForAnalytics()` → MCP 工具默认变 `mcp_tool`
+2. 文件扩展名限制：`getFileExtensionForAnalytics()` → 超长扩展名变 `other`
+3. 工具输入截断：`extractToolInputForTelemetry()` → 字符串、嵌套深度、集合大小均有上限
+4. 内部键过滤：`truncateToolInputValue()` → 跳过 `_` 开头的键
+
+**1P 格式化流程**：
+1. 转换 `envContext` 为 snake_case，与 proto 类型匹配
+2. 转换核心字段为 snake_case
+3. 映射用户元数据（GitHub Actions 元数据放入 env）
+4. 构建 `auth` 对象（仅 account_uuid/organization_uuid）
+5. 附加 `rh`（仓库哈希）、`is_assistant_mode` 等
+
+**关闭流程**：
+- 无独立关闭，memoized 缓存进程生命周期内保留
+
+#### 错误与隐私
+
+| 维度 | 设计 |
+|---|---|
+| 隐私边界 | 类型标记要求显式验证；工具名默认消毒；文件扩展名限制长度；工具输入截断 |
+| `_PROTO_` 字段路由 | 不在此模块处理（由 index/stripProtoFields 和 exporter 处理） |
+| 错误处理 | `buildProcessMetrics()` 捕获异常返回 undefined；其余纯函数无异常 |
+
+#### 设计取舍与备选
+
+| 决策 | 取舍 | 备选方案 | 不选理由 |
+|---|---|---|---|
+| MCP 工具名默认消毒 | 保护隐私；但损失一些分析数据 | 默认记录详细名 | 隐私风险过高 |
+| 多条件开关详细名 | 精确控制；但逻辑复杂 | 简单 on/off | 不够灵活 |
+| `to1PEventFormat()` 用生成类型约束 | 编译期检查 proto 匹配；但修改 proto 需要重新生成 | 手写类型 | 容易与 proto 漂移 |
+| memoize 缓存 envContext | 性能优化；但配置变更不刷新 | 每次重新计算 | 启动性能下降 |
+
+#### 源码测试证据
+
+- 源码位置：`src/services/analytics/metadata.ts`
+- 现有测试：`tests/antTraceCommand.test.ts` 间接验证消毒逻辑
+- 缺口：各消毒条件组合、文件扩展名处理、工具输入截断无专门测试
+
+---
+
+### 模块设计卡 4：失败重试与持久化模块 (`src/services/analytics/firstPartyEventLoggingExporter.ts`)
+
+#### 真实入口签名与关键类型
+
+```typescript
+export class FirstPartyEventLoggingExporter implements LogRecordExporter {
+  constructor(options?: {
+    timeout?: number
+    maxBatchSize?: number
+    skipAuth?: boolean
+    batchDelayMs?: number
+    baseBackoffDelayMs?: number
+    maxBackoffDelayMs?: number
+    maxAttempts?: number
+    path?: string
+    baseUrl?: string
+    isKilled?: () => boolean
+    schedule?: (fn: () => Promise<void>, delayMs: number) => () => void
+  })
+
+  // 核心接口
+  export(logs: ReadableLogRecord[], resultCallback: (result: ExportResult) => void): void
+  shutdown(): Promise<void>
+  forceFlush(): Promise<void>
+
+  // 测试用
+  async getQueuedEventCount(): Promise<number>
+}
+
+// 内部类型
+type FirstPartyEventLoggingEvent = {
+  event_type: 'ClaudeCodeInternalEvent' | 'GrowthbookExperimentEvent'
+  event_data: unknown
+}
+```
+
+#### 输入输出
+
+| 入口 | 输入 | 输出 | 副作用 |
+|---|---|---|---|
+| `export(logs, callback)` | OTel LogRecord 数组、回调 | void（异步） | 成功则发送；失败则持久化到磁盘 + 调度重试 |
+| `shutdown()` | 无 | Promise&lt;void&gt; | 停止重试，强制刷新 |
+| `forceFlush()` | 无 | Promise&lt;void&gt; | 等待待处理导出完成 |
+
+#### 事件与队列状态
+
+| 状态项 | 类型 | 初始化 | 变更时机 | 访问方式 |
+|---|---|---|---|---|
+| `pendingExports` | `Promise<void>[]` | `[]` | `export()` 加入；完成后移除 | 内部私有 |
+| `isShutdown` | `boolean` | `false` | `shutdown()` 设为 true | 内部私有 |
+| `attempts` | `number` | `0` | 每次失败递增；成功重置为 0 | 内部私有 |
+| `isRetrying` | `boolean` | `false` | 重试开始设为 true；结束设为 false | 内部私有 |
+| `cancelBackoff` | `(() => void) \| null` | `null` | 调度重试时设置；重置时取消 | 内部私有 |
+| `lastExportErrorContext` | `string \| undefined` | `undefined` | 失败时记录；成功清除 | 内部私有 |
+
+持久化文件格式：
+- 位置：`~/.claude/telemetry/1p_failed_events.<sessionId>.<batchUuid>.json`
+- 格式：JSON Lines（每行一个事件对象）
+- 多会话隔离：sessionId 区分；batchUuid 区分同会话不同进程
+
+重试策略：
+- 二次退避：`baseBackoffDelayMs * attempts^2`
+- 默认 base: 500ms，max: 30s，maxAttempts: 8
+- 成功后立即检查/重试剩余队列
+- 启动时自动重放上会话失败文件
+
+#### 构造/过滤/导出/关闭流程
+
+**构造流程**：
+1. 根据 `process.env.ANTHROPIC_BASE_URL` 选择 baseUrl（staging/prod）
+2. 设置默认配置（timeout 10s, maxBatchSize 200, etc.）
+3. 后台调用 `retryPreviousBatches()` 加载上会话失败文件
+
+**过滤/转换流程**（`transformLogsToEvents()`）：
+1. 筛选事件：仅处理 `instrumentationScope.name === 'com.anthropic.claude_code.events'`
+2. GrowthBook 实验事件特殊处理
+3. 普通事件：提取 `core_metadata`、`user_metadata`、`event_metadata`
+4. 调用 `to1PEventFormat()` 转换
+5. **`_PROTO_` 字段提取**：从 `additional` 中提取 `_PROTO_skill_name`、`_PROTO_plugin_name`、`_PROTO_marketplace_name` 到 proto 顶层字段
+6. **防御性过滤**：剩余 `additional` 调用 `stripProtoFields()` 清除所有 `_PROTO_*`
+7. 序列化为 `ClaudeCodeInternalEvent.toJSON()`
+
+**发送流程**：
+1. 检查 `isKilled()` → 激活则抛错中止
+2. 分块：每块 `maxBatchSize` 个事件
+3. 每块发送：
+   - 检查信任状态/令牌过期决定是否带认证
+   - 失败且是 401 则重试无认证
+   - 失败则短路剩余块，全部入失败队列
+4. 全部成功 → `resetBackoff()` → 立即 `retryFailedEvents()`
+5. 失败 → `appendEventsToFile()` → `scheduleBackoffRetry()`
+
+**重试流程**（`retryFailedEvents()`）：
+1. 加载当前会话失败文件
+2. `attempts >= maxAttempts` → 删除文件，返回
+3. 发送 → 成功则删除文件，继续循环；失败则保存剩余，调度重试
+
+**关闭流程**：
+1. `shutdown()` → `isShutdown = true`，`resetBackoff()`，`forceFlush()`
+2. `forceFlush()` → 等待 `pendingExports` 全部完成
+
+#### 错误与隐私
+
+| 维度 | 设计 |
+|---|---|
+| 错误隔离 | 1P 失败不影响 Datadog/OTel；失败块短路但不影响已成功块 |
+| 认证降级 | 401 自动重试无认证；信任未建立/令牌过期跳过认证 |
+| 持久化隐私 | 失败文件在用户本地 `~/.claude/telemetry/`，不上传 |
+| killswitch | `isKilled()` 每次 POST 检查，激活则停止发送但退避定时器继续 |
+
+#### 设计取舍与备选
+
+| 决策 | 取舍 | 备选方案 | 不选理由 |
+|---|---|---|---|
+| 追加式持久化 | 原子性好；但文件可能累积 | 覆盖式写入 | 崩溃风险丢失数据 |
+| 二次退避 | 服务端过载时保护；但恢复时不够快 | 固定间隔 | 过载时雪上加霜 |
+| 最大尝试限制 | 防止无限重试；但可能丢失事件 | 无限重试 | 磁盘空间耗尽风险 |
+| 批量短路 | 快速失败；但后续块未尝试发送 | 继续尝试剩余块 | 浪费资源 |
+| 防御性 stripProtoFields | 防止未来 `_PROTO_*` 泄露；但重复工作 | 依赖调用方过滤 | 容易遗漏 |
+
+#### 源码测试证据
+
+- 源码位置：`src/services/analytics/firstPartyEventLoggingExporter.ts`
+- 现有测试：无专门单元测试
+- 缺口：持久化、重试策略、认证降级、killswitch 行为均无测试
+
+---
+
+### 模块设计卡 5：日志与 OTel 导出模块 (`src/utils/telemetry/instrumentation.ts`)
+
+#### 真实入口签名与关键类型
+
+```typescript
+// 公共入口
+export function bootstrapTelemetry(): void
+export function isTelemetryEnabled(): boolean
+export async function initializeTelemetry(): Promise<Meter>
+export async function flushTelemetry(): Promise<void>
+
+// 内部解析
+export function parseExporterTypes(value: string | undefined): string[]
+
+// 配置常量
+const DEFAULT_METRICS_EXPORT_INTERVAL_MS = 60000
+const DEFAULT_LOGS_EXPORT_INTERVAL_MS = 5000
+const DEFAULT_TRACES_EXPORT_INTERVAL_MS = 5000
+```
+
+#### 输入输出
+
+| 入口 | 输入 | 输出 | 副作用 |
+|---|---|---|---|
+| `bootstrapTelemetry()` | 无 | void | 从 `ANT_OTEL_*` 复制环境变量（ant 构建）；设置默认 temporality=delta |
+| `initializeTelemetry()` | 无 | Promise&lt;Meter&gt; | 设置全局 LoggerProvider/MeterProvider/TracerProvider；注册 cleanup |
+| `flushTelemetry()` | 无 | Promise&lt;void&gt; | 强制刷新 metrics/logs/traces |
+
+#### 事件与队列状态
+
+| 状态项 | 存储位置 | 类型 | 访问方式 |
+|---|---|---|---|
+| `LoggerProvider` | `bootstrap/state.ts` | `LoggerProvider \| undefined` | `getLoggerProvider()` / `setLoggerProvider()` |
+| `MeterProvider` | `bootstrap/state.ts` | `MeterProvider \| undefined` | `getMeterProvider()` / `setMeterProvider()` |
+| `TracerProvider` | `bootstrap/state.ts` | `TracerProvider \| undefined` | `getTracerProvider()` / `setTracerProvider()` |
+| 事件 Logger | `bootstrap/state.ts` | `Logger \| undefined` | `getEventLogger()` / `setEventLogger()` |
+
+环境变量驱动：
+- 启用开关：`CLAUDE_CODE_ENABLE_TELEMETRY=1`
+- 导出器选择：`OTEL_METRICS_EXPORTER`、`OTEL_LOGS_EXPORTER`、`OTEL_TRACES_EXPORTER`（逗号分隔，`none` 禁用）
+- 协议：`OTEL_EXPORTER_OTLP_PROTOCOL`（grpc/http/json/http/protobuf）
+- 端点：`OTEL_EXPORTER_OTLP_ENDPOINT`
+- 头部：`OTEL_EXPORTER_OTLP_HEADERS`
+
+动态导入优化：
+- `getOtlpReaders()`、`getOtlpLogExporters()`、`getOtlpTraceExporters()` 内部动态 `import()` 导出器
+- 避免加载未使用的导出器（如 grpc 约 700KB）
+
+BigQuery 指标：
+- 启用条件：API 客户、C4E 企业用户、团队用户
+- 导出间隔：5 分钟（硬编码）
+
+Beta 追踪：
+- 独立代码路径，使用 `BETA_TRACING_ENDPOINT`
+- 与常规 OTel 不互斥（metrics 仍设置）
+
+#### 构造/过滤/导出/关闭流程
+
+**构造流程**：
+1. `bootstrapTelemetry()`：环境变量预处理
+2. `initializeTelemetry()`：
+   - 移除 console 导出器（如果 `getHasFormattedOutput()` 为 true，避免破坏 SDK 通道）
+   - 设置 diag logger（仅 ERROR 级别）
+   - 初始化 Perfetto tracing（独立）
+   - 构建 resource（service name/version、host arch、os、env、WSL version）
+   - 检查 beta tracing → 启用则走独立路径
+   - 创建 MeterProvider + 配置 reader（OTel/BigQuery）
+   - telemetry 启用则创建 LoggerProvider
+   - telemetry+enhanced 启用则创建 TracerProvider
+   - 注册 shutdown cleanup
+
+**导出流程**：
+- OTel BatchLogRecordProcessor/BatchSpanProcessor/PeriodicExportingMetricReader 自动按间隔导出
+- Proxy/mTLS 支持：`getOTLPExporterConfig()` 提供 HttpAgentFactory
+- 动态头部：`otelHeadersHelper` 配置时每次刷新头部
+
+**关闭流程**：
+1. `shutdownTelemetry()`（cleanup 回调）：
+   - 结束 active interaction span
+   - 调用各 provider `.shutdown()`
+   - 超时保护：`CLAUDE_CODE_OTEL_SHUTDOWN_TIMEOUT_MS`（默认 2000ms）
+2. `beforeExit` 事件：force flush logs/traces
+3. `exit` 事件：最后尝试 force flush
+
+#### 错误与隐私
+
+| 维度 | 设计 |
+|---|---|
+| 超时保护 | 初始化/关闭/flush 均有超时，不无限阻塞 |
+| 错误隔离 | OTel 失败不影响主功能；shutdown 错误忽略 |
+| 隐私边界 | 不处理具体事件内容，仅作为传输管道；事件隐私由 analytics 层保证 |
+| Feature Disabled | `CLAUDE_CODE_ENABLE_TELEMETRY` 未设置则完全跳过 OTel 设置（仅内部 BigQuery 可能启用） |
+
+#### 设计取舍与备选
+
+| 决策 | 取舍 | 备选方案 | 不选理由 |
+|---|---|---|---|
+| 动态导入导出器 | 减少启动包大小；但首次加载有轻微延迟 | 静态导入所有 | 包体积膨胀约 1.2MB |
+| state.ts 存储 provider | 避免循环依赖；但需要 getter/setter | 单例模块 | 循环依赖风险 |
+| 独立 beta tracing 路径 | 灵活实验；但代码重复 | 统一路径 | 增加常规路径复杂度 |
+| cleanup 注册关闭 | 集中管理；但依赖 registry 正常工作 | 手动关闭 | 容易遗漏 |
+
+#### 源码测试证据
+
+- 源码位置：`src/utils/telemetry/instrumentation.ts`
+- 现有测试：无专门单元测试
+- 缺口：动态导入、超时行为、proxy/mTLS 配置无测试
+
+---
+
+### 模块设计卡 6：生成类型边界模块 (`src/types/generated/events_mono/`)
+
+#### 真实入口签名与关键类型
+
+```typescript
+// 从 proto 生成的类型示例
+import { ClaudeCodeInternalEvent } from '../../types/generated/events_mono/claude_code/v1/claude_code_internal_event.js'
+import { GrowthbookExperimentEvent } from '../../types/generated/events_mono/growthbook/v1/growthbook_experiment_event.js'
+
+// 关键使用点
+// metadata.ts: to1PEventFormat() 返回类型与 proto 匹配
+// firstPartyEventLoggingExporter.ts: ClaudeCodeInternalEvent.toJSON() 序列化
+```
+
+#### 输入输出
+
+生成文件仅提供类型定义和序列化函数，无运行时状态。
+
+#### 事件与队列状态
+
+无状态，纯类型/函数定义。
+
+#### 构造/过滤/导出/关闭流程
+
+**生成流程**（外部）：
+- 从 monorepo proto 定义生成
+- 命令：`bun run generate:proto`
+- **不宣称**生成过程已验证隐私行为
+
+**使用流程**：
+1. `to1PEventFormat()`：构造时类型检查字段与 proto 匹配
+2. `FirstPartyEventLoggingExporter`：调用生成的 `.toJSON()` 序列化
+3. 生成的 `.toJSON()` 静默丢弃未知字段（防止漂移时崩溃）
+
+**边界定位**：
+- 生成文件是**协议边界**，不是实现边界
+- 手动代码**不得修改**生成文件
+- 修改协议需要：更新 proto → 重新生成 → 更新使用方
+
+#### 错误与隐私
+
+| 维度 | 设计 |
+|---|---|
+| 隐私声明 | **不宣称**未测试隐私行为已验证 |
+| 漂移防护 | 类型系统防止字段不匹配；`.toJSON()` 静默丢弃未知字段 |
+| 错误处理 | 生成代码无运行时错误处理（类型安全前提下） |
+
+#### 设计取舍与备选
+
+| 决策 | 取舍 | 备选方案 | 不选理由 |
+|---|---|---|---|
+| proto 作为单一事实源 | 跨语言一致；但需要生成步骤 | 手写类型 + JSON Schema | 容易漂移；维护成本高 |
+| 生成类型仅作边界 | 清晰分离；但修改流程较长 | 直接手写 | 与后端 proto 不一致风险 |
+| `.toJSON()` 静默丢弃未知 | 向后兼容；但无声数据丢失 | 抛错 | 生产环境崩溃风险 |
+
+#### 源码测试证据
+
+- 源码位置：`src/types/generated/events_mono/`
+- 现有测试：无专门测试
+- 缺口：生成类型与实际使用匹配性无测试
+
+---
+
 ### 4.2 模块与状态所有权
 
 | 模块/对象 | 拥有的状态 | 主要操作 | 不承担的职责 | 与其他模块的接口 |
