@@ -1165,7 +1165,7 @@ type PromptResponse = {
 Prompt Hook 流程
   ├─ 模型选择: hook.model ?? getSmallFastModel() (Haiku)
   ├─ Prompt 模板替换: $ARGUMENTS → jsonInput
-  ├─ 调用模型 (streaming? TBD)
+  ├─ 调用模型（是否流式由具体调用配置决定）
   ├─ 解析响应 JSON (如果看起来像 JSON)
   └─ processHookJSONOutput() 转换为 HookResult
        ↓
