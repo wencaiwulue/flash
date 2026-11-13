@@ -380,7 +380,624 @@ type MemoryType = 'user' | 'feedback' | 'project' | 'reference'
 - **autoDream lock/lastConsolidatedAt**：auto 目录下的 .auto-dream.lock 和 .auto-dream-last
 - **KAIROS 每日日志**：auto 目录下的 logs/{YYYY}/{MM}/{YYYY-MM-DD}.md
 
-### 4.5 跨子系统依赖
+### 4.5 模块设计卡片
+
+#### 4.5.1 memdir 类型与路径模块
+
+**入口签名与关键类型**
+```typescript
+// src/memdir/paths.ts
+function isAutoMemoryEnabled(): boolean
+function getAutoMemPath(): string  // memoized, returns ~/.claude/projects/{sanitized-git-root}/memory/
+function getAutoMemEntrypoint(): string  // MEMORY.md full path
+function isAutoMemPath(absolutePath: string): boolean  // prefix check
+function getAutoMemDailyLogPath(date?: Date): string  // KAIROS mode only
+
+// src/memdir/memoryTypes.ts
+const MEMORY_TYPES: readonly ['user', 'feedback', 'project', 'reference']
+type MemoryType = (typeof MEMORY_TYPES)[number]
+function parseMemoryType(raw: unknown): MemoryType | undefined
+
+const TYPES_SECTION_INDIVIDUAL: readonly string[]
+const TYPES_SECTION_COMBINED: readonly string[]
+const WHAT_NOT_TO_SAVE_SECTION: readonly string[]
+const MEMORY_FRONTMATTER_EXAMPLE: readonly string[]
+```
+
+**输入输出**
+- **输入**：配置（settings.json）、环境变量、git root
+- **输出**：规范化的记忆目录绝对路径（带 trailing separator）
+- **错误处理**：返回 undefined 或 false 而不是抛出；验证拒绝相对路径、根路径、UNC 路径、null byte
+
+**状态与文件布局**
+- **模块状态**：无持久状态，仅 `getAutoMemPath()` 有 closure memoization（key: projectRoot）
+- **文件布局**：
+  ```
+  {memory-root}/
+    MEMORY.md  [索引，200行/25KB双截断]
+    *.md       [主题记忆文件，带 frontmatter]
+    team/      [团队记忆子目录，TEAMMEM feature only]
+    logs/      [KAIROS 模式每日日志]
+      {YYYY}/
+        {MM}/
+          {YYYY-MM-DD}.md
+  ```
+
+**加载流程**
+1. `isAutoMemoryEnabled()` 优先级检查：
+   - `CLAUDE_CODE_DISABLE_AUTO_MEMORY` → 禁用
+   - `CLAUDE_CODE_SIMPLE` → 禁用
+   - `CLAUDE_CODE_REMOTE` 且无 `CLAUDE_CODE_REMOTE_MEMORY_DIR` → 禁用
+   - `settings.autoMemoryEnabled` → 尊重
+   - 默认 → 启用
+2. `getAutoMemPath()` 解析：
+   - `CLAUDE_COWORK_MEMORY_PATH_OVERRIDE` → 优先
+   - `policy/local/userSettings.autoMemoryDirectory` → 其次
+   - `{memoryBase}/projects/{sanitized-git-root}/memory/` → 默认
+3. `validateMemoryPath()` 安全检查：绝对路径、长度 ≥3、非 drive-root、非 UNC、无 null byte
+
+**并发与失败隔离**
+- **并发安全**：memoization 使用 projectRoot 作为 key，测试可独立 init
+- **失败降级**：路径验证失败返回 undefined，记忆系统不加载而不崩溃整个应用
+- **无锁**：纯路径计算，无共享可变状态
+
+**隐私与信任边界**
+- **路径验证**：`isAutoMemPath()` 仅检查前缀，不解析 symlink（权限检查快速路径）
+- **配置来源隔离**：projectSettings 不能覆盖 autoMemoryDirectory（防止恶意仓库）
+- **覆盖模式**：Cowork 路径覆盖时，`isAutoMemPath()` 返回 true 但写权限不豁免
+
+**设计取舍与备选**
+| 取舍 | 当前选择 | 代价 | 收益 |
+|------|----------|------|------|
+| 记忆目录位置 | git root 而非 cwd | 同一仓库的不同 cwd 共享记忆 | 记忆与代码库绑定，而不是与启动位置绑定 |
+| 路径 memoization | closure memoize（projectRoot key） | 测试需注意隔离 | 避免每 turn 重复解析（collapseReadSearchGroups 高频调用） |
+| 路径分隔符 | 强制 normalize('NFC') + 统一 trailing separator | 需注意跨平台 | 前缀匹配可靠 |
+
+**源码测试证据**
+- 源码：`src/memdir/paths.ts`、`src/memdir/memoryTypes.ts`
+- 测试：**待补充**
+- 证据边界：仅验证路径合法性，不验证目录可写（后续 `ensureMemoryDirExists()` 处理）
+
+---
+
+#### 4.5.2 MEMORY.md 索引与截断模块
+
+**入口签名与关键类型**
+```typescript
+// src/memdir/memdir.ts
+const ENTRYPOINT_NAME = 'MEMORY.md'
+const MAX_ENTRYPOINT_LINES = 200
+const MAX_ENTRYPOINT_BYTES = 25_000
+
+type EntrypointTruncation = {
+  content: string
+  lineCount: number
+  byteCount: number
+  wasLineTruncated: boolean
+  wasByteTruncated: boolean
+}
+
+function truncateEntrypointContent(raw: string): EntrypointTruncation
+
+function ensureMemoryDirExists(memoryDir: string): Promise<void>
+```
+
+**输入输出**
+- **输入**：原始 MEMORY.md 字符串（可能很大）
+- **输出**：截断后的字符串 + 元数据（实际行数、字节数、哪个截断生效）
+- **警告消息**：追加 `\n\n> WARNING: MEMORY.md is {reason}...`
+
+**状态与文件布局**
+- **模块状态**：无
+- **文件布局**：MEMORY.md 位于记忆根目录，无 frontmatter，纯条目列表
+- **条目格式**：`- [Title] (topic-file.md) — one-line hook`（使用实际文件名，注意空格避免链接检查）
+
+**截断流程**
+1. **Trim**：移除首尾空白
+2. **行截断优先**：
+   - 超过 200 行 → 取前 200 行
+3. **字节截断其次**：
+   - 超过 25,000 字节 → 在最后一个换行处切分
+   - 无换行时直接在 25,000 字节切分
+4. **追加警告**：说明原因并建议保持条目简短
+
+**并发与失败隔离**
+- **纯函数**：无副作用，可安全并发调用
+- **失败开放**：截断不抛出，过长时优雅降级（带警告）
+- **幂等**：同一输入重复调用产生相同输出
+
+**隐私与信任边界**
+- **内容不解析**：仅按行/字节截断，不解释条目标题或链接
+- **警告不注入**：警告消息是固定模板，无用户输入插值
+- **不修改原文件**：截断仅在内存中进行，用于 prompt 注入，不写回磁盘
+
+**设计取舍与备选**
+| 取舍 | 当前选择 | 代价 | 收益 |
+|------|----------|------|------|
+| 截断顺序 | 行优先 → 字节优先 | 长条目可能被字节截断 | 保持条目完整性优先 |
+| 字节截断位置 | 最后一个换行处 | 可能比 25KB 略小 | 避免切在单个条目中间 |
+| 截断阈值 | 200行/25KB | 大型仓库记忆索引不全 | 控制 prompt token 占用（p99 当时正好） |
+| 截断行为 | 头截断 | 新条目不可见 | 实现简单，与 git log --oneline 一致 |
+
+**源码测试证据**
+- 源码：`src/memdir/memdir.ts`（`truncateEntrypointContent`、`ensureMemoryDirExists`）
+- 测试：**待补充**
+- 证据边界：仅处理 MEMORY.md，不处理其他记忆文件
+
+---
+
+#### 4.5.3 记忆检索与注入模块
+
+**入口签名与关键类型**
+```typescript
+// src/memdir/memdir.ts
+async function loadMemoryPrompt(): Promise<string | null>
+function buildMemoryPrompt(params: {
+  displayName: string
+  memoryDir: string
+  extraGuidelines?: string[]
+}): string
+function buildMemoryLines(
+  displayName: string,
+  memoryDir: string,
+  extraGuidelines?: string[],
+  skipIndex?: boolean
+): string[]
+function buildSearchingPastContextSection(autoMemDir: string): string[]
+
+// 提示常量
+const DIR_EXISTS_GUIDANCE: string
+const DIRS_EXIST_GUIDANCE: string
+```
+
+**输入输出**
+- **输入**：无（从环境/配置隐式获取）
+- **输出**：完整的记忆提示字符串，或 null（记忆禁用）
+- **提示结构**：
+  1. 记忆系统介绍
+  2. 记忆类型说明
+  3. 不保存的内容
+  4. 保存方法
+  5. 何时访问
+  6. 信任与验证
+  7. MEMORY.md 内容（截断后）
+  8. 搜索过去上下文（tengu_coral_fern gate）
+
+**状态与文件布局**
+- **模块状态**：无持久状态
+- **缓存**：系统 prompt section 缓存（loadMemoryPrompt 本身不缓存）
+- **ClaudeMD 集成**：通过 `clearMemoryFileCaches()` 与 ClaudeMD 文件缓存协调
+
+**检索流程**
+1. **特性门检查**：
+   - KAIROS 激活 → `buildAssistantDailyLogPrompt()`（每日日志模式）
+   - TEAMMEM 启用且团队记忆可用 → `buildCombinedMemoryPrompt()`（双目录）
+   - 仅 auto 记忆 → `buildMemoryLines()`（单目录）
+   - 禁用 → 返回 null
+2. **目录确保**：调用 `ensureMemoryDirExists()`（递归 mkdir，吞 EEXIST）
+3. **日志计数**：异步 `logMemoryDirCounts()`（不阻塞）
+4. **提示构建**：同步读取 MEMORY.md 并截断，拼接所有指导文本
+
+**并发与失败隔离**
+- **异步与同步分离**：目录确保/日志计数是异步，提示构建是同步
+- **目录创建失败**：吞 EACCES/EPERM/EROFS，继续返回提示（模型稍后写失败是可见的）
+- **MEMORY.md 不存在**：继续返回提示（带空索引说明）
+- **无锁**：文件读取是同步的，但仅读一次，无竞争窗口
+
+**隐私与信任边界**
+- **team 目录隔离**：团队记忆位于 `auto/team/` 子目录，与私有记忆明确分开
+- **类型隐私标注**：user 类型始终私有，feedback 默认私有
+- **不保存可推导内容**：明确提示不要保存代码模式、git history、文件结构
+- **验证要求**：记忆中的函数/文件主张在推荐前要验证当前状态
+
+**设计取舍与备选**
+| 取舍 | 当前选择 | 代价 | 收益 |
+|------|----------|------|------|
+| MEMORY.md 读取 | sync readFileSync | 启动时阻塞（很短） | prompt 构建同步，可缓存 |
+| 提示注入位置 | 系统 prompt / 用户上下文 | 不同模式位置不同 | 灵活适应 KAIROS/TEAMMEM |
+| dir exists 指导 | 硬编码在提示中 | 提示略长 | 模型不用浪费 turn 检查/创建目录 |
+
+**源码测试证据**
+- 源码：`src/memdir/memdir.ts`（`loadMemoryPrompt`、`buildMemoryPrompt`、`buildMemoryLines`）
+- 测试：**待补充**
+- 证据边界：仅负责构建提示字符串，不负责模型如何使用它
+
+---
+
+#### 4.5.4 extractMemories 自动提取模块
+
+**入口签名与关键类型**
+```typescript
+// src/services/extractMemories/extractMemories.ts
+function initExtractMemories(): void  // call once at startup
+async function executeExtractMemories(
+  context: REPLHookContext,
+  appendSystemMessage?: AppendSystemMessageFn
+): Promise<void>
+async function drainPendingExtraction(timeoutMs?: number): Promise<void>
+function createAutoMemCanUseTool(memoryDir: string): CanUseToolFn
+
+// 内部状态（closure-scoped inside initExtractMemories）
+let lastMemoryMessageUuid: string | undefined
+let inProgress: boolean
+let turnsSinceLastExtraction: number
+let pendingContext: { context, appendSystemMessage? } | undefined
+const inFlightExtractions: Set<Promise<void>>
+```
+
+**输入输出**
+- **输入**：REPLHookContext（完整 messages 数组）
+- **输出**：无返回值，可能通过 appendSystemMessage 追加 "Saved N memories"
+- **副作用**：写入记忆目录文件，更新 lastMemoryMessageUuid
+
+**状态与文件布局**
+- **closure 状态**：每个 initExtractMemories() 创建新 closure（测试隔离）
+- **持久光标**：lastMemoryMessageUuid 仅在内存中，会话重启重新处理
+- **不持久状态**：inProgress、pendingContext、inFlightExtractions 都是 transient
+
+**提取流程**
+1. **门检查**：
+   - tengu_passport_quail gate → 禁用则跳过
+   - isAutoMemoryEnabled() → 禁用则跳过
+   - 远程模式 → 跳过
+   - agentId 存在（子 agent）→ 跳过
+2. **并发控制**：
+   - inProgress → 保存 pendingContext，等待尾随提取
+3. **主代理互斥检查**：
+   - `hasMemoryWritesSince(messages, lastMemoryMessageUuid)` → true 则前进 cursor 并跳过
+4. **节流检查**：
+   - tengu_bramble_lintel gate（默认 1 轮提取一次）→ 未满足则跳过
+5. **构建提取提示**：
+   - `scanMemoryFiles()` 获取现有记忆 → `formatMemoryManifest()`
+   - `buildExtractAutoOnlyPrompt()` 或 `buildExtractCombinedPrompt()`
+6. **运行 forked agent**：
+   - `runForkedAgent(extract_memories, skipTranscript=true, maxTurns=5)`
+   - 工具权限：`createAutoMemCanUseTool()`（只读 Bash，仅记忆目录可写）
+7. **更新 cursor**：lastMemoryMessageUuid = last message uuid
+8. **尾随提取**：pendingContext 存在则递归运行
+
+**并发与失败隔离**
+- **inProgress 标志**：防止并发提取运行
+- **pendingContext 合并**：多次调用合并为一次尾随提取
+- **inFlightExtractions 追踪**：`drainPendingExtraction()` 等待所有进行中提取
+- **错误吞掉**：提取失败仅记录日志，不传播到主循环
+- **cursor 仅在成功时前进**：失败时 cursor 保持原样，下次重试
+- **尾随提取跳过节流**：确保合并的工作最终被处理
+
+**隐私与信任边界**
+- **skipTranscript=true**：forked agent 的对话不保存到会话 transcript
+- **工具权限限制**：
+  - Read/Grep/Glob：允许
+  - Bash：仅只读命令（ls/find/grep/cat/stat/wc/head/tail）
+  - FileEdit/FileWrite：仅记忆目录内路径
+  - 其他：拒绝
+- **不访问敏感文件**：权限限制确保 fork 不能读取 ~/.ssh 等
+
+**设计取舍与备选**
+| 取舍 | 当前选择 | 代价 | 收益 |
+|------|----------|------|------|
+| 与主代理互斥 | hasMemoryWritesSince 检查 | 主代理写不完整时不会补充 | 避免重复工作，无冲突 |
+| 状态封装 | closure-scoped inside initExtractMemories | 调用方必须记得 init | 测试自然隔离 |
+| 工具权限 | CanUseTool 动态检查 | 实现复杂 | 安全约束严格执行 |
+| 尾随提取 | 递归 runExtraction | 可能级联但不深（通常一次） | 多次调用合并，不遗漏工作 |
+
+**源码测试证据**
+- 源码：`src/services/extractMemories/extractMemories.ts`、`src/services/extractMemories/prompts.ts`
+- 测试：**待补充**
+- 证据边界：仅负责提取，不负责记忆质量或相关性
+
+---
+
+#### 4.5.5 SessionMemory 会话记忆模块
+
+**入口签名与关键类型**
+```typescript
+// src/services/SessionMemory/sessionMemory.ts
+function initSessionMemory(): void  // call once at startup
+function shouldExtractMemory(messages: Message[]): boolean
+async function manuallyExtractSessionMemory(
+  messages: Message[],
+  toolUseContext: ToolUseContext
+): Promise<ManualExtractionResult>
+function createMemoryFileCanUseTool(memoryPath: string): CanUseToolFn
+
+// 内部状态
+let lastMemoryMessageUuid: string | undefined  // module-level
+
+// 配置类型
+type SessionMemoryConfig = {
+  minimumMessageTokensToInit: number
+  minimumTokensBetweenUpdate: number
+  toolCallsBetweenUpdates: number
+}
+```
+
+**输入输出**
+- **输入**：完整 Message 数组（整个会话历史）
+- **输出**：manualExtract 返回 success/error + memoryPath
+- **副作用**：写入 `.session-memory.md`，可能更新 lastSummarizedMessageId
+
+**状态与文件布局**
+- **module 状态**：lastMemoryMessageUuid（仅在内存，测试可 reset）
+- **会话文件**：`{projectDir}/.session-memory.md`（每项目单独）
+- **配置持久化**：SessionMemoryConfig 从 tengu_sm_config gate 获取（cached）
+- **不持久光标**：lastSummarizedMessageId 会话重启重置
+
+**提取流程**
+1. **门检查**：
+   - querySource !== repl_main_thread（子 agent）→ 跳过
+   - tengu_session_memory gate → 禁用则跳过
+   - isAutoCompactEnabled() → 禁用则跳过
+   - 远程模式 → 跳过
+2. **阈值检查**（`shouldExtractMemory`）：
+   - **初始化阈值**：tokenCount ≥ minimumMessageTokensToInit
+   - **更新阈值**：token 增长 ≥ minimumTokensBetweenUpdate，或 toolCalls ≥ toolCallsBetweenUpdates
+   - **安全点**：最后一轮无 tool calls（避免孤儿 tool_result）
+3. **设置文件**：
+   - 确保目录存在
+   - 文件不存在 → 写入模板
+   - 清除缓存，读取当前内容
+4. **构建提示**：`buildSessionMemoryUpdatePrompt()`
+5. **运行 forked agent**：
+   - `runForkedAgent(session_memory)`
+   - 工具权限：`createMemoryFileCanUseTool()`（仅 Edit 该文件）
+   - 独立上下文，不污染父状态
+6. **更新光标**：安全时（无 pending tool calls）设置 lastSummarizedMessageId
+
+**并发与失败隔离**
+- **sequential 装饰器**：防止并发提取运行
+- **独立子上下文**：`createSubagentContext()` 避免污染父缓存
+- **异常传播**：manualExtract 抛出异常（用户可见），自动提取仅记录日志
+- **光标仅在安全时更新**：避免截断 pending tool calls
+
+**隐私与信任边界**
+- **会话本地**：`.session-memory.md` 位于项目目录，不与团队同步
+- **工具权限极端限制**：仅允许 Edit 单一文件，完全没有 Read/Write/Bash
+- **不保存敏感信息**：与 auto 记忆相同的类型约束
+
+**设计取舍与备选**
+| 取舍 | 当前选择 | 代价 | 收益 |
+|------|----------|------|------|
+| 状态位置 | module-level（非 closure） | 测试需显式 reset | 简化 init（不用传递 state） |
+| 双重阈值 | token + toolCall，任一满足 | 逻辑略复杂 | 适应不同会话模式（对话密集 vs 操作密集） |
+| 安全点要求 | 最后一轮无 tool calls | 可能延迟提取 | 避免孤儿 tool_result，状态一致 |
+| 工具权限 | 仅 Edit 单文件 | 模型无法读取现有内容（需先通过提示注入） | 安全边界最小化 |
+
+**源码测试证据**
+- 源码：`src/services/SessionMemory/sessionMemory.ts`、`src/services/SessionMemory/prompts.ts`、`src/services/SessionMemory/sessionMemoryUtils.ts`
+- 测试：**待补充**
+- 证据边界：仅负责会话级记忆，不负责长期记忆提取
+
+---
+
+#### 4.5.6 teamMemorySync 团队记忆同步模块
+
+**入口签名与关键类型**
+```typescript
+// src/memdir/teamMemPaths.ts
+function isTeamMemoryEnabled(): boolean
+function getTeamMemPath(): string
+function getTeamMemEntrypoint(): string
+function isTeamMemPath(filePath: string): boolean
+async function validateTeamMemWritePath(filePath: string): Promise<string>
+async function validateTeamMemKey(relativeKey: string): Promise<string>
+class PathTraversalError extends Error {}
+
+// src/services/teamMemorySync/index.ts
+type SyncState = {
+  lastKnownChecksum: string | null
+  serverChecksums: Map<string, string>
+  serverMaxEntries: number | null
+}
+function createSyncState(): SyncState
+function isTeamMemorySyncAvailable(): boolean
+function hashContent(content: string): string
+function batchDeltaByBytes(delta: Record<string, string>): Array<Record<string, string>>
+async function pullTeamMemory(
+  state: SyncState,
+  options?: { skipEtagCache?: boolean }
+): Promise<{ success, filesWritten, entryCount, notModified?, error? }>
+async function pushTeamMemory(state: SyncState): Promise<TeamMemorySyncPushResult>
+async function syncTeamMemory(state: SyncState): Promise<{ success, filesPulled, filesPushed, error? }>
+
+// 常量
+const TEAM_MEMORY_SYNC_TIMEOUT_MS = 30_000
+const MAX_FILE_SIZE_BYTES = 250_000
+const MAX_PUT_BODY_BYTES = 200_000
+const MAX_RETRIES = 3
+const MAX_CONFLICT_RETRIES = 2
+```
+
+**输入输出**
+- **输入**：SyncState（调用方拥有，线程隔离）
+- **输出**：success/error + 文件计数
+- **网络请求**：GET/PUT `/api/claude_code/team_memory?repo={owner/repo}`
+
+**状态与文件布局**
+- **SyncState 所有权**：调用方创建并持有，无 module-level 可变状态
+- **持久化位置**：`{autoMemPath}/team/`（auto 记忆的子目录）
+- **服务器状态**：ETag、entryChecksums 缓存在 SyncState（会话级，不持久化）
+- **学习的服务器限制**：serverMaxEntries 在 413 响应后缓存到 SyncState
+
+**同步流程**
+
+**Pull 流程**（服务器 → 本地）：
+1. **先决条件**：OAuth 可用、git repo 存在
+2. **条件 GET**：带 If-None-Match（ETag）
+3. **304 处理**：Not Modified → 无写入
+4. **404 处理**：服务器无数据 → 清除 serverChecksums
+5. **路径验证**：每个 key 通过 `validateTeamMemKey()`（sanitize + symlink 解析）
+6. **去重写入**：内容与本地相同 → 跳过（保持 mtime，不触发 watcher）
+7. **刷新 checksums**：从响应 entryChecksums 更新 serverChecksums
+8. **清除缓存**：有写入 → `clearMemoryFileCaches()`
+
+**Push 流程**（本地 → 服务器）：
+1. **先决条件**：OAuth 可用、git repo 存在
+2. **读取本地**：`readLocalTeamMemory()`
+   - 扫描 secrets（`scanForSecrets()`）→ 含秘密的文件跳过，记录 skippedSecrets
+   - 超过 250KB 的文件跳过
+   - 按 serverMaxEntries 截断（如果已学习）
+3. **计算本地哈希**：`hashContent()` 每个文件
+4. **冲突重试循环**（最多 MAX_CONFLICT_RETRIES=2）：
+   - **delta 计算**：localHash !== serverChecksum 的条目
+   - **批量切分**：`batchDeltaByBytes()` 分成 ≤200KB PUTs
+   - **乐观锁上传**：带 If-Match
+   - **成功**：更新 serverChecksums 和 lastKnownChecksum
+   - **412 冲突**：
+     - `fetchTeamMemoryHashes()`（仅 hashes，无内容）
+     - 刷新 serverChecksums
+     - 重试
+   - **413 条目超限**：
+     - 解析 extra_details.max_entries
+     - 缓存到 serverMaxEntries
+     - 推送失败（下次截断）
+5. **返回结果**：含 skippedSecrets（如果有）
+
+**Sync 流程**（双向）：
+1. `pullTeamMemory(skipEtagCache=true)`（完整拉取，服务器优先）
+2. `pushTeamMemory()`（本地优先，冲突时覆盖服务器）
+
+**路径验证流程**（`validateTeamMemWritePath` / `validateTeamMemKey`）：
+1. **字符串前缀检查**：快速拒绝明显遍历
+2. **Null byte 检查**：拒绝
+3. **URL 编码遍历检查**：decode 后检查
+4. **Unicode 规范化检查**：NFKC 后检查
+5. **Symlink 解析**：`realpathDeepestExisting()`（目标不存在时解析最深祖先）
+6. **真实路径包含检查**：`isRealPathWithinTeamDir()`
+7. **抛 PathTraversalError** 或返回 resolvedPath
+
+**并发与失败隔离**
+- **状态隔离**：SyncState 由调用方拥有，多个 watcher 可独立同步
+- **重试机制**：网络错误最多重试 MAX_RETRIES=3 次（带 backoff）
+- **冲突重试**：412 最多重试 MAX_CONFLICT_RETRIES=2 次
+- **部分提交安全**：批量上传时，前序批次成功后更新 serverChecksums，失败时从失败处继续
+- **秘密扫描失败开放**：含秘密的文件跳过，其他文件继续上传
+- **413 学习但失败**：学习 serverMaxEntries，但本次推送失败（用户需手动清理）
+
+**隐私与信任边界**
+- **深度路径验证**：symlink 解析确保不能逃出 team 目录
+- **密钥扫描**：推送前扫描所有文件，含 gitleaks patterns 的文件跳过不上传
+- **仅团队类型**：user 类型记忆始终不应在 team 目录（提示层约束）
+- **隔离验证**：`validateTeamMemWritePath()` 在写入时验证，`isTeamMemPath()` 仅前缀检查（权限快速路径）
+- **服务器访问控制**：repo 级别权限，同一 org 的协作成员可访问
+
+**设计取舍与备选**
+| 取舍 | 当前选择 | 代价 | 收益 |
+|------|----------|------|------|
+| 状态位置 | SyncState 调用方拥有 | 调用方需管理 state | 测试隔离，多 watcher 可独立同步 |
+| 同步语义 | pull-first，server-wins on pull，local-wins on push | 队友的推送可能被覆盖 | 用户的本地修改不会静默丢失 |
+| 乐观锁 | ETag + If-Match | 412 时需额外 hashes 请求 | 无锁等待，低并发场景性能好 |
+| 冲突解决 | 本地覆盖服务器 | 可能丢失队友修改 | 简单可预测，用户可见性高 |
+| 批量切分 | 200KB PUT body | 大 delta 需多次请求 | 避免网关 413 |
+| 秘密扫描 | 推送前本地扫描 | 推送略慢 | 秘密永远不离开机器 |
+| symlink 验证 | realpathDeepestExisting | 实现复杂 | 安全处理目标不存在的情况 |
+
+**源码测试证据**
+- 源码：`src/memdir/teamMemPaths.ts`、`src/services/teamMemorySync/index.ts`、`src/services/teamMemorySync/secretScanner.ts`、`src/services/teamMemorySync/types.ts`
+- 测试：**待补充**
+- 证据边界：仅同步 team 目录，不涉及 auto 目录；仅处理 markdown 文件，不处理二进制
+
+---
+
+#### 4.5.7 autoDream 自动整理模块
+
+**入口签名与关键类型**
+```typescript
+// src/services/autoDream/autoDream.ts
+function initAutoDream(): void  // call once at startup
+async function executeAutoDream(
+  context: REPLHookContext,
+  appendSystemMessage?: AppendSystemMessageFn
+): Promise<void>
+
+// 内部状态（closure-scoped inside initAutoDream）
+let lastSessionScanAt: number
+
+// 配置
+type AutoDreamConfig = { minHours: number; minSessions: number }
+const DEFAULTS: AutoDreamConfig = { minHours: 24, minSessions: 5 }
+const SESSION_SCAN_INTERVAL_MS = 10 * 60 * 1000  // 10min
+
+// src/services/autoDream/consolidationLock.ts
+async function readLastConsolidatedAt(): Promise<number>
+async function listSessionsTouchedSince(since: number): Promise<string[]>
+async function tryAcquireConsolidationLock(): Promise<number | null>
+async function rollbackConsolidationLock(priorMtime: number | null): Promise<void>
+```
+
+**输入输出**
+- **输入**：REPLHookContext
+- **输出**：无返回值，可能通过 appendSystemMessage 追加 "Improved N memories"
+- **副作用**：修改记忆文件，更新 .auto-dream-last、.auto-dream-lock
+
+**状态与文件布局**
+- **closure 状态**：lastSessionScanAt（仅在内存，会话重启重置）
+- **持久锁文件**：`.auto-dream-lock`（mtime 用于获取锁）
+- **持久时间戳**：`.auto-dream-last`（最后整理时间）
+- **无其他持久状态**：会话列表每次重新扫描
+
+**整理流程**
+1. **门检查**（从快到慢）：
+   - KAIROS 激活 → 跳过（使用磁盘 skill dream）
+   - 远程模式 → 跳过
+   - auto 记忆禁用 → 跳过
+   - tengu_onyx_plover gate → 禁用则跳过
+2. **时间门**：
+   - `readLastConsolidatedAt()` → 小时数 ≥ minHours（默认 24h）
+3. **扫描节流**：
+   - 距上次会话扫描 < 10min → 跳过（避免每 turn stat 会话目录）
+   - 更新 lastSessionScanAt
+4. **会话门**：
+   - `listSessionsTouchedSince(lastConsolidatedAt)`
+   - 排除当前会话
+   - 会话数 ≥ minSessions（默认 5）→ 继续
+5. **获取锁**：
+   - `tryAcquireConsolidationLock()` → 获取失败则跳过
+   - 返回 priorMtime（用于失败回滚）
+6. **注册后台任务**：`registerDreamTask()`（UI 可见进度）
+7. **构建提示**：`buildConsolidationPrompt()`（含会话列表）
+8. **运行 forked agent**：
+   - `runForkedAgent(auto_dream, skipTranscript=true)`
+   - 工具权限：`createAutoMemCanUseTool()`（与 extractMemories 相同）
+   - 带 abortController（用户可取消）
+   - onMessage 回调更新 DreamTask 进度
+9. **完成任务**：`completeDreamTask()`
+10. **追加消息**：有文件改动时 append "Improved N memories"
+
+**失败回滚流程**：
+- 用户取消（abortController.signal.aborted）→ DreamTask 已处理，无回滚
+- 其他错误 → `rollbackConsolidationLock(priorMtime)`（rewind mtime，时间门很快重试）
+
+**并发与失败隔离**
+- **三级门 + 扫描节流**：从快到慢，避免不必要的 stat
+- **锁机制**：`tryAcquireConsolidationLock()` 防止多进程/多实例并发整理
+- **closure 状态隔离**：`initAutoDream()` 创建新 closure，测试独立
+- **错误吞掉**：整理失败仅记录日志，不传播到主循环
+- **锁回滚**：失败时 rewind mtime，时间门很快重试
+- **后台任务取消**：用户可从 UI 取消，abortController 立即停止 forked agent
+
+**隐私与信任边界**
+- **skipTranscript=true**：forked agent 的对话不保存到会话 transcript
+- **工具权限与 extractMemories 相同**：只读 Bash，仅记忆目录可写
+- **仅整理 auto 记忆**：team 记忆不触及（避免与团队同步冲突）
+- **会话列表仅 id**：提示中仅包含会话 id，不包含内容（fork 自行读取）
+
+**设计取舍与备选**
+| 取舍 | 当前选择 | 代价 | 收益 |
+|------|----------|------|------|
+| 门顺序 | 时间 → 扫描节流 → 会话 → 锁 | 会话不足时浪费一次 stat | 快速路径最常见（时间未到） |
+| 扫描节流 | 10min | 会话达标后可能延迟最多 10min | 避免时间门通过但会话不足时每 turn stat |
+| 状态封装 | closure-scoped inside initAutoDream | 调用方必须记得 init | 测试自然隔离 |
+| 锁机制 | mtime-based（无 flock） | NFS 上可能不可靠 | 无需处理锁文件泄漏 |
+| 失败回滚 | rewind mtime | 可能频繁重试 | 扫描节流是 backoff |
+| KAIROS 禁用 | 使用磁盘 skill dream | 两套整理逻辑 | KAIROS 模式记忆范式不同（append-only logs） |
+
+**源码测试证据**
+- 源码：`src/services/autoDream/autoDream.ts`、`src/services/autoDream/config.ts`、`src/services/autoDream/consolidationLock.ts`、`src/services/autoDream/consolidationPrompt.ts`
+- 测试：**待补充**
+- 证据边界：仅整理，不负责验证整理质量；仅处理 auto 记忆，不处理 team 记忆
+
+### 4.6 跨子系统依赖
 
 - **query-core spec**：消息传递、abortController、forked agent、stopHooks/postSamplingHooks
 - **ClaudeMD spec**：记忆文件注入上下文、clearMemoryFileCaches

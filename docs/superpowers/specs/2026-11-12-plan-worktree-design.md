@@ -64,6 +64,488 @@ status: draft
 
 ## 4. 架构、模块与数据流
 
+### 模块设计卡: EnterPlanModeTool
+
+**真实入口签名**: `EnterPlanModeTool.call(input, context)`
+* 输入: `z.strictObject({})` — 无参数
+* 输出: `{ message: string }`
+* 关键类型: `Tool<InputSchema, Output>`
+
+**输入输出**:
+* 前置条件: 不在 agent 上下文中; 不在 --channels 模式
+* 后置条件: `toolPermissionContext.mode = 'plan'`; 权限被剥离
+
+**计划与工作区状态**:
+* 拥有状态: 无 — 无状态工具
+* 读取状态: `toolPermissionContext.mode`, `toolPermissionContext.prePlanMode`
+* 写入状态: `toolPermissionContext.mode`, `toolPermissionContext.strippedDangerousRules`
+* 关联: `getAllowedChannels()`, `handlePlanModeTransition()`, `prepareContextForPlanMode()`
+
+**批准/执行/退出/清理流程**:
+* 执行流程:
+  1. 验证不在 agent 上下文
+  2. 调用 `handlePlanModeTransition()` 记录模式切换
+  3. 调用 `prepareContextForPlanMode()` 剥离危险权限
+  4. 更新 `toolPermissionContext.mode = 'plan'`
+* 无批准/退出/清理 — 这是进入点
+
+**错误与恢复**:
+* 错误条件: 在 agent 上下文中调用 → 抛出 Error
+* 恢复策略: 无 — 幂等; 重复调用只是再次设置同一 mode
+
+**设计取舍/备选**:
+* 决策: 无参数设计
+* 备选: 接受可选参数控制权限级别
+* 代价: 灵活性降低
+* 收益: 简单性、一致性
+* 证据: `src/tools/EnterPlanModeTool/EnterPlanModeTool.ts:77-103`
+
+**源码测试证据**:
+* 主要源码: `src/tools/EnterPlanModeTool/EnterPlanModeTool.ts`
+* 关键函数: `prepareContextForPlanMode()`, `handlePlanModeTransition()`
+* 尚无针对此工具的测试
+* 相关依赖: `src/bootstrap/state.ts`, `src/utils/permissions/permissionSetup.ts`
+
+---
+
+### 模块设计卡: ExitPlanModeV2Tool
+
+**真实入口签名**: `ExitPlanModeV2Tool.call(input, context)`
+* 输入: `{ allowedPrompts?: Array<{ tool: 'Bash', prompt: string }>, plan?: string, planFilePath?: string }`
+* 输出: `{ plan: string | null, isAgent: boolean, filePath?: string, hasTaskTool?: boolean, planWasEdited?: boolean, awaitingLeaderApproval?: boolean, requestId?: string }`
+* 关键类型: `Tool<InputSchema, Output>`, `AllowedPrompt`
+
+**输入输出**:
+* 前置条件: 在 plan mode (`toolPermissionContext.mode = 'plan'`); 不在 --channels 模式
+* 后置条件: 恢复到 prePlanMode; 可能设置语义化权限
+* 特殊输入: `allowedPrompts` 仅支持 Bash 工具的语义化权限请求
+
+**计划与工作区状态**:
+* 拥有状态: 无 — 无状态工具
+* 读取状态: `toolPermissionContext.mode`, `toolPermissionContext.prePlanMode`, `toolPermissionContext.strippedDangerousRules`, `hasExitedPlanModeInSession()`, `isPlanModeRequired()`, `isTeammate()`
+* 写入状态: `toolPermissionContext.mode`, `hasExitedPlanMode`, `needsPlanModeExitAttachment`, `needsAutoModeExitAttachment`, `setAutoModeActive()`
+* 关联: `getPlan()`, `getPlanFilePath()`, `persistFileSnapshotIfRemote()`, `writeToMailbox()`, `setAwaitingPlanApproval()`
+
+**批准/执行/退出/清理流程**:
+* 批准流程:
+  - 本地: `checkPermissions()` 返回 `behavior: 'ask'` 触发 UI 批准
+  - Teammate + `isPlanModeRequired()`: 绕过 UI, 发送 `plan_approval_request` 到 leader mailbox
+  - Teammate + voluntary: 绕过 UI, 直接退出
+  - Ultraplan CCR: 通过 `pollForApprovedExitPlanMode()` 远程批准或 teleport
+* 执行流程:
+  1. 验证在 plan mode (非 teammate)
+  2. 读取计划 (从 `input.plan` 或 `getPlan()`)
+  3. 同步写入磁盘 (如果用户编辑了计划)
+  4. Teammate 路径: 发送到 leader mailbox, 设置 `awaitingLeaderApproval`
+  5. 主路径:
+     - 处理 auto-mode gate fallback (circuit breaker)
+     - 恢复到 `prePlanMode`
+     - 根据恢复模式处理权限剥离/恢复
+     - 设置 `hasExitedPlanMode`, `needsPlanModeExitAttachment`
+* 退出流程: 无 — 这是退出点
+* 清理流程: 无
+
+**错误与恢复**:
+* 错误条件: 不在 plan mode 调用 → `validateInput()` 拒绝, errorCode: 1
+* 错误条件: teammate + `isPlanModeRequired()` 但无计划文件 → 抛出 Error
+* 恢复策略: 幂等; 用户批准后可再次调用(已在执行模式则被拒绝)
+* Ultraplan 恢复: 网络错误瞬时重试 (5次); OAuth 通过 `checkAndRefreshOAuthTokenIfNeeded()`
+
+**设计取舍/备选**:
+* 决策: `allowedPrompts` 仅支持 Bash
+* 备选: 支持所有工具
+* 代价: 潜在权限滥用风险
+* 收益: 平衡便利性与安全性
+* 证据: `src/tools/ExitPlanModeTool/ExitPlanModeV2Tool.ts:64-73`
+* 决策: 计划文件作为真相源, `input.plan` 可选
+* 备选: 计划仅在内存中传输
+* 代价: 需要磁盘 I/O
+* 收益: 可恢复性、可审计性
+* 证据: `src/tools/ExitPlanModeTool/ExitPlanModeV2Tool.ts:246-261`
+
+**源码测试证据**:
+* 主要源码: `src/tools/ExitPlanModeTool/ExitPlanModeV2Tool.ts`
+* 测试: `tests/exitPlanModePrompt.test.ts:1-49` (仅验证 schema)
+* 相关依赖: `src/utils/plans.ts`, `src/utils/teammate.ts`, `src/utils/teammateMailbox.ts`, `src/utils/permissions/autoModeState.ts`, `src/utils/permissions/permissionSetup.ts`
+
+---
+
+### 模块设计卡: VerifyPlanExecutionTool (占位)
+
+**当前状态**: 仅定义了 `constants.ts`; 工具尚未实现
+
+**设计意图**:
+* 验证计划中的步骤是否完成
+* 检测计划外的危险操作
+* 作为计划退出后的验证钩子
+
+**预期边界** (从现有代码推断):
+* 计划钩子在 `REPL.tsx` 中注册 (注释: `Note: Background verification hook is registered in REPL.tsx AFTER context clear via registerPlanVerificationHook()`)
+* 可能与 auto-mode 验证钩子并行
+* 证据: `src/tools/ExitPlanModeTool/ExitPlanModeV2Tool.ts:315-316`
+
+---
+
+### 模块设计卡: EnterWorktreeTool
+
+**真实入口签名**: `EnterWorktreeTool.call(input, context)`
+* 输入: `{ name?: string }` (slug 需通过 `validateWorktreeSlug()` 验证)
+* 输出: `{ worktreePath: string, worktreeBranch?: string, message: string }`
+* 关键类型: `Tool<InputSchema, Output>`, `WorktreeSession`
+
+**输入输出**:
+* 前置条件: 不在活动 worktree 会话中
+* 后置条件: `process.chdir(worktreePath)`, `setCwd(worktreePath)`, `setOriginalCwd(worktreePath)`, `currentWorktreeSession` 已设置
+* slug 约束: 每段匹配 `/^[a-zA-Z0-9._-]+$/`; 最大长度 64; 不允许 `.`/`..`
+
+**计划与工作区状态**:
+* 拥有状态: 无 — 无状态工具; 工作区状态在 `worktree.ts` 模块层
+* 读取状态: `currentWorktreeSession`, `getCwd()`, `findCanonicalGitRoot()`
+* 写入状态: `currentWorktreeSession`, `projectConfig.activeWorktreeSession`, 系统 prompt 缓存, 内存文件缓存
+* 关联: `createWorktreeForSession()`, `validateWorktreeSlug()`, `getPlanSlug()` (无 name 时用作 slug)
+
+**批准/执行/退出/清理流程**:
+* 无批准 — `shouldDefer: true` 但无权限检查
+* 执行流程:
+  1. 验证无活动会话
+  2. 如果在 worktree 中, 切换到主 repo root
+  3. 获取 slug (input.name 或 `getPlanSlug()`)
+  4. 调用 `createWorktreeForSession()` (先尝试 hook, 再 git)
+  5. 切换目录到 worktree
+  6. 保存状态, 清除缓存
+* 无退出/清理 — 这是进入点; 清理通过 ExitWorktreeTool
+
+**错误与恢复**:
+* 错误条件: 已在活动会话中 → 抛出 Error
+* 错误条件: slug 验证失败 → Zod 验证错误
+* 错误条件: `createWorktreeForSession()` 失败 (git 失败或 hook 失败) → 抛出
+* 恢复策略: 幂等; 如果 worktree 已存在, `getOrCreateWorktree()` 跳过创建直接恢复
+
+**设计取舍/备选**:
+* 决策: slug 扁平化 (`/` → `+`)
+* 备选: 禁止 `/` 或允许嵌套
+* 代价: 可读性略有降低
+* 收益: 避免 git ref D/F 冲突, 避免嵌套 worktree 删除问题
+* 证据: `src/utils/worktree.ts:219-221`
+* 决策: 优先 hook, 再 git worktree
+* 备选: 仅 git, 仅 hook
+* 代价: 复杂度增加
+* 收益: 支持非 git 项目
+* 证据: `src/utils/worktree.ts:677-753`
+
+**源码测试证据**:
+* 主要源码: `src/tools/EnterWorktreeTool/EnterWorktreeTool.ts`
+* 测试: 尚无
+* 相关依赖: `src/utils/worktree.ts`, `src/utils/git.ts`, `src/utils/hooks.ts`
+
+---
+
+### 模块设计卡: ExitWorktreeTool
+
+**真实入口签名**: `ExitWorktreeTool.call(input, context)`
+* 输入: `{ action: 'keep' | 'remove', discard_changes?: boolean }`
+* 输出: `{ action: 'keep' | 'remove', originalCwd: string, worktreePath: string, worktreeBranch?: string, tmuxSessionName?: string, discardedFiles?: number, discardedCommits?: number, message: string }`
+* 关键类型: `Tool<InputSchema, Output>`, `ChangeSummary`
+
+**输入输出**:
+* 前置条件: 在活动 worktree 会话中
+* 后置条件: `process.chdir(originalCwd)`, `currentWorktreeSession = null`, 配置已更新
+* discard_changes: 当 action='remove' 且有未提交变更时必须为 true
+
+**计划与工作区状态**:
+* 拥有状态: 无 — 无状态工具
+* 读取状态: `currentWorktreeSession`, `getProjectRoot()`, `getOriginalCwd()`
+* 写入状态: `currentWorktreeSession`, `projectConfig.activeWorktreeSession`, `setCwd()`, `setOriginalCwd()`, `setProjectRoot()` (如果需要恢复)
+* 关联: `keepWorktree()`, `cleanupWorktree()`, `countWorktreeChanges()`, `killTmuxSession()`, `updateHooksConfigSnapshot()`
+
+**批准/执行/退出/清理流程**:
+* 批准流程: `isDestructive(input)` 当 action='remove' 时返回 true → 触发用户确认
+* 执行流程:
+  1. `validateInput()`:
+     - 验证有活动会话 (仅本会话创建的)
+     - action='remove' 时检查变更: `countWorktreeChanges()`
+     - 有变更且 `discard_changes !== true` → 拒绝
+  2. action='keep':
+     - `keepWorktree()`: 切换目录, null 会话
+     - `restoreSessionToOriginalCwd()`: 恢复状态、清除缓存
+  3. action='remove':
+     - 终止 tmux (如果有)
+     - `cleanupWorktree()`: 删除 worktree 和分支
+     - `restoreSessionToOriginalCwd()`
+* 退出流程: 无 — 这是退出点
+* 清理流程: `cleanupWorktree()` 调用 `git worktree remove --force` 和 `git branch -D`
+
+**错误与恢复**:
+* 错误条件: 无活动会话 → `validateInput()` 拒绝, errorCode: 1
+* 错误条件: 有变更但无 `discard_changes: true` → `validateInput()` 拒绝, errorCode: 2
+* 错误条件: git 状态无法验证 → `validateInput()` 拒绝, errorCode: 3 (fail-closed)
+* 恢复策略: `cleanupWorktree()` 失败时只记录日志不抛出; 会话仍然退出
+* 证据: `src/tools/ExitWorktreeTool/ExitWorktreeTool.ts:219-221`
+
+**设计取舍/备选**:
+* 决策: fail-closed 策略
+* 备选: 只提示不阻止, 或假设无变更当 git 失败时
+* 代价: 某些情况下需要用户显式确认
+* 收益: 防止意外丢失工作
+* 证据: `src/tools/ExitWorktreeTool/ExitWorktreeTool.ts:70-113`
+* 决策: 仅能退出本会话创建的 worktree
+* 备选: 允许退出任何 worktree
+* 代价: 灵活性降低
+* 收益: 安全性、范围明确
+* 证据: `src/tools/ExitWorktreeTool/ExitWorktreeTool.ts:179-188`
+
+**源码测试证据**:
+* 主要源码: `src/tools/ExitWorktreeTool/ExitWorktreeTool.ts`
+* 测试: 尚无
+* 相关依赖: `src/utils/worktree.ts`, `src/utils/git.ts`, `src/utils/hooks/hooksConfigSnapshot.ts`
+
+---
+
+### 模块设计卡: worktree.ts (Worktree 管理)
+
+**真实入口签名**:
+* `createWorktreeForSession(sessionId, slug, tmuxSessionName?, options?)`: `Promise<WorktreeSession>`
+* `createAgentWorktree(slug)`: `Promise<{ worktreePath, worktreeBranch?, headCommit?, gitRoot?, hookBased? }>`
+* `keepWorktree()`: `Promise<void>`
+* `cleanupWorktree()`: `Promise<void>`
+* `removeAgentWorktree(worktreePath, worktreeBranch?, gitRoot?, hookBased?)`: `Promise<boolean>`
+* `cleanupStaleAgentWorktrees(cutoffDate)`: `Promise<number>`
+* `validateWorktreeSlug(slug)`: `void`
+* `hasWorktreeChanges(worktreePath, originalHeadCommit)`: `Promise<boolean>`
+* `getCurrentWorktreeSession()`: `WorktreeSession | null`
+* `restoreWorktreeSession(session)`: `void`
+* 关键类型: `WorktreeSession`, `WorktreeCreateResult`
+
+**输入输出**:
+* WorktreeSession: `{ originalCwd, worktreePath, worktreeName, worktreeBranch?, originalBranch?, originalHeadCommit?, sessionId, tmuxSessionName?, hookBased?, creationDurationMs?, usedSparsePaths? }`
+* slug 验证: 每段 `[a-zA-Z0-9._-]+`; 无 `.`/`..`; 最大 64 字符
+* `usedSparsePaths`: 当 `settings.worktree.sparsePaths` 非空时 true
+* hookBased: 当 `hasWorktreeCreateHook()` 为 true 时使用 hook 而非 git
+
+**计划与工作区状态**:
+* 拥有状态: `currentWorktreeSession` (模块级变量)
+* 读取状态: `settings.worktree.symlinkDirectories`, `settings.worktree.sparsePaths`, `.worktreeinclude`, git 状态
+* 写入状态: `currentWorktreeSession`, `projectConfig.activeWorktreeSession`, git worktree, git branch, `.claude/worktrees/` 目录
+* 关联: `executeWorktreeCreateHook()`, `executeWorktreeRemoveHook()`, `getOrCreateWorktree()`, `performPostCreationSetup()`, `symlinkDirectories()`, `copyWorktreeIncludeFiles()`, `installPrepareCommitMsgHook()` (COMMIT_ATTRIBUTION feature)
+
+**批准/执行/退出/清理流程**:
+* 创建流程 (`createWorktreeForSession()`):
+  1. 验证 slug
+  2. 有 hook: 调用 hook; 设置 `hookBased: true`
+  3. 无 hook:
+     - `getOrCreateWorktree()`: git worktree add (或跳过已存在的)
+     - `performPostCreationSetup()`:
+       - 复制 `settings.local.json`
+       - 配置 `core.hooksPath`
+       - symlink 指定目录
+       - 复制 `.worktreeinclude` 匹配的 gitignored 文件
+       - 安装 attribution hook (feature 开启时)
+  4. 保存到 `currentWorktreeSession` 和 `projectConfig`
+* 保留流程 (`keepWorktree()`):
+  1. 切换目录回原始
+  2. `currentWorktreeSession = null`
+  3. 更新配置
+* 删除流程 (`cleanupWorktree()` / `removeAgentWorktree()`):
+  1. hookBased: 调用 `executeWorktreeRemoveHook()`
+  2. git-based: `git worktree remove --force`, `git branch -D`
+  3. null 会话, 更新配置
+* 暂态清理流程 (`cleanupStaleAgentWorktrees()`):
+  1. 匹配 slug 模式: `agent-a[0-9a-f]{7}`, `wf_[0-9a-f]{8}-[0-9a-f]{3}-\d+`, `wf-\d+`, `bridge-[A-Za-z0-9_]+(-[A-Za-z0-9_]+)*`, `job-[a-zA-Z0-9._-]{1,55}-[0-9a-f]{8}`
+  2. 检查 mtime < cutoffDate
+  3. 检查 git status clean (`git status --porcelain -uno` 无输出)
+  4. 检查无 unpushed commits (`git rev-list --max-count=1 HEAD --not --remotes` 无输出)
+  5. fail-closed: git 命令失败 → 跳过
+  6. 调用 `removeAgentWorktree()`
+  7. `git worktree prune`
+
+**错误与恢复**:
+* 错误条件: `git worktree add` 失败 → 抛出
+* 错误条件: `git status`/`git rev-list` 失败 → `countWorktreeChanges()` 返回 null; `cleanupStaleAgentWorktrees()` 跳过
+* 恢复策略: `getOrCreateWorktree()` 对已存在的 worktree 快速跳过; `cleanupWorktree()` 删除失败时只记录日志不阻止会话退出
+* tmux 恢复: `killTmuxSession()` 失败不阻止 worktree 删除
+
+**设计取舍/备选**:
+* 决策: `.worktreeinclude` 使用 `git ls-files --others --ignored --exclude-standard --directory` 列出折叠目录
+* 备选: 列出所有文件
+* 代价: 需要处理展开逻辑
+* 收益: 大 repo 中性能提升
+* 证据: `src/utils/worktree.ts:393-506`
+* 决策: symlink 目录列表可配置
+* 备选: 固定列表, 或总是复制
+* 代价: 用户需要配置
+* 收益: 平衡性能与工具兼容性 (某些工具对 symlink 敏感)
+* 证据: `src/utils/worktree.ts:104-140`
+* 决策: `flattenSlug()` 替换 `/` 为 `+`
+* 备选: 禁止 `/`, 或允许嵌套但处理冲突
+* 代价: 可读性略降
+* 收益: 避免 git ref D/F 冲突, 避免嵌套删除问题
+* 证据: `src/utils/worktree.ts:219-221`
+* 决策: sparse checkout 通过 `settings.worktree.sparsePaths` 配置
+* 备选: 不支持, 或通过工具参数
+* 代价: 用户需要配置
+* 收益: 大 repo 中性能提升
+* 证据: `src/utils/worktree.ts:323-368`
+
+**源码测试证据**:
+* 主要源码: `src/utils/worktree.ts`
+* 测试: 尚无
+* 相关依赖: `src/utils/hooks.ts`, `src/utils/git.ts`, `src/utils/settings/settings.ts`
+
+---
+
+### 模块设计卡: plans.ts (计划管理)
+
+**真实入口签名**:
+* `getPlanSlug(sessionId?)`: `string` (生成/缓存 word slug)
+* `setPlanSlug(sessionId, slug)`: `void`
+* `clearPlanSlug(sessionId?)`: `void`
+* `getPlansDirectory()`: `string` (memoized; 配置或默认 `~/.claude/plans`)
+* `getPlanFilePath(agentId?)`: `string` (主: `{slug}.md`; agent: `{slug}-agent-{agentId}.md`)
+* `getPlan(agentId?)`: `string | null`
+* `copyPlanForResume(log, targetSessionId?)`: `Promise<boolean>`
+* `copyPlanForFork(log, targetSessionId)`: `Promise<boolean>`
+* `persistFileSnapshotIfRemote()`: `Promise<void>`
+* 关键类型: 无 — 主要是字符串和文件路径
+
+**输入输出**:
+* getPlanSlug: 重试最多 10 次生成唯一 slug (避免与现有计划文件冲突)
+* getPlansDirectory: 验证配置路径在项目 root 内 (防止路径遍历); 默认 `join(getClaudeConfigHomeDir(), 'plans')`
+* getPlan: 读取失败时返回 null (ENOENT 或其他错误)
+* copyPlanForResume: 从 4 种来源恢复:
+  1. 计划文件 (如果存在)
+  2. file snapshot system message
+  3. ExitPlanMode tool_use input
+  4. user message planContent
+  5. plan_file_reference attachment
+
+**计划与工作区状态**:
+* 拥有状态: `planSlugCache` (Map: sessionId → slug; 通过 `getPlanSlugCache()` 从 state 访问)
+* 读取状态: `settings.plansDirectory`, `getCwd()`, `getClaudeConfigHomeDir()`, `getEnvironmentKind()`
+* 写入状态: `planSlugCache`, 计划文件, transcript 中的 file snapshot 消息
+* 关联: `generateWordSlug()`, `getFsImplementation()`, `recordTranscript()`, `EXIT_PLAN_MODE_V2_TOOL_NAME`
+
+**批准/执行/退出/清理流程**:
+* 无批准/退出 — 这是数据层
+* 持久化流程 (`persistFileSnapshotIfRemote()`):
+  1. 仅在远程环境 (`getEnvironmentKind() !== null`)
+  2. 读取当前计划
+  3. 发送 system message 到 transcript, 类型 `file_snapshot`, 包含计划内容
+* 恢复流程 (`copyPlanForResume()`):
+  1. 从 log 提取 slug
+  2. 设置 `planSlugCache`
+  3. 尝试读取计划文件
+  4. ENOENT 且远程 → 从 file snapshot/transcript 恢复并写入磁盘
+* fork 流程 (`copyPlanForFork()`):
+  1. 提取原始 slug
+  2. 为目标会话生成新 slug
+  3. 复制计划文件
+* 清理流程: 无 — 计划文件持久保存
+
+**错误与恢复**:
+* 错误条件: `settings.plansDirectory` 在项目 root 外 → 记录错误, 回退到默认目录
+* 错误条件: 计划文件读取失败 → `getPlan()` 返回 null; `copyPlanForResume()` 尝试恢复
+* 恢复策略: 多来源恢复 (file snapshot > tool_use > user message > attachment); 静默失败不阻止会话
+* 证据: `src/utils/plans.ts:164-231`
+
+**设计取舍/备选**:
+* 决策: word slug 而非 UUID
+* 备选: UUID, 数字递增
+* 代价: 需要碰撞重试
+* 收益: 可读性
+* 证据: `src/utils/plans.ts:32-49`
+* 决策: `getPlansDirectory()` memoized
+* 备选: 每次计算
+* 代价: 需要确保稳定性
+* 收益: 减少 syscalls (每次渲染工具消息调用)
+* 证据: `src/utils/plans.ts:79-111`
+* 决策: 计划文件作为真相源
+* 备选: 仅内存
+* 代价: 磁盘 I/O
+* 收益: 可恢复性、可审计性
+* 证据: `src/utils/plans.ts:131-146`
+
+**源码测试证据**:
+* 主要源码: `src/utils/plans.ts`
+* 测试: 尚无
+* 相关依赖: `src/bootstrap/state.ts`, `src/utils/envUtils.ts`, `src/utils/sessionStorage.ts`, `src/utils/words.ts`
+
+---
+
+### 模块设计卡: ultraplan/ccrSession.ts (Ultraplan CCR)
+
+**真实入口签名**:
+* `pollForApprovedExitPlanMode(sessionId, timeoutMs, onPhaseChange?, shouldStop?, dependencies?)`: `Promise<PollResult>`
+* `ExitPlanModeScanner.ingest(newEvents)`: `ScanResult`
+* `extractApprovedPlan(content)`: `string`
+* `extractTeleportPlan(content)`: `string | null`
+* 关键类型: `ScanResult`, `UltraplanPhase`, `PollResult`, `UltraplanPollError`, `ExitPlanModeScanner`
+
+**输入输出**:
+* PollResult: `{ plan: string, rejectCount: number, executionTarget: 'local' | 'remote' }`
+* ScanResult: `approved | teleport | rejected | pending | terminated | unchanged`
+* UltraplanPhase: `running | needs_input | plan_ready`
+* PollFailReason: `terminated | timeout_pending | timeout_no_plan | extract_marker_missing | network_or_unknown | stopped`
+* ULTRAPLAN_TELEPORT_SENTINEL: `__ULTRAPLAN_TELEPORT_LOCAL__` (teleport 标记)
+* 超时配置: `POLL_INTERVAL_MS = 3000`, `MAX_CONSECUTIVE_FAILURES = 5`
+
+**计划与工作区状态**:
+* 拥有状态: `ExitPlanModeScanner` 内部状态 (`exitPlanCalls`, `results`, `rejectedIds`, `terminated`, `rescanAfterRejection`)
+* 读取状态: SDKMessage 事件流, OAuth token
+* 写入状态: 无 — 纯观察
+* 关联: `pollRemoteSessionEvents()`, `checkAndRefreshOAuthTokenIfNeeded()`, `isTransientNetworkError()`, `EXIT_PLAN_MODE_V2_TOOL_NAME`
+
+**批准/执行/退出/清理流程**:
+* 扫描流程 (`ExitPlanModeScanner.ingest()`):
+  1. 纯函数状态机; 无 I/O
+  2. 提取 ExitPlanMode tool_use 和 tool_result
+  3. 优先级: approved > terminated > rejected > pending > unchanged
+  4. 反向扫描: 取最新的非拒绝 ExitPlanMode
+* 轮询流程 (`pollForApprovedExitPlanMode()`):
+  1. 刷新 OAuth token
+  2. 调用 `pollRemoteSessionEvents()` 获取事件
+  3. `scanner.ingest(newEvents)`
+  4. approved/teleport: 返回结果
+  5. terminated: 抛出
+  6. rejected: 继续轮询 (用户可以修改计划重新提交)
+  7. 否则: 等待 `POLL_INTERVAL_MS`, 重复
+  8. 瞬时网络错误: 重试最多 `MAX_CONSECUTIVE_FAILURES`
+  9. phase 更新: 通过 sessionStatus 和 scanner 状态确定 (`running`/`needs_input`/`plan_ready`)
+* approved 提取: 从 tool_result 找 "## Approved Plan:\n" 或 "## Approved Plan (edited by user):\n"
+* teleport 提取: 从 tool_result 找 `ULTRAPLAN_TELEPORT_SENTINEL\n` (在拒绝工具结果中)
+* 无退出/清理 — 轮询结束时自动清理
+
+**错误与恢复**:
+* 错误条件: 超时 → `UltraplanPollError` (reason: `timeout_pending` 或 `timeout_no_plan`)
+* 错误条件: 远程会话终止 → `UltraplanPollError` (reason: `terminated`)
+* 错误条件: 提取标记缺失 → `UltraplanPollError` (reason: `extract_marker_missing`)
+* 错误条件: 网络错误 → 瞬时的重试, 否则 `UltraplanPollError` (reason: `network_or_unknown`)
+* 恢复策略: 瞬时网络错误自动重试; rejected 继续轮询 (用户可以迭代)
+* 证据: `src/utils/ultraplan/ccrSession.ts:211-319`
+
+**设计取舍/备选**:
+* 决策: teleport 通过拒绝工具结果传输计划
+* 备选: 单独的控制消息
+* 代价: 语义上略有混淆
+* 收益: 远程保持在 plan mode (可以继续编辑), 避免创建新会话
+* 证据: `src/utils/ultraplan/ccrSession.ts:49-57, 150-154`
+* 决策: 优先级 approved > terminated
+* 备选: terminated 优先
+* 代价: 某些情况下忽略终止
+* 收益: 已批准的计划是真实的, 在 threadstore 中, 不应丢弃
+* 证据: `src/utils/ultraplan/ccrSession.ts:74-81, 160-172`
+* 决策: `MAX_CONSECUTIVE_FAILURES = 5`
+* 备选: 更高或更低
+* 代价: 可能等待时间较长
+* 收益: 平衡可靠性与响应速度
+* 证据: `src/utils/ultraplan/ccrSession.ts:25`
+
+**源码测试证据**:
+* 主要源码: `src/utils/ultraplan/ccrSession.ts`
+* 测试: `tests/ultraplanPoll.test.ts:1-34` (仅 OAuth 刷新)
+* 相关依赖: `src/utils/teleport.ts`, `src/utils/auth.ts`, `src/utils/teleport/api.ts`
+
+---
+
 ### 入口与公共契约
 
 ```typescript

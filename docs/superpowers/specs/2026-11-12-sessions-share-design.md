@@ -192,18 +192,579 @@ Session Sharing 系统
 ├── /share 命令 - HTML 导出
 │   ├── ShareDialog.tsx - UI 对话框
 │   ├── shareHtml.ts - HTML 生成
-│   └── resolveShareOutputPath.ts - 路径验证
+│   └── resolveShareOutputPath.ts - 路径验证（在 shareHtml.ts 内）
 ├── /export 命令 - 纯文本导出
-│   ├── exportRenderer.tsx - 渲染管线
-│   └── streamRenderedMessages.ts - 分块渲染
+│   └── exportRenderer.tsx - 渲染管线（含 streamRenderedMessages）
 └── ccshare 系统 - 会话共享与恢复
-    ├── parseCcshareId.ts - ID/URL 解析
-    ├── loadCcshare.ts - 下载与加载
-    ├── fetchTranscript.ts - 网络请求
-    ├── writeBoundedResponse.ts - 边界限制写入
-    ├── readCredential.ts - 凭证读取
-    └── loadTranscriptFromFile.ts - 转录本加载
+    ├── parseCcshareId - ID/URL 解析（在 ccshareResume.ts 内）
+    ├── loadCcshare - 下载与加载（在 ccshareResume.ts 内）
+    ├── fetchTranscript - 网络请求（在 ccshareResume.ts 内）
+    ├── writeBoundedResponse - 边界限制写入（在 ccshareResume.ts 内）
+    ├── readCredential - 凭证读取（在 ccshareResume.ts 内）
+    └── loadTranscriptFromFile - 转录本加载
 ```
+
+---
+
+### 4.2 HTML 导出模块设计卡片
+
+#### 真实入口签名与关键类型
+
+```typescript
+// src/commands/share/shareHtml.ts
+export function escapeHtml(value: string): string
+export function getSharePreview(messages: Message[]): string
+export function renderConversationToHtml(
+  messages: Message[],
+  { includeToolOutput }: { includeToolOutput: boolean },
+): string
+export function resolveShareOutputPath(filename: string, cwd = getCwd()): string
+export async function writeSharedHtml(
+  destination: string,
+  html: string,
+): Promise<void>
+
+// src/commands/share/index.ts
+const share = {
+  type: 'local-jsx',
+  name: 'share',
+  description: 'Save the current conversation as a local static HTML file',
+  argumentHint: '[output.html]',
+  load: () => import('./share.js'),
+} satisfies Command
+```
+
+#### 输入输出
+
+| 函数 | 输入 | 输出 |
+|------|------|------|
+| `escapeHtml` | 任意字符串 | HTML 转义后的字符串 |
+| `getSharePreview` | `Message[]` | 纯文本预览（最多 4000 字符） |
+| `renderConversationToHtml` | `Message[]` + `includeToolOutput` 选项 | 自包含 HTML 字符串 |
+| `resolveShareOutputPath` | 文件名字符串 + 可选 cwd | 验证后的绝对路径 |
+| `writeSharedHtml` | 目标路径 + HTML 字符串 | `Promise<void>` |
+
+#### 状态与文件布局
+
+- **无内部状态**：纯函数模块
+- **输出文件**：用户指定的 `.html` 文件，权限由系统默认决定
+- **输入源**：当前会话的 `Message[]` 数组
+- **HTML 结构**：
+  - 内联 CSS（无外部资源）
+  - `<h1>Claude Code conversation</h1>`
+  - 每个消息一个 `<section class="message {type}">`
+  - `<h2>{User|Claude|System}</h2>`
+  - `<pre>{转义后的消息文本}</pre>`
+
+#### 导出流程
+
+```
+用户输入 /share [output.html]
+    ↓
+resolveShareOutputPath(filename)
+    ├─ 检查非空且不含 null 字符
+    ├─ 检查以 .html 结尾（不区分大小写）
+    ├─ 检查非绝对路径
+    ├─ 词法检查：不允许 .. 或绝对路径逃逸
+    └─ 真实路径检查：解析符号链接后仍在 cwd 内
+    ↓
+ShareDialog 显示
+    ├─ getSharePreview 生成预览（始终隐藏工具输出）
+    ├─ 显式隐私警告
+    └─ includeToolOutput 开关（默认 false）
+    ↓
+用户确认
+    ↓
+renderConversationToHtml(messages, { includeToolOutput })
+    ├─ 对每个消息调用 messageText(message, includeToolOutput)
+    ├─ 对每个文本块调用 escapeHtml
+    └─ 组装完整 HTML 文档
+    ↓
+writeSharedHtml(destination, html)
+    └─ 使用 flag: 'wx' 写入（永不覆盖）
+    ↓
+显示成功消息
+```
+
+#### 错误与安全
+
+| 错误场景 | 错误消息 | 安全措施 |
+|----------|----------|----------|
+| 文件名包含 null 字符 | "Provide a non-empty output filename ending in .html." | 拒绝写入 |
+| 非 .html 扩展名 | "The output filename must end in .html." | 强制扩展名 |
+| 绝对路径 | "Use a relative output path inside the current working directory." | 词法检查 |
+| .. 路径逃逸 | "The output path must stay inside the current working directory." | 词法检查 |
+| 符号链接逃逸 | "The output path must not escape through a symbolic link." | `realpathSync` 真实路径检查 |
+| 文件已存在 | `EEXIST` 异常 | `flag: 'wx'` 永不覆盖 |
+| 父目录不存在 | `ENOENT` 异常 | 不自动创建目录 |
+
+**HTML 转义覆盖**：`&`→`&amp;`, `<`→`&lt;`, `>`→`&gt;`, `"`→`&quot;`, `'`→`&#39;`
+
+#### 设计取舍与备选
+
+| 取舍 | 选择 | 备选 | 理由 |
+|------|------|------|------|
+| HTML 资源 | 内联 CSS，无外部资源 | CDN 托管样式 | 离线可用，单文件完整 |
+| 工具输出 | 默认不包含，用户显式选择 | 默认包含 + 提示清理 | 安全优先，避免隐私泄露 |
+| 文件名冲突 | 永不覆盖，用户手动选择 | 自动追加编号 `(1)` | 防止意外覆盖重要文件 |
+| 目录创建 | 不自动创建，用户手动准备 | 递归 `mkdir -p` | 用户明确知道写入位置 |
+| 预览内容 | 始终隐藏工具输出 | 与最终导出一致 | 预览在用户选择前展示，必须安全 |
+
+#### 源码测试证据
+
+- **测试文件**：`tests/share.test.ts`
+- **验证点**：
+  - HTML 转义防止 XSS（`<script>`, `onmouseover`, `</pre>` 等）
+  - 工具输出默认隐藏，可通过 `includeToolOutput: true` 显式包含
+  - 路径验证拒绝 `../`, 绝对路径, 非 `.html`
+  - 符号链接父目录逃逸被拒绝
+  - `wx` 标志确保永不覆盖
+  - 不自动创建目录
+  - 无网络请求
+
+---
+
+### 4.3 纯文本导出模块设计卡片
+
+#### 真实入口签名与关键类型
+
+```typescript
+// src/utils/exportRenderer.tsx
+export async function streamRenderedMessages(
+  messages: Message[],
+  tools: Tools,
+  sink: (ansiChunk: string) => void | Promise<void>,
+  {
+    columns,
+    verbose = false,
+    chunkSize = 40,
+    onProgress,
+  }: {
+    columns?: number
+    verbose?: boolean
+    chunkSize?: number
+    onProgress?: (rendered: number) => void
+  } = {},
+): Promise<void>
+
+export async function renderMessagesToPlainText(
+  messages: Message[],
+  tools: Tools = [],
+  columns?: number,
+): Promise<string>
+```
+
+#### 输入输出
+
+| 函数 | 输入 | 输出 |
+|------|------|------|
+| `streamRenderedMessages` | `Message[]`, `Tools`, `sink` 回调, 可选配置 | `Promise<void>` |
+| `renderMessagesToPlainText` | `Message[]`, 可选 `Tools`, 可选 `columns` | `Promise<string>`（纯文本） |
+
+#### 状态与文件布局
+
+- **无内部状态**：纯函数模块
+- **渲染复用**：与 UI 相同的 React 渲染管线（`Messages` 组件）
+- **分块策略**：`chunkSize = 40` 个归一化消息
+- **内存优化**：每个分块单独渲染，降低 RSS 峰值约 55%
+- **输出格式**：
+  - `streamRenderedMessages`：保留 ANSI 颜色代码
+  - `renderMessagesToPlainText`：通过 `stripAnsi` 去除 ANSI 代码
+
+#### 导出流程
+
+```
+用户输入 /export [filename]
+    ↓
+类似 /share 的路径验证
+    ↓
+streamRenderedMessages(messages, tools, sink)
+    ├─ 计算 normalizedUpperBound 上限
+    ├─ 循环：offset 从 0 开始，每次 += chunkSize
+    │   ├─ renderChunk([offset, offset+chunkSize])
+    │   │   └─ 使用 Messages.renderRange 渲染
+    │   │       └─ 正确处理跨块的 tool_use ↔ tool_result 分组
+    │   ├─ 检查是否为空分块（结束条件）
+    │   ├─ 调用 sink(ansiChunk)
+    │   └─ 调用 onProgress(offset+chunkSize)
+    └─ 完成
+    ↓
+写入文件（类似 /share 的永不覆盖策略）
+    ↓
+显示成功消息
+```
+
+#### 错误与安全
+
+- **路径安全**：与 `/share` 相同的验证策略
+- **文件安全**：永不覆盖，不自动创建目录
+- **无网络请求**：纯本地操作
+- **无敏感信息自动清理**：用户手动审查
+
+#### 设计取舍与备选
+
+| 取舍 | 选择 | 备选 | 理由 |
+|------|------|------|------|
+| 渲染管线 | 复用 UI 的 Messages 组件 | 独立简单导出逻辑 | 保证导出与 UI 一致 |
+| 渲染方式 | 分块渲染，chunkSize=40 | 单块全量渲染 | 降低内存峰值，防止长会话 OOM |
+| 文本处理 | stripAnsi 可选 | 始终去除或始终保留 | 灵活性：可保留颜色或纯文本 |
+| 进度指示 | onProgress 可选 | 无进度反馈 | 提升用户体验 |
+
+#### 源码测试证据
+
+- **测试文件**：（无独立 export 测试，复用 share 路径验证）
+- **证据**：
+  - `src/utils/exportRenderer.tsx` 注释说明内存优化效果
+  - `normalizedUpperBound` 处理 content block 分割
+  - `renderRange` 确保跨块 tool 分组正确
+
+---
+
+### 4.4 ccshare 上传/下载/恢复模块设计卡片
+
+#### 真实入口签名与关键类型
+
+```typescript
+// src/utils/ccshareResume.ts
+export type CcshareLoadOptions = {
+  timeoutMs?: number
+  maxBytes?: number
+  maxLines?: number
+  confirmCrossOrigin?: (from: URL, to: URL) => Promise<boolean>
+}
+
+export function parseCcshareId(value: string): string | null
+export async function loadCcshare(
+  id: string,
+  options: CcshareLoadOptions = {},
+): Promise<LogOption>
+
+// 内部函数
+function configuredOrigin(): URL
+function validId(id: string | undefined): id is string
+async function defaultCrossOriginConfirmation(from: URL, to: URL): Promise<boolean>
+async function readCredential(): Promise<string | undefined>
+function contentTypeIsJsonl(response: Response): boolean
+async function discardResponse(response: Response): Promise<void>
+async function fetchTranscript(
+  id: string,
+  options: CcshareLoadOptions,
+): Promise<{ response: Response; signal: AbortSignal; cleanup: () => void }>
+async function writeBoundedResponse(
+  response: Response,
+  path: string,
+  maxBytes: number,
+  maxLines: number,
+): Promise<void>
+```
+
+#### 输入输出
+
+| 函数 | 输入 | 输出 |
+|------|------|------|
+| `parseCcshareId` | ID 字符串或完整 URL | 提取的 ID 或 `null` |
+| `loadCcshare` | ID + 可选配置 | `Promise<LogOption>`（恢复的会话） |
+| `fetchTranscript` | ID + 配置 | `Promise<{response, signal, cleanup}>` |
+| `writeBoundedResponse` | Response + 路径 + 限制 | `Promise<void>` |
+
+#### 状态与文件布局
+
+- **配置来源**：
+  - `CLAUDE_CODE_CCSHARE_ORIGIN`：默认 `https://go`
+  - `CLAUDE_CODE_CCSHARE_TOKEN_FILE`：默认 `~/.claude/ccshare-credentials.json`
+  - `CLAUDE_CONFIG_DIR`：临时文件目录
+- **临时文件**：`$CLAUDE_CONFIG_DIR/tmp/ccshare-{16-hex}.jsonl`，权限 `0o600`
+- **临时目录**：权限 `0o700`，必须是真实目录（非符号链接）
+- **常量**：
+  - `DEFAULT_TIMEOUT_MS = 15_000`
+  - `DEFAULT_MAX_BYTES = 10 * 1024 * 1024`
+  - `DEFAULT_MAX_LINES = 20_000`
+  - `MAX_REDIRECTS = 5`
+  - `ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/`
+
+#### 下载/恢复流程
+
+```
+用户输入 ccshare ID 或 URL
+    ↓
+parseCcshareId(value)
+    ├─ 尝试解析为 URL
+    ├─ 验证 protocol === https:
+    ├─ 验证无 userinfo/search/hash
+    ├─ 验证 origin 匹配配置
+    ├─ 匹配路径 /ccshare/{id}
+    └─ 验证 id 符合 ID_PATTERN
+    ↓
+loadCcshare(id, options)
+    ├─ 验证 validId(id)
+    ├─ 准备临时目录 $CLAUDE_CONFIG_DIR/tmp/
+    │   ├─ mkdir -m 0o700（递归创建）
+    │   └─ 验证是真实目录（非符号链接）
+    ├─ fetchTranscript(id, options)
+    │   ├─ 读取凭证（可选）
+    │   ├─ 设置超时定时器
+    │   ├─ 循环：最多 5 次重定向
+    │   │   ├─ fetch(current, { redirect: 'manual' })
+    │   │   ├─ 3xx 重定向：
+    │   │   │   ├─ 解析 Location
+    │   │   │   ├─ 验证 protocol === https:
+    │   │   │   ├─ 验证无 userinfo
+    │   │   │   ├─ 跨原点：调用 confirmCrossOrigin
+    │   │   │   ├─ 跨原点：sendAuthorization = false（不再恢复）
+    │   │   │   └─ current = next，继续循环
+    │   │   └─ 2xx：
+    │   │       ├─ 验证 Content-Type: application/x-ndjson 或 application/jsonl
+    │   │       └─ 返回 response + signal + cleanup
+    │   └─ 出错清理定时器
+    ├─ 生成随机临时路径
+    ├─ writeBoundedResponse(response, path, maxBytes, maxLines)
+    │   ├─ open(path, 'wx', 0o600)
+    │   ├─ 流式写入，同时计数 bytes + lines
+    │   ├─ 超过限制抛出并删除文件
+    │   └─ 检查末尾换行是否需要计 line
+    ├─ loadTranscriptFromFile(path)
+    ├─ 返回 { ...log, projectPath: undefined }
+    └─ finally 清理：
+        ├─ 清理定时器
+        └─ discardResponse(response)
+    ↓
+异常路径：
+    └─ 任何失败 → await unlink(path).catch(() => {})
+```
+
+#### 错误与安全
+
+| 错误场景 | 错误消息 | 安全措施 |
+|----------|----------|----------|
+| 无效 ID 格式 | "Invalid ccshare id." | `ID_PATTERN` 正则验证 |
+| URL 非 HTTPS | 返回 `null`（不抛出） | 仅接受 HTTPS |
+| URL 含 userinfo/search/hash | 返回 `null` | 严格 URL 格式 |
+| HTTP 错误 | "ccshare download failed with HTTP ${status}." | 仅接受 2xx |
+| Content-Type 错误 | "ccshare response must have a JSONL content type." | 仅接受 JSONL |
+| 超时 | "ccshare download timed out." | `AbortController` + 定时器 |
+| 超过字节限制 | "ccshare transcript exceeds ${maxBytes} bytes." | 流式计数 |
+| 超过行数限制 | "ccshare transcript exceeds ${maxLines} lines." | 流式计数 + 末尾检查 |
+| 重定向过多 | "Too many ccshare redirects." | 最多 5 次 |
+| 跨原点拒绝 | "Cross-origin ccshare redirect was not confirmed." | 用户确认 + 不发送凭证 |
+| 原点配置无效 | "CLAUDE_CODE_CCSHARE_ORIGIN must be a valid HTTPS origin." | 严格验证 |
+
+**HTTPS 原点与跨原点确认**：
+- 初始原点：仅 HTTPS，无路径/凭证/查询/片段
+- 跨原点重定向：必须用户确认，确认后 `sendAuthorization = false`（永不恢复）
+- 凭证仅发送到初始原点，从不发送到跨原点
+
+**字节/行数限制**：
+- 双重限制：`maxBytes`（默认 10MB）+ `maxLines`（默认 20,000）
+- 流式计数：边下载边检查，避免内存爆炸
+- 末尾检查：最后一行无换行仍计数
+
+**敏感数据边界**：
+- 恢复的会话 `projectPath = undefined`（不切换工作目录）
+- 远程 hook 不执行（不受信任数据）
+- 临时文件权限 `0o600`，失败立即删除
+
+#### 设计取舍与备选
+
+| 取舍 | 选择 | 备选 | 理由 |
+|------|------|------|------|
+| 协议 | 仅 HTTPS | 允许 HTTP | 安全优先，防止明文传输 |
+| 重定向处理 | 手动处理，不依赖 fetch 自动 | `redirect: 'follow'` | 精确控制凭证发送时机 |
+| 跨原点策略 | 用户确认 + 不发送凭证 | 自动跟随 + 发送凭证 | 防止凭证泄露到不受信任服务器 |
+| 边界限制 | 字节 + 行数双重 | 仅字节或仅行数 | 防止超大单行或超多短行 |
+| 临时文件 | 0o600 权限 + 失败删除 | 宽松权限 + 保留 | 防止敏感数据残留 |
+| projectPath | undefined | 使用远程声明的路径 | 远程数据不受信任，安全优先 |
+| 网络错误 | 不重试 | 指数退避重试 | 用户主动操作，失败后可手动重试 |
+
+#### 源码测试证据
+
+- **测试文件**：`tests/w6Ccshare.test.ts`
+- **验证点**：
+  - `parseCcshareId` 正确解析 URL，拒绝无效格式
+  - 凭证正确发送到初始原点
+  - 跨原点重定向后凭证不发送
+  - 跨原点重定向需要用户确认
+  - 字节/行数限制生效
+  - Content-Type 验证
+  - HTTP 错误处理
+  - 超时处理
+  - 临时文件失败时删除
+  - projectPath 返回 undefined
+  - 最多 5 次重定向
+  - 凭证文件权限验证（见下一节）
+
+---
+
+### 4.5 凭证读取模块设计卡片
+
+#### 真实入口签名与关键类型
+
+```typescript
+// src/utils/ccshareResume.ts（内部函数）
+async function readCredential(): Promise<string | undefined>
+
+// 凭证文件格式
+// ~/.claude/ccshare-credentials.json 或 $CLAUDE_CODE_CCSHARE_TOKEN_FILE
+{
+  "token": "secret-string"
+}
+```
+
+#### 输入输出
+
+| 函数 | 输入 | 输出 |
+|------|------|------|
+| `readCredential` | 无（从环境变量 + 文件系统读取） | `Promise<string | undefined>`（token 或 undefined） |
+
+#### 状态与文件布局
+
+- **默认路径**：`$CLAUDE_CONFIG_HOME/ccshare-credentials.json`
+- **覆盖路径**：环境变量 `CLAUDE_CODE_CCSHARE_TOKEN_FILE`
+- **权限要求**：`0o600`（仅所有者可读写）
+- **大小限制**：≤ 4096 字节
+- **类型要求**：普通文件（非符号链接）
+
+#### 读取流程
+
+```
+readCredential()
+    ↓
+确定路径：
+    CLAUDE_CODE_CCSHARE_TOKEN_FILE 或
+    join(getClaudeConfigHomeDir(), 'ccshare-credentials.json')
+    ↓
+lstat(path)
+    ├─ 文件不存在 → return undefined
+    └─ 文件存在 → 继续
+    ↓
+验证是常规文件：
+    if (!info.isFile() || info.isSymbolicLink()) → throw
+    ↓
+验证权限：
+    if ((info.mode & 0o077) !== 0) → throw
+    ↓
+验证大小：
+    if (info.size > 4096) → throw
+    ↓
+读取文件内容
+    ↓
+解析 JSON
+    ↓
+提取 token 字段
+    ↓
+验证 token：
+    token !== undefined → 必须是非空字符串
+    ↓
+返回 token.trim() 或 undefined
+```
+
+#### 错误与安全
+
+| 错误场景 | 错误消息 | 安全措施 |
+|----------|----------|----------|
+| 非普通文件或符号链接 | "The ccshare credential must be a regular, non-symlink file." | `isFile() && !isSymbolicLink()` |
+| 权限非 0o600 | "The ccshare credential file must have mode 0600." | `(mode & 0o077) === 0` 检查其他用户无权限 |
+| 文件过大 | "The ccshare credential file is too large." | ≤ 4096 字节 |
+| JSON 无效 | "The ccshare credential file is not valid JSON." | `JSON.parse` 捕获 |
+| token 非字符串或空 | "The ccshare credential token must be a non-empty string." | 类型 + 非空检查 |
+
+**0600 权限校验**：
+- `(info.mode & 0o077) !== 0`：组权限 + 其他用户权限必须为 0
+- 仅允许 `rw-------`
+
+#### 设计取舍与备选
+
+| 取舍 | 选择 | 备选 | 理由 |
+|------|------|------|------|
+| 文件类型 | 必须是普通文件，拒绝符号链接 | 允许符号链接 | 防止符号链接攻击 |
+| 权限要求 | 严格 0o600 | 宽松权限检查 | 防止其他用户读取凭证 |
+| 大小限制 | ≤ 4KB | 无限制 | 防止意外读取大文件 |
+| 文件不存在 | 返回 undefined（不抛出） | 强制要求配置 | 可选凭证，不强制使用 |
+
+#### 源码测试证据
+
+- **测试文件**：`tests/w6Ccshare.test.ts`
+- **验证点**：
+  - 凭证文件权限 0o600 时正常读取
+  - 凭证正确作为 `Authorization: Bearer {token}` 发送
+  -（测试中显式设置 `{ mode: 0o600 }`）
+
+---
+
+### 4.6 敏感信息处理模块设计卡片
+
+#### 真实入口签名与关键类型
+
+```typescript
+// src/commands/share/shareHtml.ts
+function textForBlock(block: RenderBlock, includeToolOutput: boolean): string
+function messageText(message: Message, includeToolOutput: boolean): string
+export function getSharePreview(messages: Message[]): string
+export function renderConversationToHtml(
+  messages: Message[],
+  { includeToolOutput }: { includeToolOutput: boolean },
+): string
+```
+
+#### 输入输出
+
+| 函数 | 输入 | 输出 |
+|------|------|------|
+| `textForBlock` | `RenderBlock` + `includeToolOutput` | 纯文本字符串 |
+| `messageText` | `Message` + `includeToolOutput` | 纯文本字符串 |
+| `getSharePreview` | `Message[]` | 纯文本预览（始终 `includeToolOutput: false`） |
+| `renderConversationToHtml` | `Message[]` + `includeToolOutput` | HTML 字符串 |
+
+#### 敏感数据边界
+
+| 场景 | 工具输出处理 | 理由 |
+|------|--------------|------|
+| `/share` 预览 | 始终隐藏 | 预览在用户选择前展示，必须安全 |
+| `/share` 导出 | 默认隐藏，用户显式选择 | 安全优先，用户控制 |
+| `/export` 导出 | （与 UI 一致，通常包含） | 调试/分享需求不同 |
+| ccshare 下载 | （完整 JSONL，不修改） | 恢复会话需要完整数据 |
+
+#### HTML 转义与工具输出选择
+
+**HTML 转义覆盖**：
+```typescript
+export function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+}
+```
+
+**工具输出选择逻辑**：
+- `tool_use` 块：仅当 `includeToolOutput: true` 时显示 `[Tool call: {name}]\n{input JSON}`
+- `tool_result` 块：仅当 `includeToolOutput: true` 时显示 `[Tool result{error?}]\n{content}`
+- `text` 块：始终显示
+- `image`/`document` 块：显示占位符 `[Image]`/`[Document]`
+
+**纯文本渲染复用**：
+- `/share` 和 `/export` 都使用相同的消息文本提取逻辑
+- `/export` 进一步复用 UI 的完整 React 渲染管线
+- 保证导出内容与用户所见一致
+
+#### 设计取舍与备选
+
+| 取舍 | 选择 | 备选 | 理由 |
+|------|------|------|------|
+| 自动审查 | 不提供，用户手动审查 | 正则匹配常见密钥模式 | 自动审查可能漏报或误报，给用户虚假安全感 |
+| 工具输出默认 | 不包含 | 默认包含 | 安全优先，避免隐私泄露 |
+| 预览策略 | 始终隐藏工具输出 | 与最终导出一致 | 预览在用户选择前展示，必须安全 |
+| 提示方式 | 显式警告文本 | 静默处理 | 确保用户知情 |
+
+#### 源码测试证据
+
+- **测试文件**：`tests/share.test.ts`
+- **验证点**：
+  - `getSharePreview` 始终隐藏工具输出
+  - `renderConversationToHtml` 默认隐藏工具输出
+  - `includeToolOutput: true` 时工具输出包含
+  - HTML 转义完整覆盖 XSS 向量（`<script>`, `onmouseover`, `</pre>`, `&`, `"`, `'`）
 
 ### 4.2 导出机制对比
 

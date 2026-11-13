@@ -35,7 +35,7 @@ Buddy (Companion) 是一个常驻的、个性化的终端伙伴精灵，它会�
 | 6. 角色分离 | 明确 "You're not X" | 兼任 / 无特殊处理 | 避免身份混乱 |
 | 7. 响应解析 | 宽松提取 + 长度限制 | 严格 JSON / 仅提示词 | 现实鲁棒性 |
 
-这些选择共同以“非侵入、可忽略、失败不影响主任务”为优先级：骨骼/灵魂分离牺牲跨设备灵魂一致性，单飞牺牲快速连续消息下的评论覆盖率，宽松 JSON 解析牺牲严格 schema 以换取模型输出兼容性。
+这些选择共同以"非侵入、可忽略、失败不影响主任务"为优先级：骨骼/灵魂分离牺牲跨设备灵魂一致性，单飞牺牲快速连续消息下的评论覆盖率，宽松 JSON 解析牺牲严格 schema 以换取模型输出兼容性。
 
 ## 3. 目标与非目标
 
@@ -56,298 +56,846 @@ Buddy (Companion) 是一个常驻的、个性化的终端伙伴精灵，它会�
 
 ## 4. 架构、模块与数据流
 
-### 4.1 生命周期
+### 4.1 模块设计卡：孵化/生命周期
 
-#### 4.1.1 孵化流程
+#### 真实入口签名与关键类型
 
-Buddy 的"孵化"（hatch）是一个三步过程：
+```typescript
+// src/buddy/companion.ts
+export function roll(userId: string): Roll
+export function getCompanion(): Companion | undefined
+export function companionUserId(): string
+
+// src/buddy/types.ts
+export type CompanionBones = {
+  rarity: Rarity
+  species: Species
+  eye: Eye
+  hat: Hat
+  shiny: boolean
+  stats: Record<StatName, number>
+}
+export type CompanionSoul = { name: string; personality: string }
+export type Companion = CompanionBones & CompanionSoul & { hatchedAt: number }
+export type StoredCompanion = CompanionSoul & { hatchedAt: number }
+
+// src/buddy/companionObserver.ts
+export async function fireCompanionObserver(
+  messages: Message[],
+  onReaction: (reaction: string) => void,
+  context?: ToolUseContext,
+  dependencies: ObserverDependencies = {},
+): Promise<void>
+```
+
+#### 输入输出
+
+**孵化路径输入**：
+- `userId`: `config.oauthAccount?.accountUuid ?? config.userID ?? 'anon'`
+- `messages[]`: 当前对话历史（用于去重检查）
+- `context?: ToolUseContext`: 工具上下文
+
+**孵化路径输出**：
+- `config.companion` 持久化（首次）
+- `onReaction(reaction)` 回调被调用
+
+**仅评论路径输入**：
+- `stored`: `config.companion`（已存在）
+- `userText`: 最新用户消息文本
+
+**仅评论路径输出**：
+- 回调：`onReaction(reaction)`
+
+#### 状态与附件
+
+**骨骼缓存状态**：
+```typescript
+// companion.ts:106
+let rollCache: { key: string; value: Roll } | undefined
+// key = userId + SALT ('friend-2026-401')
+```
+
+**观察者飞行状态**：
+```typescript
+// companionObserver.ts:21
+let inFlight = false  // 模块级单例锁
+```
+
+**持久化状态（全局配置）**：
+```typescript
+config.companion?: StoredCompanion
+config.companionMuted?: boolean
+```
+
+**AppState 渲染状态**：
+```typescript
+AppState.companionReaction?: string
+AppState.companionPetAt?: number
+```
+
+#### 创建流程
 
 ```
-用户首次交互
+[用户首次交互触发]
      ↓
-roll(userId) → 生成确定性骨骼（骨骼不持久化）
+roll(userId) ──┬─→ Mulberry32 PRNG（hash(userId + SALT) 为种子）
+               ├─→ 按权重选稀有度（legendary 1%）
+               ├─→ 选物种（19 种之一）
+               ├─→ 选眼睛/帽子（非 common 稀有度才有帽子）
+               ├─→ shiny 判定（1% 概率）
+               └─→ 生成 stats（一峰值一低谷，稀有度提下限）
      ↓
-fireCompanionObserver → LLM 生成灵魂（姓名 + 性格）
+fireCompanionObserver(messages, onReaction, context)
+     ├─→ 前置检查：!context || inFlight || companionMuted → return
+     ├─→ 提取 latestUserText(messages)（取最后 4000 字符）
+     ├─→ 构建 sideQuestion prompt：Create a coding companion...
+     ├─→ 调用 runSideQuestion()（复用 fork 基础设施）
+     ├─→ parseCompanionObserverResponse() 宽松解析 JSON
+     ├─→ saveGlobalConfig() 持久化灵魂
+     └─→ onReaction(reaction) 触发气泡
      ↓
-持久化到全局配置
+getCompanion() ──┬─→ 从 config 读 StoredCompanion
+                 └─→ roll() 重算骨骼并合并（骨骼永不持久化）
 ```
 
-##### 关键设计决策 1：骨骼与灵魂分离
+#### 交互与关闭流程
 
-**设计选择**：Companion 数据分为两部分：
-- **骨骼**：`CompanionBones` — 由 `userId` 哈希 + 确定性算法生成，永不持久化
-- **灵魂**：`CompanionSoul` — LLM 生成的 `{name, personality}`，持久化到全局配置
+**交互路径（已有灵魂）**：
+```
+用户新消息
+     ↓
+fireCompanionObserver() ──┬─→ inFlight 检查
+                          ├─→ muted 检查
+                          ├─→ 已有灵魂判断（跳过孵化）
+                          ├─→ 构建仅评论 prompt
+                          ├─→ sideQuestion → parse → onReaction
+                          └─→ finally 释放 inFlight
+     ↓
+CompanionSprite useEffect 检测到变化
+     ├─→ lastSpokeTick.current = tick
+     └─→ 启动 10s 后清除的定时器
+     ↓
+气泡显示 20 ticks (10s) ──┬─→ 前 14 ticks：正常显示
+                            └─→ 后 6 ticks：fading（dimColor）
+     ↓
+setTimeout 触发清除 AppState.companionReaction
+```
 
-**备选方案**：
-1. 持久化完整 Companion 对象
-   - 缺点：用户无法通过重新认证获得新稀有度
-   - 缺点：物种/外观重命名会破坏现有数据
-2. 完全随机生成
-   - 缺点：用户每次启动看到不同精灵
+**关闭流程**：
+- 气泡自动清除：reaction 设置后 10s 定时器
+- Observer 调用失败：catch 块仅记录 debug log，finally 必释放 inFlight
+- 组件卸载：clearInterval(tickTimer)，但不影响已持久化状态
 
-**证据/权衡**：
-- `roll(userId)` 每次调用都产生相同结果，确保视觉一致性
-- 骨骼重算发生在 `getCompanion()` 时，支持物种/外观的版本升级
+#### 错误与 Feature 门控
 
-#### 4.1.2 会话参与流程
+**Feature 门控层级**：
+```typescript
+// 所有渲染入口
+if (!feature('BUDDY')) return null
+
+// 通知入口
+if (!feature('BUDDY')) return
+
+// 精灵渲染
+if (!feature('BUDDY')) return null
+```
+
+**软降级点**：
+| 位置 | 错误类型 | 降级行为 | 证据 |
+|------|----------|----------|------|
+| `fireCompanionObserver` | sideQuestion 失败 | catch log，释放 inFlight | companionObserver.ts:111-114 |
+| `parseCompanionObserverResponse` | 无 {} 或 JSON 无效 | 返回 undefined，不保存 | companionObserver.ts:35-54 |
+| `parseCompanionObserverResponse` | 字段超长 | 截断至 40/300/500 字符 | companionObserver.ts:44-49 |
+| `fireCompanionObserver` | name/personality 缺失 | 不保存灵魂，仅用 reaction（如有） | companionObserver.ts:99 |
+| `getCompanion` | config.companion 缺失 | 返回 undefined | companion.ts:127-133 |
+
+**预告期窗口控制**：
+```typescript
+// useBuddyNotification.ts:11-22
+export function isBuddyTeaserWindow(): boolean {
+  if (process.env.USER_TYPE === 'ant') return true
+  const d = new Date()
+  return d.getFullYear() === 2026 && d.getMonth() === 3 && d.getDate() <= 7
+}
+// 4月1日-7日（本地时间，非 UTC）→ 24h 时区滚动上线
+```
+
+#### 设计取舍与备选
+
+| 决策 | 当前选择 | 备选方案 | 权衡 |
+|------|----------|----------|------|
+| 骨骼持久化策略 | 骨骼永不持久化，每次 roll() 重算 | 完整持久化骨骼 | + 支持物种重命名/升级；+ 防止用户编辑配置改稀有度；- 跨设备骨骼可能不一致（若 userId 不同） |
+| 并发控制 | inFlight 布尔标志 | Promise 队列 / AbortController | + 简单正确；+ 避免过时评论；- 快速消息时可能丢失评论 |
+| 灵魂生成 | LLM 生成 name/personality | 预定义模板库 | + 个性化；+ 趣味性；- 成本；- 不可控输出（需截断） |
+| PRNG 选择 | Mulberry32 | Math.random() | + 可复现；+ 轻量；- 加密不安全（但不需要） |
+
+#### 源码测试证据
+
+**源码证据**：
+- 骨骼生成：`src/buddy/companion.ts`（roll 函数、mulberry32、rollStats）
+- 类型定义：`src/buddy/types.ts`（CompanionBones/CompanionSoul/StoredCompanion）
+- 孵化流程：`src/buddy/companionObserver.ts:65-116`（fireCompanionObserver）
+- 缓存：`src/buddy/companion.ts:106-112`（rollCache）
+
+**测试证据**：
+- `tests/buddyFork.test.ts` 覆盖 `roll()` 确定性
+- `tests/buddyFork.test.ts` 覆盖 `parseCompanionObserverResponse()` 解析
+- 无直接测试覆盖完整孵化持久化路径（需依赖注入 config）
+
+---
+
+### 4.2 模块设计卡：fork/side question
+
+#### 真实入口签名与关键类型
+
+```typescript
+// src/buddy/companionObserver.ts
+type ObserverDependencies = {
+  run?: (question: string, cacheSafeParams: CacheSafeParams) => Promise<string | null>
+  now?: () => number
+  getConfig?: typeof getGlobalConfig
+  saveConfig?: typeof saveGlobalConfig
+}
+
+async function runObserverModel(
+  question: string,
+  cacheSafeParams: CacheSafeParams,
+): Promise<string | null> {
+  const { runSideQuestion } = await import('../utils/sideQuestion.js')
+  return (await runSideQuestion({ question, cacheSafeParams })).response
+}
+
+// src/utils/sideQuestion.ts（被调用但不拥有）
+export async function runSideQuestion(...): Promise<{ response: string | null }>
+```
+
+#### 输入输出
+
+**Side Question 输入**：
+- `question`: 纯文本 prompt（JSON 输出指令）
+- `cacheSafeParams`: 完整的 fork 上下文
+
+**Side Question 输出**：
+- `response: string | null` — LLM 原始文本响应
+- 无 tool use，无主对话污染
+
+**解析后输出**：
+- `CompanionObserverResponse {name?, personality?, reaction?}`
+- 字段截断：name ≤40, personality ≤300, reaction ≤500
+
+#### 状态与附件
+
+**Side Question 与 Agent Swarm 的区别**：
+
+| 维度 | Buddy Side Question | Agent Swarm Fork |
+|------|---------------------|------------------|
+| 目标 | 生成气泡评论 | 并行执行工具/子任务 |
+| 输出去向 | 仅 `companionReaction` 状态 | 主对话消息历史 |
+| Tool Use | ❌ 禁用 | ✅ 启用 |
+| 阻塞主流程 | ❌ 异步非阻塞 | ✅ 可选阻塞 |
+| 上下文复用 | ✅ 完整 forkContextMessages | ✅ 完整上下文 |
+| 持久化影响 | ✅ 可写入 config.companion | ❌ 只读/临时 |
+| 错误处理 | 软降级（log only） | 完整错误报告 |
+
+**无附件注入 Side Question**：
+- Side Question prompt 不包含 `companion_intro` attachment
+- Buddy 自己的 observer 不会递归触发自己
+
+#### 创建流程
 
 ```
-用户发送消息
+[fireCompanionObserver 内部]
      ↓
-fireCompanionObserver() 调用
+构建 CacheSafeParams ──┬─→ systemPrompt（当前渲染后的）
+                       ├─→ userContext（当前）
+                       ├─→ systemContext（当前）
+                       ├─→ toolUseContext（当前）
+                       └─→ forkContextMessages（当前 messages）
      ↓
-检查：inFlight? / muted? / 已有灵魂?
+构建 question prompt ──┬─→ 已孵化：You are ${name}, a ${rarity} ${species}...
+                       └─→ 未孵化：Create a coding companion from these traits...
      ↓
-  ┌─────────────────┬───────────────┐
-  │ 已有灵魂        │ 新孵化        │
-  ├─────────────────┼───────────────┤
-  │ 仅生成评论      │ 生成+孵化     │
-  └─────────────────┴───────────────┘
+调用 runObserverModel() ──→ dynamic import('../utils/sideQuestion.js')
      ↓
-onReaction(reaction)
+runSideQuestion() ──┬─→ 创建独立 LLM 调用（复用同一个模型网关）
+                    ├─→ 不使用 tool use
+                    └─→ 返回原始字符串响应
+     ↓
+parseCompanionObserverResponse() ──┬─→ 寻找首尾 {}
+                                   ├─→ JSON.parse()
+                                   └─→ 截断字段
+```
+
+#### 交互与关闭流程
+
+**Observer 与主 Agent 交互边界**：
+- Observer 在主 turn 完成后触发（不阻塞）
+- Observer 无取消机制（启动后必须运行完成）
+- Observer 失败不影响主 turn 结果
+
+**关闭流程**：
+```typescript
+// companionObserver.ts:113-114
+finally {
+  inFlight = false  // 无论成功失败必释放
+}
+```
+
+#### 错误与 Feature 门控
+
+**Side Question 层错误**：
+- 被 `fireCompanionObserver` try/catch 捕获
+- 仅 `logForDebugging()`，用户不可见
+- `inFlight` 仍在 finally 释放
+
+**无独立 Feature 门控**：
+- 统一由 `feature('BUDDY')` 控制
+- sideQuestion 基础设施始终可用（给其他功能用）
+
+#### 设计取舍与备选
+
+| 决策 | 当前选择 | 备选方案 | 权衡 |
+|------|----------|----------|------|
+| 调用机制 | 复用 sideQuestion/fork | 直接调用模型 | + 代码复用；+ 缓存友好；- 稍重 |
+| Tool Use | 禁用 | 启用 | + 安全；+ 简单；- 无法让 Buddy 主动做事 |
+| 阻塞行为 | 完全异步非阻塞 | await 阻塞主流程 | + UX 好；- 评论可能在下一轮后才出现 |
+| Prompt 位置 | 纯 question 字符串 | System Prompt | + 灵活；- 缓存效率略低 |
+
+#### 源码测试证据
+
+**源码证据**：
+- Observer 依赖注入：`src/buddy/companionObserver.ts:14-19`（ObserverDependencies）
+- Side Question 调用：`src/buddy/companionObserver.ts:57-63`（runObserverModel）
+- Prompt 构建：`src/buddy/companionObserver.ts:91-93`
+
+**测试证据**：
+- 无直接测试覆盖 sideQuestion 集成路径
+- `tests/buddyFork.test.ts` 仅测试 parse 和 roll，不测试 fork 调用
+
+---
+
+### 4.3 模块设计卡：companion_intro/reaction
+
+#### 真实入口签名与关键类型
+
+```typescript
+// src/buddy/prompt.ts
+export function companionIntroText(name: string, species: string): string
+export function getCompanionIntroAttachment(
+  messages: Message[] | undefined,
+): Attachment[]
+
+// src/utils/attachments.ts（被使用，不拥有）
+type Attachment = { type: 'companion_intro'; name: string; species: string }
+
+// src/state/AppStateStore.ts
+companionReaction?: string
+```
+
+#### 输入输出
+
+**Attachment 生成输入**：
+- `messages[]`: 当前对话历史（用于去重检查）
+- 隐式输入：`config.companion`、`config.companionMuted`、`feature('BUDDY')`
+
+**Attachment 生成输出**：
+- `Attachment[]`：0 或 1 个元素（去重后）
+- 空数组条件：feature 关闭 / 无灵魂 / 已静音 / 历史中已有同名 intro
+
+**Reaction 输入输出**：
+- 输入：`reaction: string`（来自 observer 回调）
+- 输出：`AppState.companionReaction = reaction`（React 渲染触发）
+
+#### 状态与附件
+
+**去重状态（历史消息扫描）**：
+```typescript
+// prompt.ts:23-27
+for (const msg of messages ?? []) {
+  if (msg.type !== 'attachment') continue
+  if (msg.attachment.type !== 'companion_intro') continue
+  if (msg.attachment.name === companion.name) return []  // 已发过
+}
+```
+
+**Attachment 与 Reaction 的区别**：
+
+| 维度 | companion_intro Attachment | companionReaction |
+|------|---------------------------|-------------------|
+| 所有者 | 主 Agent（提示用） | Buddy Sprite（渲染用） |
+| 持久化 | 进入消息历史 | 仅内存状态 |
+| 生命周期 | 每会话 0-1 次 | 每次评论 1 次（10s） |
+| 消费者 | LLM（系统提示） | 用户（UI 气泡） |
+| 静音影响 | 静音时不发送 | 静音前已设置的保留 |
+
+#### 创建流程
+
+**Attachment 创建流程**：
+```
+[每个新 turn 构建提示时]
+     ↓
+getCompanionIntroAttachment(messages)
+     ├─→ feature('BUDDY')?
+     ├─→ getCompanion() 存在?
+     ├─→ companionMuted?
+     ├─→ 扫描 messages[] 找 companion_intro
+     └─→ 同名已存在? → return []
+     ↓
+返回 [{type: 'companion_intro', name, species}]
+     ↓
+主 Agent 提示系统注入 companionIntroText()
+```
+
+**Reaction 创建流程**：
+```
+[observer 返回时]
+     ↓
+fireCompanionObserver(..., onReaction, ...)
+     ↓
+onReaction(reaction) 回调被调用
+     ↓
+setAppState(prev => ({ ...prev, companionReaction: reaction }))
+     ↓
+CompanionSprite useEffect 检测到变化
+     ├─→ lastSpokeTick.current = tick
+     └─→ setTimeout(clearReaction, 10s)
+```
+
+#### 交互与关闭流程
+
+**主 Agent 交互规则（来自 intro 文本）**：
+- "You're not ${name} — it's a separate watcher."
+- 用户直接称呼 Buddy 时：主 Agent "respond in ONE line or less"
+- "Don't narrate what ${name} might say — the bubble handles that."
+
+**Reaction 关闭流程**：
+```typescript
+// CompanionSprite.tsx:159-174
+useEffect(() => {
+  if (!reaction) return
+  lastSpokeTick.current = tick
+  const timer = setTimeout(
+    () => setAppState(prev =>
+      prev.companionReaction === undefined
+        ? prev
+        : { ...prev, companionReaction: undefined }
+    ),
+    BUBBLE_SHOW * TICK_MS,  // 20 * 500ms = 10s
+  )
+  return () => clearTimeout(timer)
+}, [reaction, setAppState])
+```
+
+#### 错误与 Feature 门控
+
+**Attachment 层无错误路径**：
+- 纯同步读操作
+- 无网络/IO
+- 无持久化
+
+**Reaction 层无错误路径**：
+- React 状态更新保证成功
+- 渲染失败不影响主流程
+
+**Feature 门控**：
+- `getCompanionIntroAttachment()` 顶部检查 `feature('BUDDY')`
+- 无 gate 时返回空数组
+
+#### 设计取舍与备选
+
+| 决策 | 当前选择 | 备选方案 | 权衡 |
+|------|----------|----------|------|
+| 去重键 | `name` | 稳定 companion ID | + 简单；- 若未来支持重命名会重复发送 |
+| intro 传递方式 | Attachment + 文本注入 | 仅 System Prompt | + 显式；+ 可去重；- 稍复杂 |
+| 静音时行为 | 不发送 intro，但保留已存在的 reaction | 静音时清除 reaction | + 状态一致；- 用户困惑（见 9.1 疑虑） |
+| 角色边界措辞 | 强硬 "You're not X" | 温和提示 | + 减少角色混淆；- 提示词较长 |
+
+#### 源码测试证据
+
+**源码证据**：
+- Intro 文本：`src/buddy/prompt.ts:7-13`
+- Attachment 生成：`src/buddy/prompt.ts:15-36`
+- Reaction 状态：`src/buddy/CompanionSprite.tsx:133`、`159-174`
+
+**测试证据**：
+- 无直接测试覆盖 attachment 去重逻辑
+- 无直接测试覆盖主 Agent 遵循 intro 的行为（模型行为不可单元测试）
+
+---
+
+### 4.4 模块设计卡：muted/bubble
+
+#### 真实入口签名与关键类型
+
+```typescript
+// src/commands/buddy/index.ts
+const buddy: Command = {
+  type: 'local',
+  name: 'buddy',
+  argumentHint: '[status|mute|unmute]',
+  call: async (args: string) => { ... }
+}
+
+// src/buddy/CompanionSprite.tsx
+export function companionReservedColumns(
+  terminalColumns: number,
+  speaking: boolean,
+): number
+
+// config.ts（全局配置类型，不拥有）
+companionMuted?: boolean
+```
+
+#### 输入输出
+
+**命令输入输出**：
+- `/buddy` 或 `/buddy status` → 显示当前状态
+- `/buddy mute` → `config.companionMuted = true`
+- `/buddy unmute` → `config.companionMuted = false`
+
+**静音检查点输出**：
+- `fireCompanionObserver()` → 静音时直接 return
+- `getCompanionIntroAttachment()` → 静音时返回空数组
+- `CompanionSprite` → 静音时返回 null（不渲染）
+- `companionReservedColumns()` → 静音时返回 0
+
+#### 状态与附件
+
+**静音状态持久化**：
+```typescript
+// src/commands/buddy/index.ts:16-20
+saveGlobalConfig(current => ({
+  ...current,
+  companionMuted: action === 'mute',
+}))
+```
+
+**静音对各子系统的影响边界**：
+
+| 子系统 | 静音前 | 静音后 | 备注 |
+|--------|--------|--------|------|
+| `fireCompanionObserver` | 触发 observer | 直接 return | 新评论不生成 |
+| `AppState.companionReaction` | 可设置 | 已设置的保留 | **旧气泡不自动清除** |
+| `CompanionSprite` 渲染 | 渲染精灵 | 返回 null | 精灵隐藏 |
+| `companion_intro` | 发送 | 不发送 | |
+| `/buddy pet` | 可用 | 不可用（精灵消失） | |
+| 预告通知 | 符合条件显示 | 不影响（独立检查） | 预告只看 `config.companion` 存在与否 |
+
+#### 创建流程
+
+**静音设置流程**：
+```
+用户输入 /buddy mute
+     ↓
+buddy command call('mute')
+     ↓
+saveGlobalConfig({ ..., companionMuted: true })
+     ↓
+[下一次 user turn]
+fireCompanionObserver() ──→ 检查 config.companionMuted ──→ return
+getCompanionIntroAttachment() ──→ 检查 muted ──→ return []
+CompanionSprite ──→ 检查 muted ──→ return null
+companionReservedColumns() ──→ 检查 muted ──→ return 0
+```
+
+**气泡生命周期流程**：
+```
+onReaction(reaction) 被调用
      ↓
 AppState.companionReaction = reaction
      ↓
-CompanionSprite 显示气泡
+lastSpokeTick.current = tick（同步，渲染期间）
      ↓
-10 秒后气泡淡出消失
+setTimeout(clearReaction, 10s)
+     ↓
+[每 500ms tick]
+bubbleAge = tick - lastSpokeTick
+fading = bubbleAge >= 20 - 6 = 14
+     ↓
+[10s 后]
+AppState.companionReaction = undefined
 ```
 
-##### 关键设计决策 2：观察者单飞限制
+#### 交互与关闭流程
 
-**设计选择**：使用 `inFlight` 标志防止并发 LLM 调用。
-
-```typescript
-// companionObserver.ts:21
-let inFlight = false;
-
-// fireCompanionObserver 开头检查
-if (!context || inFlight) return;
-// ...
-// finally 块清理
-inFlight = false;
+**静音与现有 reaction 的交互边界（当前行为）**：
+```
+[时间线]
+T0: 用户发送消息 → reaction 显示（10s 计时器启动）
+T3: 用户输入 /buddy mute
+T3-T10: reaction 仍然显示（淡出）
+T10: reaction 清除
+T10+: 无新 reaction 生成
 ```
 
-**备选方案**：
-1. Promise 队列
-   - 缺点：消息快速时队列累积，评论过时
-2. 取消前一个请求
-   - 缺点：实现复杂，需要上下文支持 AbortController
+**键盘交互边界**：
+- 精灵可聚焦：`footerSelection === 'companion'`
+- 聚焦时按 Enter 触发 `/buddy pet`（设置 `companionPetAt`）
+- 静音时精灵不渲染 → 无法聚焦/抚摸
 
-**证据/权衡**：
-- 用户消息通常间隔 > 10 秒（气泡持续时间）
-- 单飞设计足够，无用户可见损失
+#### 错误与 Feature 门控
 
-#### 4.1.3 静音/取消静音
+**命令层无错误路径**：
+- 纯配置读写
+- `/buddy invalid` 返回用法提示，不抛错
 
-通过 `/buddy mute` 和 `/buddy unmute` 命令控制：
+**静音与 Feature Gate 关系**：
+- `feature('BUDDY')` = false → 整个系统禁用，静音状态不读取
+- `feature('BUDDY')` = true, muted = true → 系统部分禁用（精灵隐藏，无新评论）
+
+#### 设计取舍与备选
+
+| 决策 | 当前选择 | 备选方案 | 权衡 |
+|------|----------|----------|------|
+| 静音时精灵显示 | 隐藏 | 显示但不动画 | + 清晰；- 状态突变 |
+| 静音时旧 reaction | 保留至超时 | 立即清除 | + 简单；- 用户困惑（见 9.1 疑虑） |
+| 静音持久化 | 全局配置持久化 | 会话临时 | + 跨会话记住；- 用户可能忘了 |
+| 静音命令位置 | `/buddy mute` | 单独 `/mute` | + 命名空间清晰；- 输入稍长 |
+
+#### 源码测试证据
+
+**源码证据**：
+- 命令实现：`src/commands/buddy/index.ts`
+- 静音检查点：
+  - `companionObserver.ts:73`
+  - `prompt.ts:19`
+  - `CompanionSprite.tsx:178`、`125`
+- 气泡生命周期：`CompanionSprite.tsx:159-174`
+
+**测试证据**：
+- 无直接测试覆盖静音行为
+- 无直接测试覆盖气泡超时逻辑
+
+---
+
+### 4.5 模块设计卡：UI 双模式与动画
+
+#### 真实入口签名与关键类型
 
 ```typescript
-// config.ts:271
-companionMuted?: boolean;
+// src/buddy/CompanionSprite.tsx
+export const MIN_COLS_FOR_FULL_SPRITE = 100
+export function companionReservedColumns(
+  terminalColumns: number,
+  speaking: boolean,
+): number
+export function CompanionSprite(): React.ReactNode
+export function CompanionFloatingBubble(): React.ReactNode
+
+// src/buddy/sprites.ts（被使用，不拥有）
+export function renderSprite(companion: Companion, frame: number): string[]
+export function renderFace(companion: Companion): string
+export function spriteFrameCount(species: Species): number
+
+// 常量
+const TICK_MS = 500
+const BUBBLE_SHOW = 20        // ticks (10s)
+const FADE_WINDOW = 6         // ticks (3s)
+const PET_BURST_MS = 2500
+const NARROW_QUIP_CAP = 24    // chars
 ```
 
-静音时：
-- CompanionSprite 仍然显示（保持 UI 一致性）
-- 但不会触发 `fireCompanionObserver`
-- `/buddy pet` 仍然有效
+#### 输入输出
 
-### 4.2 Fork 与通知集成
+**布局输入**：
+- `columns`: 终端宽度（来自 `useTerminalSize()`）
+- `isFullscreenActive()`: 全屏模式状态
+- `companionReservedColumns()`: 输入行预留宽度
 
-#### 4.2.1 Side Question 调用链
+**布局输出（宽终端 ≥100 列）**：
+- 非全屏：精灵 + 内联气泡（输入行预留宽度）
+- 全屏：仅精灵 + `CompanionFloatingBubble`（bottomFloat 插槽）
 
-Buddy 使用 `sideQuestion`（子问题）机制生成评论，不阻塞主对话：
+**布局输出（窄终端 <100 列）**：
+- 单行：`renderFace()` + 名称或短引语（无预留宽度，PromptInput 换行）
 
+**动画输入**：
+- `tick`: 本地计数器（每 500ms +1）
+- `reaction`: 是否有气泡
+- `petAt`: 抚摸时间戳
+- `IDLE_SEQUENCE`: [0, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, 2, 0, 0, 0]（-1 = 眨眼）
+
+#### 状态与附件
+
+**本地组件状态（无持久化）**：
 ```typescript
-// companionObserver.ts:94
-// 已有灵魂时仅生成反应
-const question = stored
-  ? `You are ${stored.name}, ... Write one short reaction...`
-  : `Create a coding companion... Write JSON only: {"name":...,"personality":...,"reaction":...}`;
+const [tick, setTick] = useState(0)
+const lastSpokeTick = useRef(0)
+const [{ petStartTick, forPetAt }, setPetStart] = useState(...)
 ```
 
-##### 关键设计决策 3：Buddy 与主 Agent 的职责边界
+**布局模式决策表**：
 
-**设计选择**：
-- Buddy 仅通过气泡发言（独立于主对话）
-- 主 Agent 收到 Buddy intro attachment，但不会代表 Buddy 说话
-- 用户直接与 Buddy 对话时，主 Agent 保持简洁
+| `columns` | `isFullscreenActive()` | `reaction` | 布局模式 | 气泡位置 |
+|-----------|-------------------------|------------|----------|----------|
+| <100 | 任意 | 任意 | 窄模式 | 内联名称行（截断至 24 字符） |
+| ≥100 | false | 有 | 宽内联 | 精灵左侧 |
+| ≥100 | false | 无 | 宽内联 | 无气泡 |
+| ≥100 | true | 有 | 宽全屏 | bottomFloat 插槽（独立组件） |
+| ≥100 | true | 无 | 宽全屏 | 无气泡 |
 
-**备选方案**：
-1. Buddy 作为 Agent Swarm 成员
-   - 缺点：与现有 swarms 架构目标不符（聚焦协作完成任务）
-2. Buddy 消息混入主对话
-   - 缺点：打断对话流，用户无法忽略
+**动画状态机**：
 
-**证据/权衡**：
-- 气泡设计：非侵入式，用户可以选择忽略
-- intro attachment：让主 Agent 知道 Buddy 存在，不抢话
+| 状态 | 条件 | 精灵帧 | 眨眼 | 爱心 |
+|------|------|--------|------|------|
+| 空闲 | !reaction && !petting | `IDLE_SEQUENCE[tick % 15]` | `step === -1` | 无 |
+| 兴奋（说话） | reaction | `tick % frameCount` | 无 | 无 |
+| 兴奋（被摸） | petting | `tick % frameCount` | 无 | `PET_HEARTS[petAge % 5]` |
 
-#### 4.2.2 通知集成（预告期）
+#### 创建流程
 
-在 2026 年 4 月 1-7 日的预告期，Buddy 未孵化用户看到彩虹色通知：
+**双模式布局选择流程**：
+```
+CompanionSprite 渲染
+     ↓
+读取 columns（useTerminalSize）
+     ↓
+columns < MIN_COLS_FOR_FULL_SPRITE?
+     ├─→ 是 → 窄模式：renderFace() + 名称/短引语
+     └─→ 否 → 宽模式
+             ↓
+      isFullscreenActive()?
+             ├─→ 是 → 仅精灵，气泡由 CompanionFloatingBubble 渲染
+             └─→ 否 → 精灵 + 内联 SpeechBubble
+```
+
+**动画帧同步流程**：
+```
+useEffect 启动 setInterval(TICK_MS)
+     ↓
+每 500ms: setTick(t => t + 1)
+     ↓
+[每次渲染，同步计算]
+reaction 存在? ──→ spriteFrame = tick % frameCount
+petting? ──→ heartFrame = PET_HEARTS[petAge % 5]
+否则 ──→ step = IDLE_SEQUENCE[tick % 15]
+        ├─→ step === -1 → blink = true, spriteFrame = 0
+        └─→ else → spriteFrame = step % frameCount
+     ↓
+renderSprite(companion, spriteFrame)
+     ↓
+blink ? replaceAll(eye, '-') : no-op
+```
+
+**抚摸同步（渲染期间，无 useEffect）**：
+```typescript
+// CompanionSprite.ts:142-148
+if (petAt !== forPetAt) {
+  setPetStart({ petStartTick: tick, forPetAt: petAt })
+}
+// 同步更新避免丢帧
+```
+
+#### 交互与关闭流程
+
+**键盘交互边界**：
+- 聚焦：`footerSelection === 'companion'`
+- 聚焦时：名称反白显示（`inverse={focused}`）
+- Enter：设置 `AppState.companionPetAt = Date.now()`（触发抚摸动画）
+- 窄模式无独立聚焦视觉行
+
+**关闭与清理流程**：
+```typescript
+// CompanionSprite.ts:150-157
+useEffect(() => {
+  const timer = setInterval(..., TICK_MS)
+  return () => clearInterval(timer)  // 组件卸载停止 tick
+}, [])
+
+// reaction 清除超时
+useEffect(() => {
+  ...
+  return () => clearTimeout(timer)  // reaction 变化或组件卸载清除
+}, [reaction, setAppState])
+```
+
+**组件卸载边界**：
+- 卸载不影响 `AppState.companionReaction`
+- 但气泡不再渲染（状态可能 "leaked"，但重新挂载会恢复）
+
+#### 错误与 Feature 门控
+
+**渲染层 Feature 门控**：
+```typescript
+// CompanionSprite.tsx:192
+if (!feature('BUDDY')) return null
+
+// CompanionFloatingBubble.tsx:336
+if (!feature('BUDDY') || !reaction) return null
+
+// companionReservedColumns.ts:124
+if (!feature('BUDDY')) return 0
+```
+
+**无错误路径**：
+- 渲染纯同步
+- 无网络/IO
+- 非法状态降级：无 reaction 时无气泡，无 companion 时不渲染
+
+#### 设计取舍与备选
+
+| 决策 | 当前选择 | 备选方案 | 权衡 |
+|------|----------|----------|------|
+| 宽度阈值 | 100 列 | 80/120 列 | + 平衡；- 某些终端仍可能拥挤 |
+| Tick 频率 | 500ms | 250ms/1000ms | + 动画流畅度与性能平衡 |
+| 气泡时长 | 10s | 5s/15s | + 阅读时间足够；- 占用屏幕较长 |
+| 窄模式气泡 | 替换名称行 | 独立气泡行 | + 节省空间；- 气泡不明显 |
+| 全屏气泡 | bottomFloat 独立组件 | 绝对定位 | + 不占用输入空间；+ 不被 clip；- 双组件通信 |
+| 抚摸同步 | 渲染期间 setState | useEffect | + 无丢帧；- React 模式不常见 |
+
+#### 源码测试证据
+
+**源码证据**：
+- 布局常量：`CompanionSprite.tsx:103-108`
+- 窄模式：`CompanionSprite.tsx:192-228`
+- 宽模式：`CompanionSprite.tsx:230-304`
+- 浮动气泡：`CompanionSprite.tsx:311-348`
+- 动画序列：`CompanionSprite.tsx:23-33`
+- 预留宽度计算：`CompanionSprite.tsx:119-130`
+
+**测试证据**：
+- 无直接测试覆盖布局切换
+- 无直接测试覆盖动画序列
+- 无直接测试覆盖 companionReservedColumns 计算
+
+---
+
+### 4.6 预告期子模块设计
+
+#### 窗口规则（本地时间滚动）
 
 ```typescript
-// useBuddyNotification.tsx:45
-if (!feature('BUDDY')) return;
-const config = getGlobalConfig();
-if (config.companion || !isBuddyTeaserWindow()) return;
+// useBuddyNotification.ts:11-22
+export function isBuddyTeaserWindow(): boolean {
+  if (process.env.USER_TYPE === 'ant') return true
+  const d = new Date()
+  return d.getFullYear() === 2026 && d.getMonth() === 3 && d.getDate() <= 7
+}
+// 4月1日-7日（本地时间，非 UTC）→ 24h 时区滚动上线
+```
+
+#### 通知渲染
+
+```typescript
+// useBuddyNotification.ts:46-51
 addNotification({
   key: 'buddy-teaser',
   jsx: <RainbowText text="/buddy" />,
   priority: 'immediate',
   timeoutMs: 15_000,
-});
+})
 ```
 
-##### 关键设计决策 4：时区滚动的预告期
+**通知显示条件**：
+- `feature('BUDDY')` = true
+- `config.companion` = undefined（未孵化）
+- `isBuddyTeaserWindow()` = true
+- 启动时触发一次（useEffect 无依赖）
 
-**设计选择**：使用本地时间而非 UTC 判断预告期：
-
-```typescript
-// useBuddyNotification.tsx:11
-const d = new Date();
-return d.getFullYear() === 2026 && d.getMonth() === 3 && d.getDate() <= 7;
-```
-
-**备选方案**：
-1. UTC 固定时间窗口
-   - 缺点：某些地区用户在工作时间看不到预告
-2. 无预告期，直接上线
-   - 缺点：错失话题热度
-
-**证据/权衡**：
-- 24 小时滚动唤醒：Twitter 讨论持续更长时间
-- 降低 LLM 峰值负载（灵魂生成）
-
-### 4.3 UI 状态与渲染
-
-#### 4.3.1 双模式布局
-
-Buddy UI 支持两种布局模式，由终端宽度决定：
-
-```
-宽终端（≥ 100 列）
-┌─────────────────────────────────────────┐
-│  对话内容...                            │
-│                                         │
-│  💬 That was a clever approach!         │
-│      🦊  [Alice] │ [Tasks]             │
-│  ❯ 用户输入...                          │
-└─────────────────────────────────────────┘
-
-窄终端（< 100 列）
-┌──────────────────────────┐
-│  对话内容...             │
-│                          │
-│  🦊 "Nice one!" Alice    │
-│  ❯ 用户输入...           │
-└──────────────────────────┘
-```
-
-##### 关键设计决策 5：宽度阈值与内联气泡
-
-**设计选择**：
-- 阈值：`MIN_COLS_FOR_FULL_SPRITE = 100` 列
-- 非全屏模式：气泡与精灵内联在输入行
-- 全屏模式：气泡通过 `bottomFloat` 单独渲染，不占用输入空间
-
-**证据/权衡**：
-- `companionReservedColumns()` 动态计算预留宽度
-- PromptInput 相应缩小，避免文本覆盖精灵
-
-#### 4.3.2 精灵动画序列
-
-Buddy 使用帧动画表达情绪：
-
-```typescript
-// CompanionSprite.tsx:23
-const IDLE_SEQUENCE = [0, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, 2, 0, 0, 0];
-// -1 = 眨眼（替换眼睛字符为 "-"）
-// 0-2 = 精灵帧索引
-```
-
-状态到动画的映射：
-- **空闲**：播放 IDLE_SEQUENCE，偶尔眨眼
-- **说话**：快速循环所有帧
-- **被抚摸**：显示爱心上浮动画
-
-#### 4.3.3 气泡生命周期
-
-```
-reaction 设置
-     ↓
-lastSpokeTick = tick (当前帧序号)
-     ↓
-显示气泡 → 保持 20 个 tick（≈ 10 秒）
-     ↓
-最后 6 个 tick 淡出（fading = true）
-     ↓
-AppState.companionReaction = undefined
-```
-
-#### 4.3.4 抚摸交互
-
-用户通过导航到精灵并按 Enter（聚焦状态）触发"抚摸"：
-
-```typescript
-// AppStateStore.ts:171
-companionPetAt?: number;
-
-// CompanionSprite.tsx:187
-const petAge = petAt ? tick - petStartTick : Infinity;
-const petting = petAge * TICK_MS < PET_BURST_MS;
-```
-
-抚摸显示 5 帧爱心上浮动画（`PET_HEARTS`），持续 2.5 秒。
-
-### 4.4 与 Agent 的边界
-
-#### 4.4.1 Attachment 集成
-
-Buddy 通过 `companion_intro` attachment 让主 Agent 知道其存在：
-
-```typescript
-// prompt.ts:29-35
-return [
-  {
-    type: 'companion_intro',
-    name: companion.name,
-    species: companion.species,
-  },
-];
-```
-
-Attachment 处理流程：
-1. 首次出现时，发送 intro 提示主 Agent
-2. 后续对话不再重复发送
-3. 主 Agent 收到后，不会"冒充"Buddy
-
-#### 4.4.2 提示工程
-
-Buddy intro 的精确措辞：
-
-```typescript
-// prompt.ts:8-13
-`# Companion
-
-A small ${species} named ${name} sits beside the user's input box and occasionally comments in a speech bubble. You're not ${name} — it's a separate watcher.
-
-When the user addresses ${name} directly (by name), its bubble will answer. Your job in that moment is to stay out of the way: respond in ONE line or less, or just answer any part of the message meant for you. Don't explain that you're not ${name} — they know. Don't narrate what ${name} might say — the bubble handles that.`
-```
-
-##### 关键设计决策 6：严格的角色分离
-
-**设计选择**：明确告诉主 Agent "You're not X"，避免角色混淆。
-
-**备选方案**：
-1. 让主 Agent 同时扮演 Buddy
-   - 缺点：上下文混乱，Agent 身份分裂
-2. 不做特殊处理
-   - 缺点：用户与 Buddy 对话时主 Agent 抢话
-
-**证据/权衡**：
-- 清晰的职责边界：Buddy 气泡评论，主 Agent 完成任务
+**预告期与完整功能的关系**：
+- 预告期（4.1-4.7）：显示彩虹通知 + `/buddy` 命令可用 + observer 可孵化
+- 预告期后（4.8+）：不显示通知 + 功能继续可用
+- 4.1 前：功能关闭（`isBuddyLive()` = false）
 
 ## 5. 失败语义与工程取舍
 
@@ -457,9 +1005,9 @@ export function isBuddyLive(): boolean {
 
 | 设计陈述 | 代码证据 | 测试证据与边界 |
 |---|---|---|
-| 确定性骨骼与统计边界 | `src/buddy/companion.ts`、`src/buddy/types.ts`、`src/buddy/sprites.ts` | `tests/buddyFork.test.ts` 的 “rolls deterministic bones and bounded stats” 覆盖确定性和有界性。 |
-| 宽松响应解析与 malformed 拒绝 | `src/buddy/companionObserver.ts:35-54` | `tests/buddyFork.test.ts` 的 “parses JSON responses without accepting malformed output” 覆盖核心解析不变量。 |
-| 孵化、灵魂持久化与反应 | `src/buddy/companionObserver.ts`、`src/commands/buddy/index.ts` | `tests/buddyFork.test.ts` 的 “hatches and persists a soul, then emits a reaction” 覆盖成功路径；配置写失败和重复并发仍需故障注入。 |
+| 确定性骨骼与统计边界 | `src/buddy/companion.ts`、`src/buddy/types.ts`、`src/buddy/sprites.ts` | `tests/buddyFork.test.ts` 的 "rolls deterministic bones and bounded stats" 覆盖确定性和有界性。 |
+| 宽松响应解析与 malformed 拒绝 | `src/buddy/companionObserver.ts:35-54` | `tests/buddyFork.test.ts` 的 "parses JSON responses without accepting malformed output" 覆盖核心解析不变量。 |
+| 孵化、灵魂持久化与反应 | `src/buddy/companionObserver.ts`、`src/commands/buddy/index.ts` | `tests/buddyFork.test.ts` 的 "hatches and persists a soul, then emits a reaction" 覆盖成功路径；配置写失败和重复并发仍需故障注入。 |
 | 精灵布局、气泡与动画 | `src/buddy/CompanionSprite.tsx` | 无直接测试；需用 tick/宽度测试固定 100 列、20 tick、淡出和 pet 生命周期。 |
 | 预告窗口和通知 | `src/buddy/useBuddyNotification.tsx` | 无直接测试；需要注入本地日期、feature 与 config，覆盖 4 月 1 日、4 月 7 日和窗口外边界。 |
 | 主 Agent 角色隔离 | `src/buddy/prompt.ts` 与 `companion_intro` attachment | 提示文本提供静态证据；实际模型是否抢话属于行为验收，不能仅由字符串测试证明。 |
@@ -508,7 +1056,7 @@ Buddy 骨骼基于 userId 哈希，灵魂持久化在本地配置。同一用户
 
 ### 9.3 可执行改进顺序
 
-1. 静音时立即清理或按剩余生命周期淡出当前 reaction，并补充“静音前最后一条气泡”的回归测试。
+1. 静音时立即清理或按剩余生命周期淡出当前 reaction，并补充"静音前最后一条气泡"的回归测试。
 2. 为 `companion_intro` 增加稳定 companion 标识和名称变更检测，避免重命名后历史去重仅按旧名称判断。
 3. 明确跨设备策略：若保持本地灵魂，应在 UI/文档中说明；若引入云同步，需定义冲突解决、删除和隐私语义。
 4. 将日期、tick、配置写入和 observer 注入为可测试依赖，补齐窗口边界、动画清理、并发及软失败测试。

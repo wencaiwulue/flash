@@ -617,6 +617,664 @@ type KeyParseState = {
 | terminal | writeSync、setRawMode、SIGWINCH | 终端 I/O | 本 spec |
 | parse-keypress | parseMultipleKeypresses | 输入解析 | 本 spec |
 
+---
+
+### 4.6 模块设计卡：Reconciler（React 协调器）
+
+#### 真实入口签名与关键类型
+
+```typescript
+// src/ink/reconciler.ts
+createReconciler<
+  ElementNames,
+  Props,
+  DOMElement,
+  DOMElement,
+  TextNode,
+  DOMElement,
+  unknown,
+  unknown,
+  DOMElement,
+  HostContext,
+  null, // UpdatePayload - not used in React 19
+  NodeJS.Timeout,
+  -1,
+  null
+>(hostConfig)
+
+// 核心类型
+type HostContext = { isInsideText: boolean }
+type DOMElement = {
+  nodeName: ElementNames
+  style: Styles
+  attributes: Record<string, DOMNodeAttribute>
+  childNodes: DOMNode[]
+  yogaNode?: LayoutNode
+  dirty: boolean
+  isHidden?: boolean
+  _eventHandlers?: Record<string, unknown>
+  // ... scroll/debug 等
+}
+
+export const dispatcher: Dispatcher
+export function getOwnerChain(fiber: unknown): string[]
+export function isDebugRepaintsEnabled(): boolean
+```
+
+#### 输入输出
+
+| 方向 | 内容 |
+|------|------|
+| 输入 | React 元素树（Box、Text 组件） |
+| 输入 | Props 更新（style、children、事件处理器） |
+| 输出 | DOM 节点（DOMElement/TextNode）创建/更新/删除 |
+| 输出 | rootNode.onComputeLayout() 回调（布局触发） |
+| 输出 | rootNode.onRender() 回调（渲染触发） |
+
+#### 渲染与终端状态
+
+- **宿主配置钩子**：createInstance/appendChild/setAttribute/commitUpdate 等
+- **resetAfterCommit**：双阶段提交后调用，触发 Yoga 布局 + 终端渲染
+- **DevTools 集成**：开发环境连接 React DevTools，失败仅记录警告
+- **测试模式特殊处理**：onImmediateRender 而非 throttled onRender，避免 flaky tests
+
+#### 完整 render/damage/output 流程
+
+```
+React setState →
+  Fiber 树协调 →
+    createInstance/appendChild/setAttribute (dom.ts) →
+      标记节点 dirty →
+    commitUpdate →
+  resetAfterCommit →
+    onComputeLayout() →
+      Yoga.calculateLayout →
+      recordYogaMs (perf) →
+    onRender() →
+      进入 ink.tsx 渲染管道
+```
+
+#### 错误恢复与性能
+
+- **React DevTools 降级**：动态 import 失败不影响功能
+- **isDebugRepaintsEnabled**：CLAUDE_CODE_DEBUG_REPAINTS 启用调试
+- **commit instrumentation**：CLAUDE_CODE_COMMIT_LOG 记录提交统计（创建计数、差距等）
+- **getOwnerChain**：从 fiber._debugOwner 提取组件栈，用于 repaint 归因
+
+#### 设计取舍与备选
+
+| 取舍 | 当前选择 | 备选 | 代价 |
+|------|---------|------|------|
+| Yoga 节点生命周期 | cleanupYogaNode 在 removeChild 时 freeRecursive | 延迟 free 或对象池 | 立即回收内存，但需要小心 use-after-free |
+| 事件处理器存储 | 独立 _eventHandlers 而非 attributes | 混入 attributes | blit 优化不受 handler 身份变化影响 |
+| 文本嵌套检查 | hostContext.isInsideText 阻止 Box 在 Text 内 | 静默虚拟化嵌套 | 提前捕获错误，避免布局异常 |
+
+#### 源码测试证据
+
+- **reconciler.ts:162-167**：getOwnerChain 使用 fiber._debugOwner
+- **reconciler.ts:236-304**：resetAfterCommit 调用 onComputeLayout/onRender
+- **reconciler.ts:33-46**：devtools 动态 import 带错误处理
+- **reconciler.ts:180-212**：Yoga/Commit 性能打点
+
+---
+
+### 4.7 模块设计卡：Layout（Yoga 布局引擎）
+
+#### 真实入口签名与关键类型
+
+```typescript
+// src/ink/layout/engine.ts
+export function createLayoutNode(): LayoutNode
+
+// src/ink/dom.ts
+export const createNode = (nodeName: ElementNames): DOMElement
+export function appendChildNode(node: DOMElement, childNode: DOMElement): void
+export function insertBeforeNode(node: DOMElement, newChildNode: DOMNode, beforeChildNode: DOMNode): void
+
+// 布局回调（ink.tsx 中设置）
+rootNode.onComputeLayout = () => {
+  const start = performance.now()
+  rootYogaNode.calculateLayout(undefined, undefined)
+  recordYogaMs(performance.now() - start)
+}
+```
+
+#### 输入输出
+
+| 方向 | 内容 |
+|------|------|
+| 输入 | style 属性（width、height、flexDirection、padding 等） |
+| 输入 | TextNode 内容（用于 measureText） |
+| 输出 | LayoutNode.getComputedLeft/Top/Width/Height |
+| 输出 | layoutShifted 标志（render-node-to-output 设置） |
+
+#### 渲染与终端状态
+
+- **节点与 Yoga 关联**：DOMElement.yogaNode 存储 LayoutNode
+- **测量函数**：TextNode 绑定 measureTextNode，RawAnsi 绑定 measureRawAnsiNode
+- **虚拟节点**：ink-virtual-text、ink-link、ink-progress 无 Yoga 节点
+- **插入索引计算**：DOM 索引 ≠ Yoga 索引，需要跳过无 YogaNode 的孩子
+
+#### 完整 render/damage/output 流程
+
+```
+onComputeLayout →
+  rootYogaNode.calculateLayout(availableWidth, availableHeight) →
+    递归测量 Text 节点（measureText）→
+    Flexbox 布局计算 →
+  节点位置/大小写入 YogaNode →
+  render-node-to-output 读取 →
+    比较 nodeCache 中缓存的布局 →
+    如有差异：设置 layoutShifted = true →
+    禁用 blit，走完整渲染路径
+```
+
+#### 错误恢复与性能
+
+- **尺寸钳制**：width/height 转为整数，非整数时向下取整（warn.ts）
+- **Yoga 计数器**：native 模块暴露 getYogaCounters()，记录 visited/measured/hits
+- **measureText 缓存**：stringWidth 内部有 cache，避免重复测量相同文本
+
+#### 设计取舍与备选
+
+| 取舍 | 当前选择 | 备选 | 代价 |
+|------|---------|------|------|
+| Yoga 作为 native 依赖 | NAPI 模块直接绑定 | pure JS Flexbox | 性能好，但加载失败时进程崩溃 |
+| 字符网格对齐 | Yoga 返回像素 → 转为整数字符 | 保留小数但渲染时 floor | 简单，但有时文本会溢出 |
+| 虚拟文本节点 | 无 YogaNode，不参与布局 | 0 大小 YogaNode | 节省 Yoga 资源，但插入索引计算复杂 |
+
+#### 源码测试证据
+
+- **dom.ts:111-129**：createNode 根据 nodeName 决定是否创建 YogaNode
+- **dom.ts:174-180**：insertBeforeNode 计算正确的 Yoga 索引
+- **ink.tsx:203-209**：onComputeLayout 打点 Yoga 耗时
+
+---
+
+### 4.8 模块设计卡：Paint（渲染节点到屏幕）
+
+#### 真实入口签名与关键类型
+
+```typescript
+// src/ink/render-node-to-output.ts
+export function resetLayoutShifted(): void
+export function didLayoutShift(): boolean
+export function resetScrollHint(): void
+export function getScrollHint(): ScrollHint | null
+export function resetScrollDrainNode(): void
+export function getScrollDrainNode(): DOMElement | null
+export function consumeFollowScroll(): FollowScroll | null
+
+type ScrollHint = { top: number; bottom: number; delta: number }
+type FollowScroll = { delta: number; viewportTop: number; viewportBottom: number }
+```
+
+#### 输入输出
+
+| 方向 | 内容 |
+|------|------|
+| 输入 | DOMElement（带 Yoga 布局位置） |
+| 输入 | prevScreen（用于 blit 决策） |
+| 输出 | nextScreen（通过 Output 写入） |
+| 输出 | layoutShifted、scrollHint、scrollDrainNode、followScroll |
+
+#### 渲染与终端状态
+
+- **三阶段渲染**：
+  1. **布局检查**：比较 nodeCache，决定 blit 还是 full-render
+  2. **内容渲染**：边框、文本、RawAnsi
+  3. **绝对定位修复**：scroll 后修复 absolute 子节点
+- **滚动限速**：drainAdaptive（xterm.js）、drainProportional（native）
+- **Sticky Scroll**：内容增长时自动滚动到底部
+- **Scroll Anchor**：scrollToElement 延迟读取位置直到 paint time
+
+#### 完整 render/damage/output 流程
+
+```
+render-node-to-output(node, output, prevScreen) →
+  1. 检查 nodeCache：
+    - 节点 dirty？ → full-render
+    - 位置/大小变化？ → layoutShifted = true，full-render
+    - 有 pendingClears？ → clearRegion，full-render
+  2. 可以 blit → blitRegion(prevScreen → nextScreen)，early return
+  3. 不能 blit →
+    - 渲染边框（renderBorder）
+    - 渲染子节点（递归）
+    - 处理滚动（drain pendingScrollDelta）
+    - 检测纯滚动 → 设置 scrollHint
+  4. 保存当前布局到 nodeCache
+  5. 如有 follow scroll → 设置 followScroll
+  6. 返回 nextScreen
+```
+
+#### 错误恢复与性能
+
+- **xterm.js vs native 滚动**：检测 isXtermJsHost()，使用不同 drain 策略
+  - xterm.js：SCROLL_STEP_MED/HIGH = 2/3，平滑动画
+  - native：SCROLL_MIN_PER_FRAME = 4，3/4 比例 catch-up
+- **滚动上限**：SCROLL_MAX_PENDING = 30，超出部分直接 snap
+- **scrollClampMin/Max**：useVirtualScroll 设置，防止 race condition 出现空屏
+
+#### 设计取舍与备选
+
+| 取舍 | 当前选择 | 备选 | 代价 |
+|------|---------|------|------|
+| 滚动限速**：分帧 drain | 不是直接赋值 scrollTop | 单帧应用所有 delta | 快速 flick 有中间帧，但需要多帧才能 catch-up |
+| scrollHint 纯滚动检测**：仅在无其他变化时启用 | 总是 diff | DECSTBM 极快，但检测逻辑复杂 |
+| absoluteRemoved 标志**：禁用 blit 一整帧 | 追踪绝对节点的影响区域 | 简单但有时过度保守 |
+
+#### 源码测试证据
+
+- **render-node-to-output.ts:21-25**：isXtermJsHost() 检测
+- **render-node-to-output.ts:106-157**：drainAdaptive/drainProportional 实现
+- **render-node-to-output.ts:34-42**：layoutShifted 全局标志
+- **render-node-to-output.ts:44-64**：scrollHint/absoluteRectsPrev/Cur
+- **dom.ts:57-82**：scrollTop/pendingScrollDelta/scrollClampMin/Max/scrollAnchor
+
+---
+
+### 4.9 模块设计卡：终端输出与增量刷新（log-update）
+
+#### 真实入口签名与关键类型
+
+```typescript
+// src/ink/log-update.ts
+export class LogUpdate {
+  constructor(options: { isTTY: boolean; stylePool: StylePool })
+  render(
+    prev: Frame,
+    next: Frame,
+    altScreen = false,
+    decstbmSafe = true
+  ): Diff
+  renderPreviousOutput_DEPRECATED(prevFrame: Frame): Diff
+  reset(): void
+}
+
+type Diff = Array<
+  | { type: 'stdout'; content: string }
+  | { type: 'clear'; count: number }
+  | { type: 'clearTerminal'; reason: FlickerReason; debug?: unknown }
+  | { type: 'cursorHide' | 'cursorShow' }
+  | { type: 'cursorMove'; x: number; y: number }
+  | { type: 'cursorTo'; col: number }
+  | { type: 'carriageReturn' }
+  | { type: 'hyperlink'; uri: string }
+  | { type: 'styleStr'; str: string }
+>
+```
+
+#### 输入输出
+
+| 方向 | 内容 |
+|------|------|
+| 输入 | prevFrame（frontFrame）、nextFrame（backFrame） |
+| 输入 | altScreen 标志、decstbmSafe 标志 |
+| 输出 | Diff（补丁数组） |
+| 输出 | 内部状态：previousOutput（用于 reset） |
+
+#### 渲染与终端状态
+
+- **VirtualScreen 游标跟踪**：仅使用相对移动，不知道绝对位置
+- **Scrollback 检测**：prevHadScrollback 且内容变化 → full reset
+- **ViewportY 计算**：跟踪 scrollback 中的行，不可访问时 reset
+- **DECSTBM 优化**：有 scrollHint 且 decstbmSafe 时，用硬件 scroll 替代重绘
+- **Spacer 跳过**：diff 时跳过 SpacerTail/SpacerHead
+
+#### 完整 render/damage/output 流程
+
+```
+logUpdate.render(prev, next, altScreen, decstbmSafe) →
+  1. 快速检查：
+    - viewport 尺寸变化？ → fullResetSequence
+    - nextFrame 有 scrollHint 且 decstbmSafe？ →
+      shiftRows(prevScreen) → 生成 DECSTBM + SU/SD 补丁
+  2. 检查 scrollback 行是否变化 →
+    有变化且不可访问？ → fullResetSequence
+  3. 创建 VirtualScreen（prev.cursor 位置）→
+    处理 shrink（eraseLines）→
+    diffEach(prevScreen, nextScreen) →
+      逐单元格比较 →
+        相等？跳过
+        不等？moveCursorTo 位置，writeCell
+  4. 处理 growth（renderFrameSlice 新行）→
+  5. 恢复光标（altScreen 跳过，节省字节）→
+  6. 返回 Diff 补丁数组
+```
+
+#### 错误恢复与性能
+
+- **fullResetSequence_CAUSES_FLICKER**：作为最后手段，闪烁但正确
+  - 触发原因：resize、scrollback 行变化、viewportY 越界、shrink→below
+  - 记录原因（'resize'/'offscreen'）用于调试
+- **damage 限制**：next.damage 存在时，仅扫描该区域
+- **visibleCellAtIndex**：跳过 fg-only 样式变化的空格，避免无意义写入
+- **慢渲染日志**：elapsed > 50ms 时，记录 damage 信息
+- **性能取舍表**：见第5章
+
+#### 设计取舍与备选
+
+| 取舍 | 当前选择 | 备选 | 代价 |
+|------|---------|------|------|
+| 相对游标**：仅使用 cursorMove，不跟踪绝对位置 | 用 cursorTo 绝对定位 | 健壮，但需要知道起始位置 |
+| DECSTBM 有条件启用**：decstbmSafe=false（如 tmux）时禁用 | 总是尝试 | tmux 中不原子，用户看到中间状态 |
+| 跳过 Spacer**：diff 时不渲染 SpacerTail/Head | 总是写入 | 节省字节，但 Spacer 数据结构复杂 |
+| altScreen 光标恢复**：跳过（cursor 隐藏） | 总是恢复 | 节省 ~10 字节/帧 |
+
+#### 源码测试证据
+
+- **log-update.ts:165-185**：DECSTBM 滚动优化
+- **log-update.ts:189-248**：scrollback 检查 + full reset 触发
+- **log-update.ts:250-467**：VirtualScreen + diff 主循环
+- **log-update.ts:46-63**：reset() 用于 SIGCONT
+- **log-update.ts:624-750**：writeCellWithStyleStr + emoji 宽度补偿
+
+---
+
+### 4.10 模块设计卡：键盘输入解析（parse-keypress）
+
+#### 真实入口签名与关键类型
+
+```typescript
+// src/ink/parse-keypress.ts
+export const INITIAL_STATE: KeyParseState
+export function parseMultipleKeypresses(
+  prevState: KeyParseState,
+  input: Buffer | string | null = ''
+): [ParsedInput[], KeyParseState]
+
+export type ParsedInput = ParsedKey | ParsedMouse | ParsedResponse
+export type ParsedKey = {
+  kind: 'key'
+  name?: string
+  ctrl: boolean
+  meta: boolean
+  shift: boolean
+  option: boolean
+  super: boolean
+  sequence?: string
+  raw?: string
+  isPasted: boolean
+}
+export type KeyParseState = {
+  mode: 'NORMAL' | 'IN_PASTE'
+  incomplete: string
+  pasteBuffer: string
+  _tokenizer?: Tokenizer
+}
+```
+
+#### 输入输出
+
+| 方向 | 内容 |
+|------|------|
+| 输入 | Buffer/string（终端字节流） |
+| 输入 | null（flush 不完整序列） |
+| 输出 | ParsedInput[]（keys/mouse/responses） |
+| 输出 | KeyParseState（用于下一次调用） |
+
+#### 渲染与终端状态
+
+- **Tokenizer 分层**：先 tokenize 分离 text/sequence/paste-start/paste-end，再解析
+- **粘贴模式状态机**：PASTE_START → IN_PASTE → PASTE_END，生成单个 PasteKey
+- **多协议支持**：
+  - CSI u（Kitty 键盘）：ESC [ codepoint [; modifier] u
+  - modifyOtherKeys（xterm）：ESC [ 27; modifier; keycode ~
+  - SGR Mouse：ESC [ < btn; col; row M/m
+  - Terminal Responses：DECRPM、DA1、DA2、XTVERSION、CursorPosition
+
+#### 完整 render/damage/output 流程
+
+```
+stdin 'readable' →
+  read chunk →
+  parseMultipleKeypresses(prevState, chunk) →
+    1. tokenizer.feed(chunk) → tokens
+    2. 遍历 tokens：
+      - PASTE_START → mode=IN_PASTE
+      - PASTE_END → createPasteKey(pasteBuffer)，mode=NORMAL
+      - sequence →
+        尝试 parseTerminalResponse → ParsedResponse
+        或 parseMouseEvent → ParsedMouse
+        或 parseKeypress → ParsedKey
+      - text → parseKeypress
+    3. 返回 [parsedInputs, newState]
+  dispatchKeyboardEvent(parsedKey) →
+    dispatcher.dispatchDiscrete(focusManager.activeElement, event) →
+      事件冒泡 → useInput handlers → React 更新
+```
+
+#### 错误恢复与性能
+
+- **不完整序列处理**：保存在 state.incomplete，下一 chunk 继续解析
+- **孤儿鼠标序列修复**：text token 匹配 "\[<\d+;\d+;\d+[Mm]" → 重新合成 ESC 前缀
+- **终端白名单**：supportsExtendedKeys() 仅在 iTerm/kitty/WezTerm/ghostty/tmux/wt 启用增强键
+- **isXtermJs()**：XTVERSION 探测 + TERM_PROGRAM 检查，双保险
+
+#### 设计取舍与备选
+
+| 取舍 | 当前选择 | 备选 | 代价 |
+|------|---------|------|------|
+| Tokenizer + Parser 分层**：分离边界检测与语义解析 | 直接正则解析整个输入 | 清晰，但多一层抽象 |
+| 粘贴单键**：整个粘贴作为一个 isPasted=true 的键 | 每个字符单独键 | 下游可区分粘贴与真实输入，但与单键 API 不同 |
+| 增强键白名单**：不在白名单的终端不启用 | 总是启用 | 避免某些终端发出不可处理的序列 |
+
+#### 源码测试证据
+
+- **parse-keypress.ts:212-302**：parseMultipleKeypresses 主函数
+- **parse-keypress.ts:66-81**：createPasteKey + 粘贴模式
+- **parse-keypress.ts:12-64**：各种协议的正则匹配
+- **parse-keypress.ts:610-805**：parseKeypress 分发逻辑
+- **parse-keypress.ts:148-169**：EXTENDED_KEYS_TERMINALS 白名单
+
+---
+
+### 4.11 模块设计卡：Fullscreen/Scroll（Alt Buffer 与 DECSTBM）
+
+#### 真实入口签名与关键类型
+
+```typescript
+// src/ink/terminal.ts
+export function isSynchronizedOutputSupported(): boolean
+export function writeDiffToTerminal(
+  terminal: Terminal,
+  diff: Diff,
+  skipSyncMarkers = false
+): void
+export const SYNC_OUTPUT_SUPPORTED: boolean
+
+// src/ink/ink.tsx
+enterAlternateScreen() // 私有
+exitAlternateScreen() // 私有
+handleResume() // SIGCONT 处理
+
+// src/ink/termio/csi.ts
+setScrollRegion(top: number, bottom: number): string
+scrollUp(n: number): string
+scrollDown(n: number): string
+```
+
+#### 输入输出
+
+| 方向 | 内容 |
+|------|------|
+| 输入 | enterAltScreen / exitAltScreen 调用 |
+| 输入 | Frame.scrollHint（来自 render-node-to-output） |
+| 输出 | BSU/ESU（同步更新标记） |
+| 输出 | DECSTBM + SU/SD（滚动区域 + 上滚/下滚） |
+| 输出 | 光标隐藏/显示、alt buffer 切换 |
+
+#### 渲染与终端状态
+
+- **Alt Buffer 状态**：ink.tsx 中 altScreenActive 标志，terminal.modes 跟踪
+- **进入序列**：DECSET 1049（alt buffer）+ 1000（mouse）+ 1002（SGR mouse）+ 1003（any event）+ 隐藏光标
+- **退出序列**：DECRST 1049 + 恢复光标 + 清理所有私有模式
+- **SIGCONT 恢复**：重新进入 alt buffer + 完整重绘，防止后台状态损坏
+- **同步输出**：BSU（开始）→ 所有补丁 → ESU（结束），tmux 跳过（已分块）
+
+#### 完整 render/damage/output 流程
+
+```
+enterAlternateScreen →
+  保存光标位置 →
+  DECSET 1049（alt buffer）→
+  启用 mouse tracking（1000/1002/1003）→
+  隐藏光标 →
+  设置 altScreenActive = true
+
+onRender（altScreenActive）→
+  1. 渲染生成 nextFrame →
+  2. logUpdate.render(prev, next, altScreen=true, decstbmSafe=SYNC_OUTPUT_SUPPORTED) →
+    有 scrollHint：生成 DECSTBM + SU/SD + shiftRows(prevScreen)
+  3. writeDiffToTerminal(terminal, diff, skipSyncMarkers=!SYNC_OUTPUT_SUPPORTED) →
+    开始：写入 BSU（如支持）→
+    写入所有补丁 →
+    结束：写入 ESU（如支持）
+
+exitAlternateScreen →
+  显示光标 →
+  禁用 mouse tracking →
+  DECRST 1049（返回 main buffer）→
+  恢复光标位置 →
+  设置 altScreenActive = false
+
+SIGCONT →
+  handleResume →
+  altScreenActive？ → reenterAltScreen → resetFrames + 完整重绘
+```
+
+#### 错误恢复与性能
+
+- **SIGCONT 完整重绘**：后台可能有其他程序修改终端，保守重置
+- **decstbmSafe 检查**：tmux 不支持原子 DECSTBM+diff，有中间状态时禁用
+- **SYNC_OUTPUT_SUPPORTED 模块级常量**：启动时检测一次，避免重复
+- **DEC 2026 终端检测**：iTerm/WezTerm/Warp/ghostty/contour/vscode/kitty/foot/alacritty/Zed/WT/VTE ≥0.68
+
+#### 设计取舍与备选
+
+| 取舍 | 当前选择 | 备选 | 代价 |
+|------|---------|------|------|
+| DEC 2026 白名单**：仅在已知终端启用 BSU/ESU | 总是发送 | 节省字节，避免不兼容终端 |
+| tmux 跳过**：skipSyncMarkers=true | 仍然发送 | tmux 已分块，同步无效 |
+| SIGCONT 重置**：无条件完整重绘 | 尝试恢复状态 | 简单，防止后台损坏 |
+
+#### 源码测试证据
+
+- **terminal.ts:66-118**：isSynchronizedOutputSupported() 终端检测
+- **terminal.ts:190-248**：writeDiffToTerminal BSU/ESU 包装
+- **ink.tsx:400-406**：enterAlternateScreen 实现
+- **ink.tsx:1695-1737**：exitAlternateScreen + unmount 清理
+- **ink.tsx:1630-1646**：handleResume SIGCONT 恢复
+
+---
+
+### 4.12 模块设计卡：Native/CharPool（字符池与样式池）
+
+#### 真实入口签名与关键类型
+
+```typescript
+// src/ink/screen.ts
+export class CharPool {
+  intern(char: string): number
+  get(index: number): string
+}
+
+export class HyperlinkPool {
+  intern(hyperlink: string | undefined): number
+  get(id: number): string | undefined
+}
+
+export class StylePool {
+  intern(styles: AnsiCode[]): number
+  get(id: number): AnsiCode[]
+  transition(fromId: number, toId: number): string
+  withInverse(baseId: number): number
+  withCurrentMatch(baseId: number): number
+  withSelectionBg(baseId: number): number
+  setSelectionBg(bg: AnsiCode | null): void
+  readonly none: number
+}
+
+export function createScreen(
+  width: number,
+  height: number,
+  styles: StylePool,
+  charPool: CharPool,
+  hyperlinkPool: HyperlinkPool
+): Screen
+```
+
+#### 输入输出
+
+| 方向 | 内容 |
+|------|------|
+| 输入 | char/AnsiCode[]/hyperlink string |
+| 输出 | id（整数） |
+| 输出 | transition(fromId, toId) → ANSI string（缓存） |
+
+#### 渲染与终端状态
+
+- **CharPool ASCII 快速路径**：char.length === 1 且 code < 128 → this.ascii[code] 直接读取
+- **StylePool bit 0 编码可见性**：有 background/inverse/underline → id 为奇数，diff 时快速检查
+- **HyperlinkPool 0 = no hyperlink**：避免 undefined 特殊处理
+- **Screen 单元格 packed 格式**：
+  - word0：charId（Int32）
+  - word1：styleId（高 15 位）| hyperlinkId（中 15 位）| width（低 2 位：0=Narrow，1=Wide，2=SpacerTail，3=SpacerHead）
+
+#### 完整 render/damage/output 流程
+
+```
+创建 Screen（createScreen）→
+  cells: Int32Array（size*2），cells64: BigInt64Array（同 buffer）→
+  charPool/hyperlinkPool 共享（全局，跨帧复用）
+
+渲染时写入（setCellAt）→
+  charId = charPool.intern(char) →
+  hyperlinkId = hyperlinkPool.intern(hyperlink) →
+  word1 = (styleId << 17) | (hyperlinkId << 2) | width →
+  写入 cells[index*2], cells[index*2+1] →
+  更新 damage 矩形
+
+Diff 时读取（diffEach）→
+  直接比较 prev.cells[i] 与 next.cells[i]（整数比较，极快）→
+  不相等？解包：
+    char = charPool.get(word0)
+    styleId = word1 >>> 17
+    hyperlinkId = (word1 >>> 2) & 0x7fff
+    width = word1 & 0x03
+  生成写入补丁
+
+Style 转换（stylePool.transition）→
+  lookup cache：fromId * 0x100000 + toId → hit 直接返回
+  miss：diffAnsiCodes(fromStyle, toStyle) → ansiCodesToString → 缓存 → 返回
+```
+
+#### 错误恢复与性能
+
+- **CharPool 无上限但定期重置**：对话轮次间重新创建，防止无限增长
+- **migrateScreenPools**：更换池时重新 intern 所有单元格
+- **resetScreen 复用 TypedArray**：仅在需要更大时重新分配，BigInt64Array.fill 快速清空
+- **diffSameWidth vs diffDifferentWidth**：同宽度时用 findNextDiff 快速跳过相等块
+
+#### 设计取舍与备选
+
+| 取舍 | 当前选择 | 备选 | 代价 |
+|------|---------|------|------|
+| CharPool ASCII 快速路径**：this.ascii[code] 数组 | 统一 Map | 常见单字符更快，但多一个分支 |
+| StylePool bit 0 可见性**：id 奇偶编码 | 单独可见性数组 | 零内存开销，但需要位运算 |
+| Screen Int32Array 打包**：word0+word1 | Cell 对象数组 | GC 压力极小，但代码可读性差 |
+| 共享池跨帧**：charPool/hyperlinkPool 全局 | 每帧新池 | 避免重复 intern，但需要定期重置防止泄漏 |
+
+#### 源码测试证据
+
+- **screen.ts:22-54**：CharPool ASCII 快速路径
+- **screen.ts:112-260**：StylePool intern/transition/withInverse/withSelectionBg
+- **screen.ts:288-300**：CellWidth enum（Narrow/Wide/SpacerTail/SpacerHead）
+- **screen.ts:366-544**：Screen packed 布局 + createScreen/resetScreen
+- **screen.ts:1107-1263**：diffEach 主循环 + findNextDiff 快速路径
+
+---
+
 ## 5. 失败语义与工程取舍
 
 ### 失败表

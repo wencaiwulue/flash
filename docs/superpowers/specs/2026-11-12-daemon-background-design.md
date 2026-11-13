@@ -136,6 +136,949 @@ Daemon 与后台会话系统提供两类互补的长期运行能力：
 
 ## 4. 架构、模块与数据流
 
+### 模块设计卡：daemon-main (守护进程主入口)
+
+**源码位置**：`src/daemon/main.ts`
+
+**真实入口签名**：
+```typescript
+export async function daemonMain(args: string[]): Promise<void>
+export async function startDaemon(kind = 'assistant', registryDir?: string): Promise<DaemonRecord>
+export async function stopDaemon(kind = 'assistant', registryDir?: string): Promise<boolean>
+export async function getDaemonStatus(kind = 'assistant', registryDir?: string): Promise<{ running: boolean; pid?: number }>
+```
+
+**关键类型**：
+```typescript
+type DaemonRecord = {
+  pid: number
+  kind: string
+  startedAt: string
+}
+```
+
+**输入输出**：
+- 输入：`[command, kind]`，command ∈ {'start', 'stop', 'status', 'run'}
+- 输出：
+  - start：`Daemon {kind} supervisor running (pid {pid})`
+  - stop：`Daemon {kind} stopped` 或 `Daemon {kind} is not running`
+  - status：JSON `{"running":true,"pid":1234}` 或 `{"running":false}`
+- 状态记录：`$CLAUDE_CONFIG/daemon/{kind}.json`，权限 0o600
+
+**进程与会话状态**：
+- Supervisor 进程：detached、stdio='ignore'、unref()
+- 注册表目录：0o700，注册表文件：0o600
+- 幂等性：重复 start 不创建新实例，仅返回已存在记录
+
+**启动流程**：
+1. 读取现有记录，通过 `process.kill(pid, 0)` 验证进程存活
+2. 已存在活跃进程 → 直接返回现有记录
+3. 存在陈旧记录 → 删除记录
+4. spawn supervisor：`node {script} daemon run {kind}`，detached:true
+5. 原子写入记录：mkdir -m 0o700 → write temp → rename
+6. 写入失败 → kill 已启动的 supervisor 并回滚
+
+**监督流程（runForeground）**：
+1. 创建 `DaemonSupervisor` 实例
+2. 注册 SIGINT/SIGTERM 信号处理调用 `supervisor.stop()`
+3. 调用 `supervisor.run(kind)` 获取退出码
+4. 设置 `process.exitCode`
+
+**停止流程**：
+1. 读取记录并验证进程存活
+2. 删除记录文件
+3. 发送 SIGTERM 信号
+
+**错误与恢复**：
+- spawn 失败：抛出错误，不留下残留记录
+- 写入失败：kill supervisor，抛出错误
+- 陈旧记录：下次 start/status 时自动删除
+- 停止时进程不存在：返回 false
+
+**设计取舍/备选**：
+- 不使用锁文件：依赖原子 rename 和进程存在性验证
+- 不捕获 supervisor 输出：当前设计无持久化日志
+- 不支持 supervisor 重启：守护进程自身不实现自重启
+
+**源码测试证据**：
+- `tests/daemon.test.ts` 验证 start/stop/status 流程、幂等启动、陈旧记录清理
+
+---
+
+### 模块设计卡：daemon-supervisor (守护进程监督器)
+
+**源码位置**：`src/daemon/supervisor.ts`
+
+**真实入口签名**：
+```typescript
+export class DaemonSupervisor {
+  constructor(options: SupervisorOptions)
+  async run(kind: string): Promise<number>
+  stop(): void
+  getState(): { running: boolean; restarts: number; pid?: number }
+}
+
+type SupervisorOptions = {
+  spawn: (kind: string) => DaemonWorkerProcess
+  maxRestarts?: number  // 默认 5
+  baseDelayMs?: number  // 默认 1000ms
+  maxDelayMs?: number   // 默认 30000ms
+  wait?: (ms: number) => Promise<void>
+}
+
+export type DaemonWorkerProcess = {
+  readonly pid?: number
+  kill(signal?: NodeJS.Signals): boolean
+  once(event: 'exit', listener: (code: number | null, signal: NodeJS.Signals | null) => void): void
+  once(event: 'error', listener: (error: Error) => void): void
+}
+```
+
+**输入输出**：
+- 输入：worker kind ∈ {'assistant', 'remote-control'}
+- 输出：worker 进程退出码（或最终错误）
+- 内部状态：`running`、`stopping`、`restarts`、`active`（当前 worker）
+
+**进程与会话状态**：
+- Worker 进程：stdio='inherit'，与 supervisor 同 stdio
+- 重启计数器：`restarts`，从 0 开始，失败递增
+- 停止标志：`stopping`，主动停止时设为 true，不再重启
+
+**启动/监督/停止流程**：
+
+启动：
+1. 检查 `running` 标志防止重入
+2. 重置 `stopping=false`、`restarts=0`
+3. 进入无限循环：
+   a. 调用 `spawn(kind)` 创建 worker
+   b. 保存 `active` 引用
+   c. 等待 `error` 或 `exit` 事件
+   d. 清空 `active` 引用
+
+重启判断：
+- `stopping=true` → 返回退出码
+- 退出码 `code=0` → 正常返回
+- `restarts < maxRestarts` → 进入指数退避后重启
+- 否则 → 抛出错误
+
+指数退避：
+```typescript
+delay = min(maxDelay, base * (2 ** restarts))
+```
+- base=1s, max=30s, maxRestarts=5
+- 第1次失败：等待 1s
+- 第2次失败：等待 2s
+- 第3次失败：等待 4s
+- 第4次失败：等待 8s
+- 第5次失败：等待 16s
+- 超过：抛出错误
+
+停止：
+1. 设置 `stopping=true`
+2. 如果有 `active` worker → kill('SIGTERM')
+
+**错误与恢复**：
+- Worker 启动错误（spawn 抛出）：计入失败，触发重启
+- Worker 非零退出：计入失败，触发重启
+- 超过 maxRestarts：抛出错误，supervisor 退出
+- 主动 stop：正常退出，不计入失败
+
+**设计取舍/备选**：
+- 不使用更复杂的退避策略（如抖动）：当前指数退避足够简单有效
+- 不保存重启历史：仅计数，不持久化
+- 不区分错误类型：所有非零退出都视为可重启失败
+
+**源码测试证据**：
+- `tests/daemon.test.ts` 验证重启策略、maxRestarts 限制、指数退避时序
+
+---
+
+### 模块设计卡：daemon-worker-registry (Worker 类型注册表)
+
+**源码位置**：`src/daemon/workerRegistry.ts`
+
+**真实入口签名**：
+```typescript
+export async function runDaemonWorker(
+  kind: string | undefined,
+  dependencies: {
+    start?: typeof startRemoteControlServer
+    wait?: typeof waitForRemoteControlServer
+  } = {}
+): Promise<void>
+```
+
+**输入输出**：
+- 输入：worker kind ∈ {'assistant', 'remote-control'}
+- 输出：无（持续运行直到关闭）
+- 依赖注入：可选替换 startRemoteControlServer/waitForRemoteControlServer
+
+**进程与会话状态**：
+- Worker 类型：仅 'assistant' 和 'remote-control' 两种
+- 内部实现：当前两种都映射到 remote-control 模式
+- 远程控制服务器启动：创建/复用 query 会话
+- 等待关闭：`waitForRemoteControlServer()` 阻塞直到禁用
+
+**启动流程**：
+1. 验证 kind 不为 undefined
+2. 验证 kind 为已知类型
+3. 调用 `startRemoteControlServer()`
+4. 调用 `waitForRemoteControlServer()` 等待关闭
+
+**错误与恢复**：
+- kind 缺失：抛出 `Missing daemon worker kind`
+- unknown kind：抛出 `Unknown daemon worker kind: {kind}`
+
+**设计取舍/备选**：
+- 不支持自定义 worker：当前为硬编码列表
+- 'assistant' 与 'remote-control' 同义：预留未来扩展空间
+
+**源码测试证据**：
+- `tests/daemon.test.ts` 验证 worker 启动与关闭
+
+---
+
+### 模块设计卡：bg-cli (后台会话主入口与生命周期)
+
+**源码位置**：`src/cli/bg.ts`
+
+**真实入口签名**：
+```typescript
+export async function handleBgFlag(args: string[]): Promise<void>
+export async function launchBackgroundSession(
+  inputArgs: string[],
+  options: BackgroundLaunchOptions = {}
+): Promise<BackgroundSessionRecord>
+export async function attachHandler(sessionId: string | undefined): Promise<void>
+export async function logsHandler(sessionId: string | undefined): Promise<void>
+export async function killHandler(sessionId: string | undefined): Promise<void>
+export async function psHandler(args: string[]): Promise<void>
+export async function authorizeSession(
+  input: SessionRegistryRecord | BackgroundSessionRecord,
+  operation: 'ps' | 'attach' | 'kill' = 'kill'
+): Promise<AuthorizedSession>
+
+export type BackgroundLaunchOptions = {
+  executable?: string
+  executableArgs?: string[]
+  cwd?: string
+  env?: Record<string, string>
+  waitForRegistration?: boolean  // 默认 true
+  stopTimeoutMs?: number
+}
+
+export class BackgroundSessionError extends Error {
+  readonly code: string
+  constructor(code: string, message: string)
+}
+```
+
+**关键类型**：
+```typescript
+const VERSION = 'background-sessions-v1'
+const MAX_LOG_BYTES = 1024 * 1024
+const MAX_LOG_LINES = 200
+
+type AuthorizedSession = {
+  record: BackgroundSessionRecord
+  state: 'live' | 'stopped' | 'unknown'
+  attachedClients: number
+}
+```
+
+**输入输出**：
+- launch：通过 `--bg` 标志触发，返回 session summary JSON
+- attach：需要 TTY，附加到 tmux 会话
+- logs：输出最后 200 行/1MiB 日志到 stdout
+- kill：返回 `{"session_id":"...","state":"stopped"}`
+- ps：每行一个 session JSON，或 `--json` 输出完整数组
+- 错误：输出 `{code}: {message}` 到 stderr，设置 exitCode=1
+
+**进程与会话状态**：
+- SessionId：UUID v4 格式，36字符
+- tmux socket：`claude-bg-{uid}-{sessionId[0:8]}`
+- tmux session：`bg-{sessionId[0:8]}`
+- 日志路径：`$CLAUDE_CONFIG/session-logs/{sessionId}.log`（0o600）
+- UDS socket：`/tmp/claude-code-{uid}-{sessionId[0:8]}.sock`
+- 进程环境：
+  - `CLAUDE_CODE_SESSION_KIND=bg`
+  - `CLAUDE_CODE_SESSION_NAME=bg-{suffix}`
+  - `CLAUDE_CODE_SESSION_LOG={logPath}`
+  - `CLAUDE_CODE_MESSAGING_SOCKET={messagingSocketPath}`
+  - `CLAUDE_CODE_ENTRYPOINT=cli`
+
+**启动流程（launchBackgroundSession）**：
+1. 前置检查：
+   - 验证 `--bg` 标志存在
+   - 拒绝冲突模式：`--print`、`--sdk`、`--ssh`、`--remote-control`、`cc:`、`--input-format`
+   - 验证 tmux 可用（`checkTmuxAvailable()`）
+2. 会话 ID 处理：
+   - 从 `--session-id` 读取或生成 UUID
+   - 验证格式：`/^[0-9a-f-]{36}$/i`
+3. 冲突检测：
+   - 检查注册表中是否已存在同 ID 会话
+   - 对比 argsHash（sha256 of {cwd, args}）保证参数一致
+   - 检查墓碑文件拒绝已退出会话（预留 `--resume`）
+4. 准备资源：
+   - 创建日志目录（0o700）、日志文件（0o600，O_EXCL）
+   - 验证 tmux 会话不存在
+5. 创建 tmux 会话：
+   ```
+   tmux -L {socket} new-session -d -s {session} -c {cwd} \
+     -e KEY=VALUE ... -- {command}
+   ```
+6. 获取 tmux 元数据：
+   - `display-message -p '#{socket_path},#{pid},#{pane_pid}'`
+   - 验证 tmuxServerPid、tmuxPanePid
+7. 获取进程身份：
+   - `getProcessIdentity(panePid)` 验证进程 running
+   - 获取 processStartToken（防止 PID 复用）
+8. 写入注册表：
+   - `writeSessionRegistryRecord(record)` 原子写入
+9. 启动日志捕获：
+   - `pipe-pane -o 'cat >> {logPath}'`
+10. 等待注册（可选，默认开启）：
+    - 轮询最多 5 秒，检查 `registeredAt` 字段
+    - 验证 UDS socket 返回正确 sessionId
+11. 失败回滚：
+    - kill tmux 会话
+    - 删除注册表记录
+    - 删除日志文件
+
+**附着流程（attachHandler）**：
+1. 验证 stdin/stdout 为 TTY
+2. 查找会话，验证不是墓碑
+3. 调用 `attach(record)`：
+   - 最多重试 3 次
+   - 每次先重新 `authorizeSession()`
+   - 指数退避（100ms, 200ms, 400ms）
+   - 执行 `tmux -L {socket} attach-session -t {session}`
+   - Windows 下通过 WSL：`wsl -e tmux ...`
+
+**日志查看流程（readLogs）**：
+1. 查找会话（不区分是否墓碑）
+2. 验证日志路径在 `$CLAUDE_CONFIG/session-logs/` 内
+3. 验证日志文件：普通文件、非符号链接、uid 匹配
+4. chmod 0o600（确保正确权限）
+5. 读取最后 1MiB：
+   - 如果超过 1MiB，从 `size - 1MiB` 开始
+   - 截断到第一个换行（避免不完整行）
+6. 保留最后 200 行
+7. 输出到 stdout，如果需要输出截断警告
+
+**终止流程（killBackgroundSession）**：
+1. 查找会话
+2. 如果已是墓碑 → 返回 `already_stopped`
+3. 初始授权验证
+4. 发送 SIGTERM：
+   - 每次发送前重新 `authorizeSession()`
+   - 验证 processStartToken 未变
+5. 等待退出（默认 5 秒）：
+   - 每 50ms 检查一次进程状态
+   - 重新验证 processStartToken 防止 PID 复用
+   - `unknown` 状态继续等待（进程退出中）
+6. 超时升级 SIGKILL：
+   - 再次验证 token
+   - 发送 SIGKILL
+   - 等待最多 5 秒
+7. 清理 tmux：`kill-session`
+8. 写入墓碑：`writeSessionTombstone(stopped)`
+9. 删除注册表记录：`deleteSessionRegistryRecord(record)`
+10. 返回 `stopped` 状态
+
+**列表流程（listBackgroundSessions）**：
+1. 读取所有注册表记录
+2. 对每个记录：
+   - 非 bg 类型：检查进程存在性，保留或跳过
+   - bg 类型：
+     - 尝试 `authorizeSession(record, 'ps')`
+     - 状态 `stopped`：移入墓碑
+     - 状态 `live`/`unknown`：加入列表
+3. 按 started_at 排序（相同按 sessionId 字典序）
+4. 输出公共字段：
+   - `session_id`、`pid`、`kind`
+   - `state`、`name`（可选）
+   - `cwd`、`started_at`、`updated_at`
+   - `attached_clients`、`waiting_for`
+   - bg 特有：`tmux_socket`、`tmux_session`、`log_path`
+
+**授权流程（authorizeSession）**：
+Fail-closed 链式验证，任何一步失败立即拒绝：
+
+1. **记录验证**：
+   - `version === VERSION`
+   - `kind === 'bg'`
+   - `sessionId`、`processStartToken`、`tmuxSocket`、`tmuxSocketPath`、`tmuxSession`、`logPath` 存在
+   - `ownerUid === uid()`
+   - `pid === tmuxPanePid`
+   - tmuxSocketPath 和 logPath 为绝对路径
+
+2. **日志验证**：
+   - 日志文件存在
+   - 普通文件、非符号链接、uid 匹配
+   - logPath 所在目录 realpath 等于 `$CLAUDE_CONFIG/session-logs` 的 realpath
+
+3. **Windows 检查**：
+   - Windows 平台 → 拒绝（PID 身份验证不可用）
+
+4. **进程身份验证**：
+   - `getProcessIdentity(pid)`
+   - state === 'not_found'：检查 tmux 会话是否还存在，是则冲突
+   - state === 'unknown'：ps 操作降级返回 unknown，attach/kill 拒绝
+   - state === 'running'：验证 `token === processStartToken`
+
+5. **tmux 身份验证**：
+   - tmux socket 文件存在、是 socket、非符号链接、uid 匹配
+   - socket 文件所在目录名为 `tmux-{uid}`
+   - `has-session -t {tmuxSession}` 成功
+   - `display-message -p '#{socket_path},#{pane_pid},#{session_attached}'`
+   - socket_path 匹配
+   - pane_pid 匹配 pid
+   - 返回 attached_clients 数量
+
+6. **UDS 验证（可选）**：
+   - 如果有 messagingSocketPath：
+     - 非 Windows 时验证绝对路径
+     - `pingUdsSession()` 验证返回的 sessionId 匹配
+
+7. **返回授权会话**：
+   - `record`、`state`、`attachedClients`
+
+**错误与恢复**：
+
+错误码列表：
+- `BG_MODE_CONFLICT`：缺少 --bg 或冲突模式
+- `TMUX_UNAVAILABLE`：tmux 不可用
+- `SESSION_CONFLICT`：会话 ID 已存在或参数不匹配
+- `TMUX_LAUNCH_FAILED`：无法创建 tmux 会话
+- `PID_IDENTITY_MISMATCH`：进程身份验证失败
+- `SESSION_LAUNCH_TIMEOUT`：后台进程未及时注册
+- `SESSION_IDENTITY_CONFLICT`：tmux/UDS 身份不匹配
+- `SESSION_NOT_FOUND`：会话不存在或已退出
+- `SESSION_NOT_BACKGROUND`：会话不是后台类型
+- `SESSION_AMBIGUOUS`：多个会话匹配 ID
+- `LOG_UNAVAILABLE`：日志不可用
+- `ATTACH_REQUIRES_TTY`：attach 需要 TTY
+- `KILL_TIMEOUT`：SIGKILL 后进程未退出
+- `INVALID_ARGUMENT`：无效参数
+- `BACKGROUND_OPERATION_FAILED`：通用失败
+
+**设计取舍/备选**：
+- 使用 tmux 而非直接 daemonize：免费获得输出缓冲、可附着、进程组管理
+- 不使用 tmux 内置的 control mode：通过 socket 和 display-message 足够
+- PID+startToken 而非仅 PID：防止 PID 复用攻击
+- 链式验证而非单一检查：fail-closed 安全模型
+- 每次操作前重新验证：防止 TOCTOU 攻击
+- 墓碑机制而非立即删除：用户可查看退出原因，防止 ID 重用
+- 预留 --resume 标志：当前未实现
+- 不自动清理墓碑：无过期机制
+
+**源码测试证据**：
+- `tests/backgroundSessions.test.ts` 验证启动/附着/日志/终止、并发会话、PID 令牌验证、防止 PID 复用、身份验证链
+
+---
+
+### 模块设计卡：concurrent-sessions (会话注册表与墓碑)
+
+**源码位置**：`src/utils/concurrentSessions.ts`
+
+**真实入口签名**：
+```typescript
+export async function registerSession(): Promise<boolean>
+export async function writeSessionRegistryRecord(
+  record: SessionRegistryRecord | BackgroundSessionRecord
+): Promise<void>
+export async function readSessionRegistry(): Promise<SessionRegistryRecord[]>
+export async function deleteSessionRegistryRecord(
+  record: SessionRegistryRecord | BackgroundSessionRecord
+): Promise<boolean>
+export async function writeSessionTombstone(
+  record: SessionRegistryRecord | BackgroundSessionRecord
+): Promise<void>
+export async function updateSessionActivity(patch: {
+  status?: SessionStatus
+  waitingFor?: string
+}): Promise<void>
+export async function updateSessionName(name: string | undefined): Promise<void>
+export async function countConcurrentSessions(): Promise<number>
+
+export type SessionKind = 'interactive' | 'bg' | 'daemon' | 'daemon-worker'
+export type SessionStatus = 'busy' | 'idle' | 'waiting'
+
+export type SessionRegistryRecord = {
+  pid: number
+  sessionId: string
+  cwd: string
+  startedAt: number
+  kind: SessionKind
+  entrypoint?: string
+  name?: string
+  logPath?: string
+  messagingSocketPath?: string
+  processStartToken?: string
+  status?: SessionStatus | 'starting'
+  waitingFor?: string | null
+  updatedAt?: number
+  registeredAt?: number
+  [key: string]: unknown
+}
+
+export type BackgroundSessionRecord = SessionRegistryRecord & {
+  version: 'background-sessions-v1'
+  launchId: string
+  argsHash: string
+  lifecycle: 'launching' | 'running' | 'stopping' | 'stopped' | 'failed'
+  tmuxSocket: string
+  tmuxSocketPath: string
+  tmuxSession: string
+  tmuxServerPid: number
+  tmuxPanePid: number
+  ownerUid: number
+  exit?: {
+    code: number | null
+    signal: string | null
+    reason: string
+    ended_at: number
+  } | null
+}
+```
+
+**输入输出**：
+- 注册表目录：`$CLAUDE_CONFIG/sessions/`
+- 注册表文件：`{pid}.json`，权限 0o600
+- 墓碑目录：`$CLAUDE_CONFIG/session-tombstones/`
+- 墓碑文件：`{sessionId}.json`，权限 0o600
+- 目录权限：0o700
+
+**进程与会话状态**：
+- 注册表记录按 pid 命名：允许同一 sessionId 下多 pid 检测？不，通过 sessionId 查找
+- 原子更新：临时文件写入后 rename
+- 退出清理：自动注册 cleanup hook
+- 会话切换：自动更新记录中的 sessionId
+
+**原子写入流程（atomicWriteJson）**：
+1. 创建临时文件：`{path}.{pid}.{timestamp}.tmp`，O_EXCL，0o600
+2. 写入内容
+3. fsync（handle.sync）
+4. chmod 0o600（再次确保）
+5. rename 到目标路径（原子覆盖）
+
+**注册流程（registerSession）**：
+1. 如果是 agent → 跳过（agent 不注册）
+2. 从环境变量或默认值确定 kind
+3. 如果是 bg：尝试读取预先存在的 pid.json（launcher 写入的）
+4. 注册 cleanup hook：
+   - 退出时验证 sessionId 和 processStartToken 未变
+   - bg 会话：写入墓碑
+   - 删除注册表记录
+5. 创建目录（0o700），chmod 目录（0o700）
+6. 原子写入注册表记录
+7. 注册 session switch hook：更新记录中的 sessionId
+8. 返回 true 表示成功
+
+**更新流程（updatePidFile）**：
+- 通过队列序列化更新（防止竞态）
+- 读取现有记录 → 合并 patch → 原子重写
+- 更新 updatedAt 时间戳
+
+**墓碑写入流程（writeSessionTombstone）**：
+- 仅处理 kind === 'bg'
+- 写入到 `$CLAUDE_CONFIG/session-tombstones/{sessionId}.json`
+- 原子写入
+
+**计数流程（countConcurrentSessions）**：
+- 读取所有 {pid}.json 文件
+- 对每个文件：
+  - 如果是当前 pid：计数 +1
+  - 否则：验证进程存在（kill(pid, 0)）
+- 不在这里删除陈旧记录（bg 清理需要完整授权链）
+
+**错误与恢复**：
+- 写入失败：不抛错，仅记录调试日志
+- 目录创建失败：忽略，可能已存在
+- 读取损坏的 JSON：返回 undefined
+- cleanup hook 中错误：静默忽略
+
+**设计取舍/备选**：
+- 按 pid 而非 sessionId 命名注册表文件：便于读取所有活跃进程
+- 临时文件命名包含 pid 和 timestamp：防止不同进程/时间冲突
+- O_EXCL 打开临时文件：防止同一文件并发写入
+- fsync 后 rename：确保数据持久化
+- 不使用数据库：简单 JSON 文件足够
+- 不锁注册表：依赖原子 rename 和进程存在性验证
+
+**源码测试证据**：
+- `tests/backgroundSessions.test.ts` 验证原子注册表写入、权限 0o600/0o700、墓碑创建/查询
+
+---
+
+### 模块设计卡：process-identity (进程身份验证)
+
+**源码位置**：`src/utils/processIdentity.ts`
+
+**真实入口签名**：
+```typescript
+export async function getProcessIdentity(pid: number): Promise<ProcessIdentity>
+export async function getProcessStartToken(pid: number): Promise<string | undefined>
+export async function matchesProcessStartToken(
+  pid: number,
+  expected: string
+): Promise<boolean>
+
+export type ProcessIdentity = {
+  state: 'running' | 'not_found' | 'unknown'
+  token?: string
+}
+```
+
+**输入输出**：
+- 输入：pid（必须 > 1，且为安全整数）
+- 输出：
+  - state：'running'（存在且有 token）、'not_found'（不存在）、'unknown'（权限不足或 token 不可用）
+  - token：启动时间戳（平台特定）
+
+**进程与会话状态**：
+- Zombie 进程：视为 'not_found'（Linux 上通过 /proc/[pid]/stat 检测，其他通过 ps）
+- PID ≤ 1：视为 'not_found'
+- EPERM（无权限发信号）：返回 'unknown'
+- ESRCH（进程不存在）：返回 'not_found'
+
+**平台实现**：
+
+Linux：
+- Token：`/proc/[pid]/stat` 中的第 22 字段（starttime，从系统启动后的 clock tick 数）
+- Zombie 检测：`/proc/[pid]/stat` 中的第 3 字段为 'Z'
+- 解析：跳过 comm（可能包含空格/括号），从最后一个 ')' 后拆分
+
+macOS/BSD：
+- Token：`ps -o lstart= -p {pid}` 的输出（完整启动时间字符串）
+- Zombie 检测：`ps -o stat= -p {pid}` 以 'Z' 开头
+
+Windows：
+- Token：不可用（返回 undefined）
+- Zombie：不检测（返回 false）
+
+**僵尸检测流程（isZombie）**：
+1. Linux：读取 /proc/[pid]/stat，查找最后一个 ')'，其后第一个字段为状态
+2. 其他：ps -o stat=，检查是否以 'Z' 开头
+
+**获取身份流程（getProcessIdentity）**：
+1. 验证 pid > 1 且为安全整数
+2. 尝试 `process.kill(pid, 0)`
+3. 捕获错误：
+   - EPERM → 'unknown'
+   - ESRCH → 'not_found'
+   - 其他 → 'unknown'
+4. 检查是否为 zombie → 'not_found'
+5. 尝试获取 token
+6. 有 token → `{state:'running', token}`
+7. 无 token → `{state:'unknown'}`
+
+**错误与恢复**：
+- /proc 读取失败：返回 undefined token
+- ps 执行失败：返回 undefined token
+- 任何异常：返回 'unknown' 状态
+
+**设计取舍/备选**：
+- 使用 starttime 而非创建时间：防止时钟回拨影响
+- 不使用 PID alone：PID 复用是现实风险
+- Linux 使用 /proc 而非 ps：更高效、更可靠
+- Token 不解析为数字：字符串比较即可
+- Windows 不支持：依赖 WSL 方案
+
+**源码测试证据**：
+- `tests/backgroundSessions.test.ts` 验证 PID 令牌验证、防止 PID 复用
+
+---
+
+### 模块设计卡：uds-registry (UDS 会话注册表)
+
+**源码位置**：`src/utils/udsRegistry.ts`
+
+**真实入口签名**：
+```typescript
+export async function registerUdsSession(
+  session: Required<Pick<UdsLiveSession, 'sessionId' | 'socketPath' | 'pid'>> &
+    Pick<UdsLiveSession, 'kind'>,
+  registryDir?: string
+): Promise<void>
+export async function unregisterUdsSession(
+  sessionId: string,
+  socketPath: string,
+  registryDir?: string
+): Promise<void>
+export async function readUdsRegistry(
+  registryDir?: string
+): Promise<UdsLiveSession[]>
+
+export type UdsLiveSession = {
+  kind?: string
+  sessionId?: string
+  socketPath: string
+  pid?: number
+}
+```
+
+**输入输出**：
+- 注册表目录：`$CLAUDE_CONFIG/uds/`
+- 注册表文件：`{sessionId-sanitized}.json`，权限 0o600
+- SessionId 清理：替换 `[^a-zA-Z0-9_-]` 为 '_'
+
+**进程与会话状态**：
+- 目录权限：0o700
+- 文件权限：0o600
+- 原子写入：temp write + rename
+
+**注册流程**：
+1. mkdir -p -m 0o700 registryDir
+2. 临时文件：`{path}.{pid}.tmp`
+3. writeFile 临时文件，0o600
+4. rename 到目标路径
+
+**注销流程**：
+1. 读取现有记录
+2. 验证 socketPath 匹配（防止误删他人记录）
+3. 删除文件
+4. 不存在或不匹配：静默忽略
+
+**读取流程**：
+1. 读取目录下所有文件
+2. 过滤 .json 文件
+3. 尝试解析每个文件
+4. 验证 sessionId 和 socketPath 存在
+5. 过滤掉无效记录
+
+**错误与恢复**：
+- 目录不存在：read 返回空数组
+- 文件解析失败：过滤掉该记录
+- 注销时不匹配：静默忽略
+
+**设计取舍/备选**：
+- 按 sessionId 而非 socketPath 命名：按 ID 查找更高效
+- SessionId 清理：防止特殊字符导致的路径问题
+- 不校验 session 格式：由 udsMessaging 负责
+- 不锁注册表：依赖原子 rename
+
+**源码测试证据**：
+- `tests/udsMessaging.test.ts` 验证注册/注销/读取
+
+---
+
+### 模块设计卡：uds-messaging (UDS 消息服务器)
+
+**源码位置**：`src/utils/udsMessaging.ts`
+
+**真实入口签名**：
+```typescript
+export async function startUdsMessaging(
+  socketPath: string,
+  options: { isExplicit: boolean; registryDir?: string }
+): Promise<void>
+export async function stopUdsMessaging(): Promise<void>
+export function getUdsMessagingSocketPath(): string | undefined
+export function setOnEnqueue(callback: () => void): boolean
+export function getDefaultUdsSocketPath(): string
+
+const MAX_FRAME_BYTES = 1024 * 1024
+```
+
+**输入输出**：
+- 默认 socketPath：
+  - Unix：`/tmp/claude-code-{uid}-{sessionId[0:8]}.sock`
+  - Windows：`\\.\pipe\claude-code-{uid}-{sessionId[0:8]}`
+- 输入帧：行分隔 JSON 或纯文本
+- 输出帧：行分隔 JSON
+- 最大请求帧：1 MiB
+- 最大响应帧：64 KiB
+
+**进程与会话状态**：
+- 单例模式：每个进程仅一个活跃 UDS 服务器
+- 活跃连接：Set<Socket>，关闭时全部 destroy
+- 全局状态：`activeServer`、`activePath`、`activeRegistryDir`、`unregisterCleanup`、`onEnqueue`
+- 服务器 unref：不阻止进程退出
+- 注册 cleanup hook：进程退出时自动停止
+
+**启动流程**：
+1. 单例检查：
+   - 已活跃且路径相同 → 直接返回
+   - 已活跃且路径不同 → 抛出错误
+2. 路径长度检查（非 Windows）：
+   - Buffer.byteLength(socketPath) ≥ 100 → 抛出错误
+3. Socket 清理（非 Windows）：
+   - mkdir -p -m 0o700 父目录
+   - 如果 socket 已存在：
+     - pingUdsSession 验证是否活跃
+     - 活跃 → 抛出错误
+     - 不活跃 → unlink 删除
+4. 创建服务器：
+   - `createServer(connectionHandler)`
+   - 监听 socketPath
+5. 设置权限（非 Windows）：
+   - `chmod(socketPath, 0o600)`
+6. 注册会话：
+   - `registerUdsSession({sessionId, kind, socketPath, pid})`
+7. 注册 error 处理：仅记录调试日志
+8. unref 服务器
+9. 注册 cleanup hook
+
+**连接处理**：
+1. 跟踪连接：加入 Set<Socket>
+2. 缓冲数据：拼接 chunk，查找 '\n'
+3. 帧大小限制：超过 1 MiB → destroy socket
+4. 逐帧处理：`handleFrame(frame, socket)`
+5. 连接关闭：从 Set 移除
+6. 连接错误：静默忽略（只记录调试日志）
+
+**帧处理（handleFrame）**：
+1. 尝试 JSON 解析
+2. Ping 请求：
+   ```json
+   {"type":"ping"}
+   →
+   {"type":"pong","sessionId":"...","kind":"interactive|headless|bg"}
+   ```
+3. Message 请求：
+   ```json
+   {"type":"message","message":"prompt text"}
+   →
+   {"ok":true}
+   ```
+4. 纯文本（遗留）：
+   ```
+   plain text prompt
+   →
+   {"ok":true}
+   ```
+5. 空消息：
+   ```json
+   {"ok":false,"error":"Empty message"}
+   ```
+6. 有效消息：调用 `enqueue({mode:'prompt', value:message, priority:'later'})`，触发 `onEnqueue` 回调
+
+**停止流程**：
+1. 保存当前状态引用
+2. 清空全局状态
+3. 调用 unregisterCleanup
+4. Destroy 所有活跃连接
+5. 关闭服务器（等待 close 事件）
+6. 注销会话（验证 socketPath 匹配）
+7. 删除 socket 文件（非 Windows）
+
+**错误与恢复**：
+- 已存在活跃服务器：路径相同返回，不同抛出
+- Socket 已存在且活跃：抛出错误
+- 路径过长：抛出错误
+- 连接错误：静默忽略
+- 帧过大：销毁连接
+- 消息处理错误：不返回错误（当前设计）
+
+**设计取舍/备选**：
+- 单例模式：简化资源管理
+- 行分隔 JSON：简单，无需复杂分帧
+- 最大帧限制：防止内存耗尽
+- 权限 0o600：只有同一用户可连接
+- 不认证消息：依赖文件系统权限和 sessionId 验证
+- 服务器 unref：后台会话可正常退出
+- 不持久化消息：仅内存队列，丢失不重试
+
+**源码测试证据**：
+- `tests/udsMessaging.test.ts` 验证服务器启动/关闭、连接处理、帧限制、ping/pong
+
+---
+
+### 模块设计卡：uds-client (UDS 消息客户端)
+
+**源码位置**：`src/utils/udsClient.ts`
+
+**真实入口签名**：
+```typescript
+export async function pingUdsSession(
+  socketPath: string,
+  timeoutMs = 300
+): Promise<UdsLiveSession | undefined>
+export async function listAllLiveSessions(
+  registryDir?: string
+): Promise<UdsLiveSession[]>
+export async function sendToUdsSocket(
+  socketPath: string,
+  message: string,
+  registryDir?: string
+): Promise<void>
+
+const MAX_RESPONSE_BYTES = 64 * 1024
+```
+
+**输入输出**：
+- ping：返回 pong 数据或 undefined
+- list：返回所有活跃会话，按 sessionId 排序
+- send：
+  - 输入：socketPath 或 sessionId
+  - 输出：抛出错误或成功返回
+- 默认 ping 超时：300ms
+- 最大响应：64 KiB
+
+**进程与会话状态**：
+- 会话发现：通过注册表 + ping 验证
+- 陈旧记录清理：list 时自动删除不响应或 sessionId 不匹配的记录
+- SessionId 解析：sendToUdsSocket 接受 sessionId 或 socketPath
+
+**请求流程（requestUds）**：
+通用底层实现，供 ping/send 使用：
+1. 创建连接
+2. 设置超时（clearTimeout 在 finish 时）
+3. 连接建立时写入 payload + '\n'
+4. 缓冲响应数据
+5. 查找 '\n' 分隔符
+6. 解析 JSON 响应
+7. finish(error, value) 清理并返回
+8. 任何错误：reject
+9. 超时：reject
+10. 响应过大：reject
+11. 连接关闭无响应：reject
+
+**Ping 流程**：
+1. 发送 `{"type":"ping"}`
+2. 验证响应 `type === "pong"` 且 `sessionId` 存在
+3. 返回 `{sessionId, kind, socketPath}`
+4. 任何失败：返回 undefined
+
+**列表流程（listAllLiveSessions）**：
+1. 读取注册表所有记录
+2. 对每个记录并行 ping：
+   - 成功且 sessionId 匹配 → 保留，添加 pid
+   - 失败或 sessionId 不匹配 → 调用 unregisterUdsSession 删除
+3. 过滤掉 undefined
+4. 按 sessionId 排序
+5. 返回结果
+
+**发送流程（sendToUdsSocket）**：
+1. 解析目标：
+   - 以 '/' 或 '\\' 开头 → socketPath
+   - 否则 → sessionId，通过 listAllLiveSessions 查找
+2. 未找到会话 → 抛出错误
+3. 发送消息（原始字符串或 JSON 帧）
+4. 验证响应 `ok === true`
+5. 否则 → 抛出错误（或 "UDS peer rejected the message"）
+
+**错误与恢复**：
+- Ping 失败：返回 undefined（不抛错）
+- 列表中陈旧记录：自动清理
+- 发送时会话不存在：抛出错误
+- 响应非 ok：抛出错误
+- 超时：抛出错误
+
+**设计取舍/备选**：
+- 接受 sessionId 或 socketPath：更灵活的 API
+- list 时自动清理：防止注册表无限增长
+- ping 超时短（300ms）：快速失败，不阻塞
+- 不重试发送：调用者负责
+- 不批量发送：一次一条
+
+**源码测试证据**：
+- `tests/udsMessaging.test.ts` 验证 ping/pong 发现、消息发送、会话识别、陈旧记录清理
+
+---
+
 ### 守护进程架构
 
 守护进程采用三层进程树结构：

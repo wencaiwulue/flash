@@ -376,6 +376,762 @@ type Attachment =
   | { type: 'bagel_console'; errorCount: number; warningCount: number; sample: string };
 ```
 
+### 4.2 模块设计卡
+
+#### 模块 1：getAttachments 主协调器
+
+**真实入口签名与关键类型：**
+```typescript
+async function getAttachments(
+  input: string | null,
+  toolUseContext: ToolUseContext,
+  ideSelection: IDESelection | null,
+  queuedCommands: QueuedCommand[],
+  messages?: Message[],
+  querySource?: QuerySource,
+  options?: { skipSkillDiscovery?: boolean },
+): Promise<Attachment[]>
+
+async function maybe<A>(
+  label: string,
+  fn: () => Promise<A[]>
+): Promise<A[]>
+```
+
+**输入输出：**
+- **输入**：用户输入、工具上下文、IDE 选择、排队命令、历史消息、查询源、选项
+- **输出**：过滤后的 Attachment 数组（移除 undefined/null）
+- **快速路径**：`CLAUDE_CODE_DISABLE_ATTACHMENTS` 或 `SIMPLE` 环境变量 → 仅返回 queued_command 附件
+
+**附件与缓存状态：**
+- **全局超时**：1000ms 超时 AbortController
+- **模块级状态**：无（每次调用独立）
+- **工具上下文依赖**：`toolUseContext.abortController`、`toolUseContext.readFileState`、`toolUseContext.loadedNestedMemoryPaths`、`toolUseContext.nestedMemoryAttachmentTriggers`
+
+**解析/并行处理/注入/失效流程：**
+```
+1. 快速路径检查（禁用附件环境变量）
+   └─ 是 → 仅返回 queued_command 附件
+   └─ 否 → 继续
+
+2. 创建 AbortController，设置 1000ms 超时
+   └─ setTimeout(1000ms, ac.abort)
+   └─ 所有附件处理共享此 Controller
+
+3. 步骤 1：处理用户输入附件（并行）
+   ├─ maybe('at_mentioned_files') → processAtMentionedFiles()
+   ├─ maybe('mcp_resources') → processMcpResourceAttachments()
+   ├─ maybe('agent_mentions') → processAgentMentions()
+   └─ maybe('skill_discovery') → getTurnZeroSkillDiscovery()
+   └─ Promise.all() 等待完成
+   └─ 触发 nestedMemoryAttachmentTriggers
+
+4. 步骤 2：处理线程安全附件（并行）
+   ├─ maybe('queued_commands') → getQueuedCommandAttachments()
+   ├─ maybe('date_change') → getDateChangeAttachments()
+   ├─ maybe('ultrathink_effort') → getUltrathinkEffortAttachment()
+   ├─ maybe('deferred_tools_delta') → getDeferredToolsDeltaAttachment()
+   ├─ maybe('agent_listing_delta') → getAgentListingDeltaAttachment()
+   ├─ maybe('mcp_instructions_delta') → getMcpInstructionsDeltaAttachment()
+   ├─ maybe('companion_intro') → getCompanionIntroAttachment()
+   ├─ maybe('changed_files') → getChangedFiles()
+   ├─ maybe('nested_memory') → getNestedMemoryAttachments()
+   ├─ maybe('dynamic_skill') → getDynamicSkillAttachments()
+   ├─ maybe('skill_listing') → getSkillListingAttachments()
+   ├─ maybe('plan_mode') → getPlanModeAttachments()
+   ├─ maybe('plan_mode_exit') → getPlanModeExitAttachment()
+   ├─ maybe('auto_mode') → getAutoModeAttachments()
+   ├─ maybe('auto_mode_exit') → getAutoModeExitAttachment()
+   ├─ maybe('todo_reminders') → getTodoReminderAttachments()
+   ├─ maybe('teammate_mailbox') → getTeammateMailboxAttachments()
+   ├─ maybe('team_context') → getTeamContextAttachment()
+   ├─ maybe('agent_pending_messages') → getAgentPendingMessageAttachments()
+   ├─ maybe('critical_system_reminder') → getCriticalSystemReminderAttachment()
+   ├─ maybe('compaction_reminder') → getCompactionReminderAttachment()
+   └─ maybe('context_efficiency') → getContextEfficiencyAttachment()
+   └─ Promise.all() 并行执行
+
+5. 步骤 3：主线程专有附件（并行，仅 if isMainThread）
+   ├─ maybe('ide_selection') → getSelectedLinesFromIDE()
+   ├─ maybe('ide_opened_file') → getOpenedFileFromIDE()
+   ├─ maybe('output_style') → getOutputStyleAttachment()
+   ├─ maybe('diagnostics') → getDiagnosticAttachments()
+   ├─ maybe('lsp_diagnostics') → getLSPDiagnosticAttachments()
+   ├─ maybe('unified_tasks') → getUnifiedTaskAttachments()
+   ├─ maybe('async_hook_responses') → getAsyncHookResponseAttachments()
+   ├─ maybe('token_usage') → getTokenUsageAttachment()
+   ├─ maybe('budget_usd') → getMaxBudgetUsdAttachment()
+   ├─ maybe('output_token_usage') → getOutputTokenUsageAttachment()
+   └─ maybe('verify_plan_reminder') → getVerifyPlanReminderAttachment()
+   └─ Promise.all() 并行执行
+
+6. 步骤 4：等待所有附件完成，clearTimeout
+   └─ 清除超时定时器
+
+7. 步骤 5：合并并过滤结果
+   └─ [...userAttachmentResults, ...threadAttachmentResults, ...mainThreadAttachmentResults]
+   └─ filter(a => a !== undefined && a !== null)
+```
+
+**错误与隐私：**
+- **错误处理**：每个 maybe() 内部 try/catch，返回 []，不影响其他附件
+- **隐私**：通过 `isFileReadDenied()` 检查文件权限
+- **遥测采样**：5% 采样率记录 `tengu_attachment_compute_duration`
+- **超时处理**：AbortController 1000ms 后放弃剩余附件
+
+**设计取舍/备选：**
+| 取舍 | 当前选择 | 代价 | 收益 |
+|-----|---------|-----|-----|
+| 全局超时 vs 每个附件独立超时 | 全局 1000ms 超时 | 某些慢速附件可能缺失 | 用户体验一致，避免阻塞 |
+| maybe() 包装器 vs 抛出错误 | maybe() 返回 [] | 失败无声无息 | 单个附件失败不阻塞整体 |
+| 三步并行结构 vs 串行 | 三步并行（用户输入→线程安全→主线程） | 复杂度稍高 | 最大化并行度，减少总耗时 |
+
+**源码/测试证据：**
+- 源码：`src/utils/attachments.ts:748-1012`
+- 关键常量：无（内联 1000ms）
+- 测试：无独立测试，通过集成测试间接验证
+
+---
+
+#### 模块 2：@文件引用解析器
+
+**真实入口签名与关键类型：**
+```typescript
+function extractAtMentionedFiles(content: string): string[]
+function parseAtMentionedFileLines(mention: string): {
+  filename: string
+  lineStart?: number
+  lineEnd?: number
+}
+async function processAtMentionedFiles(
+  input: string,
+  toolUseContext: ToolUseContext
+): Promise<Attachment[]>
+async function generateFileAttachment(
+  absoluteFilename: string,
+  toolUseContext: ToolUseContext,
+  successEvent: string,
+  errorEvent: string,
+  mode: 'at-mention' | 'read-tool',
+  options?: { offset?: number; limit?: number }
+): Promise<Attachment | null>
+```
+
+**输入输出：**
+- **输入**：用户输入字符串（包含 @ 引用）
+- **输出**：FileAttachment | PDFReferenceAttachment | AlreadyReadFileAttachment | directory 附件 | null
+- **支持语法**：
+  - `@filename.txt`：简单文件引用
+  - `@"file with spaces.txt"`：带空格文件
+  - `@file.txt#L10`：单行引用
+  - `@file.txt#L10-20`：范围引用
+
+**附件与缓存状态：**
+- **触发嵌套记忆**：`toolUseContext.nestedMemoryAttachmentTriggers.add(absoluteFilename)`
+- **PDF 阈值**：`PDF_AT_MENTION_INLINE_THRESHOLD`（页数优先，否则 ~100KB/页估算）
+- **已读缓存**：`toolUseContext.readFileState` → AlreadyReadFileAttachment
+
+**解析/并行处理/注入/失效流程：**
+```
+1. extractAtMentionedFiles(input)
+   ├─ 匹配正则：/(^|\s)@"([^"]+)"/g 和 /(^|\s)@([^\s]+)\b/g
+   ├─ 跳过 agent 引用（如 @"code-reviewer (agent)")
+   ├─ 去重
+   └─ 返回文件名数组
+
+2. 并行 processAtMentionedFiles()
+   └─ Promise.all(files.map(async file => ...))
+
+3. 每个文件处理流程
+   ├─ parseAtMentionedFileLines() 解析行范围
+   ├─ expandPath() → 绝对路径
+   ├─ isFileReadDenied() 权限检查
+   │  └─ 是 → 返回 null
+   │  └─ 否 → 继续
+   ├─ stat() 检查是目录还是文件
+   │  ├─ 目录 → readdir()，MAX_DIR_ENTRIES=1000 截断
+   │  │  └─ 返回 { type: 'directory', path, content, displayPath }
+   │  └─ 文件 → generateFileAttachment()
+   │     ├─ PDF 检查（仅 at-mention 模式）
+   │     │  ├─ getPDFPageCount() 获取页数
+   │     │  └─ 超过阈值 → PDFReferenceAttachment
+   │     ├─ 已读缓存检查（仅 at-mention 模式）
+   │     │  └─ 未修改 → AlreadyReadFileAttachment
+   │     ├─ FileReadTool 读取文件
+   │     └─ 出错时尝试截断版本
+   └─ 返回 Attachment 或 null
+```
+
+**错误与隐私：**
+- **权限检查**：`isFileReadDenied()` 拒绝访问敏感路径
+- **错误隔离**：单个文件解析失败不影响其他文件
+- **事件记录**：`tengu_at_mention_extracting_filename_success` / `tengu_at_mention_extracting_filename_error`
+
+**设计取舍/备选：**
+| 取舍 | 当前选择 | 代价 | 收益 |
+|-----|---------|-----|-----|
+| 两种引用格式（带引号/不带引号） | 都支持 | 解析逻辑稍复杂 | 用户体验友好 |
+| 目录列出限制 | MAX_DIR_ENTRIES=1000 | 大目录被截断 | 避免超大附件 |
+| PDF 引用 vs 内联 | 阈值判断 | 大 PDF 需要显式读取 | 避免上下文窗口溢出 |
+
+**源码/测试证据：**
+- 源码：`src/utils/attachments.ts:2765-2860` (extract/parse)、`src/utils/attachments.ts:1903-1973` (process)
+- 关键常量：`src/constants/apiLimits.ts:PDF_AT_MENTION_INLINE_THRESHOLD`
+- 测试：无独立测试
+
+---
+
+#### 模块 3：图片粘贴与缩放处理器
+
+**真实入口签名与关键类型：**
+```typescript
+// imagePaste.ts
+export async function hasImageInClipboard(): Promise<boolean>
+export async function getImageFromClipboard(): Promise<ImageWithDimensions | null>
+export async function tryReadImageFromPath(
+  text: string
+): Promise<(ImageWithDimensions & { path: string }) | null>
+export function isImageFilePath(text: string): boolean
+export function asImageFilePath(text: string): string | null
+
+// imageResizer.ts
+export async function maybeResizeAndDownsampleImageBuffer(
+  imageBuffer: Buffer,
+  originalSize: number,
+  ext: string
+): Promise<ResizeResult>
+
+// imageValidation.ts
+export function validateImagesForAPI(messages: unknown[]): void
+export class ImageSizeError extends Error
+
+// 关键常量
+IMAGE_MAX_WIDTH = 2000
+IMAGE_MAX_HEIGHT = 2000
+IMAGE_TARGET_RAW_SIZE = 3750000  // 3.75MB raw
+API_IMAGE_MAX_BASE64_SIZE = 5242880  // 5MB base64
+```
+
+**输入输出：**
+- **输入**：剪贴板图片、拖拽文件路径
+- **输出**：`ImageBlockParam` 类型（base64 编码，已缩放）
+- **支持格式**：PNG、JPEG、GIF、WebP、BMP（自动转为 PNG）
+
+**附件与缓存状态：**
+- **图片存储**：`~/.claude/image-cache/<sessionId>/<imageId>.<ext>`，权限 0o600
+- **内存缓存**：`storedImagePaths: Map<number, string>`，`MAX_STORED_IMAGE_PATHS=200`
+- **PastedContent**：`{ id, type, content, mediaType?, filename?, dimensions?, sourcePath? }`
+
+**解析/并行处理/注入/失效流程：**
+```
+1. 剪贴板检测
+   ├─ macOS 优先：原生 NSPasteboard（~0.03ms 检查，~5ms 读取）
+   │  ├─ feature('NATIVE_CLIPBOARD_IMAGE') + tengu_collage_kaleidoscope gate
+   │  └─ image-processor-napi 模块
+   └─ 回退：osascript / xclip / wl-paste / PowerShell
+
+2. 图片读取
+   ├─ macOS：原生读取 PNG 字节，CoreGraphics 缩放到 IMAGE_MAX_WIDTH/HEIGHT
+   ├─ 其他平台：临时文件 → 读取 → 删除
+   └─ BMP 检测 → Sharp 转换为 PNG
+
+3. 缩放处理（maybeResizeAndDownsampleImageBuffer）
+   ├─ Sharp 读取 metadata 获取尺寸
+   ├─ 检查：raw size ≤ 3.75MB && width ≤ 2000 && height ≤ 2000
+   │  └─ 满足 → 直接返回
+   ├─ 尺寸超限 → 等比例缩放到 ≤ 2000×2000
+   ├─ 大小超限：
+   │  ├─ PNG 先尝试 PNG 压缩（compressionLevel:9, palette:true）
+   │  └─ 仍超限 → JPEG 压缩（80→60→40→20 质量梯度）
+   └─ 返回 ResizeResult：{ buffer, mediaType, dimensions? }
+
+4. API 边界验证（validateImagesForAPI）
+   ├─ 检查 base64 长度 ≤ 5MB
+   └─ 超限 → 抛出 ImageSizeError
+
+5. 队列命令构建（buildImageContentBlocks）
+   ├─ 过滤 isValidImagePaste()
+   ├─ maybeResizeAndDownsampleImageBlock() 再次确保大小
+   └─ 构建 ImageBlockParam 数组
+```
+
+**错误与隐私：**
+- **图片权限**：0o600 仅用户可读写
+- **错误分类**：`ERROR_TYPE_MODULE_LOAD`、`ERROR_TYPE_PROCESSING`、`ERROR_TYPE_PIXEL_LIMIT`、`ERROR_TYPE_MEMORY`、`ERROR_TYPE_TIMEOUT`、`ERROR_TYPE_VIPS`、`ERROR_TYPE_PERMISSION`
+- **事件**：`tengu_image_api_validation_failed`
+- **BMP 转换**：自动处理 WSL2 Windows BMP 复制
+
+**设计取舍/备选：**
+| 取舍 | 当前选择 | 代价 | 收益 |
+|-----|---------|-----|-----|
+| 原生 vs osascript | 优先原生，失败回退 | 代码复杂度 | macOS 性能提升 300×（5ms vs 1.5s） |
+| 尺寸限制 2000×2000 | 等比例缩放 | 细节损失 | 避免超大像素处理 |
+| JPEG 质量梯度 | 80→60→40→20 | 多次尝试 | 在质量和大小间平衡 |
+| 双重检查（resize+validation） | resize+validation | 冗余 | 分层防御更可靠 |
+| base64 直接检查 | 检查编码后长度 | 不是原始大小 | 与 API 限制精确匹配 |
+
+**源码/测试证据：**
+- 源码：`src/utils/imagePaste.ts`、`src/utils/imageResizer.ts`、`src/utils/imageValidation.ts`、`src/utils/imageStore.ts`
+- 关键常量：`src/constants/apiLimits.ts:IMAGE_MAX_WIDTH`、`IMAGE_MAX_HEIGHT`、`IMAGE_TARGET_RAW_SIZE`、`API_IMAGE_MAX_BASE64_SIZE`
+- 测试：无独立测试
+
+---
+
+#### 模块 4：相关记忆预取器
+
+**真实入口签名与关键类型：**
+```typescript
+export type MemoryPrefetch = {
+  promise: Promise<Attachment[]>
+  settledAt: number | null
+  consumedOnIteration: number
+  [Symbol.dispose](): void
+}
+
+export function startRelevantMemoryPrefetch(
+  messages: ReadonlyArray<Message>,
+  toolUseContext: ToolUseContext
+): MemoryPrefetch | undefined
+
+async function getRelevantMemoryAttachments(
+  input: string,
+  agents: AgentDefinition[],
+  readFileState: FileStateCache,
+  recentTools: readonly string[],
+  signal: AbortSignal,
+  alreadySurfaced: ReadonlySet<string>
+): Promise<Attachment[]>
+
+export function collectSurfacedMemories(
+  messages: ReadonlyArray<Message>
+): { paths: Set<string>; totalBytes: number }
+
+export async function readMemoriesForSurfacing(
+  selected: ReadonlyArray<{ path: string; mtimeMs: number }>,
+  signal?: AbortSignal
+): Promise<Array<{
+  path: string
+  content: string
+  mtimeMs: number
+  header: string
+  limit?: number
+}>>
+
+export function memoryHeader(path: string, mtimeMs: number): string
+
+export function filterDuplicateMemoryAttachments(
+  attachments: Attachment[],
+  readFileState: FileStateCache
+): Attachment[]
+
+// 关键常量
+const MAX_MEMORY_LINES = 200
+const MAX_MEMORY_BYTES = 4096
+const RELEVANT_MEMORIES_CONFIG = { MAX_SESSION_BYTES: 60 * 1024 }
+```
+
+**输入输出：**
+- **输入**：历史消息数组、工具上下文
+- **输出**：`MemoryPrefetch` 句柄（可选）或 undefined
+- **记忆格式**：`{ type: 'relevant_memories', memories: Array<{ path, content, mtimeMs, header?, limit? }> }`
+
+**附件与缓存状态：**
+- **Gate 检查**：`isAutoMemoryEnabled()` + `tengu_moth_copse` 特征 flag
+- **已浮现路径**：`collectSurfacedMemories(messages)` → Set<string> + totalBytes
+- **会话上限**：60KB totalBytes，超限停止预取
+- **注入后标记**：`filterDuplicateMemoryAttachments()` 将路径写入 `readFileState` 去重
+
+**解析/并行处理/注入/失效流程：**
+```
+1. startRelevantMemoryPrefetch() gate 检查
+   ├─ isAutoMemoryEnabled() → false → 返回 undefined
+   ├─ tengu_moth_copse → false → 返回 undefined
+   ├─ 找最后一条非 meta 用户消息 → 无 → 返回 undefined
+   ├─ 提取用户消息文本 → 单字提示（无空格）→ 返回 undefined
+   ├─ collectSurfacedMemories() → totalBytes ≥ 60KB → 返回 undefined
+   └─ 全部通过 → 继续
+
+2. 创建预取句柄
+   ├─ createChildAbortController(toolUseContext.abortController)
+   ├─ 启动 getRelevantMemoryAttachments()（不 await）
+   ├─ 返回 MemoryPrefetch：{ promise, settledAt: null, consumedOnIteration: -1, [Symbol.dispose] }
+   └─ promise.finally() 设置 settledAt = Date.now()
+
+3. getRelevantMemoryAttachments() 执行
+   ├─ 检查是否 @ 提到 agent → 是 → 搜索该 agent memory dir
+   │  └─ 否 → 搜索 auto memory dir
+   ├─ findRelevantMemories() 并行搜索所有 dir
+   ├─ 过滤已在 readFileState 或 alreadySurfaced 的路径
+   ├─ 取前 5 条
+   └─ readMemoriesForSurfacing() 读取内容
+
+4. readMemoriesForSurfacing() 处理
+   ├─ readFileInRange(0, MAX_MEMORY_LINES, MAX_MEMORY_BYTES, { truncateOnByteLimit: true })
+   ├─ 截断 → 添加提示："This memory file was truncated..."
+   ├─ memoryHeader() 构建 header（预计算，避免 prompt cache 失效）
+   └─ 返回 { path, content, mtimeMs, header, limit? }
+
+5. 使用时（query.ts）
+   ├─ await handle.promise（若需要）
+   ├─ filterDuplicateMemoryAttachments() 过滤并标记到 readFileState
+   └─ using 语句结束 → Symbol.dispose() → controller.abort()
+   └─ 记录 tengu_memdir_prefetch_collected 事件
+```
+
+**错误与隐私：**
+- **Abort 处理**：`isAbortError()` 检查，忽略取消错误
+- **记忆去重**：双重去重（alreadySurfaced Set + readFileState）
+- **Header 预计算**：避免每次渲染重新计算 `memoryFreshnessText()` 导致 prompt cache 失效
+- **Symbol.dispose 清理**：自动取消未完成预取，防止内存泄漏
+
+**设计取舍/备选：**
+| 取舍 | 当前选择 | 代价 | 收益 |
+|-----|---------|-----|-----|
+| 预取时机 | 每个用户回合启动 | 可能浪费计算 | 与模型推理并行，零阻塞 |
+| 会话字节上限 | 60KB | 长会话后期停止 | 控制 token 消耗 |
+| 单字提示跳过 | 无空格不预取 | 某些短查询无记忆 | 避免无意义计算 |
+| MemoryPrefetch disposable | Symbol.dispose | 稍新的 JS 特性 | 自动生命周期管理 |
+| header 预计算 | 创建时计算好 | 稍多内存 | 避免 prompt cache 失效 |
+| 标记时机 | filterDuplicateMemoryAttachments 时 | 预取时不标记 | 避免自引用过滤失效 |
+
+**源码/测试证据：**
+- 源码：`src/utils/attachments.ts:2204-2549`
+- 关键常量：`src/utils/attachments.ts:272-291`
+- 测试：无独立测试
+
+---
+
+#### 模块 5：嵌套 CLAUDE.md 注入器
+
+**真实入口签名与关键类型：**
+```typescript
+async function getNestedMemoryAttachments(
+  toolUseContext: ToolUseContext
+): Promise<Attachment[]>
+
+async function getNestedMemoryAttachmentsForFile(
+  filePath: string,
+  toolUseContext: ToolUseContext,
+  appState: { toolPermissionContext: ToolPermissionContext }
+): Promise<Attachment[]>
+
+export function getDirectoriesToProcess(
+  targetPath: string,
+  originalCwd: string
+): { nestedDirs: string[]; cwdLevelDirs: string[] }
+
+export function memoryFilesToAttachments(
+  memoryFiles: MemoryFileInfo[],
+  toolUseContext: ToolUseContext,
+  triggerFilePath?: string
+): Attachment[]
+
+// 关键状态
+toolUseContext.loadedNestedMemoryPaths: Set<string>  // 不可驱逐
+toolUseContext.readFileState: FileStateCache  // LRU 可驱逐
+toolUseContext.nestedMemoryAttachmentTriggers: Set<string>  // 触发路径
+```
+
+**输入输出：**
+- **输入**：触发文件路径（来自 @ 引用或 IDE 打开文件）
+- **输出**：`{ type: 'nested_memory', path, content, displayPath }` 附件数组
+- **处理顺序**：Managed/User 条件 → nested dirs CLAUDE.md → cwd-level 条件
+
+**附件与缓存状态：**
+- **双重去重**：`loadedNestedMemoryPaths`（不可驱逐 Set）+ `readFileState`（LRU）
+- **触发器收集**：`processAtMentionedFiles()` 和 `getOpenedFileFromIDE()` 写入 `nestedMemoryAttachmentTriggers`
+- **部分内容标记**：`contentDiffersFromDisk` → `readFileState` 标记 `isPartialView: true`
+
+**解析/并行处理/注入/失效流程：**
+```
+1. getNestedMemoryAttachments() 检查触发器
+   ├─ nestedMemoryAttachmentTriggers 为空 → 返回 []
+   └─ 否则，对每个 trigger 路径调用 getNestedMemoryAttachmentsForFile()
+
+2. getNestedMemoryAttachmentsForFile() 处理单个路径
+   ├─ pathInAllowedWorkingPath() 权限检查 → 否 → 返回 []
+   ├─ Phase 1：getManagedAndUserConditionalRules() 处理条件规则
+   ├─ Phase 2：getDirectoriesToProcess() 获取目录列表
+   │  ├─ nestedDirs：CWD → targetPath 之间的目录（CLAUDE.md + 无条件 + 条件）
+   │  └─ cwdLevelDirs：根 → CWD 的目录（仅条件）
+   ├─ Phase 3：getMemoryFilesForNestedDirectory() 处理 nestedDirs
+   │  └─ 可选跳过 Project/Local（tengu_paper_halyard gate）
+   ├─ Phase 4：getConditionalRulesForCwdLevelDirectory() 处理 cwdLevelDirs
+   └─ 每阶段后调用 memoryFilesToAttachments()
+
+3. memoryFilesToAttachments() 转换并去重
+   ├─ for each memoryFile
+   │  ├─ loadedNestedMemoryPaths.has() → 已加载 → 跳过
+   │  ├─ readFileState.has() → 已读取 → 跳过
+   │  ├─ 创建 nested_memory 附件
+   │  ├─ loadedNestedMemoryPaths.add(path)
+   │  ├─ readFileState.set(path, { content, timestamp, isPartialView })
+   │  │  └─ contentDiffersFromDisk → 缓存 rawContent
+   │  └─ hasInstructionsLoadedHook() → 执行 InstructionsLoaded 钩子
+   └─ 返回 Attachment[]
+```
+
+**错误与隐私：**
+- **权限检查**：`pathInAllowedWorkingPath()` 拒绝敏感路径
+- **钩子执行**：InstructionsLoaded 钩子用于审计/可观测
+- **去重保证**：loadedNestedMemoryPaths 不可驱逐 → 同一会话不会重复注入
+
+**设计取舍/备选：**
+| 取舍 | 当前选择 | 代价 | 收益 |
+|-----|---------|-----|-----|
+| 双重去重结构 | Set + LRU | 状态复杂度 | 会话一致性 + 跨回合去重 |
+| 触发器收集 | 两步（用户输入先处理） | 协调稍复杂 | nested_memory 能看到 @ 引用的文件 |
+| 四阶段处理顺序 | Managed/User → nested → cwd-level | 需严格按序 | 优先级符合用户期望 |
+| isPartialView 标记 | 缓存原始内容 | 稍多内存 | Edit/Write 知道需要重新读取 |
+
+**源码/测试证据：**
+- 源码：`src/utils/attachments.ts:1665-2202`
+- 关键状态：`toolUseContext.loadedNestedMemoryPaths`、`toolUseContext.readFileState`
+- 测试：无独立测试
+
+---
+
+#### 模块 6：变更文件检测器
+
+**真实入口签名与关键类型：**
+```typescript
+export async function getChangedFiles(
+  toolUseContext: ToolUseContext
+): Promise<Attachment[]>
+
+// 关键状态
+toolUseContext.readFileState: FileStateCache  // { path → { content, timestamp, offset?, limit?, isPartialView? } }
+```
+
+**输入输出：**
+- **输入**：`readFileState` 中的文件路径列表
+- **输出**：
+  - `{ type: 'edited_text_file', filename, snippet }`（文本变更）
+  - `{ type: 'edited_image_file', filename, content }`（图片变更）
+  - `null`（未变更或出错）
+- **变更检测**：mtime > readFileState 中的 timestamp
+
+**附件与缓存状态：**
+- **缓存失效**：仅 `isENOENT(error)` 时从 `readFileState` 删除文件
+- **其他错误**：原子保存临时 ENOENT、权限波动 → 保留缓存
+- **部分文件跳过**：`readFileState.limit` 存在 → 不检测变更（避免误导性 diff）
+
+**解析/并行处理/注入/失效流程：**
+```
+1. getChangedFiles() 获取 readFileState 中所有路径
+   ├─ cacheKeys(readFileState) → 空 → 返回 []
+   └─ 否则，Promise.all(filePaths.map(async path => ...))
+
+2. 每个路径并行处理
+   ├─ normalizedPath = expandPath(path)
+   ├─ isFileReadDenied() → 是 → 返回 null
+   ├─ getFileModificationTimeAsync() → mtime
+   ├─ mtime ≤ fileState.timestamp → 未变更 → 返回 null
+   ├─ FileReadTool.validateInput() → 否 → 返回 null
+   └─ FileReadTool.call() 重新读取
+
+3. 文本文件处理
+   ├─ result.data.type === 'text'
+   ├─ getSnippetForTwoFileDiff(oldContent, newContent) → snippet
+   ├─ snippet === ''（无实际变更）→ 返回 null
+   └─ 返回 { type: 'edited_text_file', filename, snippet }
+
+4. 图片文件处理
+   ├─ result.data.type === 'image'
+   ├─ readImageWithTokenBudget() 重新读取
+   └─ 返回 { type: 'edited_image_file', filename, content }
+
+5. 错误处理
+   ├─ catch (error)
+   ├─ isENOENT(error) → readFileState.delete(path) → 返回 null
+   └─ 其他错误 → 返回 null（保留缓存）
+```
+
+**错误与隐私：**
+- **仅 ENOENT 驱逐**：避免编辑器原子保存导致的频繁缓存失效
+- **权限检查**：`isFileReadDenied()` 二次检查
+- **事件**：无专门事件（通过 FileReadTool 内部事件）
+
+**设计取舍/备选：**
+| 取舍 | 当前选择 | 代价 | 收益 |
+|-----|---------|-----|-----|
+| 仅 ENOENT 驱逐 vs 任何错误 | 仅 ENOENT | 罕见情况下可能 stale | 避免原子保存抖动 |
+| mtime 检查 vs 哈希比较 | mtime | 时钟回绕可能漏检 | 性能好，无需读取文件 |
+| 空 snippet 跳过 | 无变更不返回 | 需计算 diff | 避免噪音附件 |
+| 部分文件不检测 | limit 存在跳过 | 部分变更不通知 | 避免误导性 diff |
+
+**源码/测试证据：**
+- 源码：`src/utils/attachments.ts:2072-2169`
+- 关键函数：`isENOENT(error)`（来自 `src/utils/errors.ts`）
+- 测试：无独立测试
+
+---
+
+#### 模块 7：MCP 资源引用处理器
+
+**真实入口签名与关键类型：**
+```typescript
+function extractMcpResourceMentions(content: string): string[]
+
+async function processMcpResourceAttachments(
+  input: string,
+  toolUseContext: ToolUseContext
+): Promise<Attachment[]>
+
+// Attachment 类型
+| { type: 'mcp_resource'; server: string; uri: string; name: string; description?: string; content: ReadResourceResult }
+```
+
+**输入输出：**
+- **输入**：用户输入字符串（格式 `@server:uri`）
+- **输出**：`mcp_resource` 附件数组
+- **提取正则**：`/(^|\s)@([^\s]+:[^\s]+)\b/g`
+
+**附件与缓存状态：**
+- **MCP 客户端**：`toolUseContext.options.mcpClients`
+- **MCP 资源**：`toolUseContext.options.mcpResources`（用于获取 name/description）
+- **无缓存**：每次都重新读取资源
+
+**解析/并行处理/注入/失效流程：**
+```
+1. extractMcpResourceMentions(input)
+   ├─ 匹配 @server:uri 格式
+   ├─ 去重
+   └─ 返回 mention 数组
+
+2. processMcpResourceAttachments() 并行处理
+   └─ Promise.all(mentions.map(async mention => ...))
+
+3. 单个 mention 处理
+   ├─ split(':') → serverName + uri
+   ├─ 找 mcpClients.find(c => c.name === serverName)
+   │  └─ 未找到或未连接 → 记录事件 → 返回 null
+   ├─ 找 mcpResources[serverName]?.find(r => r.uri === uri)
+   │  └─ 未找到 → 记录事件 → 返回 null
+   ├─ client.client.readResource({ uri })
+   │  └─ 出错 → 记录事件 → 返回 null
+   └─ 返回 { type: 'mcp_resource', server, uri, name, description?, content }
+```
+
+**错误与隐私：**
+- **错误隔离**：单个资源失败不影响其他
+- **事件记录**：`tengu_at_mention_mcp_resource_success` / `tengu_at_mention_mcp_resource_error`
+- **权限**：MCP 资源权限由 MCP 服务器管理
+
+**设计取舍/备选：**
+| 取舍 | 当前选择 | 代价 | 收益 |
+|-----|---------|-----|-----|
+| 无缓存 vs 缓存 | 每次重新读取 | 可能重复读取 | 始终获取最新内容 |
+| 先找资源信息再读取 | 两步 | 稍多 round-trip | 能提供 name/description |
+
+**源码/测试证据：**
+- 源码：`src/utils/attachments.ts:2800-2860` (extract)、`src/utils/attachments.ts:2004-2070` (process)
+- 测试：无独立测试
+
+---
+
+#### 模块 8：技能附件发现与列表
+
+**真实入口签名与关键类型：**
+```typescript
+// 技能列表
+const sentSkillNames: Map<string, Set<string>>  // agentId → skill names
+let suppressNext: boolean = false
+
+export function resetSentSkillNames(): void
+export function suppressNextSkillListing(): void
+export function filterToBundledAndMcp(commands: Command[]): Command[]
+
+async function getSkillListingAttachments(
+  toolUseContext: ToolUseContext
+): Promise<Attachment[]>
+
+// 动态技能
+async function getDynamicSkillAttachments(
+  toolUseContext: ToolUseContext
+): Promise<Attachment[]>
+
+// 关键常量
+const FILTERED_LISTING_MAX = 30
+
+// Attachment 类型
+| { type: 'dynamic_skill'; skillDir: string; skillNames: string[]; displayPath: string }
+| { type: 'skill_listing'; content: string; skillCount: number; isInitial: boolean }
+| { type: 'skill_discovery'; skills: Array<{ name, description, shortId? }>; signal: DiscoverySignal; source: 'native' | 'aki' | 'both' }
+```
+
+**输入输出：**
+- **技能列表输入**：`getSkillToolCommands()` + `getMcpSkillCommands()`
+- **技能列表输出**：`skill_listing` 附件（格式化到上下文窗口预算内）
+- **动态技能输入**：`toolUseContext.dynamicSkillDirTriggers` Set
+- **动态技能输出**：`dynamic_skill` 附件（skillDir + skillNames）
+
+**附件与缓存状态：**
+- **已发送技能**：`sentSkillNames` Map（key 为 agentId，空字符串为主线程）
+- **抑制下次**：`suppressNext`（用于 --resume 时避免重复发送）
+- **动态技能触发器**：`toolUseContext.dynamicSkillDirTriggers`（由文件操作写入）
+
+**解析/并行处理/注入/失效流程：**
+```
+1. getSkillListingAttachments() 处理
+   ├─ 检查是否有 SkillTool → 无 → 返回 []
+   ├─ getSkillToolCommands(cwd) 获取本地技能
+   ├─ getMcpSkillCommands() 获取 MCP 技能
+   ├─ uniqBy 合并去重
+   ├─ feature('EXPERIMENTAL_SKILL_SEARCH') → filterToBundledAndMcp()
+   │  ├─ 仅保留 bundled + MCP
+   │  └─ 超过 FILTERED_LISTING_MAX → 仅保留 bundled
+   ├─ agentId 获取/创建 sentSkillNames Set
+   ├─ suppressNext → 标记所有为已发送 → 返回 []
+   ├─ 过滤已发送技能 → newSkills
+   ├─ newSkills 为空 → 返回 []
+   ├─ 标记 newSkills 为已发送
+   ├─ formatCommandsWithinBudget(newSkills, contextWindowTokens) 格式化
+   └─ 返回 { type: 'skill_listing', content, skillCount, isInitial }
+
+2. getDynamicSkillAttachments() 处理
+   ├─ dynamicSkillDirTriggers 为空 → 返回 []
+   ├─ Promise.all(triggers.map(async skillDir => ...))
+   │  ├─ readdir(skillDir) 获取目录项
+   │  ├─ 过滤目录/符号链接
+   │  ├─ Promise.all(candidates.map(async name => stat(skillDir/name/SKILL.md)))
+   │  └─ 返回 { skillDir, skillNames: names that exist }
+   ├─ 对每个结果，skillNames 非空 → 创建 dynamic_skill 附件
+   ├─ dynamicSkillDirTriggers.clear()
+   └─ 返回附件数组
+```
+
+**错误与隐私：**
+- **动态技能目录错误**：读取目录失败 → 忽略该目录，返回空 skillNames
+- **日志**：`logForDebugging()` 记录发送的技能数量
+- **无隐私问题**：仅技能元数据（name/description），不包含内容
+
+**设计取舍/备选：**
+| 取舍 | 当前选择 | 代价 | 收益 |
+|-----|---------|-----|-----|
+| 按 agentId 隔离 sentSkillNames | Map key 为 agentId | 稍多状态 | 子代理获得自己的 turn-0 列表 |
+| suppressNext 机制 | resume 时抑制 | 稍复杂 | 避免重复注入已在 transcript 中的列表 |
+| 技能搜索时过滤列表 | bundled+MCP，超 30 仅 bundled | 某些技能不显示 | 避免截断，turn-0 无 gap |
+| 动态技能触发器 | Set 收集 | 需协调写入时机 | 文件操作后自动发现新技能 |
+
+**源码/测试证据：**
+- 源码：`src/utils/attachments.ts:2611-2860`
+- 关键常量：`src/utils/attachments.ts:2649` (FILTERED_LISTING_MAX)
+- 测试：无独立测试
+
+---
+
+### 4.3 模块与状态所有权
+
+| 模块 | 拥有的状态 | 主要操作 | 不承担的职责 | 与其他模块的接口 |
+|-----|-----------|---------|-------------|----------------|
+| `attachments.ts` | `sentSkillNames`、`loadedNestedMemoryPaths`、`lastEmittedDate` | `getAttachments()`、`getAttachmentMessages()`、`startRelevantMemoryPrefetch()` | 实际文件读取、图片处理 | 调用各子模块函数 |
+| `imagePaste.ts` | 无（纯函数） | `isImageFilePath()`、`asImageFilePath()`、`tryReadImageFromPath()`、`hasImageInClipboard()`、`getImageFromClipboard()` | 图片存储、验证 | 返回 `PastedContent` |
+| `imageStore.ts` | `storedImagePaths`（Map）、`MAX_STORED_IMAGE_PATHS` | `storeImage()`、`storeImages()`、`getStoredImagePath()`、`clearStoredImagePaths()`、`cleanupOldImageCaches()` | 图片处理 | 存储和检索图片 |
+| `imageValidation.ts` | 无（纯函数） | `validateImagesForAPI()`、`ImageSizeError` | 图片处理 | 验证 API 图片大小 |
+| `pasteStore.ts` | 无（纯函数） | `hashPastedText()`、`storePastedText()`、`retrievePastedText()`、`cleanupOldPastes()` | 图片处理 | 持久化粘贴文本 |
+| `config.ts`（PastedContent） | 无（类型定义） | 类型定义 | 运行时逻辑 | `PastedContent`、`HistoryEntry` 类型 |
+
 ### 4.2 模块与状态所有权
 
 | 模块 | 拥有的状态 | 主要操作 | 不承担的职责 | 与其他模块的接口 |

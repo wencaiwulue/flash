@@ -331,6 +331,881 @@ SDK模式可选跳过前缀: 当`CLAUDE_AGENT_SDK_MCP_NO_PREFIX=true`，SDK服�
 | 'dynamic' | 运行时传入 | SDK动态配置 |
 | 'claudeai' | fetchClaudeAIMcpConfigsIfEligible | claude.ai connectors |
 
+---
+
+### 4.7 模块设计卡片
+
+### 4.7.1 配置发现模块 (config.ts)
+
+**真实入口签名**
+```typescript
+export async function getAllMcpConfigs(): Promise<{
+  servers: Record<string, ScopedMcpServerConfig>;
+  errors: PluginError[];
+}>
+
+export async function getClaudeCodeMcpConfigs(
+  dynamicServers: Record<string, ScopedMcpServerConfig> = {},
+  extraDedupTargets: Promise<Record<string, ScopedMcpServerConfig>> = Promise.resolve({}),
+): Promise<{ servers: Record<string, ScopedMcpServerConfig>; errors: PluginError[]; }>
+
+export function getMcpConfigsByScope(scope: 'project' | 'user' | 'local' | 'enterprise'): {
+  servers: Record<string, ScopedMcpServerConfig>;
+  errors: ValidationError[];
+}
+
+export function getMcpConfigByName(name: string): ScopedMcpServerConfig | null
+
+export function dedupPluginMcpServers(
+  pluginServers: Record<string, ScopedMcpServerConfig>,
+  manualServers: Record<string, ScopedMcpServerConfig>,
+): { servers: Record<string, ScopedMcpServerConfig>; suppressed: Array<{ name: string; duplicateOf: string }>; }
+
+export function dedupClaudeAiMcpServers(
+  claudeAiServers: Record<string, ScopedMcpServerConfig>,
+  manualServers: Record<string, ScopedMcpServerConfig>,
+): { servers: Record<string, ScopedMcpServerConfig>; suppressed: Array<{ name: string; duplicateOf: string }>; }
+
+export function getMcpServerSignature(config: McpServerConfig): string | null
+```
+
+**关键类型**
+```typescript
+export type ConfigScope = 'enterprise' | 'local' | 'project' | 'user' | 'dynamic' | 'claudeai' | 'managed'
+
+export type ScopedMcpServerConfig = McpServerConfig & {
+  scope: ConfigScope;
+  pluginSource?: string;
+}
+
+export type McpServerConfig = McpStdioServerConfig | McpSSEServerConfig | 
+  McpSSEIDEServerConfig | McpWebSocketIDEServerConfig | McpHTTPServerConfig | 
+  McpWebSocketServerConfig | McpSdkServerConfig | McpClaudeAIProxyServerConfig
+```
+
+**输入输出**
+- **输入**: 无（getAllMcpConfigs）或配置范围、服务器名称
+- **输出**: 带scope的服务器配置映射、错误列表、去重结果
+- **副作用**: 读取文件系统（项目.mcp.json、用户配置、企业配置），调用getPluginMcpServers，调用fetchClaudeAiMcpConfigsIfEligible
+
+**设计取舍**
+- **优先级排序**: enterprise > local > project > user > plugin > claudeai — 企业配置独占，确保企业策略优先
+- **内容签名去重**: 基于command/URL而非名称去重，避免不同来源配置相同服务器导致重复连接
+- **CCR Proxy URL特殊处理**: extract原始vendor URL用于签名匹配，支持远程会话场景
+- **SDK类型无签名**: SDK in-process服务器不参与去重，其配置由SDK动态管理
+
+**备选方案**
+- 仅按名称去重: 导致不同服务器同名冲突，已废弃
+- 完全不去重: 导致重复连接和工具冲突，已废弃
+
+**源码测试证据**
+- `dedupPluginMcpServers` 测试: 验证插件服务器与手动配置去重逻辑
+- `dedupClaudeAiMcpServers` 测试: 验证claude.ai连接器与手动配置去重逻辑
+- `getMcpServerSignature` 测试: 验证不同配置类型的签名生成
+- `unwrapCcrProxyUrl` 测试: 验证CCR代理URL解包逻辑
+
+---
+
+### 4.7.2 Client/Connection Manager 模块 (client.ts)
+
+**真实入口签名**
+```typescript
+export async function getMcpToolsCommandsAndResources(
+  onConnectionAttempt?: (connection: MCPServerConnection) => void,
+): Promise<{
+  tools: Tool[];
+  resources: Record<string, ServerResource[]>;
+  commands: Tool[];
+  connections: MCPServerConnection[];
+}>
+
+export const connectToServer = memoize(async (
+  name: string,
+  serverRef: ScopedMcpServerConfig,
+  serverStats?: { totalServers: number; stdioCount: number; sseCount: number; httpCount: number; sseIdeCount: number; wsIdeCount: number; },
+): Promise<MCPServerConnection>)
+
+export async function ensureConnectedClient(
+  connection: ConnectedMCPServer,
+): Promise<Client>
+
+export async function callMCPTool(
+  client: Client,
+  serverName: string,
+  tool: Tool,
+  args: Record<string, unknown>,
+  context: ToolContext,
+): Promise<MCPToolResult>
+
+export async function reconnectMcpServerImpl(
+  name: string,
+  config: ScopedMcpServerConfig,
+): Promise<{ client: MCPServerConnection; tools: Tool[]; commands: Tool[]; resources?: ServerResource[]; }>
+
+export async function closeAllMcpServers(): Promise<void>
+```
+
+**关键类型**
+```typescript
+export type MCPServerConnection = ConnectedMCPServer | FailedMCPServer | NeedsAuthMCPServer | PendingMCPServer | DisabledMCPServer
+
+export type ConnectedMCPServer = {
+  client: Client;
+  name: string;
+  type: 'connected';
+  capabilities: ServerCapabilities;
+  serverInfo?: { name: string; version: string };
+  instructions?: string;
+  config: ScopedMcpServerConfig;
+  cleanup: () => Promise<void>;
+}
+
+export type FailedMCPServer = { name: string; type: 'failed'; config: ScopedMcpServerConfig; error?: string; }
+export type NeedsAuthMCPServer = { name: string; type: 'needs-auth'; config: ScopedMcpServerConfig; }
+export type PendingMCPServer = { name: string; type: 'pending'; config: ScopedMcpServerConfig; reconnectAttempt?: number; maxReconnectAttempts?: number; }
+export type DisabledMCPServer = { name: string; type: 'disabled'; config: ScopedMcpServerConfig; }
+```
+
+**连接状态转换**
+```
+disconnected → [connectToServer] → connecting
+  ↓
+  ├─→ connected (正常连接，获取tools/resources)
+  │   ↓
+  │   [onclose] → disconnected (清除memoize缓存)
+  │
+  ├─→ failed (连接/初始化失败，保留error)
+  │   ↓
+  │   [reconnectMcpServerImpl] → connecting
+  │
+  ├─→ needs-auth (401 Unauthorized，缓存15分钟)
+  │   ↓
+  │   [McpAuthTool] → performMCPOAuthFlow → [reconnect] → connecting
+  │
+  └─→ disabled (用户禁用，不尝试连接)
+```
+
+**完整握手/调用/关闭生命周期**
+
+1. **握手阶段 (connectToServer)**
+   - 根据配置类型创建对应Transport
+   - Client.connect(transport)建立连接
+   - 设置onerror/onclose回调
+   - 调用initializeSession获取capabilities
+   - 成功: 返回ConnectedMCPServer
+   - 401: 返回NeedsAuthMCPServer并设置缓存
+   - 其他错误: 返回FailedMCPServer
+
+2. **调用阶段 (callMCPTool)**
+   - ensureConnectedClient检查连接状态
+   - 若SDK类型直接返回，否则从缓存获取或重连
+   - callMCPToolWithUrlElicitationRetry处理elicitation
+   - 捕获McpSessionExpiredError，清除缓存后可重试1次
+   - transformMCPResult转换结果格式
+
+3. **关闭阶段 (cleanup/closeAllMcpServers)**
+   - stdio: SIGINT → 100ms检查 → SIGTERM → 最终超时强制结束
+   - sse/http/ws: transport.close()
+   - sdk: 无特殊清理
+   - onclose回调清除memoize缓存
+
+**并发连接与cleanup顺序**
+- **本地服务器** (stdio/sdk): pMap并发3个，避免进程创建资源竞争
+- **远程服务器** (sse/http/ws/sse-ide/ws-ide/claudeai-proxy): pMap并发20个
+- **Cleanup顺序**: 无严格顺序，但每个服务器独立清理，避免连锁失败
+- **错误隔离**: 单个服务器连接/调用失败不影响其他服务器
+
+**源码测试证据**
+- `getMcpToolsCommandsAndResources` 测试: 验证批处理并发逻辑
+- `connectToServer` 测试: 验证不同传输类型连接
+- `callMCPTool` 测试: 验证工具调用与错误处理
+- `isMcpSessionExpiredError` 测试: 验证会话过期检测
+- `closeAllMcpServers` 测试: 验证清理逻辑
+
+---
+
+### 4.7.3 Stdio/In-Memory/WebSocket Transports 模块
+
+#### 4.7.3.1 Stdio Transport (StdioClientTransport from @modelcontextprotocol/sdk)
+
+**真实入口创建**
+```typescript
+// client.ts: stdio类型处理
+if (!serverRef.type || serverRef.type === 'stdio') {
+  const stdioConfig = serverRef as McpStdioServerConfig;
+  const command = expandEnvVarsInString(stdioConfig.command);
+  const args = stdioConfig.args.map(expandEnvVarsInString);
+  
+  transport = new StdioClientTransport({
+    command,
+    args,
+    env: { ...process.env, ...stdioConfig.env },
+    cwd: getOriginalCwd(),
+    stderr: 'pipe',
+  });
+}
+```
+
+**关键类型**
+```typescript
+export type McpStdioServerConfig = {
+  type?: 'stdio';
+  command: string;
+  args: string[];
+  env?: Record<string, string>;
+}
+```
+
+**Cleanup escalator**
+```typescript
+// SIGINT 温和关闭 → 等待100ms检查 → SIGTERM → 最终超时强制结束
+const cleanupStdio = async (child: ChildProcess) => {
+  child.kill('SIGINT');
+  await sleep(100);
+  if (!child.killed) {
+    child.kill('SIGTERM');
+    await sleep(500);
+    if (!child.killed) {
+      child.kill('SIGKILL');
+    }
+  }
+};
+```
+
+**设计取舍**
+- 先SIGINT给优雅关闭机会: 符合POSIX信号语义
+- 超时保护: 避免挂起的子进程
+- 最终SIGKILL: 确保不留下僵尸进程
+
+#### 4.7.3.2 In-Memory Transport (SdkControlTransport)
+
+**真实入口签名**
+```typescript
+export class SdkControlClientTransport implements Transport {
+  constructor(
+    private serverName: string,
+    private sendMcpMessage: SendMcpMessageCallback,
+  )
+  async start(): Promise<void>
+  async send(message: JSONRPCMessage): Promise<void>
+  async close(): Promise<void>
+  onclose?: () => void
+  onerror?: (error: Error) => void
+  onmessage?: (message: JSONRPCMessage) => void
+}
+
+export class SdkControlServerTransport implements Transport {
+  constructor(private sendMcpMessage: (message: JSONRPCMessage) => void)
+  async start(): Promise<void>
+  async send(message: JSONRPCMessage): Promise<void>
+  async close(): Promise<void>
+  onclose?: () => void
+  onerror?: (error: Error) => void
+  onmessage?: (message: JSONRPCMessage) => void
+}
+
+export type SendMcpMessageCallback = (
+  serverName: string,
+  message: JSONRPCMessage,
+) => Promise<JSONRPCMessage>
+```
+
+**InMemoryTransport与外部Server差异**
+
+| 特性 | SdkControlTransport (in-memory) | 外部Server (stdio/sse/http/ws) |
+|------|---------------------------------|--------------------------------|
+| 进程位置 | 同一进程内 | 独立进程/远程服务 |
+| 通信方式 | 控制消息桥接 + 回调 | 标准I/O/网络协议 |
+| 连接建立 | 无需，直接通过StructuredIO | 需要connect/握手 |
+| 超时处理 | 无 | 有(30s可配置) |
+| 重连逻辑 | 无，in-process可靠性高 | 有，onclose触发缓存清除 |
+| Cleanup | 无特殊操作 | transport.close + stdio escalator |
+| 认证 | 无，SDK控制消息隐含信任 | OAuth/headers按需 |
+| 工具名称前缀 | 可选跳过(CLAUDE_AGENT_SDK_MCP_NO_PREFIX) | 强制mcp__<server>__<tool> |
+
+**消息流**
+```
+CLI → SDK (SdkControlClientTransport)
+  1. MCP Client.send(JSONRPCRequest)
+  2. 包装为控制请求 { type: 'mcp_message', server_name, message }
+  3. 通过stdout发送到SDK进程
+  4. SDK的StructuredIO接收并路由
+  5. SdkControlServerTransport.onmessage(JSONRPCRequest)
+  6. MCP Server处理
+  7. SdkControlServerTransport.send(JSONRPCResponse)
+  8. 通过sendMcpMessage回调返回
+  9. SdkControlClientTransport.onmessage(JSONRPCResponse)
+  10. MCP Client接收响应
+```
+
+**源码测试证据**
+- tests/sdkMcp.test.ts: 验证SDK in-process服务器注册、调用、元数据传递
+
+#### 4.7.3.3 WebSocket Transport (mcpWebSocketTransport.ts)
+
+**真实入口创建**
+```typescript
+// client.ts: ws类型处理
+if (serverRef.type === 'ws') {
+  const wsConfig = serverRef as McpWebSocketServerConfig;
+  const combinedHeaders = await getMcpServerHeaders(name, wsConfig);
+  const proxyAgent = getWebSocketProxyAgent();
+  const wsOptions: Record<string, unknown> = {
+    headers: { 'User-Agent': getMCPUserAgent(), ...combinedHeaders },
+    ...(proxyAgent ? { agent: proxyAgent } : {}),
+    ...getWebSocketTLSOptions(),
+  };
+  
+  transport = new WebSocketTransport({
+    url: new URL(wsConfig.url),
+    createWsClient: (url: string, options: Record<string, unknown>) => createNodeWsClient(url, options),
+  });
+}
+
+// ws-ide类型处理
+if (serverRef.type === 'ws-ide') {
+  const wsIdeConfig = serverRef as McpWebSocketIDEServerConfig;
+  const headers: Record<string, string> = { 'User-Agent': getMCPUserAgent() };
+  if (wsIdeConfig.authToken) {
+    headers['X-Claude-Code-Ide-Authorization'] = wsIdeConfig.authToken;
+  }
+  
+  transport = new WebSocketTransport({
+    url: new URL(wsIdeConfig.url),
+    createWsClient: (url: string, options: Record<string, unknown>) => createNodeWsClient(url, options),
+  });
+}
+```
+
+**关键类型**
+```typescript
+export type McpWebSocketServerConfig = {
+  type: 'ws';
+  url: string;
+  headers?: Record<string, string>;
+  headersHelper?: string;
+}
+
+export type McpWebSocketIDEServerConfig = {
+  type: 'ws-ide';
+  url: string;
+  ideName: string;
+  authToken?: string;
+  ideRunningInWindows?: boolean;
+}
+```
+
+**设计取舍**
+- 使用ws包而非Bun内置WebSocket: 兼容性更好，支持完整MCP协议
+- 支持代理: getWebSocketProxyAgent集成代理配置
+- TLS支持: getWebSocketTLSOptions提供安全连接选项
+- IDE专用headers: X-Claude-Code-Ide-Authorization用于IDE扩展认证
+
+**源码测试证据**
+- WebSocketTransport测试: 验证连接、消息发送、关闭逻辑
+- ws-ide类型测试: 验证IDE扩展认证流程
+
+---
+
+### 4.7.4 认证与重连模块 (auth.ts)
+
+**真实入口签名**
+```typescript
+export async function performMCPOAuthFlow(
+  serverName: string,
+  serverConfig: McpSSEServerConfig | McpHTTPServerConfig,
+  onAuthorizationUrl: (url: string) => void,
+  abortSignal?: AbortSignal,
+  options?: {
+    skipBrowserOpen?: boolean;
+    onWaitingForCallback?: (submit: (callbackUrl: string) => void) => void;
+  },
+): Promise<void>
+
+export class ClaudeAuthProvider implements OAuthClientProvider {
+  constructor(
+    serverName: string,
+    serverConfig: McpSSEServerConfig | McpHTTPServerConfig,
+    redirectUri: string = buildRedirectUri(),
+    handleRedirection = false,
+    onAuthorizationUrl?: (url: string) => void,
+    skipBrowserOpen?: boolean,
+  )
+  async state(): Promise<string>
+  async clientInformation(): Promise<OAuthClientInformation | undefined>
+  async saveClientInformation(clientInfo: OAuthClientInformationFull): Promise<void>
+  async tokens(): Promise<OAuthTokens | undefined>
+  async saveTokens(tokens: OAuthTokens): Promise<void>
+  async redirectToAuthorization(authUrl: URL): Promise<void>
+  async saveCodeVerifier(codeVerifier: string): Promise<void>
+  async codeVerifier(): Promise<string>
+  async invalidateCredentials(scope: 'all' | 'client' | 'tokens' | 'verifier' | 'discovery'): Promise<void>
+  async saveDiscoveryState(state: OAuthDiscoveryState): Promise<void>
+  async discoveryState(): Promise<OAuthDiscoveryState | undefined>
+  async refreshAuthorization(refreshToken: string): Promise<OAuthTokens | undefined>
+  setMetadata(metadata: AuthorizationServerMetadata): void
+  markStepUpPending(scope: string): void
+}
+
+export async function refreshAuthorization(
+  serverUrl: URL,
+  options: {
+    metadata: AuthorizationServerMetadata;
+    clientInformation: OAuthClientInformation;
+    refreshToken: string;
+    resource: URL;
+    fetchFn?: FetchLike;
+  },
+): Promise<OAuthTokens>
+
+export async function revokeServerTokens(
+  serverName: string,
+  serverConfig: McpSSEServerConfig | McpHTTPServerConfig,
+  options?: { preserveStepUpState?: boolean },
+): Promise<void>
+
+export function hasMcpDiscoveryButNoToken(
+  serverName: string,
+  serverConfig: McpSSEServerConfig | McpHTTPServerConfig,
+): boolean
+
+export function getServerKey(
+  serverName: string,
+  serverConfig: McpSSEServerConfig | McpHTTPServerConfig,
+): string
+```
+
+**关键类型**
+```typescript
+export type McpOAuthConfig = {
+  clientId?: string;
+  callbackPort?: number;
+  authServerMetadataUrl?: string;
+  xaa?: boolean;
+}
+
+export type McpSSEServerConfig = {
+  type: 'sse';
+  url: string;
+  headers?: Record<string, string>;
+  headersHelper?: string;
+  oauth?: McpOAuthConfig;
+}
+
+export type McpHTTPServerConfig = {
+  type: 'http';
+  url: string;
+  headers?: Record<string, string>;
+  headersHelper?: string;
+  oauth?: McpOAuthConfig;
+}
+```
+
+**needs-auth缓存与过期**
+```typescript
+const MCP_AUTH_CACHE_TTL_MS = 15 * 60 * 1000; // 15分钟
+
+// 缓存结构: ~/.claude-code/mcp-needs-auth-cache.json
+type McpAuthCacheData = Record<string, { timestamp: number }>
+
+// 检查缓存
+async function isMcpAuthCached(serverId: string): Promise<boolean> {
+  const cache = await getMcpAuthCache();
+  const entry = cache[serverId];
+  if (!entry) return false;
+  return Date.now() - entry.timestamp < MCP_AUTH_CACHE_TTL_MS;
+}
+
+// 设置缓存
+function setMcpAuthCacheEntry(serverId: string): void
+
+// 清除缓存
+export function clearMcpAuthCache(): void
+```
+
+**缓存策略设计取舍**
+- TTL 15分钟: 平衡启动速度与用户体验
+- 文件持久化: 跨会话保持缓存状态
+- memoize读缓存: 避免并发批量连接时重复读文件
+- 链式写序列化: 防止并发读写竞争
+
+**OAuth完整流程**
+```
+1. Discovery阶段
+   ├─ fetchAuthServerMetadata(authServerMetadataUrl)
+   ├─ 或 RFC 9728 → RFC 8414发现
+   ├─ 或回退直接MCP服务器路径发现
+   └─ 保存discoveryState (仅URL，非完整metadata，避免keychain溢出)
+
+2. PKCE准备
+   ├─ state(): 生成随机state
+   ├─ codeVerifier(): 生成code_verifier
+   └─ 保存codeVerifier
+
+3. 授权重定向
+   ├─ redirectToAuthorization(authUrl)
+   ├─ 调用onAuthorizationUrl回调
+   ├─ 若handleRedirection=true，打开浏览器
+   └─ 保存stepUpScope (若来自403 insufficient_scope)
+
+4. 回调接收
+   ├─ 本地HTTP服务器监听/callback
+   ├─ 验证state匹配
+   ├─ 接收code或error
+   └─ 5分钟超时保护
+
+5. Token交换
+   ├─ sdkAuth(provider, { serverUrl, authorizationCode, resourceMetadataUrl })
+   ├─ 调用tokens()获取access_token/refresh_token
+   └─ saveTokens持久化到keychain
+
+6. 抢先刷新 (tokens()路径)
+   ├─ 检查expiresAt ≤ 5分钟
+   ├─ 是 → refreshAuthorization()
+   ├─ 跨进程锁: lockfile防止并发刷新
+   ├─ 双重检查: 锁后再次读取keychain
+   └─ 指数退避重试: 1s/2s/4s，最多3次
+
+7. Step-up检测 (403 insufficient_scope)
+   ├─ wrapFetchWithStepUpDetection包装fetch
+   ├─ 检测403 + WWW-Authenticate: scope=...
+   ├─ markStepUpPending(scope)
+   └─ 下次tokens()省略refresh_token → SDK触发PKCE重新授权
+```
+
+**XAA (Cross-App Access) 特殊流程**
+```
+条件: serverConfig.oauth.xaa === true && CLAUDE_CODE_ENABLE_XAA === true
+
+流程:
+  1. acquireIdpIdToken() 从IdP获取id_token (或从缓存读取)
+  2. discoverOidc(idpIssuer) 发现IdP的token endpoint
+  3. performCrossAppAccess() 执行RFC 8693 token交换
+     ├─ id_token → AS的access_token
+     └─ 无需浏览器交互
+  4. 保存tokens，同标准OAuth
+
+静默刷新路径 (ClaudeAuthProvider.tokens()):
+  ├─ 无refresh_token但有cached id_token
+  ├─ 触发xaaRefresh()
+  └─ 静默获取新access_token
+```
+
+**错误隔离**
+- 单个服务器认证失败不影响其他服务器
+- 认证错误缓存隔离，按serverKey独立过期
+- refreshAuthorization失败仅清除该服务器tokens，不影响client info
+- invalidateCredentials支持细粒度scope: all/client/tokens/verifier/discovery
+
+**源码测试证据**
+- `performMCPOAuthFlow` 测试: 验证完整OAuth流程
+- `ClaudeAuthProvider.tokens` 测试: 验证抢先刷新逻辑
+- `refreshAuthorization` 测试: 验证令牌刷新与跨进程锁
+- `hasMcpDiscoveryButNoToken` 测试: 验证needs-auth检测
+- `wrapFetchWithStepUpDetection` 测试: 验证step-up检测
+
+---
+
+### 4.7.5 McpAuthTool 伪工具模块 (McpAuthTool.ts)
+
+**真实入口签名**
+```typescript
+export function createMcpAuthTool(
+  serverName: string,
+  config: ScopedMcpServerConfig,
+): Tool<InputSchema, McpAuthOutput>
+
+export type McpAuthOutput = {
+  status: 'auth_url' | 'unsupported' | 'error';
+  message: string;
+  authUrl?: string;
+}
+```
+
+**McpAuthTool伪工具设计**
+
+**目的**: 在needs-auth状态下，替代真实工具暴露给模型，让模型知道服务器存在并可启动OAuth流程
+
+**工具名称**: `mcp__<serverName>__authenticate`
+
+**工作流**
+```
+1. 模型调用mcp__<serverName>__authenticate
+2. createMcpAuthTool.call()执行
+3. 检查配置类型
+   ├─ claudeai-proxy → unsupported (使用MCPRemoteServerMenu)
+   ├─ 非sse/http → unsupported (手动认证)
+   └─ sse/http → 继续
+4. 启动performMCPOAuthFlow，skipBrowserOpen=true
+5. 通过onAuthorizationUrl回调捕获authUrl
+6. 立即返回authUrl给模型
+7. 后台等待OAuth完成
+   ├─ 成功 → clearMcpAuthCache
+   ├─ → reconnectMcpServerImpl
+   ├─ → 前缀替换: 移除mcp__<serverName>__*
+   ├─ → 插入真实工具
+   └─ 失败 → 记录日志，保留needs-auth状态
+```
+
+**与真实工具差异**
+| 特性 | McpAuthTool | 真实MCP工具 |
+|------|-------------|-------------|
+| 来源 | createMcpAuthTool动态创建 | fetchToolsForClient从服务器获取 |
+| 名称格式 | mcp__<server>__authenticate | mcp__<server>__<toolName> |
+| 是否持久化 | 否，仅needs-auth期间存在 | 是，connected期间存在 |
+| 调用结果 | auth_url/unsupported/error | 工具实际执行结果 |
+| 是否需要权限 | 否，自动allow | 是，checkPermissions检查 |
+| 并发安全 | 否，isConcurrencySafe=false | 视工具而定 |
+
+**工具名称冲突处理**
+- 前缀替换保证唯一性: `mcp__<serverName>__` 前缀
+- reconnect时前缀匹配移除: `reject(prev.mcp.tools, t => t.name?.startsWith(prefix))`
+- 真实工具插入时覆盖伪工具: 同前缀先删后加，无冲突
+
+**源码测试证据**
+- `createMcpAuthTool` 测试: 验证伪工具创建
+- McpAuthTool.call测试: 验证OAuth流程启动与authUrl返回
+- 前缀替换测试: 验证reconnect后真实工具替换伪工具
+
+---
+
+### 4.7.6 工具/资源/命令聚合模块
+
+**真实入口签名**
+```typescript
+export async function fetchToolsForClient(
+  client: Client,
+  serverName: string,
+  config: ScopedMcpServerConfig,
+): Promise<Tool[]>
+
+export async function fetchResourcesForClient(
+  client: Client,
+  serverName: string,
+): Promise<ServerResource[]>
+
+export async function fetchCommandsForClient(
+  client: Client,
+  serverName: string,
+): Promise<Tool[]>
+
+export function buildMcpToolName(serverName: string, toolName: string): string
+export function normalizeNameForMCP(name: string): string
+export function getMcpPrefix(serverName: string): string
+```
+
+**关键类型**
+```typescript
+export type ServerResource = Resource & { server: string }
+
+export interface SerializedTool {
+  name: string;
+  description: string;
+  inputJSONSchema?: { [x: string]: unknown; type: 'object'; properties?: { [x: string]: unknown }; };
+  isMcp?: boolean;
+  originalToolName?: string;
+}
+```
+
+**聚合流程**
+```
+getMcpToolsCommandsAndResources
+  ├─ getAllMcpConfigs() 获取配置
+  ├─ 区分disabled → 直接返回DisabledMCPServer
+  ├─ 区分needs-auth缓存 → 跳过连接，创建McpAuthTool
+  ├─ 分本地/远程pMap并发连接
+  │   ├─ 本地: stdio/sdk，3并发
+  │   └─ 远程: sse/http/ws/sse-ide/ws-ide/claudeai-proxy，20并发
+  ├─ 对每个connected服务器:
+  │   ├─ fetchToolsForClient()
+  │   │   ├─ client.request({ method: 'tools/list' })
+  │   │   ├─ 名称规范化: mcp__<server>__<tool>
+  │   │   ├─ 描述截断: 最大2048字符
+  │   │   └─ 包装为MCPTool
+  │   ├─ fetchResourcesForClient()
+  │   │   ├─ client.request({ method: 'resources/list' })
+  │   │   └─ 附加server字段
+  │   └─ fetchCommandsForClient()
+  │       ├─ client.request({ method: 'prompts/list' })
+  │       └─ 包装为PromptTool
+  ├─ IDE工具过滤: 仅保留mcp__ide__executeCode/mcp__ide__getDiagnostics
+  ├─ ListMcpResourcesTool/ReadMcpResourceTool去重: 仅添加一次
+  └─ emit tengu_mcp_tools_commands_loaded事件
+```
+
+**memoize缓存策略**
+```typescript
+// connectToServer: memoize，key为serverCacheKey(name, config)
+export const connectToServer = memoize(...)
+
+// fetchToolsForClient/fetchResourcesForClient/fetchCommandsForClient: memoizeWithLRU，大小20
+// 防止服务器很多时内存无限增长
+const fetchToolsForClient = memoizeWithLRU(async (client: Client, serverName: string, config: ScopedMcpServerConfig) => { ... }, 20)
+
+// onclose回调清除缓存
+server.onclose = () => {
+  // 清除connectToServer memoize缓存
+  connectToServer.cache.clear?.(getServerCacheKey(name, config));
+  // fetch缓存LRU自动淘汰
+};
+```
+
+**工具名称规范化规则**
+```typescript
+export function normalizeNameForMCP(name: string): string {
+  // 替换非字母数字为下划线
+  // 转小写
+  // 去重: 相同名称添加数字后缀
+}
+
+export function buildMcpToolName(serverName: string, toolName: string): string {
+  return `mcp__${normalizeNameForMCP(serverName)}__${normalizeNameForMCP(toolName)}`;
+}
+
+// SDK可选跳过前缀
+if (process.env.CLAUDE_AGENT_SDK_MCP_NO_PREFIX === 'true') {
+  // SDK服务器工具使用原始名称，可覆盖内置工具
+}
+```
+
+**设计取舍**
+- LRU 20: 平衡内存使用与常见场景(20个以内服务器)
+- 描述截断2048字符: 控制上下文占用，OpenAPI生成服务器常输出长描述
+- 名称规范化: 确保工具名称有效且唯一，避免特殊字符问题
+- SDK可选无前缀: 支持SDK服务器覆盖内置工具的高级场景
+
+**源码测试证据**
+- `fetchToolsForClient` 测试: 验证工具获取与规范化
+- `buildMcpToolName` 测试: 验证名称构建
+- `normalizeNameForMCP` 测试: 验证名称规范化
+- LRU缓存测试: 验证缓存淘汰逻辑
+
+---
+
+### 4.7.7 UI/Elicitation 模块
+
+**关键入口**
+```typescript
+// useManageMCPConnections.ts
+export function useManageMCPConnections(): {
+  connections: MCPServerConnection[];
+  tools: Tool[];
+  resources: Record<string, ServerResource[]>;
+  commands: Tool[];
+  updateServer: (name: string, connection: MCPServerConnection) => void;
+  refreshConnections: () => Promise<void>;
+}
+
+// MCPConnectionManager.tsx
+export function MCPConnectionManager({ children }: { children: ReactNode }): JSX.Element
+
+// elicitationHandler.ts
+export async function runElicitationHooks(
+  elicitRequest: ElicitRequest,
+  context: ElicitationContext,
+): Promise<ElicitResult | undefined>
+
+export async function runElicitationResultHooks(
+  elicitResult: ElicitResult,
+  context: ElicitationContext,
+): Promise<void>
+```
+
+**Elicitation流程**
+```
+callMCPToolWithUrlElicitationRetry
+  ├─ 设置toolUseId元数据
+  ├─ 调用工具
+  ├─ 捕获ElicitRequest
+  ├─ runElicitationHooks处理
+  │   ├─ OAuth elicitation → 触发认证流程
+  │   └─ 其他elicitation → 按hook处理
+  ├─ 重试最多MAX_SESSION_RETRIES次
+  └─ 返回转换结果
+```
+
+**Monitor task事件边界**
+```typescript
+// MonitorTool 相关
+export function createMonitorTool(): Tool
+
+// 监控事件边界
+tengu_mcp_server_needs_auth      // 服务器需要认证
+tengu_mcp_oauth_flow_start        // OAuth流程开始
+tengu_mcp_oauth_flow_success      // OAuth流程成功
+tengu_mcp_oauth_flow_error        // OAuth流程失败
+tengu_mcp_oauth_refresh_success   // Token刷新成功
+tengu_mcp_oauth_refresh_failure   // Token刷新失败
+tengu_mcp_claudeai_proxy_401      // Claude.ai代理401
+tengu_mcp_tools_commands_loaded   // 工具/资源/命令加载完成
+```
+
+**源码测试证据**
+- tests/monitorMcpTask.test.ts: 验证监控任务
+- tests/monitorMcpToolCall.test.ts: 验证监控工具调用
+- useManageMCPConnections测试: 验证连接管理hook
+
+---
+
+### 4.7.8 关闭清理模块
+
+**真实入口签名**
+```typescript
+export async function closeAllMcpServers(): Promise<void>
+
+// 内部cleanup函数 (stdio escalator)
+async function cleanupStdioServer(child: ChildProcess): Promise<void>
+
+// ConnectedMCPServer.cleanup
+export type ConnectedMCPServer = {
+  ...;
+  cleanup: () => Promise<void>;
+}
+```
+
+**清理策略按传输类型**
+
+| 传输类型 | Cleanup方式 | 超时 | 附加 |
+|---------|------------|------|------|
+| stdio | SIGINT → 100ms检查 → SIGTERM → 500ms → SIGKILL | 600ms总超时 | stderr输出捕获，最大64MB |
+| sse | transport.close() | 立即 | SDK内部重连停止 |
+| http | transport.close() | 立即 | 取消所有pending请求 |
+| ws | WebSocket.close() | 立即 | 1000正常关闭码 |
+| sse-ide | transport.close() | 立即 | |
+| ws-ide | WebSocket.close() | 立即 | |
+| sdk | 无操作 | N/A | in-process无需清理 |
+| claudeai-proxy | transport.close() | 立即 | |
+| Chrome内置 | closeOpenChromeClient() | 立即 | 复用连接管理 |
+| Computer Use内置 | close in-process server | 立即 | |
+
+**清理顺序设计**
+- 无严格顺序: 每个服务器独立清理，避免连锁失败
+- 并行清理: Promise.all同时清理所有服务器
+- 错误隔离: 单个服务器清理失败不影响其他
+- 最佳努力: 清理函数不throw，仅log错误
+
+**onclose回调职责**
+```typescript
+server.onclose = () => {
+  // 1. 清除connectToServer memoize缓存
+  connectToServer.cache.clear?.(getServerCacheKey(name, config));
+  // 2. fetch缓存LRU自动淘汰，无需手动清除
+  // 3. 记录日志
+  logMCPDebug(name, 'Connection closed, cache cleared');
+};
+```
+
+**设计取舍**
+- escalator渐进式关闭: 优先优雅关闭，失败才强制
+- stderr捕获上限64MB: 防止服务器大量输出耗尽内存
+- memoize缓存onclose清除: 确保下次操作重连获取新状态
+- 清理不throw: 避免部分清理后流程中断
+
+**源码测试证据**
+- `closeAllMcpServers` 测试: 验证全量清理
+- stdio escalator测试: 验证信号序列与超时
+- onclose缓存清除测试: 验证重连时新状态获取
+
 ## 5. 失败语义与工程取舍
 
 ### 5.1 连接失败语义

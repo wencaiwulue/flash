@@ -85,7 +85,195 @@ status: draft
 
 ## 4. 架构、模块与数据流
 
-### 4.1 入口与公共契约
+### 4.1 设置来源与优先级模块
+
+#### 模块设计卡片：设置来源与优先级
+
+| 维度 | 详情 |
+|-----|------|
+| **入口签名** | `getEnabledSettingSources(): SettingSource[]`<br/>`getSettingSourceName(source: SettingSource): string`<br/>`parseSettingSourcesFlag(flag: string): SettingSource[]` |
+| **关键类型** | `SettingSource = 'userSettings' \| 'projectSettings' \| 'localSettings' \| 'flagSettings' \| 'policySettings'`<br/>`EditableSettingSource = Exclude<SettingSource, 'policySettings' \| 'flagSettings'>` |
+| **输入输出** | 输入：无或CLI flag字符串<br/>输出：启用的来源数组 / 来源名称字符串 |
+| **状态与文件布局** | 无内部状态（纯常量）<br/>来源文件位置：<br/>- `userSettings`: `~/.claude/settings.json` (或 cowork模式下的 `cowork_settings.json`)<br/>- `projectSettings`: `<cwd>/.claude/settings.json`<br/>- `localSettings`: `<cwd>/.claude/settings.local.json` (自动gitignore)<br/>- `flagSettings`: 来自`--settings` flag<br/>- `policySettings`: `managed-settings.json` / MDM / 远程托管 |
+| **加载流程** | 启动时按优先级从低到高加载：`userSettings → projectSettings → localSettings → flagSettings → policySettings`<br/>`pluginSettings` 作为基础最先加载（仅允许白名单字段） |
+| **设计取舍** | **采用**：后续来源覆盖先前来源（深合并），数组concat去重<br/>**替代方案**：单来源配置（灵活性不足），反向优先级（用户无法覆盖企业策略）<br/>**代价**：需严格按优先级合并，调试时需检查多层来源 |
+| **源码证据** | `src/utils/settings/constants.ts:7-182` |
+
+#### 模块设计卡片：settings.json 与 ~/.claude.json 分工
+
+| 维度 | 详情 |
+|-----|------|
+| **分工边界** | `settings.json` 族：可配置行为选项，可远程托管<br/>`~/.claude.json`：auth凭据、用户ID、会话状态等本地状态 |
+| **安全原则** | auth凭据绝不进入settings域<br/>plugins状态不混入settings（plugin仅提供agent等白名单字段作为基础层） |
+| **关键类型** | `SettingsJson`（来自`types.ts`）vs `GlobalConfig`（来自`config.ts`） |
+| **迁移逻辑** | 按需从`globalConfig`迁移旧字段到`settings.json`<br/>示例：`autoUpdates`、`bypassPermissionsAccepted` |
+| **设计取舍** | **采用**：完全独立的两个域<br/>**替代方案**：混用（安全风险高）<br/>**代价**：需维护两套系统，部分字段需迁移 |
+| **源码证据** | `src/utils/config.ts:1-184`<br/>`src/migrations/migrateAutoUpdatesToSettings.ts:1-61` |
+
+---
+
+### 4.2 读写合并模块
+
+#### 模块设计卡片：核心读写入口
+
+| 维度 | 详情 |
+|-----|------|
+| **入口签名** | `getSettingsWithErrors(): SettingsWithErrors`<br/>`getInitialSettings(): SettingsJson`<br/>`getSettingsForSource(source: SettingSource): SettingsJson \| null`<br/>`updateSettingsForSource(source: EditableSettingSource, settings: SettingsJson): { error: Error \| null }`<br/>`getSettingsWithSources(): SettingsWithSources` |
+| **关键类型** | `SettingsWithErrors = { settings: SettingsJson, errors: ValidationError[] }`<br/>`SettingsWithSources = { effective: SettingsJson, sources: Array<{ source: SettingSource, settings: SettingsJson }> }` |
+| **输入输出** | 读取：无输入，返回合并结果<br/>写入：来源+设置对象，返回错误或成功 |
+| **状态与文件布局** | 会话缓存：`sessionSettings`（模块级变量，避免重复文件I/O）<br/>来源缓存：`sourceSettings`（各来源独立缓存）<br/>文件缓存：`parsedFiles`（原始文件解析结果） |
+| **读取流程** | 1. 检查`sessionSettings`缓存<br/>2. 未命中则调用`loadSettingsFromDisk()`<br/>3. 按优先级加载各来源并验证<br/>4. 深合并各来源<br/>5. 收集验证错误<br/>6. 缓存结果 |
+| **写入流程** | 1. 读取现有来源设置（绕过缓存）<br/>2. 与新设置合并<br/>3. `markInternalWrite()` 标记内部写入<br/>4. 持久化到文件<br/>5. `resetSettingsCache()` 清空缓存<br/>6. 若为`localSettings`，自动添加gitignore |
+| **源码证据** | `src/utils/settings/settings.ts:309-982`<br/>`src/utils/settings/settingsCache.ts:1-40` |
+
+#### 模块设计卡片：对象/数组合并与删除语义
+
+| 维度 | 详情 |
+|-----|------|
+| **对象合并** | 深度合并：`mergeWith(objValue, srcValue, settingsMergeCustomizer)`<br/>`undefined` 表示删除：`srcValue === undefined` 时从目标对象删除该key |
+| **数组合并** | concat + dedupe：`uniq([...targetArray, ...sourceArray])`<br/>**注意**：`updateSettingsForSource()`写入时数组完全替换（由调用者计算最终状态） |
+| **合并器签名** | `settingsMergeCustomizer(objValue: unknown, srcValue: unknown): unknown` |
+| **输入输出** | 目标值 + 源值 → 合并后的值（返回`undefined`表示默认合并逻辑） |
+| **设计取舍** | **采用**：读取时数组concat去重，写入时数组完全替换<br/>**替代方案**：始终覆盖（用户丢失上层规则），始终合并（无法删除规则）<br/>**代价**：数组无法精确删除，只能用undefined或在前面来源覆盖 |
+| **源码证据** | `src/utils/settings/settings.ts:482-547` |
+
+#### 模块设计卡片：单个来源解析
+
+| 维度 | 详情 |
+|-----|------|
+| **入口签名** | `parseSettingsFile(path: string): { settings: SettingsJson \| null, errors: ValidationError[] }`<br/>`loadManagedFileSettings(): { settings: SettingsJson \| null, errors: ValidationError[] }`<br/>`getManagedFileSettingsPresence(): { hasBase: boolean, hasDropIns: boolean }` |
+| **关键类型** | `ValidationError = { file?: string, path: FieldPath, message: string, ... }` |
+| **输入输出** | 输入：文件路径<br/>输出：解析后的设置对象（或null）+ 验证错误数组 |
+| **状态与文件布局** | 使用`getCachedParsedFile()` / `setCachedParsedFile()`缓存<br/>`managed-settings.d/*.json` drop-in文件按字母顺序合并 |
+| **解析流程** | 1. 检查缓存<br/>2. 读取文件内容<br/>3. 安全JSON解析<br/>4. `filterInvalidPermissionRules()` 过滤无效权限规则<br/>5. `SettingsSchema().safeParse()` Zod验证<br/>6. 返回结果 + 错误 |
+| **fail-open边界** | 文件不存在 → `{ settings: null, errors: [] }`<br/>JSON语法错误 → `{ settings: null, errors: [] }`<br/>Schema验证失败 → `{ settings: null, errors: [验证错误] }` |
+| **源码证据** | `src/utils/settings/settings.ts:74-246` |
+
+---
+
+### 4.3 Schema 与迁移模块
+
+#### 模块设计卡片：Schema 验证
+
+| 维度 | 详情 |
+|-----|------|
+| **入口签名** | `SettingsSchema(): ZodSchema`<br/>`validateSettingsFileContent(content: string): { isValid: true } \| { isValid: false, error: string, fullSchema: string }`<br/>`filterInvalidPermissionRules(data: unknown, filePath: string): ValidationError[]` |
+| **关键类型** | `SettingsJson`（Zod schema推导出的类型）<br/>`PermissionRuleSchema`（权限规则验证）<br/>`AllowedMcpServerEntrySchema`、`DeniedMcpServerEntrySchema`（MCP服务器允许/拒绝列表） |
+| **输入输出** | 输入：原始JSON数据 / 文件内容字符串<br/>输出：验证通过的设置对象 / 格式化的验证错误 |
+| **状态与文件布局** | 无内部状态（纯验证函数）<br/>Schema定义：`types.ts`<br/>权限规则验证：`permissionValidation.ts` |
+| **验证流程** | 1. `filterInvalidPermissionRules()` 预过滤无效权限规则<br/>2. `SettingsSchema().safeParse()` 完整验证<br/>3. `formatZodError()` 格式化错误为用户友好形式 |
+| **权限规则预过滤** | 逐个验证`allow/deny/ask`数组中的规则<br/>无效规则被移除但保留其他规则<br/>生成警告而非整体失败 |
+| **兼容性策略** | 向后兼容：仅添加可选字段，不删除字段<br/>`.passthrough()` 保留未知字段不丢弃<br/>类型强制（如`z.coerce.string`） |
+| **设计取舍** | **采用**：预过滤权限规则 + 整体schema验证，失败时跳过该来源<br/>**替代方案**：整体失败（一个错误导致全部失效），自动修复（可能丢失用户意图）<br/>**代价**：需要容错设计，验证失败不抛出仅记录 |
+| **源码证据** | `src/utils/settings/types.ts:15-1113`<br/>`src/utils/settings/validation.ts:11-265`<br/>`src/utils/settings/permissionValidation.ts:1-*` |
+
+#### 模块设计卡片：迁移系统
+
+| 维度 | 详情 |
+|-----|------|
+| **入口签名** | `migrateAutoUpdatesToSettings(): void`<br/>`migrateBypassPermissionsAcceptedToSettings(): void` |
+| **输入输出** | 无输入，无输出（副作用：写入settings.json） |
+| **状态与文件布局** | 从`~/.claude.json`读取旧配置<br/>写入到对应settings.json来源 |
+| **迁移流程** | 1. 检查旧配置是否存在<br/>2. 若存在则写入settings<br/>3. 从`globalConfig`删除旧字段（可选） |
+| **设计取舍** | **采用**：按需迁移，保留旧配置直到用户确认<br/>**替代方案**：强制迁移（可能破坏当前配置），不迁移（用户升级后配置丢失）<br/>**代价**：需要维护迁移代码直到足够多用户都升级 |
+| **源码证据** | `src/migrations/migrateAutoUpdatesToSettings.ts:1-61`<br/>`src/migrations/migrateBypassPermissionsAcceptedToSettings.ts:1-*` |
+
+---
+
+### 4.4 Change Detector 与 applySettingsChange
+
+#### 模块设计卡片：settingsChangeDetector
+
+| 维度 | 详情 |
+|-----|------|
+| **入口签名** | `initialize(): Promise<void>`<br/>`dispose(): Promise<void>`<br/>`subscribe(listener: (source: SettingSource) => void): () => void`<br/>`notifyChange(source: SettingSource): void`<br/>`resetForTesting(overrides?: {...}): Promise<void>` |
+| **关键类型** | `ConfigChangeSource`（来自hooks系统）<br/>`FSWatcher`（chokidar） |
+| **输入输出** | 订阅：监听器函数 → 返回取消订阅函数<br/>通知：来源名称 → 无输出 |
+| **状态与文件布局** | `watcher: FSWatcher \| null`（chokidar监视器）<br/>`mdmPollTimer: Timer \| null`（MDM轮询定时器）<br/>`lastMdmSnapshot: string \| null`（上次MDM快照）<br/>`pendingDeletions: Map<string, Timer>`（待处理删除）<br/>`settingsChanged: Signal`（变更信号） |
+| **初始化流程** | 1. 调用`getWatchTargets()`收集监听目录和文件<br/>2. 启动chokidar监听，配置`awaitWriteFinish`<br/>3. 启动MDM轮询（30分钟间隔）<br/>4. 注册清理回调 |
+| **文件变更处理** | 1. `handleChange()` / `handleAdd()` / `handleDelete()`<br/>2. 检查是否为`internalWrite`（5秒窗口）<br/>3. `executeConfigChangeHooks()` 执行ConfigChange hooks<br/>4. hook返回exit code 2则阻塞变更<br/>5. `fanOut()` 重置缓存并通知订阅者 |
+| **删除-重建模式** | `handleDelete()` 启动6.5秒定时器<br/>若在窗口期收到`add`/`change`则取消定时器，视为变更<br/>超时后才视为真正删除 |
+| **MDM轮询** | 30分钟间隔，对比快照<br/>快照变化则`setMdmSettingsCache()` + `fanOut()` |
+| **设计取舍** | **采用**：chokidar + MDM轮询 + internalWrite标记 + 删除-重建窗口<br/>**替代方案**：仅启动读取（用户体验差），不标记internalWrite（循环触发）<br/>**代价**：需监听多个位置，处理删除-重建模式，轮询间隔权衡 |
+| **源码证据** | `src/utils/settings/changeDetector.ts:66-490`<br/>`src/utils/settings/internalWrites.ts:1-*` |
+
+#### 模块设计卡片：internalWrite 防循环触发
+
+| 维度 | 详情 |
+|-----|------|
+| **入口签名** | `markInternalWrite(path: string): void`<br/>`consumeInternalWrite(path: string, windowMs: number): boolean` |
+| **输入输出** | 标记：文件路径 → 无输出<br/>消费：文件路径 + 时间窗口 → 是否为内部写入（boolean） |
+| **状态与文件布局** | `internalWritePaths: Map<string, number>`（路径→标记时间戳） |
+| **流程** | 写入前：`markInternalWrite(filePath)`<br/>检测到变更时：`consumeInternalWrite(path, 5000)` 检查5秒内是否标记<br/>是则忽略变更，否则处理 |
+| **设计取舍** | **采用**：5秒时间窗口<br/>**替代方案**：锁机制（复杂），无窗口（窗口太小漏慢速写入，太大忽略真正变更）<br/>**代价**：窗口太短可能漏过某些慢速写入，太长可能忽略真正的外部变更 |
+| **源码证据** | `src/utils/settings/internalWrites.ts:1-*` |
+
+---
+
+### 4.5 Remote Managed Settings、Settings Sync、Policy Limits
+
+#### 模块设计卡片：Remote Managed Settings（远程托管设置）
+
+| 维度 | 详情 |
+|-----|------|
+| **入口签名** | `initializeRemoteManagedSettingsLoadingPromise(): void`<br/>`loadRemoteManagedSettings(): Promise<void>`<br/>`refreshRemoteManagedSettings(): Promise<void>`<br/>`isEligibleForRemoteManagedSettings(): boolean`<br/>`waitForRemoteManagedSettingsToLoad(): Promise<void>`<br/>`clearRemoteManagedSettingsCache(): Promise<void>`<br/>`computeChecksumFromSettings(settings: SettingsJson): string` |
+| **关键类型** | `RemoteManagedSettingsFetchResult`<br/>`RemoteManagedSettingsResponseSchema` |
+| **输入输出** | 无输入 → 无输出（副作用：更新缓存/通知变更）<br/>`computeChecksumFromSettings`: SettingsJson → SHA-256 checksum字符串 |
+| **状态与文件布局** | `sessionCache: SettingsJson \| null`（会话级缓存）<br/>`loadingCompletePromise: Promise<void> \| null`（加载完成Promise）<br/>`loadingCompleteResolve: (() => void) \| null`<br/>`pollingIntervalId: Timer \| null`（后台轮询定时器）<br/>本地缓存文件：`~/.claude/remote-settings.json` |
+| **资格检查** | Console用户（API key）：全部合格<br/>OAuth用户（Claude.ai）：仅Enterprise/C4E和Team订阅者合格 |
+| **加载流程** | 1. 初始化loading promise<br/>2. 缓存优先：若有本地缓存先应用并resolve waiters<br/>3. `fetchWithRetry()` 带重试获取远程设置<br/>4. 若304 Not Modified则使用缓存<br/>5. 新设置需通过安全检查（`checkManagedSettingsSecurity()`）<br/>6. 用户确认后应用（`handleSecurityCheckResult()`）<br/>7. 保存到本地缓存<br/>8. `notifyChange('policySettings')` 通知变更<br/>9. 启动后台轮询（1小时间隔） |
+| **危险远程变更确认** | `checkManagedSettingsSecurity()` 检查新增权限、hooks等危险变更<br/>需要用户交互式确认后才应用<br/>用户拒绝则继续使用旧缓存 |
+| **fail-open边界** | fetch失败 → 使用本地缓存<br/>无缓存 → 返回null，继续无远程设置运行<br/>验证失败 → 跳过该来源 |
+| **设计取舍** | **采用**：checksum ETag缓存 + graceful degradation + 安全检查 + 后台轮询<br/>**替代方案**：每次fetch（流量大延迟高），无缓存（网络故障完全无策略），无安全检查（风险太高）<br/>**代价**：需要实现缓存、重试、安全检查，增加复杂度 |
+| **源码证据** | `src/services/remoteManagedSettings/index.ts:1-639`<br/>`src/services/remoteManagedSettings/securityCheck.tsx:1-*`<br/>`src/services/remoteManagedSettings/syncCacheState.ts:1-*` |
+
+#### 模块设计卡片：Policy Limits（策略限制）
+
+| 维度 | 详情 |
+|-----|------|
+| **入口签名** | `initializePolicyLimitsLoadingPromise(): void`<br/>`loadPolicyLimits(): Promise<void>`<br/>`refreshPolicyLimits(): Promise<void>`<br/>`isPolicyAllowed(policy: string): boolean`<br/>`isPolicyLimitsEligible(): boolean`<br/>`clearPolicyLimitsCache(): Promise<void>` |
+| **关键类型** | `PolicyLimitsFetchResult`<br/>`PolicyLimitsResponseSchema` |
+| **输入输出** | `isPolicyAllowed`: policy名称字符串 → boolean<br/>其他：无输入 → 无输出（副作用） |
+| **状态与文件布局** | `sessionCache: PolicyLimitsResponse['restrictions'] \| null`<br/>`loadingCompletePromise: Promise<void> \| null`<br/>`loadingCompleteResolve: (() => void) \| null`<br/>`pollingIntervalId: Timer \| null`<br/>本地缓存文件：`~/.claude/policy-limits.json` |
+| **资格检查** | 仅限first-party Anthropic API用户<br/>Console用户（API key）：合格<br/>OAuth用户：需Team或Enterprise订阅 |
+| **加载流程** | 类似Remote Managed Settings<br/>1. 初始化loading promise<br/>2. `fetchWithRetry()` 带重试获取<br/>3. 304则使用缓存<br/>4. 保存到本地缓存<br/>5. 后台轮询（1小时间隔） |
+| **fail-open边界** | `isPolicyAllowed()` 默认返回true（未知策略允许）<br/>例外：`essential-traffic-only`模式下，`allow_product_feedback`等策略缓存不可用时返回false<br/>fetch失败使用本地缓存，无缓存则全部允许 |
+| **设计取舍** | **采用**：fail-open（默认允许），例外仅essential-traffic-only下特定策略<br/>**替代方案**：fail-closed（默认禁止，可用性差）<br/>**代价**：需要仔细处理例外情况，避免安全漏洞 |
+| **源码证据** | `src/services/policyLimits/index.ts:1-664` |
+
+#### 模块设计卡片：Settings Sync（设置同步）
+
+| 维度 | 详情 |
+|-----|------|
+| **入口签名** | `uploadUserSettingsInBackground(): Promise<void>`<br/>`downloadUserSettings(): Promise<boolean>`<br/>`redownloadUserSettings(): Promise<boolean>`<br/>`_resetDownloadPromiseForTesting(): void` |
+| **关键类型** | `UserSyncDataSchema`<br/>`SettingsSyncFetchResult`<br/>`SettingsSyncUploadResult`<br/>`SYNC_KEYS`（同步键常量） |
+| **输入输出** | 无输入 → boolean（是否应用了设置） |
+| **状态与文件布局** | `downloadPromise: Promise<boolean> \| null`（缓存下载Promise，避免重复fetch）<br/>同步内容：`userSettings`、`userMemory`、项目级`localSettings`、项目级`localMemory`<br/>文件大小限制：500KB每文件 |
+| **资格检查** | 仅限first-party OAuth用户<br/>需`user:inference` scope<br/>upload还需`getIsInteractive()` + feature flag |
+| **upload流程**（交互式CLI） | 1. `buildEntriesFromLocalFiles()` 读取本地文件<br/>2. `fetchUserSettings()` 获取远程版本<br/>3. 差异比较，仅上传变更项<br/>4. `uploadUserSettings()` PUT到服务器<br/>5. 后台任务，不阻塞启动 |
+| **download流程**（CCR模式） | 1. `fetchUserSettings()` 获取远程设置（带重试）<br/>2. `applyRemoteEntriesToLocal()` 应用到本地文件<br/>3. `markInternalWrite()` 防止触发变更检测<br/>4. `resetSettingsCache()` / `clearMemoryFileCaches()` 清空缓存<br/>5. 返回是否应用了设置 |
+| **同步键定义** | `SYNC_KEYS.USER_SETTINGS = 'userSettings'`<br/>`SYNC_KEYS.USER_MEMORY = 'userMemory'`<br/>`SYNC_KEYS.projectSettings(projectId) = \`projectSettings:\${projectId}\``<br/>`SYNC_KEYS.projectMemory(projectId) = \`projectMemory:\${projectId}\`` |
+| **fail-open边界** | upload/download失败静默忽略，不影响启动<br/>无OAuth token直接跳过<br/>文件太大跳过 |
+| **设计取舍** | **采用**：仅同步白名单字段，按项目分离，后台upload，启动时download<br/>**替代方案**：同步所有（安全风险高），无项目分离（不同项目配置混在一起）<br/>**代价**：需要同步服务端支持，网络故障时fail-open |
+| **源码证据** | `src/services/settingsSync/index.ts:1-582`<br/>`src/services/settingsSync/types.ts:1-*` |
+
+---
+
+### 4.6 相关 UI
+
+#### 模块设计卡片：设置 UI 与 /config 命令
+
+| 维度 | 详情 |
+|-----|------|
+| **入口点** | `/config` 命令（REPL）<br/>配置UI组件（Ink）<br/>远程设置确认对话框 |
+| **关键流程** | 1. 读取：调用`getSettingsWithErrors()`显示当前配置和验证错误<br/>2. 编辑：用户修改配置字符串<br/>3. 验证：`validateSettingsFileContent()` 实时验证<br/>4. 写入：调用`updateSettingsForSource()`持久化 |
+| **状态与文件** | 无特殊状态（直接调用settings模块）<br/>显示内容：合并后配置 + 各来源原始配置 + 验证错误 |
+| **设计取舍** | **采用**：用户直接编辑JSON（灵活但需验证）<br/>**替代方案**：表单UI（开发成本高）<br/>**代价**：需要良好的验证错误提示 |
+| **源码证据** | 需查阅`src/commands/config.ts`等（本spec不包含UI代码所有权） |
+
+---
+
+### 4.7 入口与公共契约
 
 ```typescript
 // 主要读取入口
@@ -129,7 +317,7 @@ function downloadUserSettings(): Promise<boolean>
 3. **写入路径**：用户通过 `/config` 或组件修改配置，调用 `updateSettingsForSource()` 持久化
 4. **变更路径**：外部编辑配置文件或 MDM 更新，`settingsChangeDetector` 检测到并通知订阅者，订阅者调用 `resetSettingsCache()` 并重新读取
 
-### 4.2 模块与状态所有权
+### 4.8 模块与状态所有权
 
 | 模块/对象 | 拥有的状态 | 主要操作 | 不承担的职责 | 与其他模块的接口 |
 |---|---|---|---|---|
@@ -153,7 +341,7 @@ function downloadUserSettings(): Promise<boolean>
 - **远程设置缓存**放在模块级变量 + 文件缓存：进程内快速读取，进程间通过文件共享，网络故障时回退
 - **internalWrite 标记**放在模块级变量（`internalWrites.ts`）：跟踪自身写入，避免循环触发变更通知
 
-### 4.3 主控制流
+### 4.9 主控制流
 
 完整设置加载与合并流（端到端）：
 
@@ -237,7 +425,7 @@ fanOut(source)
 如果超时 → 当作真正删除处理，通知订阅者
 ```
 
-### 4.4 数据结构与持久化
+### 4.10 数据结构与持久化
 
 关键数据结构：
 
@@ -319,7 +507,7 @@ const PermissionsSchema = z.object({
 - 远程设置和 policy limits 有本地缓存，网络不可用时使用缓存
 - 缓存失效或缺失时重新 fetch
 
-### 4.5 跨子系统依赖
+### 4.11 跨子系统依赖
 
 - **Global Config**：`config.ts` 管理 auth 凭据、会话状态等，与 settings 完全独立；某些历史配置需迁移到 settings；本文只描述安全边界
 - **Permissions**：权限规则是 settings 的一部分，但权限裁决逻辑由 permissions spec 负责；本文只描述规则的存储和合并

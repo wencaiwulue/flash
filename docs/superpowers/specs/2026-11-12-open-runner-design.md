@@ -130,21 +130,107 @@ Admin Client (提交/查询/取消)
               └──────────────────┘
 ```
 
-### 4.2 模块职责
+### 4.2 模块设计卡
 
-| 模块 | 文件 | 职责 |
-|------|------|------|
-| Protocol | `src/open-runner/protocol.ts` | 类型定义、验证、错误码 |
-| Server | `src/open-runner/server.ts` | HTTP API、认证、路由 |
-| Store | `src/open-runner/store.ts` | 持久化、状态机、并发控制 |
-| Worker | `src/open-runner/worker.ts` | 作业拉取、子进程、恢复 |
-| Client | `src/open-runner/client.ts` | 客户端封装、重试 |
-| Main | `src/open-runner/main.ts` | CLI 入口 |
-| Environment Runner | `src/environment-runner/main.ts` | 环境 Runner 入口 |
-| Self-hosted Runner | `src/self-hosted-runner/main.ts` | 自托管 Runner 入口 |
-| Upstream Proxy | `src/upstreamproxy/upstreamproxy.ts` | CCR 上游代理初始化 |
-| Relay | `src/upstreamproxy/relay.ts` | CONNECT-over-WS 中继 |
-| MoreRight | `src/moreright/useMoreRight.tsx` | 本地笔记 UI |
+#### 4.2.1 Protocol 模块
+
+| 项目 | 内容 |
+|------|------|
+| **真实入口签名** | `normalizeWorkInput(value: unknown): WorkInput`、`contentHash(value: unknown): string`、`readTokenFile(path: string): Promise<string>` |
+| **关键类型** | `WorkInput`、`WorkRecord`、`WorkAssignment`、`RunnerIdentity`、`LeaseIdentity`、`RunnerRegistration`、`WorkEventInput`、`WorkEvent`、`OpenRunnerErrorCode`、`OpenRunnerError` |
+| **输入输出** | 输入：未知 JSON 值（来自 HTTP 请求）；输出：规范化的类型安全对象；错误：`OpenRunnerError` 带错误码（`AUTHENTICATION_FAILED`、`INVALID_REQUEST`、`IDEMPOTENCY_CONFLICT` 等） |
+| **状态机** | 无状态纯函数模块；验证函数是确定性的，无副作用 |
+| **注册/拉取/心跳/执行/恢复流程** | 不参与流程执行，仅提供类型定义和验证函数供其他模块使用 |
+| **错误与安全** | 错误码枚举覆盖所有失败场景；token 文件读取验证权限（0600）、所有权（当前用户）、熵（32-1024 字符，无空白）；路径遍历防护（`validateRelativeCwd` 检查 `..`、绝对路径、Windows 盘符）；contentHash 提供确定性哈希用于幂等性检查 |
+| **设计取舍/备选** | 选择 JSON Schema 风格的手动验证而非运行时库，避免额外依赖；错误码是字符串枚举而非数字，便于调试；token 读取不包含在错误消息中，避免泄露 |
+| **源码测试证据** | `src/open-runner/protocol.ts`：`normalizeWorkInput` L201-242、`validateRelativeCwd` L244-258、`resolveWorkspaceCwd` L261-275、`contentHash` L302-304、`readTokenFile` L351-400；测试：`tests/openRunnerProtocol.test.ts` |
+
+#### 4.2.2 Store 模块
+
+| 项目 | 内容 |
+|------|------|
+| **真实入口签名** | `class OpenRunnerStore { constructor(opts: OpenRunnerStoreOptions); async initialize(): Promise<void>; async register(value: unknown): Promise<RunnerRegistration>; async submit(value: unknown): Promise<WorkRecord>; async poll(value: unknown): Promise<{server_time: string, work: WorkAssignment[], cancel_requested: string[]}>; async acknowledge(workId: string, value: unknown): Promise<WorkRecord>; async heartbeat(workId: string, value: unknown): Promise<{lease_expires_at: string, state: WorkState, cancel_requested: boolean}>; async appendEvents(workId: string, value: unknown): Promise<{accepted: {event_id: string, seq: number}[], last_seq: number}>; async complete(workId: string, value: unknown): Promise<WorkRecord>; async cancel(workId: string, value: unknown): Promise<WorkRecord>; async getWork(workId: string): Promise<WorkRecord>; async listWorks(state?: WorkState, limit?: number): Promise<WorkRecord[]> }` |
+| **关键类型** | `StoredWork`（带 lease/epoch 的内部状态）、`PersistentState`（磁盘持久化格式）、`OpenRunnerStoreOptions`（配置：stateDir、leaseMs、heartbeatIntervalMs、now、monotonicNow、retryBaseMs） |
+| **输入输出** | 输入：未知 JSON 值（来自 Server 路由）；输出：公开的 `WorkRecord`（隐藏内部字段如 `protocol`、`submit_hash`、`completion_hash`）； Lease 身份通过 `parseLeaseIdentity` 从请求体中提取 |
+| **状态机** | `queued → leased → running → succeeded/failed/cancelled`；retry_wait 是 leased 的前置状态（lease 过期自动退回）；cancel_requested 是布尔标志，在 queued/leased/running 时都可设置，queued/retry_wait 时立即完成，leased/running 时通知 worker；Worker epoch：同一 runner_id + 新 instance_id → epoch 递增，旧 epoch 所有操作被拒绝 |
+| **注册/拉取/心跳/执行/恢复流程** | **注册**：`register()` → 验证 runner_id/instance_id/capabilities → 递增 epoch（新 instance_id）→ 持久化 → 返回 epoch+间隔；**拉取**：`poll()` → 验证 epoch → 过期租期回收 → 队列中取作业 → 状态 queued→leased/ retry_wait→leased → 设置 lease_id/expires_at/runner_id/instance_id/epoch；**心跳**：`heartbeat()` → 验证 lease/epoch → 续租（更新 expires_at）→ 返回 cancel_requested；**执行**：`acknowledge()` → leased→running；`appendEvents()` → event_id 去重，原子追加 JSONL；`complete()` → 终态，retryable 失败时 retry_wait；**恢复**：无主动恢复，通过租期过期机制实现自动重试；事件持久化在崩溃后可重新读取 |
+| **错误与安全** | `STALE_WORKER_EPOCH`（旧实例被围栏）、`STALE_LEASE`（租期过期或不匹配）、`WORK_TERMINAL`（终态不可变）、`IDEMPOTENCY_CONFLICT`（同 work_id 不同输入）、`EVENT_ID_CONFLICT`（同 event_id 不同内容）；序列化操作（`serialize()` 方法），所有操作通过 Promise 链串行执行，无竞态；原子写入（`atomicWriteJson`）：临时文件 → sync → rename → fsync 目录；token 不经过 Store |
+| **设计取舍/备选** | 选择单进程文件存储而非分布式数据库，简化部署；选择序列化操作而非细粒度锁，避免死锁，吞吐量受限但可接受；租期+心跳而非长期租约，自动恢复；JSONL 而非 SQLite，追加原子，崩溃可恢复（截断最后不完整行），查询需扫描；备选：细粒度锁（放弃）、SQLite（放弃）、长期租约（放弃） |
+| **源码测试证据** | `src/open-runner/store.ts`：`serialize()` L458-469、`register()` L586-640、`submit()` L643-718、`poll()` L721-809、`heartbeat()` L874-903、`appendEvents()` L933-1038、`complete()` L1068-1133、`expire()` L520-557、`atomicWriteJson` L117-136；测试：`tests/openRunnerWorker.test.ts` |
+
+#### 4.2.3 Server 模块
+
+| 项目 | 内容 |
+|------|------|
+| **真实入口签名** | `class OpenRunnerServer { constructor(opts: OpenRunnerServerOptions); async start(): Promise<OpenRunnerServerInfo>; async stop(): Promise<void> }; async startOpenRunnerServer(opts: OpenRunnerServerOptions): Promise<OpenRunnerServer>` |
+| **关键类型** | `OpenRunnerServerOptions`（host、port、stateDir、workerToken、adminToken、workerTokenFile、adminTokenFile、leaseMs、heartbeatIntervalMs、retryBaseMs、now、monotonicNow、drainTimeoutMs）、`OpenRunnerServerInfo`（protocol、server_url、state_dir、host、port） |
+| **输入输出** | 输入：HTTP 请求（JSON 主体）+ Authorization: Bearer <token>；输出：JSON 响应，带 `protocol: "open-runner-v1"` 字段；健康检查：`GET /open-runner/v1/health` |
+| **状态机** | Server 自身状态：`started` 可接受请求 → `draining` 拒绝新提交 → `stopped`；Worker/Admin 双角色认证，路由级别权限检查 |
+| **注册/拉取/心跳/执行/恢复流程** | **路由**：`POST /open-runner/v1/runners/register`（Worker）→ `store.register()`；`POST /open-runner/v1/work`（Admin）→ `store.submit()`；`POST /open-runner/v1/work/poll`（Worker）→ 循环 `store.poll()` + `waitForChange`；`GET /open-runner/v1/work`（Admin）→ `store.listWorks()`；`GET /open-runner/v1/work/{workId}`（Admin/Worker）→ `store.getWork()`（Worker 需 valid lease）；`POST /open-runner/v1/work/{workId}/ack`（Worker）→ `store.acknowledge()`；`POST /open-runner/v1/work/{workId}/heartbeat`（Worker）→ `store.heartbeat()`；`POST /open-runner/v1/work/{workId}/events`（Worker）→ `store.appendEvents()`；`POST /open-runner/v1/work/{workId}/complete`（Worker）→ `store.complete()`；`POST /open-runner/v1/work/{workId}/cancel`（Admin）→ `store.cancel()`；`GET /open-runner/v1/work/{workId}/events`（Admin/Worker）→ `store.readEvents()` |
+| **错误与安全** | 双令牌认证：Worker Token 和 Admin Token 独立，timing-safe 比较（`tokensEqual`）避免时序攻击；绑定仅 localhost（`isLoopbackHost`），不支持远程访问；请求体大小限制（MAX_EVENT_BATCH_BYTES + 1MB）；所有错误通过 `errorResponse()` 统一格式，含 retryable 标志；draining 模式拒绝新提交但允许已有作业继续 |
+| **设计取舍/备选** | 选择 Bearer Token 而非 mTLS，简化本地部署；选择显式双令牌而非单令牌权限范围，安全边界清晰；选择 HTTP/1.1 而非 HTTP/2，Node.js 原生支持；备选：mTLS（放弃）、权限范围令牌（放弃）、gRPC（放弃） |
+| **源码测试证据** | `src/open-runner/server.ts`：`authenticate()` L61-66、`role()` L256-267、`handle()` L275-434、路由 L302-419、`start()` L179-239、`stop()` L489-525；测试：`tests/openRunnerProtocol.test.ts` |
+
+#### 4.2.4 Worker 模块
+
+| 项目 | 内容 |
+|------|------|
+| **真实入口签名** | `class OpenRunnerWorker { constructor(opts: OpenRunnerWorkerOptions); async initialize(): Promise<void>; async register(): Promise<RunnerRegistration>; async runOnce(waitMs?: number): Promise<WorkRecord[]>; async run(opts?: {once?: boolean, waitMs?: number}): Promise<WorkRecord[]>; stop(): void }; async runOpenRunnerWorker(opts: OpenRunnerWorkerOptions & {once?: boolean}): Promise<WorkRecord[]>` |
+| **关键类型** | `OpenRunnerWorkerOptions`（client、runnerId、workspace、stateDir、maxWork、instanceId、execPath、scriptArgs、env、spawnProcess、buildChildCommand）、`ActiveWork`（当前作业状态：assignment、identity、phase、pid、start_token、pending_event 等）、`ActivePhase`（accepted、spawning、prompt_sending、prompt_sent、running） |
+| **输入输出** | 输入：作业分配（`WorkAssignment`）；输出：完成的 `WorkRecord`；子进程 stdin：JSON prompt；子进程 stdout：NDJSON 事件流（sdk/process/log/error）；子进程 stderr：记录到 worker.log |
+| **状态机** | Worker 内部阶段：`accepted`（刚拿到作业）→ `spawning`（启动子进程）→ `prompt_sending`（发送 prompt 到 stdin）→ `prompt_sent`（prompt 已写入）→ `running`（执行中）；阶段状态持久化到 `active-work-{leaseId}.json`，崩溃后可读取恢复决策；delivery_unknown 标志：在 prompt_sending 阶段崩溃 → DELIVERY_UNKNOWN，需显式重试；其他阶段 → RUNNER_RESTARTED，可自动重试 |
+| **注册/拉取/心跳/执行/恢复流程** | **注册**：`initialize()` → 搜索 stateDir 中 active-work-*.json → 为每个恢复作业（`recoverActiveWork()`）；`register()` → `client.register()` → 保存 instance.json；**拉取**：`runOnce()` → `client.poll()` → 并发执行多个作业（maxWork）；**心跳**：`execute()` 中 `setInterval()` 定期调用 `client.heartbeat()`，失败≥3次终止子进程；**执行**：`execute()` → 创建 `ActiveWork` → 写入磁盘 → `acknowledge()` → 启动子进程 → 发送 prompt（记录 pending_event）→ 事件转发 → `complete()` → 清除 active-work；**恢复**：`recoverActiveWork()` → 读取 active-work → 验证进程（pid + start_token），存活则终止 → 发送 pending_event（如果有）→ 根据阶段决定 retryable → `complete(failed)` |
+| **错误与安全** | 环境白名单（`workerEnvironment()`）：仅允许明确列出的变量（PATH、HOME、USER、LOGNAME、SHELL、LANG、TMPDIR、TEMP、TMP、ANTHROPIC_API_KEY、ANTHROPIC_AUTH_TOKEN、ANTHROPIC_BASE_URL、CLAUDE_CODE_OAUTH_TOKEN、CLAUDE_CONFIG_DIR、NODE_ENV、LC_*、AWS_*、GOOGLE_*、CLOUD_ML_*）；黑名单移除：OPEN_RUNNER_*、SSH_*、WORKER_TOKEN、ADMIN_TOKEN、CLAUDE_CODE_SESSION_ACCESS_TOKEN、CLAUDE_CODE_WORKER_EPOCH；日志脱敏（`redact()`）：替换 Bearer/sk-ant-/sk- 前缀的值为 [REDACTED]；进程身份验证：使用 `getProcessStartToken()` + `probeProcessIdentity()` 验证 PID 对应同一进程（防止 PID 重用攻击） |
+| **设计取舍/备选** | 选择阶段状态持久化而非仅内存，崩溃后可恢复；选择显式 DELIVERY_UNKNOWN 标记而非总是重试或从不重试，调用方决定安全性；选择环境白名单而非黑名单，安全优先；备选：仅内存状态（放弃）、自动重试所有失败（放弃）、环境黑名单（放弃） |
+| **源码测试证据** | `src/open-runner/worker.ts`：`workerEnvironment()` L59-89、`initialize()` L173-183、`recoverActiveWork()` L185-243、`execute()` L315-496、`sendEvent()` L306-313、`redact()` L92-94；测试：`tests/openRunnerWorker.test.ts` |
+
+#### 4.2.5 事件 JSONL 模块
+
+| 项目 | 内容 |
+|------|------|
+| **真实入口签名** | `async appendEvents(workId: string, value: unknown): Promise<{accepted: {event_id: string, seq: number}[], last_seq: number}>; async readEvents(workId: string, after?: number, limit?: number): Promise<{work_id: string, events: WorkEvent[], last_seq: number, has_more: boolean}>` |
+| **关键类型** | `WorkEventInput`（event_id、kind、occurred_at、message）、`WorkEvent`（seq 字段追加）；kind: "sdk" \| "process" \| "log" \| "error"；MAX_EVENT_BYTES = 4MB，MAX_EVENT_BATCH_BYTES = 8MB |
+| **输入输出** | 输入：事件数组（带 client 生成的 event_id）；输出：accepted 数组（分配的 seq），重复 event_id 返回已有的 seq 不重复写入；文件路径：`{stateDir}/events/{workId}.jsonl` |
+| **状态机** | 无状态，仅追加；seq 单调递增从 1 开始；last_seq 保存在 state.json 中，崩溃后可从 JSONL 重新计算并恢复（append 可在 state 写入前存活，保留且编号安全） |
+| **去重流程** | 每个事件必须带唯一 UUID event_id；Store 维护 `eventIds: Map<workId, Map<eventId, {seq, hash}>>`；同 event_id 同 hash → 返回已有 seq；同 event_id 不同 hash → `EVENT_ID_CONFLICT` 错误；同 batch 内重复 event_id 同上处理；event_id 由 client 生成（通常是消息 UUID），`eventIdForMessage()` 辅助函数从 message 中提取 uuid 或生成新的 |
+| **错误与安全** | 事件 message 大小限制 4MB，batch 8MB；event_id 冲突检查防止重复或篡改；JSONL 格式：每行一个完整 JSON，最后一行是空行（便于截断恢复）；崩溃恢复：加载时检查最后一行是否完整（以 \n 结尾），不完整则截断 |
+| **设计取舍/备选** | 选择 JSONL 而非 SQLite，追加原子，无需数据库依赖；选择 client 生成 event_id 而非 server 分配，支持客户端重试幂等；选择内存 eventIds 索引而非每次扫描，加快去重；备选：SQLite（放弃）、server 分配 ID（放弃）、无索引（放弃） |
+| **源码测试证据** | `src/open-runner/store.ts`：`appendEvents()` L933-1038、`readEvents()` L1041-1066、`load()`（事件加载）L283-330、`validateStoredEvent()` L431-456；`src/open-runner/protocol.ts`：`eventIdForMessage()` L310-313；测试：`tests/openRunnerProtocol.test.ts` |
+
+#### 4.2.6 Upstream Proxy 模块
+
+| 项目 | 内容 |
+|------|------|
+| **真实入口签名** | `async initUpstreamProxy(opts?: {tokenPath?: string, systemCaPath?: string, caBundlePath?: string, ccrBaseUrl?: string}): Promise<{enabled: boolean, port?: number, caBundlePath?: string}>; function getUpstreamProxyEnv(): Record<string, string>` |
+| **关键类型** | `SESSION_TOKEN_PATH = "/run/ccr/session_token"`；`UpstreamProxyState`（enabled、port、caBundlePath）；NO_PROXY_LIST（localhost、127.0.0.1、::1、169.254.0.0/16、10.0.0.0/8、172.16.0.0/12、192.168.0.0/16、anthropic.com、github.com、npm/pypi/crates/go 注册表） |
+| **输入输出** | 输入：无（从环境变量读取配置）；输出：环境变量字典（HTTPS_PROXY、NO_PROXY、SSL_CERT_FILE 等）；中继输入：localhost TCP CONNECT；中继输出：WebSocket 隧道到 CCR 服务器 |
+| **初始化流程** | 仅在 `CLAUDE_CODE_REMOTE` 和 `CCR_UPSTREAM_PROXY_ENABLED` 为 true 时启用；步骤：1. 读取 session_token 文件；2. `setNonDumpable()`（Linux+Bun 时 prctl(PR_SET_DUMPABLE, 0) 阻止 ptrace 读取堆）；3. 下载并拼接 CA 证书（系统 + CCR MITM CA）；4. 启动 CONNECT-over-WebSocket 中继；5. **unlink token 文件**（确认中继监听后才删除， supervisor 重启可重试）；6. 设置环境变量供子进程使用 |
+| **中继协议** | LOCAL：TCP 接受 HTTP CONNECT，返回 200 Connection Established，然后双向隧道；REMOTE：WebSocket 到 `/v1/code/upstreamproxy/ws`，BinaryType=arraybuffer，Content-Type=application/proto；PROTO：UpstreamProxyChunk  protobuf 手动编码（tag 0x0a + varint length + bytes）；WebSocket 上双认证：Upgrade 请求头带 Bearer <token>（会话 JWT），隧道内 CONNECT 带 Proxy-Authorization: Basic <sessionId:token>（用于上游服务认证）；PING：每 30 秒发送空 chunk 保持连接 |
+| **错误与安全** | 令牌仅内存保留，文件 unlink 后无法恢复；prctl(PR_SET_DUMPABLE, 0) 阻止同一 UID 的 ptrace 附加进程读取堆令牌；NO_PROXY 包含 Anthropic API（MITM 会破坏非 Bun 运行时）和 GitHub/npm/pypi/crates（CCR 已直接可达）；CA 证书拼接使 curl/gh/python/kubectl 信任 MITM 代理；所有失败打开（fail open）：任何错误记录警告并禁用代理，不破坏会话；中继仅绑定 127.0.0.1，无远程访问 |
+| **设计取舍/备选** | 选择 CONNECT-over-WebSocket 而非 raw CONNECT，GKE L7  ingress 仅支持路径前缀路由，无 connect_matcher；选择手动 protobuf 编码而非 protobufjs 依赖，仅单字段消息；选择令牌文件 unlink 而非保留，安全优先（崩溃后需重新注入）；选择 fail open 而非 fail closed，代理不应破坏会话；备选：gRPC（放弃）、protobufjs（放弃）、保留令牌文件（放弃）、fail closed（放弃） |
+| **源码测试证据** | `src/upstreamproxy/upstreamproxy.ts`：`initUpstreamProxy()` L79-153、`setNonDumpable()` L225-252、`getUpstreamProxyEnv()` L160-199、`downloadCaBundle()` L254-285；`src/upstreamproxy/relay.ts`：`startUpstreamProxyRelay()` L155-173、`encodeChunk()` L66-81、`decodeChunk()` L87-103、`handleData()` L295-342、`openTunnel()` L344-428；测试：未单独测试，集成在 CCR 会话中验证 |
+
+### 4.3 作业状态机
+
+| 状态 | 含义 | 允许转移 |
+|------|------|----------|
+| queued | 排队中 | leased |
+| leased | 已分配 | running, queued (租期过期) |
+| running | 执行中 | succeeded, failed, cancelled, retry_wait |
+| retry_wait | 等待重试 | leased |
+| succeeded | 成功（终态） | - |
+| failed | 失败（终态） | - |
+| cancelled | 取消（终态） | - |
+
+### 4.4 Worker 阶段
+
+| 阶段 | 含义 | 恢复策略 |
+|------|------|----------|
+| accepted | 已接受作业 | RUNNER_RESTARTED（可重试） |
+| spawning | 正在启动子进程 | RUNNER_RESTARTED（可重试） |
+| prompt_sending | 正在发送提示词 | DELIVERY_UNKNOWN（需显式重试） |
+| prompt_sent | 提示词已发送 | RUNNER_RESTARTED（可重试） |
+| running | 执行中 | RUNNER_RESTARTED（可重试） |
 
 ### 4.3 作业状态机
 

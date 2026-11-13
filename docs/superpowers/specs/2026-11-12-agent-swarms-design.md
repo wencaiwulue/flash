@@ -136,6 +136,913 @@ function markMessageAsReadByIndex(agentName: string, teamName: string | undefine
 
 调用方通过工具调用进入，异步 agent 通过 `<task-notification>` 返回结果，同步 agent 直接返回。依赖注入包括 `getAppState`/`setAppState`/`abortController` 等。
 
+---
+
+### 4.2 AgentTool 模块设计卡
+
+#### 4.2.1 AgentTool 主入口
+
+**真实入口签名**
+```typescript
+// src/tools/AgentTool/AgentTool.tsx
+const AgentTool: Tool<InputSchema, Output> = buildTool({
+  name: AGENT_TOOL_NAME,
+  searchHint: 'delegate work to a subagent',
+  async call(
+    { prompt, subagent_type, description, model, run_in_background, name, team_name, mode, isolation, cwd }: AgentToolInput,
+    toolUseContext: ToolUseContext,
+    canUseTool: CanUseToolFn,
+    assistantMessage?: Message
+  ): Promise<{ data: Output }>
+})
+```
+
+**关键类型定义**
+```typescript
+type AgentToolInput = z.infer<typeof inputSchema>
+type AgentToolOutput = z.infer<typeof outputSchema>
+type Progress = AgentToolProgress | ShellProgress
+
+type TeammateSpawnedOutput = {
+  status: 'teammate_spawned'
+  prompt: string
+  teammate_id: string
+  agent_id: string
+  agent_type?: string
+  model?: string
+  name: string
+  color?: string
+  tmux_session_name: string
+  tmux_window_name: string
+  tmux_pane_id: string
+  team_name?: string
+  is_splitpane?: boolean
+  plan_mode_required?: boolean
+}
+
+type RemoteLaunchedOutput = {
+  status: 'remote_launched'
+  taskId: string
+  sessionUrl: string
+  description: string
+  prompt: string
+  outputFile: string
+}
+```
+
+**输入输出路径**
+- 输入：用户/coordinator 提供的 `description`、`prompt`、`subagent_type`、可选参数 `name`/`team_name`/`mode`/`isolation`/`cwd`
+- 输出：根据执行模式返回四种状态之一
+  - `completed`: 同步执行完成结果
+  - `async_launched`: 后台 agent 已启动，返回 `agentId` 与 `outputFile`
+  - `teammate_spawned`: 团队成员已创建，返回 pane/session 信息
+  - `remote_launched`: 远程 agent 已启动，返回 `taskId` 与 `sessionUrl`
+
+**Agent/Team 状态**
+- 前台同步：通过 `registerAgentForeground`/`unregisterAgentForeground` 管理 AppState 中的 agent 任务
+- 后台异步：通过 `registerAsyncAgent`/`completeAsyncAgent`/`failAsyncAgent` 管理
+- 团队成员：更新 `AppState.teamContext.teammates[agentId]`，记录 name/color/tmux_session_name/tmux_pane_id/cwd/spawned_at
+- 进程环境：设置 `CLAUDE_CODE_AGENT_ID`、`CLAUDE_CODE_AGENT_NAME`、`CLAUDE_CODE_TEAM_NAME` 等 env var
+
+**创建流程**
+```
+用户输入 AgentTool
+  → 检查 feature gate (isAgentSwarmsEnabled, isForkSubagentEnabled, isCoordinatorMode)
+  → 解析 team_name 与当前团队上下文
+  → 检查权限规则 (filterDeniedAgents)
+  → 决定执行模式 (sync/async/teammate/remote)
+    - sync: registerAgentForeground → runAgent → cleanupWorktreeIfNeeded → finalizeAgentTool
+    - async: registerAsyncAgent → 后台启动 runAsyncAgentLifecycle → 立即返回 async_launched
+    - teammate: resolveTeamName → spawnTeammate → 更新 TeamFile → 返回 teammate_spawned
+    - remote: checkRemoteAgentEligibility → registerRemoteAgentTask → teleportToRemote → 返回 remote_launched
+  → 清理与返回结果
+```
+
+**错误与清理路径**
+- 用户取消：捕获 `AbortError`，调用 `cleanupWorktreeIfNeeded`，设置 agent 任务状态为 `killed`
+- 执行失败：调用 `failAsyncAgent`/`finalizeAgentTool` 记录错误，保留有变更的 worktree
+- 并发安全：所有 AppState 更新通过 updater 函数原子化，async agent 状态变化通过任务队列协调
+
+**设计取舍**
+- 取舍：同一工具承担四种执行模式，而非拆分四个独立工具
+  - 理由：统一入口简化调用方理解，共享参数验证与工具池构建逻辑
+  - 代价：内部复杂度高，类型系统需要处理四种输出分支
+- 取舍：isolation worktree 可选而非强制
+  - 理由：简单任务无需隔离开销，用户可根据场景选择
+  - 代价：需处理 worktree 存在/缺失两种路径，文件变更检测逻辑复杂
+
+**源码测试证据**
+- 主实现：`src/tools/AgentTool/AgentTool.tsx`
+- Fork 路径：`src/tools/AgentTool/forkSubagent.ts`
+- 工具池：`src/tools/AgentTool/loadAgentsDir.ts`
+- 执行器：`src/tools/AgentTool/runAgent.ts`
+- 测试：未找到直接测试文件
+
+---
+
+#### 4.2.2 AgentTool Fork 隐式子代理
+
+**真实入口签名**
+```typescript
+// src/tools/AgentTool/forkSubagent.ts
+function isForkSubagentEnabled(): boolean
+function isInForkChild(messages: Message[]): boolean
+function buildForkedMessages(directive: string, assistantMessage: AssistantMessage): Message[]
+function buildChildMessage(directive: string): string
+function buildWorktreeNotice(parentCwd: string, worktreeCwd: string): string
+```
+
+**关键类型定义**
+```typescript
+const FORK_AGENT: BuiltInAgentDefinition = {
+  agentType: 'fork',
+  tools: ['*'],
+  maxTurns: 200,
+  model: 'inherit',
+  permissionMode: 'bubble',
+  source: 'built-in',
+  baseDir: 'built-in',
+  getSystemPrompt: () => '',
+} satisfies BuiltInAgentDefinition
+
+const FORK_PLACEHOLDER_RESULT = 'Fork started — processing in background'
+```
+
+**输入输出路径**
+- 输入：用户省略 `subagent_type`，`isForkSubagentEnabled()` 返回 true
+- 消息前缀构建：`buildForkedMessages` 保留完整 `assistantMessage`，为所有 `tool_use` 生成占位 `tool_result`
+- 输出：通过 `AgentTool.call` 返回 `async_launched` 状态，最终通过 `<task-notification>` 交付结果
+
+**Agent/Team 状态**
+- `querySource` 设置为 `fork`，继承父 prompt cache 前缀
+- `useExactTools` 保持工具池与父完全一致，确保 cache 命中
+- `isInForkChild` 通过检查消息中 `FORK_BOILERPLATE_TAG` 检测，防止递归 fork
+
+**创建流程**
+```
+用户 AgentTool 省略 subagent_type
+  → isForkSubagentEnabled 检查 (feature('FORK_SUBAGENT') && !isCoordinatorMode && !isNonInteractiveSession)
+  → isInForkChild 检测，防止递归 fork
+  → 构建 forked messages：
+    - 保留完整父 assistantMessage (所有 content blocks)
+    - 为每个 tool_use 生成占位 tool_result (FORK_PLACEHOLDER_RESULT)
+    - 添加 fork boilerplate 消息
+  → 使用 FORK_AGENT 定义 (tools: ['*'], model: 'inherit', permissionMode: 'bubble')
+  → 后台异步执行
+```
+
+**设计取舍**
+- 取舍：隐式触发（省略 subagent_type）而非显式命令
+  - 理由：降低用户使用门槛，自然利用 prompt cache
+  - 代价：需要与 coordinator mode 互斥，需要检测递归 fork
+- 取舍：共享完整工具池而非受限子集
+  - 理由：最大化 prompt cache 复用，fork child 能力与父一致
+  - 代价：需要严格防止递归 fork，需要 `bubble` permission mode 避免重复 prompt
+
+**源码测试证据**
+- 实现：`src/tools/AgentTool/forkSubagent.ts`
+- 测试：未找到直接测试文件
+
+---
+
+#### 4.2.3 AgentTool Worktree 隔离
+
+**真实入口签名**
+```typescript
+// src/utils/worktree.ts 导出函数被 AgentTool 调用
+function createAgentWorktree(): Promise<string>
+function hasWorktreeChanges(worktreePath: string): Promise<boolean>
+function removeAgentWorktree(worktreePath: string): Promise<void>
+```
+
+**关键类型定义**
+```typescript
+// 工作目录配置
+type IsolationMode = 'worktree' | 'remote' | undefined
+type CwdOverride = string | undefined
+
+// Worktree 元数据（未显式类型，通过 TeamFile 存储）
+{
+  worktreePath?: string  // TeamFile.members[*].worktreePath
+}
+```
+
+**输入输出路径**
+- 输入：`isolation: 'worktree'` 参数，或 `cwd` 参数（与 isolation 互斥）
+- 输出：worktree 创建成功后路径写入 `TeamFile.members[*].worktreePath`，agent 执行期间 cwd 切换到 worktree
+- 路径转换：fork child 继承 worktree 时，通过 `buildWorktreeNotice` 提示路径转换
+
+**Agent/Team 状态**
+- 父 agent：cwd 保持不变，worktree 路径记录在 agent 元数据
+- 子 agent：cwd 设置为 worktree，通过 env var 传递 worktree 信息
+- TeamFile：成员记录 `worktreePath`，团队清理时一并删除
+
+**创建流程**
+```
+用户设置 isolation: 'worktree'
+  → 检查与 cwd 参数互斥
+  → createAgentWorktree：
+    - git worktree add 创建临时工作树
+    - 生成唯一路径名
+  → 切换 agent 执行 cwd 到 worktree
+  → buildWorktreeNotice 注入系统提示，告知路径转换
+  → 执行 agent 任务
+  → 完成后 cleanupWorktreeIfNeeded：
+    - hasWorktreeChanges 检测变更
+    - 无变更：removeAgentWorktree 删除
+    - 有变更：保留并提示用户
+```
+
+**设计取舍**
+- 取舍：git worktree 而非独立 clone
+  - 理由：共享对象库，创建速度快，占用空间小
+  - 代价：依赖 git 仓库存在，对非 git 项目需降级处理
+- 取舍：无变更自动清理，有变更保留
+  - 理由：平衡资源占用与安全，防止意外丢失工作
+  - 代价：`hasWorktreeChanges` 需考虑 untracked 文件，决策逻辑复杂
+
+**源码测试证据**
+- 实现：`src/tools/AgentTool/AgentTool.tsx` (worktree 相关部分)
+- 底层：`src/utils/worktree.ts`
+- 测试：未找到直接测试文件
+
+---
+
+### 4.3 团队工具模块设计卡
+
+#### 4.3.1 TeamCreateTool 创建团队
+
+**真实入口签名**
+```typescript
+// src/tools/TeamCreateTool/TeamCreateTool.ts
+const TeamCreateTool: Tool<InputSchema, Output> = buildTool({
+  name: TEAM_CREATE_TOOL_NAME,
+  searchHint: 'create a multi-agent swarm team',
+  async call(input: Input, context: ToolUseContext): Promise<{ data: Output }>
+})
+
+// 内部关键函数
+function generateUniqueTeamName(providedName: string): string
+```
+
+**关键类型定义**
+```typescript
+type Input = z.infer<typeof inputSchema>  // { team_name: string, description?: string, agent_type?: string }
+type Output = { team_name: string, team_file_path: string, lead_agent_id: string }
+
+type TeamFile = {
+  name: string
+  description?: string
+  createdAt: number
+  leadAgentId: string
+  leadSessionId?: string
+  members: Array<{
+    agentId: string
+    name: string
+    agentType?: string
+    model?: string
+    joinedAt: number
+    tmuxPaneId: string
+    cwd: string
+    worktreePath?: string
+    sessionId?: string
+    subscriptions: string[]
+    backendType?: BackendType
+    isActive?: boolean
+    mode?: PermissionMode
+  }>
+}
+```
+
+**输入输出路径**
+- 输入：`team_name`（必填）、`description`、`agent_type`（可选）
+- 输出：最终使用的 `team_name`（可能已添加后缀避免冲突）、`team_file_path`、`lead_agent_id`
+- 副作用：创建 `~/.claude/teams/{teamName}/config.json`、创建团队任务目录、更新 `AppState.teamContext`
+
+**Agent/Team 状态**
+- AppState：设置 `teamContext.teamName`、`teamContext.teamFilePath`、`teamContext.leadAgentId`、`teamContext.teammates[leadAgentId]`
+- 进程环境：设置 leader 团队名称通过 `setLeaderTeamName`，不设置 `CLAUDE_CODE_AGENT_ID`（leader 不是 teammate）
+- TeamFile：初始化 leader 成员记录，`name=TEAM_LEAD_NAME`、`agentId=formatAgentId(TEAM_LEAD_NAME, teamName)`
+- 会话清理：调用 `registerTeamForSessionCleanup`，会话退出时自动清理
+
+**创建流程**
+```
+用户 TeamCreateTool(team_name, description, agent_type)
+  → 检查 isAgentSwarmsEnabled
+  → 检查是否已在团队中：AppState.teamContext 存在则抛出错误
+  → generateUniqueTeamName：
+    - 检查团队名是否已存在
+    - 存在则通过 generateWordSlug 生成唯一名称
+  → 构建初始 TeamFile：
+    - leadAgentId = formatAgentId(TEAM_LEAD_NAME, teamName)
+    - leadSessionId = getSessionId()
+    - members[0] = leader (name=TEAM_LEAD_NAME, agentType=agent_type, model=当前 model)
+  → writeTeamFileAsync 持久化到 ~/.claude/teams/{teamName}/config.json
+  → registerTeamForSessionCleanup 注册会话退出清理
+  → resetTaskList + ensureTasksDir 创建团队任务目录
+  → setLeaderTeamName 设置 leader 团队名称
+  → 更新 AppState.teamContext
+  → 返回结果
+```
+
+**错误与清理路径**
+- 团队已存在：自动重命名而非失败，通过 `generateUniqueTeamName` 处理
+- 已在团队中：抛出错误，防止嵌套团队
+- 并发安全：`writeTeamFileAsync` 使用原子写入（先写临时再 rename）
+
+**设计取舍**
+- 取舍：团队名冲突自动重命名而非失败
+  - 理由：提高鲁棒性，避免用户因命名失败而重试
+  - 代价：实际团队名可能与请求不同，调用方需使用返回值
+- 取舍：限制单个 leader 只能管理一个团队
+  - 理由：简化状态管理，避免多团队上下文混淆
+  - 代价：需要先 TeamDelete 才能创建新团队
+
+**源码测试证据**
+- 实现：`src/tools/TeamCreateTool/TeamCreateTool.ts`
+- 底层：`src/utils/swarm/teamHelpers.ts`
+- 测试：未找到直接测试文件
+
+---
+
+#### 4.3.2 TeamDeleteTool 解散团队
+
+**真实入口签名**
+```typescript
+// src/tools/TeamDeleteTool/TeamDeleteTool.ts
+const TeamDeleteTool: Tool<InputSchema, Output> = buildTool({
+  name: TEAM_DELETE_TOOL_NAME,
+  searchHint: 'disband a swarm team and clean up',
+  async call(input: Input, context: ToolUseContext): Promise<{ data: Output }>
+})
+```
+
+**关键类型定义**
+```typescript
+type Input = {}  // 无参数，使用当前 AppState.teamContext
+type Output = { success: boolean, message: string, team_name?: string }
+```
+
+**输入输出路径**
+- 输入：无显式参数，从 `AppState.teamContext.teamName` 获取
+- 输出：操作成功/失败状态、消息、团队名
+- 副作用：删除团队目录、删除任务目录、清除 `AppState.teamContext`、清除颜色分配
+
+**Agent/Team 状态**
+- 活跃成员检查：读取 TeamFile，过滤 `nonLeadMembers`，检查 `isActive !== false`
+- 清理：调用 `cleanupTeamDirectories` 删除团队目录与成员 worktree
+- 会话清理：调用 `unregisterTeamForSessionCleanup`，防止重复清理
+- AppState 清除：设置 `teamContext = undefined`，清除 `inbox.messages`
+
+**解散流程**
+```
+用户 TeamDeleteTool()
+  → 检查 isAgentSwarmsEnabled
+  → 从 AppState.teamContext 获取 teamName
+  → 无团队则返回 success: true，无操作
+  → 读取 TeamFile 检查活跃成员：
+    - nonLeadMembers = members.filter(m => m.name !== TEAM_LEAD_NAME)
+    - activeMembers = nonLeadMembers.filter(m => m.isActive !== false)
+    - 活跃成员存在则拒绝：返回 success: false，提示使用 requestShutdown
+  → cleanupTeamDirectories(teamName)：
+    - 读取 TeamFile 获取所有成员 worktreePath
+    - destroyWorktree 逐个删除 worktree
+    - 删除 ~/.claude/teams/{teamName} 目录
+    - 删除 ~/.claude/tasks/{sanitizedTeamName} 目录
+  → unregisterTeamForSessionCleanup
+  → clearTeammateColors
+  → clearLeaderTeamName
+  → 更新 AppState：清除 teamContext，清空 inbox
+  → 返回 success: true
+```
+
+**设计取舍**
+- 取舍：有活跃成员时拒绝删除而非强制清理
+  - 理由：防止意外中断正在工作的 teammate，避免资源泄漏
+  - 代价：需要先 SendMessage 发送 shutdown_request 并等待确认
+- 取舍：清理 worktree 作为 TeamDelete 的一部分
+  - 理由：团队解散意味着所有成员工作结束，统一清理避免孤儿目录
+  - 代价：需要在删除 TeamFile 前先读取 worktreePath 列表
+
+**源码测试证据**
+- 实现：`src/tools/TeamDeleteTool/TeamDeleteTool.ts`
+- 底层：`src/utils/swarm/teamHelpers.ts` (cleanupTeamDirectories, destroyWorktree)
+- 测试：未找到直接测试文件
+
+---
+
+#### 4.3.3 SendMessageTool 团队消息传递
+
+**真实入口签名**
+```typescript
+// src/tools/SendMessageTool/SendMessageTool.ts
+const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> = buildTool({
+  name: SEND_MESSAGE_TOOL_NAME,
+  searchHint: 'send messages to agent teammates (swarm protocol)',
+  async call(
+    input: Input,
+    context: ToolUseContext,
+    canUseTool: CanUseToolFn,
+    assistantMessage?: Message
+  ): Promise<{ data: SendMessageToolOutput }>
+})
+```
+
+**关键类型定义**
+```typescript
+type Input = z.infer<typeof inputSchema>
+// {
+//   to: string,
+//   summary?: string,
+//   message: string | StructuredMessage
+// }
+
+type StructuredMessage =
+  | { type: 'shutdown_request', reason?: string }
+  | { type: 'shutdown_response', request_id: string, approve: boolean, reason?: string }
+  | { type: 'plan_approval_response', request_id: string, approve: boolean, feedback?: string }
+
+type SendMessageToolOutput =
+  | MessageOutput  // { success: boolean, message: string, routing?: MessageRouting }
+  | BroadcastOutput  // { success: boolean, message: string, recipients: string[], routing?: MessageRouting }
+  | RequestOutput  // { success: boolean, message: string, request_id: string, target: string }
+  | ResponseOutput  // { success: boolean, message: string, request_id?: string }
+```
+
+**输入输出路径**
+- 输入：`to`（接收者名称、`*` 广播、`uds:<path>`、`bridge:<session-id>`）、`summary`（纯文本消息必填）、`message`（文本或结构化消息）
+- 输出：根据消息类型返回对应输出，包含路由信息（发送者/接收者颜色用于 UI 显示）
+- 特殊路径：本地 agent 恢复：`to` 为已注册 agent name 且任务已停止时，调用 `resumeAgentBackground` 恢复执行
+
+**Agent/Team 状态**
+- AppState.agentNameRegistry：将 agent name 映射到 agentId，用于恢复已停止 agent
+- AppState.tasks：查找 LocalAgentTask，检查 `status: running` 或已停止
+- Mailbox：非本地 agent 消息写入 `~/.claude/teams/{teamName}/inboxes/{agentName}.json`
+- 进程间：UDS/Bridge 路径通过 `sendToUdsSocket`/`postInterClaudeMessage` 直接发送
+
+**消息路由流程**
+```
+用户 SendMessageTool(to, summary, message)
+  → 检查 isAgentSwarmsEnabled
+  → validateInput：
+    - to 不能为空
+    - 纯文本消息必须有 summary
+    - 结构化消息不能广播
+    - shutdown_response 必须发送给 TEAM_LEAD_NAME
+    - bridge 路径需要 isReplBridgeActive
+  → feature('UDS_INBOX') 且 to 是 uds/bridge 路径：
+    - bridge: postInterClaudeMessage
+    - uds: sendToUdsSocket
+  → 否则，检查是否为本地 agent：
+    - 从 agentNameRegistry 或 toAgentId(to) 获取 agentId
+    - 查找 AppState.tasks[agentId]
+    - isLocalAgentTask 且 !isMainSessionTask：
+      - 任务 running：queuePendingMessage 入队，等下次 tool call 处理
+      - 任务 stopped：resumeAgentBackground 恢复并注入消息
+  → 否则为团队消息：
+    - to === '*'：handleBroadcast 读取 TeamFile，逐个 writeToMailbox
+    - to 是 teammate：handleMessage writeToMailbox
+  → 结构化消息特殊路由：
+    - shutdown_request：handleShutdownRequest 生成 requestId，写入目标 inbox
+    - shutdown_response approve：handleShutdownApproval 发送确认给 leader，in-process 则 abort task，否则 gracefulShutdown
+    - plan_approval_response：仅 leader 可调用，writeToMailbox 发送给目标
+  → 返回对应输出
+```
+
+**设计取舍**
+- 取舍：同一工具处理四种路由（本地 agent、团队成员、UDS、Bridge）
+  - 理由：统一消息发送接口，调用方无需关心位置
+  - 代价：validateInput 与 call 逻辑复杂，多分支判断
+- 取舍：支持结构化消息（协议）与纯文本（用户）两种模式
+  - 理由：协议消息类型安全可解析，纯文本灵活易用
+  - 代价：两套处理路径，广播限制仅纯文本
+
+**源码测试证据**
+- 实现：`src/tools/SendMessageTool/SendMessageTool.ts`
+- 协议：`src/utils/teammateMailbox.ts`
+- 测试：未找到直接测试文件
+
+---
+
+### 4.4 团队状态与通信模块设计卡
+
+#### 4.4.1 TeamFile 团队状态持久化
+
+**真实入口签名**
+```typescript
+// src/utils/swarm/teamHelpers.ts
+function readTeamFile(teamName: string): TeamFile | null
+async function readTeamFileAsync(teamName: string): Promise<TeamFile | null>
+async function writeTeamFileAsync(teamName: string, teamFile: TeamFile): Promise<void>
+function getTeamFilePath(teamName: string): string
+function getTeamDir(teamName: string): string
+```
+
+**关键类型定义**
+```typescript
+type TeamFile = {
+  name: string
+  description?: string
+  createdAt: number
+  leadAgentId: string
+  leadSessionId?: string
+  hiddenPaneIds?: string[]
+  teamAllowedPaths?: TeamAllowedPath[]
+  members: Array<{
+    agentId: string
+    name: string
+    agentType?: string
+    model?: string
+    prompt?: string
+    color?: string
+    planModeRequired?: boolean
+    joinedAt: number
+    tmuxPaneId: string
+    cwd: string
+    worktreePath?: string
+    sessionId?: string
+    subscriptions: string[]
+    backendType?: BackendType
+    isActive?: boolean
+    mode?: PermissionMode
+  }>
+}
+
+type TeamAllowedPath = {
+  path: string
+  toolName: string
+  addedBy: string
+  addedAt: number
+}
+```
+
+**输入输出路径**
+- 存储位置：`~/.claude/teams/{teamName}/config.json`
+- 目录结构：
+  ```
+  ~/.claude/teams/
+    {teamName}/
+      config.json
+      inboxes/
+        {agentName}.json
+      permissions/
+        pending/
+        resolved/
+  ```
+- 读写方式：同步 `readTeamFile`（用于 UI 渲染）、异步 `readTeamFileAsync`/`writeTeamFileAsync`（用于工具处理）
+- 原子性：`writeTeamFileAsync` 使用原子写入（先写临时再 rename）
+
+**Agent/Team 状态**
+- 成员生命周期：`joinedAt` 记录加入时间，`isActive` 标记是否活跃（false 表示空闲/退出）
+- 后端信息：`backendType`、`tmuxPaneId` 用于跨进程后端管理
+- 权限模式：`mode` 记录成员当前权限模式，用于 UI 显示与继承
+- 工作隔离：`worktreePath` 记录成员工作树路径，团队清理时使用
+
+**读写流程**
+```
+readTeamFile(teamName)
+  → getTeamFilePath → readFileSync → jsonParse → validate
+  → ENOENT 返回 null
+
+writeTeamFileAsync(teamName, teamFile)
+  → getTeamDir → mkdir recursive
+  → writeFile 原子化写入
+  → logForDebugging
+
+成员更新示例：
+  → readTeamFile(teamName)
+  → members.map(...) 更新字段
+  → writeTeamFileAsync(teamName, updatedTeamFile)
+```
+
+**设计取舍**
+- 取舍：同时提供同步与异步 API
+  - 理由：同步用于 React 组件渲染路径，异步用于工具处理避免阻塞
+  - 代价：两套实现，需注意状态一致性
+- 取舍：完整 JSON 文件而非增量更新
+  - 理由：实现简单，读取即完整状态
+  - 代价：大团队文件写入开销，需要原子化防止并发损坏
+
+**源码测试证据**
+- 实现：`src/utils/swarm/teamHelpers.ts`
+- 测试：未找到直接测试文件
+
+---
+
+#### 4.4.2 Mailbox 文件邮箱系统
+
+**真实入口签名**
+```typescript
+// src/utils/teammateMailbox.ts
+function getInboxPath(agentName: string, teamName?: string): string
+async function readMailbox(agentName: string, teamName?: string): Promise<TeammateMessage[]>
+async function readUnreadMessages(agentName: string, teamName?: string): Promise<TeammateMessage[]>
+async function writeToMailbox(
+  recipientName: string,
+  message: Omit<TeammateMessage, 'read'>,
+  teamName?: string
+): Promise<void>
+async function markMessageAsReadByIndex(
+  agentName: string,
+  teamName: string | undefined,
+  messageIndex: number
+): Promise<void>
+async function markMessagesAsRead(agentName: string, teamName?: string): Promise<void>
+async function clearMailbox(agentName: string, teamName?: string): Promise<void>
+```
+
+**关键类型定义**
+```typescript
+type TeammateMessage = {
+  from: string
+  text: string
+  timestamp: string
+  read: boolean
+  color?: string
+  summary?: string
+}
+
+// 结构化协议消息（嵌套在 text 字段中 JSON 序列化）
+type IdleNotificationMessage = { type: 'idle_notification', from: string, timestamp: string, ... }
+type PermissionRequestMessage = { type: 'permission_request', request_id: string, ... }
+type PermissionResponseMessage = { type: 'permission_response', request_id: string, ... }
+type ShutdownRequestMessage = { type: 'shutdown_request', requestId: string, ... }
+type ShutdownApprovedMessage = { type: 'shutdown_approved', requestId: string, ... }
+type ShutdownRejectedMessage = { type: 'shutdown_rejected', requestId: string, ... }
+type PlanApprovalRequestMessage = { type: 'plan_approval_request', requestId: string, ... }
+type PlanApprovalResponseMessage = { type: 'plan_approval_response', requestId: string, ... }
+type TeamPermissionUpdateMessage = { type: 'team_permission_update', ... }
+type ModeSetRequestMessage = { type: 'mode_set_request', ... }
+type SandboxPermissionRequestMessage = { type: 'sandbox_permission_request', ... }
+type SandboxPermissionResponseMessage = { type: 'sandbox_permission_response', ... }
+type TaskAssignmentMessage = { type: 'task_assignment', ... }
+```
+
+**输入输出路径**
+- 存储位置：`~/.claude/teams/{teamName}/inboxes/{agentName}.json`
+- 文件格式：JSON 数组，每个元素为 `TeammateMessage`
+- 锁机制：使用 `lockfile.lock` 与 `{inboxPath}.lock` 文件，`LOCK_OPTIONS` 配置重试与退避
+- 消息状态：`read: boolean` 标记是否已读，索引按写入顺序排列
+
+**Agent/Team 状态**
+- 消息所有权：每个 agent 独立 inbox，不共享
+- 消息顺序：append-only，索引稳定
+- 已读跟踪：按索引标记，避免删除消息导致索引失效
+- 结构化检测：`isStructuredProtocolMessage` 识别协议消息，路由到对应处理器而非 LLM
+
+**邮箱操作流程**
+```
+writeToMailbox(recipientName, message, teamName)
+  → ensureInboxDir：确保目录存在
+  → getInboxPath：确定文件路径
+  → 先创建 inbox 文件（如果不存在）
+  → lockfile.lock：获取锁（重试 + 退避）
+  → readMailbox：读取现有消息（锁后重读确保最新）
+  → push(newMessage)：追加消息（read: false）
+  → writeFile：写入完整数组
+  → release：释放锁
+
+markMessageAsReadByIndex(agentName, teamName, messageIndex)
+  → lockfile.lock：获取锁
+  → readMailbox：读取最新状态
+  → 索引越界或已读则返回
+  → messages[messageIndex].read = true
+  → writeFile：写入更新
+  → release：释放锁
+
+readUnreadMessages(agentName, teamName)
+  → readMailbox（无锁，只读）
+  → filter(m => !m.read)
+  → 返回结果
+```
+
+**设计取舍**
+- 取舍：文件锁 + 重试/退避而非内存队列或数据库
+  - 理由：跨进程（tmux/iTerm2）与同进程统一机制，不依赖共享内存
+  - 代价：文件 I/O 开销，锁竞争导致延迟
+- 取舍：append-only + 标记已读而非删除消息
+  - 理由：索引稳定，便于引用与调试，保留历史
+  - 代价：文件增长，需定时清理（当前未实现）
+- 取舍：结构化消息嵌套在 text 字段 JSON 中
+  - 理由：保持 TeammateMessage 类型简单，兼容纯文本与协议两种模式
+  - 代价：需要双重解析，`isStructuredProtocolMessage` 先检测再路由
+
+**源码测试证据**
+- 实现：`src/utils/teammateMailbox.ts`
+- 锁机制：`src/utils/lockfile.ts`
+- 测试：未找到直接测试文件
+
+---
+
+#### 4.4.3 双路径权限同步
+
+**真实入口签名**
+```typescript
+// src/utils/swarm/inProcessRunner.ts
+function createInProcessCanUseTool(
+  identity: TeammateIdentity,
+  abortController: AbortController,
+  onPermissionWaitMs?: (waitMs: number) => void
+): CanUseToolFn
+
+// src/utils/swarm/permissionSync.ts
+function createPermissionRequest(params: { ... }): SwarmPermissionRequest
+async function writePermissionRequest(request: SwarmPermissionRequest): Promise<SwarmPermissionRequest>
+async function sendPermissionRequestViaMailbox(
+  params: { ... }
+): Promise<PermissionResolution>
+function generateRequestId(): string
+
+// src/utils/swarm/leaderPermissionBridge.ts
+function getLeaderToolUseConfirmQueue(): ((updater: (queue: LeaderToolUseConfirmQueue) => LeaderToolUseConfirmQueue) => void) | undefined
+function getLeaderSetToolPermissionContext(): ((context: ToolPermissionContext, options?: { preserveMode?: boolean }) => void) | undefined
+```
+
+**关键类型定义**
+```typescript
+type SwarmPermissionRequest = z.infer<typeof SwarmPermissionRequestSchema>
+// {
+//   id: string, workerId: string, workerName: string, workerColor?: string, teamName: string,
+//   toolName: string, toolUseId: string, description: string, input: Record<string, unknown>,
+//   permissionSuggestions: unknown[], status: 'pending' | 'approved' | 'rejected',
+//   resolvedBy?: 'worker' | 'leader', resolvedAt?: number, feedback?: string,
+//   updatedInput?: Record<string, unknown>, permissionUpdates?: unknown[], createdAt: number
+// }
+
+type PermissionResolution = {
+  decision: 'approved' | 'rejected'
+  resolvedBy: 'worker' | 'leader'
+  feedback?: string
+  updatedInput?: Record<string, unknown>
+  permissionUpdates?: PermissionUpdate[]
+}
+
+type LeaderToolUseConfirmQueueItem = {
+  assistantMessage?: Message
+  tool: Tool
+  description: string
+  input: Record<string, unknown>
+  toolUseContext: ToolUseContext
+  toolUseID: string
+  permissionResult: PermissionResult
+  permissionPromptStartTimeMs: number
+  workerBadge?: { name: string, color: string }
+  onUserInteraction(): void
+  onAbort(): void
+  onAllow(...): void
+  onReject(...): void
+}
+```
+
+**输入输出路径**
+- 同进程路径（in-process）：
+  - 输入：worker `canUseTool` 调用返回 `behavior: 'ask'`
+  - 输出：通过 `getLeaderToolUseConfirmQueue` 直接在 leader UI 显示 prompt，结果同步返回
+- Mailbox 路径（跨进程 tmux/iTerm2）：
+  - 输入：worker `sendPermissionRequestViaMailbox` 写入 leader inbox
+  - 输出：leader 轮询检测，用户决定后写入 worker inbox，worker 轮询获取结果
+
+**Agent/Team 状态**
+- Leader 桥接：`getLeaderToolUseConfirmQueue`/`getLeaderSetToolPermissionContext` 通过闭包访问 leader 状态，仅同进程可用
+- Worker 权限更新：同进程路径通过 `applyPermissionUpdates` 直接更新 leader `toolPermissionContext`（`preserveMode: true`）
+- Mailbox 状态：旧路径通过 `~/.claude/teams/{teamName}/permissions/pending/{requestId}.json` 存储，新路径通过 `permission_request`/`permission_response` 协议消息
+
+**权限同步流程**
+```
+同进程路径（createInProcessCanUseTool）:
+  worker 调用 canUseTool
+    → hasPermissionsToUseTool 返回 behavior: 'ask'
+    → feature('BASH_CLASSIFIER') 且是 Bash 工具：
+      - awaitClassifierAutoApproval
+    → 检查 abortController.signal.aborted
+    → getLeaderToolUseConfirmQueue 存在：
+      - 创建 Promise，注册 onAllow/onReject/onAbort 回调
+      - 通过 setToolUseConfirmQueue 将 prompt 入队 leader UI
+      - workerBadge 显示 worker name/color
+      - 用户决定：
+        - allow: persistPermissionUpdates，更新 leader toolPermissionContext (preserveMode: true)
+        - reject: 返回 SUBAGENT_REJECT_MESSAGE
+      - Promise resolve 继续执行
+
+Mailbox 路径（sendPermissionRequestViaMailbox）:
+  worker 创建 SwarmPermissionRequest
+    → writePermissionRequest 写入 pending 目录
+    → writeToMailbox 发送 permission_request 到 leader inbox
+    → 轮询等待：sleep + readMailbox 查找对应 permission_response
+    → 超时？无超时，永久等待
+    → 收到响应：更新 request status，移动到 resolved 目录
+    → 返回 PermissionResolution
+```
+
+**设计取舍**
+- 取舍：同进程直接 UI bridge，跨进程 mailbox 双路径
+  - 理由：同进程低延迟，无需文件 I/O；跨进程 mailbox 统一可靠
+  - 代价：两套实现，调用方需判断可用路径
+- 取舍：旧路径 pending/resolved 文件 + 新路径 mailbox 协议并存
+  - 理由：渐进迁移，避免破坏现有部署
+  - 代价：代码复杂度高，需要维护两套逻辑
+- 取舍：无超时永久等待
+  - 理由：用户可能长时间未决定，超时会导致任务失败
+  - 代价：worker 可能永久阻塞，需要 shutdown_request 强制退出
+
+**源码测试证据**
+- in-process：`src/utils/swarm/inProcessRunner.ts`
+- permissionSync：`src/utils/swarm/permissionSync.ts`
+- leaderBridge：`src/utils/swarm/leaderPermissionBridge.ts`
+- 测试：未找到直接测试文件
+
+---
+
+### 4.5 Coordinator 协调器模块设计卡
+
+#### 4.5.1 Coordinator Mode 协调器模式
+
+**真实入口签名**
+```typescript
+// src/coordinator/coordinatorMode.ts
+function isCoordinatorMode(): boolean
+function matchSessionMode(sessionMode: 'coordinator' | 'normal' | undefined): string | undefined
+function getCoordinatorUserContext(
+  mcpClients: ReadonlyArray<{ name: string }>,
+  scratchpadDir?: string
+): { [k: string]: string }
+function getCoordinatorSystemPrompt(): string
+```
+
+**关键类型定义**
+```typescript
+// 常量定义
+const INTERNAL_WORKER_TOOLS = new Set([
+  TEAM_CREATE_TOOL_NAME,
+  TEAM_DELETE_TOOL_NAME,
+  SEND_MESSAGE_TOOL_NAME,
+  SYNTHETIC_OUTPUT_TOOL_NAME,
+])
+
+// Coordinator 系统提示返回类型
+{ workerToolsContext: string }
+```
+
+**输入输出路径**
+- 启用条件：`feature('COORDINATOR_MODE') && isEnvTruthy(process.env.CLAUDE_CODE_COORDINATOR_MODE)`
+- 会话恢复：`matchSessionMode` 检测会话存储的模式，不匹配则切换 env var
+- 系统提示：`getCoordinatorSystemPrompt` 注入协调器专用提示，定义角色、工具、worker 能力
+- 用户上下文：`getCoordinatorUserContext` 注入 worker 工具列表、MCP 服务器、scratchpad 目录
+
+**Agent/Team 状态**
+- 互斥性：coordinator mode 与 fork subagent 互斥，`isForkSubagentEnabled` 返回 false
+- 环境变量：`CLAUDE_CODE_COORDINATOR_MODE` 控制模式切换，会话恢复时可能被 `matchSessionMode` 修改
+- 工具白名单：`ASYNC_AGENT_ALLOWED_TOOLS` 过滤 worker 可用工具，排除 `INTERNAL_WORKER_TOOLS`
+
+**协调器工作流**
+```
+会话启动：
+  → 检查 process.env.CLAUDE_CODE_COORDINATOR_MODE
+  → isCoordinatorMode 返回 true/false
+  → 会话恢复时：matchSessionMode 比较存储模式，不匹配则切换 env var
+
+用户交互：
+  → getCoordinatorSystemPrompt 注入提示：
+    - 角色：coordinator，委派任务给 worker
+    - 工具：AgentTool (spawn worker)、SendMessage (继续 worker)、TaskStop (停止 worker)
+    - 工作流：spawn → 等待 <task-notification> → SendMessage 继续或汇总
+  → getCoordinatorUserContext 添加上下文：
+    - workerToolsContext：worker 可用工具列表、MCP 服务器、scratchpad 目录
+  → coordinator 决策：
+    - 并行 spawn 多个 AgentTool(run_in_background: true)
+    - 结束当前 turn，等待 <task-notification> 用户消息
+    - 收到通知后继续，SendMessage 跟进或汇总结果
+```
+
+**设计取舍**
+- 取舍：通过系统提示定义协调器行为而非专用执行引擎
+  - 理由：灵活可演进，利用 LLM 推理能力处理复杂协调
+  - 代价：依赖提示质量，可能出错
+- 取舍：coordinator 与 fork 互斥
+  - 理由：coordinator 已有委派模型，fork 是另一种并行模式，避免混淆
+  - 代价：用户需选择其一，不能同时使用
+
+**源码测试证据**
+- 实现：`src/coordinator/coordinatorMode.ts`
+- 工具白名单：`src/constants/tools.ts` (ASYNC_AGENT_ALLOWED_TOOLS)
+- 测试：未找到直接测试文件
+
+---
+
+### 4.6 模块与状态所有权（更新版）
+
+| 模块/对象 | 拥有的状态 | 主要操作 | 不承担的职责 | 与其他模块的接口 | 设计文档位置 |
+|---|---|---|---|---|---|
+| `AgentTool` | agentId、autoBackground 状态、worktreeInfo | spawn agent、同步/异步执行、worktree 管理 | 子代理内部执行 | 调用 `runAgent`，写入 AppState | 4.2.1-4.2.3 |
+| `forkSubagent` | fork boilerplate、cached prompt 前缀 | 构建 forked 消息、检测递归 fork | fork child 执行 | 调用 `runAgent` 时传入 `useExactTools` | 4.2.2 |
+| `TeamCreateTool` / `TeamDeleteTool` | AppState.teamContext | 创建/解散团队、读写 teamFile | 团队成员执行 | 调用 `writeTeamFileAsync`、`cleanupTeamDirectories` | 4.3.1-4.3.2 |
+| `SendMessageTool` | 待发送消息、路由状态 | 路由消息到本地 agent/团队成员/UDS/Bridge | 消息内容执行 | 调用 `writeToMailbox`、`resumeAgentBackground` | 4.3.3 |
+| `teammateMailbox` | inbox 文件、lockfile | 读写消息、标记已读 | 消息内容解释 | 文件系统 I/O、lockfile | 4.4.2 |
+| `teamHelpers` | TeamFile、team directory | 读写 teamFile、清理团队目录 | 团队业务逻辑 | JSON 序列化、文件系统 I/O | 4.4.1 |
+| `inProcessRunner` | inProcessTeammate 状态、abortController | 执行 in-process worker、权限同步 | tmux/iTerm2 后端 | 调用 `runAgent`、leaderToolUseConfirmQueue | 4.4.3 |
+| `permissionSync` | pending/resolved permission 文件 | 发送/响应权限请求 | 权限决策逻辑 | mailbox、leader permission bridge | 4.4.3 |
+| `coordinatorMode` | coordinator 模式标志 | 协调 worker 执行、聚合结果 | 实际任务执行 | 系统提示注入、`<task-notification>` 解析 | 4.5.1 |
+
 ### 4.2 模块与状态所有权
 
 | 模块/对象 | 拥有的状态 | 主要操作 | 不承担的职责 | 与其他模块的接口 |
@@ -441,14 +1348,16 @@ type AppState = {
 
 | 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
 |---|---|---|---|
-| 基于文件系统的 mailbox 消息传递 | `src/utils/teammateMailbox.ts:43-271` | 未找到直接测试文件 | 未覆盖 tmux/iTerm2 后端的并发场景 |
-| 团队状态持久化到 config.json | `src/utils/swarm/teamHelpers.ts:64-182` | 未找到直接测试文件 | 未覆盖并发读写 teamFile |
-| 双路径权限同步 | `src/utils/swarm/inProcessRunner.ts:128-300` + `src/utils/swarm/permissionSync.ts:646-828` | 未找到直接测试文件 | 仅检查 in-process 路径，未测试 mailbox 路径 |
-| 隐式 fork 继承父系统提示和工具池 | `src/tools/AgentTool/forkSubagent.ts:32-210` + `src/tools/AgentTool/AgentTool.ts:726-919` | 未找到直接测试文件 | feature('FORK_SUBAGENT') 可能未覆盖 |
-| Coordinator 模式分离协调与执行 | `src/coordinator/coordinatorMode.ts:111-369` | 未找到直接测试文件 | 仅检查系统提示，未验证端到端协调 |
-| Worktree 隔离可选 | `src/tools/AgentTool/AgentTool.ts:850-953` | 未找到直接测试文件 | 未覆盖有变更保留 worktree 的场景 |
-| 异步/同步双路径 | `src/tools/AgentTool/AgentTool.ts:954-1669` | 未找到直接测试文件 | 未覆盖同步转后台的自动切换 |
-| 团队解散前检查活跃成员 | `src/tools/TeamDeleteTool/TeamDeleteTool.ts:71-139` | 未找到直接测试文件 | 未覆盖 member.isActive 的完整生命周期 |
+| AgentTool 四模式执行 | `src/tools/AgentTool/AgentTool.tsx:1-1669` | 未找到直接测试文件 | 未覆盖四种模式的完整组合 |
+| AgentTool Fork 隐式子代理 | `src/tools/AgentTool/forkSubagent.ts:32-210` | 未找到直接测试文件 | feature('FORK_SUBAGENT') 可能未覆盖 |
+| AgentTool Worktree 隔离 | `src/tools/AgentTool/AgentTool.tsx` (worktree 相关部分) + `src/utils/worktree.ts` | 未找到直接测试文件 | 未覆盖有变更保留 worktree 的场景 |
+| TeamCreateTool 创建团队 | `src/tools/TeamCreateTool/TeamCreateTool.ts:1-241` | 未找到直接测试文件 | 未覆盖并发创建同名团队 |
+| TeamDeleteTool 解散团队 | `src/tools/TeamDeleteTool/TeamDeleteTool.ts:1-139` | 未找到直接测试文件 | 未覆盖 member.isActive 的完整生命周期 |
+| SendMessageTool 消息路由 | `src/tools/SendMessageTool/SendMessageTool.ts:1-800+` | 未找到直接测试文件 | 未覆盖 UDS/Bridge 跨机器路径 |
+| TeamFile 状态持久化 | `src/utils/swarm/teamHelpers.ts:1-684` | 未找到直接测试文件 | 未覆盖并发读写 teamFile |
+| Mailbox 文件邮箱系统 | `src/utils/teammateMailbox.ts:43-1142` | 未找到直接测试文件 | 未覆盖 tmux/iTerm2 后端的并发场景 |
+| 双路径权限同步 | `src/utils/swarm/inProcessRunner.ts:1-600+` + `src/utils/swarm/permissionSync.ts:1-600+` + `src/utils/swarm/leaderPermissionBridge.ts` | 未找到直接测试文件 | 仅检查 in-process 路径，未测试 mailbox 路径 |
+| Coordinator 模式协调 | `src/coordinator/coordinatorMode.ts:1-369` | 未找到直接测试文件 | 仅检查系统提示，未验证端到端协调 |
 | Agent 内存快照管理 | `src/tools/AgentTool/agentMemorySnapshot.ts` + `src/tools/AgentTool/agentMemory.ts` | `tests/agentMemorySnapshot.test.ts`: 快照初始化、时间戳验证、保留变更、回滚机制、合并完成验证 | 未覆盖多 agent 同时合并的竞态场景 |
 
 ## 8. 文件覆盖与相关子系统

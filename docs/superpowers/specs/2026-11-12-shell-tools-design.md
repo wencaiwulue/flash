@@ -353,6 +353,490 @@ bashToolHasPermission 被调用
 | `analytics/index.ts` | 记录命令执行、分类器结果 | analytics 域 |
 | `sideQuery.ts` | 调用小模型做分类 | model-query 域 |
 
+### 4.6 模块设计卡片
+
+#### 模块: Bash/PowerShell命令解析
+
+**真实入口签名:**
+- `parseForSecurity(command: string): Promise<ParseForSecurityResult>`
+- `parseForSecurityFromAst(command: string, root: Node | typeof PARSE_ABORTED): ParseForSecurityResult`
+- `parseCommandRaw(command: string): Promise<Node | null>` (tree-sitter WASM binding)
+
+**输入输出:**
+- 输入: 完整命令字符串
+- 输出: `{ kind: "simple", commands: SimpleCommand[] }` | `{ kind: "tooComplex", reason: string, nodeType?: string }` | `{ kind: "parse-unavailable" }`
+
+**进程和任务状态:**
+- 无状态操作，纯函数解析
+- tree-sitter WASM 模块加载状态（全局）
+
+**完整执行链:**
+1. 预检查：control characters、unicode whitespace、backslash whitespace、zsh ~[ / = expansion、brace-with-quote
+2. 调用 `parseCommandRaw` 尝试 tree-sitter 解析
+3. 若 `parse-unavailable`，跳过，后续走 legacy regex
+4. 若 `PARSE_ABORTED`（超时/资源耗尽），返回 `tooComplex`
+5. `walkProgram` 遍历 AST：
+   - `STRUCTURAL_TYPES`: program/list/pipeline/redirected_statement
+   - `SEPARATOR_TYPES`: &&/||/|/;/&
+   - `command` 节点：提取 argv/env vars/redirects
+   - `declaration_command`: export/local/readonly/declare/typeset
+   - `variable_assignment`: 提取变量赋值
+   - `for_statement`: 提取循环变量和 body
+   - `if_statement/while_statement`: 提取 condition/body
+   - `subshell`: 递归提取
+   - `test_command`: [[ ]] / [ ] 条件
+   - `unset_command`: 变量/函数删除
+6. 检测危险节点类型：command_substitution/process_substitution/expansion/simple_expansion/brace_expression/subshell/compound_statement/for_statement/while_statement/until_statement/if_statement/case_statement/function_definition/test_command/ansi_c_string/translated_string/herestring_redirect/heredoc_redirect
+
+**权限分类边界:**
+- 解析本身不做权限决策，仅提取结构化信息供 `bashPermissions.ts` 使用
+- `SimpleCommand.argv` 用于精确/前缀/通配符规则匹配
+- 检测到 `tooComplex` 时，权限检查直接 ask，不走规则
+
+**错误与取消:**
+- tree-sitter 解析失败 → `parse-unavailable`，fallback 到 `bashCommandIsSafeAsync` (legacy regex)
+- `PARSE_ABORTED`（超时/资源耗尽）→ `tooComplex`，直接 ask，安全优先
+- 预检查失败 → `tooComplex`，直接 ask
+
+**设计取舍/备选:**
+- tree-sitter优先 vs regex优先: tree-sitter优先，解析更准确
+- 备选方案：ANTLR生成解析器；手写递归下降解析器
+- 代价：tree-sitter WASM 体积；需要维护两套路径
+- 收益：误报率低；支持更复杂的合法命令模式
+
+**源码测试证据:**
+- 源码: `src/utils/bash/ast.ts` `parseForSecurityFromAst()`, `walkProgram()`, `collectCommands()`, `walkCommand()`, `walkArgument()`, `walkString()`, `walkVariableAssignment()`, `walkArithmetic()`, `walkRedirectedStatement()`, `walkFileRedirect()`, `walkHeredocRedirect()`, `walkHerestringRedirect()`, `walkTestExpr()`, `extractSafeCatHeredoc()`
+- 源码: `src/utils/bash/parser.ts` `parseCommandRaw()` (tree-sitter WASM binding)
+- 测试: `tests/bashParser.test.ts` 验证各种命令结构
+- 边界: tree-sitter 在某些构建中不可用（需要 Wasm 支持），需测试 legacy 路径
+
+**特有细节:**
+- tree-sitter + regex fallback双轨
+- FAIL_CLOSED: 任何未明确允许的节点类型 → `tooComplex`
+- 变量作用域跟踪（支持 `VAR=x && cmd $VAR`）
+- 特殊变量：`SAFE_ENV_VARS`、`SPECIAL_VAR_NAMES`
+- 裸变量不安全检查（`BARE_VAR_UNSAFE_RE`: 空格/tab/nl/*?[]）
+- `$(cat <<'EOF'...EOF)` 特殊处理（heredoc with quoted delimiter）
+- 算术扩展仅允许字面表达式（防止变量递归求值）
+- PS4/IFS赋值特殊处理
+
+---
+
+#### 模块: 前台/后台执行
+
+**真实入口签名:**
+- `runShellCommand(...)`: AsyncGenerator → ExecResult
+- `spawnShellTask(input, context): Promise<TaskHandle>`
+- `registerForeground(input, setAppState, toolUseId?): string`
+- `backgroundExistingForegroundTask(taskId, shellCommand, description, setAppState, toolUseId): boolean`
+- `backgroundAll(getAppState, setAppState): void`
+- `hasForegroundTasks(state): boolean`
+
+**输入输出:**
+- 输入: `{ command, description, timeout, run_in_background, dangerouslyDisableSandbox, _simulatedSedEdit }`
+- 输出前台: `{ stdout, stderr, interrupted, isImage?, returnCodeInterpretation?, noOutputExpected?, persistedOutputPath?, persistedOutputSize? }`
+- 输出后台: `{ stdout: "", stderr: "", interrupted: false, backgroundTaskId }`
+
+**进程和任务状态:**
+- `ShellCommand.status`: `'running' | 'backgrounded' | 'completed' | 'killed'`
+- `LocalShellTaskState`: `{ status: 'running'|'completed'|'failed'|'killed', isBackgrounded: boolean, shellCommand: ShellCommand | null, ... }`
+- 前台任务注册后可被 Ctrl+B 后台化
+
+**完整执行链:**
+1. 输入验证（`validateInput`）
+2. 权限检查（`bashToolHasPermission`）
+3. 若 `run_in_background: true` 且 `!isBackgroundTasksDisabled`：
+   - `spawnShellTask` 立即
+   - 返回 `backgroundTaskId`
+4. 否则前台执行：
+   - `exec()` 生成 `ShellCommand`
+   - 等待 `PROGRESS_THRESHOLD_MS` (2s)
+   - 若未完成：
+     - `registerForeground()` 注册为可后台任务
+     - 显示 `BackgroundHint` UI
+     - `startPolling` 轮询输出
+     - yield progress 每秒
+5. 自动后台：
+   - assistant 模式且 `KAIROS` 活跃且 `isMainThread`
+   - `ASSISTANT_BLOCKING_BUDGET_MS` (15s) 超时
+   - `isAutobackgroundingAllowed` 为 true（非 sleep）
+   - `shellCommand.onTimeout` callback 触发后台化
+6. 手动后台：
+   - 用户按 Ctrl+B
+   - `backgroundAll()` 调用
+   - `hasForegroundTasks()` 检查是否有可后台任务
+   - 是：`backgroundAll()` 后台现有任务
+7. 后台任务：
+   - `shellCommand.background(taskId)` 切换状态
+   - `TaskOutput` 继续写入文件
+   - `startSizeWatchdog`（> `MAX_TASK_OUTPUT_BYTES` 则 kill）
+   - `startStallWatchdog`（检测交互式提示）
+   - 完成时 `enqueueShellNotification`
+
+**权限分类边界:**
+- 后台执行前必须通过完整权限检查
+- 后台任务启动后无二次权限检查（启动前已授权）
+
+**错误与取消:**
+- `AbortSignal`: `'interrupt'` reason 不 kill，仅后台化；其他 reason 杀进程
+- 前台取消：终止进程组，设置 `interrupted`
+- 后台取消：`killTask` 终止，保留输出文件
+
+**设计取舍/备选:**
+- 自动后台 vs 仅显式后台: 都支持，15s 自动后台（assistant 模式）
+- 备选方案：用户确认后台；无自动后台
+- 代价：状态管理复杂；需要正确处理 cleanup 顺序
+- 收益：对话保持响应；长任务不阻塞交互
+
+**源码测试证据:**
+- 源码: `src/tools/BashTool/BashTool.tsx` `runShellCommand()`, `registerForeground()`, `backgroundExistingForegroundTask()`, `backgroundAll()`, `hasForegroundTasks()`, `isAutobackgroundingAllowed()`, `detectBlockedSleepPattern()`
+- 源码: `src/tasks/LocalShellTask/LocalShellTask.tsx` `spawnShellTask()`, `enqueueShellNotification()`, `startStallWatchdog()`, `looksLikePrompt()`
+- 测试: 需补充测试
+- 边界: sleep 命令不自动后台（特殊处理）
+
+**特有细节:**
+- 15秒自动后台（assistant模式）
+- 手动后台 Ctrl+B
+- sleep 命令特殊处理（不自动后台，检测 `BLOCKED_SLEEP_PATTERN`）
+- 阻塞提示检测（stall watchdog）
+- 前台注册后可被 `backgroundAll()` 捕获
+
+---
+
+#### 模块: Sandbox
+
+**真实入口签名:**
+- `shouldUseSandbox(input): boolean`
+- `SandboxManager.wrapWithSandbox(command, shellPath, config, abortSignal): Promise<string>`
+- `SandboxManager.annotateStderrWithSandboxFailures(command, stderr): string`
+- `SandboxManager.cleanupAfterCommand(): void`
+- `convertToSandboxRuntimeConfig(settings): SandboxRuntimeConfig`
+- `resolvePathPatternForSandbox(pattern, source): string`
+- `resolveSandboxFilesystemPath(pattern, source): string`
+
+**输入输出:**
+- 输入 `shouldUseSandbox`: `BashToolInput`
+- 输出 `shouldUseSandbox`: `boolean`
+- 输入 `wrapWithSandbox`: 命令字符串, shell路径, 配置, `AbortSignal`
+- 输出 `wrapWithSandbox`: 包装后的命令字符串
+
+**进程和任务状态:**
+- `SandboxManager.initializationPromise`: 初始化状态
+- `worktreeMainRepoPath`: Git worktree 主路径缓存
+- `bareGitRepoScrubPaths`: 需要事后清理的裸仓库路径
+- `settingsSubscriptionCleanup`: 设置变更订阅清理函数
+
+**完整执行链:**
+1. 决策是否用沙箱 (`shouldUseSandbox`):
+   - 检查平台支持（macOS/Linux/WSL 支持，Windows 不支持）
+   - 检查 `excludedCommands`
+   - 检查 `dangerouslyDisableSandbox` 参数
+2. 初始化 `SandboxManager`（仅一次）
+3. `convertToSandboxRuntimeConfig` 生成配置：
+   - network: 从 WebFetch 权限规则提取 `allowedDomains/deniedDomains`
+   - filesystem: 从 Edit/Read 权限规则提取 `allowWrite/denyWrite/allowRead/denyRead`
+   - 总是允许当前目录和 Claude 临时目录
+   - 总是拒绝设置文件写入（防止沙箱逃逸）
+   - 总是拒绝 `.claude/skills` 写入
+   - Git 裸仓库路径：存在则 `denyWrite`，不存在则事后 scrub
+   - Git worktree: 主仓库路径加入 `allowWrite`
+   - `additionalDirectories` 加入 `allowWrite`
+4. `wrapWithSandbox` 包装命令（@anthropic-ai/sandbox-runtime）
+5. 执行后 `cleanupAfterCommand`：
+   - 清理 bwrap 留下的 0-byte mount stub
+   - `scrubBareGitRepoFiles` 删除 planted files
+6. `annotateStderrWithSandboxFailures` 注释违规到 stderr
+
+**权限分类边界:**
+- 沙箱配置由权限规则生成，但独立于权限检查
+- 权限检查决定是否允许执行；沙箱决定执行环境
+- `allowWrite/denyWrite` 从 FileEdit 权限规则提取
+- `allowRead/denyRead` 从 FileRead 权限规则提取
+- `allowManagedDomainsOnly`: 仅用 policySettings 网络规则
+
+**错误与取消:**
+- 沙箱初始化失败：记录日志，fallback 到无沙箱（若 `allowUnsandboxedCommands`）
+- bwrap 执行失败：命令失败，stderr 包含错误
+- 沙箱违规：仅注释 stderr，不终止命令
+
+**设计取舍/备选:**
+- 默认启用 vs 默认禁用: 默认启用（若平台支持）
+- 备选方案：总是询问用户；默认禁用
+- 代价：例外列表需要维护；部分命令需要配置
+- 收益：安全边界默认存在；降低事故风险
+
+**源码测试证据:**
+- 源码: `src/tools/BashTool/shouldUseSandbox.ts` `shouldUseSandbox()`
+- 源码: `src/utils/sandbox/sandbox-adapter.ts` `SandboxManager`, `convertToSandboxRuntimeConfig()`, `resolvePathPatternForSandbox()`, `resolveSandboxFilesystemPath()`, `scrubBareGitRepoFiles()`
+- 测试: 需补充测试
+- 边界: sandbox-runtime 包行为是外部依赖
+
+**特有细节:**
+- Git裸仓库防护：HEAD/objects/refs/config/hooks
+- 存在则 `denyWrite`，不存在则事后 scrub
+- `.claude/skills` 保护
+- 路径约定：`//path` 表示根绝对，`/path` 表示 settings 相对
+- `sandbox.filesystem.*` 用标准路径语义
+
+---
+
+#### 模块: 输出与超时
+
+**真实入口签名:**
+- `exec(command, abortSignal, shellType, options): Promise<ShellCommand>`
+- `wrapSpawn(childProcess, abortSignal, timeout, taskOutput, shouldAutoBackground, maxOutputBytes): ShellCommand`
+- `createAbortedCommand(backgroundTaskId?, opts?): ShellCommand`
+- `createFailedCommand(preSpawnError): ShellCommand`
+- `EndTruncatingAccumulator` class
+
+**输入输出:**
+- `ExecOptions`: `{ timeout?, onProgress?, preventCwdChanges?, shouldUseSandbox?, shouldAutoBackground?, onStdout? }`
+- `ExecResult`: `{ stdout, stderr, code, interrupted, backgroundTaskId?, backgroundedByUser?, assistantAutoBackgrounded?, outputFilePath?, outputFileSize?, outputTaskId?, preSpawnError? }`
+
+**进程和任务状态:**
+- `ShellCommand` 状态机: running → backgrounded/completed/killed
+- `TaskOutput`: stdout/stderr 累积，可写文件
+- 超时定时器 id（unref 不阻塞进程退出）
+
+**完整执行链:**
+1. 构建命令字符串（`ShellProvider.buildExecCommand`）
+2. 可选沙箱包装（`shouldUseSandbox`）
+3. 创建 `TaskOutput`（可选写文件）
+4. spawn 子进程：
+   - stdio: 用输出文件 fd（原子追加）
+   - 或 pipe 模式（`onStdout` 回调）
+5. `wrapSpawn` 包装：
+   - 设置超时定时器（`DEFAULT_TIMEOUT = 30min`）
+   - 监听 `abortSignal`
+   - 监听 `'exit'/'error'` 事件
+   - `StreamWrapper`（pipe 模式）
+6. 输出处理：
+   - 前台：`EndTruncatingAccumulator` 保留开头和结尾
+   - 大输出：> `MAX_PERSISTED_SIZE` (64MB) 截断后持久化
+   - 持久化：copy/link 到 tool-results 目录
+   - 图片检测：`isImageOutput`，`resizeShellImageOutput`
+7. 超时处理：
+   - 前台：触发 `onTimeout` callback → 可后台化
+   - 后台：size watchdog (`MAX_TASK_OUTPUT_BYTES`)
+
+**权限分类边界:**
+- 输出持久化不涉及权限检查（启动前已授权）
+- 输出文件路径在 tool-results 目录（模型可 FileRead）
+
+**错误与取消:**
+- 超时：SIGTERM → 等待 → SIGKILL
+- 取消：`AbortSignal` 触发，终止进程组
+- 输出文件写入失败：捕获异常，stderr 记录，返回失败
+
+**设计取舍/备选:**
+- 输出截断保留两端 vs 仅开头: 两端都保留
+- 备选方案：仅开头；仅结尾；环状缓冲区
+- 代价：实现复杂；内存占用（保存开头）
+- 收益：既看开头错误，也看结尾总结
+- 大输出持久化 vs 仅截断: 持久化 + FileRead
+- 代价：临时文件需要管理；磁盘占用
+- 收益：完整输出可被模型访问
+
+**源码测试证据:**
+- 源码: `src/utils/Shell.ts` `exec()`, `findSuitableShell()`, `getShellConfig()`, `getPsProvider()`
+- 源码: `src/utils/ShellCommand.ts` `ShellCommandImpl`, `wrapSpawn()`, `createAbortedCommand()`, `createFailedCommand()`, `StreamWrapper`
+- 源码: `src/utils/stringUtils.ts` `EndTruncatingAccumulator`
+- 源码: `src/utils/toolResultStorage.ts` `buildLargeToolResultMessage()`, `generatePreview()`
+- 源码: `src/utils/task/TaskOutput.ts` `TaskOutput`
+- 测试: 需补充测试
+- 边界: 截断点选择是启发式
+
+**特有细节:**
+- POSIX: `O_APPEND` 原子追加；Windows: `'w'` 模式（避免 MSYS2 问题）
+- `O_NOFOLLOW` 防止 symlink 跟随攻击
+- 64MB 大输出截断
+- `EndTruncatingAccumulator`: 开头保留 + 结尾保留
+- 图片 `resizeShellImageOutput` 优化
+
+---
+
+#### 模块: 进程树终止
+
+**真实入口签名:**
+- `ShellCommand.kill(): void`
+- `ShellCommandImpl.#doKill(code?: number): void`
+- `treeKill(pid, signal)` (npm 包)
+- `killTask(taskId, setAppState): void`
+
+**输入输出:**
+- 输入: 可选 signal code（默认 SIGKILL = 137）
+- 输出: 无，副作用：终止进程树
+
+**进程和任务状态:**
+- `ShellCommand.status`: `'killed'`
+- `ExecResult.interrupted`: `true` 当被信号终止
+- `ExecResult.code`: 137 (SIGKILL) | 143 (SIGTERM) | 145 (aborted)
+
+**完整执行链:**
+1. 超时触发：
+   - 超时定时器到期
+   - 若 `shouldAutoBackground` 且 `onTimeout` callback → 后台化
+   - 否则 → `#doKill(SIGTERM = 143)`
+   - 子进程退出时 `#resolveExitCode`
+2. 取消触发：
+   - `AbortSignal` `'abort'` 事件
+   - `reason === 'interrupt'` → 不 kill（后台化）
+   - 其他 reason → `kill()`
+3. `kill` 执行：
+   - `#status = 'killed'`
+   - `treeKill(pid, 'SIGKILL')` 终止整个进程组
+   - `#resolveExitCode(code)`
+4. 后台任务 kill：
+   - `killTask` 获取 `LocalShellTask`
+   - `task.shellCommand.kill()`
+   - `updateTaskState` to `'killed'`
+
+**权限分类边界:**
+- 终止不涉及权限检查（启动前已授权）
+- 用户可随时 kill 后台任务（无二次确认）
+
+**错误与取消:**
+- `kill` 幂等：多次调用无害
+- 子进程已退出：无操作
+- `treeKill` 失败：无处理（依赖 OS 清理）
+
+**设计取舍/备选:**
+- 进程组终止 vs 仅主进程: 进程组
+- 备选方案：仅主进程；pgid
+- 代价：跨平台复杂；需要 treeKill 库
+- 收益：无孤儿进程泄漏；后台任务完整终止
+- SIGTERM 先 vs 直接 SIGKILL: SIGTERM → 等待 → SIGKILL
+- 备选方案：直接 SIGKILL；用户选择
+- 代价：延迟；实现复杂
+- 收益：给进程清理机会
+
+**源码测试证据:**
+- 源码: `src/utils/ShellCommand.ts` `ShellCommandImpl.kill()`, `#doKill()`, `#abortHandler()`, `#exitHandler()`, `#cleanupListeners()`, `#clearSizeWatchdog()`
+- 源码: `src/tasks/LocalShellTask/killShellTasks.ts` `killTask()`
+- 测试: 需补充测试
+- 边界: 跨平台进程组行为有差异（Windows vs POSIX）
+
+**特有细节:**
+- SIGTERM → 等待 → SIGKILL
+- `treeKill` npm 包（跨平台进程树终止）
+- `detached`: `provider.detached` 控制（跨平台 spawn 选项）
+- 超时定时器 `unref`（不阻塞进程退出）
+- `'interrupt'` reason 不 kill（仅后台化）
+
+---
+
+#### 模块: 分类器
+
+**真实入口签名:**
+- `classifyBashCommand(command, cwd, descriptions, behavior, signal, isNonInteractiveSession): Promise<ClassifierResult>`
+- `generateGenericDescription(command, specificDescription, signal): Promise<string | null>`
+- `getBashPromptDenyDescriptions(context): string[]`
+- `getBashPromptAskDescriptions(context): string[]`
+- `getBashPromptAllowDescriptions(context): string[]`
+- `getBashPromptRuleConfigurationError(context): string | null`
+- `createClassifierCacheKey(command, cwd, behavior, descriptions): string`
+
+**输入输出:**
+- 输入: `command`, `cwd`, `descriptions[]`, `behavior` ('deny'|'ask'|'allow'), `AbortSignal`
+- 输出 `ClassifierResult`: `{ available: boolean, matches: boolean, matchedDescription?: string, confidence: 'high'|'medium'|'low', reason: string }`
+- unavailable 时: `{ available: false, matches: false, confidence: 'low', reason: '...' }`
+
+**进程和任务状态:**
+- 无状态操作，纯函数调用
+- `sideQuery` 调用小模型（无状态）
+
+**完整执行链:**
+1. 输入验证：
+   - `descriptions.length === 0` → unavailable
+   - `descriptions.length > MAX_DESCRIPTIONS_PER_BEHAVIOR` (64) → unavailable
+   - `description` 长度 > `MAX_DESCRIPTION_LENGTH` (1000) → unavailable
+   - 总字节 > `MAX_TOTAL_DESCRIPTION_BYTES` (20KB) → unavailable
+   - `command` 长度 > 32KB → unavailable
+   - `cwd` 长度 > 4KB → unavailable
+2. 调用 `sideQuery`：
+   - 模型: `getSmallFastModel()`
+   - system prompt: `SYSTEM_PROMPT`
+   - tool: `CLASSIFY_BASH_TOOL`
+   - timeout: `CLASSIFIER_TIMEOUT_MS` (15s)
+   - `maxRetries`: 1
+3. 响应验证：
+   - `stop_reason !== 'tool_use'` → unavailable
+   - tool name !== `'classify_bash_command'` → unavailable
+   - schema 验证（`ClassifierResponseSchema`）→ unavailable
+4. 结果：
+   - `matches=true` → `{ available: true, matches: true, matchedDescription: descriptions[index], confidence, reason }`
+   - `matches=false` → `{ available: true, matches: false, confidence, reason }`
+
+**权限分类边界:**
+- 分类器结果是建议，最终裁决由 `bashToolHasPermission` 做出
+- deny 高置信匹配 → deny
+- ask 高置信匹配 → ask
+- allow 高置信匹配 → allow
+- 分类器不可用 → 无建议，fallback 到规则
+- **不复制 permissions 通用裁决**：分类器仅提供匹配建议，决策逻辑在 `bashPermissions.ts`
+
+**错误与取消:**
+- 超时 → unavailable
+- 网络错误 → unavailable
+- 模型错误 → unavailable
+- 响应无效 → unavailable
+- `AbortSignal` → throw `AbortError`
+
+**设计取舍/备选:**
+- 分类器 vs 仅规则: 两者都有，规则优先
+- 备选方案：仅规则；仅分类器
+- 代价：每次权限检查需要模型调用，增加延迟和成本
+- 收益：更灵活的权限描述（自然语言）
+
+**源码测试证据:**
+- 源码: `src/utils/permissions/bashClassifier.ts` `classifyBashCommand()`, `generateGenericDescription()`, `extractPromptDescription()`, `createPromptRuleContent()`, `isClassifierPermissionsEnabled()`, `collectPromptRules()`, `collectAllPromptRules()`, `getDescriptions()`, `getBashPromptRuleConfigurationError()`, `createClassifierCacheKey()`, `CLASSIFY_BASH_TOOL`, `DESCRIBE_BASH_TOOL`, `SYSTEM_PROMPT`, `ClassifierResponseSchema`, `DescriptionSchema`
+- 测试: `tests/bashClassifier.test.ts` 验证分类、prompt 规则解析、分类器不可用 fallback
+- 边界: 侧查询可能失败/超时，需测试不可用路径
+
+**特有细节:**
+- classifier建议与最终裁决分离
+- 15s超时
+- `maxRetries=1`
+- `PROMPT_PREFIX = 'prompt:'` 规则格式
+- 最大 64 descriptions/behavior
+- 最大总 20KB descriptions
+
+---
+
+#### 模块: TerminalCapture
+
+**真实入口签名:**
+- TerminalCaptureTool 实现（CLI-only，SDK 无）
+
+**输入输出:**
+- 内部模块，CLI-only
+- 与 BashTool 共享 TaskOutput/ShellCommand 基础设施
+
+**进程和任务状态:**
+- 与 LocalShellTask 共享状态管理
+
+**完整执行链:**
+- 内部模块，CLI 特有，与 BashTool 共享 Shell 基础设施
+
+**权限分类边界:**
+- 与 BashTool 共享权限系统
+
+**错误与取消:**
+- 与 BashTool 共享错误处理
+
+**设计取舍/备选:**
+- CLI-only vs SDK也支持: CLI-only
+- 原因：SDK 运行环境多样，终端捕获复杂
+
+**源码测试证据:**
+- 源码: 需查找 TerminalCapture 实现
+- 测试: 需补充测试
+- 边界: CLI-only，SDK 无此工具
+
+**特有细节:**
+- CLI独有，SDK无
+- 与后台任务共享 LocalShellTask 基础设施
+
 ## 5. 失败语义与工程取舍
 
 | 触发条件 | 检测位置 | 消息/异常如何传播 | 是否重试及上限 | 状态与资源清理 | 调用方可见结果 |

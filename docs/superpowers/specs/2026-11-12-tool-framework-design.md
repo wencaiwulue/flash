@@ -153,7 +153,542 @@ status: draft
 | `ToolUseContext` | 工具执行上下文 | `src/Tool.ts` |
 | `ToolResult` | 工具执行结果 | `src/Tool.ts` |
 
-### 4.2 完整工具调用链
+---
+
+### 4.2 模块设计卡：Tool 接口与 buildTool
+
+#### 真实类型与入口签名
+
+```typescript
+// src/Tool.ts
+type DefaultableToolKeys =
+  | 'isEnabled'
+  | 'isConcurrencySafe'
+  | 'isReadOnly'
+  | 'isDestructive'
+  | 'checkPermissions'
+  | 'toAutoClassifierInput'
+  | 'userFacingName'
+
+type ToolDef<Input extends AnyObject = AnyObject, Output = unknown, P extends ToolProgressData = ToolProgressData> =
+  Omit<Tool<Input, Output, P>, DefaultableToolKeys>
+  & Partial<Pick<Tool<Input, Output, P>, DefaultableToolKeys>>
+
+function buildTool<D extends AnyToolDef>(def: D): BuiltTool<D>
+```
+
+#### 输入输出
+
+**输入**：`ToolDef` 对象，可省略默认方法
+- 必需：`name`、`inputSchema`、`call()`、`description()`、`prompt()`、`mapToolResultToToolResultBlockParam()`、`renderToolUseMessage()`
+- 可选：`isEnabled`、`isConcurrencySafe`、`isReadOnly`、`isDestructive`、`checkPermissions`、`toAutoClassifierInput`、`userFacingName` 等
+
+**输出**：完整的 `Tool` 对象，所有方法都已填充默认值
+
+#### 可变/不可变状态
+
+- **不可变**：`TOOL_DEFAULTS` 常量对象，包含默认函数实现
+- **可变**：无，`buildTool` 是纯函数，返回新对象
+
+#### buildTool 默认值表
+
+| 默认方法 | 默认实现 | 安全策略 |
+|----------|----------|----------|
+| `isEnabled()` | `() => true` | 工具默认启用 |
+| `isConcurrencySafe(input)` | `(_input?: unknown) => false` | 默认非并发安全（fail closed） |
+| `isReadOnly(input)` | `(_input?: unknown) => false` | 默认非只读（fail closed） |
+| `isDestructive(input)` | `(_input?: unknown) => false` | 默认非破坏性 |
+| `checkPermissions(input, context)` | `(input, _ctx?) => Promise.resolve({behavior: 'allow', updatedInput: input})` | 默认允许（依赖权限系统） |
+| `toAutoClassifierInput(input)` | `(_input?: unknown) => ''` | 默认不参与分类器 |
+| `userFacingName(input)` | `() => def.name` | 默认使用工具名 |
+
+**证据位置**：`src/Tool.ts` 第 757-769 行
+
+#### 设计取舍/备选
+
+| 取舍 | 当前选择 | 备选方案 | 理由 |
+|------|----------|----------|------|
+| 默认值填充方式 | 运行时对象展开 | 类继承 | TypeScript mixin 组合比继承更灵活 |
+| 默认值策略 | fail closed | fail open | 遗漏安全关键方法时不会放宽限制 |
+| 类型安全 | `BuiltTool<D>` 映射类型 | 强制完整接口 | 保持工具定义简洁同时保证类型安全 |
+
+**备选理由**：备选方案会导致 60+ 工具都要写大量样板代码，新增工具时容易出错；继承模型在多个工具共享部分但不是全部行为时不如对象组合灵活。
+
+**源码证据**：`src/Tool.ts` 第 727-792 行
+
+---
+
+### 4.3 模块设计卡：工具池 assembleToolPool
+
+#### 真实类型与入口签名
+
+```typescript
+// src/tools.ts
+function assembleToolPool(
+  permissionContext: ToolPermissionContext,
+  mcpTools: Tools
+): Tools
+
+// src/utils/toolPool.ts
+function mergeAndFilterTools(
+  initialTools: Tools,
+  assembled: Tools,
+  mode: ToolPermissionContext['mode']
+): Tools
+
+function filterToolsByDenyRules<T extends {name: string, mcpInfo?: {serverName: string, toolName: string}}>(
+  tools: readonly T[],
+  permissionContext: ToolPermissionContext
+): T[]
+```
+
+#### 输入输出
+
+**输入**：
+- `permissionContext`：权限上下文，包含 allow/deny 规则
+- `mcpTools`：MCP 工具列表
+
+**输出**：合并、去重、排序后的工具池
+
+#### 可变/不可变状态
+
+- **不可变**：输入参数不修改
+- **可变**：无，所有函数都是纯函数
+
+#### 工具池过滤/排序/去重步骤
+
+```text
+步骤 1：获取内置工具
+  └─ getTools(permissionContext)
+      ├─ 过滤掉被 deny 规则覆盖的工具
+      ├─ 根据环境模式（simple/REPL）过滤工具
+      └─ 只保留 isEnabled() === true 的工具
+
+步骤 2：过滤 MCP 工具
+  └─ filterToolsByDenyRules(mcpTools, permissionContext)
+      └─ 移除被 blanket deny 规则覆盖的工具
+
+步骤 3：分别排序
+  ├─ 内置工具按名称排序
+  └─ MCP 工具按名称排序
+
+步骤 4：合并与去重
+  └─ uniqBy([...sortedBuiltIn, ...sortedMCP], 'name')
+      └─ 内置优先，同名 MCP 工具被遮蔽
+```
+
+**证据位置**：`src/tools.ts` 第 355-376 行
+
+#### mergeAndFilterTools 附加处理
+
+```typescript
+// 分区：MCP 与内置工具分离
+const [mcp, builtIn] = partition(uniqBy([...initialTools, ...assembled], 'name'), isMcpTool)
+
+// 分别排序保持 prompt-cache 稳定
+const tools = [...builtIn.sort(byName), ...mcp.sort(byName)]
+
+// Coordinator 模式过滤（如启用）
+if (isCoordinatorMode()) {
+  return applyCoordinatorToolFilter(tools)
+}
+```
+
+**证据位置**：`src/utils/toolPool.ts` 第 55-79 行
+
+#### 设计取舍/备选
+
+| 取舍 | 当前选择 | 备选方案 | 理由 |
+|------|----------|----------|------|
+| 排序策略 | 分别排序后合并 | 完全混合排序 | 保持 prompt cache 稳定，服务器缓存策略依赖内置工具前缀 |
+| 去重策略 | 内置优先，uniqBy 保留先出现 | MCP 优先或警告 | 内置工具可能有特殊权限或渲染逻辑 |
+| 过滤时机 | 组装时先过滤 deny 规则 | 调用时才过滤 | 模型只看到可用工具，减少 token 浪费 |
+
+**代价**：MCP 工具如果与内置工具同名，会被静默遮蔽，用户可能困惑为什么 MCP 工具没有出现。
+
+**源码证据**：`src/tools.ts` 第 272-400 行
+
+**测试证据**：`tests/toolPool.test.ts` 验证工具池包含具体工具且名称唯一
+
+---
+
+### 4.4 模块设计卡：ToolUseContext
+
+#### 真实类型与入口签名
+
+```typescript
+// src/Tool.ts
+type ToolUseContext = {
+  // 不可变配置
+  options: {
+    commands: Command[]
+    debug: boolean
+    mainLoopModel: string
+    tools: Tools
+    verbose: boolean
+    thinkingConfig: ThinkingConfig
+    mcpClients: MCPServerConnection[]
+    mcpResources: Record<string, ServerResource[]>
+    isNonInteractiveSession: boolean
+    agentDefinitions: AgentDefinitionsResult
+    maxBudgetUsd?: number
+    customSystemPrompt?: string
+    appendSystemPrompt?: string
+    querySource?: QuerySource
+    refreshTools?: () => Tools
+  }
+
+  // 可变状态
+  abortController: AbortController
+  readFileState: FileStateCache
+  toolDecisions?: Map<string, {source: string, decision: 'accept'|'reject', timestamp: number}>
+  localDenialTracking?: DenialTrackingState
+  contentReplacementState?: ContentReplacementState
+  renderedSystemPrompt?: SystemPrompt
+
+  // 状态访问与修改
+  getAppState(): AppState
+  setAppState(f: (prev: AppState) => AppState): void
+  setAppStateForTasks?: (f: (prev: AppState) => AppState): void
+  setInProgressToolUseIDs: (f: (prev: Set<string>) => Set<string>): void
+  setHasInterruptibleToolInProgress?: (v: boolean): void
+  setResponseLength: (f: (prev: number) => number): void
+  updateFileHistoryState: (updater: (prev: FileHistoryState) => FileHistoryState): void
+  updateAttributionState: (updater: (prev: AttributionState) => AttributionState): void
+  setConversationId?: (id: UUID): void
+  setSDKStatus?: (status: SDKStatus): void
+  setStreamMode?: (mode: SpinnerMode): void
+  onCompactProgress?: (event: CompactProgressEvent): void
+
+  // 回调与扩展
+  setToolJSX?: SetToolJSXFn
+  addNotification?: (notif: Notification): void
+  appendSystemMessage?: (msg: Exclude<SystemMessage, SystemLocalCommandMessage>): void
+  sendOSNotification?: (opts: {message: string, notificationType: string}): void
+  requestPrompt?: (sourceName: string, toolInputSummary?: string|null): (request: PromptRequest) => Promise<PromptResponse>
+  handleElicitation?: (serverName: string, params: ElicitRequestURLParams, signal: AbortSignal): Promise<ElicitResult>
+  openMessageSelector?: (): void
+
+  // 执行时元数据
+  messages: Message[]
+  toolUseId?: string
+  agentId?: AgentId
+  agentType?: string
+  requireCanUseTool?: boolean
+  userModified?: boolean
+  nestedMemoryAttachmentTriggers?: Set<string>
+  loadedNestedMemoryPaths?: Set<string>
+  dynamicSkillDirTriggers?: Set<string>
+  discoveredSkillNames?: Set<string>
+  fileReadingLimits?: {maxTokens?: number, maxSizeBytes?: number}
+  globLimits?: {maxResults?: number}
+  criticalSystemReminder_EXPERIMENTAL?: string
+  preserveToolUseResults?: boolean
+}
+```
+
+#### 可变/不可变状态
+
+**不可变**：`options` 子对象内的所有配置
+**可变**：
+- `abortController`：可被信号中断
+- `readFileState`：LRU 缓存，读取文件时更新
+- `toolDecisions`：Map，缓存权限决策以避免重复询问
+- `localDenialTracking`：子 Agent 的本地拒绝计数
+- `contentReplacementState`：工具结果预算状态
+- 通过 `setAppState()`、`setAppStateForTasks()`、`setInProgressToolUseIDs()` 等函数修改的外部状态
+
+#### contextModifier 顺序与语义
+
+`ToolResult` 可选返回 `contextModifier`：
+```typescript
+type ToolResult<Output> = {
+  data: Output
+  contextModifier?: (context: ToolUseContext) => ToolUseContext
+  // ...
+}
+```
+
+**执行时机**：工具成功执行后，在产出 tool_result 消息时应用
+**约束**：仅非并发安全工具的 `contextModifier` 会被尊重
+**用途**：让工具能修改后续执行的上下文（如 Agent 工具设置子 Agent 隔离状态）
+
+**证据位置**：`src/Tool.ts` 第 330 行、`src/services/tools/toolExecution.ts` 第 1466-1472 行
+
+#### 子 Agent 隔离设计
+
+| 状态/方法 | 父 Agent | 子 Agent | 隔离理由 |
+|-----------|---------|---------|----------|
+| `setAppState()` | 正常更新根状态 | no-op（不污染父状态） | 子 Agent 不应修改父应用状态 |
+| `setAppStateForTasks()` | 同 `setAppState()` | 仍更新根状态 | 后台任务注册需要跨 Agent 可见 |
+| `localDenialTracking` | 无或共享 | 独立本地状态 | 子 Agent 的拒绝计数不应影响父 |
+| `toolDecisions` | 共享 | 可隔离 | 避免子 Agent 决策污染父 |
+| `toolUseId` | 当前调用 | 子调用独立 | 进度与结果正确关联 |
+| `agentId` / `agentType` | 无或主类型 | 子 Agent 标识 | 钩子与遥测能区分来源 |
+
+**证据位置**：`src/Tool.ts` 第 192-294 行
+
+#### 设计取舍/备选
+
+| 取舍 | 当前选择 | 备选方案 | 理由 |
+|------|----------|----------|------|
+| 可变性 | 可变上下文对象 | 不可变状态 + 频繁复制 | 性能开销大，工具执行需要多次更新 |
+| 隔离策略 | 选择性隔离（部分 no-op） | 完全独立复制 | 平衡隔离与共享基础设施（后台任务） |
+| 状态访问 | `getAppState`/`setAppState` 分离 | 直接状态引用 | 支持子 Agent 隔离时的重写 |
+
+---
+
+### 4.5 模块设计卡：runTools 与 StreamingToolExecutor
+
+#### 真实类型与入口签名
+
+```typescript
+// src/services/tools/toolExecution.ts
+type MessageUpdateLazy<M extends Message = Message> = {
+  message: M
+  contextModifier?: {
+    toolUseID: string
+    modifyContext: (context: ToolUseContext) => ToolUseContext
+  }
+}
+
+async function* runToolUse(
+  toolUse: ToolUseBlock,
+  assistantMessage: AssistantMessage,
+  canUseTool: CanUseToolFn,
+  toolUseContext: ToolUseContext
+): AsyncGenerator<MessageUpdateLazy, void>
+
+function streamedCheckPermissionsAndCallTool(
+  tool: Tool,
+  toolUseID: string,
+  input: {[key: string]: boolean | string | number},
+  toolUseContext: ToolUseContext,
+  canUseTool: CanUseToolFn,
+  assistantMessage: AssistantMessage,
+  messageId: string,
+  requestId: string | undefined,
+  mcpServerType: McpServerType,
+  mcpServerBaseUrl: ReturnType<typeof getLoggingSafeMcpBaseUrl>
+): AsyncIterable<MessageUpdateLazy>
+
+async function checkPermissionsAndCallTool(
+  tool: Tool,
+  toolUseID: string,
+  input: {[key: string]: boolean | string | number},
+  toolUseContext: ToolUseContext,
+  canUseTool: CanUseToolFn,
+  assistantMessage: AssistantMessage,
+  messageId: string,
+  requestId: string | undefined,
+  mcpServerType: McpServerType,
+  mcpServerBaseUrl: ReturnType<typeof getLoggingSafeMcpBaseUrl>,
+  onToolProgress: (progress: ToolProgress<ToolProgressData> | ProgressMessage<HookProgress>) => void
+): Promise<MessageUpdateLazy[]>
+```
+
+#### 输入输出
+
+**输入**：
+- `toolUse`：模型产出的 `ToolUseBlock`
+- `assistantMessage`：包含 tool_use 的助理消息
+- `canUseTool`：权限检查回调
+- `toolUseContext`：执行上下文
+
+**输出**：
+- `AsyncGenerator<MessageUpdateLazy>`：产生进度消息、工具结果消息、附件消息等
+
+#### 完整工具执行顺序
+
+```text
+阶段 0：工具查找与中断检查
+  ├─ findToolByName() 查找工具（当前 tools + 备选 getAllBaseTools()）
+  ├─ 检查是否 toolUseContext.abortController.signal.aborted
+  └─ 中断 → yield synthetic interrupt result
+
+阶段 1：输入验证（不涉及用户）
+  ├─ 1. Zod 输入验证：tool.inputSchema.safeParse(input)
+  │   └─ 失败 → yield InputValidationError + schema not sent hint（延迟工具）
+  └─ 2. 业务输入验证：tool.validateInput(input, context)（可选）
+      └─ 失败 → yield 业务验证错误
+
+阶段 2：预处理与钩子
+  ├─ 防御性剥离 _simulatedSedEdit（仅 Bash 工具）
+  ├─ backfillObservableInput() 填充遗留/派生字段（浅拷贝）
+  └─ 运行 PreToolUse hooks
+      ├─ 可产出进度/附件消息
+      ├─ 可更新输入（hookUpdatedInput）
+      ├─ 可返回权限决策（hookPermissionResult）
+      └─ 可阻止继续（preventContinuation + stopReason）
+
+阶段 3：权限检查
+  ├─ resolveHookPermissionDecision() 综合判断
+  │   ├─ 优先使用 hookPermissionResult（如提供）
+  │   ├─ 否则调用 canUseTool() 询问用户或自动判断
+  │   └─ 结果存入 toolUseContext.toolDecisions（缓存）
+  ├─ 拒绝 → yield 拒绝消息 + 运行 PermissionDenied hooks（可选）
+  └─ 允许 → 继续，使用 permissionDecision.updatedInput（如提供）
+
+阶段 4：工具执行
+  ├─ 启动工具 span（遥测）
+  ├─ 恢复 callInput 为模型原始值（路径展开回写）
+  ├─ tool.call() 执行
+  │   └─ onProgress() 回调产生进度消息
+  └─ 捕获异常 → 进入错误处理分支
+
+阶段 5：成功后处理
+  ├─ 运行 PostToolUse hooks
+  │   ├─ 可修改 MCP 工具输出（updatedMCPToolOutput）
+  │   └─ 可产出附加消息
+  ├─ 映射工具结果：tool.mapToolResultToToolResultBlockParam()
+  ├─ processToolResultBlock() 处理大结果持久化
+  ├─ 添加 acceptFeedback（如用户批准时有）
+  ├─ 应用 contextModifier（如工具返回且非并发安全）
+  ├─ 添加工具返回的 newMessages（如提供）
+  └─ yield 最终 tool_result 消息
+
+阶段 6：错误边界与清理
+  ├─ McpAuthError → 更新客户端状态为 'needs-auth'
+  ├─ AbortError → 跳过错误日志（用户中断）
+  ├─ 其他错误 → 格式化为 tool_result is_error
+  ├─ 运行 PostToolUseFailure hooks
+  └─ finally 块：
+      ├─ stopSessionActivity('tool_exec')
+      └─ 清理 toolDecisions 缓存（decisionInfo.delete）
+```
+
+**证据位置**：`src/services/tools/toolExecution.ts` 第 337-1745 行
+
+#### 权限与错误边界
+
+**多层错误边界**：
+
+| 边界层 | 错误类型 | 处理位置 |
+|--------|----------|----------|
+| Zod 验证 | 输入类型错误 | checkPermissionsAndCallTool 开头 |
+| 业务验证 | 输入业务逻辑错误 | tool.validateInput() 后 |
+| 权限拒绝 | 权限不允许 | resolveHookPermissionDecision 后 |
+| 工具执行 | 工具内部异常 | try/catch 包裹 tool.call() |
+| Hook 异常 | Pre/Post 钩子错误 | 钩子内部 try/catch + 外层兜底 |
+| 最终清理 | 无论成功失败 | finally 块 |
+
+**权限检查时机**：`validateInput` 之后 → 输入错误时不打扰用户
+
+**证据位置**：`src/services/tools/toolExecution.ts` 第 111、614-732、994-1087、1589-1737 行
+
+#### 清理
+
+| 资源 | 清理时机 | 清理方式 |
+|------|----------|----------|
+| `toolDecisions` 缓存 | finally 块 | `toolDecisions.delete(toolUseID)` |
+| 会话活动标记 | finally 块 | `stopSessionActivity('tool_exec')` |
+| 权限决策临时状态 | 工具完成后 | 随消息产出释放 |
+| 进度消息聚合 | UI 渲染时 | 完成后不持久化 |
+
+**证据位置**：`src/services/tools/toolExecution.ts` 第 1738-1744 行
+
+#### 设计取舍/备选
+
+| 取舍 | 当前选择 | 备选方案 | 理由 |
+|------|----------|----------|------|
+| 进度与结果流 | 单一流混合产出 | 分离进度与结果通道 | 简化消费，调用方一处接收所有更新 |
+| 验证顺序 | Zod → validateInput → 权限 → 执行 | 权限先检查 | 输入错误时不打扰用户 |
+| Hook 插入点 | Pre/Post 双点 + PostFailure | 单点扩展 | 覆盖成功/失败双路径 |
+| 输入回写 | backfill 不修改 callInput | 直接修改原始输入 | 保持工具结果显示与 transcript 哈希稳定 |
+
+---
+
+### 4.6 模块设计卡：shared/services/tools 子系统
+
+#### 真实类型与入口签名
+
+```typescript
+// 工具执行
+export { runToolUse, streamedCheckPermissionsAndCallTool, checkPermissionsAndCallTool } from './toolExecution'
+
+// 工具钩子
+export { runPreToolUseHooks, runPostToolUseHooks, runPostToolUseFailureHooks, resolveHookPermissionDecision } from './toolHooks'
+
+// MCP 工具集成
+export { isMcpTool, getMcpServerScopeFromToolName, getLoggingSafeMcpBaseUrl } from '../mcp/utils'
+
+// 工具查找
+export { toolMatchesName, findToolByName } from '../../Tool'
+```
+
+#### tool_use 到 tool_result 消息映射
+
+```typescript
+// tool.mapToolResultToToolResultBlockParam() 核心责任
+mapToolResultToToolResultBlockParam(
+  content: Output,
+  toolUseID: string
+): ToolResultBlockParam
+
+// 后处理：大结果持久化
+processToolResultBlock(
+  tool: Tool,
+  toolUseResult: unknown,
+  toolUseID: string
+): Promise<ToolResultBlockParam>
+  └─ 超过 tool.maxResultSizeChars 时写入磁盘，返回预览
+```
+
+**输出消息结构**：
+```typescript
+{
+  type: 'user',
+  content: [
+    {
+      type: 'tool_result',
+      tool_use_id: string,
+      content: string | ContentBlock[],
+      is_error?: boolean
+    },
+    ...(permissionDecision.acceptFeedback ? [{type: 'text', text: string}] : []),
+    ...(permissionDecision.contentBlocks || [])
+  ],
+  imagePasteIds?: number[], // 对应 contentBlocks 中的图片
+  toolUseResult?: unknown, // 子 Agent 可选隐藏
+  mcpMeta?: {_meta?: Record<string, unknown>, structuredContent?: Record<string, unknown>},
+  sourceToolAssistantUUID: UUID
+}
+```
+
+**证据位置**：`src/services/tools/toolExecution.ts` 第 1292-1502 行
+
+#### 流式与批量路径等价性和差异
+
+| 方面 | 流式路径 `streamedCheckPermissionsAndCallTool()` | 批量路径 `checkPermissionsAndCallTool()` |
+|------|------------------------------------------------|------------------------------------------|
+| 返回类型 | `AsyncIterable<MessageUpdateLazy>` | `Promise<MessageUpdateLazy[]>` |
+| 进度消息 | 实时 yield | 收集在数组末尾一起返回 |
+| 工具结果 | 完成后立即 yield | 收集在数组中 |
+| 核心执行逻辑 | 委托给批量路径 | 实际实现 checkPermissionsAndCallTool |
+| 消费者 | REPL UI（需要实时更新） | SDK/headless（批量处理） |
+| Stream 包装 | 使用 `Stream` 类桥接异步函数与异步生成器 | 无 |
+
+**等价性保证**：两条路径的权限检查、工具执行、结果映射、错误处理逻辑完全相同，都委托给 `checkPermissionsAndCallTool()`。
+
+**证据位置**：`src/services/tools/toolExecution.ts` 第 492-569 行
+
+#### 源码测试证据
+
+| 模块 | 源码位置 | 测试位置 |
+|------|----------|----------|
+| 工具池组装 | `src/tools.ts` | `tests/toolPool.test.ts` |
+| 工具执行 | `src/services/tools/toolExecution.ts` | （间接测试覆盖） |
+| 工具定义 | `src/Tool.ts` | （各工具自身测试） |
+| 工具池合并 | `src/utils/toolPool.ts` | （与 REPL 集成测试） |
+
+**证据位置**：
+- `src/tools.ts` 第 1-400 行
+- `src/utils/toolPool.ts` 第 1-80 行
+- `tests/toolPool.test.ts` 第 1-37 行
+
+---
+
+### 4.7 完整工具调用链
 
 ```text
 模型产出 tool_use
@@ -175,7 +710,7 @@ runToolUse()
 
 **证据位置**：`src/services/tools/toolExecution.ts`
 
-### 4.3 工具池组装数据流
+### 4.8 工具池组装数据流
 
 ```text
 路径 A: REPL UI（useMergedTools）

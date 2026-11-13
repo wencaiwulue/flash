@@ -512,7 +512,93 @@ Git commit 前
 }
 ```
 
-### 4.5 跨子系统依赖
+### 4.5 模块设计卡
+
+#### 模块设计卡 1: 仓库发现与根检测 (git.ts: findGitRoot, resolveCanonicalRoot)
+
+| 项目 | 内容 |
+|------|------|
+| 真实入口签名 | `findGitRoot(startPath: string): string \| null` <br> `createFindGitRoot(): { (startPath: string): string \| null; cache: typeof findGitRootImpl.cache }` <br> `resolveCanonicalRoot(gitRoot: string): string` <br> `createFindCanonicalGitRoot(): { (startPath: string): string \| null; cache: typeof resolveCanonicalRoot.cache }` |
+| 关键类型 | `GIT_ROOT_NOT_FOUND: symbol` (内部缓存哨兵) |
+| 输入 | `startPath`: 任意文件系统路径（绝对或相对） |
+| 输出 | 找到的 Git 仓库根目录（绝对路径，NFC 规范化），或 `null`（非 Git 仓库）<br> Worktree 场景返回 Worktree 根（包含 .git 文件），`resolveCanonicalRoot` 返回主仓库根 |
+| 状态与缓存 | LRU 缓存（`memoizeWithLRU`）: <br> - `findGitRootImpl.cache`: 最大 50 条目，key = `startPath` <br> - `resolveCanonicalRoot.cache`: 最大 50 条目，key = `gitRoot` <br> 缓存入口永久有效（无 TTL），仅在 LRU 满时驱逐 |
+| Git 调用链 | `findGitRoot`: 无 Git 进程调用，仅 `fs.statSync` <br> `resolveCanonicalRoot`: 无 Git 进程调用，仅 `fs.readFileSync` / `fs.realpathSync` |
+| 错误降级 | 路径不存在 → 继续向上遍历 <br> 无权限 → 继续向上遍历 <br> .git 文件但非 Worktree/子模块 → 返回当前目录 <br> Worktree 双向验证失败 → 返回输入目录而非抛出 |
+| 设计取舍/备选 | ✅ 直接文件系统遍历而非 `git rev-parse --show-toplevel`：避免进程 spawn 开销 <br> ✅ LRU 缓存而非无限缓存：防止编辑大量文件时内存泄漏 <br> ✅ 双向 Worktree 验证而非信任 .git 文件：防止攻击者构造恶意路径绕过信任对话框 <br> ❌ 备选 `git rev-parse`: 性能差但无需解析 Git 格式；未采用 <br> ❌ 备选无限缓存：简单但内存泄漏风险高；未采用 |
+| 源码测试证据 | 源文件: `src/utils/git.ts` (L26-210) <br> 关键证据点: <br> - L27-85: `findGitRootImpl` 实现向上遍历 + LRU <br> - L39-42: 同时接受 .git 目录或文件 <br> - L123-183: `resolveCanonicalRoot` Worktree 双向验证逻辑 <br> - L156-157: 验证 `gitdir` 的父目录是 commonDir/worktrees/ <br> - L165-169: 验证 `commonDir/gitdir` 回指原 worktree <br> 边界: 最大 50 条缓存；仅识别 Git 创建的 Worktree 结构 |
+
+#### 模块设计卡 2: Git Filesystem 直接读取 (gitFilesystem.ts)
+
+| 项目 | 内容 |
+|------|------|
+| 真实入口签名 | `resolveGitDir(startPath?: string): Promise<string \| null>` <br> `readGitHead(gitDir: string): Promise<{ type: 'branch'; name: string } \| { type: 'detached'; sha: string } \| null>` <br> `resolveRef(gitDir: string, ref: string): Promise<string \| null>` <br> `parseGitConfigValue(gitDir: string, section: string, subsection: string \| null, key: string): Promise<string \| null>` <br> `getCommonDir(gitDir: string): Promise<string \| null>` <br> `getCachedBranch(): Promise<string>` <br> `getCachedHead(): Promise<string>` <br> `getCachedRemoteUrl(): Promise<string \| null>` <br> `getCachedDefaultBranch(): Promise<string>` |
+| 关键类型 | `CacheEntry<T>: { value: T; dirty: boolean; compute: () => Promise<T> }` <br> `GitFileWatcher`: 私有类，管理文件 watchers 和缓存 |
+| 输入 | `startPath`: 用于 resolveGitDir 的可选起始路径 <br> `gitDir`: .git 目录的绝对路径 <br> `ref`: ref 名称（如 `HEAD`, `refs/heads/main`） |
+| 输出 | `resolveGitDir`: 实际 .git 目录路径，处理 worktree .git 文件 <br> `readGitHead`: 分支名（on-branch）或 SHA（detached），验证通过后返回 <br> `resolveRef`: 完整 40/64 位十六进制 SHA <br> `getCached*`: 缓存的值，文件变化时自动失效 |
+| 状态与缓存 | `resolveGitDirCache: Map<string, string \| null>` (per-startPath) <br> `GitFileWatcher.cache: Map<string, CacheEntry<any>>` (keys: 'branch', 'head', 'remoteUrl', 'defaultBranch') <br> `GitFileWatcher.gitDir` / `commonDir`: 初始化后固定 <br> `GitFileWatcher.watchedPaths`: 当前监听的文件列表 <br> `GitFileWatcher.branchRefPath`: 当前分支的 loose ref 路径 <br> `GitFileWatcher.dirty`: 缓存失效标记 |
+| Git 调用链 | ✅ 无 Git 进程调用！<br> 所有读取通过 `fs.promises.readFile` / `fs.promises.stat` / `fs.watchFile` <br> 监听文件变化: `gitDir/HEAD`, `commonDir/config`, `commonDir/refs/heads/<branch>` |
+| 错误降级 | `readGitHead` 失败 → 返回 null <br> `resolveRef` loose 失败 → 尝试 packed-refs <br> packed-refs 失败 → 返回 null <br> ref 验证失败（isSafeRefName/isValidGitSha）→ 返回 null <br> `getCachedBranch` 失败 → 返回 'HEAD' <br> `getCachedDefaultBranch` 失败 → 返回 'main' |
+| 设计取舍/备选 | ✅ 直接文件读取而非 `git rev-parse`: 避免进程 spawn，避免触发钩子 <br> ✅ `isSafeRefName` 白名单验证而非信任 Git 输出: 防止路径遍历/注入 <br> ✅ loose ref 优先，packed-refs 降级: Git 原生行为一致 <br> ✅ GitFileWatcher + fs.watchFile 而非轮询: 性能更优，及时失效 <br> ❌ 备选 libgit2: Node.js 原生模块编译复杂，跨平台维护成本高；未采用 <br> ❌ 备选仅用 Git 命令: 性能差，可能触发钩子；未采用 |
+| 源码测试证据 | 源文件: `src/utils/git/gitFilesystem.ts` (L1-998) <br> 关键证据点: <br> - L98-118: `isSafeRefName` 白名单 [a-zA-Z0-9/._+@-]，禁止 ..，禁止开头 -/ <br> - L129-131: `isValidGitSha` 仅接受 40/64 位十六进制 <br> - L149-183: `readGitHead` 解析 `ref: refs/heads/...` 或 SHA <br> - L203-266: `resolveRef` loose → packed → commonDir 回退链 <br> - L325-488: `GitFileWatcher` 类实现，fs.watchFile 监听，dirty 标记失效 <br> - L432: `watchPath(join(this.gitDir, 'HEAD'), ...)` <br> - L704: 监听 `commonDir/config` <br> - L713: 动态切换监听当前分支 ref 文件 <br> 边界: 不支持 reftable（Git 新格式）；仅解析 loose refs 和 packed-refs |
+
+#### 模块设计卡 3: Git 状态与 Diff 计算 (git.ts: getGitState, gitDiff.ts)
+
+| 项目 | 内容 |
+|------|------|
+| 真实入口签名 | `getGitState(): Promise<GitRepoState \| null>` <br> `getIsClean(options?: { ignoreUntracked?: boolean }): Promise<boolean>` <br> `fetchGitDiff(): Promise<GitDiffResult \| null>` <br> `fetchGitDiffHunks(): Promise<Map<string, StructuredPatchHunk[]>>` <br> `fetchSingleFileGitDiff(absoluteFilePath: string): Promise<ToolUseDiff \| null>` |
+| 关键类型 | `GitRepoState`: `{ commitHash: string; branchName: string; remoteUrl: string \| null; isHeadOnRemote: boolean; isClean: boolean; worktreeCount: number }` <br> `GitDiffResult`: `{ stats: GitDiffStats; perFileStats: Map<string, PerFileStats>; hunks: Map<string, StructuredPatchHunk[]> }` <br> `GitDiffStats`: `{ filesCount: number; linesAdded: number; linesRemoved: number }` |
+| 输入 | 无（从 CWD 隐式获取）<br> `absoluteFilePath`: 单文件模式的绝对文件路径 |
+| 输出 | `getGitState`: 当前仓库状态快照，失败返回 null <br> `getIsClean`: true = 工作区干净 <br> `fetchGitDiff`: 统计信息（无 hunks），merge/rebase 期间返回 null <br> `fetchGitDiffHunks`: 详细 hunks，按需调用 <br> `fetchSingleFileGitDiff`: PR 风格单文件 diff（对比 merge-base） |
+| 状态与缓存 | `fetchGitDiff` 内部无缓存（每次重新计算）<br> 依赖 `getCachedBranch` / `getCachedHead` 的 GitFileWatcher 缓存 <br> `fetchGitDiff` 与 `fetchGitDiffHunks` 分离：避免轮询时加载大 diff |
+| Git 调用链 | `getGitState`（并行 6 个命令）: <br> 1. `git rev-parse HEAD` → commitHash <br> 2. `git rev-parse --abbrev-ref HEAD` → branchName <br> 3. `git remote get-url origin` → remoteUrl（通过 parseGitConfig 直接读取） <br> 4. `git rev-parse @{u}` → isHeadOnRemote <br> 5. `git status --porcelain` → isClean <br> 6. `git worktree list` → worktreeCount（通过 commonDir/worktrees/ 直接读取） <br><br> `fetchGitDiff` 链: <br> 1. `isInTransientGitState()`: 检查 .git/MERGE_HEAD 等（fs.access，无 Git 调用） <br> 2. `git diff --shortstat`: 快速探测，O(1) 内存 <br> 3. `git diff --numstat`: 获取 per-file 统计 <br> 4. `git ls-files --others --exclude-standard`: 补充 untracked 文件 <br><br> `fetchGitDiffHunks` 链: <br> 1. `git diff HEAD`: 获取完整 diff <br> 2. 解析，应用限制（MAX_FILES=50, MAX_DIFF_SIZE=1MB, MAX_LINES_PER_FILE=400） |
+| 错误降级 | `isInTransientGitState()` = true → 返回 null（不显示 diff） <br> `--shortstat` 显示 > MAX_FILES_FOR_DETAILS → 只返回统计，跳过详情 <br> 单文件 > MAX_DIFF_SIZE → 不包含在 hunks Map 中 <br> Git 命令非 0 → 静默降级，返回 null 或空 Map <br> parseGitDiff 失败 → 返回空 Map <br> shallow clone: preserveGitStateForIssue 使用简化模式（HEAD-only） |
+| 设计取舍/备选 | ✅ 两步 Diff（先 shortstat 探测，再按需 hunks）: 避免大 diff 阻塞 UI <br> ✅ 分离 `fetchGitDiff` 与 `fetchGitDiffHunks`: 轮询用前者，用户查看用后者 <br> ✅ 用 `isInTransientGitState` 跳过 merge/rebase: 避免显示混乱的 incoming changes <br> ✅ `MAX_FILES` / `MAX_DIFF_SIZE` / `MAX_LINES_PER_FILE` 限制: 防止内存爆炸 <br> ✅ 用 `'' + line` 强制复制字符串: 打破 V8 sliced string 引用，释放父 buffer <br> ❌ 备选一次性完整 diff: 简单但大仓库内存风险高；未采用 <br> ❌ 备选无限制: 简单但不安全；未采用 |
+| 源码测试证据 | 源文件: `src/utils/git.ts` (L369-844), `src/utils/gitDiff.ts` (L1-533) <br> 关键证据点: <br> - gitDiff L35-40: 常量定义（GIT_TIMEOUT_MS=5s, MAX_FILES=50, MAX_DIFF_SIZE=1MB, MAX_LINES_PER_FILE=400, MAX_FILES_FOR_DETAILS=500） <br> - gitDiff L49-57: `isInTransientGitState()` 检查 MERGE_HEAD/REBASE_HEAD/CHERRY_PICK_HEAD/REVERT_HEAD（仅 fs.access） <br> - gitDiff L62-107: `fetchGitDiff` 两步策略（shortstat → numstat） <br> - gitDiff L114-135: `fetchGitDiffHunks` 按需加载 <br> - gitDiff L200-298: `parseGitDiff` 应用大小/行数限制 <br> - gitDiff L282: `'' + line` 强制复制打破 V8 sliced string <br> - git L307-321: `normalizeGitRemoteUrl` 处理 SSH/HTTPS/本地代理 URL <br> - git L724-843: `preserveGitStateForIssue` 浅克隆降级，merge-base 策略 <br> 边界: 仅支持 Git 2.x；不处理 Git LFS 大文件；仅显示前 50 个文件 |
+
+#### 模块设计卡 4: Worktree 创建与管理 (worktree.ts)
+
+| 项目 | 内容 |
+|------|------|
+| 真实入口签名 | `validateWorktreeSlug(slug: string): void` <br> `createWorktreeForSession(sessionId: string, slug: string, tmuxSessionName?: string, options?: { prNumber?: number }): Promise<WorktreeSession>` <br> `getOrCreateWorktree(repoRoot: string, slug: string, options?: { prNumber?: number }): Promise<WorktreeCreateResult>` <br> `cleanupWorktree(): Promise<void>` <br> `keepWorktree(): Promise<void>` <br> `createAgentWorktree(slug: string): Promise<{ worktreePath: string; worktreeBranch?: string; headCommit?: string; gitRoot?: string; hookBased?: boolean }>` <br> `removeAgentWorktree(worktreePath: string, worktreeBranch?: string, gitRoot?: string, hookBased?: boolean): Promise<boolean>` <br> `cleanupStaleAgentWorktrees(cutoffDate: Date): Promise<number>` |
+| 关键类型 | `WorktreeSession`: `{ originalCwd: string; worktreePath: string; worktreeName: string; worktreeBranch?: string; originalBranch?: string; originalHeadCommit?: string; sessionId: string; tmuxSessionName?: string; hookBased?: boolean; creationDurationMs?: number; usedSparsePaths?: boolean }` <br> `WorktreeCreateResult`: `{ worktreePath: string; worktreeBranch: string; headCommit: string; existed: boolean } \| { ..., baseBranch: string, existed: false }` <br> `GIT_NO_PROMPT_ENV`: `{ GIT_TERMINAL_PROMPT: '0', GIT_ASKPASS: '' }` |
+| 输入 | `slug`: Worktree 名称，支持 `/`（展平为 `+`） <br> `prNumber`: PR 号时从 `origin/pull/<n>/head` 创建 <br> `sessionId`: 会话 ID（用于项目配置持久化） <br> `cutoffDate`: 清理过期 Worktree 的日期阈值 |
+| 输出 | `createWorktreeForSession`: WorktreeSession 对象，包含路径和分支信息 <br> `getOrCreateWorktree`: Worktree 路径、分支、HEAD SHA，以及 `existed` 标志（快速恢复） <br> `cleanupStaleAgentWorktrees`: 已清理的 Worktree 数量 |
+| 状态与缓存 | `currentWorktreeSession: WorktreeSession \| null`（全局当前会话） <br> 持久化到项目配置 `activeWorktreeSession` <br> `GIT_NO_PROMPT_ENV` 避免凭据提示 <br> Worktree 存在性检测: `readWorktreeHeadSha` 直接读取 .git 文件（无 Git 调用） |
+| Git 调用链 | `getOrCreateWorktree`（PR 路径）: <br> 1. `git fetch origin pull/<n>/head` → FETCH_HEAD <br> 2. `git worktree add -B worktree-<slug> <path> FETCH_HEAD` <br><br> `getOrCreateWorktree`（普通路径）: <br> 1. 检查 `origin/<defaultBranch>` loose/packed ref 是否存在（直接读取，无 Git 调用）<br> 2. 不存在时: `git fetch origin <defaultBranch>` <br> 3. `git worktree add -B worktree-<slug> <path> origin/<defaultBranch>` <br><br> sparsePaths 场景: <br> 1. `git worktree add --no-checkout -B ...` <br> 2. `git sparse-checkout set --cone -- <paths>` <br> 3. `git checkout HEAD` <br><br> 清理路径: <br> 1. `git worktree remove --force <path>` <br> 2. `git branch -D worktree-<slug>` <br> 3. `git worktree prune`（批量清理后） |
+| 错误降级 | `validateWorktreeSlug`: 验证失败 → 同步抛出（操作前拦截） <br> `getOrCreateWorktree` fetch 失败 → 降级用 HEAD（仅普通分支，PR 失败抛出） <br> sparse-checkout/checkout 失败 → 执行 `git worktree remove --force` 回滚，然后抛出 <br> `git branch -D` 失败 → 仅记录 debug log，不影响清理完成 <br> Hook 路径: 优先执行 WorktreeCreate/WorktreeRemove hooks，失败抛出 |
+| 设计取舍/备选 | ✅ `validateWorktreeSlug` 白名单验证: 防止路径遍历，防止 `/../` 逃离 `.claude/worktrees/` <br> ✅ Slug 展平（`user/feature` → `user+feature`）: 避免 Git ref D/F 冲突，避免 worktree 嵌套 <br> ✅ 快速恢复路径: 直接读取 .git 文件，避免 fetch/创建，避免凭据提示 <br> ✅ `GIT_NO_PROMPT_ENV`: 防止 Git 等待用户输入导致 CLI 挂起 <br> ✅ Hook 优先: 允许非 Git VCS 集成 <br> ✅ `cleanupStaleAgentWorktrees` 安全检查: 只清理匹配 `EPHEMERAL_WORKTREE_PATTERNS` 的，跳过有未提交/未推送更改的 <br> ❌ 备选用户提供完整路径: 灵活但安全风险高；未采用 <br> ❌ 备选每次重新创建: 简单但慢且可能触发凭据提示；未采用 |
+| 源码测试证据 | 源文件: `src/utils/worktree.ts` (L1-1494) <br> 关键证据点: <br> - L68-89: `validateWorktreeSlug` 验证长度 ≤ 64，字符集 [a-zA-Z0-9._-]，无 `..` <br> - L220: `flattenSlug` 将 `/` 替换为 `+` <br> - L242-257: `getOrCreateWorktree` 快速恢复: 直接 `readWorktreeHeadSha` 检测存在性 <br> - L198-204: `GIT_NO_PROMPT_ENV` 禁用凭据提示 <br> - L264-305: 本地 ref 存在检查（直接 resolveRef）避免不必要 fetch <br> - L325-336: `-B` 而非 `-b`: 自动覆盖已存在的临时分支 <br> - L338-368: sparse-checkout 失败回滚逻辑 <br> - L419-506: `copyWorktreeIncludeFiles` 复制 gitignored 文件（用 `--directory` 折叠大目录） <br> - L917-1035: `cleanupStaleAgentWorktrees` 只清理匹配模式（agent-a*, wf_*, bridge-*, job-*），检查 git status 干净，检查无可推送提交 <br> - L1005-1016: `EPHEMERAL_WORKTREE_PATTERNS` 正则列表 <br> - L1369-1373: 只清理 30 天前的（通过 mtime） <br> 边界: 不清理用户命名的 Worktree；不清理有未提交/未推送更改的 Worktree；sparse-checkout 需 Git 2.25+ |
+
+#### 模块设计卡 5: GitHub/PR 集成 (git.ts + detectRepository.ts)
+
+| 项目 | 内容 |
+|------|------|
+| 真实入口签名 | `parseGitRemote(input: string): { host: string; owner: string; name: string } \| null` <br> `normalizeGitRemoteUrl(url: string): string \| null` <br> `getRepoRemoteHash(): Promise<string \| null>` <br> `detectCurrentRepository(): Promise<string \| null>` <br> `detectCurrentRepositoryWithHost(): Promise<ParsedRepository \| null>` <br> `getCachedRepository(): string \| null` <br> `parseGitHubRepository(input: string): string \| null` |
+| 关键类型 | `ParsedRepository`: `{ host: string; owner: string; name: string }` <br> `repositoryWithHostCache: Map<string, ParsedRepository \| null>`（per-cwd） |
+| 输入 | `input`: Git remote URL（SSH/HTTPS/本地代理）或 "owner/repo" 字符串 <br> `url`: normalize/gitRepoHash 用的完整 URL |
+| 输出 | `parseGitRemote`: 解析为 host/owner/name，支持多种 URL 格式 <br> `normalizeGitRemoteUrl`: 规范化为 `host/owner/name`（小写，无 .git，处理本地代理） <br> `getRepoRemoteHash`: SHA256(规范化 URL) 的前 16 字符（全局唯一仓库 ID） <br> `detectCurrentRepository`: github.com 仓库的 "owner/name"，非 github.com 返回 null <br> `detectCurrentRepositoryWithHost`: 含 host 版本，支持 GHE <br> `getCachedRepository`: 同步返回缓存值（需先调用 detectCurrentRepository） |
+| 状态与缓存 | `repositoryWithHostCache: Map<string, ParsedRepository \| null>`（key = cwd） <br> `clearRepositoryCaches()`: 测试用清除缓存 <br> 依赖 `getCachedRemoteUrl()` 的 GitFileWatcher 缓存 |
+| Git 调用链 | `detectCurrentRepository`: 无 Git 进程调用！<br> 依赖 `getRemoteUrl()` → `parseGitConfigValue()`（直接读取 .git/config） <br> PR Worktree 创建: `git fetch origin pull/<n>/head`（worktree.ts 调用） |
+| 错误降级 | URL 解析失败 → 返回 null <br> 本地代理 URL → 识别并提取真实 host/owner/repo <br> 非 github.com host → `detectCurrentRepository` 返回 null（`detectCurrentRepositoryWithHost` 仍然返回） <br> 无 remote → 返回 null |
+| 设计取舍/备选 | ✅ `looksLikeRealHostname` 检测 SSH config 别名: 避免混淆 `github.com-work` 这样的别名与真实域名 <br> ✅ 本地代理 URL 特殊处理: `http://user@127.0.0.1:16583/git/owner/repo` → `github.com/owner/repo` <br> ✅ `detectCurrentRepository` 只返回 github.com: 避免破坏假定 github.com 的下游 <br> ✅ `parseGitHubRepository` 接受 URL 或 "owner/repo": 向后兼容 <br> ✅ 大小写规范化: 统一小写，避免相同仓库不同表示 <br> ❌ 备选信任主机名: 简单但 SSH 别名会误报；未采用 <br> ❌ 备选只接受 HTTPS: 简单但不兼容 SSH 克隆；未采用 |
+| 源码测试证据 | 源文件: `src/utils/git.ts` (L282-338), `src/utils/detectRepository.ts` (L1-179) <br> 关键证据点: <br> - git L283-321: `normalizeGitRemoteUrl` 处理 SSH/HTTPS/本地代理 <br> - git L306-315: 本地代理 URL 检测: 127.0.0.1，路径以 git/ 开头，检查是否为 GHE 编码在路径中 <br> - git L329-337: `getRepoRemoteHash` SHA256 前 16 字符 <br> - detectRepository L87-124: `parseGitRemote` 支持 git@, https://, ssh://, git:// 格式 <br> - detectRepository L170-178: `looksLikeRealHostname` 检查最后一段全字母（真实 TLD 无数字/连字符） <br> - detectRepository L132-160: `parseGitHubRepository` 优先作为 URL 解析，回退作为 owner/repo <br> - detectRepository L110-115: HTTPS 保留端口，SSH/git 去掉端口（SSH 端口不用于 Web URL） <br> - detectRepository L23: `detectCurrentRepository` 过滤非 github.com <br> 边界: 不处理 git@ 与 https 混合的奇特 URL；本地代理检测只识别 127.0.0.1/localhost |
+
+#### 模块设计卡 6: 凭据与进程安全 (execFileNoThrow.ts + git.ts 环境变量)
+
+| 项目 | 内容 |
+|------|------|
+| 真实入口签名 | `execFileNoThrow(file: string, args: string[], options?: ExecFileOptions): Promise<{ stdout: string; stderr: string; code: number; error?: string }>` <br> `execFileNoThrowWithCwd(file: string, args: string[], options?: ExecFileWithCwdOptions): Promise<...>` <br> `isCurrentDirectoryBareGitRepo(): boolean` |
+| 关键类型 | `ExecFileOptions`: `{ abortSignal?: AbortSignal; timeout?: number; preserveOutputOnError?: boolean; useCwd?: boolean; env?: NodeJS.ProcessEnv; stdin?: 'ignore' | 'inherit' | 'pipe'; input?: string }` <br> `ExecFileWithCwdOptions`: `{ ...; maxBuffer?: number; cwd?: string; shell?: boolean | string }` <br> `GIT_NO_PROMPT_ENV`: `{ GIT_TERMINAL_PROMPT: '0', GIT_ASKPASS: '' }`（worktree.ts） |
+| 输入 | `file`: 可执行文件名（如 `git`） <br> `args`: 参数数组（无 shell 展开） <br> `timeout`: 超时毫秒数（默认 10 分钟） <br> `maxBuffer`: 输出 buffer 限制（默认 1MB） <br> `env`: 覆盖环境变量 |
+| 输出 | 总是 resolve（永不 reject）的 `{ stdout, stderr, code, error? }` <br> `code`: 进程退出码，0 = 成功，非 0 = 失败 <br> `error`: 人类可读错误消息（shortMessage > signal > code） |
+| 状态与缓存 | 无缓存（每次执行新进程）<br> 默认超时: 10 分钟 <br> 默认 maxBuffer: 1MB <br> Git 特定: 总是设置 `GIT_TERMINAL_PROMPT=0` 和 `GIT_ASKPASS=''` 禁用凭据提示 |
+| Git 调用链 | 所有 Git 调用通过 `execFileNoThrow` → `execa` <br> Git 环境变量注入: <br> - worktree.ts fetch: `{ ...process.env, ...GIT_NO_PROMPT_ENV }` <br> - 其他 Git 调用: 继承当前 env（无特殊注入，除非显式传递） <br> 无 shell: 默认 `shell: undefined`，参数直接传递，无 shell 展开 |
+| 错误降级 | 进程崩溃 → 捕获，resolve `{ code: 1, stdout: '', stderr: '' }` <br> 超时 → execa 自动终止，resolve 错误结果 <br> 非 0 退出码 → 不抛出，resolve 带 code 和错误 <br> `preserveOutputOnError: false` → 清空 stdout/stderr（避免敏感信息） <br> `isCurrentDirectoryBareGitRepo`: 检测到裸仓库 → 由调用方决定降级（通常避免 Git 操作） |
+| 设计取舍/备选 | ✅ `execFileNoThrow` 永不抛出: Git 失败不影响核心功能 <br> ✅ `reject: false` + `catch`: 双重保险，即使 execa 内部抛出也捕获 <br> ✅ 参数数组而非命令字符串: 避免 shell 注入 <br> ✅ `GIT_TERMINAL_PROMPT=0` + `GIT_ASKPASS=''` + `stdin: 'ignore'`: 三重防止凭据提示挂起 CLI <br> ✅ `isCurrentDirectoryBareGitRepo`: 防止攻击者构造 bare repo 触发钩子执行 <br> ✅ `timeout`: 默认 10 分钟，避免无限挂起（gitDiff 显式设为 5s） <br> ❌ 备选抛出异常: 简单但用户体验差；未采用 <br> ❌ 备选允许凭据提示: 功能更强但可能挂起；未采用 |
+| 源码测试证据 | 源文件: `src/utils/execFileNoThrow.ts` (L1-151), `src/utils/git.ts` (L855-925), `src/utils/worktree.ts` (L198-204) <br> 关键证据点: <br> - execFileNoThrow L26-44: `execFileNoThrow` 入口，默认 timeout 10 分钟 <br> - execFileNoThrow L89-150: `execFileNoThrowWithCwd` 总是 resolve（内部 Promise 包装，无 reject 路径） <br> - execFileNoThrow L119: `reject: false` 配置 execa 不抛出 <br> - execFileNoThrow L145-147: 外层 catch 捕获 execa 本身抛出的错误 <br> - git L855-925: `isCurrentDirectoryBareGitRepo` 检测裸仓库布局（HEAD/objects/refs 存在且无有效 .git/HEAD） <br> - git L889-896: 检查 .git/HEAD 是否为有效文件（攻击者可能创建目录而非文件） <br> - worktree.ts L198-204: `GIT_NO_PROMPT_ENV` 定义 <br> - worktree.ts L264, L298: fetch 时注入 `GIT_NO_PROMPT_ENV` + `stdin: 'ignore'` <br> - gitDiff L65, L86, L341: Git diff 设置 5s 超时（更激进） <br> 边界: 超时默认 10 分钟（某些 git 操作可能慢）；maxBuffer 默认 1MB（大 diff 被截断）；不处理 Git 钩子执行（直接文件读取路径避免） |
+
+### 4.6 跨子系统依赖
 
 | 依赖 | 用途 | 所属 spec |
 | --- | --- | --- |

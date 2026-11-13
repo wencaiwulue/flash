@@ -250,7 +250,618 @@ status: draft
 
 ## 4. 架构、模块与数据流
 
-### 4.1 入口与公共契约
+### 4.1 模块设计卡片
+
+#### 模块：FileReadTool
+
+**真实输入 Schema（从源码提取）：**
+```typescript
+{
+  file_path: string;           // 绝对路径，通过 expandPath 规范化
+  offset?: number;             // 起始行（1-indexed，默认 1）
+  limit?: number;              // 行数限制
+  pages?: string;              // PDF 页面范围（如 "1-5", "3", "10-20"）
+}
+```
+*校验规则：pages 解析为 1-indexed，单页范围不能超过 PDF_MAX_PAGES_PER_READ*
+
+**真实输出 Schema（从源码提取）：**
+```typescript
+// discriminated union by type
+| { type: 'text'; file: { filePath: string; content: string; numLines: number; startLine: number; totalLines: number }}
+| { type: 'image'; file: { base64: string; type: 'image/jpeg'|'image/png'|'image/gif'|'image/webp'; originalSize: number; dimensions?: { originalWidth?: number; originalHeight?: number; displayWidth?: number; displayHeight?: number }}}
+| { type: 'notebook'; file: { filePath: string; cells: NotebookCell[] }}
+| { type: 'pdf'; file: { filePath: string; base64: string; originalSize: number }}
+| { type: 'parts'; file: { filePath: string; originalSize: number; count: number; outputDir: string }}
+| { type: 'file_unchanged'; file: { filePath: string }}
+```
+
+**文件状态 / mtime 处理：**
+- readFileState 条目结构：`{ content: string; timestamp: number; offset?: number; limit?: number }`
+- timestamp 使用 `Math.floor(mtimeMs)` 确保跨平台一致性（避免亚毫秒精度问题）
+- 去重检查：仅当条目存在 offset/limit（来自 FileRead 而非 Edit/Write）、且 mtime 完全匹配时生效
+- 去重 killswitch：`tengu_read_dedup_killswitch` 可禁用（默认启用）
+
+**完整读写编辑流程：**
+```
+FileRead.call()
+  ├─ expandPath 规范化路径
+  ├─ 去重检查
+  │   ├─ readFileState 有该文件条目？
+  │   ├─ offset/limit 精确匹配？
+  │   └─ mtime 完全一致？
+  │       └─ 是 → 返回 file_unchanged
+  ├─ 类型分支（按扩展名优先级）
+  │   ├─ .ipynb → Notebook 分支
+  │   ├─ 图片扩展名 → Image 分支
+  │   ├─ .pdf → PDF 分支
+  │   └─ 其他 → Text 分支
+  ├─ 读取内容
+  ├─ 存入 readFileState（带 offset/limit）
+  ├─ 触发 fileReadListeners（如果有）
+  └─ 返回完整输出
+```
+
+**并发修改检测：**
+- FileRead 本身不做并发检测（只读操作）
+- 但会将 mtime 存入 readFileState，供后续 Edit/Write 校验使用
+- 去重时会再次 stat 文件确认 mtime 未变
+
+**二进制 / PDF / Notebook 分支：**
+
+| 分支 | 扩展名 | 处理逻辑 | 外部依赖 |
+|------|--------|----------|----------|
+| Notebook | `.ipynb` | jsonParse 解析，检查大小限制，返回 cells | 无 |
+| Image | `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp` | readFileBytes 读取，detectImageFormatFromBuffer 检测格式，maybeResizeAndDownsampleImageBuffer 调整大小，超限时 compressImageBufferWithTokenLimit 压缩 | sharp（可选，用于压缩降级） |
+| PDF | `.pdf` | pages 参数存在 → extractPDFPages 拆分页面；无 pages → getPDFPageCount 检查页数；页数 ≤ PDF_AT_MENTION_INLINE_THRESHOLD 且 isPdfSupported → readPDF 返回 base64 | poppler-utils（pdftoppm, pdfinfo，可选但推荐） |
+| Text | 其他（非 hasBinaryExtension） | readFileInRange 按 offset/limit 读取，addLineNumbers 加行号，validateContentTokens 检查 token 限制 | 无 |
+
+**错误与权限边界：**
+- UNC 路径：跳过所有 fs 操作，仅做路径检查（防止 Windows NTLM 凭据泄露）
+- 设备文件：`/dev/zero`, `/dev/random`, `/dev/urandom`, `/dev/full`, `/dev/stdin`, `/dev/tty`, `/dev/console`, `/dev/stdout`, `/dev/stderr`, `/proc/*/fd/0-2` 拒绝读取
+- 二进制扩展名：hasBinaryExtension 返回 true 且非图片/PDF → 拒绝
+- ENOENT 处理：尝试 macOS 截图替代路径（普通空格 ↔ thin space），再尝试 suggestPathUnderCwd
+- token 超限：MaxFileReadTokenExceededError
+
+**设计取舍与备选：**
+- 去重仅对精确 offset/limit 生效 → 备选：支持包含关系（先读全文件再读部分）→ 被否决：模型可能需要行号保持一致
+- 基于扩展名而非内容检测 → 备选：magic number 检测 → 被否决：需要先读文件，违反 UNC 路径安全约束
+- killswitch 模式 → 取舍：增加复杂度，但支持灰度发布和快速回滚
+
+**源码测试证据：**
+- 输入 Schema：`src/tools/FileReadTool/FileReadTool.ts:227-242`
+- 输出 Schema：`src/tools/FileReadTool/FileReadTool.ts:248-332`
+- 去重逻辑：`src/tools/FileReadTool/FileReadTool.ts:524-573`
+- 类型分支：`src/tools/FileReadTool/FileReadTool.ts:822-1085`
+- 设备文件检查：`src/tools/FileReadTool/FileReadTool.ts:96-128`
+- macOS 截图路径处理：`src/tools/FileReadTool/FileReadTool.ts:130-159`
+
+---
+
+#### 模块：FileWriteTool
+
+**真实输入 Schema（从源码提取）：**
+```typescript
+{
+  file_path: string;           // 绝对路径，通过 expandPath 规范化
+  content: string;             // 完整内容，直接使用模型输出的换行符
+}
+```
+
+**真实输出 Schema（从源码提取）：**
+```typescript
+{
+  type: 'create' | 'update';   // create=新文件，update=已存在
+  filePath: string;
+  content: string;
+  structuredPatch: PatchHunk[];
+  originalFile: string | null; // null 表示新文件
+  gitDiff?: ToolUseDiff;       // 仅远程模式且 tengu_quartz_lantern 启用
+}
+```
+
+**文件状态 / mtime 处理：**
+- validateInput 阶段：检查 readFileState 有该文件条目（新文件除外），且当前 mtime ≤ 缓存 mtime
+- call 阶段临界区：readFileSyncWithMetadata 再次读取，二次检查 mtime，Windows 上内容比较回退
+- 写入后更新 readFileState：`{ content: string; timestamp: number; offset: undefined; limit: undefined }`，offset undefined 防止 FileRead 去重匹配（模型看到的是旧内容）
+
+**完整读写编辑流程：**
+```
+FileWrite.call()
+  ├─ expandPath 规范化路径
+  ├─ mkdir 父目录（临界区外！）
+  ├─ fileHistoryTrackEdit 备份（临界区外！）
+  ├─ 临界区开始（避免 async 操作）
+  │   ├─ readFileSyncWithMetadata 同步读取
+  │   ├─ 二次检查 mtime ≤ 缓存
+  │   │   └─ Windows：mtime 变了但内容相同 → 允许继续
+  │   ├─ writeTextContent（直接使用模型换行符，不保留原文件换行符）
+  │   └─ 临界区结束
+  ├─ LSP 通知：didChange + didSave
+  ├─ notifyVscodeFileUpdated
+  ├─ 更新 readFileState（offset: undefined）
+  ├─ 远程模式：fetchSingleFileGitDiff（可选）
+  └─ 返回输出
+```
+
+**并发修改检测：**
+- validateInput 阶段：async stat 获取 mtime，与 readFileState 比较
+- call 阶段临界区：readFileSyncWithMetadata 同步读取，再次 getFileModificationTime 检查
+- Windows 回退：mtime 变了但内容相同（比较完整内容）→ 允许继续
+- 临界区不包含 async 操作：避免在检查和写入之间让出事件循环
+
+**错误与权限边界：**
+- 未读先写：拒绝（需先 FileRead）
+- team memory secrets：checkTeamMemSecrets 检查
+- UNC 路径：跳过 fs 操作
+- writeTextContent：先尝试原子写入（临时文件 + rename），失败则回退到直接写入
+- 权限：checkWritePermissionForTool
+
+**设计取舍与备选：**
+- 直接使用模型换行符，不保留原文件换行符 → 取舍：跨平台编辑可能换行符不一致，但避免了静默把 LF 改成 CRLF 破坏 Linux 脚本 → 证据：`src/tools/FileWriteTool/FileWriteTool.ts:300-308`
+- 临界区不包含 async 操作 → 取舍：mkdir 和 fileHistoryTrackEdit 需要提前，但避免了并发修改窗口
+- 原子写入 + 回退 → 取舍：增加复杂度，但提升可靠性
+
+**源码测试证据：**
+- 输入 Schema：`src/tools/FileWriteTool/FileWriteTool.ts:56-65`
+- 输出 Schema：`src/tools/FileWriteTool/FileWriteTool.ts:68-88`
+- validateInput mtime 检查：`src/tools/FileWriteTool/FileWriteTool.ts:186-221`
+- 临界区二次检查：`src/tools/FileWriteTool/FileWriteTool.ts:279-294`
+- writeTextContent：`src/tools/FileWriteTool/FileWriteTool.ts:300-308`
+- 原子写入逻辑：`src/utils/file.ts:362-478`
+
+---
+
+#### 模块：FileEditTool
+
+**真实输入 Schema（从源码提取）：**
+```typescript
+{
+  file_path: string;           // 绝对路径，通过 expandPath 规范化
+  old_string: string;          // 要替换的字符串
+  new_string: string;          // 替换后的字符串
+  replace_all?: boolean;       // 默认 false，是否替换所有匹配
+}
+```
+
+**真实输出 Schema（从源码提取）：**
+```typescript
+{
+  filePath: string;
+  oldString: string;           // 实际匹配的字符串（可能引号已规范化）
+  newString: string;
+  originalFile: string;
+  structuredPatch: PatchHunk[];
+  userModified: boolean;       // 是否被用户修改
+  replaceAll: boolean;
+  gitDiff?: ToolUseDiff;       // 仅远程模式且 tengu_quartz_lantern 启用
+}
+```
+
+**文件状态 / mtime 处理：**
+- validateInput 阶段：check readFileState 存在，getFileModificationTime ≤ 缓存，Windows 内容比较回退
+- call 阶段临界区：readFileSyncWithMetadata，二次检查 mtime，getPatchForEdit 生成 patch，writeTextContent
+- 写入后更新 readFileState：`{ content: string; timestamp: number; offset: undefined; limit: undefined }`
+
+**完整读写编辑流程：**
+```
+FileEdit.call()
+  ├─ expandPath 规范化路径
+  ├─ mkdir 父目录（临界区外！）
+  ├─ fileHistoryTrackEdit 备份（临界区外！）
+  ├─ 临界区开始
+  │   ├─ readFileSyncWithMetadata 同步读取
+  │   ├─ 二次检查 mtime ≤ 缓存
+  │   │   └─ Windows：内容比较回退
+  │   ├─ findActualString 引号规范化
+  │   ├─ preserveQuoteStyle 保持文件引号风格
+  │   ├─ getPatchForEdit 生成 patch
+  │   └─ writeTextContent（保持原文件换行符）
+  ├─ LSP 通知：didChange + didSave
+  ├─ notifyVscodeFileUpdated
+  ├─ 更新 readFileState（offset: undefined）
+  ├─ countLinesChanged 统计变更
+  ├─ 远程模式：fetchSingleFileGitDiff（可选）
+  └─ 返回输出
+```
+
+**并发修改检测：**
+- validateInput 阶段：async stat → getFileModificationTime
+- call 阶段临界区：sync readFileSyncWithMetadata → sync getFileModificationTime
+- Windows 回退：mtime > 缓存但 isFullRead（offset/limit 均 undefined）且内容相同 → 允许继续
+- 最大文件限制：1 GiB（防止 OOM，因为 V8 字符串长度限制约 2^30）
+
+**精确替换与 Windows 内容比较回退：**
+- findActualString：允许单引号 ↔ 双引号 ↔ 反引号互换，查找实际匹配的字符串
+- preserveQuoteStyle：保持文件中原有的引号风格
+- old_string 多匹配：replace_all=false 时拒绝，要求更精确的上下文
+- Windows 内容比较：mtime 变了但完整内容相同 → 允许编辑（云同步/杀毒软件 touch 文件不报错）
+
+**错误与权限边界：**
+- 文件不存在：拒绝，除非 old_string 为空
+- .ipynb 文件：拒绝，要求用 NotebookEditTool
+- old_string 未找到：拒绝
+- old_string 多匹配且 replace_all=false：拒绝
+- 文件 > 1 GiB：拒绝
+- settings 文件额外校验：validateInputForSettingsFileEdit
+- 权限：checkWritePermissionForTool
+
+**设计取舍与备选：**
+- findActualString 引号规范化 → 取舍：极小概率误匹配（两个字符串只有引号不同且都存在），但大幅提升编辑成功率
+- 1 GiB 限制 → 取舍：防止 OOM，但大文件无法编辑
+- 仅对完整读取条目做内容比较回退 → 取舍：部分读取条目无法回退，但避免了读取全文件的开销
+
+**源码测试证据：**
+- 输入 Schema：`src/tools/FileEditTool/types.ts`
+- 输出 Schema：`src/tools/FileEditTool/types.ts`
+- validateInput 逻辑：`src/tools/FileEditTool/FileEditTool.ts:137-361`
+- call 临界区：`src/tools/FileEditTool/FileEditTool.ts:428-491`
+- findActualString/preserveQuoteStyle：`src/tools/FileEditTool/utils.ts`
+- MAX_EDIT_FILE_SIZE：`src/tools/FileEditTool/FileEditTool.ts:84-88`
+- Windows 内容比较回退：`src/tools/FileEditTool/FileEditTool.ts:294-310, 454-466`
+
+---
+
+#### 模块：GlobTool
+
+**真实输入 Schema（从源码提取）：**
+```typescript
+{
+  pattern: string;             // glob 模式
+  path?: string;               // 搜索目录，默认 cwd
+}
+```
+
+**真实输出 Schema（从源码提取）：**
+```typescript
+{
+  durationMs: number;          // 执行耗时（毫秒）
+  numFiles: number;            // 匹配文件数
+  filenames: string[];         // 相对路径
+  truncated: boolean;          // 是否被截断（globLimits.maxResults，默认 100）
+}
+```
+
+**完整流程：**
+```
+GlobTool.call()
+  ├─ 确定搜索目录（path || cwd）
+  ├─ glob(pattern, dir, { limit, offset: 0 }, signal, permissionContext)
+  ├─ toRelativePath 转换为相对路径
+  ├─ 计算 durationMs
+  └─ 返回输出
+```
+
+**参数与结果限制：**
+- 默认 limit：100（可通过 globLimits.maxResults 覆盖）
+- 结果：相对路径（节省 token）
+
+**错误与权限边界：**
+- path 不存在：ENOENT 处理，suggestPathUnderCwd
+- path 不是目录：拒绝
+- UNC 路径：跳过 fs 操作
+- 权限：checkReadPermissionForTool
+
+**源码测试证据：**
+- 输入 Schema：`src/tools/GlobTool/GlobTool.ts:26-36`
+- 输出 Schema：`src/tools/GlobTool/GlobTool.ts:39-52`
+- call 逻辑：`src/tools/GlobTool/GlobTool.ts:154-176`
+
+---
+
+#### 模块：GrepTool
+
+**真实输入 Schema（从源码提取）：**
+```typescript
+{
+  pattern: string;                         // 正则表达式
+  path?: string;                           // 搜索路径，默认 cwd
+  glob?: string;                           // 文件过滤 glob
+  output_mode?: 'content' | 'files_with_matches' | 'count'; // 默认 files_with_matches
+  '-B'?: number;                           // 前几行上下文
+  '-A'?: number;                           // 后几行上下文
+  '-C'?: number;                           // 前后上下文（优先于 -B/-A）
+  context?: number;                        // 同 -C
+  '-n'?: boolean;                          // 显示行号，默认 true
+  '-i'?: boolean;                          // 忽略大小写
+  type?: string;                           // 文件类型（rg --type）
+  head_limit?: number;                     // 结果限制，默认 250，0=无限
+  offset?: number;                         // 跳过行数，默认 0
+  multiline?: boolean;                     // 多行模式（. 匹配换行）
+}
+```
+
+**真实输出 Schema（从源码提取）：**
+```typescript
+// output_mode = 'content'
+{
+  mode: 'content';
+  numFiles: 0;
+  filenames: string[];
+  content: string;            // 带行号/路径的匹配内容
+  numLines: number;
+  appliedLimit?: number;      // 仅截断时存在
+  appliedOffset?: number;     // 仅 offset>0 时存在
+}
+
+// output_mode = 'files_with_matches'（默认）
+{
+  mode: 'files_with_matches';
+  numFiles: number;
+  filenames: string[];        // 按 mtime 降序（最新在前），测试环境按文件名
+  appliedLimit?: number;
+  appliedOffset?: number;
+}
+
+// output_mode = 'count'
+{
+  mode: 'count';
+  numFiles: number;
+  filenames: string[];
+  content: string;            // filename:count 格式
+  numMatches: number;         // 总匹配数
+  appliedLimit?: number;
+  appliedOffset?: number;
+}
+```
+
+**完整流程：**
+```
+GrepTool.call()
+  ├─ 构建 ripgrep args
+  │   ├─ --hidden
+  │   ├─ --glob !.git, !.svn, !.hg, !.bzr, !.jj, !.sl（排除 VCS 目录）
+  │   ├─ --max-columns 500（避免长行污染）
+  │   ├─ multiline → -U --multiline-dotall
+  │   ├─ -i（如果指定）
+  │   ├─ -l（files_with_matches）或 -c（count）
+  │   ├─ -n（content 且 show_line_numbers）
+  │   ├─ -C/-B/-A（content 且指定上下文）
+  │   ├─ -e（pattern 以 - 开头时）
+  │   ├─ --type（如果指定）
+  │   ├─ --glob（如果指定 glob）
+  │   └─ --glob !...（权限 ignore patterns）
+  ├─ ripGrep(args, absolutePath, signal) 执行
+  ├─ output_mode 分支
+  │   ├─ content
+  │   │   ├─ applyHeadLimit（先限制，再 relativize，避免无用工作）
+  │   │   ├─ toRelativePath 逐行转换路径
+  │   │   └─ 返回
+  │   ├─ count
+  │   │   ├─ applyHeadLimit
+  │   │   ├─ toRelativePath 逐行转换
+  │   │   ├─ 解析并累加 numMatches
+  │   │   └─ 返回
+  │   └─ files_with_matches（默认）
+  │       ├─ Promise.allSettled(stat)（单个 ENOENT 不拒绝整个批次）
+  │       ├─ 按 mtime 降序排序（测试环境按文件名）
+  │       ├─ applyHeadLimit
+  │       ├─ toRelativePath 转换
+  │       └─ 返回
+  └─ 返回输出
+```
+
+**ripgrep 参数与结果限制：**
+- 默认 head_limit：250（防止填满 context）
+- head_limit=0：无限（慎用）
+- applyHeadLimit 在 relativize 之前：避免处理会被丢弃的行
+- VCS 目录自动排除：`.git`, `.svn`, `.hg`, `.bzr`, `.jj`, `.sl`
+- max-columns：500（截断长行）
+
+**错误与权限边界：**
+- path 不存在：ENOENT 处理，suggestPathUnderCwd
+- UNC 路径：跳过 fs 操作
+- ripgrep 超时：RipGrepTimeoutError
+- 权限：checkReadPermissionForTool
+
+**设计取舍与备选：**
+- 基于 ripgrep 而非纯 Node.js 实现 → 取舍：依赖外部二进制，但性能远好于 Node.js，且自动处理 .gitignore
+- files_with_matches 按 mtime 降序 → 取舍：用户首先看到最新文件，更相关
+- applyHeadLimit 在 relativize 之前 → 取舍：避免无用工作，提升性能
+- Promise.allSettled(stat) → 取舍：单个文件被删除不拒绝整个批次
+
+**源码测试证据：**
+- 输入 Schema：`src/tools/GrepTool/GrepTool.ts:33-90`
+- 输出 Schema：`src/tools/GrepTool/GrepTool.ts:144-159`
+- ripgrep args 构建：`src/tools/GrepTool/GrepTool.ts:329-434`
+- applyHeadLimit：`src/tools/GrepTool/GrepTool.ts:110-128`
+- mtime 排序：`src/tools/GrepTool/GrepTool.ts:529-553`
+- VCS 目录排除：`src/tools/GrepTool/GrepTool.ts:94-108`
+
+---
+
+#### 模块：NotebookEditTool
+
+**真实输入 Schema（从源码提取）：**
+```typescript
+{
+  notebook_path: string;       // 绝对路径
+  cell_id?: string;            // 单元格 ID 或 cell-N 格式（N 为 0-indexed）
+  new_source: string;          // 新的源代码
+  cell_type?: 'code' | 'markdown'; // 单元格类型，insert 时必须
+  edit_mode?: 'replace' | 'insert' | 'delete'; // 默认 replace
+}
+```
+
+**真实输出 Schema（从源码提取）：**
+```typescript
+{
+  new_source: string;
+  cell_id?: string;            // 可能是新生成的随机 ID
+  cell_type: 'code' | 'markdown';
+  language: string;            // notebook.metadata.language_info?.name || 'python'
+  edit_mode: string;
+  error?: string;              // 错误信息
+  notebook_path: string;
+  original_file: string;
+  updated_file: string;
+}
+```
+
+**文件状态 / mtime 处理：**
+- validateInput 阶段：check readFileState 存在，getFileModificationTime ≤ 缓存
+- call 阶段：readFileSyncWithMetadata 读取，更新后 writeTextContent，更新 readFileState（offset: undefined）
+
+**完整流程：**
+```
+NotebookEditTool.call()
+  ├─ expandPath/resolve 规范化路径
+  ├─ fileHistoryTrackEdit 备份（如果启用）
+  ├─ readFileSyncWithMetadata 同步读取
+  ├─ jsonParse 解析（非 memoized，因为要原地修改）
+  ├─ 解析 cell_id：先找实际 ID，失败则 parseCellId 为数字索引
+  ├─ edit_mode 分支
+  │   ├─ delete：cells.splice(cellIndex, 1)
+  │   ├─ insert：
+  │   │   ├─ nbformat ≥ 4.5 → 生成随机 cell_id（Math.random().toString(36).slice(2,15)）
+  │   │   ├─ markdown：{ cell_type: 'markdown', id: ?, source: new_source, metadata: {} }
+  │   │   ├─ code：{ cell_type: 'code', id: ?, source: new_source, metadata: {}, execution_count: null, outputs: [] }
+  │   │   └─ cells.splice(cellIndex, 0, new_cell)
+  │   └─ replace（默认）：
+  │       ├─ cellIndex === cells.length → 自动切换为 insert
+  │       ├─ targetCell.source = new_source
+  │       ├─ code cell：execution_count = null, outputs = []（重置）
+  │       └─ cell_type 指定：targetCell.cell_type = cell_type
+  ├─ jsonStringify(notebook, null, 1)（IPYNB_INDENT = 1）
+  ├─ writeTextContent（保持原文件编码和换行符）
+  ├─ 更新 readFileState（offset: undefined）
+  └─ 返回输出
+```
+
+**Notebook cell 索引与输出保留：**
+- cell_id 解析优先级：实际 cell.id → parseCellId（cell-N → N）
+- edit_mode=insert 在 cell_id 之后插入
+- edit_mode=replace 且 cellIndex === cells.length → 自动切换为 insert
+- code cell 被替换：execution_count 设为 null，outputs 清空（因为内容已变）
+- nbformat ≥ 4.5 且 insert：生成随机 cell_id
+
+**错误与权限边界：**
+- 非 .ipynb 文件：拒绝
+- edit_mode 不是 replace/insert/delete：拒绝
+- edit_mode=insert 且 cell_type 未指定：拒绝
+- 未读先写：拒绝
+- 文件不存在：拒绝
+- 无效 JSON：拒绝
+- cell_id 不存在：拒绝
+- UNC 路径：跳过 fs 操作
+- 权限：checkWritePermissionForTool
+
+**设计取舍与备选：**
+- 非 memoized jsonParse → 取舍：safeParseJSON 缓存会被原地修改污染
+- nbformat 版本判断 → 取舍：旧版本不需要 cell_id
+- code cell 重置 execution_count/outputs → 取舍：内容已变，旧的执行结果无意义
+
+**源码测试证据：**
+- 输入 Schema：`src/tools/NotebookEditTool/NotebookEditTool.ts:30-57`
+- 输出 Schema：`src/tools/NotebookEditTool/NotebookEditTool.ts:60-85`
+- validateInput：`src/tools/NotebookEditTool/NotebookEditTool.ts:176-293`
+- call 逻辑：`src/tools/NotebookEditTool/NotebookEditTool.ts:295-489`
+- parseCellId：`src/utils/notebook.ts`
+- cell_id 生成：`src/tools/NotebookEditTool/NotebookEditTool.ts:381-389`
+
+---
+
+#### 共享辅助模块：readFileState 缓存填充/失效
+
+**数据结构：**
+```typescript
+// ToolUseContext 中的 readFileState
+Map<string, {
+  content: string;
+  timestamp: number;      // Math.floor(mtimeMs)
+  offset?: number;        // FileRead 时有，用于去重
+  limit?: number;
+  isPartialView?: boolean;
+}>
+```
+
+**缓存填充：**
+- FileRead：存入完整 content + timestamp + offset + limit
+- FileWrite：存入新 content + 当前 mtime + offset: undefined + limit: undefined
+- FileEdit：存入新 content + 当前 mtime + offset: undefined + limit: undefined
+- NotebookEdit：存入新 content + 当前 mtime + offset: undefined + limit: undefined
+
+**缓存失效（去重匹配条件）：**
+- offset 不存在（来自 Edit/Write）→ 不能去重
+- offset/limit 不精确匹配 → 不能去重
+- mtime !== 缓存 timestamp → 不能去重
+- killswitch 启用 → 不能去重
+
+**设计取舍与备选：**
+- Edit/Write 后 offset: undefined → 取舍：模型看到的是旧内容，不能去重匹配，避免混淆
+- 精确 offset/limit 匹配 → 取舍：不能处理先读全文件再读部分的情况，但行号保持一致
+
+**源码测试证据：**
+- FileRead 填充：`src/tools/FileReadTool/FileReadTool.ts:1032-1037`
+- FileWrite 填充：`src/tools/FileWriteTool/FileWriteTool.ts:332-337`
+- FileEdit 填充：`src/tools/FileEditTool/FileEditTool.ts:520-525`
+- NotebookEdit 填充：`src/tools/NotebookEditTool/NotebookEditTool.ts:437-442`
+
+---
+
+#### 共享辅助模块：PDF 页码与图像处理路径
+
+**PDF 读取分支完整逻辑：**
+```
+FileRead PDF 分支
+  ├─ pages 参数存在？
+  │   └─ 是 → extractPDFPages
+  │       ├─ 检查 pdftoppm 可用
+  │       ├─ mkdir 输出目录（uuid 命名）
+  │       ├─ pdftoppm -jpeg -r 100 [-f firstPage] [-l lastPage]
+  │       ├─ 检查是否密码保护/损坏
+  │       ├─ readdir + sort 图像文件
+  │       ├─ 返回 { type: 'parts', count, outputDir }
+  │       └─ mapToolResultToAPIMessage 读取图像并发送
+  │
+  └─ 否 → getPDFPageCount
+      ├─ pdfinfo 读取页数（如果可用）
+      ├─ 页数 > PDF_AT_MENTION_INLINE_THRESHOLD？
+      │   └─ 是 → 报错要求 pages 参数
+      ├─ 页数 ≤ 阈值？
+      │   ├─ isPdfSupported()？
+      │   │   └─ 否 → 报错要求 pages + poppler-utils
+      │   └─ 是 → readPDF
+      │       ├─ stat 检查大小（≤ PDF_TARGET_RAW_SIZE）
+      │       ├─ 检查 %PDF- magic bytes
+      │       ├─ base64 编码
+      │       └─ 返回 { type: 'pdf', base64 }
+      └─ pdfinfo 不可用 → 假设页数 ≤ 阈值，直接 readPDF
+```
+
+**PDF 相关常量（从源码提取）：**
+- PDF_AT_MENTION_INLINE_THRESHOLD：内联页数阈值
+- PDF_TARGET_RAW_SIZE：内联 PDF 最大原始大小（base64 后约 33% 更大）
+- PDF_MAX_EXTRACT_SIZE：extractPDFPages 最大文件大小
+- PDF_MAX_PAGES_PER_READ：单次 pages 参数最大页数
+
+**图像处理路径（Image 分支）：**
+```
+readImageWithTokenBudget()
+  ├─ getFsImplementation().readFileBytes 读取（一次，不重读）
+  ├─ detectImageFormatFromBuffer 检测格式
+  ├─ maybeResizeAndDownsampleImageBuffer 尝试标准调整
+  ├─ estimatedTokens > maxTokens？
+  │   └─ 是 → compressImageBufferWithTokenLimit 激进压缩
+  │       └─ 失败 → sharp 降级（resize 400x400 + jpeg quality 20）
+  │           └─ 失败 → 返回原始
+  └─ 返回 { type: 'image', base64, type, originalSize, dimensions? }
+```
+
+**设计取舍与备选：**
+- 一次读取不重读 → 取舍：避免 I/O，但需要在内存中保留 buffer
+- 先标准调整再激进压缩 → 取舍：尽量保留质量
+- poppler-utils 可选但推荐 → 取舍：不安装时只能读小 PDF inline
+
+**源码测试证据：**
+- PDF 分支：`src/tools/FileReadTool/FileReadTool.ts:894-1017`
+- pdf.ts：`src/utils/pdf.ts`
+- readImageWithTokenBudget：`src/tools/FileReadTool/FileReadTool.ts:1097-1183`
+- imageResizer.ts：`src/utils/imageResizer.ts`
+
+---
+
+### 4.2 入口与公共契约
 
 #### FileReadTool 入口
 

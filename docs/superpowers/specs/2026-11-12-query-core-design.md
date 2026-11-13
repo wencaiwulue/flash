@@ -318,6 +318,430 @@ QueryEngine.submitMessage()
 
 **证据位置**：`src/query.ts` escalation 分支和 recovery 分支
 
+### 4.6 Max output tokens 两级恢复路径
+
+**第一级：escalation**
+
+- 条件：`maxOutputTokensOverride === undefined`、`!process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS`、feature flag `tengu_otk_slot_v1` 启用
+- 动作：设置 `maxOutputTokensOverride = ESCALATED_MAX_TOKENS`，直接 continue 重试同一请求，不注入 meta 消息
+
+**第二级：multi-turn recovery**
+
+- 条件：`maxOutputTokensRecoveryCount < MAX_OUTPUT_TOKENS_RECOVERY_LIMIT`（3）
+- 动作：注入 meta user 消息，让模型"从截断处继续"，`maxOutputTokensRecoveryCount += 1`
+- 恢复耗尽：yield withheld error 消息
+
+**证据位置：** `src/query.ts` escalation 分支（第1204-1226行）和 recovery 分支（第1228-1261行）
+
+---
+
+### 4.7 模块设计卡
+
+#### 模块：`src/QueryEngine.ts` — QueryEngine 类
+
+**关键入口与符号：**
+- `QueryEngine.constructor(config)` — 构造函数，初始化跨轮次状态
+- `QueryEngine.submitMessage(prompt, options)` — 主入口，AsyncGenerator
+- `QueryEngine.interrupt()` — 中断当前执行
+- `QueryEngine.getMessages()` — 获取当前消息历史
+- `QueryEngine.getReadFileState()` — 获取文件缓存状态
+- `ask(config)` — 便捷函数，包装 QueryEngine 供单次调用
+
+**输入输出：**
+- **输入：** `submitMessage()` 接受 `prompt`（string | ContentBlockParam[]）和可选 `uuid`/`isMeta`
+- **输出：** AsyncGenerator yielding `SDKMessage`，最终无返回值
+- **状态输出：** 通过 `getMessages()`/`getReadFileState()` 获取持久化状态
+
+**拥有状态：**
+- `mutableMessages: Message[]` — 对话历史（跨轮次）
+- `abortController: AbortController` — 中断控制器（跨轮次可复用）
+- `permissionDenials: SDKPermissionDenial[]` — 权限拒绝记录（跨轮次）
+- `totalUsage: NonNullableUsage` — 累计 token 使用量（跨轮次）
+- `readFileState: FileStateCache` — 文件读取缓存（跨轮次）
+- `hasHandledOrphanedPermission: boolean` — 是否已处理孤儿权限（引擎生命周期内一次）
+- `discoveredSkillNames: Set<string>` — 本轮发现的技能名（每轮清空）
+- `loadedNestedMemoryPaths: Set<string>` — 已加载嵌套记忆路径（跨轮次）
+
+**关键控制流：**
+1. **初始化阶段（第209-333行）：**
+   - 结构化解构 config，创建 wrappedCanUseTool 跟踪权限拒绝
+   - 获取 system prompt parts，构建完整 system prompt
+   - 注册 structured output enforcement hook（如需要）
+
+2. **processUserInput 阶段（第335-428行）：**
+   - 创建初始 ProcessUserInputContext
+   - 处理 orphaned permission（如有，且未处理过）
+   - 调用 `processUserInput()` 处理斜杠命令等
+   - 将用户输入消息推入 `mutableMessages`
+
+3. **提前持久化阶段（第435-463行）：**
+   - 若 `persistSession` 且有用户输入消息，调用 `recordTranscript(messages)`
+   - 非 bare 模式下 await；bare 模式下 fire-and-forget（第451-456行）
+   - 若 `CLAUDE_CODE_EAGER_FLUSH` 或 `CLAUDE_CODE_IS_COWORK` 为真，额外 flush（第457-462行）
+
+4. **system init 消息与非 query 分支（第490-638行）：**
+   - yield `buildSystemInitMessage()`（工具、模型、权限模式等）
+   - 若 `!shouldQuery`（本地斜杠命令等），yield 结果并返回
+
+5. **query loop 消费阶段（第675-1049行）：**
+   - 遍历 `query()` generator，处理每种消息类型（第688-1049行）
+   - 对 assistant/user/compact_boundary 消息，记录 transcript（assistant 用 fire-and-forget）
+   - 处理 tombstone（跳过）、progress（yield normalized）、stream_event（可选 yield）
+   - 检查 maxBudget、structured output retries、maxTurns（通过 attachment）
+
+6. **最终结果阶段（第1082-1155行）：**
+   - 用 `isResultSuccessful()` 判断是否成功
+   - 若失败，提取本轮错误（通过 error watermark）
+   - 若成功，提取文本结果，yield success result
+
+**失败与清理：**
+- 任意失败均流向 finally block（在 `ask()` 中第1292-1294行），保存 readFileState
+- `interrupt()` 调用 `abortController.abort()`，在 `query()` 中处理为 synthetic tool_result
+- 结构化输出重试超限时，yield error result（第1005-1047行）
+
+**设计取舍与备选方案：**
+- 提前持久化 vs 延后持久化：选择提前，避免用户输入丢失（见2.1节）
+- assistant fire-and-forget vs await：选择前者，避免阻塞流式输出（见2.2节）
+- watermark 用引用 vs 索引：选择引用，避免环形缓冲区 wrap-around 时错误（第669行注释）
+
+**证据位置：**
+- `src/QueryEngine.ts:209-1155` — 完整实现
+- 第450-463行 — 提前持久化
+- 第669-673行 — error watermark
+- 第717-731行 — 消息持久化策略
+- 第926-943行 — compact boundary 数组裁剪
+
+---
+
+#### 模块：`src/query.ts` — query() 与 queryLoop()
+
+**关键入口与符号：**
+- `query(params: QueryParams)` — 主入口，AsyncGenerator
+- `queryLoop(params, consumedCommandUuids)` — 内部循环实现
+- `State` 类型 — 跨迭代可变状态
+- `isWithheldMaxOutputTokens()` — 判断是否 withheld max_output_tokens
+- `yieldMissingToolResultBlocks()` — 生成 synthetic tool_result
+
+**输入输出：**
+- **输入 QueryParams：**
+  - `messages: Message[]` — 初始消息历史
+  - `systemPrompt` / `userContext` / `systemContext` — prompt 构建
+  - `canUseTool` / `toolUseContext` — 工具执行
+  - `fallbackModel` — 降级模型
+  - `maxOutputTokensOverride` / `maxTurns` / `taskBudget` — 限制
+  - `skipCacheWrite` — 是否跳过缓存写入
+  - `deps` — 测试依赖注入
+- **输出：** AsyncGenerator yielding `StreamEvent | RequestStartEvent | Message | TombstoneMessage | ToolUseSummaryMessage`
+- **返回：** `Terminal` 对象，含 `reason` 字段
+
+**拥有状态（State 类型）：**
+- `messages: Message[]` — 当前迭代的消息（含 compact 结果）
+- `toolUseContext: ToolUseContext` — 工具执行上下文
+- `autoCompactTracking: AutoCompactTrackingState | undefined` — autocompact 跟踪
+- `maxOutputTokensRecoveryCount: number` — max tokens 恢复尝试次数
+- `hasAttemptedReactiveCompact: boolean` — 是否已尝试 reactive compact
+- `maxOutputTokensOverride: number | undefined` — 覆盖 max tokens
+- `pendingToolUseSummary: Promise<ToolUseSummaryMessage | null> | undefined` — 下轮要 yield 的工具摘要
+- `stopHookActive: boolean | undefined` — stop hook 是否已激活
+- `turnCount: number` — 迭代轮数（从1开始）
+- `transition: Continue | undefined` — 上次 continue 原因
+- **闭包状态（不在 State 中）：** `taskBudgetRemaining` — 跨 compact 保留的 task budget 剩余量
+
+**关键控制流：**
+1. **循环初始化（第241-305行）：**
+   - 解构 params，初始化 state，创建 budgetTracker
+   - 初始化 `taskBudgetRemaining` 为 undefined
+   - 调用 `startRelevantMemoryPrefetch()` 启动预取
+   - 进入 `while (true)` 循环（第307行）
+
+2. **压缩阶段（第365-467行）：**
+   - `applyToolResultBudget()` — 工具结果大小限制
+   - snip 压缩（如启用）
+   - `deps.microcompact()` — microcompact
+   - `contextCollapse.applyCollapsesIfNeeded()` — context collapse
+   - `deps.autocompact()` — autocompact
+
+3. **模型调用阶段（第654-999行）：**
+   - 检查 blocking limit（如需要）
+   - `deps.callModel()` — 调用模型，流式 yield 消息
+   - 处理 streaming fallback（tombstone 已有消息，重建 executor）
+   - withheld 可恢复错误（prompt_too_long / max_output_tokens / media_size）
+
+4. **Abort 与恢复决策（第1013-1362行）：**
+   - 若 `signal.aborted`，获取剩余结果或生成 synthetic tool_result
+   - 若 `!needsFollowUp`，尝试各种恢复：
+     - context collapse drain → reactive compact → 失败
+     - max_output_tokens escalation → multi-turn recovery → 失败
+     - stop hooks（可能 blocking 重试或完成）
+     - token budget continuation
+   - 否则执行工具
+
+5. **工具执行阶段（第1365-1526行）：**
+   - StreamingToolExecutor.getRemainingResults() 或 runTools()
+   - 收集工具结果，yield 消息
+   - 处理附件（文件变更、任务通知等）
+   - 处理 memory prefetch 和 skill prefetch
+   - 检查 maxTurns，决定继续或完成
+
+**失败与清理：**
+- FallbackTriggeredError：降级模型，tombstone 旧消息，重试（第967-998行）
+- ImageSizeError / ImageResizeError：yield API error message，返回（第972-980行）
+- 其他异常：yield missing tool_result blocks，yield API error，返回（第982-999行）
+- Abort 分两种：模型调用中（第1013-1020行）、工具执行中（第1490-1521行）
+
+**设计取舍与备选方案：**
+- taskBudgetRemaining 放闭包 vs State：选择闭包，避免污染 State（第291行注释）
+- withheld 错误 vs 立即 yield：选择前者，避免 SDK 提前终止（第175-179行注释）
+- StreamingToolExecutor 可选 vs 强制：选择可选，保留向后兼容（第570-587行）
+
+**证据位置：**
+- `src/query.ts:175-1734` — 完整实现
+- 第203-217行 — State 类型定义
+- 第654-999行 — 模型调用与 fallback
+- 第1013-1362行 — 恢复逻辑与状态转换
+- 第1365-1526行 — 工具执行
+
+---
+
+#### 模块：`src/utils/queryHelpers.ts`
+
+**关键入口与符号：**
+- `isResultSuccessful(message, stopReason)` — 判断结果是否成功
+- `normalizeMessage(message)` — 规范化 Message 为 SDKMessage
+- `handleOrphanedPermission(orphanedPermission, ...)` — 处理孤儿权限
+- `extractReadFilesFromMessages(messages, cwd, maxSize)` — 从历史提取文件缓存
+
+**输入输出：**
+- `isResultSuccessful()` — 输入 Message | undefined，返回 boolean 类型谓词
+- `normalizeMessage()` — 输入 Message，返回 Generator<SDKMessage>
+- `handleOrphanedPermission()` — 输入 OrphanedPermission 等，返回 AsyncGenerator<SDKMessage>
+- `extractReadFilesFromMessages()` — 输入 Message[] 等，返回 FileStateCache
+
+**拥有状态：**
+- `toolProgressLastSentTime: Map<string, number>` — 工具进度上次发送时间（normalizeMessage 中的节流状态）
+- 大小限制：`MAX_TOOL_PROGRESS_TRACKING_ENTRIES = 100`，`TOOL_PROGRESS_THROTTLE_MS = 30000`
+
+**关键控制流：**
+
+**normalizeMessage() 分派（第102-222行）：**
+- **assistant 类型：** 调用 `normalizeMessages()`，跳过空消息，yield SDKAssistantMessage
+- **progress 类型：**
+  - `agent_progress` / `skill_progress`：规范化内部消息，按类型 yield assistant/user
+  - `bash_progress` / `powershell_progress`：仅在 REMOTE/CONTAINER_ID 下发送，节流 30秒，LRU 限制 100 条目
+- **user 类型：** 调用 `normalizeMessages()`，yield SDKUserMessage
+- **其他类型（tombstone/attachment/system/stream_event/tool_use_summary）：** 不 yield
+
+**handleOrphanedPermission() 流程（第224-343行）：**
+1. 检查 toolUseID 是否存在，无则返回
+2. 从 assistantMessage 提取对应 ToolUseBlock
+3. 若 permission 为 allow 且有 updatedInput，替换 input
+4. 检查 mutableMessages 中是否已存在该 tool_use_id（避免重复）
+5. 如不存在，push assistantMessage 并持久化
+6. yield SDK assistant 消息
+7. 调用 `runTools()` 执行工具，push/yield 结果
+
+**isResultSuccessful() 判断（第56-94行）：**
+1. 若 message 为 assistant：最后 content block 是 text/thinking/redacted_thinking → true
+2. 若 message 为 user：所有 content block 都是 tool_result → true
+3. 若 stopReason === 'end_turn' → true（模型无内容但完成）
+4. 否则 → false
+
+**extractReadFilesFromMessages() 两遍扫描（第346-501行）：**
+1. **第一遍：** 从 assistant 消息提取 FileRead/Write/Edit 的 tool_use，记录 file_path
+   - Read：仅记录无 offset/limit 的
+   - Write：记录 file_path + content
+   - Edit：仅记录 file_path（input 无结果内容）
+2. **第二遍：** 从 user 消息提取对应 tool_result
+   - Read：提取 content，strip ANSI/行号/system-reminder，跳过 FILE_UNCHANGED_STUB
+   - Write：直接用 tool_use input 的 content
+   - Edit：从当前磁盘读取，记录 mtime
+
+**失败与清理：**
+- `extractReadFilesFromMessages()`：Edit 读取磁盘失败时，若为 FsInaccessible 则跳过，否则 rethrow
+- `handleOrphanedPermission()`：未找到 toolUseID/toolDefinition 时静默返回
+- `normalizeMessage()`：空消息或不符合条件的 progress 消息被静默跳过
+
+**设计取舍与备选方案：**
+- Edit 从磁盘读 vs 从 tool_result 提取：选择前者，因为 tool_result 只有 snippet（第468-477行注释）
+- 检查 tool_use_id 存在 vs 检查 message.id：选择前者，因为 streaming 将 content block 拆分为多消息（第299-306行注释）
+- progress 节流用 parentToolUseID vs toolUseID：选择前者，因为每个 progress 消息的 toolUseID 变化（第170行注释）
+
+**证据位置：**
+- `src/utils/queryHelpers.ts:56-222` — normalizeMessage
+- `src/utils/queryHelpers.ts:224-343` — handleOrphanedPermission
+- `src/utils/queryHelpers.ts:346-501` — extractReadFilesFromMessages
+
+---
+
+### 4.8 submitMessage 消息类型分派表
+
+| 消息类型 | 持久化策略 | 是否加入 mutableMessages | SDK yield 行为 | 证据位置 |
+|----------|-----------|------------------------|---------------|----------|
+| **assistant** | fire-and-forget（void recordTranscript） | 是 | 经 `normalizeMessage()` 过滤空消息后 yield | QueryEngine.ts:688-731, 762-770 |
+| **user** | await recordTranscript | 是 | 经 `normalizeMessage()` 直接 yield | QueryEngine.ts:688-731, 784-787 |
+| **system (compact_boundary)** | await recordTranscript（flush 前序） | 是（裁剪前序） | yield SDKCompactBoundaryMessage（含 compact_metadata） | QueryEngine.ts:701-714, 898-943 |
+| **system (api_error)** | 否 | 是 | yield SDKSystemMessage（subtype: 'api_retry'） | QueryEngine.ts:894-897 |
+| **system (其他)** | 否 | 是 | 不 yield | QueryEngine.ts:898-957 |
+| **tombstone** | 否 | 否 | 不 yield（仅作为内部控制信号） | QueryEngine.ts:757-760 |
+| **progress** | fire-and-forget | 是 | 经 `normalizeMessage()` 分派：<br>- agent/skill: yield assistant/user<br>- bash/powershell: 节流后 yield tool_progress（仅 REMOTE） | QueryEngine.ts:771-783 |
+| **attachment** | fire-and-forget | 是 | 不直接 yield，若为 max_turns_reached 则 yield error result；structured_output 被提取 | QueryEngine.ts:829-873 |
+| **stream_event** | 否 | 否 | 若 includePartialMessages 则 yield，否则仅内部跟踪 usage/stopReason | QueryEngine.ts:788-827 |
+| **tool_use_summary** | 否 | 否 | 直接 yield | QueryEngine.ts:958-967 |
+
+**持久化补充细节：**
+- 所有持久化前，先检查 `persistSession`（`!isSessionPersistenceDisabled()`）
+- compact_boundary 特殊处理：先 flush 到 preservedSegment tail 的消息（第701-714行）
+- assistant fire-and-forget 的原因：每个 content block 单独 yield，最后一个被 message_delta 补充 usage/stopReason；await 会阻塞流式消费（第717-723行注释）
+
+**证据位置：**
+- `QueryEngine.ts:675-1049` — 完整 switch 分派
+- `queryHelpers.ts:102-222` — normalizeMessage 内部分派
+
+---
+
+### 4.9 queryLoop 状态转换表
+
+| 当前状态 | 触发条件 | 转换目标（transition.reason） | 继续/终止 | 证据位置 |
+|---------|---------|------------------------------|-----------|----------|
+| 初始 | `isWithheldPromptTooLong()` 为真，context collapse 有 staged collapses 且上次不是 collapse_drain_retry | collapse_drain_retry | 继续 | query.ts:1088-1119 |
+| 初始/已恢复 | `isWithheldPromptTooLong()` 或 `isWithheldMediaSizeError()` 为真，reactive compact 可用且 `!hasAttemptedReactiveCompact` | reactive_compact_retry | 继续 | query.ts:1120-1167 |
+| 初始/已恢复 | `isWithheldMaxOutputTokens()` 为真，`maxOutputTokensOverride === undefined`，feature flag 启用 | max_output_tokens_escalation | 继续 | query.ts:1193-1226 |
+| escalation 失败 | `isWithheldMaxOutputTokens()` 为真，`maxOutputTokensRecoveryCount < MAX_OUTPUT_TOKENS_RECOVERY_LIMIT (3)` | max_output_tokens_recovery | 继续 | query.ts:1228-1261 |
+| 无工具调用 | `!needsFollowUp`，stop hooks 有 blocking errors | stop_hook_blocking | 继续 | query.ts:1287-1311 |
+| 无工具调用 | `!needsFollowUp`，token budget 决定继续（决策.action === 'continue'） | token_budget_continuation | 继续 | query.ts:1313-1347 |
+| 无工具调用 | `!needsFollowUp`，stop hooks prevent continuation 或成功完成或 withheld 错误恢复失败 | stop_hook_prevented / prompt_too_long / image_error / completed | 终止 | query.ts:1282-1285, 1178-1187, 1362 |
+| 有工具调用 | `needsFollowUp`，工具执行完成，`!shouldPreventContinuation`，`nextTurnCount <= maxTurns` | next_turn | 继续 | query.ts:1709-1733 |
+| 有工具调用 | `needsFollowUp`，工具执行完成，`shouldPreventContinuation` | hook_stopped | 终止 | query.ts:1523-1526 |
+| 有工具调用 | `needsFollowUp`，工具执行中或完成后 `signal.aborted` | aborted_tools | 终止 | query.ts:1490-1521 |
+| 有工具调用 | `needsFollowUp`，工具执行完成，`nextTurnCount > maxTurns` | max_turns | 终止 | query.ts:1709-1717 |
+| 模型调用中 | streaming fallback 触发（FallbackTriggeredError），fallbackModel 存在 | （无 transition，仅重置状态重试） | 继续（同一迭代内） | query.ts:967-998 |
+| 模型调用中 | `signal.aborted` | aborted_streaming | 终止 | query.ts:1013-1054 |
+| 模型调用中 | ImageSizeError / ImageResizeError / 其他异常 | image_error / model_error | 终止 | query.ts:972-999 |
+
+**状态转换补充细节：**
+- collapse_drain_retry 后，`hasAttemptedReactiveCompact` 保持不变，`maxOutputTokensRecoveryCount` 保持不变
+- reactive_compact_retry 后，`hasAttemptedReactiveCompact = true`，避免无限循环
+- max_output_tokens_escalation 后，`maxOutputTokensOverride = ESCALATED_MAX_TOKENS`，不增加 recovery count
+- max_output_tokens_recovery 后，`maxOutputTokensRecoveryCount += 1`，重置 `maxOutputTokensOverride`
+- stop_hook_blocking 后，`stopHookActive = true`，保留 `hasAttemptedReactiveCompact`（避免 compact→error→hook→compact 循环）
+- token_budget_continuation 后，重置所有恢复标记，注入 meta user 消息
+- next_turn 后，重置所有恢复标记，`turnCount += 1`
+
+**证据位置：**
+- `query.ts:1109-1119` — collapse_drain_retry state 更新
+- `query.ts:1154-1167` — reactive_compact_retry state 更新
+- `query.ts:1209-1226` — max_output_tokens_escalation state 更新
+- `query.ts:1236-1261` — max_output_tokens_recovery state 更新
+- `query.ts:1287-1311` — stop_hook_blocking state 更新
+- `query.ts:1326-1347` — token_budget_continuation state 更新
+- `query.ts:1719-1733` — next_turn state 更新
+
+---
+
+### 4.10 关键机制实现追踪
+
+#### 提前持久化（Early Persistence）
+
+**实现位置：** `QueryEngine.ts:450-463`
+
+**实现流程：**
+1. 检查 `persistSession && messagesFromUserInput.length > 0`（第450行）
+2. 创建 `transcriptPromise = recordTranscript(messages)`（第451行）
+3. 分支：
+   - 若 `isBareMode()` → `void transcriptPromise`（fire-and-forget）（第452-453行）
+   - 否则 → `await transcriptPromise`（第454-455行）
+4. 若 `CLAUDE_CODE_EAGER_FLUSH` 或 `CLAUDE_CODE_IS_COWORK` 为真 → `await flushSessionStorage()`（第456-462行）
+
+**数据结构：**
+- `messages` 此时包含：`mutableMessages`（历史）+ `messagesFromUserInput`（本轮用户输入）
+- `recordTranscript()` 将追加写入，而非覆盖
+
+**证据位置：**
+- `QueryEngine.ts:431` — `mutableMessages.push(...messagesFromUserInput)`
+- `QueryEngine.ts:434` — `const messages = [...this.mutableMessages]`
+- `QueryEngine.ts:450-463` — 提前持久化核心逻辑
+
+---
+
+#### Fire-and-Forget 持久化
+
+**实现位置：** `QueryEngine.ts:717-731`
+
+**实现流程：**
+1. 若消息类型为 `assistant` → `void recordTranscript(messages)`（第727-728行）
+2. 若消息类型为 `user` 或 `system (compact_boundary)` → `await recordTranscript(messages)`（第729-730行）
+
+**原因注释：**
+- "claude.ts yields one assistant message per content block, then mutates the last one's message.usage/stop_reason on message_delta — relying on the write queue's 100ms lazy jsonStringify. Awaiting here blocks ask()'s generator, so message_delta can't run until every block is consumed."（第721-726行）
+
+**最终 flush：**
+- 在 yield result 前，若 `persistSession` 且 `CLAUDE_CODE_EAGER_FLUSH` 或 `CLAUDE_CODE_IS_COWORK` → `await flushSessionStorage()`（第1073-1079行）
+
+**证据位置：**
+- `QueryEngine.ts:717-731` — 消息持久化分支
+- `QueryEngine.ts:1073-1079` — 最终 flush
+
+---
+
+#### 错误水印（Error Watermark）
+
+**实现位置：** `QueryEngine.ts:669-673, 1106-1115`
+
+**实现流程：**
+1. 在调用 `query()` 前，获取 watermark：`const errorLogWatermark = getInMemoryErrors().at(-1)`（第669行）
+2. 在构建 `error_during_execution` 的 `errors[]` 时：
+   - 若 `errorLogWatermark` 存在，找到其索引：`all.lastIndexOf(errorLogWatermark) + 1`（第1110行）
+   - 从该位置开始 slice：`all.slice(start)`（第1114行）
+   - 前置诊断信息：`[ede_diagnostic] result_type=... last_content_type=... stop_reason=...`（第1112行）
+
+**设计原因注释：**
+- "Reference-based watermark so error_during_execution's errors[] is turn-scoped. A length-based index breaks when the 100-entry ring buffer shift()s during the turn — the index slides. If this entry is rotated out, lastIndexOf returns -1 and we include everything (safe fallback)."（第665-672行）
+
+**证据位置：**
+- `QueryEngine.ts:669-673` — watermark 捕获
+- `QueryEngine.ts:1106-1115` — watermark 使用
+
+---
+
+#### Orphaned Permission（孤儿权限）
+
+**实现位置：** `QueryEngine.ts:398-408` + `queryHelpers.ts:224-343`
+
+**实现流程：**
+1. `QueryEngine.submitMessage()` 入口检查：`if (orphanedPermission && !this.hasHandledOrphanedPermission)`（第398行）
+2. 设置标记：`this.hasHandledOrphanedPermission = true`（第399行）
+3. 委托 `handleOrphanedPermission()`，yield 其产出（第400-408行）
+4. `handleOrphanedPermission()` 内部：
+   - 提取 `toolUseID`，查找对应 `ToolUseBlock`（第229-251行）
+   - 检查 `mutableMessages` 中是否已存在该 `tool_use_id`（通过扫描所有 assistant 消息的 content blocks）（第299-306行）
+   - 如不存在，push `assistantMessage` 并持久化（第307-312行）
+   - yield SDK assistant 消息（第314-319行）
+   - 调用 `runTools()` 执行工具，push/yield 结果（第322-342行）
+
+**证据位置：**
+- `QueryEngine.ts:398-408` — 入口调用
+- `queryHelpers.ts:224-343` — 完整实现
+
+---
+
+#### normalizeMessage（消息规范化）
+
+**实现位置：** `queryHelpers.ts:102-222`
+
+**实现流程（见 4.8 节分派表）：**
+- assistant → normalizeMessages → 跳过空消息 → yield SDKAssistantMessage
+- progress → 分类型处理：
+  - agent/skill → 规范化内部消息 → yield assistant/user
+  - bash/powershell → 检查 REMOTE/CONTAINER_ID → 节流 30秒 → LRU 100 → yield tool_progress
+- user → normalizeMessages → yield SDKUserMessage
+- 其他 → 不 yield
+
+**证据位置：**
+- `queryHelpers.ts:102-222` — 完整实现
+- `QueryEngine.ts:762-770` / `771-783` / `784-787` — 调用点
+
+---
+
 ## 5. 失败语义与工程取舍
 
 ### 5.1 Abort 语义

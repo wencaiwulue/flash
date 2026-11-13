@@ -208,7 +208,725 @@ sanitizeModelName(modelName: string): string
 - AppState.attribution 仅作为持久化快照，不参与运行时归因计算
 - Git 侧持久化通过 postCommitAttribution.ts 读写 `.git/claude-code/attribution/<sessionId>.json`
 
-### 4.3 主控制流
+---
+
+### 4.3 commitAttribution.ts 模块设计卡
+
+#### 真实入口签名与关键类型
+
+```typescript
+// 核心状态类型
+type AttributionState = {
+  fileStates: Map<string, FileAttributionState>
+  sessionBaselines: Map<string, { contentHash: string; mtime: number }>
+  surface: string
+  startingHeadSha: string | null
+  promptCount: number
+  promptCountAtLastCommit: number
+  permissionPromptCount: number
+  permissionPromptCountAtLastCommit: number
+  escapeCount: number
+  escapeCountAtLastCommit: number
+}
+
+type FileAttributionState = {
+  contentHash: string
+  claudeContribution: number  // 字符级累加，只增不减
+  mtime: number
+}
+
+// 主要入口函数
+createEmptyAttributionState(): AttributionState
+trackFileModification(
+  state: AttributionState,
+  filePath: string,
+  oldContent: string,
+  newContent: string,
+  userModified: boolean,  // 注意：当前实现忽略此参数
+  mtime: number = Date.now()
+): AttributionState
+trackBulkFileChanges(
+  state: AttributionState,
+  changes: ReadonlyArray<{
+    path: string
+    type: 'modified' | 'created' | 'deleted'
+    oldContent: string
+    newContent: string
+    mtime?: number
+  }>
+): AttributionState
+calculateCommitAttribution(
+  states: AttributionState[],
+  stagedFiles: string[]
+): Promise<AttributionData>
+stateToSnapshotMessage(state: AttributionState, messageId: UUID): AttributionSnapshotMessage
+restoreAttributionStateFromSnapshots(snapshots: AttributionSnapshotMessage[]): AttributionState
+```
+
+#### 输入输出设计
+
+**trackFileModification 数据流：**
+- 输入：旧内容、新内容、文件路径
+- 处理：
+  - 前缀/后缀匹配找变更区域：`prefixEnd` 和 `suffixLen` 定位中间变更块
+  - 计算变更字符数：`Math.max(oldChangedLen, newChangedLen)`
+  - 累加至现有贡献（如有）
+- 输出：新的 AttributionState（不可变更新）
+
+**computeFileModificationState（内部函数）细节：**
+- 新文件或删除：贡献 = 内容长度
+- 修改文件：`claudeContribution = existing + max(oldChanged, newChanged)`
+- 错误处理：捕获异常返回 null，调用方跳过该文件
+
+**calculateCommitAttribution 数据流：**
+- 输入：多个会话状态、暂存文件列表
+- 处理：
+  1. 合并文件状态：累加跨会话贡献
+  2. 合并基线：保留最早的基线（首次观察优先）
+  3. 逐个文件处理：
+     - 跳过生成文件（isGeneratedFile）
+     - 有 fileStates → Claude 贡献 = 累加值
+     - 无 fileStates 但有 baseline → 人类贡献 = git diff 估算值
+     - 其他 → 人类贡献 = 文件大小
+- 输出：AttributionData 包含百分比和明细
+
+#### 模块级与显式状态
+
+**模块级状态（仅缓存）：**
+```typescript
+let repoClassCache: 'internal' | 'external' | 'none' | null = null
+// isInternalModelRepo() 用 sequential() 装饰器保证并发安全
+```
+
+**显式状态（AttributionState 完全显式传递）：**
+- fileStates：Map<规范化路径, FileAttributionState>
+- sessionBaselines：Map<路径, {contentHash, mtime}> - 首次观察后不再更新
+- startingHeadSha：会话首次 HEAD，用于检测外部提交
+- promptCount*：提示计数，有 "atLastCommit" 版本用于增量计算
+- permissionPromptCount*：权限提示计数
+- escapeCount*：ESC 取消计数
+
+**关键设计点：**
+- 所有状态操作不可变：返回新对象，不修改输入
+- userModified 参数存在但被忽略（当前不区分用户修改）
+- 路径规范化：处理 macOS /tmp → /private/tmp 符号链接，相对仓库根目录
+
+#### 文件修改跟踪流程
+
+**前缀/后缀匹配算法（computeFileModificationState）：**
+```
+old: [AAAAA BBBBB CCCCC]
+new: [AAAAA DDDDD CCCCC]
+       ↑prefixEnd      ↑suffixLen from end
+              ↑ changed region
+```
+- 从前向后找第一个不同字节：prefixEnd
+- 从后向前找最后一个不同字节：suffixLen
+- 变更长度 = max(oldChangedLen, newChangedLen)
+- 设计选择：不使用 Myers diff 算法（依赖重、精确替换场景已足够）
+
+**批量变更优化（trackBulkFileChanges）：**
+- 创建单个 Map 副本，多次变异
+- 避免 O(n²) 复杂度（每个文件复制 Map 的开销）
+- 适用于 Bash 工具后的批量文件检测
+
+#### 提交关联与归因计算
+
+**合并多会话归因策略：**
+- 文件状态：累加跨会话 claudeContribution
+- 基线：最早基线优先（不覆盖）
+- 计数器：取最后快照的完整值（不跨快照累加）
+
+**贡献计算权衡：**
+- Claude 贡献：只增不减的累加字符数（可能膨胀）
+- 人类贡献：通过排除法估算（无跟踪则全算人类）
+- 百分比：Claude / (Claude + Human)
+- Git diff 估算：行变更 × 40 字符（经验值）
+
+**文件删除处理：**
+- 检查 `git diff --cached --name-status` 是否以 D\t 开头
+- 删除前的内容长度计入 Claude 贡献（如被跟踪）
+
+#### 错误恢复与幂等
+
+**Git 瞬态状态检测（isGitTransientState）：**
+- 检查 .git 目录下：rebase-merge、rebase-apply、MERGE_HEAD、CHERRY_PICK_HEAD、BISECT_LOG
+- 检测到则跳过归因，不阻塞提交
+
+**快照恢复策略：**
+- 只取最后一个快照（完整状态，非增量）
+- 历史证据：837 快照 × 280 文件 → 累加会导致 1.15 万亿字符膨胀
+- 实现：直接取 `snapshots[snapshots.length - 1]`
+
+**错误降级：**
+- computeFileModificationState：捕获异常返回 null
+- getGitDiffSize、isFileDeleted、getStagedFiles：失败返回安全默认值
+
+#### 设计取舍与备选
+
+| 取舍项 | 实际选择 | 备选方案 | 代价 | 收益 | 证据位置 |
+|-------|---------|---------|------|------|---------|
+| 变更检测 | 前缀/后缀匹配 | Myers diff 算法 | 无法处理非连续变更 | 无依赖、O(n)、适合精确替换 | computeFileModificationState |
+| 贡献单位 | 字符级 | 行级 | 多次编辑同位置会膨胀 | 小修改（如 Esc→esc）也被记录 | computeFileModificationState、trackFileModification |
+| 快照策略 | 完整状态，取最后一个 | 增量累加 | 单次快照稍大 | 避免二次膨胀，恢复简单 | restoreAttributionStateFromSnapshots |
+| 基线策略 | 首次观察后不更新 | 每次编辑更新基线 | 无法计算会话总变化 | 与最终提交比较有稳定基准 | trackFileModification、attributionHooks addBaselines |
+| 模型名暴露 | 白名单仓库 | 自动检测内部 | 需手动维护列表 | 防止内部代号泄露 | isInternalModelRepo、INTERNAL_MODEL_REPOS |
+
+#### 源码测试证据
+
+**核心算法证据：**
+- `computeFileModificationState`：前缀/后缀循环、只增不减累加
+- `restoreAttributionStateFromSnapshots`：明确注释 "只取最后一个快照"
+- `calculateCommitAttribution`：分阶段合并、排除生成文件
+- `isInternalModelRepo`：INTERNAL_MODEL_REPOS 硬编码列表（23 个仓库）
+
+**测试覆盖：**
+- tests/commitAttributionWave2.test.ts（间接覆盖）
+- 完整快照恢复测试验证跨快照膨胀防护
+- Git 钩子安装/卸载测试
+
+**安全常量：**
+- INTERNAL_MODEL_REPOS：私有仓库白名单
+- sanitizeModelName：公共模型名映射（opus-4-6、sonnet-4-6 等）
+
+---
+
+### 4.4 attributionHooks.ts 模块设计卡
+
+#### 真实入口签名与关键类型
+
+```typescript
+// 配置常量（真实值）
+const MAX_CANDIDATE_FILES = 200
+const MAX_FILE_BYTES = 256 * 1024        // 256KB
+const MAX_TOTAL_BYTES = 2 * 1024 * 1024  // 2MB
+const MAX_CACHE_FILES = 500
+const MAX_PENDING_BASH = 32
+const CACHE_TTL_MS = 15 * 60 * 1000      // 15分钟
+const PENDING_TTL_MS = 5 * 60 * 1000     // 5分钟
+
+// 内部类型
+type CacheEntry = {
+  content: string
+  hash: string
+  mtime: number
+  size: number
+  lastUsed: number
+}
+
+type PendingBash = {
+  repoRoot: string
+  createdAt: number
+  before: Map<string, CacheEntry | null>
+  incomplete: Set<string>  // 超限或无法读取的文件
+}
+
+// 公共入口
+registerAttributionHooks(): void
+sweepFileContentCache(): void
+clearAttributionCaches(): void
+flushAttributionPersistence(): Promise<void>
+```
+
+#### 输入输出设计
+
+**钩子注册（registerAttributionHooks）：**
+- 注册 PreToolUse：仅 Bash 工具
+- 注册 PostToolUse：Edit、Write、Bash 工具
+- 注册 PostToolUseFailure：仅 Bash 工具
+- 启动 60 秒间隔的 sweep 定时器（unref，不阻止进程退出）
+
+**PreBash 输入输出：**
+- 输入：HookInput（包含 tool_name、tool_input 等）、toolUseID
+- 处理：
+  1. 获取候选路径（candidatePaths）
+  2. 逐个读取候选文件（readCandidate）
+  3. 应用大小/总数限制
+- 输出：无显式输出，写入 pendingBash Map
+
+**PostBash 输入输出：**
+- 输入：同 PreBash
+- 处理：
+  1. 再次读取候选路径
+  2. 对比 before/after 哈希
+  3. 批量追踪变更
+- 输出：无显式输出，更新 AttributionState
+
+#### 模块级与显式状态
+
+**fileContentCache（LRU 缓存）：**
+- 类型：`Map<string, CacheEntry>`
+- Key：`${resolvedRepoRoot}\0${normalizedPath}`（空字符分隔）
+- 过期策略：
+  - 15 分钟 TTL（sweepFileContentCache 清理）
+  - 数量限制：MAX_CACHE_FILES=500
+  - 大小限制：MAX_TOTAL_BYTES=2MB
+  - trimCache：按插入顺序淘汰最早条目
+
+**pendingBash（Bash 执行期间状态）：**
+- 类型：`Map<string, PendingBash>`
+- 数量限制：MAX_PENDING_BASH=32
+- 过期策略：5 分钟 TTL
+- 内容：pre 快照、incomplete 文件集合
+
+**lastHeadByRepo（HEAD 协调）：**
+- 类型：`Map<string, string>`
+- 用途：检测外部提交（HEAD 变化）
+- 生命周期：进程级缓存
+
+**sweepTimer、persistence：**
+- sweepTimer：60 秒间隔定时器，unref
+- persistence：Promise 链，用于优雅关闭等待
+
+**关键设计点：**
+- fileContentCache 和 pendingBash 在模块闭包中，不暴露
+- AttributionState 仍通过显式参数传递（commitAttribution 纯函数）
+- AppState.attribution 只是快照，运行时状态在钩子闭包中
+
+#### 文件修改追踪流程
+
+**Edit/Write 工具流程（postFileTool）：**
+```
+PostToolUse (Edit/Write)
+  → 验证工具输入输出 schema
+  → 读取文件新内容（Edit 从磁盘读，Write 从响应取）
+  → 规范化路径检查
+  → 获取 mtime
+  → addBaselines（仅首次添加）
+  → trackFileModification（前缀/后缀匹配）
+  → queuePersistence（后台写入会话存储+Git）
+```
+
+**Bash 工具完整流程：**
+```
+PreToolUse (Bash)
+  → candidatePaths() 收集：
+    · attribution.fileStates 已有路径
+    · attribution.sessionBaselines 已有路径
+    · git diff --name-only（已修改未暂存）
+    · git ls-files --others（未跟踪未忽略）
+  → 截断至 MAX_CANDIDATE_FILES=200
+  → 逐个 readCandidate：
+    · 检查二进制扩展名、大小超限
+    · 检查符号链接、非文件
+    · 检查路径规范化后仍在仓库内
+    · 检测真实二进制内容（isBinaryContent）
+  → 应用 MAX_TOTAL_BYTES=2MB 限制
+  → 存入 pendingBash[toolUseId]
+  → addBaselines（首次观察保存）
+
+PostToolUse (Bash)
+  → 再次获取 candidatePaths（pre 路径 + 新路径）
+  → 过滤 incomplete 文件
+  → 新文件检查：git ls-files --error-unmatch（已跟踪则跳过）
+  → 对比 before/after hash
+  → 批量构建 changes[]
+  → trackBulkFileChanges（单次 Map 复制）
+  → 删除 pendingBash[toolUseId]
+
+PostToolUseFailure (Bash)
+  → cleanupBashHook
+  → pendingBash.delete(toolUseId)
+```
+
+**HEAD 协调流程（reconcileCommitBaseline）：**
+```
+每次钩子执行前调用
+  → git rev-parse HEAD
+  → 与 lastHeadByRepo 比较
+  → 首次运行：设置 startingHeadSha
+  → HEAD 变化（外部提交）：推进 *AtLastCommit 计数器
+```
+
+#### 会话基线与 rename/copy 边界
+
+**会话基线（sessionBaselines）策略：**
+- 仅在首次观察文件时添加（addBaselines 检查 has(path)）
+- 后续编辑不更新基线
+- 用途：计算从会话开始到提交的净变化（当前未完全使用）
+
+**rename/copy 边界情况：**
+- 当前不处理重命名：Git 检测到重命名但归因只看路径
+- 复制文件：计为全新创建（claudeContribution = 完整长度）
+- 边界原因：需解析 Git diff rename/copy 检测，复杂度高
+
+#### 贡献计数计算
+
+**Edit/Write 工具计数：**
+- 与 commitAttribution.trackFileModification 相同算法
+- before 内容来自工具输出（Edit：originalFile，Write：originalFile 或空）
+- after 内容来自磁盘（Edit）或响应（Write）
+
+**Bash 工具计数：**
+- 批量变更，避免 O(n²) Map 复制
+- 只追踪 pre 快照中存在或新创建的文件
+- 超限文件标记为 incomplete，不追踪
+
+#### Hook 失败与恢复
+
+**错误降级策略：**
+- attributionHook.callback：try/catch 包裹所有操作
+- 失败仅记录 debug 日志，不阻塞工具执行
+- readCandidate：失败返回 null 或 'incomplete'
+- pendingBash 容量满：跳过快照记录
+
+**清理机制：**
+- PostToolUseFailure：删除 pendingBash[toolUseId]
+- sweepFileContentCache：每 60 秒清理过期条目
+- clearAttributionCaches：完整清理（测试/关闭用）
+- flushAttributionPersistence：等待持久化完成
+
+**幂等保证：**
+- registerAttributionHooks：检查 isRegistered 避免重复
+- updateAndPersist：比较引用，状态不变则不持久化
+- addBaselines：检查 has(path) 避免覆盖
+
+#### 设计取舍与备选
+
+| 取舍项 | 实际选择 | 备选方案 | 代价 | 收益 | 证据位置 |
+|-------|---------|---------|------|------|---------|
+| Bash 快照范围 | 候选路径（已跟踪+git变更） | 全仓库扫描 | 可能遗漏部分文件 | 性能可控 | candidatePaths |
+| 缓存淘汰 | 插入顺序（类 LRU） | 真正 LRU | 可能淘汰仍有用的条目 | 实现简单，无需额外数据结构 | trimCache |
+| pending 数量限制 | 32 个并发 Bash | 无限制 | 高并发可能丢失快照 | 防止内存泄漏 | preBash |
+| 二进制检测 | 扩展名+内容检测 | 仅扩展名 | 稍慢 | 更准确 | readCandidate |
+| 持久化队列 | Promise 链串行 | 并行写入 | 稍慢 | 避免竞态，顺序一致 | queuePersistence |
+
+#### 源码测试证据
+
+**真实常量证据：**
+- MAX_CANDIDATE_FILES=200、MAX_FILE_BYTES=256KB、MAX_TOTAL_BYTES=2MB
+- MAX_CACHE_FILES=500、MAX_PENDING_BASH=32
+- CACHE_TTL_MS=15 分钟、PENDING_TTL_MS=5 分钟
+- 定时器间隔 60 秒
+
+**钩子流程证据：**
+- attributionHook：switch-case 分发 Bash/File 工具
+- preBash/postBash/cleanupBashHook：明确的三阶段处理
+- reconcileCommitBaseline：检测 HEAD 变化推进计数器基线
+- updateAndPersist：不可变更新+队列持久化
+
+**测试覆盖：**
+- tests/commitAttributionWave2.test.ts
+- Bash pre/post 批量创建/修改/删除测试
+- 失败清理测试
+- 缓存清理测试
+- HEAD 协调测试
+
+---
+
+### 4.5 attributionTrailer.ts 模块设计卡
+
+#### 真实入口签名与关键类型
+
+```typescript
+// 仅两个导出
+function nonNegativeDelta(current: number, atLastCommit: number): number
+function buildPRTrailers(
+  data: AttributionData,
+  state: AttributionState
+): string[]
+```
+
+#### 输入输出设计
+
+**buildPRTrailers 输入输出：**
+- 输入：AttributionData（完整归因）、AttributionState（计数器）
+- 输出：string[]，Git trailer 格式
+  - Claude-Code-Contribution: N（仅当有字符贡献时）
+  - Claude-Code-Prompts: N（仅当增量>0时）
+  - Claude-Code-Permission-Prompts: N（仅当增量>0时）
+  - Claude-Code-Escapes: N（仅当增量>0时）
+
+**nonNegativeDelta 细节：**
+- 计算：`Math.max(0, Math.trunc(current) - Math.trunc(atLastCommit))`
+- 确保非负、截断小数（安全处理意外浮点）
+
+#### 模块级与显式状态
+
+**纯函数设计：**
+- 无模块级状态
+- 无缓存
+- 输出完全由输入决定
+
+#### Trailer 生成流程
+
+```
+buildPRTrailers(data, state)
+  → 检查 claudeChars+humanChars>0
+  → 计算百分比（clamp 0-100，round）
+  → 计算三个计数器的 nonNegativeDelta
+  → 收集值>0的trailer
+  → 返回string[]
+```
+
+#### 错误恢复与幂等
+
+**安全边界：**
+- claudePercent：`Number.isFinite()` 检查 → 默认 0
+- clamp：`Math.min(100, Math.max(0, ...))` 确保范围
+- 非负增量：`Math.max(0, ...)`
+
+#### 设计取舍与备选
+
+| 取舍项 | 实际选择 | 备选方案 | 代价 | 收益 | 证据位置 |
+|-------|---------|---------|------|------|---------|
+| Trailer 内容 | 仅统计，无路径 | 包含文件明细 | 无法追溯具体文件 | 无敏感信息泄露 | buildPRTrailers |
+| 增量计算 | 当前-上次提交 | 显示总数 | 跨提交统计不直观 | 每次提交只显示自上次的活动 | nonNegativeDelta |
+| 零值处理 | 省略零值 trailer | 始终显示 | 缺少时可能误以为功能关闭 | 简洁，不干扰 commit message | buildPRTrailers |
+
+#### 源码测试证据
+
+**实现证据：**
+- buildPRTrailers：仅构造四个 Claude-Code-* trailer
+- nonNegativeDelta：Math.trunc 防浮点、Math.max(0, ...) 防负
+- 公共 trailers 无路径、无会话 ID、无仓库信息
+
+**测试覆盖：**
+- tests/commitAttributionWave2.test.ts
+- public trailers are ordered, numeric, non-negative and path-free 测试
+
+---
+
+### 4.6 postCommitAttribution.ts 模块设计卡
+
+#### 真实入口签名与关键类型
+
+```typescript
+// 常量
+const MANAGED_MARKER = '# Claude Code managed prepare-commit-msg dispatcher v1'
+const USER_HOOK_SUFFIX = '.claude-user'
+const INTERNAL_FLAG = '--internal-prepare-commit-msg-attribution'
+
+// 公共入口
+installPrepareCommitMsgHook(worktreePath: string, hooksDirectory?: string): Promise<void>
+uninstallPrepareCommitMsgHook(worktreePath: string, hooksDirectory?: string): Promise<void>
+persistAttributionStateForGit(snapshot: AttributionSnapshotMessage): Promise<void>
+runPrepareCommitMsgAttribution(worktreePath: string, messagePath: string): Promise<void>
+```
+
+#### 输入输出设计
+
+**installPrepareCommitMsgHook 流程：**
+```
+输入：worktreePath、可选 hooksDirectory
+  → resolveHooksDirectory（git rev-parse --git-path hooks）
+  → mkdir -p hooks 目录
+  → lock 钩子目录（20 次重试，指数退避 20-250ms）
+  → 读取现有钩子
+  → 检查是否已包含 MANAGED_MARKER
+  → 未管理且用户钩子存在：重命名为 .claude-user
+  → 原子写入 dispatcher 脚本（tmp+rename，权限 0o755）
+  → chmod +x（再次确保）
+  → 失败回滚：如移动了用户钩子则移回
+输出：Promise<void>，失败抛异常
+```
+
+**dispatcher 脚本内容（真实生成）：**
+```bash
+#!/bin/sh
+# Claude Code managed prepare-commit-msg dispatcher v1
+hook_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+user_hook="$hook_dir/prepare-commit-msg.claude-user"
+if [ -f "$user_hook" ] || [ -L "$user_hook" ]; then
+  if [ -x "$user_hook" ]; then
+    "$user_hook" "$@"
+    status=$?
+  else
+    /bin/sh "$user_hook" "$@"
+    status=$?
+  fi
+  if [ "$status" -ne 0 ]; then
+    exit "$status"
+  fi
+fi
+'/path/to/node' '/path/to/cli' --internal-prepare-commit-msg-attribution '/path/to/worktree' "$1"
+status=$?
+if [ "$status" -ne 0 ]; then
+  printf '%s\n' 'Claude Code attribution was unavailable; continuing commit.' >&2
+fi
+exit 0
+```
+
+**runPrepareCommitMsgAttribution 流程（独立入口）：**
+```
+输入：worktreePath、messagePath
+  → setOriginalCwd/setCwdState（设置进程状态）
+  → 动态 import attribution、attributionTrailer（避免加载完整 CLI）
+  → 检查 attributionText 是否启用
+  → 检查 Git 瞬态状态（是则跳过）
+  → getStagedFiles（空则跳过）
+  → readAttributionStates（从 .git/claude-code/attribution 读前 64 个）
+  → calculateCommitAttribution
+  → 合并计数器（多会话累加）
+  → 读取原始 commit message
+  → 清理最后一段中的 Claude-Code-* trailer（保留用户其他内容）
+  → git interpret-trailers --if-exists replace --if-missing add
+  → 原子写入 messagePath
+输出：Promise<void>，失败仅警告，不阻塞提交
+```
+
+**persistAttributionStateForGit 流程：**
+```
+输入：AttributionSnapshotMessage
+  → resolveGitDirectory
+  → 确保 .git/claude-code/attribution 存在（权限 0o700）
+  → 文件名：sha256(sessionId).json
+  → 原子写入（权限 0o600）
+输出：Promise<void>，失败被 queuePersistence 捕获仅记录日志
+```
+
+**readAttributionStates 流程：**
+```
+输入：gitDir
+  → 读取 .git/claude-code/attribution 目录
+  → 文件名排序，取前 64 个
+  → 过滤：64 字符 hex.json、文件<8MB、type='attribution-snapshot'
+  → 解析失败仅跳过该文件
+输出：AttributionState[]
+```
+
+#### 模块级与显式状态
+
+**纯函数设计：**
+- 无模块级状态
+- 无缓存
+- 每次操作重新读取 Git 状态
+
+**Git 侧持久化结构：**
+```
+.git/
+  claude-code/
+    attribution/
+      <sha256(sessionId)>.json  (0o600)
+      ... 最多 64 个 ...
+  (目录权限 0o700)
+```
+
+#### 文件修改追踪/提交关联/Trailer 流程
+
+**完整提交流程：**
+```
+用户执行 git commit
+  → Git 触发 prepare-commit-msg 钩子
+  → dispatcher 先执行用户钩子（prepare-commit-msg.claude-user）
+  → 用户钩子失败 → 终止提交
+  → 用户钩子成功 → 执行 CLI --internal-prepare-commit-msg-attribution
+  → 独立入口运行（不加载完整 CLI，不触发递归钩子安装）
+  → 读取多会话状态，计算归因
+  → 清理旧 Claude trailers，添加新 trailers
+  → 归因失败 → 警告但继续提交（exit 0）
+  → Git 继续提交
+```
+
+**Trailer 清理策略：**
+- 仅清理最后一段（final paragraph）中的 Claude-Code-* 开头的行
+- 保留用户的所有其他内容和其他 trailers（包括 Co-Authored-By）
+- 使用 git interpret-trailers 进行规范替换/添加
+
+#### 错误恢复与幂等
+
+**钩子安装幂等：**
+- 检查 MANAGED_MARKER，已管理则跳过
+- 原子写入防止部分写入
+- 锁防止并发安装/卸载
+- 失败回滚用户钩子位置
+
+**持久化失败降级：**
+- persistAttributionStateForGit 异常被 queuePersistence 捕获
+- 仅记录 debug 日志，不阻塞工具执行
+- prepare-commit-msg 时该会话归因丢失，其他会话正常
+
+**归因状态读取降级：**
+- 损坏的 JSON 文件仅跳过该文件
+- 超限文件（>8MB）跳过
+- 错误类型（非 attribution-snapshot）跳过
+
+**提交时降级：**
+- Git 瞬态状态 → 跳过归因
+- 无暂存文件 → 跳过
+- 无会话状态 → 跳过
+- git interpret-trailers 失败 → 警告但继续（exit 0）
+
+#### 设计取舍与备选
+
+| 取舍项 | 实际选择 | 备选方案 | 代价 | 收益 | 证据位置 |
+|-------|---------|---------|------|------|---------|
+| 钩子管理 | dispatcher+用户钩子分离 | 直接覆盖用户钩子 | 实现复杂 | 保留用户现有工作流，可卸载 | installPrepareCommitMsgHook、dispatcher |
+| 持久化位置 | .git/claude-code/attribution | .claude 目录 | 仅限 Git 仓库 | 随仓库移动，Git 忽略，不污染工作区 | persistAttributionStateForGit |
+| 会话文件限制 | 64 个（文件名排序） | 无限制 | 旧会话归因丢失 | 防止磁盘泄漏，性能可控 | readAttributionStates |
+| 独立入口 | --internal-prepare-commit-msg-attribution | 复用主 CLI | 需谨慎避免递归 | 启动快，不触发钩子安装 | runPrepareCommitMsgAttribution |
+| 原子写入 | tmp+rename | 直接写入 | 稍复杂 | 防止部分写入损坏文件 | atomicWrite |
+| 并发控制 | lockfile（目录锁） | 无锁 | 稍慢 | 防止并发安装/卸载竞态 | installPrepareCommitMsgHook、uninstallPrepareCommitMsgHook |
+
+#### 源码测试证据
+
+**真实常量证据：**
+- MANAGED_MARKER 版本 v1
+- USER_HOOK_SUFFIX = .claude-user
+- 会话文件权限 0o600，目录 0o700
+- 64 会话上限，8MB 文件上限
+- 锁重试：20 次，指数退避 20-250ms
+
+**实现证据：**
+- dispatcher：先执行用户钩子，失败则终止提交
+- atomicWrite：临时文件+重命名，确保原子性
+- runPrepareCommitMsgAttribution：动态 import 避免加载完整 CLI
+- trailer 清理：仅清理最后一段的 Claude-Code-* 行
+- 失败处理：归因失败 exit 0，仅警告
+
+**测试覆盖：**
+- tests/commitAttributionWave2.test.ts
+- preserve an executable user hook, markers, managed trailers and uninstall 测试
+- core.hooksPath 支持测试
+
+---
+
+### 4.7 AppState.attribution 快照设计说明
+
+#### 真实状态归属
+
+**AppState.attribution 定位：**
+- 仅为持久化快照，不参与运行时归因计算
+- 类型：AttributionState（与运行时相同结构）
+- 实际运行时状态归属：
+  - attributionHooks 闭包中的当前状态（通过 context.getAppState().attribution 访问）
+  - Git 侧持久化：.git/claude-code/attribution/<sha256(sessionId)>.json
+  - 会话存储：AttributionSnapshotMessage 序列
+
+#### 更新流程
+
+```
+updateAndPersist(context, updater)
+  → context.updateAttributionState(prev => {
+      updated = updater(prev)
+      changed = updated !== prev
+      return updated
+    })
+  → changed ? queuePersistence(updated) : 跳过
+  → queuePersistence：
+    · stateToSnapshotMessage
+    · recordAttributionSnapshot（会话存储）
+    · persistAttributionStateForGit（Git 侧）
+```
+
+#### 会话恢复流程
+
+```
+会话启动/恢复
+  → 从会话存储读取 AttributionSnapshotMessage[] 列表
+  → restoreAttributionStateFromSnapshots(snapshots)
+    · 仅取最后一个快照（完整状态）
+    · 恢复 fileStates、sessionBaselines、startingHeadSha、promptCount* 等
+  → 设置至 AppState.attribution
+```
+
+#### 设计要点
+
+- AppState.attribution 与运行时状态同步但独立
+- 状态更新不可变（返回新对象）
+- 持久化队列化，不阻塞工具执行
+
+### 4.8 主控制流
 
 **Edit/Write 工具跟踪流程**：
 ```
@@ -291,7 +1009,7 @@ git commit 触发 prepare-commit-msg
     → 设置到 AppState.attribution
 ```
 
-### 4.4 关键数据结构
+### 4.9 关键数据结构
 
 **AttributionState**（内存中每个会话的核心状态）：
 ```typescript
@@ -377,7 +1095,7 @@ git commit 触发 prepare-commit-msg
 }
 ```
 
-### 4.5 跨子系统依赖
+### 4.10 跨子系统依赖
 
 | 依赖 | 用途 | 所属 spec |
 |---|---|---|
