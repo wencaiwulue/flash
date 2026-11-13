@@ -204,21 +204,26 @@ onChangeAppState 检测到 settings 变更
 
 ## 7. 代码与测试证据
 
-| 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
-|---------|---------|----------------|---------|
-| 单一 Store + useSyncExternalStore | `src/state/AppState.tsx:149-167` | 需补充测试 | 仅验证当前实现 |
-| 不可变更新 + Object.is 比较 | `src/state/store.ts:20-27` | 需补充测试 | 仅验证当前实现 |
-| 全局 onChangeAppState 钩子 | `src/state/onChangeAppState.ts:43-171` | 需补充测试 | 仅验证当前实现 |
-| Bootstrap State 与 AppState 分离 | `src/bootstrap/state.ts:1-1763` | 需补充测试 | 仅验证当前实现 |
-| 设置变更双向同步 | `src/state/AppState.tsx:103-111` | 需补充测试 | 仅验证当前实现 |
+### 7.1 AppState 字段分类
 
-### 未覆盖
+| 字段类型 | 字段列表 | 源码证据 |
+|---------|---------|---------|
+| Immutable snapshot（通过 DeepImmutable 标记） | `settings`、`verbose`、`mainLoopModel`、`mainLoopModelForSession`、`statusLineText`、`expandedView`、`isBriefOnly`、`showTeammateMessagePreview`、`selectedIPAgentIndex`、`coordinatorTaskIndex`、`viewSelectionMode`、`footerSelection`、`toolPermissionContext`、`spinnerTip`、`agent`、`kairosEnabled`、`remoteSessionUrl`、`remoteConnectionStatus`、`remoteBackgroundTaskCount`、`replBridgeEnabled`、`replBridgeExplicit`、`replBridgeOutboundOnly`、`replBridgeConnected`、`replBridgeSessionActive`、`replBridgeReconnecting`、`replBridgeConnectUrl`、`replBridgeSessionUrl`、`replBridgeEnvironmentId`、`replBridgeError`、`replBridgeInitialName`、`showRemoteCallout`、`agentDefinitions`、`fileHistory`、`attribution`、`notifications`、`elicitation`、`thinkingEnabled`、`promptSuggestionEnabled`、`sessionHooks`、`tungstenActiveSession`、`tungstenLastCapturedTime`、`tungstenLastCommand`、`tungstenPanelVisible`、`tungstenPanelAutoHidden`、`bagelActive`、`bagelUrl`、`bagelPanelVisible`、`inbox`、`workerSandboxPermissions`、`pendingWorkerRequest`、`pendingSandboxRequest`、`promptSuggestion`、`speculation`、`speculationSessionTimeSavedMs`、`skillImprovement`、`authVersion`、`initialMessage`、`pendingPlanVerification`、`denialTracking`、`activeOverlays`、`fastMode`、`advisorModel`、`effortValue`、`ultraplanLaunching`、`ultraplanSessionUrl`、`ultraplanPendingChoice`、`ultraplanLaunchPending`、`isUltraplanMode`、`replBridgePermissionCallbacks`、`channelPermissionCallbacks` | `src/state/AppStateStore.ts:89-157` |
+| Mutable（直接持有可变对象，不标记 DeepImmutable） | `tasks`、`agentNameRegistry`、`mcp`、`plugins`、`todos`、`remoteAgentTaskSuggestions`、`computerUseMcpState`、`replContext`、`teamContext`、`standaloneAgentContext` | `src/state/AppStateStore.ts:158-569` |
 
-测试覆盖需补充：
-- Store 单元测试（getState、setState、subscribe）
-- React hooks 测试（useAppState、useSetAppState、嵌套 Provider）
-- onChangeAppState 测试（各字段变更同步逻辑）
-- 选择器与辅助函数测试（纯函数单元测试）
+### 7.2 核心模块证据
+
+| 设计陈述 | 源码证据 | 证据边界 |
+|---------|---------|---------|
+| 单一 Store + useSyncExternalStore | `src/state/AppState.tsx:149-167` | 仅验证当前实现 |
+| 不可变更新 + Object.is 比较 | `src/state/store.ts:20-27` | 仅验证当前实现 |
+| 全局 onChangeAppState 钩子 | `src/state/onChangeAppState.ts:43-171` | 仅验证当前实现 |
+| Bootstrap State 与 AppState 分离 | `src/bootstrap/state.ts:1-1763` | 仅验证当前实现 |
+| 设置变更双向同步 | `src/state/AppState.tsx:103-111` | 仅验证当前实现 |
+
+### 7.3 测试覆盖
+
+**无直接测试覆盖**，相关测试可能在其他模块测试中间接验证。
 
 ## 8. 文件覆盖与相关子系统
 

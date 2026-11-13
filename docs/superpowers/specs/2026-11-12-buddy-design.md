@@ -457,12 +457,13 @@ export function isBuddyLive(): boolean {
 
 | 设计陈述 | 代码证据 | 测试证据与边界 |
 |---|---|---|
-| 确定性骨骼与统计边界 | `src/buddy/companion.ts`、`types.ts`、`sprites.ts` | `tests/buddyFork.test.ts` 的 “rolls deterministic bones and bounded stats” 覆盖确定性和有界性。 |
-| 宽松响应解析与 malformed 拒绝 | `src/buddy/companionObserver.ts` | `tests/buddyFork.test.ts` 的 “parses JSON responses without accepting malformed output” 覆盖核心解析不变量。 |
-| 孵化、灵魂持久化与反应 | `companionObserver.ts`、`src/commands/buddy/index.ts` | `tests/buddyFork.test.ts` 的 “hatches and persists a soul, then emits a reaction” 覆盖成功路径；配置写失败和重复并发仍需故障注入。 |
-| 精灵布局、气泡与动画 | `src/buddy/CompanionSprite.tsx` | 当前证据以实现为主，需用 tick/宽度测试固定 100 列、20 tick、淡出和 pet 生命周期。 |
-| 预告窗口和通知 | `src/buddy/useBuddyNotification.tsx` | 需要注入本地日期、feature 与 config，覆盖 4 月 1 日、4 月 7 日和窗口外边界。 |
+| 确定性骨骼与统计边界 | `src/buddy/companion.ts`、`src/buddy/types.ts`、`src/buddy/sprites.ts` | `tests/buddyFork.test.ts` 的 “rolls deterministic bones and bounded stats” 覆盖确定性和有界性。 |
+| 宽松响应解析与 malformed 拒绝 | `src/buddy/companionObserver.ts:35-54` | `tests/buddyFork.test.ts` 的 “parses JSON responses without accepting malformed output” 覆盖核心解析不变量。 |
+| 孵化、灵魂持久化与反应 | `src/buddy/companionObserver.ts`、`src/commands/buddy/index.ts` | `tests/buddyFork.test.ts` 的 “hatches and persists a soul, then emits a reaction” 覆盖成功路径；配置写失败和重复并发仍需故障注入。 |
+| 精灵布局、气泡与动画 | `src/buddy/CompanionSprite.tsx` | 无直接测试；需用 tick/宽度测试固定 100 列、20 tick、淡出和 pet 生命周期。 |
+| 预告窗口和通知 | `src/buddy/useBuddyNotification.tsx` | 无直接测试；需要注入本地日期、feature 与 config，覆盖 4 月 1 日、4 月 7 日和窗口外边界。 |
 | 主 Agent 角色隔离 | `src/buddy/prompt.ts` 与 `companion_intro` attachment | 提示文本提供静态证据；实际模型是否抢话属于行为验收，不能仅由字符串测试证明。 |
+| 静音后行为 | `src/buddy/companionObserver.ts:73`、`src/buddy/CompanionSprite.tsx:177-178` | 无直接测试；当前实现：静音后不触发新 observer，但已设置的 `companionReaction` 仍然显示（最后一条气泡保留）。 |
 
 ## 8. 文件覆盖与相关子系统
 

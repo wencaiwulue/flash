@@ -570,7 +570,7 @@ type MessageLookups = {
 
 ### 7.2 测试覆盖
 
-当前未找到专门针对 UI 渲染的测试文件（测试目录未详细阅读）。
+**无直接测试覆盖**，相关渲染功能可能在其他模块测试中间接验证。
 
 ## 8. 文件覆盖与相关子系统
 
@@ -654,7 +654,29 @@ type MessageLookups = {
 **置信度：**
 - 已证实（基于代码阅读）
 
-#### 9.1.2 缓存可配置化
+#### 9.1.2 为模块级缓存添加重置机制，支持测试隔离
+
+**触发场景与证据：**
+- 当前 `tokenCache`（Markdown）和 `RENDER_CACHE`（StructuredDiff）是模块级变量，测试之间没有隔离机制
+- 证据：`src/components/Markdown.tsx:26`、`src/components/StructuredDiff.tsx:21`
+
+**建议方向：**
+- 导出 `resetMarkdownTokenCache()` 和 `resetDiffRenderCache()` 函数，用于测试间清理状态
+- 在测试套件的 `afterEach`/`beforeEach` 中调用这些重置函数，避免测试间污染
+
+**回归风险：**
+- 低：仅新增函数，不改变运行时行为
+
+**验收方式：**
+- 调用重置函数后，验证缓存已清空
+
+**工作量：**
+- S（约 10-20 行代码）
+
+**置信度：**
+- 设计推断
+
+#### 9.1.3 缓存可配置化
 
 **触发场景与证据：**
 - 当前 tokenCache 上限固定为 500，Diff 缓存上限固定为 4，不可配置

@@ -696,7 +696,7 @@ type KeyParseState = {
 | DOM 与 Yoga 节点关联 | `src/ink/dom.ts` | Yoga 是 native 依赖，在某些环境可能不可用 |
 | 双缓冲区与增量 diff | `src/ink/ink.tsx:268-273`, `src/ink/log-update.ts` | diff 优化可能在某些终端序列组合下有 bug |
 | 节点缓存与 blit 优化 | `src/ink/node-cache.ts`, `src/ink/render-node-to-output.ts:255-315` | blit 失效条件可能遗漏，导致旧内容残留 |
-| 样式/字符/超链接池化 | `src/ink/screen.ts:112-326` | 池无上限，定期重置；CharPool ASCII fast-path 优化 |
+| 样式/字符/超链接池化 | `src/ink/screen.ts:112-260` | 池无上限，定期重置；CharPool ASCII fast-path 优化：`src/ink/screen.ts:29-73` |
 | 输入解析与状态机 | `src/ink/parse-keypress.ts`, `src/ink/termio/tokenize.ts` | 不覆盖所有可能的终端协议，只覆盖常见的 |
 | alt buffer 模式管理与 BSU/ESU | `src/ink/ink.tsx:400-406`, `src/ink/terminal.ts:138-146` | 不是所有终端支持 DEC 2026，fallback 到无同步 |
 | 滚动优化与 DECSTBM | `src/ink/render-node-to-output.ts:141-156`, `src/ink/log-update.ts:406-518` | 只在纯滚动时启用，复杂滚动 fallback 到完整 diff |

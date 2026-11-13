@@ -151,14 +151,14 @@ Onboarding UI 系统解决的核心问题是新用户首次使用 Claude Code �
 
 | 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
 |---------|---------|----------------|---------|
-| 首次引导流程多步骤 | `src/components/Onboarding.tsx` | `issueOnboarding.test.ts` | 仅验证幂等性，未验证所有步骤 |
-| TrustDialog 信任区分 home 目录 | `src/components/TrustDialog/` | 需要查找相关测试 | 未覆盖所有检测项组合 |
-| ManagedSettingsSecurityDialog 仅展示名称 | `src/components/ManagedSettingsSecurityDialog/`、`src/utils/config.ts` 相关逻辑 | 需要查找相关测试 | 未覆盖所有危险设置组合 |
-| Wizard Provider 支持非线性导航 | `src/components/wizard/` | 需要查找相关测试 | 未覆盖复杂分支跳转场景 |
-| DesktopUpsellStartup 推荐逻辑 | `src/components/DesktopUpsell/` | 需要查找相关测试 | 未覆盖推荐展示次数上限 |
-| LspRecommendationMenu 自动消失 | `src/components/LspRecommendation/` | 需要查找相关测试 | 未覆盖 30 秒计时准确性 |
-| ClaudeCodeHint 标签检测 | `src/utils/claudeCodeHints.ts` | 需要查找相关测试 | 未覆盖所有标签格式 |
-| Project Onboarding 最多显示 4 次 | `src/projectOnboardingState.ts` | 需要查找相关测试 | 未覆盖计数重置场景 |
+| 首次引导流程多步骤 | `src/components/Onboarding.tsx` | `tests/issueOnboarding.test.ts` 仅验证幂等性，未验证所有步骤 | 仅验证幂等性，未验证所有步骤 |
+| TrustDialog 信任区分 home 目录 | `src/components/TrustDialog/` | 无直接测试 | 未覆盖所有检测项组合 |
+| ManagedSettingsSecurityDialog 仅展示名称 | `src/components/ManagedSettingsSecurityDialog/`、`src/utils/config.ts` 相关逻辑 | 无直接测试 | 未覆盖所有危险设置组合 |
+| Wizard Provider 支持非线性导航 | `src/components/wizard/` | 无直接测试 | 未覆盖复杂分支跳转场景 |
+| DesktopUpsellStartup 推荐逻辑 | `src/components/DesktopUpsell/` | 无直接测试 | 未覆盖推荐展示次数上限 |
+| LspRecommendationMenu 自动消失 | `src/components/LspRecommendation/` | 无直接测试 | 未覆盖 30 秒计时准确性 |
+| ClaudeCodeHint 标签检测 | `src/utils/claudeCodeHints.ts` | 无直接测试 | 未覆盖所有标签格式 |
+| Project Onboarding 最多显示 4 次 | `src/projectOnboardingState.ts` | 无直接测试 | 未覆盖计数重置场景 |
 
 ## 8. 文件覆盖与相关子系统
 
@@ -181,8 +181,8 @@ Onboarding UI 系统解决的核心问题是新用户首次使用 Claude Code �
 
 | 优先级 | 触发场景与证据 | 建议方向 | 回归风险 | 验收方式 | 工作量 | 置信度 |
 |-------|---------------|---------|---------|--------|-------|-------|
-| P1 | 当前 Onboarding 流程测试仅验证幂等性，未验证所有步骤 | 添加完整的 Onboarding 流程测试，覆盖所有步骤组合 | 低（仅新增测试） | 测试覆盖 Preflight、Theme、API Key Approval、OAuth Flow、Security Notes、Terminal Setup | L | 已证实 |
-| P1 | 当前 TrustDialog 测试不足 | 添加 TrustDialog 测试，覆盖非 home/home 目录、所有检测项组合 | 低（仅新增测试） | 测试覆盖信任状态持久化策略 | M | 已证实 |
+| P1 | 当前 Onboarding 流程测试仅验证幂等性，未验证所有步骤 | 添加完整的 Onboarding 流程测试，覆盖所有步骤组合 | 低（仅新增测试） | 测试覆盖 Preflight、Theme、API Key Approval、OAuth Flow、Security Notes、Terminal Setup | L | 设计推断 |
+| P1 | 当前 TrustDialog 测试不足 | 添加 TrustDialog 测试，覆盖非 home/home 目录、所有检测项组合 | 低（仅新增测试） | 测试覆盖信任状态持久化策略 | M | 设计推断 |
 | P2 | 当前项目引导提示无测试 | 添加项目引导提示测试，覆盖最多显示 4 次后隐藏 | 低（仅新增测试） | 测试计数逻辑 | S | 设计推断 |
 | P2 | 当前 Wizard Provider 导航无测试 | 添加 Wizard Provider 非线性导航测试 | 低（仅新增测试） | 测试 goToStep、goNext、goBack、cancel、navigationHistory | M | 设计推断 |
 | P3 | 当前桌面端推荐与 LSP 插件推荐无测试 | 添加推荐展示次数上限测试、禁用逻辑测试 | 低（仅新增测试） | 测试推荐展示与禁用 | M | 设计推断 |
