@@ -146,6 +146,1498 @@ function stopCapturingEarlyInput(): string | undefined
 4. **初始化**：preAction hook 中调用 `init()`，只执行一次
 5. **清理**：各模块调用 `registerCleanup()`，退出时自动执行
 
+### 4.2 cli.tsx 快速路径模块设计卡
+
+#### 真实入口签名与关键类型
+```typescript
+// src/entrypoints/cli.tsx
+async function main(): Promise<void>
+
+// 顶部副作用（非函数，模块加载即执行）
+process.env.COREPACK_ENABLE_AUTO_PIN = '0'
+if (process.env.CLAUDE_CODE_REMOTE === 'true') {
+  const existing = process.env.NODE_OPTIONS || ''
+  process.env.NODE_OPTIONS = existing
+    ? `${existing} --max-old-space-size=8192`
+    : '--max-old-space-size=8192'
+}
+if (feature('ABLATION_BASELINE') && process.env.CLAUDE_CODE_ABLATION_BASELINE) {
+  // 设置多个环境变量
+}
+
+// 模块级调用（非函数）
+void main()
+```
+
+#### 输入输出
+- **输入**：`process.argv`（通过 `process.argv.slice(2)` 截取）
+- **输出**：
+  - 快速路径：直接 `console.log` 或 `process.stderr.write`
+  - 完整路径：无返回值，委托给 main.tsx
+- **退出码**：
+  - `--version`：自然退出（`return`，Node.js 以 0 退出）
+  - `--chrome-native-host`：`throw Error` → 非 0 退出
+  - `--internal-prepare-commit-msg-attribution`：出错时 `console.error` 但继续返回（不阻塞 commit）
+
+#### 状态与启动顺序
+- **无内部状态**：纯流程协调模块
+- **启动顺序（严格优先级）**：
+  1. 顶部环境变量设置（模块加载即执行）
+  2. `--internal-prepare-commit-msg-attribution`
+  3. `--version`/`-v`/`-V`
+  4. `--dump-system-prompt`（feature 保护）
+  5. `--claude-in-chrome-mcp`
+  6. `--chrome-native-host`（直接抛错）
+  7. `--computer-use-mcp`（feature 保护）
+  8. `--daemon-worker`（feature 保护）
+  9. `--remote-control`/`rc`/`remote`/`sync`/`bridge`（feature 保护）
+  10. `--daemon`（feature 保护）
+  11. `ps`/`logs`/`attach`/`kill` 或 `--bg`/`--background`（feature 保护）
+  12. `--template-job-supervisor`（feature 保护）
+  13. `new`/`list`/`reply`（模板命令，feature 保护）
+  14. `--open-runner`/`--open-runner-server`（feature 保护）
+  15. `--environment-runner`（feature 保护）
+  16. `--self-hosted-runner`（feature 保护）
+  17. `--worktree` + `--tmux`（部分情况 fall through）
+  18. 完整 CLI 路径（动态 import main.tsx）
+
+#### 完整启动/执行/退出流程
+```text
+node cli.js <args>
+  ↓
+cli.tsx 模块加载（顶部副作用执行）
+  ├─ COREPACK_ENABLE_AUTO_PIN = '0'
+  ├─ CCR 环境：NODE_OPTIONS += --max-old-space-size=8192
+  └─ ABLATION_BASELINE（如启用）
+  ↓
+void main() 调用
+  ↓
+快速路径判断（从上到下优先级）
+  ├─ 匹配路径 → 动态 import 对应处理器 → 执行 → return/process.exit
+  └─ 不匹配 → 继续
+  ↓
+--bare 检查 → 如匹配设置 CLAUDE_CODE_SIMPLE=1
+  ↓
+startCapturingEarlyInput()
+  ↓
+profileCheckpoint('cli_before_main_import')
+  ↓
+动态 import('../main.js')  // 此时才加载 main.tsx 及其依赖树
+  ↓
+profileCheckpoint('cli_after_main_import')
+  ↓
+await cliMain()  // 调用 main.tsx 的 main()
+  ↓
+profileCheckpoint('cli_after_main_complete')
+  ↓
+自然退出（Node.js 事件循环清空）
+```
+
+#### 错误与降级
+- **动态 import 失败**：Node.js 默认打印堆栈，非 0 退出，无清理（快速路径通常未分配资源）
+- **`--internal-prepare-commit-msg-attribution` 失败**：`console.error` 提示但 `return` 继续，不阻塞 git commit
+- **`--worktree` + `--tmux` 失败**：
+  - 如 handled → `return`
+  - 如 error → `exitWithError()`
+  - 如不 handled → fall through 到完整 CLI 路径
+- **模板命令**：`process.exit(0)` 而非 `return`，防止 Ink 事件循环保持进程不退出
+
+#### 设计取舍与备选
+| 取舍 | 当前选择 | 代价 | 收益 | 备选方案 |
+|------|----------|------|------|----------|
+| 单一入口 | cli.tsx | 需维护长 if-else 链 | 所有启动路径集中管理 | 多个独立二进制 |
+| 零加载快速路径 | `--version` 不 import 任何模块 | 版本号需构建时内联 | 响应速度极快 | 静态版本文件 |
+| 优先级排序 | 从快到慢 | 新增命令需考虑位置 | 常用命令响应最快 | 配置路由表 |
+| feature 保护 | `feature('X')` 包裹 | 需构建时支持 DCE | 外部构建不包含禁用功能 | 运行时配置 |
+| 顶部环境设置 | 模块加载即执行 | 需小心管理副作用 | 子进程继承正确环境 | init() 中设置 |
+| 动态 import | `await import('../main.js')` | 稍增加启动延迟 | 快速路径不加载重型依赖 | 静态 import |
+
+#### 源码测试证据
+- **主文件**：`src/entrypoints/cli.tsx:1-348`
+- **顶部副作用**：`src/entrypoints/cli.tsx:7-38`
+- **快速路径顺序**：`src/entrypoints/cli.tsx:50-320`
+- **版本内联**：通过 `MACRO.VERSION` 构建时注入
+- **无直接测试**：该模块通过端到端测试覆盖
+
+---
+
+### 4.3 startupProfiler.ts 性能分析模块设计卡
+
+#### 真实入口签名与关键类型
+```typescript
+// src/utils/startupProfiler.ts
+export function profileCheckpoint(name: string): void
+export function profileReport(): void
+export function isDetailedProfilingEnabled(): boolean
+export function getStartupPerfLogPath(): string
+export function getStartupProfileData(): {
+  detailedEnabled: boolean
+  checkpointCount: number
+  phases: Array<{ name: string; durationMs: number }>
+  totalTimeMs: number
+}
+export function logStartupPerf(): void
+
+// 模块级状态
+const DETAILED_PROFILING: boolean  // 模块加载时决定
+const STATSIG_LOGGING_SAMPLED: boolean  // 模块加载时决定
+const SHOULD_PROFILE: boolean  // 模块加载时决定
+const memorySnapshots: NodeJS.MemoryUsage[]  // 仅详细模式
+```
+
+#### 输入输出
+- **输入**：
+  - `profileCheckpoint(name)`：checkpoint 名称字符串
+  - 环境变量：`CLAUDE_CODE_PROFILE_STARTUP=1` 启用详细模式
+  - 环境变量：`USER_TYPE=ant` 内部用户 100% 采样
+- **输出**：
+  - Statsig 事件：`tengu_startup_perf`（采样触发）
+  - 文件：`~/.claude/startup-perf/<sessionId>.txt`（详细模式）
+  - 调试日志：通过 `logForDebugging`（详细模式）
+
+#### 状态与启动顺序
+- **模块级状态**：
+  - `DETAILED_PROFILING`：`isEnvTruthy(process.env.CLAUDE_CODE_PROFILE_STARTUP)`
+  - `STATSIG_LOGGING_SAMPLED`：`USER_TYPE=ant` 或 `Math.random() < 0.005`
+  - `SHOULD_PROFILE`：上述两者任一为 true
+  - `memorySnapshots`：仅详细模式，追加数组
+- **启动顺序**：
+  1. 模块加载 → 决定采样/详细模式
+  2. 如 `SHOULD_PROFILE` → 立即 `profileCheckpoint('profiler_initialized')`
+  3. 各启动阶段调用 `profileCheckpoint(name)`
+  4. 退出时调用 `profileReport()`（由 gracefulShutdown 触发）
+
+#### 完整启动/执行/退出流程
+```text
+模块加载（main.tsx 或 cli.tsx import 时）
+  ↓
+DETAILED_PROFILING = isEnvTruthy(CLAUDE_CODE_PROFILE_STARTUP)
+STATSIG_LOGGING_SAMPLED = (USER_TYPE=ant) || (Math.random() < 0.005)
+SHOULD_PROFILE = DETAILED_PROFILING || STATSIG_LOGGING_SAMPLED
+  ↓
+if (SHOULD_PROFILE): profileCheckpoint('profiler_initialized')
+  ↓
+其他模块调用 profileCheckpoint(name)
+  ├─ perf.mark(name)
+  └─ 如详细模式：memorySnapshots.push(process.memoryUsage())
+  ↓
+退出时调用 profileReport()
+  ├─ 防止重复：if (reported) return
+  ├─ logStartupPerf() → 如采样，记录到 Statsig
+  └─ 如详细模式：
+     ├─ 写入文件 ~/.claude/startup-perf/<sessionId>.txt
+     └─ logForDebugging() 打印报告
+```
+
+#### 错误与降级
+- **profilerBase.getPerformance() 失败**：未明确处理，可能抛错
+- **文件写入失败**：未明确捕获，可能抛错
+- **非采样用户**：完全零开销（`SHOULD_PROFILE=false` 时 `profileCheckpoint` 是空操作）
+- **内存快照仅详细模式**：避免生产环境内存开销
+
+#### 设计取舍与备选
+| 取舍 | 当前选择 | 代价 | 收益 | 备选方案 |
+|------|----------|------|------|----------|
+| 模块级状态 | 加载时决定 | 不能运行时切换 | 零开销分支预测 | 每次检查环境变量 |
+| 低采样率 | 外部用户 0.5% | 数据量较少 | 生产环境性能影响可忽略 | 100% 采样 |
+| 内存仅详细模式 | `memorySnapshots` 受 `DETAILED_PROFILING` 保护 | 生产环境无内存数据 | 生产环境零内存开销 | 始终记录 |
+| 数组而非 Map | 追加数组，索引对应 | 相同 name 会覆盖 | 支持重复 checkpoint | Map keyed by name |
+| 预定义阶段 | `PHASE_DEFINITIONS` 硬编码 | 新增阶段需改代码 | Statsig 字段一致 | 动态发现阶段 |
+
+#### 源码测试证据
+- **主文件**：`src/utils/startupProfiler.ts:1-219`
+- **阶段定义**：`src/utils/startupProfiler.ts:48-54`
+- **采样逻辑**：`src/utils/startupProfiler.ts:26-36`
+- **内存快照**：`src/utils/startupProfiler.ts:46,72-74`
+- **无直接测试**：该模块通过端到端测试覆盖
+
+---
+
+### 4.4 gracefulShutdown.ts 优雅退出模块设计卡
+
+#### 真实入口签名与关键类型
+```typescript
+// src/utils/gracefulShutdown.ts
+export const setupGracefulShutdown: memoize(() => void)
+export function gracefulShutdown(
+  exitCode?: number,
+  reason?: ExitReason,  // 来自 src/entrypoints/agentSdkTypes
+  options?: {
+    getAppState?: () => AppState
+    setAppState?: (f: (prev: AppState) => AppState) => void
+    finalMessage?: string
+  }
+): Promise<void>
+export function gracefulShutdownSync(
+  exitCode?: number,
+  reason?: ExitReason,
+  options?: { /* 同上 */ }
+): void
+export function isShuttingDown(): boolean
+export function resetShutdownState(): void  // 仅测试
+export function getPendingShutdownForTesting(): Promise<void> | undefined  // 仅测试
+
+// 内部状态
+let shutdownInProgress: boolean = false
+let failsafeTimer: ReturnType<typeof setTimeout> | undefined
+let orphanCheckInterval: ReturnType<typeof setInterval> | undefined
+let pendingShutdown: Promise<void> | undefined
+let resumeHintPrinted: boolean = false
+```
+
+#### 输入输出
+- **输入**：
+  - `gracefulShutdown(exitCode, reason, options)`：退出码、原因、AppState 访问器
+  - 信号：`SIGINT`、`SIGTERM`、`SIGHUP`（非 Windows）
+  - 事件：`uncaughtException`、`unhandledRejection`
+- **输出**：
+  - 终端：清理终端模式序列、恢复 alt screen、显示 resume hint
+  - 文件：会话持久化（通过 cleanup 函数）
+  - 网络：analytics flush、API 连接关闭
+  - 子进程：终止或 detach
+  - 退出码：0 或指定值（`SIGTERM`→143、`SIGHUP`→129）
+
+#### 状态与启动顺序
+- **状态转换**：
+  - `shutdownInProgress = false` → `true`（仅一次）
+  - `pendingShutdown`：从 `undefined` → `Promise`
+- **启动顺序**：
+  1. `setupGracefulShutdown()`（由 `init()` 调用，memoized 仅一次）
+  2. 注册 signal handlers（`SIGINT`、`SIGTERM`、`SIGHUP`）
+  3. 注册 `signal-exit` onExit hook（通过 `onExit(() => {})` 固定）
+  4. 注册 `uncaughtException`、`unhandledRejection` 日志
+  5. 如 TTY 且非 Windows：启动 orphan check（每 30s，unref）
+
+#### 完整启动/执行/退出流程
+```text
+init() 调用 setupGracefulShutdown()（memoized）
+  ↓
+onExit(() => {})  // 固定 Bun 信号处理 bug
+  ↓
+process.on('SIGINT', () => {
+  if (--print/--print: return  // 让 print 模式自己处理
+  logForDiagnosticsNoPII('shutdown_signal', {signal: 'SIGINT'})
+  void gracefulShutdown(0)
+})
+process.on('SIGTERM', () => void gracefulShutdown(143))
+process.on('SIGHUP', () => void gracefulShutdown(129))  // 非 Windows
+  ↓
+if (TTY 且非 Windows):
+  orphanCheckInterval = setInterval(30s) {
+    if (!stdout.writable || !stdin.readable):
+      clearInterval(orphanCheckInterval)
+      logForDiagnosticsNoPII('shutdown_signal', {signal: 'orphan_detected'})
+      void gracefulShutdown(129)
+  }.unref()
+  ↓
+process.on('uncaughtException', err => log error + event)
+process.on('unhandledRejection', reason => log error + event)
+  ↓
+触发退出（用户 Ctrl+C、信号、显式调用 gracefulShutdown）
+  ↓
+gracefulShutdown(exitCode, reason, options)
+  ├─ 防止重入：if (shutdownInProgress) return
+  ├─ shutdownInProgress = true
+  ├─ 计算 failsafe 超时 = max(5s, SessionEnd hook 超时 + 3.5s)
+  ├─ failsafeTimer = setTimeout(failsafe 退出, 超时).unref()
+  ├─ process.exitCode = exitCode
+  ├─ cleanupTerminalModes()  // 同步！
+  │   ├─ writeSync(1, DISABLE_MOUSE_TRACKING)
+  │   ├─ 如 alt screen 活跃：inkInstance.unmount()
+  │   ├─ drainStdin()
+  │   ├─ detachForShutdown()
+  │   ├─ writeSync(1, DISABLE_MODIFY_OTHER_KEYS)
+  │   ├─ writeSync(1, DISABLE_KITTY_KEYBOARD)
+  │   ├─ writeSync(1, DFE)  // disable focus events
+  │   ├─ writeSync(1, DBP)  // disable bracketed paste
+  │   ├─ writeSync(1, SHOW_CURSOR)
+  │   ├─ writeSync(1, CLEAR_ITERM2_PROGRESS)
+  │   ├─ writeSync(1, CLEAR_TAB_STATUS)  // 如支持
+  │   └─ writeSync(1, CLEAR_TERMINAL_TITLE)  // 如未禁用
+  ├─ printResumeHint()  // 同步！
+  │   ├─ 仅 TTY 且 interactive 且 session persistence 启用
+  │   └─ chalk.dim('Resume this session with:\nclaude --resume <id>\n')
+  ├─ Promise.race([
+  │     runCleanupFunctions(),  // 2s 超时
+  │     setTimeout(2s)
+  │   ])
+  ├─ await executeSessionEndHooks(reason, options)  // 超时由 hook budget 控制
+  ├─ profileReport()  // 忽略错误
+  ├─ 如 lastMainRequestId：logEvent('tengu_cache_eviction_hint')
+  ├─ Promise.race([
+  │     Promise.all([shutdown1PEventLogging(), shutdownDatadog()]),
+  │     sleep(500ms)
+  │   ])
+  ├─ 如 options.finalMessage：writeSync(2, finalMessage + '\n')
+  └─ forceExit(exitCode)
+      ├─ clearTimeout(failsafeTimer)
+      ├─ 如非测试：instances.get(stdout)?.drainStdin()
+      ├─ process.exit(exitCode)  // 可能抛 EIO
+      └─ 如抛错且非测试：process.kill(process.pid, 'SIGKILL')
+  ↓
+failsafe 触发（如正常流程超时）
+  ├─ cleanupTerminalModes()
+  ├─ printResumeHint()
+  └─ forceExit(exitCode)
+```
+
+#### 错误与降级
+- **cleanup 函数抛错**：静默忽略，继续下一个
+- **hook 执行失败**：静默忽略
+- **analytics flush 超时**：500ms 后放弃，强制退出
+- **`process.exit()` 抛 EIO**（TTY 消失）：fallback 到 `SIGKILL`
+- **`--print`/`-p` 模式 SIGINT**：直接 return，让 print 模式自己处理
+- **重复调用 gracefulShutdown**：静默忽略（`shutdownInProgress` 检查）
+- **`gracefulShutdownSync`**：调用异步版本但不 await，由 failsafe 兜底
+
+#### 设计取舍与备选
+| 取舍 | 当前选择 | 代价 | 收益 | 备选方案 |
+|------|----------|------|------|----------|
+| memoized setup | `setupGracefulShutdown` 仅执行一次 | 需注意 | 防止重复注册 | 每次都注册 |
+| 固定空 onExit | `onExit(() => {})` 永不卸载 | 轻微内存泄漏 | 修复 Bun 信号处理 bug | 等待 Bun 修复 |
+| 终端清理同步 | `cleanupTerminalModes` 使用 writeSync | 可能阻塞 | 保证进程退出前完成 | 异步清理 |
+| failsafe 超时 | 5s 兜底 | 可能中断清理 | 保证进程最终退出 | 无限等待 |
+| 先清理终端 | 终端清理在异步操作前 | 需小心顺序 | 即使清理挂起用户也看到干净终端 | 先执行清理 |
+| resume hint 一次 | `resumeHintPrinted` 防止重复 | 需额外状态 | 提示不重复显示 | 每次都打印 |
+| 孤儿检测 | 定期检查 stdio 是否可写 | 轻微开销 | 检测终端关闭未发 SIGHUP（macOS） | 不检测 |
+
+#### 源码测试证据
+- **主文件**：`src/utils/gracefulShutdown.ts:1-530`
+- **终端清理**：`src/utils/gracefulShutdown.ts:58-136`
+- **信号处理**：`src/utils/gracefulShutdown.ts:237-333`
+- **孤儿检测**：`src/utils/gracefulShutdown.ts:277-296`
+- **failsafe 超时**：`src/utils/gracefulShutdown.ts:417-424`
+- **强制退出**：`src/utils/gracefulShutdown.ts:193-231`
+- **无直接测试**：该模块通过端到端测试覆盖
+
+---
+
+### 4.5 cleanupRegistry.ts 清理注册表模块设计卡
+
+#### 真实入口签名与关键类型
+```typescript
+// src/utils/cleanupRegistry.ts
+export function registerCleanup(
+  cleanupFn: () => Promise<void>
+): () => void  // 返回 unregister 函数
+export async function runCleanupFunctions(): Promise<void>
+
+// 内部状态
+const cleanupFunctions = new Set<() => Promise<void>>()
+```
+
+#### 输入输出
+- **输入**：
+  - `registerCleanup(cleanupFn)`：清理函数（同步或异步）
+- **输出**：
+  - `runCleanupFunctions()`：并行执行所有注册的函数，无返回值
+  - 返回值：unregister 函数，调用可从 Set 中删除
+
+#### 状态与启动顺序
+- **全局单例 Set**：`cleanupFunctions = new Set()`
+- **执行顺序**：并行（`Promise.all`），无特定顺序
+- **启动顺序**：
+  1. 模块加载 → Set 初始化
+  2. 各模块调用 `registerCleanup(fn)` → `Set.add(fn)`
+  3. `gracefulShutdown` 调用 `await runCleanupFunctions()` → 并行执行
+
+#### 完整启动/执行/退出流程
+```text
+模块加载
+  ↓
+const cleanupFunctions = new Set()
+  ↓
+模块 A 调用 registerCleanup(fnA) → Set.add(fnA)
+模块 B 调用 registerCleanup(fnB) → Set.add(fnB)
+...
+  ↓
+gracefulShutdown 调用 runCleanupFunctions()
+  ↓
+Promise.all(Array.from(cleanupFunctions).map(fn => fn()))
+  ↓
+所有 cleanup 函数并行执行
+  ↓
+返回（无返回值，不抛出错误）
+```
+
+#### 错误与降级
+- **cleanup 函数抛错**：`runCleanupFunctions` 不捕获，由调用方（gracefulShutdown）静默忽略
+- **未 unregister**：无问题，进程退出后 Set 消失
+- **重复注册同一函数**：Set 自动去重，只执行一次
+
+#### 设计取舍与备选
+| 取舍 | 当前选择 | 代价 | 收益 | 备选方案 |
+|------|----------|------|------|----------|
+| Set 而非数组 | 自动去重 | 无索引顺序 | 重复注册安全 | 数组 push/逆序 |
+| 并行执行 | Promise.all | 可能资源竞争 | 速度快 | 顺序执行 |
+| 无顺序保证 | Set 迭代顺序不确定 | 依赖关系可能出错 | 简单 | 栈式逆序 |
+| 无超时 | 由调用方控制 | 单个函数可能阻塞 | 责任分离 | 内置超时 |
+
+#### 源码测试证据
+- **主文件**：`src/utils/cleanupRegistry.ts:1-26`
+- **Set 实现**：`src/utils/cleanupRegistry.ts:7,14-17,23-25`
+- **无直接测试**：该模块通过端到端测试覆盖
+
+---
+
+### 4.6 earlyInput.ts 早期输入捕获模块设计卡
+
+（注：源代码未包含在已读取文件中，模块签名来自现有文档推断）
+
+#### 真实入口签名与关键类型
+```typescript
+// src/utils/earlyInput.ts
+export function startCapturingEarlyInput(): void
+export function seedEarlyInput(prefillText: string | undefined): void
+export function stopCapturingEarlyInput(): string | undefined
+```
+
+#### 输入输出
+- **输入**：
+  - `startCapturingEarlyInput()`：无参数
+  - `seedEarlyInput(prefillText)`：预填充文本（来自 `--prefill`）
+  - `stopCapturingEarlyInput()`：无参数
+- **输出**：
+  - `stopCapturingEarlyInput()`：返回捕获的输入字符串或 `undefined`
+
+#### 状态与启动顺序
+- **模块级状态**：捕获的输入字符串、是否正在捕获
+- **启动顺序**：
+  1. cli.tsx 快速路径判断后，完整路径前调用 `startCapturingEarlyInput()`
+  2. main.tsx 中如 non-interactive 调用 `stopCapturingEarlyInput()`
+  3. REPL 准备好后调用 `seedEarlyInput(prefillText)`
+
+#### 设计取舍与备选
+| 取舍 | 当前选择 | 代价 | 收益 |
+|------|----------|------|------|
+| 早期启动 | cli.tsx 中即开始 | 需小心与 REPL 输入冲突 | 用户输入不丢失 | 等待 REPL 准备好 |
+
+#### 源码测试证据
+- **主文件**：`src/utils/earlyInput.ts`（未读取）
+- **调用位置**：`src/entrypoints/cli.tsx:337`
+- **无直接测试**：该模块通过端到端测试覆盖
+
+---
+
+### 4.7 bootstrap/state.ts 全局启动状态模块设计卡
+
+#### 真实入口签名与关键类型
+```typescript
+// src/bootstrap/state.ts
+// 模式状态
+export function setIsInteractive(value: boolean): void
+export function getIsInteractive(): boolean
+export function getIsNonInteractiveSession(): boolean
+export function setClientType(type: string): void
+export function getClientType(): string
+export function setSessionSource(source: string): void
+export function getSessionSource(): string | undefined
+export function setQuestionPreviewFormat(format: 'markdown' | 'html'): void
+export function getQuestionPreviewFormat(): 'markdown' | 'html' | undefined
+
+// 会话标识
+export function getSessionId(): SessionId
+export function regenerateSessionId(options?: {
+  setCurrentAsParent?: boolean
+}): SessionId
+export function getParentSessionId(): SessionId | undefined
+export function switchSession(
+  sessionId: SessionId,
+  projectDir: string | null = null
+): void
+export const onSessionSwitch: Signal<[id: SessionId]>
+export function getSessionProjectDir(): string | null
+export function getOriginalCwd(): string
+export function setOriginalCwd(cwd: string): void
+export function setProjectRoot(cwd: string): void
+export function getProjectRoot(): string
+export function setCwdState(cwd: string): void
+export function getCwdState(): string
+
+// 成本与性能跟踪
+export function addToTotalDurationState(
+  duration: number,
+  durationWithoutRetries: number
+): void
+export function resetTotalDurationStateAndCost_FOR_TESTS_ONLY(): void
+export function addToTotalCostState(
+  cost: number,
+  modelUsage: ModelUsage,
+  model: string
+): void
+export function getTotalCostUSD(): number
+export function getTotalAPIDuration(): number
+export function getTotalDuration(): number
+export function getTotalAPIDurationWithoutRetries(): number
+export function getTotalToolDuration(): number
+export function addToToolDuration(duration: number): void
+export function getTurnHookDurationMs(): number
+export function addToTurnHookDuration(duration: number): void
+export function resetTurnHookDuration(): void
+export function getTurnHookCount(): number
+export function getTurnToolDurationMs(): number
+export function resetTurnToolDuration(): void
+export function getTurnToolCount(): number
+export function getTurnClassifierDurationMs(): number
+export function addToTurnClassifierDuration(duration: number): void
+export function resetTurnClassifierDuration(): void
+export function getTurnClassifierCount(): number
+export function setStatsStore(
+  store: { observe(name: string, value: number): void } | null
+): void
+export function getStatsStore(): {
+  observe(name: string, value: number): void
+} | null
+export function updateLastInteractionTime(immediate?: boolean): void
+export function flushInteractionTime(): void
+export function addToTotalLinesChanged(added: number, removed: number): void
+export function getTotalLinesAdded(): number
+export function getTotalLinesRemoved(): number
+export function getTotalInputTokens(): number
+export function getTotalOutputTokens(): number
+export function getTotalCacheReadInputTokens(): number
+export function getTotalCacheCreationInputTokens(): number
+export function getTotalWebSearchRequests(): number
+export function snapshotOutputTokensForTurn(budget: number | null): void
+export function getTurnOutputTokens(): number
+export function getCurrentTurnTokenBudget(): number | null
+export function incrementBudgetContinuationCount(): void
+export function getBudgetContinuationCount(): number
+export function setHasUnknownModelCost(): void
+export function hasUnknownModelCost(): boolean
+export function setLastMainRequestId(requestId: string): void
+export function getLastMainRequestId(): string | undefined
+export function setLastApiCompletionTimestamp(timestamp: number): void
+export function getLastApiCompletionTimestamp(): number | null
+export function markPostCompaction(): void
+export function consumePostCompaction(): boolean
+export function getLastInteractionTime(): number
+export function getModelUsage(): { [modelName: string]: ModelUsage }
+export function getUsageForModel(model: string): ModelUsage | undefined
+export function setMainLoopModelOverride(model: ModelSetting | undefined): void
+export function getMainLoopModelOverride(): ModelSetting | undefined
+export function setInitialMainLoopModel(model: ModelSetting): void
+export function getInitialMainLoopModel(): ModelSetting
+export function setSdkBetas(betas: string[] | undefined): void
+export function getSdkBetas(): string[] | undefined
+export function resetCostState(): void
+export function setCostStateForRestore({
+  totalCostUSD,
+  totalAPIDuration,
+  totalAPIDurationWithoutRetries,
+  totalToolDuration,
+  totalLinesAdded,
+  totalLinesRemoved,
+  lastDuration,
+  modelUsage
+}: { /* ... */ }): void
+export function setModelStrings(modelStrings: ModelStrings | null): void
+export function getModelStrings(): ModelStrings | null
+export function resetModelStringsForTestingOnly(): void  // 仅测试
+
+// Telemetry
+export function setMeter(
+  meter: Meter,
+  createCounter: (name: string, options: MetricOptions) => AttributedCounter
+): void
+export function getMeter(): Meter | null
+export function getSessionCounter(): AttributedCounter | null
+export function getLocCounter(): AttributedCounter | null
+export function getPrCounter(): AttributedCounter | null
+export function getCommitCounter(): AttributedCounter | null
+export function getCostCounter(): AttributedCounter | null
+export function getTokenCounter(): AttributedCounter | null
+export function getCodeEditToolDecisionCounter(): AttributedCounter | null
+export function getActiveTimeCounter(): AttributedCounter | null
+export function setLoggerProvider(provider: LoggerProvider | null): void
+export function getLoggerProvider(): LoggerProvider | null
+export function setEventLogger(logger: ReturnType<typeof logs.getLogger> | null): void
+export function getEventLogger(): ReturnType<typeof logs.getLogger> | null
+export function setMeterProvider(provider: MeterProvider | null): void
+export function getMeterProvider(): MeterProvider | null
+export function setTracerProvider(provider: BasicTracerProvider | null): void
+export function getTracerProvider(): BasicTracerProvider | null
+
+// 滚动状态
+export function markScrollActivity(): void
+export function getIsScrollDraining(): boolean
+export async function waitForScrollIdle(): Promise<void>
+
+// SDK 状态
+export function getSdkAgentProgressSummariesEnabled(): boolean
+export function setSdkAgentProgressSummariesEnabled(value: boolean): void
+export function getKairosActive(): boolean
+export function setKairosActive(value: boolean): void
+export function getStrictToolResultPairing(): boolean
+export function setStrictToolResultPairing(value: boolean): void
+export function getUserMsgOptIn(): boolean
+export function setUserMsgOptIn(value: boolean): void
+export function getInitJsonSchema(): Record<string, unknown> | null
+export function setInitJsonSchema(schema: Record<string, unknown>): void
+export function registerHookCallbacks(hooks: Partial<Record<HookEvent, RegisteredHookMatcher[]>>): void
+export function getRegisteredHooks(): Partial<Record<HookEvent, RegisteredHookMatcher[]>> | null
+export function clearRegisteredHooks(): void
+export function clearRegisteredPluginHooks(): void
+export function resetSdkInitState(): void
+export function getPromptCache1hAllowlist(): string[] | null
+export function setPromptCache1hAllowlist(allowlist: string[] | null): void
+export function getPromptCache1hEligible(): boolean | null
+export function setPromptCache1hEligible(eligible: boolean | null): void
+export function getAfkModeHeaderLatched(): boolean | null
+export function setAfkModeHeaderLatched(v: boolean): void
+export function getFastModeHeaderLatched(): boolean | null
+export function setFastModeHeaderLatched(v: boolean): void
+export function getCacheEditingHeaderLatched(): boolean | null
+export function setCacheEditingHeaderLatched(v: boolean): void
+export function getThinkingClearLatched(): boolean | null
+export function setThinkingClearLatched(v: boolean): void
+export function clearBetaHeaderLatches(): void
+export function getPromptId(): string | null
+export function setPromptId(id: string | null): void
+
+// 设置源与路径
+export function getFlagSettingsPath(): string | undefined
+export function setFlagSettingsPath(path: string | undefined): void
+export function getFlagSettingsInline(): Record<string, unknown> | null
+export function setFlagSettingsInline(settings: Record<string, unknown> | null): void
+export function getAllowedSettingSources(): SettingSource[]
+export function setAllowedSettingSources(sources: SettingSource[]): void
+export function preferThirdPartyAuthentication(): boolean
+export function setInlinePlugins(plugins: string[]): void
+export function getInlinePlugins(): string[]
+export function setChromeFlagOverride(value: boolean | undefined): void
+export function getChromeFlagOverride(): boolean | undefined
+export function setUseCoworkPlugins(value: boolean): void
+export function getUseCoworkPlugins(): boolean
+export function setSessionBypassPermissionsMode(enabled: boolean): void
+export function getSessionBypassPermissionsMode(): boolean
+export function setScheduledTasksEnabled(enabled: boolean): void
+export function getScheduledTasksEnabled(): boolean
+export function getSessionCronTasks(): SessionCronTask[]
+export function addSessionCronTask(task: SessionCronTask): void
+export function removeSessionCronTasks(ids: readonly string[]): number
+export function setSessionTrustAccepted(accepted: boolean): void
+export function getSessionTrustAccepted(): boolean
+export function setSessionPersistenceDisabled(disabled: boolean): void
+export function isSessionPersistenceDisabled(): boolean
+
+// Plan mode
+export function hasExitedPlanModeInSession(): boolean
+export function setHasExitedPlanMode(value: boolean): void
+export function needsPlanModeExitAttachment(): boolean
+export function setNeedsPlanModeExitAttachment(value: boolean): void
+export function handlePlanModeTransition(fromMode: string, toMode: string): void
+export function needsAutoModeExitAttachment(): boolean
+export function setNeedsAutoModeExitAttachment(value: boolean): void
+export function handleAutoModeTransition(fromMode: string, toMode: string): void
+
+// UI 状态
+export function hasShownLspRecommendationThisSession(): boolean
+export function setLspRecommendationShownThisSession(value: boolean): void
+export function getAgentColorMap(): Map<string, AgentColorName>
+export function setLastAPIRequest(params: Omit<BetaMessageStreamParams, 'messages'> | null): void
+export function getLastAPIRequest(): Omit<BetaMessageStreamParams, 'messages'> | null
+export function setLastAPIRequestMessages(messages: BetaMessageStreamParams['messages'] | null): void
+export function getLastAPIRequestMessages(): BetaMessageStreamParams['messages'] | null
+export function setLastClassifierRequests(requests: unknown[] | null): void
+export function getLastClassifierRequests(): unknown[] | null
+export function setCachedClaudeMdContent(content: string | null): void
+export function getCachedClaudeMdContent(): string | null
+export function addToInMemoryErrorLog(errorInfo: { error: string; timestamp: string }): void
+
+// Plan slug 缓存
+export function getPlanSlugCache(): Map<string, string>
+
+// Session 创建 teams
+export function getSessionCreatedTeams(): Set<string>
+
+// Teleport
+export function setTeleportedSessionInfo(info: { sessionId: string | null }): void
+export function getTeleportedSessionInfo(): {
+  isTeleported: boolean
+  hasLoggedFirstMessage: boolean
+  sessionId: string | null
+} | null
+export function markFirstTeleportMessageLogged(): void
+
+// Invoked skills
+export function addInvokedSkill(
+  skillName: string,
+  skillPath: string,
+  content: string,
+  agentId: string | null = null
+): void
+export function getInvokedSkills(): Map<string, InvokedSkillInfo>
+export function getInvokedSkillsForAgent(
+  agentId: string | undefined | null
+): Map<string, InvokedSkillInfo>
+export function clearInvokedSkills(preservedAgentIds?: ReadonlySet<string>): void
+export function clearInvokedSkillsForAgent(agentId: string): void
+
+// Slow operations
+export function addSlowOperation(operation: string, durationMs: number): void
+export function getSlowOperations(): ReadonlyArray<{
+  operation: string
+  durationMs: number
+  timestamp: number
+}>
+
+// Main thread agent
+export function getMainThreadAgentType(): string | undefined
+export function setMainThreadAgentType(agentType: string | undefined): void
+
+// Remote mode
+export function getIsRemoteMode(): boolean
+export function setIsRemoteMode(value: boolean): void
+
+// Direct connect
+export function getDirectConnectServerUrl(): string | undefined
+export function setDirectConnectServerUrl(url: string): void
+
+// System prompt sections
+export function getSystemPromptSectionCache(): Map<string, string | null>
+export function setSystemPromptSectionCacheEntry(name: string, value: string | null): void
+export function clearSystemPromptSectionState(): void
+
+// Last emitted date
+export function getLastEmittedDate(): string | null
+export function setLastEmittedDate(date: string | null): void
+
+// Additional directories
+export function getAdditionalDirectoriesForClaudeMd(): string[]
+export function setAdditionalDirectoriesForClaudeMd(directories: string[]): void
+
+// Channels
+export function getAllowedChannels(): ChannelEntry[]
+export function setAllowedChannels(entries: ChannelEntry[]): void
+export function getHasDevChannels(): boolean
+export function setHasDevChannels(value: boolean): void
+
+// 测试工具
+export function resetStateForTests(): void  // 仅测试，NODE_ENV=test
+export function isReplBridgeActive(): boolean  // 仅内部用户
+
+// 内部状态（未导出）
+const STATE: State = getInitialState()
+let interactionTimeDirty: boolean = false
+let scrollDraining: boolean = false
+let scrollDrainTimer: ReturnType<typeof setTimeout> | undefined
+
+// 内部类型
+type State = {
+  originalCwd: string
+  projectRoot: string
+  totalCostUSD: number
+  totalAPIDuration: number
+  totalAPIDurationWithoutRetries: number
+  totalToolDuration: number
+  turnHookDurationMs: number
+  turnToolDurationMs: number
+  turnClassifierDurationMs: number
+  turnHookCount: number
+  turnToolCount: number
+  turnClassifierCount: number
+  startTime: number
+  lastInteractionTime: number
+  totalLinesAdded: number
+  totalLinesRemoved: number
+  hasUnknownModelCost: boolean
+  cwd: string
+  modelUsage: { [modelName: string]: ModelUsage }
+  mainLoopModelOverride: ModelSetting | undefined
+  initialMainLoopModel: ModelSetting | null
+  modelStrings: ModelStrings | null
+  isInteractive: boolean
+  kairosActive: boolean
+  strictToolResultPairing: boolean
+  sdkAgentProgressSummariesEnabled: boolean
+  userMsgOptIn: boolean
+  clientType: string
+  sessionSource: string | undefined
+  questionPreviewFormat: 'markdown' | 'html' | undefined
+  flagSettingsPath: string | undefined
+  flagSettingsInline: Record<string, unknown> | null
+  allowedSettingSources: SettingSource[]
+  sessionIngressToken: string | null | undefined
+  oauthTokenFromFd: string | null | undefined
+  apiKeyFromFd: string | null | undefined
+  meter: Meter | null
+  sessionCounter: AttributedCounter | null
+  locCounter: AttributedCounter | null
+  prCounter: AttributedCounter | null
+  commitCounter: AttributedCounter | null
+  costCounter: AttributedCounter | null
+  tokenCounter: AttributedCounter | null
+  codeEditToolDecisionCounter: AttributedCounter | null
+  activeTimeCounter: AttributedCounter | null
+  statsStore: { observe(name: string, value: number): void } | null
+  sessionId: SessionId
+  parentSessionId: SessionId | undefined
+  loggerProvider: LoggerProvider | null
+  eventLogger: ReturnType<typeof logs.getLogger> | null
+  meterProvider: MeterProvider | null
+  tracerProvider: BasicTracerProvider | null
+  agentColorMap: Map<string, AgentColorName>
+  agentColorIndex: number
+  lastAPIRequest: Omit<BetaMessageStreamParams, 'messages'> | null
+  lastAPIRequestMessages: BetaMessageStreamParams['messages'] | null
+  lastClassifierRequests: unknown[] | null
+  cachedClaudeMdContent: string | null
+  inMemoryErrorLog: Array<{ error: string; timestamp: string }>
+  inlinePlugins: string[]
+  chromeFlagOverride: boolean | undefined
+  useCoworkPlugins: boolean
+  sessionBypassPermissionsMode: boolean
+  scheduledTasksEnabled: boolean
+  sessionCronTasks: SessionCronTask[]
+  sessionCreatedTeams: Set<string>
+  sessionTrustAccepted: boolean
+  sessionPersistenceDisabled: boolean
+  hasExitedPlanMode: boolean
+  needsPlanModeExitAttachment: boolean
+  needsAutoModeExitAttachment: boolean
+  lspRecommendationShownThisSession: boolean
+  initJsonSchema: Record<string, unknown> | null
+  registeredHooks: Partial<Record<HookEvent, RegisteredHookMatcher[]>> | null
+  planSlugCache: Map<string, string>
+  teleportedSessionInfo: {
+    isTeleported: boolean
+    hasLoggedFirstMessage: boolean
+    sessionId: string | null
+  } | null
+  invokedSkills: Map<string, InvokedSkillInfo>
+  slowOperations: Array<{ operation: string; durationMs: number; timestamp: number }>
+  sdkBetas: string[] | undefined
+  mainThreadAgentType: string | undefined
+  isRemoteMode: boolean
+  directConnectServerUrl: string | undefined
+  systemPromptSectionCache: Map<string, string | null>
+  lastEmittedDate: string | null
+  additionalDirectoriesForClaudeMd: string[]
+  allowedChannels: ChannelEntry[]
+  hasDevChannels: boolean
+  sessionProjectDir: string | null
+  promptCache1hAllowlist: string[] | null
+  promptCache1hEligible: boolean | null
+  afkModeHeaderLatched: boolean | null
+  fastModeHeaderLatched: boolean | null
+  cacheEditingHeaderLatched: boolean | null
+  thinkingClearLatched: boolean | null
+  promptId: string | null
+  lastMainRequestId: string | undefined
+  lastApiCompletionTimestamp: number | null
+  pendingPostCompaction: boolean
+  replBridgeActive?: boolean  // 仅内部用户
+}
+
+type ChannelEntry =
+  | { kind: 'plugin'; name: string; marketplace: string; dev?: boolean }
+  | { kind: 'server'; name: string; dev?: boolean }
+
+type AttributedCounter = {
+  add(value: number, additionalAttributes?: Attributes): void
+}
+
+type SessionCronTask = {
+  id: string
+  cron: string
+  prompt: string
+  createdAt: number
+  recurring?: boolean
+  agentId?: string  // 仅内部 teammate
+}
+
+type InvokedSkillInfo = {
+  skillName: string
+  skillPath: string
+  content: string
+  invokedAt: number
+  agentId: string | null
+}
+```
+
+#### 输入输出
+- **输入**：各 setter 函数的参数
+- **输出**：各 getter 函数的返回值
+- **无副作用**：纯状态存储（除 `resetSettingsCache` 在 `setUseCoworkPlugins` 中调用）
+
+#### 状态与启动顺序
+- **全局单例对象**：`const STATE: State = getInitialState()`（模块加载时创建）
+- **无持久化**：纯内存状态，进程退出后消失
+- **启动顺序**：
+  1. 模块加载 → `getInitialState()` → 初始化 `STATE`
+  2. `sessionId` 初始化为 `randomUUID()`
+  3. `originalCwd`/`cwd`/`projectRoot` 初始化为 `realpathSync(process.cwd())`（normalize NFC）
+  4. 后续各模块调用 setter 按需更新
+
+#### 设计取舍与备选
+| 取舍 | 当前选择 | 代价 | 收益 | 备选方案 |
+|------|----------|------|------|----------|
+| 全局单例 | 模块级 `STATE` 对象 | 难以测试 | 访问简单，无需传递 | 依赖注入 |
+| getter/setter 包裹 | 不直接导出 STATE | 代码冗长 | 类型安全，封装变化 | 直接导出 |
+| 测试仅函数 | `resetStateForTests` 检查 NODE_ENV=test | 稍复杂 | 防止生产环境误用 | 不检查 |
+| 滚动状态非 STATE | `scrollDraining` 等在模块级 | 分散 | 无需 reset 测试 | 放入 STATE |
+| 缓存归一化 | realpathSync + normalize NFC | 稍慢 | 路径比较一致 | 不处理 |
+
+#### 源码测试证据
+- **主文件**：`src/bootstrap/state.ts:1-1763`
+- **初始状态**：`src/bootstrap/state.ts:260-423`
+- **类型定义**：`src/bootstrap/state.ts:45-257`
+- **无直接测试**：该模块通过端到端测试覆盖
+
+---
+
+### 4.8 settings/mdm/rawRead.ts MDM 并行预读取模块设计卡
+
+#### 真实入口签名与关键类型
+```typescript
+// src/utils/settings/mdm/rawRead.ts
+export function startMdmRawRead(): void
+export function getMdmRawReadPromise(): Promise<RawReadResult> | null
+export function fireRawRead(): Promise<RawReadResult>  // 内部调用，也可外部直接调用
+
+export type RawReadResult = {
+  plistStdouts: Array<{ stdout: string; label: string }> | null
+  hklmStdout: string | null
+  hkcuStdout: string | null
+}
+
+// 内部状态
+let rawReadPromise: Promise<RawReadResult> | null = null
+```
+
+#### 输入输出
+- **输入**：
+  - `startMdmRawRead()`：无参数，仅启动
+  - `fireRawRead()`：无参数，立即启动并返回 Promise
+- **输出**：
+  - `RawReadResult`：
+    - macOS：`plistStdouts` 数组（第一个成功的 plutil 输出）
+    - Windows：`hklmStdout`/`hkcuStdout`（reg query 输出）
+    - Linux/其他：全 null
+- **副作用**：
+  - macOS：spawn `plutil` 子进程
+  - Windows：spawn `reg query` 子进程
+
+#### 状态与启动顺序
+- **模块级 Promise**：`rawReadPromise`（初始 `null`）
+- **启动顺序**：
+  1. main.tsx 模块加载顶部调用 `startMdmRawRead()`
+  2. 子进程 spawn（非阻塞）
+  3. preAction hook 中调用 `ensureMdmSettingsLoaded()` → await 该 Promise
+
+#### 完整启动/执行流程
+```text
+main.tsx 模块加载顶部调用 startMdmRawRead()
+  ↓
+if (rawReadPromise) return  // 防止重复
+  ↓
+rawReadPromise = fireRawRead()
+  ↓
+fireRawRead() 内部：
+  ↓
+if (macOS):
+  const plistPaths = getMacOSPlistPaths()  // 来自 mdm/constants
+  ↓
+  Promise.all(plistPaths.map(async ({path, label}) => {
+    if (!existsSync(path)) return {stdout: '', label, ok: false}
+    const {stdout, code} = await execFilePromise(
+      PLUTIL_PATH, [...PLUTIL_ARGS_PREFIX, path]
+    )
+    return {stdout, label, ok: code === 0 && !!stdout}
+  }))
+  ↓
+  winner = allResults.find(r => r.ok)  // 优先级顺序第一个
+  ↓
+  return {
+    plistStdouts: winner ? [{stdout: winner.stdout, label: winner.label}] : [],
+    hklmStdout: null,
+    hkcuStdout: null
+  }
+  ↓
+elif (Windows):
+  const [hklm, hkcu] = await Promise.all([
+    execFilePromise('reg', ['query', HKLM_PATH, '/v', VALUE_NAME]),
+    execFilePromise('reg', ['query', HKCU_PATH, '/v', VALUE_NAME])
+  ])
+  ↓
+  return {
+    plistStdouts: null,
+    hklmStdout: hklm.code === 0 ? hklm.stdout : null,
+    hkcuStdout: hkcu.code === 0 ? hkcu.stdout : null
+  }
+  ↓
+else:
+  return {plistStdouts: null, hklmStdout: null, hkcuStdout: null}
+  ↓
+preAction hook 调用 ensureMdmSettingsLoaded()  // 未在本文件，在 mdmSettings
+  ↓
+await getMdmRawReadPromise()
+  ↓
+mdmSettings 模块 consumeRawReadResult(result)
+```
+
+#### 错误与降级
+- **plutil/reg spawn 失败**：`code != 0` → `ok = false` → 尝试下一优先级路径
+- **所有路径失败**：`plistStdouts = []`（macOS）或 `null`（Windows）→ mdmSettings 降级
+- **重复调用 `startMdmRawRead()`**：静默忽略（检查 `rawReadPromise`）
+- **`existsSync` 跳过**：无 plist 文件时不 spawn，优化非 MDM 机器
+
+#### 设计取舍与备选
+| 取舍 | 当前选择 | 代价 | 收益 | 备选方案 |
+|------|----------|------|------|----------|
+| 模块级 Promise | `startMdmRawRead()` 存储到变量 | 状态管理 | 调用方无需关心是否已启动 | 每次都 spawn |
+| fireRawRead 公开 | 可外部直接调用 | API 稍大 | 轮询/回退场景灵活 | 不公开 |
+| 并行多路径 | Promise.all 所有 plist 路径 | 稍多 spawn | 取最快成功 | 顺序尝试 |
+| 同步 existsSync | 先检查文件再 spawn | 同步阻塞 | 无 plist 时零 spawn | 直接 spawn |
+| 第一个成功 | 优先级顺序查找 | 可能不是最优 | 符合预期 | 合并所有 |
+
+#### 源码测试证据
+- **主文件**：`src/utils/settings/mdm/rawRead.ts:1-120`
+- **spawn 逻辑**：`src/utils/settings/mdm/rawRead.ts:32-47`
+- **macOS 路径**：`src/utils/settings/mdm/rawRead.ts:56-88`
+- **Windows 路径**：`src/utils/settings/mdm/rawRead.ts:89-110`
+- **无直接测试**：该模块通过端到端测试覆盖
+
+---
+
+### 4.9 secureStorage/keychainPrefetch.ts 钥匙串并行预取模块设计卡
+
+#### 真实入口签名与关键类型
+```typescript
+// src/utils/secureStorage/keychainPrefetch.ts
+export function startKeychainPrefetch(): void
+export async function ensureKeychainPrefetchCompleted(): Promise<void>
+export function getLegacyApiKeyPrefetchResult(): {
+  stdout: string | null
+} | null
+export function clearLegacyApiKeyPrefetch(): void  // 与 auth.ts 缓存失效联动
+
+// 内部状态
+let legacyApiKeyPrefetch: { stdout: string | null } | null = null
+let prefetchPromise: Promise<void> | null = null
+
+// 内部类型
+type SpawnResult = {
+  stdout: string | null
+  timedOut: boolean
+}
+```
+
+#### 输入输出
+- **输入**：
+  - `startKeychainPrefetch()`：无参数
+  - `ensureKeychainPrefetchCompleted()`：无参数
+- **输出**：
+  - `getLegacyApiKeyPrefetchResult()`：预取结果或 `null`（未完成/超时/非 macOS）
+- **副作用**：
+  - macOS：spawn 两个 `security find-generic-password` 子进程（并行）
+    - OAuth tokens：service name `Claude Code-credentials`
+    - Legacy API key：service name `Claude Code`
+
+#### 状态与启动顺序
+- **模块级状态**：
+  - `prefetchPromise`：初始 `null`
+  - `legacyApiKeyPrefetch`：初始 `null`
+- **启动顺序**：
+  1. main.tsx 模块加载顶部调用 `startKeychainPrefetch()`（紧接 `startMdmRawRead()`）
+  2. 如非 macOS 或 bare mode 或已启动：立即 return
+  3. spawn OAuth 子进程 + legacy 子进程（并行）
+  4. preAction hook 中调用 `ensureKeychainPrefetchCompleted()` → await
+
+#### 完整启动/执行流程
+```text
+main.tsx 模块加载顶部调用 startKeychainPrefetch()
+  ↓
+if (platform !== 'darwin' || prefetchPromise || isBareMode()) return
+  ↓
+const oauthSpawn = spawnSecurity(
+  getMacOsKeychainStorageServiceName(CREDENTIALS_SERVICE_SUFFIX)
+)
+const legacySpawn = spawnSecurity(
+  getMacOsKeychainStorageServiceName()
+)
+  ↓
+prefetchPromise = Promise.all([oauthSpawn, legacySpawn])
+  .then(([oauth, legacy]) => {
+    if (!oauth.timedOut) primeKeychainCacheFromPrefetch(oauth.stdout)
+    if (!legacy.timedOut) legacyApiKeyPrefetch = {stdout: legacy.stdout}
+  })
+  ↓
+spawnSecurity(serviceName) 内部：
+  ↓
+return new Promise<SpawnResult>(resolve => {
+  execFile(
+    'security',
+    ['find-generic-password', '-a', getUsername(), '-w', '-s', serviceName],
+    {encoding: 'utf-8', timeout: KEYCHAIN_PREFETCH_TIMEOUT_MS},
+    (err, stdout) => {
+      resolve({
+        stdout: err ? null : stdout?.trim() || null,
+        timedOut: Boolean(err && 'killed' in err && err.killed)
+      })
+    }
+  )
+})
+  ↓
+preAction hook 调用 ensureKeychainPrefetchCompleted()
+  ↓
+if (prefetchPromise) await prefetchPromise
+  ↓
+auth.ts 后续调用 getApiKeyFromConfigOrMacOSKeychain()
+  ↓
+先检查 getLegacyApiKeyPrefetchResult() → 如可用使用
+  ↓
+否则同步 spawn security（兜底）
+```
+
+#### 错误与降级
+- **子进程超时**：`timedOut = true` → 不 prime 缓存 → auth.ts 同步 spawn 重试（超时更长）
+- **子进程错误（非超时）**：`stdout = null` → prime 缓存为 null → auth.ts 不再尝试
+- **bare mode**：不启动预取 → auth.ts 可能也不读取（取决于 isBareMode）
+- **非 macOS**：不启动预取 → 无操作
+- **重复调用 `startKeychainPrefetch()`**：静默忽略
+
+#### 设计取舍与备选
+| 取舍 | 当前选择 | 代价 | 收益 | 备选方案 |
+|------|----------|------|------|----------|
+| 并行双读取 | OAuth + legacy 同时 spawn | 双进程开销 | 总延迟 = max(两者)，非 sum | 顺序读取 |
+| 超时不 prime | timedOut 时跳过缓存 | 预取可能浪费 | 同步重试更长超时更可靠 | 即使超时也 prime |
+| 缓存联动 | clearLegacyApiKeyPrefetch 与 auth.ts 失效配合 | 需协调 | 防止 stale 预取 | 不提供清除 |
+| bare 跳过 | isBareMode 时不启动 | 需检查 | 脚本模式更少副作用 | 总是启动 |
+| 仅内部函数 | 仅 `getLegacyApiKeyPrefetchResult` 公开 | API 小 | 封装实现 | 暴露更多 |
+
+#### 源码测试证据
+- **主文件**：`src/utils/secureStorage/keychainPrefetch.ts:1-117`
+- **启动逻辑**：`src/utils/secureStorage/keychainPrefetch.ts:69-89`
+- **spawn 逻辑**：`src/utils/secureStorage/keychainPrefetch.ts:45-67`
+- **无直接测试**：该模块通过端到端测试覆盖
+
+---
+
+### 4.10 init.ts 初始化模块设计卡
+
+#### 真实入口签名与关键类型
+```typescript
+// src/entrypoints/init.ts
+export const init: memoize(async (): Promise<void>)
+export function initializeTelemetryAfterTrust(): void
+
+// 内部状态
+let telemetryInitialized: boolean = false
+```
+
+#### 输入输出
+- **输入**：无（`init()` 无参数）
+- **输出**：
+  - 无返回值
+  - 副作用：
+    - enableConfigs()
+    - applySafeConfigEnvironmentVariables()
+    - applyExtraCACertsFromConfig()
+    - setupGracefulShutdown()
+    - initialize1PEventLogging()（动态 import）
+    - populateOAuthAccountInfoIfNeeded()
+    - initJetBrainsDetection()
+    - detectCurrentRepository()
+    - initializeRemoteManagedSettingsLoadingPromise()（如 eligible）
+    - initializePolicyLimitsLoadingPromise()（如 eligible）
+    - recordFirstStartTime()
+    - configureGlobalMTLS()
+    - configureGlobalAgents()
+    - preconnectAnthropicApi()
+    - initUpstreamProxy()（如 CCR 环境）
+    - setShellIfWindows()
+    - registerCleanup(shutdownLspServerManager)
+    - registerCleanup(cleanupSessionTeams)（动态 import）
+    - ensureScratchpadDir()（如启用）
+
+#### 状态与启动顺序
+- **memoized 执行**：`init()` 被 memoize 包裹，仅执行一次
+- **严格执行顺序**（依赖关系明确）：
+  1. enableConfigs() （必须第一个，后续依赖配置）
+  2. applySafeConfigEnvironmentVariables()、applyExtraCACertsFromConfig()
+  3. setupGracefulShutdown() （早设置，后续可 register cleanup）
+  4. 1P 事件日志（fire-and-forget，动态 import）
+  5. OAuth 账户信息（fire-and-forget）
+  6. JetBrains 检测（fire-and-forget）
+  7. GitHub repo 检测（fire-and-forget）
+  8. 远程设置初始化（仅初始化 Promise，不等待）
+  9. recordFirstStartTime()
+  10. configureGlobalMTLS()
+  11. configureGlobalAgents()（依赖 mTLS）
+  12. preconnectAnthropicApi()（依赖 mTLS + 代理）
+  13. initUpstreamProxy()（如 CCR，依赖网络配置）
+  14. setShellIfWindows()
+  15. register cleanup（LSP、teams）
+  16. ensureScratchpadDir()（如启用）
+
+#### 完整启动/执行流程
+```text
+preAction hook 调用 init()（memoized）
+  ↓
+如已执行过：立即 return
+  ↓
+const initStartTime = Date.now()
+logForDiagnosticsNoPII('info', 'init_started')
+profileCheckpoint('init_function_start')
+  ↓
+try:
+  enableConfigs()  // 可能抛 ConfigParseError
+  profileCheckpoint('init_configs_enabled')
+  ↓
+  applySafeConfigEnvironmentVariables()
+  applyExtraCACertsFromConfig()  // 在第一次 TLS 前
+  profileCheckpoint('init_safe_env_vars_applied')
+  ↓
+  setupGracefulShutdown()
+  profileCheckpoint('init_after_graceful_shutdown')
+  ↓
+  void Promise.all([
+    import('../services/analytics/firstPartyEventLogger'),
+    import('../services/analytics/growthbook')
+  ]).then(([fp, gb]) => {
+    fp.initialize1PEventLogging()
+    gb.onGrowthBookRefresh(() => {
+      void fp.reinitialize1PEventLoggingIfConfigChanged()
+    })
+  })
+  profileCheckpoint('init_after_1p_event_logging')
+  ↓
+  void populateOAuthAccountInfoIfNeeded()
+  profileCheckpoint('init_after_oauth_populate')
+  ↓
+  void initJetBrainsDetection()
+  profileCheckpoint('init_after_jetbrains_detection')
+  ↓
+  void detectCurrentRepository()
+  ↓
+  if (isEligibleForRemoteManagedSettings()):
+    initializeRemoteManagedSettingsLoadingPromise()
+  if (isPolicyLimitsEligible()):
+    initializePolicyLimitsLoadingPromise()
+  profileCheckpoint('init_after_remote_settings_check')
+  ↓
+  recordFirstStartTime()
+  ↓
+  configureGlobalMTLS()
+  logForDiagnosticsNoPII('info', 'init_mtls_configured')
+  logForDebugging('[init] configureGlobalMTLS complete')
+  ↓
+  configureGlobalAgents()
+  logForDiagnosticsNoPII('info', 'init_proxy_configured')
+  logForDebugging('[init] configureGlobalAgents complete')
+  profileCheckpoint('init_network_configured')
+  ↓
+  preconnectAnthropicApi()  // fire-and-forget
+  ↓
+  if (isEnvTruthy(process.env.CLAUDE_CODE_REMOTE)):
+    try:
+      const {initUpstreamProxy, getUpstreamProxyEnv} = await import('../upstreamproxy/upstreamproxy')
+      const {registerUpstreamProxyEnvFn} = await import('../utils/subprocessEnv')
+      registerUpstreamProxyEnvFn(getUpstreamProxyEnv)
+      await initUpstreamProxy()
+    catch (err):
+      logForDebugging('[init] upstreamproxy init failed', {level: 'warn'})
+  ↓
+  setShellIfWindows()
+  ↓
+  registerCleanup(shutdownLspServerManager)
+  ↓
+  registerCleanup(async () => {
+    const {cleanupSessionTeams} = await import('../utils/swarm/teamHelpers')
+    await cleanupSessionTeams()
+  })
+  ↓
+  if (isScratchpadEnabled()):
+    const scratchpadStart = Date.now()
+    await ensureScratchpadDir()
+    logForDiagnosticsNoPII('info', 'init_scratchpad_created', {
+      duration_ms: Date.now() - scratchpadStart
+    })
+  ↓
+  logForDiagnosticsNoPII('info', 'init_completed', {
+    duration_ms: Date.now() - initStartTime
+  })
+  profileCheckpoint('init_function_end')
+  ↓
+catch (error):
+  if (error instanceof ConfigParseError):
+    if (getIsNonInteractiveSession()):
+      process.stderr.write(`Configuration error in ${error.filePath}: ${error.message}\n`)
+      gracefulShutdownSync(1)
+      return
+    else:
+      return import('../components/InvalidConfigDialog').then(m =>
+        m.showInvalidConfigDialog({error})
+      )
+  else:
+    throw error
+  ↓
+后续（信任对话框后）调用 initializeTelemetryAfterTrust()
+  ↓
+if (isEligibleForRemoteManagedSettings()):
+  if (getIsNonInteractiveSession() && isBetaTracingEnabled()):
+    void doInitializeTelemetry().catch(...)
+  logForDebugging('[3P telemetry] Waiting for remote managed settings')
+  void waitForRemoteManagedSettingsToLoad()
+    .then(async () => {
+      logForDebugging('[3P telemetry] Remote managed settings loaded')
+      applyConfigEnvironmentVariables()  // 再次应用，包含远程设置
+      await doInitializeTelemetry()
+    })
+    .catch(...)
+else:
+  void doInitializeTelemetry().catch(...)
+  ↓
+doInitializeTelemetry() 内部：
+  if (telemetryInitialized) return
+  telemetryInitialized = true
+  await setMeterState()
+  ↓
+setMeterState() 内部：
+  const {initializeTelemetry} = await import('../utils/telemetry/instrumentation')
+  const meter = await initializeTelemetry()
+  if (meter):
+    const createAttributedCounter = (name, options) => {
+      const counter = meter.createCounter(name, options)
+      return {
+        add(value, additionalAttributes = {}) {
+          const currentAttributes = getTelemetryAttributes()
+          counter.add(value, {...currentAttributes, ...additionalAttributes})
+        }
+      }
+    }
+    setMeter(meter, createAttributedCounter)
+    getSessionCounter()?.add(1)
+```
+
+#### 错误与降级
+- **ConfigParseError**：
+  - non-interactive：写入 stderr + gracefulShutdownSync(1)
+  - interactive：显示 InvalidConfigDialog（动态 import React）
+- **其他错误**：重新抛出 → 进程异常退出
+- **1P 日志初始化失败**：静默忽略（fire-and-forget）
+- **OAuth 填充失败**：静默忽略（fire-and-forget）
+- **Upstream proxy 初始化失败**：catch 并 warn，继续（fail-open）
+- **重复调用 init()**：memoize 返回第一次的 Promise
+- **重复调用 initializeTelemetryAfterTrust()**：`telemetryInitialized` 标志防止
+
+#### 设计取舍与备选
+| 取舍 | 当前选择 | 代价 | 收益 | 备选方案 |
+|------|----------|------|------|----------|
+| memoized 执行 | lodash-es/memoize 包裹 | 轻微开销 | 幂等，多次调用安全 | 不 memoize |
+| 严格顺序 | 步骤有明确依赖关系 | 需小心维护 | 依赖正确，无竞态 | 乱序初始化 |
+| fire-and-forget | OAuth/JetBrains/GitHub/预连接 void | 错误不可见 | 不阻塞启动 | await |
+| 动态 import | 1P 日志/upstream proxy/teamHelpers 使用 import() | 稍复杂 | 减小初始加载 | 静态 import |
+| CCR fail-open | upstream proxy 出错继续 | 可能功能不正常 | 启动不阻塞 | fail-closed |
+| 两阶段 env | safe 先，full 信任后 | 需维护两套 | 安全（不信任不应用危险 env） | 一次应用 |
+| telemetry 等待远程 | 如 eligible 先等远程设置 | 可能延迟 | 包含远程设置配置 | 不等待 |
+| non-interactive beta tracing eager | SDK 模式且 beta tracing 立即初始化 | 稍复杂 | 早期追踪可用 | 不区分 |
+
+#### 源码测试证据
+- **主文件**：`src/entrypoints/init.ts:1-341`
+- **init 步骤**：`src/entrypoints/init.ts:57-238`
+- **错误处理**：`src/entrypoints/init.ts:236-340`
+- **telemetry 初始化**：`src/entrypoints/init.ts:247-341`
+- **无直接测试**：该模块通过端到端测试覆盖
+
+---
+
+### 4.11 envUtils.ts 环境工具模块设计卡（--bare 模式）
+
+#### 真实入口签名与关键类型
+```typescript
+// src/utils/envUtils.ts
+export function isBareMode(): boolean
+export function isEnvTruthy(value: string | undefined): boolean
+export function isNonInteractiveSession(): boolean
+// ... 其他函数（未读取完整文件）
+```
+
+#### 输入输出
+- **输入**：
+  - `isBareMode()`：检查 `process.env.CLAUDE_CODE_SIMPLE`
+  - `isEnvTruthy(value)`：字符串值
+- **输出**：
+  - `isBareMode()`：`CLAUDE_CODE_SIMPLE` 是否 truthy
+  - `isEnvTruthy(value)`：`value` 是否为 `'1'`、`'true'`、`'yes'`、`'on'`（大小写不敏感）
+
+#### 状态与启动顺序
+- **无内部状态**：纯函数
+- **启动顺序**：
+  1. cli.tsx 检查 `--bare` → 如匹配设置 `CLAUDE_CODE_SIMPLE=1`
+  2. 后续各模块调用 `isBareMode()` 决定是否跳过功能
+
+#### --bare 模式跳过的功能
+- 钥匙串预取（keychainPrefetch.ts）
+- 插件钩子
+- LSP 初始化
+- 自动记忆
+- 背景预取
+- 归因功能
+- 等等（各模块自行检查 `isBareMode()`）
+
+#### 设计取舍与备选
+| 取舍 | 当前选择 | 代价 | 收益 | 备选方案 |
+|------|----------|------|------|----------|
+| 单一环境变量 | CLAUDE_CODE_SIMPLE 控制所有 | 粒度粗 | 用户简单 | 多个独立标志 |
+| 各模块自查 | 分散检查 | 容易遗漏 | 灵活 | 集中控制 |
+
+#### 源码测试证据
+- **主文件**：`src/utils/envUtils.ts`（未完整读取）
+- **调用位置**：`src/entrypoints/cli.tsx:332-334`
+- **无直接测试**：该模块通过端到端测试覆盖
+
+---
+
+### 4.12 模块与状态所有权总结
+
+| 模块 | 拥有的状态 | 主要操作 | 不承担的职责 |
+|------|------------|----------|--------------|
+| cli.tsx | 无（纯流程） | 快速路径判断、动态 import | 实际业务逻辑 |
+| main.tsx | commander program、pendingConnect/pendingAssistantChat/pendingSSH | 定义命令、解析 argv、调用 init/setup/launchRepl | 命令的具体实现 |
+| init.ts | telemetryInitialized | 按顺序初始化各子系统 | 子系统的具体业务逻辑 |
+| startupProfiler.ts | checkpoints（模块级数组） | profileCheckpoint、profileReport | 性能分析（只记录） |
+| gracefulShutdown.ts | shutdownInProgress、failsafeTimer、orphanCheckInterval、pendingShutdown、resumeHintPrinted | setupGracefulShutdown、gracefulShutdown、gracefulShutdownSync | 具体清理逻辑（只 orchestrate） |
+| cleanupRegistry.ts | cleanupFunctions（模块级 Set） | registerCleanup、runCleanupFunctions | 不执行具体清理（只管理函数列表） |
+| earlyInput.ts | capturedInput、isCapturing | startCapturingEarlyInput、seedEarlyInput、stopCapturingEarlyInput | 输入历史管理（只捕获早期输入） |
+| bootstrap/state.ts | STATE（模块级对象） | 所有 setter/getter | 业务逻辑（只存储全局状态） |
+| settings/mdm/rawRead.ts | rawReadPromise（模块级 Promise） | startMdmRawRead、fireRawRead、getMdmRawReadPromise | MDM 设置的具体解析（只负责并行读取） |
+| secureStorage/keychainPrefetch.ts | prefetchPromise、legacyApiKeyPrefetch | startKeychainPrefetch、ensureKeychainPrefetchCompleted | 钥匙串的具体使用（只负责并行读取） |
+
+状态位置与理由：
+- **全局启动状态**放在 bootstrap/state.ts 模块级：跨模块共享，启动时设置一次后不变
+- **预取 Promise**放在对应模块：封装预取逻辑，调用方只需 start 和 ensure
+- **cleanup 函数列表**放在 cleanupRegistry.ts 模块级 Set：各模块都可以注册，统一执行
+- **checkpoint 列表**放在 startupProfiler.ts 模块级数组：各模块都可以标记，统一报告
+- **pendingConnect/pendingAssistantChat/pendingSSH** 放在 main.tsx 模块级：只在 main.tsx 内部使用，不对外暴露
+
+---
+
+### 4.13 快速路径详览（补充选择原因）
+
+| 快速路径 | 选择原因 | 动态 import | 是否调用 init/setup | 退出方式 | 源码位置 |
+|----------|----------|-------------|---------------------|----------|----------|
+| `--internal-prepare-commit-msg-attribution` | Git hook，必须快且失败不阻塞 | `../utils/config.js`、`../utils/postCommitAttribution.js` | 仅 enableConfigs() | return | cli.tsx:50-65 |
+| `--version`/-v/-V | 零加载，构建时内联版本号 | 无 | 否 | return | cli.tsx:68-76 |
+| `--dump-system-prompt` | 内部调试，feature 保护 | `../utils/config.js`、`../utils/model/model.js`、`../constants/prompts.js` | 仅 enableConfigs() | return | cli.tsx:84-97 |
+| `--claude-in-chrome-mcp` | MCP 服务器模式 | `../utils/claudeInChrome/mcpServer.js` | 否 | return | cli.tsx:99-106 |
+| `--chrome-native-mcp` | 保留但不支持（私有扩展） | 无 | 否 | throw Error | cli.tsx:107-111 |
+| `--computer-use-mcp` | 内部 dogfood，feature 保护 | `../utils/computerUse/mcpServer.js` | 否 | return | cli.tsx:112-121 |
+| `--daemon-worker` | 内部 spawn，perf 敏感 | `../daemon/workerRegistry.js` | 否 | return | cli.tsx:123-131 |
+| `--remote-control/rc/remote/sync/bridge` | 远程控制，需 auth 先检查 | `../utils/config.js`、`../bridge/bridgeEnabled.js`、`../bridge/types.js`、`../bridge/bridgeMain.js`、`../utils/process.js`、`../utils/auth.js`、`../services/policyLimits/index.js` | 仅 enableConfigs()、initSinks() | return | cli.tsx:134-186 |
+| `--daemon` | 守护进程 supervisor | `../utils/config.js`、`../utils/sinks.js`、`../daemon/main.js` | 仅 enableConfigs()、initSinks() | return | cli.tsx:189-198 |
+| `ps/logs/attach/kill/--bg/--background` | 后台会话管理 | `../utils/config.js`、`../cli/bg.js` | 仅 enableConfigs() | return | cli.tsx:201-232 |
+| `--template-job-supervisor` | 模板作业 supervisor | `../cli/handlers/templateJobs.js` | 否 | return | cli.tsx:234-240 |
+| `new/list/reply`（模板） | 模板作业命令 | `../cli/handlers/templateJobs.js` | 仅 enableConfigs() | process.exit(0) | cli.tsx:243-254 |
+| `--open-runner/--open-runner-server` | Open Runner 模式 | `../open-runner/main.js` | 否 | return | cli.tsx:256-269 |
+| `--environment-runner` | Open Runner 别名 | `../environment-runner/main.js` | 否 | return | cli.tsx:272-280 |
+| `--self-hosted-runner` | Self-hosted Runner | `../self-hosted-runner/main.js` | 否 | return | cli.tsx:283-292 |
+| `--worktree + --tmux` | exec tmux，可能 fall through | `../utils/config.js`、`../utils/worktreeModeEnabled.js`、`../utils/worktree.js`、`../utils/process.js` | 仅 enableConfigs() | return（或继续） | cli.tsx:295-320 |
+
+（注：setup.ts 模块、main.ts 主入口模块、交互式与非交互式模式模块的设计卡片未包含在内，保持与现有文档结构一致）
+
 ### 4.2 模块与状态所有权
 
 | 模块/对象 | 拥有的状态 | 主要操作 | 不承担的职责 | 与其他模块的接口 |
