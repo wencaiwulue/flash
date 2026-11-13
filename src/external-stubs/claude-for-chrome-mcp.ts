@@ -592,12 +592,13 @@ export async function getOpenBrowserClient(): Promise<Client> {
           for (const browser of browsers) scheduleIdle(browser)
           return callTool(...args)
         }) as typeof callTool
+        const connectionPromise = Promise.resolve(connection)
         connection.client.onclose = () => {
           if (isolatedConnection?.generation === generation) {
             isolatedConnection = undefined
             ++isolatedGeneration
           }
-          void connection.close()
+          void closeIsolatedConnection(connectionPromise).catch(() => undefined)
         }
         if ((isolatedConnection as { generation: number } | undefined)?.generation !== generation) {
           await connection.close()
@@ -642,17 +643,8 @@ async function closeIsolatedConnection(
     }
 
     const close = (async () => {
-      try {
-        await (await pending).close()
-      } catch (error) {
-        if (
-          error instanceof Error &&
-          error.message === 'Isolated browser connection was superseded'
-        ) {
-          return
-        }
-        throw error
-      }
+      const connection = await pending.catch(() => undefined)
+      await connection?.close()
     })()
     isolatedCloses.set(pending, close)
     try {

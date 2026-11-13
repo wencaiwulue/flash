@@ -44,6 +44,19 @@ let fakeProfile: string | undefined
 let chromeMcpConfig: ScopedMcpServerConfig | undefined
 
 const execFileAsync = promisify(execFile)
+const fakeChildren = new Set<ChildProcess>()
+
+process.on('exit', () => {
+  if (process.platform === 'win32') return
+  for (const child of fakeChildren) {
+    if (!child.pid) continue
+    try {
+      process.kill(-child.pid, 'SIGKILL')
+    } catch {
+      // The owned process group already exited.
+    }
+  }
+})
 
 function childHasExited(child: ChildProcess): boolean {
   return child.exitCode !== null || child.signalCode !== null
@@ -108,15 +121,20 @@ async function signalFakeChrome(
 
 async function stopFakeChrome(child: ChildProcess): Promise<void> {
   if (!child.pid || (process.platform === 'win32' && childHasExited(child))) {
+    fakeChildren.delete(child)
     return
   }
   await signalFakeChrome(child, 'SIGTERM')
-  if (await waitForChildClose(child, 5_000)) return
+  if (await waitForChildClose(child, 5_000)) {
+    fakeChildren.delete(child)
+    return
+  }
 
   await signalFakeChrome(child, 'SIGKILL')
   if (!(await waitForChildClose(child, 5_000))) {
     throw new Error('Fake CDP Chromium did not close after SIGKILL')
   }
+  fakeChildren.delete(child)
 }
 
 afterEach(async () => {
@@ -240,6 +258,7 @@ async function startFakeChromeCdp(): Promise<{ endpoint: string }> {
     { stdio: 'ignore', detached: process.platform !== 'win32' },
   )
   fakeChild = child
+  fakeChildren.add(child)
   let startupError: unknown
   child.once('error', error => {
     startupError = error
@@ -534,6 +553,7 @@ describe('open Chrome CDP lifecycle and tools', () => {
         isolatedBrowserRootKey(isolatedRoot),
       )
     }
+    await nextIsolated.close()
     await closeOpenBrowserClient()
     await expectIsolatedBrowserRootExited(reopenedRoot)
   }, 60_000)
