@@ -88,7 +88,87 @@ status: draft
 
 ## 4. 架构、模块与数据流
 
-### 4.1 入口与公共契约
+### 4.1 模块设计卡
+
+#### 4.1.1 环境探测模块
+
+| 项 | 细节 |
+| --- | --- |
+| **真实入口签名** | `buildProbeCommand(cwd?: string): string`<br>`buildProbeArgv(host: string): string[]`<br>`parseProbeOutput(stdout: string): SSHProbe` |
+| **关键类型** | `SSHProbe: { home: string; kernel: 'Linux'; machine: string; libc: 'glibc'; cwd: string; sha256: 'sha256sum' | 'shasum -a 256'; uid: number; target: SSHTarget }` |
+| **输入输出** | 输入：远程 host 字符串，可选 cwd<br>输出：经标记的 JSON 探测结果（前缀 `CLAUDE_SSH_V1:`） |
+| **连接/进程状态** | 无状态；单次 `ssh -T -n -o BatchMode=yes` 执行，超时 30s |
+| **探测流程** | 1. 构造 POSIX 兼容的探测脚本<br>2. 通过 ssh 执行 `set -eu; cd; uname -s/m; id -u; getconf GNU_LIBC_VERSION`<br>3. 捕获以 `CLAUDE_SSH_V1:` 开头的单行输出<br>4. 验证 kernel=Linux，libc=glibc，架构 x86_64/aarch64<br>5. 确定目标平台：linux-x64/linux-arm64 |
+| **错误与安全** | 拒绝非 Linux glibc 目标；验证返回路径绝对且无换行；探测脚本无持久副作用 |
+| **设计取舍** | 使用单行标记 JSON 避免 MOTD/shell rc 干扰；不部署文件；拒绝未知架构不做降级 |
+| **源码测试证据** | `src/ssh/argv.ts:121-233`<br>`tests/sshSession.test.ts:267-305` |
+
+#### 4.1.2 工件部署模块
+
+| 项 | 细节 |
+| --- | --- |
+| **真实入口签名** | `loadSSHArtifact(options: { artifactRoot: string; version: string; target: SSHTarget }): Promise<SSHArtifact>`<br>`verifyRemoteArtifact(options: { host: string; probe: SSHProbe; artifact: SSHArtifact; directory: string; commandOptions?: RunCommandOptions }): Promise<'valid' | 'missing'>`<br>`deploySSHArtifact(options: { host: string; probe: SSHProbe; artifact: SSHArtifact; commandOptions?: RunCommandOptions }): Promise<string>` |
+| **关键类型** | `SSHArtifactManifest: { protocol: 'ssh-v1'; version: string; target: SSHTarget; files: { bun: { sha256: string; mode: '0o755' }; main.js: { sha256: string; mode: '0o644' } } }`<br>`SSHArtifact: { root: string; directory: string; manifest: SSHArtifactManifest; manifestBytes: Buffer; digest: string }` |
+| **输入输出** | 输入：本地工件根目录、版本、目标架构<br>输出：远程工件目录路径（已验证） |
+| **连接/进程状态** | 无状态；多轮 scp/ssh 操作；超时：deploy 120s，verify 30s |
+| **部署流程** | 1. 本地加载并验证 manifest、sha256、mode、目标匹配<br>2. 计算 manifest 摘要作为远程目录后缀<br>3. 检查远程 `~/.cache/claude-code/ssh/<version>-<digest>/` 是否存在且通过验证<br>4. 若缓存命中，跳过部署<br>5. 若缺失：创建临时目录 `mktemp -d`，scp bun/main.js/manifest.json，chmod 正确权限<br>6. 远程验证所有文件 sha256 与 manifest 一致<br>7. 原子重命名 `mv <temp> <target>`<br>8. 再次验证最终状态；失败清理临时目录 |
+| **错误与安全** | 本地工件必须是常规文件，无符号链接；远程权限严格：bun 0755，main.js 0644，manifest 0600；原子重命名避免部分部署；拒绝覆盖不匹配的现有缓存 |
+| **设计取舍** | 基于 manifest 摘要的缓存而非时间戳；scp 而非流式更简单；原子重命名避免并发部署损坏；sha256 验证在远程执行以防传输篡改 |
+| **源码测试证据** | `src/ssh/artifact.ts:85-324`<br>`tests/sshSession.test.ts:307-343` |
+
+#### 4.1.3 认证代理模块
+
+| 项 | 细节 |
+| --- | --- |
+| **真实入口签名** | `createSSHAuthProxy(options: SSHAuthProxyOptions): SSHAuthProxy`<br>`resolveSSHAuth(): Promise<SSHResolvedAuth>`<br>`validateSSHAuthentication(resolve?: () => Promise<SSHResolvedAuth>): Promise<SSHAuthKind>` |
+| **关键类型** | `SSHAuthProxyOptions: { socketPath: string; resolveAuth?: () => Promise<SSHResolvedAuth>; upstream?: { protocol: 'http:' | 'https:'; hostname: string; port?: number }; onError?: (error: Error) => void }`<br>`SSHAuthProxy: { socketPath: string; ready: Promise<void>; stopped: Promise<void>; stop: () => void }`<br>`SSHResolvedAuth: { kind: 'apiKey' | 'bearer' | 'oauth'; headers: Record<string, string> }` |
+| **输入输出** | 输入：本地 Unix socket 路径，可选上游覆盖<br>输出：远程请求经代理注入凭证后转发至 Anthropic API |
+| **连接/进程状态** | 有状态：HTTP 服务器监听 Unix socket；跟踪活跃客户端与上游连接；通过 dev+ino 验证 socket 身份防止替换 |
+| **代理流程** | 1. 创建 Unix socket，权限 0o600<br>2. 记录 socket 的 dev+ino 身份<br>3. 接收远程连接：验证路径为 `/v1/*`，拒绝 CONNECT/TRACE<br>4. 移除 hop-by-hop headers，移除远程占位符授权头（`ssh-api-key-placeholder` 等）<br>5. 调用 `resolveAuth()` 获取本地真实凭证（apiKey/bearer/oauth）<br>6. 注入真实授权头，设置 `Host: api.anthropic.com`<br>7. 建立到上游的固定连接（TLS pinned）<br>8. 双向流式转发请求体与响应体<br>9. 处理 Bun 特殊情况：接受绝对 URL 但只保留路径部分 |
+| **错误与安全** | 私钥/凭证永不离开本地；远程仅见占位符；仅接受 `/v1/*` 路径；请求头大于 64 KiB 拒绝；响应头大于 64 KiB 拒绝；stop 时验证 socket 身份再删除；stderr 输出自动 redact 可能的凭证 |
+| **设计取舍** | Unix socket 而非 TCP 避免远程暴露；HTTP 代理而非自定义协议复用现有库；Bun 需要特殊处理因为它在 Unix socket 上发送绝对 URL；请求时才 resolve auth 支持刷新 OAuth token |
+| **源码测试证据** | `src/ssh/sshAuthProxy.ts:64-599`<br>`tests/sshAuthProxy.test.ts:67-360` |
+
+#### 4.1.4 远程 stream-json 传输模块
+
+| 项 | 细节 |
+| --- | --- |
+| **真实入口签名** | `buildRemoteCLICommand(options: { cwd: string; bunPath: string; mainPath: string; remoteSocket: string; authPlaceholder: 'ANTHROPIC_API_KEY' | 'ANTHROPIC_AUTH_TOKEN' | 'CLAUDE_CODE_OAUTH_TOKEN'; cli: SSHCliConfig; initialSessionId: string; reconnectSessionId?: string }): string`<br>`buildMainSSHArgv(options: { host: string; remoteSocket: string; localSocket: string; remoteCommand: string }): string[]` |
+| **关键类型** | `SSHCliConfig: { permissionMode?: string; dangerouslySkipPermissions: boolean; extraCliArgs: string[] }`<br>行限制：stdin 1 MiB，stdout 4 MiB |
+| **输入输出** | 输入：远程 cwd、工件路径、socket 路径、CLI 配置<br>输出：通过 ssh stdin/stdout 双向传输的 NDJSON 流 |
+| **连接/进程状态** | SSH 进程无 TTY (`-T`)；`ServerAliveInterval=15`，`ServerAliveCountMax=3` 检测断开；`ExitOnForwardFailure=yes` 确保转发可用；`StreamLocalBindUnlink=yes` 清理旧 socket |
+| **传输流程** | 1. 远程命令前缀：`cd <cwd> && exec env -u <所有 ingress vars> ANTHROPIC_UNIX_SOCKET=<remote-socket> ANTHROPIC_BASE_URL=http://api.anthropic.com <auth-placeholder>=<placeholder>`<br>2. 启动远程 `bun main.js --print --input-format stream-json --output-format stream-json`<br>3. 远程 stdout → 本地 NDJSON 解析<br>4. 本地 NDJSON 序列化 → 远程 stdin<br>5. 按换行符分割；丢弃超大行；缓冲不完整行 |
+| **错误与安全** | 显式 unset 所有可能含凭证的 ingress 环境变量；占位符值无实际意义；远程连接本地代理仅通过转发的 Unix socket；NDJSON 行有大小限制避免 OOM |
+| **设计取舍** | 复用现有 stream-json 格式与本地 REPL 相同；不分配 TTY 避免终端控制问题；HTTP 仅在本地 Unix socket 上使用（Bun 限制），代理升级到 TLS 连接上游 |
+| **源码测试证据** | `src/ssh/argv.ts:235-318`<br>`src/ssh/createSSHSession.ts:206-251`<br>`tests/sshSession.test.ts:344-381` |
+
+#### 4.1.5 权限 generation 隔离模块
+
+| 项 | 细节 |
+| --- | --- |
+| **真实入口签名** | `SSHSessionManager.respondToPermissionRequest(requestId: string, result: RemotePermissionResponse): boolean` |
+| **关键类型** | `PermissionEntry: { generation: number; remoteRequestId: string; serialized: string }`<br>本地请求 ID 格式：`g<generation>:<remoteRequestId>` |
+| **输入输出** | 输入：本地请求 ID（含 generation），用户响应（allow/deny）<br>输出：是否成功发送（仅同 generation 且 connected 状态） |
+| **连接/进程状态** | generation 从 1 开始，每次 attach/重连递增；权限 Map 键为 `g<generation>:<remoteRequestId>`；跟踪 remoteRequestId 到 serialized request 以检测冲突 |
+| **隔离流程** | 1. 新连接 attach 时 generation++<br>2. 收到远程 `control_request subtype=can_use_tool` 时：<br>   a. 检查 remoteRequestId 是否重复，内容不同则报告 CONTROL_ID_CONFLICT<br>   b. 构造本地 ID：`g<generation>:<remoteRequestId>`<br>   c. 记录 permission entry 含 generation<br>   d. 回调 onPermissionRequest 传递本地 ID<br>3. 用户响应时：<br>   a. 验证 entry 存在且 generation === 当前 generation<br>   b. 验证状态 === connected<br>   c. 构造 control_response 发送<br>4. 断开时 invalidatePermissions：清除所有 pending 权限<br>5. 旧 generation 的响应静默返回 false |
+| **错误与安全** | generation 隔离防止用户点击旧连接的 UI 影响新会话；相同 remoteRequestId 不同内容视为冲突；权限响应只在 connected 状态发送 |
+| **设计取舍** | 本地 ID 嵌入 generation 而非 UUID 更紧凑；旧响应静默丢弃而非报错避免用户困惑；不重播权限请求需要用户重新交互 |
+| **源码测试证据** | `src/ssh/SSHSessionManager.ts:324-375, 582-585`<br>`tests/sshSession.test.ts:445-490` |
+
+#### 4.1.6 重连与错误恢复模块
+
+| 项 | 细节 |
+| --- | --- |
+| **真实入口签名** | `SSHSessionManager.connect(): boolean`<br>`SSHSessionManager.disconnect(): boolean`<br>`SSHSessionManager.isConnected(): boolean`<br>`SSHSessionManager.sendMessage(content: RemoteMessageContent): Promise<boolean>`<br>`SSHSessionManager.sendInterrupt(): boolean` |
+| **关键类型** | `State: 'idle' | 'initializing' | 'connected' | 'reconnecting' | 'disconnecting' | 'disconnected'`<br>重连配置：`maxReconnectAttempts?: number; reconnectDelayMs?: (attempt: number) => number; gracefulEofMs?: number; sigkillDelayMs?: number` |
+| **输入输出** | 输入：用户消息、中断、权限响应<br>输出：连接状态回调（onConnected/onReconnecting/onDisconnected/onError） |
+| **连接/进程状态** | 状态机：idle → initializing → connected → reconnecting → connected 循环，或最终 disconnected；跟踪 activeSessionId 用于重连 `--resume`；pendingPrompts Set 记录未确认的用户输入；initTimer 默认 30s 等待 system/init |
+| **重连流程** | 1. SSH 进程 close/error 触发 handleProcessClose<br>2. 若 disconnecting 或已正常退出（code 0 && connected）：finishDisconnected<br>3. 否则：<br>   a. notifyDeliveryUnknown：若有同 generation 的 pendingPrompts，报告 SSH_DELIVERY_UNKNOWN 错误<br>   b. invalidatePermissions：清除所有权限条目<br>   c. 检查是否为非重试错误（auth/host key/artifact 等）：若是，finishDisconnected<br>   d. 否则 scheduleReconnect：<br>      - 已连接过：最多 3 次；未连接过：最多 2 次<br>      - 延迟：1s, 2s, 4s 指数退避（2^(attempt-1)）<br>      - 状态转为 reconnecting，回调 onReconnecting(attempt, max)<br>      - ensureCurrentProcessStopped：SIGKILL 若仍在运行<br>      - 调用 reconnect(activeSessionId) 获取新连接<br>      - attach 新连接：generation++，重置状态为 initializing/reconnecting<br>4. 收到 system/init 后：状态转为 connected，回调 onConnected，reconnectAttempt 清零 |
+| **错误与安全** | delivery unknown 明确告知用户消息可能丢失但不重播；重连不重新发送用户输入；旧 generation 的权限静默拒绝；disconnect 流程：先尝试发送 end_session，然后 gracefulEofMs 后 SIGTERM，sigkillDelayMs 后 SIGKILL；Host key 完全由 OpenSSH 处理，代码不绕过验证 |
+| **设计取舍** | 有限重连避免资源浪费；指数退避避免快速重试；delivery unknown 而非自动重播因为上下文可能已变化；graceful shutdown 带超时确保最终清理；host key 不内联处理遵循用户已有 SSH 安全策略 |
+| **源码测试证据** | `src/ssh/SSHSessionManager.ts:465-624`<br>`tests/sshSession.test.ts:491-530` |
+
+### 4.2 入口与公共契约
 
 #### 主会话入口
 
