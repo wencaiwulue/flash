@@ -53,7 +53,7 @@ UI 渲染系统需要解决以下具体问题：
 
 平台约束：
 - 终端宽度动态变化时需要重新计算布局
-- 全屏模式（fullscreen）和普通模式的选择行为不同（全屏模式有独立的 NoSelect  gutter）
+- 全屏模式（fullscreen）和普通模式的选择行为不同（全屏模式有独立的 NoSelect gutter）
 - Ink 渲染引擎有特殊的 memo 策略（自定义比较器 `areMessagePropsEqual`）
 
 ### 内部/外部差异
@@ -118,7 +118,7 @@ UI 渲染系统需要解决以下具体问题：
 ### 决策 3：Markdown token 缓存按内容 hash 存储，MRU 淘汰策略
 
 **实际机制：**
-- 模块级 `tokenCache = new Map<string, Token[]>()`，key 是内容的 hash（通过 `hashContent`）
+- 模块级 `tokenCache = new Map<string, Token[]>()`, key 是内容的 hash（通过 `hashContent`）
 - 先检查是否有 Markdown 语法：`MD_SYNTAX_RE` 匹配 `#*`[>|_-~` 或 `\n\n` 或 `^\d+\. ` 或 `\n\d+\. `
 - 如果没有语法，直接构造单个 paragraph token（跳过 lexer）
 - 如果有语法且命中缓存，将该 key 移到 Map 末尾（MRU promotion）
@@ -476,7 +476,651 @@ type MessageLookups = {
 - 缓存是按需重建的，没有持久化，重启后自动重建
 - 没有缓存时只是性能稍差，功能正常
 
-### 4.5 跨子系统依赖
+### 4.5 消息类型映射模块设计卡
+
+#### 入口与关键类型
+
+```tsx
+// src/components/Message.tsx
+export type Props = {
+  message: NormalizedUserMessage | AssistantMessage | AttachmentMessageType | SystemMessage | GroupedToolUseMessageType | CollapsedReadSearchGroupType
+  lookups: ReturnType<typeof buildMessageLookups>
+  addMargin: boolean
+  tools: Tools
+  commands: Command[]
+  verbose: boolean
+  inProgressToolUseIDs: Set<string>
+  progressMessagesForMessage: ProgressMessage[]
+  shouldAnimate: boolean
+  shouldShowDot: boolean
+  style?: 'condensed'
+  width?: number | string
+  isTranscriptMode: boolean
+  isStatic: boolean
+  onOpenRateLimitOptions?: () => void
+  isActiveCollapsedGroup?: boolean
+  isUserContinuation?: boolean
+  lastThinkingBlockId?: string | null
+  latestBashOutputUUID?: string | null
+  containerWidth?: number
+}
+
+export const Message = React.memo(MessageImpl, areMessagePropsEqual)
+```
+
+#### 输入输出
+
+| 方向 | 类型 | 说明 |
+|------|------|------|
+| 输入 | Message 联合类型 | 包含 user/assistant/system/attachment/grouped_tool_use/collapsed_read_search 多种类型 |
+| 输入 | lookups | 工具调用查找表（resolvedToolUseIDs, erroredToolUseIDs, toolUseByToolUseID） |
+| 输入 | verbose/isTranscriptMode | 显示控制标志 |
+| 输出 | React.ReactNode | 根据消息类型分派后的组件树 |
+
+#### 渲染状态与缓存
+
+- **无组件内部状态**：纯组件，通过 props 驱动
+- **memo 比较器**：`areMessagePropsEqual` 自定义比较，避免不必要重渲染
+  - 只在 `lastThinkingBlockId` 变化且消息包含 thinking 内容时重渲染
+  - 比较 `verbose`、`isTranscriptMode`、`containerWidth`、`latestBashOutputUUID` 状态
+  - 静态消息 `isStatic && next.isStatic` 时直接返回 true
+
+#### 消息到终端输出流程
+
+```
+Message 入口
+  ├─ switch (message.type)
+  │  ├─ 'attachment' → AttachmentMessage
+  │  ├─ 'assistant' → Box + map (content) → AssistantMessageBlock
+  │  │  └─ switch (content.type)
+  │  │     ├─ 'tool_use' → AssistantToolUseMessage
+  │  │     ├─ 'text' → AssistantTextMessage → Markdown
+  │  │     ├─ 'thinking' → AssistantThinkingMessage (受控于 lastThinkingBlockId)
+  │  │     └─ 'redacted_thinking' → AssistantRedactedThinkingMessage
+  │  ├─ 'user' → UserMessage
+  │  │  └─ switch (content.type)
+  │  │     ├─ 'text' → UserTextMessage → Markdown
+  │  │     ├─ 'image' → UserImageMessage
+  │  │     └─ 'tool_result' → UserToolResultMessage
+  │  ├─ 'system'
+  │  │  ├─ 'compact_boundary' → CompactBoundaryMessage (或 null in fullscreen)
+  │  │  ├─ 'microcompact_boundary' → null
+  │  │  ├─ 'local_command' → UserTextMessage
+  │  │  └─ other → SystemTextMessage
+  │  ├─ 'grouped_tool_use' → GroupedToolUseContent
+  │  └─ 'collapsed_read_search' → OffscreenFreeze + CollapsedReadSearchContent
+  └─ SentryErrorBoundary 包裹单个组件，失败返回 null
+```
+
+#### User/Assistant/System/Attachment 组件分派
+
+| 消息类型 | 子类型 | 渲染组件 | 关键行为 |
+|---------|-------|---------|---------|
+| user | text | UserTextMessage | Markdown 渲染，支持 timestamp/origin |
+| user | image | UserImageMessage | 图像占位，带 imageId |
+| user | tool_result | UserToolResultMessage | 工具自定义渲染，可能展开/截断 |
+| assistant | text | AssistantTextMessage | Markdown 渲染，可能带提示点 |
+| assistant | tool_use | AssistantToolUseMessage | 工具自定义渲染，支持进度动画 |
+| assistant | thinking | AssistantThinkingMessage | 可见性受控于 lastThinkingBlockId，支持隐藏 |
+| assistant | redacted_thinking | AssistantRedactedThinkingMessage | 脱敏显示 |
+| system | compact_boundary | CompactBoundaryMessage | 折叠边界，全屏隐藏 |
+| system | microcompact_boundary | null | 无渲染 |
+| system | local_command | UserTextMessage | 本地命令显示 |
+| system | default | SystemTextMessage | 通用系统消息 |
+| attachment | 多种 | AttachmentMessage | 按 attachment.type 分派（20+ 类型） |
+| grouped_tool_use | - | GroupedToolUseContent | 分组工具调用 |
+| collapsed_read_search | - | CollapsedReadSearchContent | 折叠读取搜索，带 OffscreenFreeze |
+
+#### 错误与性能
+
+| 场景 | 处理机制 | 证据 |
+|------|---------|------|
+| 单个组件渲染失败 | SentryErrorBoundary 包裹，返回 null | src/components/SentryErrorBoundary.ts |
+| 不必要重渲染 | areMessagePropsEqual 自定义比较器跳过无关 props | src/components/Message.tsx:500-525 |
+| lastThinkingBlockId 抖动 | 只在消息有 thinking 内容时才比较重渲染 | src/components/Message.tsx:506-513 |
+| Advisor block 解析失败 | logError 并返回 null | src/components/Message.tsx:482-486 |
+
+#### 设计取舍与备选
+
+| 决策 | 当前选择 | 备选方案 | 取舍 |
+|------|---------|---------|------|
+| 路由方式 | switch-case 穷举 | 注册表/依赖注入 | +TypeScript 完整检查，-修改 Message.tsx 才能新增类型 |
+| memo 策略 | 自定义比较器 | useMemo/useCallback 到处放 | +精确控制，-维护成本高 |
+| 错误处理 | 静默返回 null | 显示错误提示 | +不影响会话，-用户可能意识不到失败 |
+
+#### 源码测试证据
+
+| 设计陈述 | 源码证据 | 证据边界 |
+|---------|---------|---------|
+| 消息类型通过 switch-case 路由 | `src/components/Message.tsx:103-282` | 只覆盖 CLI 渲染，不包含桌面端 GUI |
+| UserMessage 分派 | `src/components/Message.tsx:314-353` | |
+| AssistantMessageBlock 分派 | `src/components/Message.tsx:416-488` | |
+| areMessagePropsEqual | `src/components/Message.tsx:500-525` | |
+| hasThinkingContent | `src/components/Message.tsx:490-498` | |
+
+### 4.6 流式更新与稳定边界模块设计卡
+
+#### 入口与关键类型
+
+```tsx
+// src/components/Markdown.tsx
+type StreamingProps = {
+  children: string
+}
+
+export function StreamingMarkdown({ children }: StreamingProps): React.ReactNode
+```
+
+#### 输入输出
+
+| 方向 | 类型 | 说明 |
+|------|------|------|
+| 输入 | string | 流式增长的 Markdown 文本（已 stripPromptXMLTags） |
+| 输出 | React.ReactNode | 稳定前缀 + 不稳定后缀的分段 Markdown 渲染 |
+
+#### 渲染状态与缓存
+
+- **稳定前缀引用**：`stablePrefixRef.current`（React Compiler 无法证明单调性，使用 `'use no memo'`）
+- **边界推进**：每次渲染时，找到最后一个完整 block 的结束位置，推进稳定边界
+- **重置条件**：`!stripped.startsWith(stablePrefixRef.current)` 时重置为 ''
+
+#### 消息到终端输出流程
+
+```
+StreamingMarkdown 入口
+  ├─ 'use no memo' 指令：React Compiler 不优化
+  ├─ stripped = stripPromptXMLTags(children)
+  ├─ 检查是否需要重置：!stripped.startsWith(stablePrefixRef) → 重置为 ''
+  ├─ tokens = marked.lexer(stripped.substring(boundary))
+  ├─ 找到最后一个非 space token 的索引
+  ├─ 计算推进量：遍历 tokens[0..lastContentIdx-1] 累加 raw.length
+  ├─ 推进稳定边界（若有推进）
+  ├─ 分割输出：
+  │  ├─ stablePrefix → <Markdown>{stablePrefix}</Markdown> (memoized)
+  │  └─ unstableSuffix → <Markdown>{unstableSuffix}</Markdown> (每次重解析)
+  └─ Box 包裹，flexDirection="column"
+```
+
+#### 稳定边界与缓存失效
+
+| 状态 | 触发条件 | 行为 |
+|------|---------|------|
+| 稳定边界推进 | 收到完整 block（代码块、段落、列表等） | stablePrefix 前进，对应内容不再重解析 |
+| 缓存失效 | 文本替换而非追加（stripped 不以 stablePrefix 开头） | 重置 stablePrefix 为 ''，重新开始 |
+| 组件 unmount | 流式结束/切换模式 | ref 重置，下次重新开始 |
+
+#### 错误与性能
+
+| 场景 | 处理机制 | 证据 |
+|------|---------|------|
+| 长文本流式渲染 | 只重渲染不稳定后缀，稳定部分 memoized | src/components/Markdown.tsx:163-215 |
+| React Compiler 干扰 | `'use no memo'` 指令，避免错误优化 | src/components/Markdown.tsx:171 |
+| Prompt XML 标签 | 先 stripPromptXMLTags 再处理边界 | src/components/Markdown.tsx:178 |
+
+#### 设计取舍与备选
+
+| 决策 | 当前选择 | 备选方案 | 取舍 |
+|------|---------|---------|------|
+| 稳定粒度 | 完整 block 级别 | 行级别/字符级别 | +无闪烁，-边界情况可能延迟显示 |
+| 边界计算方式 | marked.lexer + 累加 raw.length | diff 前一次渲染 | +精确，-需要理解 marked token 结构 |
+| 重置策略 | startsWith 检查 | 从不重置/总是重置 | +稳健，-替换时有闪烁 |
+
+#### 源码测试证据
+
+| 设计陈述 | 源码证据 | 证据边界 |
+|---------|---------|---------|
+| StreamingMarkdown 实现 | `src/components/Markdown.tsx:163-215` | 只处理文本，不处理图片或其他 media |
+| 'use no memo' 指令 | `src/components/Markdown.tsx:171` | |
+| 稳定边界重置 | `src/components/Markdown.tsx:183-185` | |
+| 边界推进计算 | `src/components/Markdown.tsx:187-202` | |
+
+### 4.7 Markdown/ANSI 宽度与 tokenCache 模块设计卡
+
+#### 入口与关键类型
+
+```tsx
+// src/components/Markdown.tsx
+type Props = {
+  children: string
+  dimColor?: boolean
+}
+
+export function Markdown(props: Props): React.ReactNode
+
+// 模块级缓存
+const TOKEN_CACHE_MAX = 500
+const tokenCache = new Map<string, Token[]>() // key = hashContent(content)
+
+function cachedLexer(content: string): Token[]
+function hasMarkdownSyntax(s: string): boolean
+```
+
+#### 输入输出
+
+| 方向 | 类型 | 说明 |
+|------|------|------|
+| 输入 | string | Markdown 文本 |
+| 输入 | dimColor? | 是否暗淡显示 |
+| 输出 | React.ReactNode | 混合 Ansi（普通文本）+ MarkdownTable（表格）的渲染树 |
+| 缓存输出 | Token[] | marked lexer 解析结果（缓存） |
+
+#### 渲染状态与缓存
+
+- **tokenCache 结构**：`Map<hash, Token[]>`, MRU 策略
+- **缓存操作**：
+  - 命中：删除后重新 set → 提升到 MRU 位置
+  - 淘汰：`size >= TOKEN_CACHE_MAX` 时删除 Map 首元素（最久未使用）
+- **快路径**：无 Markdown 语法时，直接构造 paragraph token，跳过 lexer
+- **MD_SYNTAX_RE**：`/[#*`|\[\]>\-_~]|\n\n|^\d+\. |\n\d+\. /
+- **采样优化**：长文本只检查前 500 字符
+
+#### 消息到终端输出流程
+
+```
+Markdown 入口
+  ├─ Suspense 包裹：cli-highlight 异步加载
+  │  ├─ fallback：highlight=null，无语法高亮
+  │  └─ 加载完成：highlight=CliHighlight
+  └─ MarkdownBody
+     ├─ content = stripPromptXMLTags(children)
+     ├─ tokens = cachedLexer(content)
+     │  ├─ 无语法 → 直接构造 paragraph token
+     │  ├─ 有语法，命中缓存 → MRU 提升，返回缓存 tokens
+     │  ├─ 有语法，未命中 → marked.lexer，存入缓存，可能淘汰旧条目
+     ├─ 遍历 tokens：
+     │  ├─ table → <MarkdownTable>
+     │  └─ other → formatToken → Ansi 字符串拼接
+     └─ Box 包裹，flexDirection="column"
+```
+
+#### 稳定边界与缓存失效
+
+| 缓存状态 | 触发条件 | 行为 |
+|---------|---------|------|
+| 缓存命中 | 相同内容 hash，且在缓存中 | MRU 提升，直接返回 tokens |
+| 缓存未命中 | 新内容，或已被淘汰 | marked.lexer，存入缓存 |
+| 缓存淘汰 | 缓存满 500 条 | 删除最久未用的首元素 |
+| 测试 reset 缺口 | 模块级变量无导出 reset 函数 | 测试间可能污染（改进建议 9.1.2） |
+
+#### 错误与性能
+
+| 场景 | 处理机制 | 证据 |
+|------|---------|------|
+| marked lexer 成本 | 约 3ms/次，通过缓存避免虚拟滚动 remount 时重复解析 | src/components/Markdown.tsx:20-21 注释 |
+| 无语法文本快路径 | 跳过 marked.lexer，直接构造 token | src/components/Markdown.tsx:46-55 |
+| 内存占用 | 使用 hash 而非完整内容作 key，避免 RSS 增长 | src/components/Markdown.tsx:26, 24180 注释 |
+| cli-highlight 加载 | Suspense + fallback 降级为无高亮 | src/components/Markdown.tsx:87-91 |
+
+#### 设计取舍与备选
+
+| 决策 | 当前选择 | 备选方案 | 取舍 |
+|------|---------|---------|------|
+| 缓存位置 | 模块级 Map | React.memo/useMemo | +跨 unmount/remount 保留，-测试污染风险 |
+| 键设计 | hashContent(content) | 完整内容字符串 | +内存节省，-hash 计算成本 |
+| 淘汰策略 | MRU（Map 插入顺序模拟） | LRU 库/无限缓存 | +无依赖，-500 固定不可配置 |
+| 语法检测 | 正则快速检查 + 采样前 500 字符 | 总是 lexer | +快路径，-可能误判 |
+
+#### 源码测试证据
+
+| 设计陈述 | 源码证据 | 证据边界 |
+|---------|---------|---------|
+| tokenCache 定义 | `src/components/Markdown.tsx:25-26` | 缓存容量固定为 500，不可配置 |
+| cachedLexer 实现 | `src/components/Markdown.tsx:41-73` | |
+| hasMarkdownSyntax | `src/components/Markdown.tsx:34-40` | |
+| MRU 提升 | `src/components/Markdown.tsx:60-63` | |
+| 快路径实现 | `src/components/Markdown.tsx:46-55` | |
+
+### 4.8 Diff/工具结果与 StructuredDiff 模块设计卡
+
+#### 入口与关键类型
+
+```tsx
+// src/components/StructuredDiff.tsx
+type Props = {
+  patch: StructuredPatchHunk // from 'diff' 库
+  dim: boolean
+  filePath: string
+  firstLine: string | null
+  fileContent?: string
+  width: number
+  skipHighlighting?: boolean
+}
+
+export const StructuredDiff = memo(StructuredDiffImpl)
+
+// 模块级缓存
+type CachedRender = {
+  lines: string[]
+  gutterWidth: number
+  gutters: string[] | null
+  contents: string[] | null
+}
+const RENDER_CACHE = new WeakMap<StructuredPatchHunk, Map<string, CachedRender>>()
+// 二级 key = `${theme}|${width}|${dim}|${gutterWidth}|${firstLine}|${filePath}`
+// 每 patch 最多缓存 4 个条目
+```
+
+#### 输入输出
+
+| 方向 | 类型 | 说明 |
+|------|------|------|
+| 输入 | StructuredPatchHunk | Diff patch 对象 |
+| 输入 | dim | 是否暗淡显示 |
+| 输入 | filePath/firstLine/fileContent | 语言检测与语法高亮上下文 |
+| 输入 | width | 终端宽度 |
+| 输出 | React.ReactNode | 两种模式：双列（NoSelect gutter + RawAnsi content）或单列（RawAnsi） |
+| 降级 | StructuredDiffFallback | NAPI 不可用时 |
+
+#### 渲染状态与缓存
+
+- **RENDER_CACHE 结构**：WeakMap<patch, Map<cacheKey, CachedRender>>
+  - 一级 key：patch 对象本身（GC 自动回收）
+  - 二级 key：组合 `${theme}|${width}|${dim}|${gutterWidth}|${firstLine}|${filePath}`
+- **预分割优化**：缓存时已 sliceAnsi 分离 gutter 和 content，渲染时直接 RawAnsi
+- **每 patch 缓存上限**：4 个条目，超限时清空该 patch 的所有缓存
+- **gutterWidth 计算**：`maxLineNumber.toString().length + 3`（marker + 2 spaces）
+
+#### 消息到终端输出流程
+
+```
+StructuredDiff 入口
+  ├─ safeWidth = Math.max(1, Math.floor(width)) // 避免非正数
+  ├─ splitGutter = isFullscreenEnvEnabled() // 全屏模式才分离 gutter
+  ├─ cached = skipHighlighting 或 syntaxHighlightingDisabled
+  │  ? null
+  │  : renderColorDiff(patch, firstLine, filePath, fileContent, theme, safeWidth, dim, splitGutter)
+  │     ├─ ColorDiff = expectColorDiff() // NAPI 模块
+  │     ├─ 检查缓存：perHunk = RENDER_CACHE.get(patch); hit = perHunk?.get(key)
+  │     ├─ 命中 → 直接返回
+  │     ├─ 未命中 → lines = new ColorDiff(...).render(theme, width, dim)
+  │     ├─ 预分割：gutterWidth > 0 时，sliceAnsi 分离 gutters/contents
+  │     ├─ 缓存管理：perHunk.size >= 4 → perHunk.clear()
+  │     └─ 存入缓存返回
+  ├─ 无缓存 → <StructuredDiffFallback>
+  └─ 有缓存 → 双列或单列渲染
+     ├─ gutterWidth > 0 → <NoSelect><RawAnsi gutters/></NoSelect> + <RawAnsi contents/>
+     └─ else → <RawAnsi lines/>
+```
+
+#### 增量 diff 与工具结果截断/展开
+
+| 特性 | 实现机制 | 位置 |
+|------|---------|------|
+| 增量 diff | 依赖外部 diff 库 patch 对象，本模块只负责渲染高亮 | 不适用（上游负责） |
+| 工具结果截断 | UserToolResultMessage 处理（本 spec 不展开工具专用 UI） | src/components/messages/UserToolResultMessage/ |
+| 工具结果展开 | ExpandShellOutputProvider + context | src/components/Message.tsx:169-192, src/components/shell/ |
+| 截断检测 | latestBashOutputUUID 匹配时自动展开 | src/components/Message.tsx:167-192 |
+
+#### 错误与性能
+
+| 场景 | 处理机制 | 证据 |
+|------|---------|------|
+| ColorDiff NAPI 不可用 | expectColorDiff 返回 null，降级到 StructuredDiffFallback | src/components/StructuredDiff.tsx:69 |
+| 终端宽度为 0/负数 | safeWidth = Math.max(1, ...) clamp | src/components/StructuredDiff.tsx:134 |
+| 切换 transcript/prompt 重渲染 | 模块级 RENDER_CACHE 保留，避免重复 NAPI 调用 | src/components/StructuredDiff.tsx:20-28 注释 |
+| Yoga 布局成本 | 预分割 gutter/content，N 行 → 2 个 RawAnsi 组件 | src/components/StructuredDiff.tsx:33-40, 96-101 |
+| 终端 resize 缓存膨胀 | 每 patch 最多 4 个条目，超限清空 | src/components/StructuredDiff.tsx:113 |
+| 测试 reset 缺口 | RENDER_CACHE 无导出 reset 函数 | 改进建议 9.1.2 |
+
+#### 设计取舍与备选
+
+| 决策 | 当前选择 | 备选方案 | 取舍 |
+|------|---------|---------|------|
+| 缓存结构 | WeakMap + 二级 Map | 仅 Map/无缓存 | +自动 GC，-实现复杂 |
+| 二级键设计 | 多参数组合字符串 | 对象 + 自定义哈希 | +简单，-键长度可能长 |
+| 缓存上限 | 4 条/补丁 | 无限制/LRU | +避免内存爆炸，-resize 时可能抖动 |
+| 预分割时机 | 缓存时 | 渲染时 | +渲染快，-缓存内存大 |
+| 分割策略 | 全屏才分割 | 总是分割/从不分割 | +全屏可选复制，-两套路径 |
+
+#### 源码测试证据
+
+| 设计陈述 | 源码证据 | 证据边界 |
+|---------|---------|---------|
+| RENDER_CACHE 定义 | `src/components/StructuredDiff.tsx:42-44` | WeakMap 两级缓存 |
+| renderColorDiff 实现 | `src/components/StructuredDiff.tsx:58-116` | 每 patch 最多缓存 4 个变体 |
+| 预分割 gutter/content | `src/components/StructuredDiff.tsx:96-101` | |
+| 4 条上限清空 | `src/components/StructuredDiff.tsx:113` | |
+| computeGutterWidth | `src/components/StructuredDiff.tsx:49-56` | |
+| safeWidth clamp | `src/components/StructuredDiff.tsx:134` | |
+
+### 4.9 Spinner/Logo/通用展示模块设计卡
+
+#### 入口与关键类型
+
+```tsx
+// src/components/Spinner.tsx
+export type SpinnerMode = 'idle' | 'thinking' | 'receiving' | 'tool_use'
+
+type Props = {
+  mode: SpinnerMode
+  loadingStartTimeRef: React.RefObject<number>
+  totalPausedMsRef: React.RefObject<number>
+  pauseStartTimeRef: React.RefObject<number | null>
+  spinnerTip?: string
+  responseLengthRef: React.RefObject<number>
+  apiMetricsRef: React.RefObject<ApiMetric[]>
+  overrideColor?: keyof Theme | null
+  overrideShimmerColor?: keyof Theme | null
+  overrideMessage?: string | null
+  spinnerSuffix?: string | null
+  verbose: boolean
+  hasActiveTools?: boolean
+  leaderIsIdle?: boolean
+}
+
+export function SpinnerWithVerb(props: Props): React.ReactNode
+export function Spinner(): React.ReactNode
+export function BriefIdleStatus(): React.ReactNode
+
+// src/components/Messages.tsx
+const LogoHeader = React.memo(function LogoHeader({
+  agentDefinitions
+}: { agentDefinitions: AgentDefinitionsResult | undefined }): React.ReactNode)
+```
+
+#### 输入输出
+
+| 方向 | 类型 | 说明 |
+|------|------|------|
+| 输入 | SpinnerMode | idle/thinking/receiving/tool_use |
+| 输入 | Ref 时间戳 | loadingStartTime/totalPausedMs/pauseStartTime |
+| 输入 | responseLengthRef | 流式 token 计数（除以 4 估算） |
+| 输入 | apiMetricsRef | TTFT 等指标（ant-only） |
+| 输入 | leaderIsIdle | 领导者空闲时显示静态状态 |
+| 输出 | React.ReactNode | SpinnerAnimationRow + 可选 TeammateSpinnerTree/TaskListV2/提示 |
+
+#### 渲染状态与缓存
+
+- **Spinner 状态**：
+  - `thinkingStatus`：'thinking' | number（duration）| null，最小显示 2s
+  - `thinkingStartRef`：记录开始时间
+- **动画时钟**：`useAnimationFrame(reducedMotion ? null : 120)`，约 8fps
+- **LogoHeader memo**：仅依赖 `agentDefinitions`，避免 messages 变化时重渲染导致所有兄弟节点 blit
+- **reducedMotion**：用户设置，禁用动画时显示静态点
+
+#### 消息到终端输出流程（Spinner）
+
+```
+SpinnerWithVerb 入口
+  ├─ isBriefOnly 检查 → BriefSpinner 或 SpinnerWithVerbInner
+  ├─ SpinnerWithVerbInner
+  │  ├─ 状态管理：thinkingStatus（最小显示 2s）
+  │  ├─ 计算有效 verb：overrideMessage > currentTodo > randomVerb
+  │  ├─ leaderIsIdle 且有 runningTeammates → 静态空闲显示
+  │  ├─ viewingForegroundTeammate.isIdle → teammate 静态显示
+  │  ├─ 计算提示：clearTip (30min) / btwTip (30s) / spinnerTip
+  │  ├─ 计算预算文本（ant-only）
+  │  └─ 渲染
+  │     ├─ <SpinnerAnimationRow>（动画在子组件，通过 useAnimationFrame）
+  │     ├─ showSpinnerTree → <TeammateSpinnerTree>
+  │     ├─ showExpandedTodos → <TaskListV2>
+  │     └─ 提示/预算 → <MessageResponse> 包裹
+  └─ BriefSpinner（brief mode）
+     ├─ 2 行高度占位（与 BriefIdleStatus 一致）
+     ├─ dot 动画：3 帧循环
+     ├─ shimmer 高亮：verb 扫过效果
+     └─ 右对齐：runningCount 显示
+```
+
+#### LogoHeader 渲染流程
+
+```
+LogoHeader (memo)
+  └─ OffscreenFreeze 包裹
+     ├─ LogoV2
+     └─ Suspense → StatusNotices
+```
+
+#### 错误与性能
+
+| 场景 | 处理机制 | 证据 |
+|------|---------|------|
+| Spinner 动画 CPU | 动画逻辑下移到 SpinnerAnimationRow，父组件少重渲染 | src/components/Spinner.tsx:152-154 注释 |
+| LogoHeader 导致全量 blit | memo 仅依赖 agentDefinitions，避免 messages 变化时重渲染 | src/components/Messages.tsx:78-96 注释 |
+| thinking 结束闪烁 | 最小显示 2s，showDuration timer + clearStatus timer | src/components/Spinner.tsx:170-212 |
+| reducedMotion 可访问性 | 禁用动画，显示静态黑点 | src/components/Spinner.tsx:602-606 |
+
+#### 设计取舍与备选
+
+| 决策 | 当前选择 | 备选方案 | 取舍 |
+|------|---------|---------|------|
+| 动画位置 | SpinnerAnimationRow 内部 | 顶层组件 | +父组件少重渲染，-结构稍复杂 |
+| 最小显示时间 | thinking 2s | 立即消失 | +避免闪烁，-稍有延迟 |
+| Logo memo 键 | agentDefinitions | 无 memo | +避免全量 blit，-新增依赖需更新 |
+| Brief mode 布局 | 固定 2 行高度 | 动态高度 | +输入栏不跳，-空白占用 |
+
+#### 源码测试证据
+
+| 设计陈述 | 源码证据 |
+|---------|---------|
+| SpinnerWithVerb 实现 | `src/components/Spinner.tsx:96-128` |
+| SpinnerWithVerbInner | `src/components/Spinner.tsx:130-454` |
+| thinking 状态管理 | `src/components/Spinner.tsx:170-212` |
+| LogoHeader memo | `src/components/Messages.tsx:78-96` |
+| BriefSpinner | `src/components/Spinner.tsx:469-555` |
+| BriefIdleStatus | `src/components/Spinner.tsx:558-593` |
+
+### 4.10 Messages 主容器与切片模块设计卡
+
+#### 入口与关键类型
+
+```tsx
+// src/components/Messages.tsx
+export type MessagesProps = {
+  messages: Message[]
+  tools: Tools
+  commands: Command[]
+  verbose: boolean
+  toolJSX: ToolJSX
+  inProgressToolUseIDs: Set<string>
+  streamingToolUses: StreamingToolUse[]
+  streamingThinking: StreamingThinking | null
+  streamingText: string | null
+  screen: Screen
+  hidePastThinking: boolean
+  scrollRef?: Ref<ScrollBoxHandle>
+  isBriefOnly?: boolean
+}
+
+// 常量
+const MAX_MESSAGES_WITHOUT_VIRTUALIZATION = 200
+const MESSAGE_CAP_STEP = 50
+
+// 切片锚点
+const sliceAnchorRef = useRef<{ uuid: string; idx: number } | null>(null)
+```
+
+#### 输入输出
+
+| 方向 | 类型 | 说明 |
+|------|------|------|
+| 输入 | Message[] | 原始消息数组 |
+| 输入 | Tools/Command[] | 工具与命令定义 |
+| 输入 | verbose/isBriefOnly/screen | 显示模式 |
+| 输入 | streaming*/inProgressToolUseIDs | 流式状态 |
+| 输入 | scrollRef? | 滚动引用（虚拟滚动 gate） |
+| 输出 | React.ReactNode | LogoHeader + MessageRow 列表 + 流式内容 |
+
+#### 渲染状态与缓存
+
+- **sliceAnchorRef**：`{ uuid: string; idx: number }`，UUID 锚定，避免切片边界移动导致所有组件 remount
+- **lastThinkingBlockId**：计算最后一个 thinking block 的 `uuid:idx`
+- **message lookups**：`buildMessageLookups` 构造工具查找表
+- **static messages**：`shouldRenderStatically` 判断，`OffscreenFreeze` 包裹
+- **虚拟滚动 gate**：`scrollRef != null && !CLAUDE_CODE_DISABLE_VIRTUAL_SCROLL`
+
+#### 消息到终端输出流程
+
+```
+Messages 入口
+  ├─ normalizeMessages(messages)
+  ├─ reorderMessagesInUI
+  ├─ collapseReadSearchGroups
+  ├─ collapseHookSummaries
+  ├─ collapseBackgroundBashNotifications
+  ├─ collapseTeammateShutdowns
+  ├─ isBriefOnly → filterForBriefTool
+  ├─ buildMessageLookups
+  ├─ compute lastThinkingBlockId
+  ├─ 选择渲染路径：
+  │  ├─ 虚拟滚动（scrollRef 存在）：
+  │  │  └─ <VirtualMessageList>（无切片，全量渲染但视口内挂载）
+  │  └─ 非虚拟滚动：
+  │     └─ computeSliceStart → UUID 锚定切片
+  │        ├─ 找到当前 anchor 的位置
+  │        ├─ 若 UUID 丢失，使用 idx 回退
+  │        ├─ 若 (collapsed.length - start) > 200 + 50，向前推进边界
+  │        └─ 从 start 开始渲染
+  ├─ 渲染 LogoHeader（memo）
+  ├─ 渲染 MessageRow 列表：
+  │  ├─ 每个 MessageRow 含 OffscreenFreeze
+  │  ├─ 包裹 SentryErrorBoundary
+  │  └─ 传递 lastThinkingBlockId
+  ├─ 渲染流式内容（末尾）：
+  │  ├─ streamingText → <StreamingMarkdown>
+  │  ├─ streamingThinking → <AssistantThinkingMessage>
+  │  └─ streamingToolUses → map 渲染
+  └─ StatusNotices / etc.
+```
+
+#### 稳定边界与缓存失效
+
+| 特性 | 机制 | 位置 |
+|------|------|------|
+| 切片边界稳定 | UUID 锚定而非 slice(-N)，避免所有 key 变化 | src/components/Messages.tsx:344-393 |
+| Message memo | areMessagePropsEqual 自定义比较 | src/components/Message.tsx:500-525 |
+| MessageRow memo | areMessageRowPropsEqual | src/components/MessageRow.tsx:307-355 |
+| 静态消息冻结 | OffscreenFreeze + shouldRenderStatically | src/components/OffscreenFreeze.tsx |
+
+#### 错误与性能
+
+| 场景 | 处理机制 | 证据 |
+|------|---------|------|
+| 长会话 CPU 100% | 非虚拟滚动时切片到 200 条，虚拟滚动时只挂载视口内 | src/components/Messages.tsx:354-356 |
+| 切片边界抖动 | MESSAGE_CAP_STEP = 50，不每次新增都推进 | src/components/Messages.tsx:356, 387 |
+| UUID 丢失回退 | anchor uuid 不在 collapsed 中时，使用 anchor idx clamp | src/components/Messages.tsx:372-376 |
+| lastThinkingBlockId O(n) | 无条件计算（可优化：仅 hidePastThinking 时） | 改进建议 9.3.1 |
+
+#### 设计取舍与备选
+
+| 决策 | 当前选择 | 备选方案 | 取舍 |
+|------|---------|---------|------|
+| 切片策略 | UUID 锚定 + 步长 50 | 简单 slice(-N) | +稳定 key，-实现复杂 |
+| 虚拟滚动 gate | scrollRef presence | 单独 prop | +简洁，-gate 不明确 |
+| 虚拟滚动 vs 切片 | 两套路径 | 总是虚拟滚动 | +普通模式原生滚动体验好，-测试覆盖双路径 |
+| lastThinkingBlockId 计算 | 每次都遍历 | 条件计算/缓存 | +简单，-非 transcript 模式浪费 |
+
+#### 源码测试证据
+
+| 设计陈述 | 源码证据 |
+|---------|---------|
+| computeSliceStart | `src/components/Messages.tsx:344-393` |
+| MAX_MESSAGES/MESSAGE_CAP_STEP | `src/components/Messages.tsx:354-356` |
+| UUID 回退 | `src/components/Messages.tsx:372-376` |
+| 虚拟滚动 gate | `src/components/Messages.tsx:551-552` |
+| LogoHeader memo | `src/components/Messages.tsx:78-96` |
+
+### 4.11 跨子系统依赖
 
 | 上游/下游 | 接口 | 责任说明 | 归属 spec |
 |----------|------|---------|----------|
@@ -492,25 +1136,25 @@ type MessageLookups = {
 ### 失败表
 
 | 触发条件 | 检测位置 | 消息/异常如何传播 | 是否重试及上限 | 状态与资源清理 | 调用方可见结果 |
-|---------|---------|------------------|--------------|-------------|--------------|
+|---------|---------|----------------|--------------|-------------|--------------|
 | 单个消息组件抛出异常 | SentryErrorBoundary | 捕获，不传播 | 否，不重试 | 该组件返回 null，其他继续 | 该消息位置空白，Sentry 上报 |
-| ColorDiff NAPI 模块不可用 | StructuredDiff.tsx expectColorDiff() | 返回 null，fallback 到 StructuredDiffFallback | 否 | 无特殊清理 | 使用简单的 diff 渲染，无语法高亮 |
+| ColorDiff NAPI 不可用 | StructuredDiff.tsx expectColorDiff() | 返回 null，fallback 到 StructuredDiffFallback | 否 | 无特殊清理 | 使用简单 diff 渲染，无语法高亮 |
 | marked 解析抛出异常 | Markdown.tsx 隐式（未捕获） | 向外传播到 SentryErrorBoundary | 否 | 无特殊清理 | 整个消息空白（如果 Markdown 被 ErrorBoundary 包裹）或会话崩溃（如果没有） |
 | 流式文本接收非追加更新 | StreamingMarkdown.tsx !stripped.startsWith(stablePrefixRef.current) | 重置 stablePrefixRef.current 为空 | 否，自动重置 | 稳定边界清空，重新开始 | 可能有短暂闪烁，然后正常渲染 |
-| 消息数超过 MAX_MESSAGES_WITHOUT_VIRTUALIZATION | Messages.tsx computeSliceStart | 静默切片，不抛异常 | 否 | sliceAnchorRef 前进 | 用户看不到更早的消息，必须用 ctrl+o |
-| 终端宽度变为 0 或负数 | StructuredDiff.tsx safeWidth = Math.max(1, ...) | 静默 clamp 到 1，不抛异常 | 否 | 无 | 渲染宽度为 1，可能显示不全但不崩溃 |
+| 消息数超过 MAX_MESSAGES_WITHOUT_VIRTUALIZATION | Messages.tsx computeSliceStart | 静默切片，不抛异常 | 否 | sliceAnchorRef 前进 | 用户看不到更早消息，必须用 ctrl+o |
+| 终端宽度变为 0/负数 | StructuredDiff.tsx safeWidth = Math.max(1, ...) | 静默 clamp 到 1，不抛异常 | 否 | 无 | 渲染宽度为 1，可能显示不全但不崩溃 |
 | Diff 缓存超过 4 个条目 | StructuredDiff.tsx perHunk.size >= 4 | 清空该 patch 的所有缓存 | 否 | 缓存清空 | 下次渲染时重建缓存 |
-| 工具 renderToolUseMessage 抛出异常 | AssistantToolUseMessage 中的 SentryErrorBoundary | 捕获，不传播 | 否 | 该组件返回 null | 工具调用的自定义渲染空白，但工具名仍显示 |
+| 工具 renderToolUseMessage 抛出异常 | AssistantToolUseMessage 中的 SentryErrorBoundary | 捕获，不传播 | 否 | 该组件返回 null | 工具调用自定义渲染空白，但工具名仍显示 |
 
 ### 性能取舍表
 
 | 取舍 | 当前选择 | 代价 | 收益 |
-|-----|---------|-----|------|
+|------|---------|------|------|
 | Markdown 解析缓存 | 模块级 MRU Map，500 条上限 | 内存占用增加，实现复杂 | 虚拟滚动 remount 时不再重新解析，3ms → ~0 |
 | Diff 渲染缓存 | WeakMap 两级缓存，每 patch 4 条上限 | 内存占用增加，实现复杂 | ctrl+o 切换时不再重新高亮，NAPI 调用 → ~0 |
 | 流式稳定边界 | 只重渲染不稳定部分 | 实现复杂，可能闪烁 | 长文本流式更新时只重渲染最后几行 |
-| 消息切片 | UUID 锚点，不 slice(-N) | 实现复杂，用户看不到更早的消息 | 长会话中不 remount 所有组件，避免 CC-941 |
-| 自定义比较器 | areMessagePropsEqual 等跳过某些 props | 维护成本高，容易有 bug | 避免不必要的重渲染，性能提升显著 |
+| 消息切片 | UUID 锚点，不 slice(-N) | 实现复杂，用户看不到更早消息 | 长会话中不 remount 所有组件，避免 CC-941 |
+| 自定义比较器 | areMessagePropsEqual 等跳过某些 props | 维护成本高，容易有 bug | 避免不必要重渲染，性能提升显著 |
 | OffscreenFreeze | 离屏消息冻结，不重渲染 | 实现复杂 | 滚动后旧消息不重渲染，减少 CPU 使用 |
 | 预分割 gutter/content | 缓存时就 slice 好，渲染时用 RawAnsi | 内存占用增加 | 渲染时 Yoga 布局节点从 N 行降到 2 列 |
 
@@ -519,7 +1163,7 @@ type MessageLookups = {
 ### 验收标准
 
 1. **消息类型路由完整性**：
-   - 给定任何有效的 Message 对象，Message 组件必须能路由到对应的子组件
+   - 给定任何有效的 Message 对象，Message 组件必须能路由到对应子组件
    - TypeScript 编译必须通过，无 `@ts-expect-error` 或 `any` 绕过
    - 证据：`src/components/Message.tsx` 中的 switch 穷举
 
@@ -576,7 +1220,7 @@ type MessageLookups = {
 
 [Coverage](../../architecture/coverage/ui-rendering.yaml)
 
-### 8.1 本 spec 主拥有的文件
+### 8.1 本 spec 主拥有文件
 
 **核心渲染组件：**
 - `src/components/Message.tsx`
@@ -620,7 +1264,7 @@ type MessageLookups = {
 **工具函数：**
 - `src/utils/messages.ts`（与消息处理相关的部分）
 
-### 8.2 共享证据但由其他 spec 主拥有的文件
+### 8.2 共享证据但由其他 spec 主拥有文件
 
 - `src/components/permissions/` → permissions spec
 - `src/components/mcp/` → mcp spec
@@ -681,7 +1325,7 @@ type MessageLookups = {
 **触发场景与证据：**
 - 当前 tokenCache 上限固定为 500，Diff 缓存上限固定为 4，不可配置
 - 在某些极端场景（如超大终端、大量 diff）可能不够用
-- 证据：`src/components/Markdown.tsx:25` `TOKEN_CACHE_MAX = 500`；`src/components/StructuredDiff.tsx:113` `perHunk.size >= 4`
+- 证据：`src/components/Markdown.tsx:25` `TOKEN_CACHE_MAX = 500`、`src/components/StructuredDiff.tsx:113` `perHunk.size >= 4`
 
 **建议方向：**
 - 通过环境变量或设置配置缓存容量
@@ -729,7 +1373,7 @@ type MessageLookups = {
 
 **触发场景与证据：**
 - 当前模块级缓存没有重置机制
-- 在某些测试场景可能需要重置（测试之间隔离）
+- 在某些测试场景可能需要重置（测试间隔离）
 - 在某些用户场景（如更换主题后想清空缓存）也可能有用
 
 **建议方向：**
