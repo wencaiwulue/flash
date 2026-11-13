@@ -132,7 +132,171 @@ function runExtraUsage(): Promise<ExtraUsageResult>
 4. **会话恢复路径**：启动时调用 `restoreCostStateForSession` 恢复上次成本状态
 5. **限额检查路径**：启动时调用 `checkQuotaStatus`，响应时调用 `extractQuotaStatusFromHeaders`
 
-### 4.2 模块与状态所有权
+---
+
+### 4.2 模块设计卡：Usage 采集 (cost-tracker)
+
+| 项目 | 内容 |
+|------|------|
+| **模块名** | Usage 采集与累加 |
+| **真实入口签名** | `function addToTotalSessionCost(cost: number, usage: Usage, model: string): number` |
+| **关键类型** | `Usage` (SDK BetaUsage), `ModelUsage` (内存状态) |
+| **输入** | 本次请求成本、SDK 用量对象、模型名 |
+| **输出** | 累加后的总成本（含 Advisor 子请求） |
+| **用量与显示状态** | 总输入/输出 token、缓存读写 token、web 搜索次数、总成本 USD |
+| **采集/计算/展示/恢复流程** | 1. 累加单模型用量；2. 更新全局状态；3. 上报 telemetry；4. 递归处理 Advisor 子请求 |
+| **错误与隐私** | 未知模型不中断，降级为默认成本；用量上报到 telemetry |
+| **设计取舍/备选** | 全局状态而非依赖注入，简化调用链；备选：按会话对象传递 |
+| **源码测试证据** | src/cost-tracker.ts:278-323；无直接测试边界 |
+| **关键细节** | Advisor 用量递归累加，计入主会话成本；同时上报 costCounter、tokenCounter |
+
+---
+
+### 4.3 模块设计卡：定价/成本模型 (modelCost)
+
+| 项目 | 内容 |
+|------|------|
+| **模块名** | 模型定价与成本计算 |
+| **真实入口签名** | `function calculateUSDCost(resolvedModel: string, usage: Usage): number` |
+| **关键类型** | `ModelCosts`, `ModelShortName` |
+| **输入** | 完整模型名、SDK 用量对象 |
+| **输出** | 美元成本数值 |
+| **用量与显示状态** | 按短名聚合，定价 tier 分级显示 |
+| **采集/计算/展示/恢复流程** | 1. getCanonicalName 获取短名；2. 查找 MODEL_COSTS 定价；3. tokensToUSDCost 计算；4. 未知模型降级 |
+| **错误与隐私** | 未知模型触发 tengu_unknown_model_cost 事件，设置 hasUnknownModelCost 标志 |
+| **设计取舍/备选** | 静态常量而非网络拉取，离线可用；备选：后台异步更新定价缓存 |
+| **源码测试证据** | src/utils/modelCost.ts:175-202；无直接测试边界 |
+| **关键细节** | Opus 4.6 支持 fast mode 双倍定价；Haiku 3.5/4.5、Sonnet 3.5-4.6、Opus 4-4.6 分 tier 配置 |
+
+---
+
+### 4.4 模块设计卡：短名聚合 (model.ts)
+
+| 项目 | 内容 |
+|------|------|
+| **模块名** | 模型短名聚合与显示 |
+| **真实入口签名** | `function getCanonicalName(fullModelName: ModelName): ModelShortName` |
+| **关键类型** | `ModelName`, `ModelShortName`, `ModelAlias` |
+| **输入** | 完整模型名（含日期/供应商后缀） |
+| **输出** | 统一短名（如 claude-3-7-sonnet） |
+| **用量与显示状态** | 用量按短名聚合展示，隐藏模型变体细节 |
+| **采集/计算/展示/恢复流程** | 1. resolveOverriddenModel 解析 3P ARN；2. firstPartyNameToCanonical 匹配模式；3. formatModelUsage 聚合 |
+| **错误与隐私** | 无匹配模式时返回原始名，不中断流程 |
+| **设计取舍/备选** | 纯字符串匹配而非查表，性能优先；备选：维护完整映射表 |
+| **源码测试证据** | src/utils/model/model.ts:282-286, src/cost-tracker.ts:188-210；无直接测试边界 |
+| **关键细节** | 支持 us.anthropic.* 前缀、[1m] 后缀、Bedrock ARN；Opus 4.6 有 fast mode 单独分支 |
+
+---
+
+### 4.5 模块设计卡：精度动态调整 (formatCost)
+
+| 项目 | 内容 |
+|------|------|
+| **模块名** | 成本显示精度动态调整 |
+| **真实入口签名** | `function formatCost(cost: number, maxDecimalPlaces: number = 4): string` |
+| **关键类型** | `number` (成本 USD) |
+| **输入** | 成本数值、可选最大小数位 |
+| **输出** | 格式化字符串（带 $ 前缀） |
+| **用量与显示状态** | > $0.5 显示 2 位小数，否则显示 4 位 |
+| **采集/计算/展示/恢复流程** | 1. 判断 cost > 0.5；2. 是则 round 后 toFixed(2)；3. 否则 toFixed(4)；4. 前缀 $ |
+| **错误与隐私** | 无错误处理路径，数值为 0 时显示 $0.0000 |
+| **设计取舍/备选** | 固定阈值 $0.5 而非动态；备选：按用户设置或区域调整阈值 |
+| **源码测试证据** | src/cost-tracker.ts:177-179；无直接测试边界 |
+| **关键细节** | 使用自定义 round 函数（四舍五入到指定精度）；formatTotalCost 中通过 chalk.dim 降色显示 |
+
+---
+
+### 4.6 模块设计卡：API key vs 订阅 (billing.ts)
+
+| 项目 | 内容 |
+|------|------|
+| **模块名** | 成本显示权限控制 |
+| **真实入口签名** | `function hasConsoleBillingAccess(): boolean`, `function hasClaudeAiBillingAccess(): boolean` |
+| **关键类型** | `boolean` (权限) |
+| **输入** | 无（读取全局状态与配置） |
+| **输出** | 是否有权限显示成本/管理超额使用 |
+| **用量与显示状态** | API key 用户显示具体金额；Claude.ai 订阅用户显示限额不显示金额（Ant 除外） |
+| **采集/计算/展示/恢复流程** | 1. 检查 DISABLE_COST_WARNINGS；2. 判断订阅状态；3. 读取 orgRole/workspaceRole；4. 返回权限 |
+| **错误与隐私** | 退化为 false 而非报错；权限检查每次显示成本时执行 |
+| **设计取舍/备选** | 每次调用检查而非缓存；备选：会话启动时缓存权限 |
+| **源码测试证据** | src/utils/billing.ts:10-78；无直接测试边界 |
+| **关键细节** | Max/Pro 用户始终有 Claude.ai 权限；Team/Enterprise 用户需 admin/billing/owner/primary_owner 角色 |
+
+---
+
+### 4.7 模块设计卡：Quota header 解析 (claudeAiLimits)
+
+| 项目 | 内容 |
+|------|------|
+| **模块名** | 统一限额响应头解析 |
+| **真实入口签名** | `function extractQuotaStatusFromHeaders(headers: Headers): void` |
+| **关键类型** | `ClaudeAILimits`, `QuotaStatus` ('allowed' \| 'allowed_warning' \| 'rejected'), `RateLimitType` |
+| **输入** | HTTP 响应头对象 |
+| **输出** | 更新内存 currentLimits，emit 状态变更事件 |
+| **用量与显示状态** | 限额状态、重置时间、使用率、是否使用超额、禁用原因 |
+| **采集/计算/展示/恢复流程** | 1. processRateLimitHeaders 应用 mock；2. extractRawUtilization 解析原始用量；3. computeNewLimitsFromHeaders 计算状态；4. cacheExtraUsageDisabledReason 持久化；5. emitStatusChange 通知 |
+| **错误与隐私** | 格式错误字段静默忽略，使用默认值；不持久化限额状态（仅持久化超额禁用原因） |
+| **设计取舍/备选** | 响应头驱动而非定期轮询；备选：后台定期刷新用量 |
+| **源码测试证据** | src/services/claudeAiLimits.ts:454-485；无直接测试边界 |
+| **关键细节** | 支持 anthropic-ratelimit-unified-* 系列头；surpassed_threshold 优先于时间相对 fallback；状态变更触发 tengu_claudeai_limits_status_changed 事件 |
+
+---
+
+### 4.8 模块设计卡：Early Warning (early warning 检测)
+
+| 项目 | 内容 |
+|------|------|
+| **模块名** | 早期限额预警检测 |
+| **真实入口签名** | `function getHeaderBasedEarlyWarning(headers: Headers, unifiedRateLimitFallbackAvailable: boolean): ClaudeAILimits \| null` |
+| **关键类型** | `EarlyWarningConfig`, `EarlyWarningThreshold` |
+| **输入** | HTTP 响应头、是否有 fallback 可用 |
+| **输出** | 预警状态或 null |
+| **用量与显示状态** | allowed_warning 状态、触发的阈值、重置时间 |
+| **采集/计算/展示/恢复流程** | 1. 优先检查 surpassed_threshold 头；2. 无则回退到时间相对检测；3. EARLY_WARNING_CONFIGS 定义阈值（5h: 90% 利用率且 ≤72% 时间；7d: 75%/60%、50%/35%、25%/15%） |
+| **错误与隐私** | 缺失头字段时返回 null，不中断主流程 |
+| **设计取舍/备选** | header 优先，客户端 fallback 为辅；备选：完全服务端驱动预警 |
+| **源码测试证据** | src/services/claudeAiLimits.ts:255-340；无直接测试边界 |
+| **关键细节** | computeTimeProgress 计算窗口进度；5h 窗口 1 个阈值，7d 窗口 3 个阈值；满足任一阈值即触发预警 |
+
+---
+
+### 4.9 模块设计卡：全局成本持久化 (save/restore)
+
+| 项目 | 内容 |
+|------|------|
+| **模块名** | 会话级成本持久化与恢复 |
+| **真实入口签名** | `function saveCurrentSessionCosts(fpsMetrics?: FpsMetrics): void`, `function restoreCostStateForSession(sessionId: string): boolean` |
+| **关键类型** | `StoredCostState`, `FpsMetrics` |
+| **输入** | 保存时可选 FPS 指标；恢复时会话 ID |
+| **输出** | 保存无返回；恢复返回是否成功 |
+| **用量与显示状态** | totalCostUSD、totalAPIDuration、totalToolDuration、totalLinesAdded/Removed、modelUsage（不含 contextWindow/maxOutputTokens）、lastSessionId |
+| **采集/计算/展示/恢复流程** | 1. save：读取 STATE，写入 projectConfig；2. restore：验证 sessionId 匹配，重建 modelUsage（注入 contextWindow/maxOutputTokens），setCostStateForRestore 更新 STATE |
+| **错误与隐私** | sessionId 不匹配返回 undefined；config 读写失败向上抛出 |
+| **设计取舍/备选** | projectConfig 而非独立文件；备选：独立会话历史文件 |
+| **源码测试证据** | src/cost-tracker.ts:87-175；无直接测试边界 |
+| **关键细节** | modelUsage 持久化时剔除 contextWindow/maxOutputTokens（恢复时从 model config 动态注入）；保存 lastFpsAverage、lastFpsLow1Pct（UI 显示用）；lastDuration 用于调整 startTime 使 wall duration 连续 |
+
+---
+
+### 4.10 模块设计卡：Advisor 用量累加 (advisor.ts)
+
+| 项目 | 内容 |
+|------|------|
+| **模块名** | Advisor 子请求用量提取与累加 |
+| **真实入口签名** | `function getAdvisorUsage(usage: BetaUsage): Array<BetaUsage & { model: string }>` |
+| **关键类型** | `BetaUsage` (SDK), `AdvisorBlock` |
+| **输入** | 主请求 SDK 用量对象 |
+| **输出** | Advisor 子请求用量数组（含 model 字段） |
+| **用量与显示状态** | Advisor 用量计入主会话总成本，聚合到对应模型 |
+| **采集/计算/展示/恢复流程** | 1. 从 usage.iterations 过滤 type === 'advisor_message'；2. addToTotalSessionCost 中遍历累加；3. 递归处理 Advisor 的 Advisor（如有）；4. 上报 tengu_advisor_tool_token_usage 事件 |
+| **错误与隐私** | iterations 为 null/undefined 时返回空数组；Advisor 成本透明计入主会话 |
+| **设计取舍/备选** | 递归累加而非单独统计；备选：单独显示 Advisor 成本 |
+| **源码测试证据** | src/utils/advisor.ts:115-128, src/cost-tracker.ts:303-321；无直接测试边界 |
+| **关键细节** | Advisor 用量带 model 字段，使用对应模型定价；tengu_advisor_tool_token_usage 单独上报，含 advisor_model、各 token 数、cost_usd_micros |
+
+---
+
+### 4.11 模块与状态所有权
 
 | 模块/对象 | 拥有的状态 | 主要操作 | 不承担的职责 | 与其他模块的接口 |
 |---|---|---|---|---|
@@ -155,7 +319,7 @@ function runExtraUsage(): Promise<ExtraUsageResult>
 - **定价配置**放在 modelCost 常量：纯数据，无状态，易维护
 - **权限覆盖状态**放在 billing 模块：与订阅/角色逻辑一起，集中管理
 
-### 4.3 主控制流
+### 4.12 主控制流
 
 完整的成本跟踪与展示流程（端到端）：
 
@@ -234,7 +398,7 @@ setCostStateForRestore 更新 STATE 中的成本状态
 用户可看到之前会话的累计成本
 ```
 
-### 4.4 数据结构与持久化
+### 4.14 数据结构与持久化
 
 关键数据结构：
 
@@ -306,7 +470,7 @@ type ModelCosts = {
 - 从 project config 读取，验证 sessionId 是否匹配
 - 重建 modelUsage 时注入 contextWindow 和 maxOutputTokens（从 model config 动态获取）
 
-### 4.5 跨子系统依赖
+### 4.15 跨子系统依赖
 
 - **bootstrap/state**：成本状态存储主归本 spec，但 state 模块本身由其他 spec 主拥有
 - **config.ts**：project config 和 global config 的读写，主归 config spec
