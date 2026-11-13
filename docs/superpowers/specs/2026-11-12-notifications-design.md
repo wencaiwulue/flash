@@ -261,28 +261,165 @@ collapseBackgroundBashNotifications()
       └─ N 条任务（N>1）：合成为单条 "N background commands completed" 通知
 ```
 
-### 4.5 通知来源
+### 4.5 模块设计卡：横幅通知核心 (`useNotifications`)
 
-通知来自以下几类：
+| 项目 | 内容 |
+|-----|-----|
+| **真实入口签名** | `function useNotifications(): { addNotification: AddNotificationFn; removeNotification: RemoveNotificationFn }` |
+| **关键类型** | `type Notification = TextNotification \| JSXNotification`<br>`type TextNotification = BaseNotification & { text: string; color?: keyof Theme }`<br>`type JSXNotification = BaseNotification & { jsx: React.ReactNode }`<br>`type BaseNotification = { key: string; priority: Priority; timeoutMs?: number; invalidates?: string[]; fold?: (acc: Notification, incoming: Notification) => Notification }`<br>`type Priority = 'low' \| 'medium' \| 'high' \| 'immediate'` |
+| **输入输出** | 输入：Notification（含 key、priority、text/jsx、可选 timeoutMs/invalidates/fold）<br>输出：无返回值，通过 AppState 驱动 UI 渲染 |
+| **通知与任务状态** | 通知独立于任务状态，存储在 `AppState.notifications` 中<br>结构：`{ current: Notification \| null; queue: Notification[] }`<br>`currentTimeoutId` 为模块级闭包变量，管理当前显示通知的超时 |
+| **产生流程** | `addNotification(notif)` → 检查 priority<br>→ `immediate`：抢占 current，重置 timeout，原 current 重新入队<br>→ 非 `immediate`：检查 fold → 检查去重 → 处理 invalidates → 入队 → `processQueue()` |
+| **折叠流程** | 通知携带 `fold` 函数时，相同 key 通知到达时调用 `fold(acc, incoming)`<br>→ 匹配 current：更新 current，重置 timeout<br>→ 匹配 queue：更新队列项，不改变位置<br>→ 折叠后新通知携带 `fold` 以便继续折叠 |
+| **展示流程** | `processQueue()` → current 空且 queue 非空 → `getNext()` 选最高优先级<br>→ 按 timeoutMs/DEFAULT_TIMEOUT_MS(8000ms) 设置超时<br>→ 超时后清空 current，递归 `processQueue()` |
+| **清理流程** | `removeNotification(key)` → 从 current/queue 移除 → 如移除 current 则清 timeout<br>`invalidates` 机制：新通知携带 invalidates 数组时，自动移除对应 key 的通知<br>immediate 通知抢占时自动过滤 `priority: 'immediate'` 的旧通知 |
+| **错误与隐私** | 无错误抛出，所有分支静默处理<br>不记录通知内容，仅 analytics 记录通知方法（不包含消息） |
+| **设计取舍/备选** | 单横幅 vs 多横幅：选择单横幅避免遮挡对话<br>immediate 抢占 vs 队列头：选择抢占确保重要信息立即可见<br>fold vs 替换：选择 fold 保留累积信息（如计数）<br>invalidates vs 超时：选择 invalidates 避免状态互斥通知同时显示 |
+| **源码测试证据** | 源码：`src/context/notifications.tsx:1-312`<br>测试：无独立测试文件，通过 hooks 间接验证<br>证据边界：`getNext()` 同优先级先入队先出；`currentTimeoutId` 为模块级变量；mount 时自动处理队列 |
 
-| 来源 | 示例 Hook/代码 | 用途 |
-|-----|---------------|-----|
-| **启动通知** | `useStartupNotification.ts` | 一次性通知基础设施，被其他 hooks 复用 |
-| **Fast Mode** | `useFastModeNotification.tsx` | fast mode 可用性、冷却、超量使用 |
-| **速率限制** | `useRateLimitWarningNotification.tsx` | 额度接近、进入超量模式 |
-| **设置错误** | `useSettingsErrors.tsx` | 配置验证失败 |
-| **MCP** | `useMcpConnectivityStatus.tsx` | MCP 连接失败、需要认证 |
-| **LSP** | `useLspInitializationNotification.tsx` | LSP 服务器错误 |
-| **插件** | `usePluginInstallationStatus.tsx`、`usePluginAutoupdateNotification.tsx` | 安装失败、更新可用 |
-| **IDE** | `useIdeStatusIndicator.tsx` | IDE 连接状态 |
-| **模型迁移** | `useModelMigrationNotifications.tsx` | 模型版本迁移提示 |
-| **npm 弃用** | `useNpmDeprecationNotification.tsx` | 过时 npm 包警告 |
-| **Ant Org** | `useAntOrgWarningNotification.ts` | Anthropic 组织配置警告 |
-| **Auto Mode** | `useAutoModeUnavailableNotification.ts` | auto mode 不可用提示 |
-| **队友关闭** | `useTeammateShutdownNotification.ts` | agent swarm 队友关闭 |
-| **订阅切换** | `useCanSwitchToExistingSubscription.tsx` | 订阅变更提示 |
+### 4.6 模块设计卡：一次性启动通知 (`useStartupNotification`)
 
-### 4.6 主控制流
+| 项目 | 内容 |
+|-----|-----|
+| **真实入口签名** | `function useStartupNotification(compute: () => Result \| Promise<Result>): void`<br>`type Result = Notification \| Notification[] \| null` |
+| **关键类型** | 复用 `Notification` 类型<br>`compute` 函数支持同步/异步返回，支持 null/单个/多个通知 |
+| **输入输出** | 输入：`compute` 函数（返回通知或 null）<br>输出：无返回值，内部调用 `addNotification` |
+| **通知与任务状态** | 独立于任务状态，仅在 mount 时执行一次<br>`hasRunRef` 防止重复执行 |
+| **产生流程** | mount → `getIsRemoteMode()` 检查 → `hasRunRef` 检查<br>→ 调用 `compute()` → null 跳过 / 单通知 add / 多通知遍历 add<br>→ 异常通过 `logError` 记录 |
+| **折叠流程** | 不直接处理折叠，由底层 `addNotification` 处理 |
+| **展示流程** | 委托给 `useNotifications` |
+| **清理流程** | 无主动清理，通知按正常超时消失 |
+| **错误与隐私** | `compute()` 异常被 catch 并通过 `logError` 记录<br>不传播异常，避免影响组件挂载 |
+| **设计取舍/备选** | 单次 vs 可重复：选择单次避免打扰用户<br>Ref vs state：选择 ref 避免触发重渲染<br>支持多通知 vs 仅单通知：选择多通知提高灵活性 |
+| **源码测试证据** | 源码：`src/hooks/notifs/useStartupNotification.ts:19-41`<br>测试：无独立测试，通过 `orgWarningNotification.test.ts` 间接验证<br>证据边界：`getIsRemoteMode()` 检查在 hook 内；`hasRunRef.current` 在调用前设为 true；`computeRef` 保存最新函数 |
+
+### 4.7 模块设计卡：OS 通知分发 (`notifier.ts`)
+
+| 项目 | 内容 |
+|-----|-----|
+| **真实入口签名** | `async function sendNotification(notif: NotificationOptions, terminal: TerminalNotification): Promise<void>`<br>`async function sendToChannel(channel: string, opts: NotificationOptions, terminal: TerminalNotification): Promise<string>`<br>`async function sendAuto(opts: NotificationOptions, terminal: TerminalNotification): Promise<string>` |
+| **关键类型** | `type NotificationOptions = { message: string; title?: string; notificationType: string }`<br>通道类型：`'auto' \| 'iterm2' \| 'iterm2_with_bell' \| 'kitty' \| 'ghostty' \| 'terminal_bell' \| 'notifications_disabled'` |
+| **输入输出** | 输入：`NotificationOptions`（message、可选 title、notificationType）、`TerminalNotification`<br>输出：`sendToChannel/sendAuto` 返回实际使用的方法字符串<br>`sendNotification` 无返回值，执行 notification hooks + 发送 |
+| **通知与任务状态** | 独立于任务状态，不存储通知历史<br>仅 analytics 记录 `tengu_notification_method_used`（configured_channel、method_used、term） |
+| **产生流程** | `sendNotification()` → `executeNotificationHooks()` → `sendToChannel()` → switch 通道<br>`auto` 通道：检测 `env.terminal` → iTerm.app/kitty/ghostty/Apple_Terminal 分支 |
+| **折叠流程** | 不支持折叠，每次调用独立发送 |
+| **展示流程** | 委托给 `TerminalNotification` 各方法：`notifyITerm2()` / `notifyKitty()` / `notifyGhostty()` / `notifyBell()` |
+| **清理流程** | 无清理，通知为 fire-and-forget |
+| **错误与隐私** | `sendToChannel` 内 catch 所有异常，返回 `'error'` 不抛出<br>`isAppleTerminalBellDisabled()` 内 catch 异常返回 false<br>不记录通知内容，analytics 仅记录通道和终端类型 |
+| **设计取舍/备选** | 自动检测 vs 强制配置：选择自动检测降低用户门槛<br>Apple Terminal bell 禁用时反而发送：触发视觉 bell/Dock badge<br>失败静默 vs 抛出：选择静默避免中断主流程 |
+| **源码测试证据** | 源码：`src/services/notifier.ts:1-162`<br>测试：无独立测试<br>证据边界：`isAppleTerminalBellDisabled()` 懒加载 `plist` 库（~280KB）；Apple Terminal 检测通过 osascript + defaults read plist；`generateKittyId()` 随机 0-9999；`executeNotificationHooks()` 在发送前调用 |
+
+### 4.8 模块设计卡：后台任务通知折叠 (`collapseBackgroundBashNotifications`)
+
+| 项目 | 内容 |
+|-----|-----|
+| **真实入口签名** | `function collapseBackgroundBashNotifications(messages: RenderableMessage[], verbose: boolean): RenderableMessage[]` |
+| **关键类型** | `type RenderableMessage`（多态，含 `user` 类型）<br>`type NormalizedUserMessage = { type: 'user'; message: { role: 'user'; content: TextContent[] } }`<br>标签常量：`TASK_NOTIFICATION_TAG` / `STATUS_TAG` / `SUMMARY_TAG`<br>前缀常量：`BACKGROUND_BASH_SUMMARY_PREFIX` |
+| **输入输出** | 输入：`RenderableMessage[]`（消息列表）、`verbose`（是否详细模式）<br>输出：新的 `RenderableMessage[]`（可能折叠连续后台 bash 完成通知） |
+| **通知与任务状态** | 仅处理 `status: 'completed'` 的后台 bash 任务通知<br>失败/killed 任务原样保留；monitor 流事件无 `<status>` 不匹配；agent/workflow 通知不折叠 |
+| **产生流程** | 调用处传入消息列表 → `isFullscreenEnvEnabled()` 检查 → `verbose` 检查<br>→ 遍历消息，识别连续 `isCompletedBackgroundBash()` 消息 |
+| **折叠流程** | 识别连续 N 条匹配消息 → N=1：原样保留 → N>1：合成单条通知<br>合成消息：`<task-notification><status>completed</status><summary>${count} background commands completed</summary></task-notification>`<br>复用原消息其他属性，仅替换 content |
+| **展示流程** | 合成消息利用现有 `UserAgentNotificationMessage` 渲染器，无需新渲染器 |
+| **清理流程** | 无清理，纯函数转换，不修改原数组 |
+| **错误与隐私** | 无错误抛出，类型守卫安全处理<br>不记录或传输消息内容 |
+| **设计取舍/备选** | 仅折叠成功 vs 全部折叠：选择仅折叠成功，失败需要用户注意<br>合成通知 vs 隐藏 N-1 条：选择合成通知，保留完成事件存在感<br>verbose 模式透传 vs 仍折叠：选择透传，ctrl+O 显示每条完成 |
+| **源码测试证据** | 源码：`src/utils/collapseBackgroundBashNotifications.ts:14-84`<br>测试：无独立测试<br>证据边界：`isCompletedBackgroundBash()` 精确检查 message.content[0].type === 'text'；检查 `extractTag(content.text, STATUS_TAG) === 'completed'`；检查 SUMMARY_TAG 前缀；monitor 事件明确排除；非 fullscreen 直接返回原数组 |
+
+### 4.9 模块设计卡：PushNotificationTool
+
+| 项目 | 内容 |
+|-----|-----|
+| **真实入口签名** | `async call(input: z.infer<InputSchema>, context: ToolContext): Promise<{ data: Output }>` |
+| **关键类型** | 输入 schema：`z.strictObject({ message: z.string().min(1); title: z.string().optional(); url: z.string().url().optional() })`<br>输出 schema：`z.object({ message: z.string(); deliveredVia: z.string() })` |
+| **输入输出** | 输入：`message`（必填）、`title`（可选）、`url`（可选）<br>输出：成功返回 `{ message: 'Notification delivered by webhook/os', deliveredVia: 'webhook'/'os' }`<br>失败抛出 `Error`（无自动降级） |
+| **通知与任务状态** | 无状态存储，fire-and-forget<br>不与横幅通知队列交互，独立通道 |
+| **产生流程** | 检查 `process.env.CLAUDE_NOTIFICATION_WEBHOOK_URL` → 存在：POST webhook<br>→ payload：`{ text, title?, url? }`<br>→ 超时：10000ms，支持 `context.abortController.signal`<br>→ 失败：HTTP status <200 或 >=300 抛出错误<br>→ 无 webhook：检查 `context.sendOSNotification` → 存在：调用<br>→ 都不可用：抛出 `'No notification adapter is configured'` |
+| **折叠流程** | 不支持折叠 |
+| **展示流程** | 委托给 webhook 端点或 OS 通知系统 |
+| **清理流程** | 无清理，无重试 |
+| **错误与隐私** | webhook 失败显式抛出，不自动降级到 OS 通知<br>prompt 明确要求："Delivery failures are reported and must not be described as sent."<br>不记录通知内容 |
+| **设计取舍/备选** | webhook 优先 vs OS 优先：选择 webhook 优先（配置表示用户偏好）<br>失败降级 vs 显式抛出：选择显式抛出，隐藏问题会误导用户<br>重试 vs 不重试：选择不重试，通知时效性强 |
+| **源码测试证据** | 源码：`src/tools/PushNotificationTool/PushNotificationTool.ts:1-68`<br>测试：无独立测试<br>证据边界：`validateStatus: () => true` 总是通过 axios 状态检查，自行判断 2xx；`maxResultSizeChars: 2000`；`isReadOnly: false`；`renderToolUseMessage()` 返回 null，不在对话中显示工具调用 |
+
+### 4.10 模块设计卡：组织警告通知 (`useAntOrgWarningNotification`)
+
+| 项目 | 内容 |
+|-----|-----|
+| **真实入口签名** | `function useAntOrgWarningNotification(): void`<br>`function getOrganizationWarning(settings: Settings, account: AccountInfo | undefined): Notification \| null` |
+| **关键类型** | 通知 key：`'organization-warning'`<br>配置：`settings.organizationWarning { enabled?: boolean; allowedOrganizationUuids: string[]; message?: string }`<br>优先级：`'high'`，timeout：15000ms，color：`'warning'` |
+| **输入输出** | 输入：无（从全局状态读取）<br>输出：无返回值，内部调用 `addNotification` |
+| **通知与任务状态** | 独立于任务状态<br>检查 `account.organizationUuid` 是否在 `allowedOrganizationUuids` 中 |
+| **产生流程** | mount → `useStartupNotification()` 封装 → 调用 `getOrganizationWarning()`<br>→ `config.enabled === false`：null<br>→ account 在白名单中：null<br>→ 否则：返回通知（默认消息或配置的 message） |
+| **折叠流程** | 不使用 fold，重复通知通过 `addNotification` 去重（相同 key） |
+| **展示流程** | 委托给 `useNotifications` |
+| **清理流程** | 无主动清理，15 秒后自动超时<br>不使用 invalidates |
+| **错误与隐私** | 无错误抛出<br>不记录 organizationUuid，仅显示配置的警告消息<br>Settings schema 不包含任何内置 organization UUID |
+| **设计取舍/备选** | 一次性 vs 持续检查：选择一次性避免打扰<br>可配置 message vs 硬编码：选择可配置，适应不同组织需求<br>可禁用 vs 强制显示：选择可禁用 |
+| **源码测试证据** | 源码：`src/hooks/notifs/useAntOrgWarningNotification.ts:1-53`<br>测试：`tests/orgWarningNotification.test.ts:1-127`<br>覆盖：Settings schema 验证；匹配组织不警告；禁用不警告；不匹配/缺失组织警告；可配置 message；hook 只添加一次通知；unmount 干净<br>证据边界：hook 不含 `getIsRemoteMode()` 检查（由 `useStartupNotification()` 处理）；测试用 mock 验证 rerender 不重复调用 `addNotification` |
+
+### 4.11 模块设计卡：队友生命周期通知 (`useTeammateLifecycleNotification`)
+
+| 项目 | 内容 |
+|-----|-----|
+| **真实入口签名** | `function useTeammateLifecycleNotification(): void` |
+| **关键类型** | 通知 keys：`'teammate-spawn'` / `'teammate-shutdown'`<br>优先级：`'low'`，timeout：5000ms<br>任务类型检查：`isInProcessTeammateTask(task)` |
+| **输入输出** | 输入：无（从 `AppState.tasks` 读取）<br>输出：无返回值，内部调用 `addNotification` |
+| **通知与任务状态** | 监听 `tasks` 变化<br>跟踪 `seenRunningRef` / `seenCompletedRef` 避免重复通知<br>任务 `status: 'running'` → spawn 通知<br>任务 `status: 'completed'` → shutdown 通知 |
+| **产生流程** | `tasks` 变化 → `getIsRemoteMode()` 检查 → 遍历任务<br>→ `isInProcessTeammateTask()` 检查 → 检查 ref 是否已见 → addNotification(1)<br>→ 记录到 ref 避免重复 |
+| **折叠流程** | 使用 `fold` 机制：相同 key 通知到达时计数+1<br>`foldSpawn(acc, incoming)`：解析 acc.text 中的数字 +1，返回新通知<br>`foldShutdown(acc, incoming)`：同上<br>折叠后通知仍携带 `fold` 以便继续折叠<br>显示文本：`"1 agent spawned"` / `"N agents spawned"` |
+| **展示流程** | 委托给 `useNotifications`，fold 时重置 timeout |
+| **清理流程** | 无主动清理，5 秒后自动超时 |
+| **错误与隐私** | 无错误抛出<br>不记录任务详情，仅显示计数 |
+| **设计取舍/备选** | fold vs 独立通知：选择 fold 减少视觉噪声<br>计数显示 vs 仅显示 "agents spawned"：选择计数提供更多信息<br>low 优先级 vs higher：选择 low，此信息非关键 |
+| **源码测试证据** | 源码：`src/hooks/notifs/useTeammateShutdownNotification.ts:1-78`<br>测试：无独立测试<br>证据边界：`parseCount()` 处理 text/jsx 两种通知类型；fold 函数从当前通知解析数字而不依赖外部状态；两个 ref 独立跟踪 running/completed；`getIsRemoteMode()` 在 hook 内检查（不使用 `useStartupNotification`） |
+
+### 4.12 模块设计卡：Fast Mode 通知 (`useFastModeNotification`)
+
+| 项目 | 内容 |
+|-----|-----|
+| **真实入口签名** | `function useFastModeNotification(): void` |
+| **关键类型** | 通知 keys：`'fast-mode-cooldown-started'` / `'fast-mode-cooldown-expired'` / `'fast-mode-org-changed'` / `'fast-mode-overage-rejected'`<br>全部使用 `priority: 'immediate'` |
+| **输入输出** | 输入：无（从 `AppState.fastMode` 和事件订阅读取）<br>输出：无返回值，内部调用 `addNotification` |
+| **通知与任务状态** | 独立于任务状态<br>订阅事件：`onOrgFastModeChanged()` / `onFastModeOverageRejection()` / `onCooldownTriggered()` / `onCooldownExpired()`<br>cooldown 通知使用 `invalidates` 互斥：started 使 expired 无效，反之亦然 |
+| **产生流程** | 三个独立 useEffect：<br>1. org 状态变化：org 启用 → immediate 通知可用；org 禁用且当前 fast mode → 关闭 fast mode + immediate 通知禁用<br>2. overage 拒绝：关闭 fast mode + immediate 通知<br>3. cooldown 事件：触发时 → immediate 通知（invalidates expired）；到期时 → immediate 通知（invalidates started） |
+| **折叠流程** | 不使用 fold，通过 key 去重 |
+| **展示流程** | 使用 `priority: 'immediate'` 抢占当前通知<br>被抢占的非 immediate 通知重新入队 |
+| **清理流程** | 通过 `invalidates` 机制自动移除互斥通知<br>无主动清理，immediate 通知仍受 timeout 约束 |
+| **错误与隐私** | 无错误抛出<br>不记录用户数据，仅显示状态消息 |
+| **设计取舍/备选** | immediate 优先级 vs high：选择 immediate，fast mode 状态变化需要立即注意<br>invalidates vs 等待超时：选择 invalidates，避免 cooldown 开始/结束同时显示 |
+| **源码测试证据** | 源码：`src/hooks/notifs/useFastModeNotification.tsx:1-111`<br>测试：无独立测试<br>证据边界：所有通知使用 `priority: 'immediate'`；三个 useEffect 独立；cooldown 通知相互 `invalidates`；org 禁用时主动设置 `fastMode: false`；overage 拒绝时主动设置 `fastMode: false`；`getIsRemoteMode()` 在每个 useEffect 内检查 |
+
+### 4.13 模块设计卡：IDE 状态提示与通知 (`useIDEStatusIndicator`)
+
+| 项目 | 内容 |
+|-----|-----|
+| **真实入口签名** | `function useIDEStatusIndicator({ ideSelection, mcpClients, ideInstallationStatus }: Props): void` |
+| **关键类型** | 通知 keys：`'ide-status-hint'` / `'ide-status-disconnected'` / `'ide-status-jetbrains-disconnected'` / `'ide-status-install-error'`<br>优先级：hint 用 `'low'`，其他用 `'medium'`<br>配置：`ideHintShownCount`（最大 5 次） |
+| **输入输出** | 输入：`ideSelection` / `mcpClients` / `ideInstallationStatus`<br>输出：无返回值，内部调用 `addNotification` / `removeNotification` |
+| **通知与任务状态** | 独立于任务状态<br>从 `useIdeConnectionStatus()` 读取 IDE 连接状态<br>从 `ideInstallationStatus` 读取 JetBrains 状态/安装错误 |
+| **产生流程** | 四个独立 useEffect：<br>1. /ide 提示：非支持终端 + ideStatus  null + 无 JetBrains info + 延迟 3000ms + detectIDEs() 找到 IDE + 显示次数 <5 → add hint 通知，记录 `ideHintShownCount`<br>2. disconnected：ideStatus 'disconnected' + ideName + 无其他显示内容 → add disconnected 通知<br>3. JetBrains info：showJetBrainsInfo → add JetBrains hint 通知<br>4. install error：showIDEInstallError → add error 通知 |
+| **折叠流程** | 不使用 fold，通过 key 去重<br>条件变化时主动 `removeNotification()` 清理 |
+| **展示流程** | hint 使用 `jsx`（带颜色），其他使用 `text`<br>hint 使用 `priority: 'low'`，其他使用 `'medium'` |
+| **清理流程** | 每个 useEffect 在条件不满足时主动 `removeNotification(key)`<br>hint 有 `hasShownHintRef` 防止同一会话重复显示 |
+| **错误与隐私** | 无错误抛出<br>不记录 IDE 路径或项目信息，仅显示 IDE 名称 |
+| **设计取舍/备选** | 延迟显示 hint vs 立即显示：选择延迟 3000ms 避免启动时闪烁<br>最多显示 5 次 vs 永久显示：选择 5 次避免用户厌烦<br>JetBrains 单独提示 vs 通用提示：选择单独，JetBrains 插件需要手动连接 |
+| **源码测试证据** | 源码：`src/hooks/notifs/useIdeStatusIndicator.tsx:1-159`<br>测试：无独立测试<br>证据边界：hint 仅在 `isSupportedTerminal() === false` 时显示；hint 延迟 3000ms 等待自动连接；多个互斥显示条件（shouldShowConnected / shouldShowIdeSelection / showIDEInstallError / showJetBrainsInfo）确保同一时间最多显示一个 IDE 相关通知；`getIsRemoteMode()` 在每个 useEffect 内检查 |
+
+### 4.14 模块设计卡：通知权限与敏感输出、错误降级
+
+| 项目 | 内容 |
+|-----|-----|
+| **真实入口签名** | 通过 `getIsRemoteMode()` 控制横幅通知可见性<br>通过 `preferredNotifChannel` 配置 OS 通知通道<br>通过 `CLAUDE_NOTIFICATION_WEBHOOK_URL` 环境变量配置 webhook |
+| **关键类型** | 远程模式检查：`getIsRemoteMode()` → boolean<br>通道配置：`config.preferredNotifChannel` → string<br>环境变量：`process.env.CLAUDE_NOTIFICATION_WEBHOOK_URL` |
+| **输入输出** | 输入：全局配置、环境变量、远程模式状态<br>输出：通知可能被静默跳过 |
+| **通知与任务状态** | 远程模式：所有通知 hooks 检查 `getIsRemoteMode()` 并跳过横幅通知<br>任务通知折叠：远程模式仍工作（不依赖横幅）<br>OS 通知：远程模式无特殊限制 |
+| **可见性控制流程** | 每个通知 hook 开头（或 `useStartupNotification` 内）检查 `getIsRemoteMode()` → true 则直接返回<br>`addNotification()` 本身无远程模式检查，由调用方控制<br>远程模式不影响任务通知折叠（消息渲染层） |
+| **错误降级流程** | OS 通知：`sendToChannel()` 内 catch 所有异常，返回 `'error'` 不抛出<br>Apple Terminal 检测：`isAppleTerminalBellDisabled()` 内 catch 异常返回 false<br>PushNotificationTool：webhook 失败抛出，无自动降级（显式错误让调用方决定）<br>横幅通知：无降级路径，总是尝试添加到队列 |
+| **敏感输出处理** | 通知内容不包含文件路径、代码内容或用户数据<br>Analytics 仅记录通知方法和通道，不记录消息内容<br>Settings schema 不包含内置组织 UUID<br>Org 警告消息可配置，不硬编码组织信息 |
+| **设计取舍/备选** | 调用方检查远程模式 vs `addNotification()` 统一检查：选择调用方检查，灵活性更高（某些 hook 可能需要远程模式特殊行为）<br>PushNotificationTool 自动降级 vs 显式抛出：选择显式抛出，静默降级会隐藏问题<br>OS 通知静默失败 vs 抛出：选择静默失败，OS 通知非关键路径 |
+| **源码测试证据** | 源码：`src/bootstrap/state.ts`（`getIsRemoteMode()`）、`src/utils/config.ts`（`preferredNotifChannel`）、各通知 hook<br>测试：`tests/orgWarningNotification.test.ts` 不直接测试远程模式<br>证据边界：所有通知 hook 都检查 `getIsRemoteMode()`（或通过 `useStartupNotification` 间接检查）；`PushNotificationTool` prompt 明确要求失败必须报告；OS 通知 `sendToChannel` 内有 try/catch；Apple Terminal 检测有多层回退 |
+
+### 4.15 主控制流
 
 #### 添加通知流程
 
