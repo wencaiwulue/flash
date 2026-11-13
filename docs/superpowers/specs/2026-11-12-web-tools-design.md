@@ -609,6 +609,582 @@ type RedirectInfo = {
 | getRuleByContentsForTool | 权限规则匹配 | WebFetchTool.checkPermissions | 权限 spec |
 | getFeatureValue_CACHED_MAY_BE_STALE | tengu_plum_vx3 flag | WebSearchTool.call:262-265 | 分析/feature flag spec |
 
+---
+
+## 4.6 WebSearch 查询与流式解析模块设计卡
+
+### 真实入口签名与关键类型
+
+```typescript
+// 入口：WebSearchTool.call
+async call(
+  input: Input,
+  context: ToolContext,
+  _canUseTool: unknown,
+  _parentMessage: unknown,
+  onProgress?: (progress: WebSearchProgress) => void
+): Promise<{ data: Output }>
+
+// 输入 schema（zod 验证）
+type Input = {
+  query: string                           // 搜索查询，最小长度 2
+  allowed_domains?: string[]             // 只包含这些域名的结果
+  blocked_domains?: string[]             // 排除这些域名的结果
+}
+
+// 输出 schema
+type Output = {
+  query: string                          // 执行的搜索查询
+  results: Array<SearchResult | string>  // 搜索结果和/或文本注释
+  durationSeconds: number                // 搜索耗时（秒）
+}
+
+// 搜索结果类型
+type SearchResult = {
+  tool_use_id: string
+  content: Array<{ title: string; url: string }>
+}
+
+// 流式处理中的临时状态
+type StreamState = {
+  allContentBlocks: BetaContentBlock[]
+  currentToolUseId: string | null
+  currentToolUseJson: string
+  progressCounter: number
+  toolUseQueries: Map<string, string>  // tool_use_id -> query
+}
+```
+
+### 输入输出
+
+| 项 | 说明 |
+|----|------|
+| 输入验证 | `validateInput` 检查：`query` 非空；`allowed_domains` 与 `blocked_domains` 不同时使用 |
+| 输入构造 | `userMessage` = "Perform a web search for the query: " + `query`；`extraToolSchemas` = [`makeToolSchema(input)`] |
+| 输出转换 | `makeOutputFromSearchResponse` 遍历 `content_blocks`，聚合文本和搜索结果 |
+| 输出给模型 | `mapToolResultToToolResultBlockParam` 格式化结果并追加 REMINDER |
+
+### 请求与缓存状态
+
+| 状态项 | 说明 |
+|--------|------|
+| 请求状态 | 委托给 `queryModelWithStreaming`，通过 `extraToolSchemas` 传入 `web_search_20250305` 工具定义 |
+| 流式事件 | 监听 `content_block_start`、`content_block_delta`、`content_block_stop` |
+| 查询提取 | 从 `input_json_delta` 中用正则 `/\"query\"\s*:\s*\"((?:[^\"\\]|\\.)*)\"/` 提取查询 |
+| 无本地缓存 | WebSearch 无本地缓存，每次调用都通过 API |
+| max_uses | 硬编码为 8，限制单次工具调用中的搜索次数 |
+
+### 搜索/错误流程
+
+```
+validateInput (query 非空、域名过滤不同时使用)
+  → checkPermissions (返回 passthrough，建议添加规则)
+  → 构造 userMessage + extraToolSchemas (type: web_search_20250305, max_uses: 8)
+  → queryModelWithStreaming 流式调用
+  → 事件循环：
+      content_block_start:
+        server_tool_use → 记录 currentToolUseId，重置 currentToolUseJson
+        web_search_tool_result → 提取结果，触发 progress: search_results_received
+      content_block_delta:
+        currentToolUseId 存在且是 input_json_delta → 累积 JSON
+          → 尝试用正则提取 query → 触发 progress: query_update（如果新查询）
+      content_block_stop:
+        重置 currentToolUseId
+  → makeOutputFromSearchResponse 组装输出
+  → mapToolResultToToolResultBlockParam 格式化 + REMINDER 必须包含 Sources
+```
+
+错误处理：
+- `web_search_tool_result` 中 `content` 不是数组 → 记录错误，结果中包含 "Web search error: {error_code}"
+- 流式调用中的其他错误 → 由外层 Tool 框架处理
+
+### 设计取舍与备选
+
+| 取舍 | 说明 | 备选方案 | 不采用原因 |
+|------|------|----------|------------|
+| 委托 API 而非直接搜索 | 通过 `server_tool_use` 让 API 端执行实际搜索 | 直接调用 Bing/Google API | 需要管理密钥、配额、缓存，内容安全过滤复杂 |
+| max_uses=8 硬编码 | 限制单次工具调用中的搜索次数 | 可配置参数 | 过度设计，当前值够用 |
+| 正则提取 partial JSON 查询 | 用于进度更新 | 完整 JSON 解析 | partial JSON 经常不完整，无法完整解析 |
+| REMINDER 仅提示，不强制验证 | 依赖模型遵循指令 | 后处理验证并拒绝无 Sources 的响应 | 增加复杂度，模型遵循率已足够高 |
+
+### 源码测试证据
+
+| 设计点 | 源码位置 | 测试/证据边界 |
+|--------|----------|---------------|
+| Input/Output schema | `WebSearchTool.ts:24-68` | zod 验证，无独立测试 |
+| makeToolSchema | `WebSearchTool.ts:76-83` | `max_uses=8` 硬编码 |
+| 流式事件处理 | `WebSearchTool.ts:292-388` | 复杂，依赖 API 端行为，无直接测试 |
+| makeOutputFromSearchResponse | `WebSearchTool.ts:86-150` | 处理 text 和 web_search_tool_result 块 |
+| mapToolResultToToolResultBlockParam | `WebSearchTool.ts:401-434` | 追加 REMINDER |
+| getWebSearchPrompt | `prompt.ts:5-34` | 要求必须包含 Sources |
+
+---
+
+## 4.7 WebFetch URL、重定向与内容处理模块设计卡
+
+### 真实入口签名与关键类型
+
+```typescript
+// 入口：WebFetchTool.call
+async call(
+  { url, prompt }: Input,
+  { abortController, options: { isNonInteractiveSession } }: ToolContext
+): Promise<{ data: Output }>
+
+// 输入 schema
+type Input = {
+  url: string                             // 要获取的 URL
+  prompt: string                          // 对内容运行的提示
+}
+
+// 输出 schema
+type Output = {
+  bytes: number                           // 获取内容的字节数
+  code: number                            // HTTP 响应码
+  codeText: string                        // HTTP 响应码文本
+  result: string                          // 应用提示后的处理结果
+  durationMs: number                      // 获取和处理耗时（毫秒）
+  url: string                             // 获取的 URL
+}
+
+// 内部核心函数签名
+async getURLMarkdownContent(
+  url: string,
+  abortController: AbortController
+): Promise<FetchedContent | RedirectInfo>
+
+async getWithPermittedRedirects(
+  url: string,
+  signal: AbortSignal,
+  redirectChecker: (original: string, redirect: string) => boolean,
+  depth = 0
+): Promise<AxiosResponse<ArrayBuffer> | RedirectInfo>
+
+function isPermittedRedirect(originalUrl: string, redirectUrl: string): boolean
+
+// 关键类型
+type FetchedContent = {
+  content: string
+  bytes: number
+  code: number
+  codeText: string
+  contentType: string
+  persistedPath?: string
+  persistedSize?: number
+}
+
+type RedirectInfo = {
+  type: 'redirect'
+  originalUrl: string
+  redirectUrl: string
+  statusCode: number
+}
+```
+
+### 输入输出
+
+| 项 | 说明 |
+|----|------|
+| 输入验证 | `validateInput` 尝试 `new URL(url)`，失败则拒绝；`getURLMarkdownContent` 内部调用 `validateURL` 检查长度、用户名密码、主机名段数 |
+| URL 升级 | `http://` 自动升级为 `https://` |
+| 输出分支 | `getURLMarkdownContent` 返回 `RedirectInfo` → 输出提示要求重新调用；返回 `FetchedContent` → 继续处理 |
+| 二进制处理 | 检测 `isBinaryContentType(content-type)` → `persistBinaryContent` 保存到磁盘；同时仍尝试 UTF-8 解码 + 摘要 |
+
+### 请求与缓存状态
+
+| 状态项 | 说明 |
+|--------|------|
+| URL_CACHE | `LRUCache<string, CacheEntry>`，键 = 原始 URL，TTL=15 分钟，最大 50MB |
+| DOMAIN_CHECK_CACHE | `LRUCache<string, true>`，键 = 主机名，TTL=5 分钟，最大 128 条目；仅缓存 `{status: 'allowed'}`，blocked/check_failed 不缓存 |
+| Turndown 单例 | 懒加载，首次 HTML 转换时 `import('turndown')`，后续复用 |
+| 缓存命中 | `URL_CACHE.has(url)` → 直接返回，跳过网络请求 |
+| 重定向深度 | `MAX_REDIRECTS=10`，超过抛出错误 |
+
+### 抓取/重定向/处理/错误流程
+
+```
+validateInput (new URL(url))
+  → checkPermissions (预批准 → allow；否则检查域名规则)
+  → getURLMarkdownContent(url, abortController):
+      validateURL(url):
+        长度 ≤ 2000 → 否 → throw Error
+        无用户名密码 → 否 → throw Error
+        主机名至少两段 → 否 → throw Error
+      URL_CACHE 命中? → 是 → return cached
+      升级 http→https
+      skipWebFetchPreflight? → 否 → checkDomainBlocklist(hostname):
+        DOMAIN_CHECK_CACHE 命中? → 是 → allowed
+        否则请求 api.anthropic.com/api/web/domain_info?domain={hostname}
+          can_fetch=true → 存入 DOMAIN_CHECK_CACHE → allowed
+          can_fetch=false → throw DomainBlockedError
+          请求失败 → throw DomainCheckFailedError
+      getWithPermittedRedirects(upgradedUrl, signal, isPermittedRedirect, 0):
+        axios.get (maxRedirects=0, responseType=arraybuffer, timeout=60s)
+          3xx 响应且有 Location:
+            解析 redirectUrl（相对 URL 解析）
+            isPermittedRedirect(original, redirectUrl)?
+              协议相同 && 端口相同 && stripWww 主机相同 → 是
+                depth > 10? → throw Error
+                递归调用 (depth+1)
+              → 否 → return RedirectInfo
+          非 3xx 或错误 → return response
+      isRedirectInfo? → 是 → return RedirectInfo
+      rawBuffer = Buffer.from(response.data)
+      isBinaryContentType(content-type)?
+        → 是 → persistBinaryContent → 记录 persistedPath, persistedSize
+      htmlContent = rawBuffer.toString('utf-8')
+      content-type 是 text/html?
+        → 是 → getTurndownService().turndown(htmlContent) → markdownContent
+        → 否 → markdownContent = htmlContent
+      markdownContent 截断到 100,000 字符
+      存入 URL_CACHE（键 = 原始 URL）
+  → 返回值是 RedirectInfo?
+    → 是 → 输出提示要求重新调用 WebFetch with redirectUrl
+    → 否 → 继续:
+      isPreapproved && content-type is text/markdown && length < 100,000?
+        → 是 → result = markdownContent
+        → 否 → applyPromptToMarkdown(prompt, markdownContent, ...)
+      有 persistedPath? → 追加到 result
+  → mapToolResultToToolResultBlockParam 返回 result
+```
+
+### 设计取舍与备选
+
+| 取舍 | 说明 | 备选方案 | 不采用原因 |
+|------|------|----------|------------|
+| 仅自动跟随同主机/www 重定向 | 跨主机重定向返回提示 | 自动跟随所有重定向 | 安全风险高（open redirect 到内网）；权限不一致 |
+| URL 最大长度从 250 增加到 2000 | 合法场景（JWT 签名 URL）需要更长 | 保持 250 / 完全无限制 | 250 太严格；无限制有数据泄露风险 |
+| 二进制内容同时保存+摘要 | PDF 等 UTF-8 解码仍有可提取文本 | 仅保存 / 仅摘要 | 模型无法直接使用/无法查看原始文件 |
+| DOMAIN_CHECK_CACHE 仅缓存 allowed | blocked/check_failed 下次重试 | 全部缓存 | blocked 可能是临时的；check_failed 可能是网络问题 |
+| http→https 自动升级 | 更安全 | 保持原协议 | HTTP 不安全，几乎所有站点都支持 HTTPS |
+
+### 源码测试证据
+
+| 设计点 | 源码位置 | 测试/证据边界 |
+|--------|----------|---------------|
+| validateURL | `utils.ts:139-169` | 检查长度 2000、用户名密码、主机名段数 |
+| checkDomainBlocklist | `utils.ts:176-203` | 仅 allowed 缓存 |
+| isPermittedRedirect | `utils.ts:212-243` | stripWww 比较 |
+| getWithPermittedRedirects | `utils.ts:262-329` | MAX_REDIRECTS=10 |
+| getURLMarkdownContent | `utils.ts:347-482` | 缓存键用原始 URL |
+| 二进制处理 | `utils.ts:440-466` | 同时保存和摘要 |
+| Turndown 懒加载 | `utils.ts:88-97` | 首次调用 import |
+| WebFetch.call 分支 | `WebFetchTool.ts:208-307` | 重定向提示 / 摘要分支 |
+
+---
+
+## 4.8 缓存与超时模块设计卡
+
+### 真实入口签名与关键类型
+
+```typescript
+// 缓存定义（模块级变量，会话持久化）
+type CacheEntry = {
+  bytes: number
+  code: number
+  codeText: string
+  content: string
+  contentType: string
+  persistedPath?: string
+  persistedSize?: number
+}
+
+const URL_CACHE: LRUCache<string, CacheEntry>
+const DOMAIN_CHECK_CACHE: LRUCache<string, true>
+
+// 常量定义
+const CACHE_TTL_MS = 15 * 60 * 1000        // 15 minutes
+const MAX_CACHE_SIZE_BYTES = 50 * 1024 * 1024  // 50MB
+const DOMAIN_CHECK_TTL_MS = 5 * 60 * 1000      // 5 minutes
+const DOMAIN_CHECK_MAX_ENTRIES = 128
+const FETCH_TIMEOUT_MS = 60_000                // 60 seconds
+const DOMAIN_CHECK_TIMEOUT_MS = 10_000         // 10 seconds
+const MAX_REDIRECTS = 10
+const MAX_HTTP_CONTENT_LENGTH = 10 * 1024 * 1024  // 10MB
+const MAX_MARKDOWN_LENGTH = 100_000
+
+// 缓存操作
+export function clearWebFetchCache(): void  // 清空两个缓存
+```
+
+### 输入输出
+
+| 项 | 说明 |
+|----|------|
+| URL_CACHE 输入 | `set(url, entry, { size: Math.max(1, contentBytes) })` |
+| URL_CACHE 输出 | `get(url)` → `CacheEntry` 或 undefined |
+| DOMAIN_CHECK_CACHE 输入 | `set(domain, true)` |
+| DOMAIN_CHECK_CACHE 输出 | `get(domain)` → true 或 undefined |
+| 超时应用 | `axios.get` 的 `timeout` 选项；`signal.aborted` 检查 |
+
+### 请求与缓存状态
+
+| 状态项 | 说明 |
+|--------|------|
+| URL_CACHE LRU | `lru-cache` 包，自动驱逐最久未用条目；TTL 自动过期 |
+| URL_CACHE size 计算 | `Math.max(1, contentBytes)`，lru-cache 要求正整数 |
+| DOMAIN_CHECK_CACHE LRU | `max: 128` 条目限制，而非字节 |
+| 缓存键策略 | URL_CACHE 键 = 原始 URL（非升级/重定向后）；DOMAIN_CHECK_CACHE 键 = 主机名 |
+| 超时位置 | `FETCH_TIMEOUT_MS` 应用于 axios.get；`DOMAIN_CHECK_TIMEOUT_MS` 应用于域名检查；`signal.aborted` 检查在模型调用后 |
+
+### 缓存/超时流程
+
+```
+URL_CACHE 流程：
+  getURLMarkdownContent 入口 → URL_CACHE.get(url)
+    → 命中 → 返回 cached entry（无网络请求）
+    → 未命中 → 抓取、处理后 → URL_CACHE.set(url, entry, { size: ... })
+
+DOMAIN_CHECK_CACHE 流程：
+  checkDomainBlocklist(domain) → DOMAIN_CHECK_CACHE.get(domain)
+    → 命中 → return { status: 'allowed' }
+    → 未命中 → 请求 api.anthropic.com
+      → can_fetch=true → DOMAIN_CHECK_CACHE.set(domain, true)
+      → can_fetch=false / 请求失败 → 不缓存
+
+超时流程：
+  域名检查 → axios.get 带 timeout: DOMAIN_CHECK_TIMEOUT_MS (10s)
+  抓取 → axios.get 带 timeout: FETCH_TIMEOUT_MS (60s)
+  重定向递归 → 每跳独立 60s 超时，但 depth ≤ MAX_REDIRECTS (10)
+  模型摘要 → applyPromptToMarkdown 后检查 signal.aborted → throw AbortError
+```
+
+### 设计取舍与备选
+
+| 取舍 | 说明 | 备选方案 | 不采用原因 |
+|------|------|----------|------------|
+| URL_CACHE TTL=15 分钟，DOMAIN_CHECK_CACHE TTL=5 分钟 | 域名黑名单可能更新更频繁 | 相同 TTL | 域名检查应更频繁重试 |
+| 仅内存缓存，不持久化到磁盘 | 会话结束丢失 | 持久化到磁盘 | 隐私顾虑；实现复杂 |
+| LRU 而非 FIFO/LFU | 平衡实现简单性和命中率 | FIFO / LFU | LRU 对 Web 访问模式足够好 |
+| 50MB 字节限制 / 128 条目限制 | 防止内存泄漏 | 无限制 / 更高限制 | 内存占用过高 |
+| 抓取超时 60s / 域名检查 10s | 防止挂起 | 更短/更长 | 60s 对大页面足够；10s 对 API 调用足够 |
+
+### 源码测试证据
+
+| 设计点 | 源码位置 | 测试/证据边界 |
+|--------|----------|---------------|
+| URL_CACHE 定义 | `utils.ts:61-69` | TTL=15m, maxSize=50MB |
+| DOMAIN_CHECK_CACHE 定义 | `utils.ts:74-78` | TTL=5m, max=128 |
+| 常量定义 | `utils.ts:63-128` | 全部硬编码 |
+| URL_CACHE 命中检查 | `utils.ts:356-367` | 键用原始 URL |
+| URL_CACHE 写入 | `utils.ts:479-481` | size 用 Math.max(1, contentBytes) |
+| DOMAIN_CHECK_CACHE 写入 | `utils.ts:189` | 仅 allowed |
+| clearWebFetchCache | `utils.ts:80-83` | 清空两个缓存 |
+| 超时应用 | `utils.ts:184, 274` | axios timeout 选项 |
+
+---
+
+## 4.9 Brief 摘要（Haiku 次级模型）模块设计卡
+
+### 真实入口签名与关键类型
+
+```typescript
+// 入口：applyPromptToMarkdown
+export async function applyPromptToMarkdown(
+  prompt: string,
+  markdownContent: string,
+  signal: AbortSignal,
+  isNonInteractiveSession: boolean,
+  isPreapprovedDomain: boolean
+): Promise<string>
+
+// 依赖：makeSecondaryModelPrompt
+export function makeSecondaryModelPrompt(
+  markdownContent: string,
+  prompt: string,
+  isPreapprovedDomain: boolean
+): string
+
+// 依赖：queryHaiku（外部）
+async function queryHaiku({
+  systemPrompt,
+  userPrompt,
+  signal,
+  options
+}): Promise<AssistantMessage>
+
+// 常量
+export const MAX_MARKDOWN_LENGTH = 100_000  // 截断长度
+```
+
+### 输入输出
+
+| 项 | 说明 |
+|----|------|
+| 输入分支判定 | `WebFetchTool.call` 中：`isPreapproved && contentType.includes('text/markdown') && content.length < MAX_MARKDOWN_LENGTH` → 跳过摘要，直接返回 |
+| 截断策略 | `markdownContent.slice(0, MAX_MARKDOWN_LENGTH) + '\n\n[Content truncated due to length...]'` |
+| makeSecondaryModelPrompt 输出 | `\nWeb page content:\n---\n${truncatedContent}\n---\n\n${prompt}\n\n${guidelines}\n` |
+| guidelines 分支 | `isPreapprovedDomain=true` → 允许代码示例、文档摘录；`false` → 引用限制 125 字符，不评论合法性，不复制歌词 |
+| queryHaiku 输出 | 提取第一个 content block 的 text 字段 |
+
+### 请求与缓存状态
+
+| 状态项 | 说明 |
+|--------|------|
+| 无摘要缓存 | 每次 `applyPromptToMarkdown` 都调用 `queryHaiku`，无本地缓存 |
+| 模型选择 | 固定用 Haiku（`getSmallFastModel`），不使用主模型 |
+| 提示选项 | `querySource='web_fetch_apply'`，`agents=[]`，`hasAppendSystemPrompt=false`，`mcpTools=[]` |
+
+### 摘要流程
+
+```
+WebFetchTool.call 中分支判定：
+  isPreapproved? && content-type is text/markdown? && length < 100,000?
+    → 是 → result = markdownContent（跳过 Haiku）
+    → 否 → applyPromptToMarkdown(prompt, markdownContent, signal, ...)
+
+applyPromptToMarkdown 流程：
+  markdownContent.length > MAX_MARKDOWN_LENGTH?
+    → 是 → truncatedContent = 前 100,000 + "[Content truncated...]"
+    → 否 → truncatedContent = markdownContent
+  modelPrompt = makeSecondaryModelPrompt(truncatedContent, prompt, isPreapprovedDomain)
+  assistantMessage = queryHaiku({
+    systemPrompt: asSystemPrompt([]),
+    userPrompt: modelPrompt,
+    signal,
+    options: { querySource: 'web_fetch_apply', ... }
+  })
+  signal.aborted? → 是 → throw AbortError
+  content.length > 0 && content[0] has text? → 是 → return text
+    → 否 → return 'No response from model'
+```
+
+### 设计取舍与备选
+
+| 取舍 | 说明 | 备选方案 | 不采用原因 |
+|------|------|----------|------------|
+| 预批准域名允许直接返回 markdown | 技术文档直接返回更准确 | 全部摘要 | 质量下降，token 浪费 |
+| 非预批准域名强制摘要且限制引用 | 降低版权风险 | 允许直接返回 | 法律风险 |
+| 固定用 Haiku | 比主模型便宜且快 | 用主模型 | 成本高，速度慢 |
+| 截断到 100,000 字符 | 避免 Prompt 太长错误 | 分块摘要 | 实现复杂，当前已够用 |
+| 无摘要缓存 | 每次重新调用 | 缓存摘要结果 | 相同 prompt+内容罕见，缓存命中率低 |
+
+### 源码测试证据
+
+| 设计点 | 源码位置 | 测试/证据边界 |
+|--------|----------|---------------|
+| 分支判定 | `WebFetchTool.ts:268-278` | isPreapproved + text/markdown + 长度 |
+| MAX_MARKDOWN_LENGTH | `utils.ts:128, 492-496` | 100,000 |
+| makeSecondaryModelPrompt | `prompt.ts:23-46` | guidelines 分支 |
+| applyPromptToMarkdown | `utils.ts:484-530` | 截断、queryHaiku、signal 检查 |
+| getWebFetchPrompt | `WebFetchTool.ts:181-190` | 提示优先用 MCP 工具 |
+
+---
+
+## 4.10 网络安全与隐私模块设计卡
+
+### 真实入口签名与关键类型
+
+```typescript
+// 预批准域名检查
+export function isPreapprovedHost(hostname: string, pathname: string): boolean
+export function isPreapprovedUrl(url: string): boolean
+export const PREAPPROVED_HOSTS: Set<string>  // 混合 hostname 和 hostname/path
+
+// URL 验证
+export function validateURL(url: string): boolean
+const MAX_URL_LENGTH = 2000
+
+// 域名黑名单检查
+export async function checkDomainBlocklist(domain: string): Promise<DomainCheckResult>
+type DomainCheckResult =
+  | { status: 'allowed' }
+  | { status: 'blocked' }
+  | { status: 'check_failed'; error: Error }
+
+// 自定义错误
+class DomainBlockedError extends Error
+class DomainCheckFailedError extends Error
+class EgressBlockedError extends Error
+
+// 预批准主机路径前缀拆分（模块加载时执行一次）
+const { HOSTNAME_ONLY, PATH_PREFIXES } = {
+  HOSTNAME_ONLY: Set<string>,
+  PATH_PREFIXES: Map<string, string[]>  // host → path prefixes
+}
+```
+
+### 输入输出
+
+| 项 | 说明 |
+|----|------|
+| validateURL 输出 | boolean，检查：长度 ≤ 2000、无用户名密码、主机名至少两段 |
+| isPreapprovedHost 输出 | boolean，路径前缀匹配时强制段边界：`pathname === p || pathname.startsWith(p + '/')` |
+| checkDomainBlocklist 输出 | `DomainCheckResult` union |
+| WebFetch.checkPermissions 输出 | `PermissionDecision`：预批准 → `{behavior: 'allow'}`；否则检查规则 |
+| EgressBlockedError 检测 | `x-proxy-error: blocked-by-allowlist` + 403 |
+
+### 请求与缓存状态
+
+| 状态项 | 说明 |
+|--------|------|
+| 预批准列表与沙箱分离 | WebFetch 自动允许预批准域名，但 sandbox 网络限制不继承此列表（有测试验证） |
+| 仅缓存 allowed 域名 | blocked/check_failed 不缓存，下次重试 |
+| 预批准路径段边界 | `/anthropics` 不匹配 `/anthropics-evil`，仅精确匹配或 `/` 后 |
+| http→https 升级 | 自动，不保留 http |
+
+### 安全检查流程
+
+```
+WebFetch 完整安全检查链：
+
+1. validateInput (WebFetchTool)
+   → new URL(url) 解析检查
+
+2. checkPermissions (WebFetchTool)
+   → 尝试 isPreapprovedHost(hostname, pathname)
+     → 是 → {behavior: 'allow', decisionReason: {type: 'other', reason: 'Preapproved host'}}
+     → 否 → 检查 getRuleByContentsForTool（deny → deny; allow → allow; 否则 ask）
+
+3. getURLMarkdownContent 内部：
+   a. validateURL(url)
+      → 长度 > 2000 → throw Error('Invalid URL')
+      → 有用户名/密码 → throw Error('Invalid URL')
+      → 主机名段数 < 2 → throw Error('Invalid URL')
+
+   b. http→https 升级
+
+   c. skipWebFetchPreflight? → 否 → checkDomainBlocklist(hostname)
+      → DOMAIN_CHECK_CACHE 命中? → allowed
+      → 请求 api.anthropic.com/api/web/domain_info?domain={hostname}
+        → can_fetch=true → 缓存 → allowed
+        → can_fetch=false → throw DomainBlockedError
+        → 请求失败 → throw DomainCheckFailedError
+
+   d. getWithPermittedRedirects
+      → 3xx 且 isPermittedRedirect 返回 false → 返回 RedirectInfo（模型重新调用，重新权限检查）
+      → isPermittedRedirect 检查：协议相同、端口相同、无用户名密码、stripWww 主机相同
+
+   e. egress proxy 检测：403 + x-proxy-error: blocked-by-allowlist → throw EgressBlockedError
+
+沙箱网络分离保证：
+  → 独立的权限规则，不继承 PREAPPROVED_HOSTS
+  → test/utils/sandbox/webfetch-preapproved-separated.test.ts 验证
+```
+
+### 设计取舍与备选
+
+| 取舍 | 说明 | 备选方案 | 不采用原因 |
+|------|------|----------|------------|
+| 预批准域名与沙箱分离 | WebFetch GET 风险低，沙箱任意网络风险高 | 沙箱也继承预批准列表 | 部分预批准域名（huggingface.co 等）允许上传，数据泄露风险 |
+| 仅 stripWww 重定向允许 | 其他子域名差异不跟随 | 允许任意子域名 | 安全风险（example.com → internal.example.com） |
+| URL 最大长度 2000 | 平衡合法场景和数据泄露风险 | 250 / 无限制 | 250 太严格；无限制风险高 |
+| 仅允许 hostname 至少两段 | 阻止单段内网主机名（router/localhost） | 允许单段 | 内网访问风险 |
+| 预批准路径强制段边界 | 防止路径前缀匹配绕过 | 仅前缀匹配 | 安全漏洞（github.com/anthropics-evil） |
+
+### 源码测试证据
+
+| 设计点 | 源码位置 | 测试/证据边界 |
+|--------|----------|---------------|
+| PREAPPROVED_HOSTS 列表 | `preapproved.ts:14-131` | 注释说明仅用于 WebFetch |
+| isPreapprovedHost 段边界 | `preapproved.ts:154-166` | `pathname === p \|\| pathname.startsWith(p + '/')` |
+| HOSTNAME_ONLY/PATH_PREFIXES 拆分 | `preapproved.ts:136-152` | 模块加载时执行一次 |
+| validateURL 检查 | `utils.ts:139-169` | 长度 2000、用户名密码、主机名段数 |
+| checkDomainBlocklist | `utils.ts:176-203` | 仅 allowed 缓存 |
+| isPermittedRedirect | `utils.ts:212-243` | stripWww 比较 |
+| EgressBlockedError 检测 | `utils.ts:318-325` | 403 + x-proxy-error |
+| 沙箱分离测试 | `test/utils/sandbox/webfetch-preapproved-separated.test.ts` | 验证分离保证 |
+
 ## 5. 失败语义与工程取舍
 
 | 触发条件 | 检测位置 | 消息/异常如何传播 | 是否重试及上限 | 状态与资源清理 | 调用方可见结果 |
