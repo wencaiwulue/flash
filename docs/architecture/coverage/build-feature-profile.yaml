@@ -9,6 +9,19 @@ groups:
     summary: 构建脚本，负责 SDK 类型生成、CLI/SDK 打包
     files:
       - scripts/build.ts
+  - id: release-build-script
+    kind: script
+    section: 4
+    summary: 原生二进制构建、发布打包与矩阵目标验证脚本
+    files:
+      - scripts/build-binary.ts
+  - id: release-build-tests
+    kind: test
+    section: 7
+    summary: 原生打包、bundled mode 与发布流程测试
+    files:
+      - tests/bundledMode.test.ts
+      - tests/releasePackaging.test.ts
   - id: runtime-macros
     kind: source
     section: 4
