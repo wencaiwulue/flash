@@ -59,3 +59,16 @@ groups:
       - tests/kairos.test.ts
       - tests/messageRenderers.test.ts
       - tests/monitorToolIntegration.test.ts
+  - id: constants-messages
+    kind: source
+    section: 4
+    summary: 消息相关常量
+    files:
+      - src/constants/messages.ts
+  - id: uncovered-message-types
+    kind: source
+    section: 4
+    summary: 未覆盖的消息类型定义
+    files:
+      - src/types/message.ts
+      - src/types/messageQueueTypes.ts

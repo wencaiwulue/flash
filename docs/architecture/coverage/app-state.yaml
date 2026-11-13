@@ -47,3 +47,28 @@ groups:
     summary: Bootstrap State 管理（与 AppState 分离，会话级全局变量）
     files:
       - src/bootstrap/state.ts
+  - id: context-state
+    kind: source
+    section: 4
+    summary: Context 状态管理
+    files:
+      - src/context.ts
+      - src/context/QueuedMessageContext.tsx
+      - src/context/fpsMetrics.tsx
+      - src/context/mailbox.tsx
+      - src/context/modalContext.tsx
+      - src/context/overlayContext.tsx
+      - src/context/promptOverlayContext.tsx
+      - src/context/stats.tsx
+  - id: history-state
+    kind: source
+    section: 4
+    summary: 历史记录管理
+    files:
+      - src/history.ts
+  - id: project-onboarding
+    kind: source
+    section: 4
+    summary: 项目引导状态
+    files:
+      - src/projectOnboardingState.ts

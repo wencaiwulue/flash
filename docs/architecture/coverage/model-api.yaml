@@ -93,3 +93,27 @@ groups:
     summary: 模型 API 相关测试
     files:
       - tests/antModelOverrides.test.ts
+  - id: constants-model
+    kind: source
+    section: 4
+    summary: 模型相关常量
+    files:
+      - src/constants/asyncAgentTools.ts
+      - src/constants/common.ts
+      - src/constants/cyberRiskInstruction.ts
+      - src/constants/errorIds.ts
+      - src/constants/files.ts
+      - src/constants/github-app.ts
+      - src/constants/prompts.ts
+      - src/constants/querySource.ts
+      - src/constants/spinnerVerbs.ts
+      - src/constants/system.ts
+      - src/constants/systemPromptSections.ts
+      - src/constants/toolLimits.ts
+      - src/constants/turnCompletionVerbs.ts
+  - id: env-types
+    kind: source
+    section: 4
+    summary: 环境类型定义
+    files:
+      - src/env.d.ts

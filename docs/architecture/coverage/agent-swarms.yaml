@@ -191,3 +191,22 @@ groups:
     summary: Agent 内存快照测试（快照初始化、时间戳验证、保留变更、回滚机制）
     files:
       - tests/agentMemorySnapshot.test.ts
+  - id: agent-tool-uncovered
+    kind: source
+    section: 4
+    summary: AgentTool 未覆盖的文件
+    files:
+      - src/tools/AgentTool/agentDisplay.ts
+      - src/tools/AgentTool/built-in/claudeCodeGuideAgent.ts
+      - src/tools/AgentTool/built-in/exploreAgent.ts
+      - src/tools/AgentTool/built-in/generalPurposeAgent.ts
+      - src/tools/AgentTool/built-in/planAgent.ts
+      - src/tools/AgentTool/built-in/statuslineSetup.ts
+      - src/tools/AgentTool/built-in/verificationAgent.ts
+  - id: task-uncovered
+    kind: source
+    section: 4
+    summary: 任务相关未覆盖的文件
+    files:
+      - src/tasks/LocalAgentTask/LocalAgentTask.tsx
+      - src/tasks/RemoteAgentTask/RemoteAgentTask.tsx

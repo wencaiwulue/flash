@@ -47,3 +47,45 @@ groups:
     files:
       - tests/toolPool.test.ts
       - tests/internalTools.test.ts
+  - id: uncovered-tools
+    kind: source
+    section: 4
+    summary: 未覆盖的工具
+    files:
+      - src/tools/AskUserQuestionTool/AskUserQuestionTool.tsx
+      - src/tools/AskUserQuestionTool/prompt.ts
+      - src/tools/BashTool/commentLabel.ts
+      - src/tools/BashTool/sedEditParser.ts
+      - src/tools/ConfigTool/ConfigTool.ts
+      - src/tools/ConfigTool/UI.tsx
+      - src/tools/ConfigTool/constants.ts
+      - src/tools/ConfigTool/prompt.ts
+      - src/tools/ConfigTool/supportedSettings.ts
+      - src/tools/LSPTool/UI.tsx
+      - src/tools/LSPTool/formatters.ts
+      - src/tools/LSPTool/prompt.ts
+      - src/tools/LSPTool/schemas.ts
+      - src/tools/LSPTool/symbolContext.ts
+      - src/tools/ListPeersTool/ListPeersTool.ts
+      - src/tools/REPLTool/constants.ts
+      - src/tools/REPLTool/primitiveTools.ts
+      - src/tools/SendMessageTool/SendMessageTool.ts
+      - src/tools/SendMessageTool/UI.tsx
+      - src/tools/SendMessageTool/constants.ts
+      - src/tools/SendMessageTool/prompt.ts
+      - src/tools/SendUserFileTool/SendUserFileTool.ts
+      - src/tools/SendUserFileTool/prompt.ts
+      - src/tools/SnipTool/SnipTool.ts
+      - src/tools/SnipTool/prompt.ts
+      - src/tools/SubscribePRTool/SubscribePRTool.ts
+      - src/tools/TaskOutputTool/TaskOutputTool.tsx
+      - src/tools/ToolSearchTool/ToolSearchTool.ts
+      - src/tools/ToolSearchTool/constants.ts
+      - src/tools/ToolSearchTool/prompt.ts
+      - src/tools/TungstenTool/TungstenLiveMonitor.ts
+      - src/tools/TungstenTool/TungstenTool.ts
+      - src/tools/TungstenTool/utils.ts
+      - src/tools/WebBrowserTool/WebBrowserPanel.tsx
+      - src/tools/WebBrowserTool/WebBrowserTool.ts
+      - src/tools/WorkflowTool/bundled/index.ts
+      - src/tools/utils.ts

@@ -77,3 +77,10 @@ groups:
       - tests/fixtures/verify-enabled-features.ts
       - tests/fixtures/env-less-perpetual-check.ts
       - tests/fixtures/fake-lsp-server.ts
+  - id: uncovered-tests
+    kind: test
+    section: 7
+    summary: 未覆盖的测试文件
+    files:
+      - tests/snapshotUpdateDialog.test.tsx
+      - tests/snip.test.ts

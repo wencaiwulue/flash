@@ -146,3 +146,10 @@ groups:
     files:
       - src/utils/config.ts
       - src/utils/configConstants.ts
+  - id: constants-settings
+    kind: source
+    section: 4
+    summary: 设置相关常量
+    files:
+      - src/constants/keys.ts
+      - src/constants/product.ts

@@ -134,3 +134,11 @@ groups:
     files:
       - tests/skillSearch.test.ts
       - tests/remoteSkills.test.ts
+  - id: skills-bundled-verify
+    kind: source
+    section: 4
+    summary: 内置 verify 技能
+    files:
+      - src/skills/bundled/verify/SKILL.md
+      - src/skills/bundled/verify/examples/cli.md
+      - src/skills/bundled/verify/examples/server.md

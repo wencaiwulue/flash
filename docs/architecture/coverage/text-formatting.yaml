@@ -64,3 +64,16 @@ groups:
     files:
       - src/commands/color/color.ts
       - src/commands/color/index.ts
+  - id: output-styles
+    kind: source
+    section: 4
+    summary: 输出样式加载
+    files:
+      - src/outputStyles/loadOutputStylesDir.ts
+  - id: constants-formatting
+    kind: source
+    section: 4
+    summary: 格式化相关常量
+    files:
+      - src/constants/figures.ts
+      - src/constants/outputStyles.ts

@@ -266,3 +266,60 @@ groups:
     summary: 消息处理工具函数
     files:
       - src/utils/messages.ts
+  - id: uncovered-components
+    kind: source
+    section: 4
+    summary: 未覆盖的 UI 组件
+    files:
+      - src/components/ContextSuggestions.tsx
+      - src/components/ContextVisualization.tsx
+      - src/components/SessionPreview.tsx
+      - src/components/messageActions.tsx
+      - src/components/messages/AttachmentMessage.tsx
+      - src/components/messages/CompactBoundaryMessage.tsx
+      - src/components/messages/HookProgressMessage.tsx
+      - src/components/messages/PlanApprovalMessage.tsx
+      - src/components/messages/RateLimitMessage.tsx
+      - src/components/messages/ShutdownMessage.tsx
+      - src/components/messages/SnipBoundaryMessage.ts
+      - src/components/messages/SystemAPIErrorMessage.tsx
+      - src/components/messages/TaskAssignmentMessage.tsx
+      - src/components/messages/UserAgentNotificationMessage.tsx
+      - src/components/messages/UserBashInputMessage.tsx
+      - src/components/messages/UserBashOutputMessage.tsx
+      - src/components/messages/UserCommandMessage.tsx
+      - src/components/messages/UserCrossSessionMessage.ts
+      - src/components/messages/UserForkBoilerplateMessage.ts
+      - src/components/messages/UserGitHubWebhookMessage.ts
+      - src/components/messages/UserImageMessage.tsx
+      - src/components/messages/UserLocalCommandOutputMessage.tsx
+      - src/components/messages/UserMemoryInputMessage.tsx
+      - src/components/messages/UserPlanMessage.tsx
+      - src/components/messages/UserPromptMessage.tsx
+      - src/components/messages/UserResourceUpdateMessage.tsx
+      - src/components/messages/UserTeammateMessage.tsx
+      - src/components/messages/UserToolResultMessage/RejectedPlanMessage.tsx
+      - src/components/messages/UserToolResultMessage/RejectedToolUseMessage.tsx
+      - src/components/messages/UserToolResultMessage/UserToolCanceledMessage.tsx
+      - src/components/messages/UserToolResultMessage/UserToolErrorMessage.tsx
+      - src/components/messages/UserToolResultMessage/UserToolRejectMessage.tsx
+      - src/components/messages/UserToolResultMessage/UserToolResultMessage.tsx
+      - src/components/messages/UserToolResultMessage/UserToolSuccessMessage.tsx
+      - src/components/messages/UserToolResultMessage/utils.tsx
+      - src/components/messages/nullRenderingAttachments.ts
+  - id: uncovered-screens
+    kind: source
+    section: 4
+    summary: 未覆盖的屏幕组件
+    files:
+      - src/screens/Doctor.tsx
+      - src/screens/REPL.tsx
+      - src/screens/ResumeConversation.tsx
+  - id: uncovered-repl
+    kind: source
+    section: 4
+    summary: 未覆盖的 REPL 组件
+    files:
+      - src/replLauncher.tsx
+      - src/interactiveHelpers.tsx
+      - src/dialogLaunchers.tsx

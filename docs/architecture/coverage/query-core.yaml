@@ -27,3 +27,13 @@ groups:
       - src/QueryEngine.ts
       - src/query.ts
       - src/utils/queryHelpers.ts
+  - id: query-utils
+    kind: source
+    section: 4
+    summary: Query 相关工具
+    files:
+      - src/query/config.ts
+      - src/query/deps.ts
+      - src/query/stopHooks.ts
+      - src/query/tokenBudget.ts
+      - src/query/transitions.ts

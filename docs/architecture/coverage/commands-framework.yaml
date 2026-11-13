@@ -83,3 +83,21 @@ groups:
       - src/commands/clear/clear.ts
       - src/commands/clear/conversation.ts
       - src/commands/clear/index.ts
+  - id: uncovered-types
+    kind: source
+    section: 4
+    summary: 未覆盖的类型定义
+    files:
+      - src/types/command.ts
+      - src/types/connectorText.ts
+      - src/types/diff-augmentations.d.ts
+      - src/types/fileSuggestion.ts
+      - src/types/hooks.ts
+      - src/types/ids.ts
+      - src/types/logs.ts
+      - src/types/notebook.ts
+      - src/types/react-devtools-core.d.ts
+      - src/types/statusLine.ts
+      - src/types/textInputTypes.ts
+      - src/types/tools.ts
+      - src/types/utils.ts
