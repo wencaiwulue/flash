@@ -176,6 +176,251 @@ onChangeAppState 检测到 settings 变更
   └─ 新 settings.env 不同则 applyConfigEnvironmentVariables()
 ```
 
+---
+
+### 4.4 模块设计卡
+
+#### 模块 1：Store/Selector/Subscription
+
+| 项目 | 内容 |
+|------|------|
+| **真实入口签名** | `createStore<T>(initialState: T, onChange?: OnChange<T>): Store<T>` |
+| **关键类型** | `type Store<T> = { getState: () => T; setState: (updater: (prev: T) => T) => void; subscribe: (listener: Listener) => () => void }` |
+| **输入输出** | 输入：initialState 初始状态，onChange 可选回调；输出：Store 实例 |
+| **状态所有权与作用域** | Store 实例持有内部 `state` 变量（闭包私有）和 `listeners` Set；作用域：整个应用，由 AppStateProvider 稳定提供 |
+| **更新/订阅/重渲染流程** | 1. `setState(updater)` 执行 updater 得到 nextState<br>2. `Object.is(prev, next)` 相同则直接返回<br>3. 不同则：更新内部 state → 调用 onChange → 遍历 listeners 调用<br>4. `useSyncExternalStore(store.subscribe, get)` 接收 listener 通知<br>5. 调用 selector(store.getState()) 得到 selectedValue<br>6. `Object.is(prevSelected, selectedValue)` 相同则不渲染 |
+| **错误与内存** | 无内部错误处理；listener 返回 unsubscribe 函数，调用时从 Set 中删除，无内存泄漏；Store 本身由 useState 持有，Provider 卸载后被 GC |
+| **设计取舍/备选** | 纯函数闭包 vs class 实例：选择闭包，简单无 this 问题；useSyncExternalStore vs 自定义订阅：选择官方方案，处理并发渲染边界；无自动 selector memo：要求调用者稳定引用，避免 memo 开销 |
+| **源码测试证据** | `src/state/store.ts:1-35` |
+
+---
+
+#### 模块 2：不可变更新
+
+| 项目 | 内容 |
+|------|------|
+| **真实入口签名** | `setState(updater: (prev: T) => T): void` |
+| **关键类型** | updater 函数类型：`(prev: T) => T`；比较通过 `Object.is` |
+| **输入输出** | 输入：接收 prevState，返回 nextState；输出：无返回值，但触发通知 |
+| **状态所有权与作用域** | 不可变约定：调用者不修改 prevState，返回新对象；Store 内部仅持有引用，不复制；DeepImmutable 字段由类型系统标记只读 |
+| **更新/订阅/重渲染流程** | 1. updater(prevState) 需返回新对象（`{ ...prev, field: newValue }`）<br>2. `Object.is(prev, next)` 比较引用决定是否通知<br>3. selector 依赖稳定引用：`{ a, b }` 每次返回新对象 → 多余渲染 |
+| **错误与内存** | 无运行时强制不可变（仅 TypeScript 类型）；忘记 spread 深层对象 → UI 无响应；selector 返回新对象 → 性能问题 |
+| **设计取舍/备选** | Immer vs 手动 spread：选择手动，无依赖，性能可预测；Object.is vs ===：选择 Object.is，正确处理 NaN/-0；完全不可变 vs 部分可变：部分字段（tasks, mcp 等）直接持有可变对象 |
+| **源码测试证据** | `src/state/store.ts:20-27` |
+
+---
+
+#### 模块 3：Provider 生命周期
+
+| 项目 | 内容 |
+|------|------|
+| **真实入口签名** | `AppStateProvider({ children, initialState, onChangeAppState }: Props): React.ReactNode` |
+| **关键类型** | `Props = { children: React.ReactNode; initialState?: AppState; onChangeAppState?: ({ newState, oldState }) => void }` |
+| **输入输出** | 输入：React children，可选 initialState，可选 onChangeAppState；输出：React 节点树 |
+| **状态所有权与作用域** | Store 由 `useState(() => createStore(...))` 持有，引用永远稳定；通过 `AppStoreContext` 向下传递；`HasAppStateContext` 用于检测嵌套 Provider；Provider 卸载时，Store 随组件树一起被 GC |
+| **更新/订阅/重渲染流程** | 1. 首次渲染：执行 useState 初始化函数创建 Store<br>2. mount 后 useEffect：检查是否需要禁用 bypass 权限模式<br>3. useSettingsChange 订阅外部设置变更<br>4. Provider 本身不订阅状态，Context 引用稳定，不会触发子组件重渲染<br>5. 子组件通过 useAppState 订阅各自关心的切片 |
+| **错误与内存** | 嵌套 Provider 检测：HasAppStateContext 已存在则 throw Error；mount effect 无清理函数（一次性检查）；useSettingsChange 的 useEffect 返回 cleanup 函数取消订阅；无内存泄漏 |
+| **设计取舍/备选** | useState 初始化 vs useRef + useMemo：选择 useState，语义更清晰，一次性初始化；单一 Provider vs 多 Provider：选择单一，避免协调问题；Context 直接传递状态 vs 传递 Store：选择传递 Store，避免整个状态变更触发所有子组件重渲染 |
+| **源码测试证据** | `src/state/AppState.tsx:57-200` |
+
+---
+
+#### 模块 4：跨功能字段
+
+| 项目 | 内容 |
+|------|------|
+| **真实入口签名** | `getDefaultAppState(): AppState` |
+| **关键类型** | `AppState = DeepImmutable<{ settings, verbose, ... }> & { tasks, agentNameRegistry, mcp, plugins, ... }` |
+| **输入输出** | 输入：无；输出：完整初始状态对象 |
+| **状态所有权与作用域** | DeepImmutable 字段（89-158 行）：settings, verbose, mainLoopModel, toolPermissionContext, kairosEnabled, replBridge* 等；Mutable 字段（159-569 行）：tasks, agentNameRegistry, mcp, plugins, todos, replContext, teamContext 等；跨功能：权限模式、模型设置、展开视图等被多个模块消费 |
+| **更新/订阅/重渲染流程** | 1. 不可变字段更新：返回新对象引用 → selector 检测到变化 → 重渲染<br>2. 可变字段更新：字段内对象直接修改（Map.set, 函数属性等），但仍需返回新的 AppState 根对象（即使字段引用不变）→ 依赖该字段的 selector 检测到变化<br>3. 跨功能同步：onChangeAppState 监听特定字段变更，同步到外部系统 |
+| **错误与内存** | mutable 字段被直接修改但根对象不变 → UI 不同步；忘记返回新根对象 → 变更丢失；tasks 持有函数类型 → 无法序列化；agentNameRegistry 是 Map → 无法 DeepImmutable |
+| **设计取舍/备选** | 全部不可变 vs 部分可变：选择部分可变，避免引入 Immutable.js/Immer 等库；DeepImmutable 类型标记 vs 运行时冻结：仅类型标记，无运行时开销；单一 AppState vs 拆分：选择单一，单一事实来源 |
+| **源码测试证据** | `src/state/AppStateStore.ts:89-569` |
+
+---
+
+#### 模块 5：设置同步
+
+| 项目 | 内容 |
+|------|------|
+| **真实入口签名** | `useSettingsChange(onChange: (source: SettingSource, settings: SettingsJson) => void): void` 和 `applySettingsChange(source: SettingSource, setAppState: (f: (prev: AppState) => AppState) => void): void` |
+| **关键类型** | `SettingSource = 'userSettings' \| 'managedSettings' \| 'remoteSettings'`；`onChangeAppState({ newState, oldState })` |
+| **输入输出** | useSettingsChange 输入：回调函数；无输出<br>applySettingsChange 输入：source, setAppState；输出：无，调用 setAppState 更新状态<br>onChangeAppState 输入：{ newState, oldState }；输出：无，副作用 |
+| **状态所有权与作用域** | settingsChangeDetector：全局单例，文件系统 watcher；AppState.settings：不可变字段，来自 getInitialSettings()；外部 → AppState：useSettingsChange + applySettingsChange；AppState → 外部：onChangeAppState 中的 clearApiKeyHelperCache、applyConfigEnvironmentVariables、saveGlobalConfig 等 |
+| **更新/订阅/重渲染流程** | 外部 → AppState 方向：<br>1. 外部修改 settings.json<br>2. settingsChangeDetector 检测到变更，fanOut 通知所有订阅者<br>3. useSettingsChange 的 handleChange 被调用<br>4. applySettingsChange 调用 getInitialSettings() 读取新设置<br>5. 同步权限规则、hooks 配置<br>6. setAppState 更新 AppState.settings 和 toolPermissionContext<br><br>AppState → 外部方向：<br>1. 某处调用 setAppState 更新 settings 或其他字段<br>2. onChangeAppState 被调用<br>3. 比较 newState.xxx !== oldState.xxx<br>4. 根据字段执行：saveGlobalConfig、clearApiKeyHelperCache、applyConfigEnvironmentVariables、notifySessionMetadataChanged 等 |
+| **错误与内存** | onChangeAppState 中调用 setState → 无限循环；settings.env 变更只添加/覆盖，不删除；权限规则加载失败无回滚；useSettingsChange 的 useEffect 返回 cleanup 函数取消订阅，无内存泄漏 |
+| **设计取舍/备选** | 双向同步 vs 单向：选择双向，保持 AppState 和外部系统一致；单一 onChangeAppState vs 多个独立订阅：选择单一，集中管理；applySettingsChange 共享 vs 重复：共享，interactive 和 headless/SDK 模式复用 |
+| **源码测试证据** | `src/hooks/useSettingsChange.ts:1-25`, `src/utils/settings/applySettingsChange.ts:33-92`, `src/state/onChangeAppState.ts:43-171` |
+
+---
+
+#### 模块 6：渲染优化
+
+| 项目 | 内容 |
+|------|------|
+| **真实入口签名** | `useAppState<T>(selector: (state: AppState) => T): T` 和 `useSetAppState(): (updater: (prev: AppState) => AppState) => void` |
+| **关键类型** | selector 函数类型：`(state: AppState) => T`；useSyncExternalStore 的 getSnapshot：`() => T` |
+| **输入输出** | useAppState 输入：selector 函数；输出：选中的状态切片<br>useSetAppState 输入：无；输出：稳定的 setState 函数（不订阅任何状态） |
+| **状态所有权与作用域** | useAppState 内部调用 useAppStore 获取 Store（来自 Context）；useSyncExternalStore 订阅 Store；每个 useAppState 调用有自己的订阅，独立重渲染；useSetAppState 返回的 setState 引用永远稳定，与 Store 相同 |
+| **更新/订阅/重渲染流程** | 1. useAppState 调用 useSyncExternalStore(store.subscribe, get)<br>2. get 函数调用 selector(store.getState()) 并做开发环境检查<br>3. 开发环境检查：若 selector 返回原状态本身（state === selected）则 throw Error<br>4. 状态变更时 store.subscribe 触发 listener<br>5. useSyncExternalStore 调用 get 得到新 selectedValue<br>6. Object.is(prevSelected, selectedValue) 比较，相同则不渲染<br>7. useSetAppState 不订阅任何状态，只返回 store.setState，组件永不因状态变更重渲染 |
+| **错误与内存** | selector 返回新对象（`{ a, b }`）→ 每次渲染都认为变化 → 多余渲染；selector 返回原状态 → 开发环境 Error；useAppState 不在 Provider 内 → ReferenceError；无内存泄漏，Provider 卸载时订阅清理 |
+| **设计取舍/备选** | useSyncExternalStore vs useContext + useReducer：选择 useSyncExternalStore，避免 Context 全量重渲染；自动 memo selector vs 手动稳定：选择手动，避免 memo 复杂度和开销；禁止返回原状态 vs 允许：禁止，避免性能灾难；useSetAppState 分离 vs 同 useAppState：分离，让不需要读取的组件不订阅 |
+| **源码测试证据** | `src/state/AppState.tsx:134-185` |
+
+---
+
+### 4.5 DeepImmutable 字段与运行时 mutable 字段清单
+
+#### DeepImmutable 字段（89-158 行）
+| 字段 | 说明 |
+|------|------|
+| `settings` | SettingsJson，应用设置 |
+| `verbose` | boolean，详细日志开关 |
+| `mainLoopModel` | ModelSetting，主循环模型 |
+| `mainLoopModelForSession` | ModelSetting，会话级模型覆盖 |
+| `statusLineText` | string \| undefined，状态行文本 |
+| `expandedView` | 'none' \| 'tasks' \| 'teammates'，展开视图 |
+| `isBriefOnly` | boolean，仅简洁模式 |
+| `showTeammateMessagePreview` | boolean，队友消息预览（ant-only） |
+| `selectedIPAgentIndex` | number，选中的队友索引 |
+| `coordinatorTaskIndex` | number，协调任务索引 |
+| `viewSelectionMode` | 'none' \| 'selecting-agent' \| 'viewing-agent'，视图选择模式 |
+| `footerSelection` | FooterItem \| null，底部选中项 |
+| `toolPermissionContext` | ToolPermissionContext，工具权限上下文 |
+| `spinnerTip` | string \| undefined，加载提示 |
+| `agent` | string \| undefined，agent 名称 |
+| `kairosEnabled` | boolean，assistant 模式启用 |
+| `remoteSessionUrl` | string \| undefined，远程会话 URL |
+| `remoteConnectionStatus` | 'connecting' \| 'connected' \| 'reconnecting' \| 'disconnected'，远程连接状态 |
+| `remoteBackgroundTaskCount` | number，远程后台任务数 |
+| `replBridgeEnabled` | boolean，always-on bridge 启用 |
+| `replBridgeExplicit` | boolean，显式激活 bridge |
+| `replBridgeOutboundOnly` | boolean，仅出站模式 |
+| `replBridgeConnected` | boolean，bridge 已连接 |
+| `replBridgeSessionActive` | boolean，bridge 会话活跃 |
+| `replBridgeReconnecting` | boolean，bridge 重连中 |
+| `replBridgeConnectUrl` | string \| undefined，bridge 连接 URL |
+| `replBridgeSessionUrl` | string \| undefined，bridge 会话 URL |
+| `replBridgeEnvironmentId` | string \| undefined，bridge 环境 ID |
+| `replBridgeSessionId` | string \| undefined，bridge 会话 ID |
+| `replBridgeError` | string \| undefined，bridge 错误 |
+| `replBridgeInitialName` | string \| undefined，bridge 初始名称 |
+| `showRemoteCallout` | boolean，显示远程提示 |
+
+#### 运行时 mutable 字段（159-569 行）
+| 字段 | 说明 | 为何可变 |
+|------|------|----------|
+| `tasks` | { [taskId: string]: TaskState } | TaskState 包含函数类型，无法 DeepImmutable |
+| `agentNameRegistry` | Map<string, AgentId> | Map 是可变集合类型 |
+| `foregroundedTaskId` | string \| undefined | 简单值，但与 tasks 一起更新 |
+| `viewingAgentTaskId` | string \| undefined | 简单值，但与 tasks 一起更新 |
+| `companionReaction` | string \| undefined | 简单值 |
+| `companionPetAt` | number \| undefined | 简单值 |
+| `mcp` | { clients, tools, commands, resources, pluginReconnectKey } | MCPServerConnection 包含函数/连接 |
+| `plugins` | { enabled, disabled, commands, errors, installationStatus, needsRefresh } | LoadedPlugin 包含函数 |
+| `agentDefinitions` | AgentDefinitionsResult | 简单对象但更新频繁 |
+| `fileHistory` | FileHistoryState | 包含 Set<string> 可变集合 |
+| `attribution` | AttributionState | 简单对象 |
+| `todos` | { [agentId: string]: TodoList } | TodoList 复杂结构 |
+| `remoteAgentTaskSuggestions` | { summary, task }[] | 简单数组 |
+| `notifications` | { current, queue } | 简单对象 |
+| `elicitation` | { queue } | 简单对象 |
+| `thinkingEnabled` | boolean \| undefined | 简单值 |
+| `promptSuggestionEnabled` | boolean | 简单值 |
+| `sessionHooks` | SessionHooksState | Map 类型 |
+| `tungstenActiveSession` | { sessionName, socketName, target } \| undefined | 简单对象 |
+| `tungstenLastCapturedTime` | number \| undefined | 简单值 |
+| `tungstenLastCommand` | { command, timestamp } \| undefined | 简单对象 |
+| `tungstenPanelVisible` | boolean \| undefined | 简单值 |
+| `tungstenPanelAutoHidden` | boolean \| undefined | 简单值 |
+| `bagelActive` | boolean \| undefined | 简单值 |
+| `bagelUrl` | string \| undefined | 简单值 |
+| `bagelPanelVisible` | boolean \| undefined | 简单值 |
+| `computerUseMcpState` | { allowedApps, grantFlags, ... } \| undefined | 包含 Set 和复杂结构 |
+| `replContext` | { vmContext, registeredTools, console } \| undefined | 包含 vm.Context、Map、函数 |
+| `teamContext` | { teamName, teamFilePath, leadAgentId, ... } \| undefined | 包含复杂嵌套结构 |
+| `standaloneAgentContext` | { name, color } \| undefined | 简单对象 |
+| `inbox` | { messages } | 简单对象 |
+| `workerSandboxPermissions` | { queue, selectedIndex } | 简单对象 |
+| `pendingWorkerRequest` | { toolName, toolUseId, description } \| null | 简单对象 |
+| `pendingSandboxRequest` | { requestId, host } \| null | 简单对象 |
+| `promptSuggestion` | { text, promptId, shownAt, acceptedAt, generationRequestId } | 简单对象 |
+| `speculation` | SpeculationState | 包含可变 ref（messagesRef, writtenPathsRef, contextRef）和函数（abort） |
+| `speculationSessionTimeSavedMs` | number | 简单值 |
+| `skillImprovement` | { suggestion } | 简单对象 |
+| `authVersion` | number | 简单值 |
+| `initialMessage` | { message, clearContext, mode, allowedPrompts } \| null | 简单对象 |
+| `pendingPlanVerification` | { plan, verificationStarted, verificationCompleted } \| undefined | 简单对象 |
+| `denialTracking` | DenialTrackingState \| undefined | 简单对象 |
+| `activeOverlays` | ReadonlySet<string> | Set 类型 |
+| `fastMode` | boolean \| undefined | 简单值 |
+| `advisorModel` | string \| undefined | 简单值 |
+| `effortValue` | EffortValue \| undefined | 简单值 |
+| `ultraplanLaunching` | boolean \| undefined | 简单值 |
+| `ultraplanSessionUrl` | string \| undefined | 简单值 |
+| `ultraplanPendingChoice` | { plan, sessionId, taskId } \| undefined | 简单对象 |
+| `ultraplanLaunchPending` | { blurb } \| undefined | 简单对象 |
+| `isUltraplanMode` | boolean \| undefined | 简单值 |
+| `replBridgePermissionCallbacks` | BridgePermissionCallbacks \| undefined | 包含函数 |
+| `channelPermissionCallbacks` | ChannelPermissionCallbacks \| undefined | 包含函数 |
+
+---
+
+### 4.6 useSyncExternalStore 选择器稳定性
+
+| 方面 | 说明 |
+|------|------|
+| **useSyncExternalStore 签名** | `useSyncExternalStore<T>(subscribe: (callback: () => void) => () => void, getSnapshot: () => T, getServerSnapshot?: () => T): T` |
+| **选择器稳定性** | 相同输入必须返回相同引用（或值相同的原始类型）；返回新对象 → 每次都认为变化 → 多余渲染 |
+| **正确用法** | `const verbose = useAppState(s => s.verbose)`（原始类型）；`const promptSuggestion = useAppState(s => s.promptSuggestion)`（稳定对象引用）；多次调用 useAppState 选择不同字段 |
+| **错误用法** | `const { verbose, settings } = useAppState(s => ({ verbose: s.verbose, settings: s.settings }))`（每次返回新对象）；`const state = useAppState(s => s)`（返回原状态，开发环境报错） |
+| **开发环境检查** | `if (process.env.USER_TYPE === 'ant' && state === selected) throw Error`；明确禁止返回原状态，避免性能灾难 |
+| **Object.is 比较** | useSyncExternalStore 使用 Object.is 比较 prevSnapshot 和 nextSnapshot；Object.is(NaN, NaN) = true，Object.is(-0, +0) = false，比 === 更正确 |
+
+---
+
+### 4.7 onChangeAppState
+
+| 项目 | 内容 |
+|------|------|
+| **真实入口签名** | `onChangeAppState({ newState, oldState }: { newState: AppState; oldState: AppState }): void` |
+| **调用时机** | Store.setState 中，state 更新后、listeners 调用前；仅当 Object.is(prev, next) 不同时调用 |
+| **同步字段清单** | 1. `toolPermissionContext.mode` → notifySessionMetadataChanged, notifyPermissionModeChanged<br>2. `mainLoopModel` → updateSettingsForSource, setMainLoopModelOverride<br>3. `expandedView` → saveGlobalConfig(showExpandedTodos, showSpinnerTree)<br>4. `verbose` → saveGlobalConfig(verbose)<br>5. `tungstenPanelVisible` → saveGlobalConfig(tungstenPanelVisible)（ant-only）<br>6. `settings` → clearApiKeyHelperCache, clearAwsCredentialsCache, clearGcpCredentialsCache, applyConfigEnvironmentVariables |
+| **权限模式同步细节** | `toExternalPermissionMode` 转换内部模式名（bubble, ungated auto）为外部可见名；仅当 EXTERNAL mode 变化时才通知 CCR；isUltraplanMode 过渡标记：首次 plan 且 isUltraplanMode 从 false→true 时才发送 is_ultraplan_mode: true，之后发送 null 删除该 key |
+| **错误处理** | settings 变更时的缓存清理用 try/catch 包裹，logError 但不抛错；其他同步路径无错误处理 |
+| **禁止操作** | onChangeAppState 中禁止调用 setState，否则无限循环；无运行时检测 |
+| **设计取舍/备选** | 单一 onChange vs 多个订阅：选择单一，集中管理；diff 检测在 onChange 内 vs 外：在内，调用处无需关心；同步到外部系统 vs 状态持久化：仅同步，不持久化整个状态 |
+| **源码测试证据** | `src/state/onChangeAppState.ts:43-171` |
+
+---
+
+### 4.8 settings change detector 同步
+
+| 项目 | 内容 |
+|------|------|
+| **真实入口签名** | `useSettingsChange(onChange: (source: SettingSource, settings: SettingsJson) => void): void` 和 `applySettingsChange(source: SettingSource, setAppState: (f: (prev: AppState) => AppState) => void): void` |
+| **changeDetector 角色** | 全局单例，文件系统 watcher；检测到变更时 fanOut 通知所有订阅者；fanOut 前已重置 settings 缓存 |
+| **useSettingsChange 实现** | useEffect 调用 `settingsChangeDetector.subscribe(handleChange)`；返回 cleanup 函数取消订阅；handleChange 调用 `getSettings_DEPRECATED()` 获取新设置，传递给 onChange |
+| **applySettingsChange 实现** | 调用 `getInitialSettings()` 读取新设置；`loadAllPermissionRulesFromDisk()` 重新加载权限规则；`updateHooksConfigSnapshot()` 更新 hooks 配置；setAppState 更新 AppState：settings, toolPermissionContext, 可能 effortValue；ant-only：重新 strip 过于宽松的 Bash 权限；检查是否禁用 bypass 权限模式；transitionPlanAutoMode |
+| **effortValue 同步细节** | 仅当 `prev.settings.effortLevel !== newSettings.effortLevel` 且 `newEffort !== undefined` 时才更新 AppState.effortValue；避免无关设置变更（如 tip 关闭）覆盖 --effort CLI 标志值 |
+| **缓存重置顺序** | changeDetector.fanOut 前已重置缓存 → getSettings_DEPRECATED()/getInitialSettings() 读取新状态；过去两处都重置导致 N 次磁盘读取（N 订阅者），现在仅一次 |
+| **双向同步完整性** | 外部 → AppState：useSettingsChange + applySettingsChange；AppState → 外部：onChangeAppState 中的 clear*Cache、applyConfigEnvironmentVariables、saveGlobalConfig；形成闭环 |
+| **源码测试证据** | `src/hooks/useSettingsChange.ts:1-25`, `src/utils/settings/applySettingsChange.ts:33-92` |
+
+---
+
+### 4.9 Provider 卸载与全局状态边界
+
+| 项目 | 内容 |
+|------|------|
+| **Provider 卸载流程** | Provider 组件卸载 → React 清理 Context；useSettingsChange 的 useEffect cleanup 函数被调用 → 取消订阅 settingsChangeDetector；Store 实例（由 Provider useState 持有）失去引用 → GC；listeners Set 随 Store 一起被 GC；无显式清理 Store 的 API |
+| **全局状态边界** | AppState：UI 相关状态，React 组件树内可用，Provider 外不可用（useAppState 抛错）；Bootstrap State：`src/bootstrap/state.ts` 中的模块级变量，完全独立，在 React 初始化前即可访问，不参与 UI 渲染；两者不重复，职责分明：Bootstrap 用于启动流程、命令解析、SDK 模式；AppState 用于 UI 组件 |
+| **useAppStateMaybeOutsideOfProvider** | 安全版本，不在 Provider 内时返回 undefined；使用场景：可能在 Provider 初始化前渲染的组件，或在非 React 环境复用的组件；内部实现：useContext(AppStoreContext)，若 store 存在则 useSyncExternalStore 订阅，否则用 NOOP_SUBSCRIBE，返回 undefined |
+| **嵌套 Provider 防护** | HasAppStateContext 初始 false；AppStateProvider 渲染时先读取 HasAppStateContext，若已为 true 则 throw Error；否则渲染 HasAppStateContext.Provider value={true}；确保全局只有一个 Provider |
+| **Store 引用稳定性** | `useState(() => createStore(...))` 保证 Store 引用永远不变；Context 传递稳定引用 → Provider 本身不会触发子组件重渲染；子组件重渲染仅由 useSyncExternalStore 的 selector 结果变化触发 |
+| **源码测试证据** | `src/state/AppState.tsx:57-200`
+
 ## 5. 失败语义与工程取舍
 
 | 触发条件 | 检测位置 | 消息/异常如何传播 | 是否重试及上限 | 状态与资源清理 | 调用方可见结果 |
