@@ -3,12 +3,13 @@ spec_id: cli-startup
 spec: ../../superpowers/specs/2026-11-12-cli-startup-design.md
 status: draft
 groups:
-  - id: additional-files
+  - id: startup-initialization
     kind: source
     section: 4
-    summary: Additional files
+    summary: CLI 初始化、环境设置与 sandbox 类型
     files:
       - src/entrypoints/init.ts
+      - src/setup.ts
       - src/entrypoints/sandboxTypes.ts
   - id: commands
     kind: source

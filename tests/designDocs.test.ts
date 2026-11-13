@@ -6,6 +6,7 @@ import { stringify } from 'yaml'
 import {
   checkDesignDocs,
   INDEX_PATH,
+  loadCoverage,
   MANIFEST_PATH,
 } from '../scripts/check-design-docs.ts'
 
@@ -211,9 +212,17 @@ test('reports MISSING_INDEX but continues validating specs when INDEX.md is abse
 })
 
 test('repository documentation registry has no structural errors', async () => {
-  const result = await checkDesignDocs({ cwd: resolve(import.meta.dir, '..') })
+  const repositoryRoot = resolve(import.meta.dir, '..')
+  const result = await checkDesignDocs({ cwd: repositoryRoot })
   expect(result.errors).toEqual([])
-  expect(result.warnings).toContainEqual({
+
+  const sdkTypes = await loadCoverage(
+    repositoryRoot,
+    'docs/architecture/coverage/sdk-type-generation.yaml',
+  )
+  const ownedFiles = sdkTypes.groups.flatMap(group => group.files)
+  expect(ownedFiles).toContain('src/entrypoints/sdk/settingsTypes.generated.ts')
+  expect(result.warnings).not.toContainEqual({
     code: 'UNCOVERED_FILE',
     message: 'File has no primary spec or exclusion: src/entrypoints/sdk/settingsTypes.generated.ts',
   })
