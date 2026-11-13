@@ -106,7 +106,820 @@ function recoverOrphanedParallelToolResults(
 | `sessionChainRecovery.ts` | 无（纯函数） | `recoverOrphanedParallelToolResults` | 实际会话加载 | 接收消息 Map 和主链，返回扩展链 |
 | `fileHistory.ts` | 无（纯函数 + 文件 I/O） | `fileHistoryMakeSnapshot`、`fileHistoryRewind`、`fileHistoryGetDiffStats` | 实际文件检查点（SDK 负责） | 管理文件历史快照 |
 
-### 4.3 主控制流
+### 4.3 模块设计卡：JSONL写入队列
+
+#### 真实入口签名/关键类型
+
+```typescript
+// src/utils/sessionStorage.ts
+class Project {
+  private writeQueues: Map<string, Array<{ entry: Entry; resolve: () => void }>>
+  private flushTimer: ReturnType<typeof setTimeout> | null
+  private activeDrain: Promise<void> | null
+  private FLUSH_INTERVAL_MS = 100  // 100ms队列
+  private readonly MAX_CHUNK_BYTES = 100 * 1024 * 1024  // 100MB块
+
+  private enqueueWrite(filePath: string, entry: Entry): Promise<void>
+  private scheduleDrain(): void
+  private drainWriteQueue(): Promise<void>
+  private appendToFile(filePath: string, data: string): Promise<void>
+}
+
+type Entry = TranscriptMessage | CustomTitleEntry | AiTitleEntry | LastPromptEntry |
+  TagEntry | AgentNameEntry | AgentColorEntry | AgentSettingEntry | ModeEntry |
+  WorktreeStateEntry | PrLinkEntry | FileHistorySnapshotEntry | AttributionSnapshotEntry |
+  ContentReplacementEntry | MarbleOrigamiCommitEntry | MarbleOrigamiSnapshotEntry |
+  QueueOperationEntry
+```
+
+#### 输入输出
+
+**输入**：
+- `Entry`：任意类型的会话条目，必须包含类型字段
+- `filePath`：目标JSONL文件路径，通常是当前会话的转录文件
+
+**输出**：
+- `Promise<void>`：条目被队列化时立即 resolve（不是持久化后）
+- 副作用：文件系统追加写入，权限设置为 0o600
+
+#### 状态与文件布局
+
+**内存状态**：
+- `writeQueues`：Map结构，key是文件路径，value是待写入条目数组，每个条目携带resolve回调
+- `flushTimer`：当前调度的flush定时器，100ms后触发
+- `activeDrain`：当前正在执行的drain操作Promise，用于等待完成
+- `pendingWriteCount`：待完成写入计数，用于flush等待
+
+**文件布局**：
+```
+~/.claude/projects/{sanitized-project-path}/
+  {session-id}.jsonl                    # 主会话JSONL文件
+  {session-id}/
+    subagents/
+      {agent-id}.jsonl                  # Agent sidechain文件
+      {subdir}/
+        {agent-id}.jsonl                # 带分组的Agent文件
+    remote-agents/
+      remote-agent-{task-id}.meta.json  # Remote Agent元数据
+    agent-{agent-id}.meta.json          # Agent类型元数据
+```
+
+#### 写入流程
+
+```
+调用方 (insertMessageChain / recordTranscript)
+  ↓
+appendEntry(entry)
+  ├─ [sessionFile === null] → pendingEntries暂存（惰性创建）
+  ├─ [需要去重] → 检查messageSet，已有UUID则跳过
+  ├─ enqueueWrite(filePath, entry)
+  │   └─ 创建Promise，推入队列，scheduleDrain()
+  └─ 返回Promise
+       ↓
+    [100ms timer触发或显式flush]
+       ↓
+    drainWriteQueue()
+       ├─ 遍历writeQueues中的所有文件
+       ├─ 对每个文件，收集队列中的所有条目
+       ├─ batch组装：将条目序列化为JSONL行
+       │   └─ jsonStringify(entry) + '\n'（lazy stringify，在drain时才执行）
+       ├─ 大文件分块：检查content长度，超过MAX_CHUNK_BYTES则分片
+       ├─ appendToFile(filePath, content)
+       │   ├─ fsAppendFile(filePath, data, { mode: 0o600 })
+       │   └─ [ENOENT] → mkdir递归创建目录，重试
+       ├─ resolve批次中所有条目的Promise
+       └─ 清理空队列
+```
+
+**关键优化**：
+- **100ms队列**：`FLUSH_INTERVAL_MS = 100`，聚合高频写入
+- **Lazy jsonStringify**：不在appendEntry时序列化，推迟到drainWriteQueue，减少内存压力
+- **100MB大文件分块**：`MAX_CHUNK_BYTES = 100 * 1024 * 1024`，防止单次写入过大
+- **原子追加**：依赖文件系统的append原子性（≤PIPE_BUF），无需锁
+
+#### 并发与崩溃边界
+
+**并发安全**：
+- 单进程内：通过activeDrain序列化drain操作，scheduleDrain防止定时器重入
+- 多进程/SDK与CLI同时写入：最后写入获胜，使用reAppendSessionMetadata刷新缓存
+- 去重机制：messageSet记录已写入UUID，防止重复（Agent sidechain除外）
+
+**崩溃恢复**：
+- 队列未flush：内存丢失，下次启动看不到崩溃前100ms内的消息
+- flush进行中崩溃：可能有部分写入的行，loadTranscriptFile通过JSON.parse容错跳过
+- 目录不存在：appendToFile通过mkdir递归创建，幂等
+
+**崩溃边界示例**：
+```
+时间线：
+T0: appendEntry(msg1) → 队列化，timer启动
+T1: appendEntry(msg2) → 队列化
+T2: flush()触发 → drain开始，jsonStringify完成
+T3: fsAppendFile写入一半 → 进程崩溃
+T4: 重启后loadTranscriptFile → 跳过损坏行，msg1/msg2可能部分或全部丢失
+```
+
+#### 设计取舍/备选
+
+| 取舍 | 当前选择 | 备选方案 | 为什么这样选 |
+|------|----------|----------|--------------|
+| 队列延迟 | 100ms批量 | 立即写入/1s批量 | 平衡延迟与IO效率；远程写入时会改为10ms |
+| Promise resolve时机 | 队列化时resolve | 持久化后resolve | 不阻塞调用方；用户操作不会因IO卡住 |
+| 序列化时机 | drain时lazy stringify | appendEntry时立即序列化 | 减少内存峰值；条目可能在队列中被取消 |
+| 分块大小 | 100MB | 1MB/1GB | 平衡IO次数与内存占用；100MB是Node.js buffer友好大小 |
+| 目录创建 | lazy mkdir（append失败后） | 提前预创建 | 大多数时候目录已存在，避免多余stat |
+
+**备选未采用**：
+- WAL（预写日志）：复杂度太高，JSONL本身已是追加式
+- 内存映射文件：跨平台兼容性问题，且追加模式下优势不明显
+- 校验和/CRC：文件系统已有可靠性保障，JSON parse容错足够
+
+#### 源码测试证据
+
+**源码位置**：
+- `src/utils/sessionStorage.ts:533-687`：Project类队列实现
+- `src/utils/sessionStorage.ts:1129-1264`：appendEntry实现
+- `src/utils/slowOperations.ts`：jsonStringify（lazy，不在append时调用）
+
+**测试覆盖**：
+- `tests/sessionStorage.test.ts`：基础写入测试
+- `tests/sdkSessions.test.ts`：SDK并发写入场景
+- 证据边界：崩溃恢复无直接测试，通过loadTranscriptFile的容错间接保障
+
+---
+
+### 4.4 模块设计卡：recordTranscript/flush
+
+#### 真实入口签名/关键类型
+
+```typescript
+// src/utils/sessionStorage.ts
+export async function recordTranscript(
+  messages: Message[],
+  teamInfo?: TeamInfo,
+  startingParentUuidHint?: UUID,
+  allMessages?: readonly Message[]
+): Promise<UUID | null>
+
+export async function flushSessionStorage(): Promise<void>
+
+class Project {
+  async insertMessageChain(
+    messages: Transcript,
+    isSidechain: boolean = false,
+    agentId?: string,
+    startingParentUuid?: UUID | null,
+    teamInfo?: { teamName?: string; agentName?: string }
+  ): Promise<void>
+
+  async flush(): Promise<void>
+  reAppendSessionMetadata(skipTitleRefresh = false): void
+}
+
+type TeamInfo = { teamName?: string; agentName?: string }
+```
+
+#### 输入输出
+
+**输入**：
+- `messages`：要记录的消息数组（可能包含已记录的消息）
+- `teamInfo`：团队/agent信息，用于sidechain标记
+- `startingParentUuidHint`：父链提示，避免O(n)扫描
+- `allMessages`：完整消息数组，用于cleanMessagesForLogging
+
+**输出**：
+- `Promise<UUID | null>`：最后实际记录的chain-participant消息UUID，或prefix-tracked UUID
+- 副作用：写入JSONL文件，更新currentSessionLastPrompt缓存
+
+#### 状态与文件布局
+
+**内存状态**：
+- `pendingEntries`：sessionFile为null时暂存的条目（惰性创建）
+- `currentSessionLastPrompt`：最后一条用户提示缓存，用于reAppendSessionMetadata
+- `currentSessionTitle`/`currentSessionTag`：元数据缓存，从tail刷新
+- `messageSet`：已写入UUID集合，用于去重（通过getSessionMessages获取）
+
+**文件布局元数据追加**：
+```
+JSONL文件尾部：
+  ...（消息条目）
+  {"type":"last-prompt","lastPrompt":"...","sessionId":"..."}
+  {"type":"custom-title","customTitle":"...","sessionId":"..."}
+  {"type":"tag","tag":"...","sessionId":"..."}
+  {"type":"agent-name","agentName":"...","sessionId":"..."}
+  {"type":"agent-color","agentColor":"...","sessionId":"..."}
+  {"type":"agent-setting","agentSetting":"...","sessionId":"..."}
+  {"type":"mode","mode":"...","sessionId":"..."}
+  {"type":"worktree-state","worktreeState":...,"sessionId":"..."}
+  {"type":"pr-link",...,"sessionId":"..."}
+```
+（这些元数据在cleanup时reAppend，确保在tail 64KB窗口内）
+
+#### flush流程
+
+```
+显式调用flush() 或 cleanup时自动flush
+  ↓
+flush()
+  ├─ [flushTimer存在] → clearTimeout取消定时器
+  ├─ [activeDrain存在] → await activeDrain等待完成
+  ├─ drainWriteQueue() → 排空队列中所有剩余条目
+  └─ [pendingWriteCount > 0]
+      └─ 返回Promise，等待pendingWriteCount归零
+           ↓
+cleanup handler（退出时）
+  ↓
+flush()
+  ↓
+reAppendSessionMetadata()
+  ├─ readFileTailSync(sessionFile) → 读取最后64KB
+  ├─ 提取SDK写入的最新custom-title/tag → 刷新缓存
+  ├─ 追加last-prompt/custom-title/tag等元数据到尾部
+  └─ 确保元数据在LITE_READ_BUF_SIZE窗口内
+```
+
+**preservedSegment tail flush**：
+- compaction时调用reAppendSessionMetadata → 元数据写在compact boundary之前
+- scanPreBoundaryMetadata在load时恢复这些边界前的元数据
+- 退出时再次reAppend → 元数据写在最后，load时无需前向扫描
+
+#### 并发与崩溃边界
+
+**并发场景**：
+- SDK与CLI同时修改custom-title/tag：通过tail refresh解决 — reAppendSessionMetadata先读tail，吸收SDK写入后再追加
+- 多Agent sidechain写入：每个sidechain有独立文件，无需协调
+- insertMessageChain与removeMessageByUuid并发：后者只处理已flush的内容
+
+**崩溃边界**：
+- flush进行中崩溃：已drain的条目已持久化，未drain的丢失
+- reAppendSessionMetadata崩溃：元数据可能重复，load时取最后一个
+- cleanup未执行（SIGKILL）：元数据可能不在tail窗口，listSessions时显示旧标题
+
+#### 设计取舍/备选
+
+| 取舍 | 当前选择 | 备选方案 | 为什么这样选 |
+|------|----------|----------|--------------|
+| cleanup钩子 | registerCleanup注册 | process.on('exit') | 支持异步flush；'exit'只支持同步 |
+| 元数据策略 | 追加不覆盖，取最后一个 | 原地更新 | 并发安全；无需锁 |
+| skipTitleRefresh | adoptResumedSessionFile时传true | 总是刷新 | --name设置的新标题不会被磁盘旧值覆盖 |
+| remote flush间隔 | 10ms（有remoteIngressUrl时） | 100ms | 远程持久化需要更低延迟 |
+
+#### 源码测试证据
+
+**源码位置**：
+- `src/utils/sessionStorage.ts:1392-1449`：recordTranscript实现
+- `src/utils/sessionStorage.ts:842-861`：flush实现
+- `src/utils/sessionStorage.ts:722-840`：reAppendSessionMetadata实现
+- `src/utils/cleanupRegistry.ts`：cleanup钩子注册
+
+**测试覆盖**：
+- `tests/sessionStorage.test.ts`：flush基本测试
+- 证据边界：cleanup钩子的SIGTERM行为在测试中难以触发
+
+---
+
+### 4.5 模块设计卡：加载与恢复
+
+#### 真实入口签名/关键类型
+
+```typescript
+// src/utils/sessionStorage.ts
+export async function loadTranscriptFile(
+  filePath: string
+): Promise<{
+  messages: Map<UUID, TranscriptMessage>
+  summaries: Map<UUID, string>
+  customTitles: Map<UUID, string>
+  tags: Map<UUID, string>
+  fileHistorySnapshots: Map<UUID, FileHistorySnapshotEntry>
+  attributionSnapshots: Map<UUID, AttributionSnapshotEntry>
+  contextCollapseCommits: ContextCollapseCommitEntry[]
+  contextCollapseSnapshot: ContextCollapseSnapshotEntry | undefined
+  leafUuids: Set<UUID>
+  contentReplacements: Map<UUID, ContentReplacementEntry[]>
+  worktreeStates: Map<UUID, PersistedWorktreeSession>
+}>
+
+export function buildConversationChain(
+  messages: Map<UUID, TranscriptMessage>,
+  leafMessage: TranscriptMessage
+): TranscriptMessage[]
+
+// src/utils/sessionStoragePortable.ts
+export async function readHeadAndTail(
+  filePath: string,
+  fileSize: number,
+  buf: Buffer
+): Promise<{ head: string; tail: string }>
+
+export async function readTranscriptForLoad(
+  filePath: string,
+  fileSize: number
+): Promise<{
+  boundaryStartOffset: number
+  postBoundaryBuf: Buffer
+  hasPreservedSegment: boolean
+}>
+
+export const LITE_READ_BUF_SIZE = 65536  // 64KB
+export const SKIP_PRECOMPACT_THRESHOLD = 5 * 1024 * 1024  // 5MB
+```
+
+#### 输入输出
+
+**输入**：
+- `filePath`：JSONL文件路径
+- `buf`：可选共享Buffer，用于readHeadAndTail（减少分配）
+
+**输出**：
+- `LoadResult`：包含消息Map、元数据、快照等的完整加载结果
+- `TranscriptMessage[]`：buildConversationChain返回的有序消息链
+
+#### 状态与文件布局
+
+**文件读取策略**：
+```
+文件大小 ≤ 5MB：
+  ↓
+完整读取 → parseJSONL → 无压缩边界跳过
+
+文件大小 > 5MB：
+  ↓
+readTranscriptForLoad（分块前向读取）
+  ├─ 1MB块迭代读取
+  ├─ 搜索compact boundary标记
+  ├─ 跳过边界前内容（保留preserved segment）
+  ├─ 跳过attribution-snapshot（仅保留最后一个）
+  └─ 输出postBoundaryBuf
+       ↓
+parseJSONL(postBoundaryBuf)
+```
+
+**头尾读取**：
+- `LITE_READ_BUF_SIZE = 65536`：头尾各64KB
+- `readHeadAndTail()`：提取custom-title、tag、last-prompt用于listSessions
+- `extractLastJsonStringField()`：从tail提取最后一个指定字段
+
+#### 恢复流程
+
+```
+loadTranscriptFile(filePath)
+  ↓
+stat(fileSize)
+  ├─ [fileSize > 5MB] → readTranscriptForLoad（分块，跳压缩边界）
+  └─ [fileSize ≤ 5MB] → 完整readFile
+       ↓
+parseJSONL → 逐行解析，跳过无效JSON
+  ↓
+分类构建Map
+  ├─ messages: Map<UUID, TranscriptMessage>
+  ├─ customTitles/tags: 取每个sessionId的最后一个
+  ├─ fileHistorySnapshots/attributionSnapshots
+  ├─ contentReplacements: 按sessionId分组
+  └─ worktreeStates
+       ↓
+applyPreservedSegmentRelinks(messages)
+  ├─ 定位最后一个compact boundary
+  ├─ [有preservedSegment]
+  │   ├─ 验证tail→head链完整
+  │   ├─ 修改preserved消息的parentUuid→anchor
+  │   └─ anchor的其他子节点→tail
+  └─ 删除boundary前非preserved消息
+       ↓
+applySnipRemovals(messages)
+  ├─ 查找snip boundary
+  ├─ 删除指定UUID
+  └─ 重链接跨过删除区的parentUuid
+       ↓
+findLatestMessage(hasVisibleUserContent) → leaf
+  ↓
+buildConversationChain(messages, leaf)
+  ├─ 从leaf沿parentUuid回溯到root
+  ├─ 反转得到root→leaf顺序
+  └─ recoverOrphanedParallelToolResults
+       ↓
+progress bridge（旧会话兼容）
+  ├─ 识别legacy progress条目
+  └─ 跨过它们重建parentUuid链
+```
+
+**parentUuid链重建**：
+```
+链示例（含progress bridge）：
+user1 → assistant1 → progress1 → progress2 → user2 → assistant2
+                          ↓（被跳过）
+user1 → assistant1 → user2 → assistant2
+
+preserved segment relink：
+compact-boundary → summary
+                      ↑（anchor）
+preserved-head → msgA → msgB → preserved-tail
+                      ↓（relink后）
+compact-boundary → summary → preserved-head → msgA → msgB → preserved-tail
+```
+
+#### 并发与崩溃边界
+
+**并发安全**：
+- 只读操作，无并发问题
+- 加载后内存状态独立，不影响后续写入
+
+**崩溃恢复**：
+- 文件有部分写入行：JSON.parse失败，跳过该行
+- preserved segment链断裂：检测到后不relink，不prune，加载完整历史
+- snip metadata缺失：不执行删除，加载完整历史
+
+#### 设计取舍/备选
+
+| 取舍 | 当前选择 | 备选方案 | 为什么这样选 |
+|------|----------|----------|--------------|
+| 压缩阈值 | 5MB | 1MB/10MB | 5MB以下全读更快；5MB以上边界常见 |
+| 头尾大小 | 64KB | 32KB/128KB | 64KB能容纳大多数元数据，又不会太大 |
+| preserved segment验证 | tail→head完整walk才relink | 假设元数据正确 | 防止崩溃导致的元数据不一致 |
+| snip删除策略 | 删除+重链接 | 保留+ tombstone | 删除更彻底，避免加载历史膨胀 |
+| progress处理 | load时bridge跨过 | 永远保留 | 新会话不再写入progress，兼容旧会话 |
+
+#### 源码测试证据
+
+**源码位置**：
+- `src/utils/sessionStorage.ts:2547-3100`：loadTranscriptFile实现
+- `src/utils/sessionStoragePortable.ts:204-793`：readHeadAndTail/readTranscriptForLoad
+- `src/utils/sessionChainRecovery.ts:38-116`：recoverOrphanedParallelToolResults
+- `src/utils/sessionStorage.ts:1840-2039`：applyPreservedSegmentRelinks/applySnipRemovals
+
+**测试覆盖**：
+- `tests/sessionChainRecovery.test.ts`：并行分支恢复测试
+- `tests/sdkSessions.test.ts`：SDK会话加载测试
+- `tests/compaction.test.ts`：preserved segment测试
+
+---
+
+### 4.6 模块设计卡：文件历史快照/rewind
+
+#### 真实入口签名/关键类型
+
+```typescript
+// src/utils/fileHistory.ts
+export type FileHistoryState = {
+  snapshots: FileHistorySnapshot[]
+  trackedFiles: Set<string>
+  checkpointingEnabled?: boolean
+  snapshotSequence: number
+}
+
+export type FileHistorySnapshot = {
+  messageId: UUID
+  trackedFileBackups: Record<string, FileHistoryBackup>
+  timestamp: Date
+}
+
+export type FileHistoryBackup = {
+  backupFileName: string | null  // null表示文件不存在
+  version: number
+  backupTime: Date
+}
+
+export async function fileHistoryMakeSnapshot(
+  updateFileHistoryState: (updater: (prev: FileHistoryState) => FileHistoryState) => void,
+  messageId: UUID
+): Promise<void>
+
+export async function fileHistoryRewind(
+  updateFileHistoryState: (updater: (prev: FileHistoryState) => FileHistoryState) => void,
+  messageId: UUID
+): Promise<void>
+
+export async function fileHistoryGetDiffStats(
+  state: FileHistoryState,
+  messageId: UUID
+): Promise<DiffStats>
+
+export async function fileHistoryHasAnyChanges(
+  state: FileHistoryState,
+  messageId: UUID
+): Promise<boolean>
+
+const MAX_SNAPSHOTS = 100
+```
+
+#### 输入输出
+
+**输入**：
+- `updateFileHistoryState`：状态更新函数（通常来自React useState）
+- `messageId`：关联的消息ID（不是UUID！fork时保持不变）
+
+**输出**：
+- `Promise<void>`
+- 副作用：创建备份文件、写入JSONL快照条目、通知VSCode文件更新
+
+#### 状态与文件布局
+
+**内存状态**：
+- `snapshots`：最近100个快照数组
+- `trackedFiles`：当前跟踪的文件路径Set（相对路径优先）
+- `snapshotSequence`：单调递增序列号，即使snapshots满了也递增
+
+**文件布局**：
+```
+~/.claude/file-history/
+  {session-id}/
+    {hash16}@v{version}    # 文件备份，hash16=sha256(path).slice(0,16)
+    {hash16}@v{version}
+    ...
+
+JSONL快照条目：
+  {"type":"file-history-snapshot","messageId":"...","snapshot":{...},"isSnapshotUpdate":false}
+```
+
+**备份文件名设计**：
+- `{hash16}@v{version}`：路径hash+版本号
+- 相同路径相同版本：相同文件名，可硬链接
+- fork时：硬链接共享备份，无需复制
+
+#### 快照/rewind流程
+
+**快照流程**：
+```
+fileHistoryMakeSnapshot(updateState, messageId)
+  ↓
+[禁用?] → 提前返回
+  ↓
+[该messageId已有快照?] → 去重跳过
+  ↓
+Phase1: 无操作updateState → capture当前state
+  ↓
+Phase2: async IO（外部state）
+  ├─ 对每个tracked file
+  │   ├─ [上一版本未变?] → 重用备份
+  │   └─ [已变/新增] → createBackup(path, version+1)
+  │       ├─ stat原文件 → [ENOENT]记录null备份
+  │       ├─ copyFile到备份路径（lazy mkdir）
+  │       └─ chmod保留权限
+  └─ 构建新snapshot对象
+       ↓
+Phase3: updateState提交
+  ├─ 继承fileHistoryTrackEdit在Phase2期间添加的备份
+  ├─ snapshots.push(新snapshot)
+  ├─ [snapshots > 100] → slice(-100)
+  ├─ snapshotSequence++
+  └─ recordFileHistorySnapshot写入JSONL
+       ↓
+notifyVscodeSnapshotFilesUpdated（fire-and-forget）
+```
+
+**rewind流程**：
+```
+fileHistoryRewind(updateState, messageId)
+  ↓
+capture state（无操作update）
+  ↓
+findLast snapshot.messageId === messageId
+  ↓
+[未找到?] → throw Error
+  ↓
+applySnapshot(state, targetSnapshot)
+  ├─ 对每个tracked file
+  │   ├─ [备份是null]
+  │   │   └─ unlink原文件（ENOENT忽略）
+  │   └─ [备份存在]
+  │       ├─ checkOriginFileChanged（mtime+content）
+  │       ├─ [未变] → 跳过
+  │       └─ [已变] → restoreBackup（lazy mkdir）
+  └─ 返回changed files列表
+       ↓
+logEvent（不修改state）
+```
+
+**checkpoint dry-run/错误分支**：
+```
+fileHistoryHasAnyChanges（dry-run）
+  ├─ 只做stat/content比较，不修改磁盘
+  ├─ 早期退出：第一个变化就返回true
+  └─ 不调用diffLines（比fileHistoryGetDiffStats快）
+
+错误分支：
+  ├─ backup文件缺失 → 跳过该文件，logEvent
+  ├─ copy/restore失败 → 抛出，caller处理
+  └─ json写入失败 → appendEntry去重，下次重试
+```
+
+#### 并发与崩溃边界
+
+**并发安全**：
+- fileHistoryTrackEdit先检查state再backup，防止race
+- snapshot Phase3重新读取state.trackedFiles，吸收Phase2期间的trackEdit
+- VSCode通知：fire-and-forget，不影响主流程
+
+**崩溃恢复**：
+- snapshot Phase2崩溃：state未修改，下次重新创建
+- JSONL快照条目写入失败：下次makeSnapshot会重试（去重检查messageId）
+- rewind中途崩溃：部分文件已恢复，需手动再次rewind
+
+#### 设计取舍/备选
+
+| 取舍 | 当前选择 | 备选方案 | 为什么这样选 |
+|------|----------|----------|--------------|
+| 快照数量限制 | 100 | 无限制/500 | 平衡历史深度与磁盘占用 |
+| 路径处理 | 相对优先，绝对兜底 | 全绝对/全相对 | 减少存储大小，兼容跨目录移动 |
+| 备份方法 | copyFile | 内存diff+patch | 简单可靠；大文件copy使用Node.js原生优化 |
+| fork策略 | 硬链接共享备份 | 完整复制 | 节省空间；硬链接跨平台可用 |
+| messageId关联 | 按messageId，不是UUID | 按UUID | fork时重新UUID不破坏快照关联 |
+| dry-run接口 | fileHistoryHasAnyChanges + fileHistoryGetDiffStats | 单一接口 | HasAnyChanges早期退出更快；GetDiffStats显示详情 |
+
+#### 源码测试证据
+
+**源码位置**：
+- `src/utils/fileHistory.ts:1-1118`：完整实现
+- `src/utils/sessionStorage.ts:1086-1099`：insertFileHistorySnapshot
+- `src/utils/fileHistory.ts:496-533`：fileHistoryHasAnyChanges（dry-run）
+
+**测试覆盖**：
+- `tests/fileHistory.test.ts`：快照/rewind基本测试
+- `tests/sdkSessions.test.ts`：SDK文件检查点集成测试
+- 证据边界：大文件（>1GB）备份性能无测试
+
+---
+
+### 4.7 模块设计卡：progress bridge
+
+#### 真实入口签名/关键类型
+
+```typescript
+// src/utils/sessionStorage.ts
+type LegacyProgressEntry = {
+  type: 'progress'
+  uuid: UUID
+  parentUuid: UUID | null
+}
+
+function isLegacyProgressEntry(entry: unknown): entry is LegacyProgressEntry
+function isEphemeralToolProgress(dataType: unknown): boolean
+
+const EPHEMERAL_PROGRESS_TYPES = new Set([
+  'bash_progress',
+  'powershell_progress',
+  'mcp_progress',
+  ...(feature('PROACTIVE') || feature('KAIROS')
+    ? (['sleep_progress'] as const)
+    : [])
+])
+
+export function isChainParticipant(m: Pick<Message, 'type'>): boolean
+export function isTranscriptMessage(entry: Entry): entry is TranscriptMessage
+```
+
+#### 输入输出
+
+**输入**：
+- 旧JSONL文件中的`{"type":"progress"}`条目
+- 新消息中的`dataType`（用于isEphemeralToolProgress）
+
+**输出**：
+- `boolean`：是否跳过该消息
+- 副作用：loadTranscriptFile中重建parentUuid链时跨过progress
+
+#### 状态与文件布局
+
+**历史背景**：
+- 旧版本（PR#24099前）：将progress写入JSONL，参与parentUuid链
+- 新版本：progress不持久化，仅内存UI状态，insertMessageChain跳过
+
+**文件中的legacy progress**：
+```
+旧会话JSONL示例：
+  {"type":"user",...,"uuid":"u1","parentUuid":null}
+  {"type":"assistant",...,"uuid":"a1","parentUuid":"u1"}
+  {"type":"progress",...,"uuid":"p1","parentUuid":"a1"}  // legacy
+  {"type":"progress",...,"uuid":"p2","parentUuid":"p1"}  // legacy
+  {"type":"user",...,"uuid":"u2","parentUuid":"p2"}     // 指向progress
+```
+
+#### bridge流程
+
+```
+写入时（新会话）：
+  isChainParticipant(type) → type !== 'progress' → 不设置parentUuid指向progress
+  insertMessageChain跳过progress → 不写入JSONL
+
+加载时（旧会话兼容）：
+  parseJSONL遇到legacy progress
+    ↓
+  构建messages Map时保留（不参与链，但用于bridge）
+    ↓
+  buildConversationChain回溯：
+    当前msg.parentUuid指向progress p
+      ↓
+    查找p.parentUuid
+      ↓
+    递归跳过所有连续progress
+      ↓
+    找到第一个非progress祖先
+      ↓
+    继续回溯
+```
+
+#### 并发与崩溃边界
+
+**并发安全**：
+- 只读重建，无并发问题
+- 新会话不再写入progress，无竞态
+
+**崩溃恢复**：
+- 旧会话中有progress：bridge自动处理
+- progress条目损坏：JSON.parse跳过，链可能断裂但可用
+
+#### 设计取舍/备选
+
+| 取舍 | 当前选择 | 备选方案 | 为什么这样选 |
+|------|----------|----------|--------------|
+| 旧会话处理 | load时bridge | 迁移重写JSONL | 迁移成本高；用户可能有大量旧会话 |
+| progress类型集 | Set包含bash/powershell/mcp/sleep | 正则匹配 | Set查找更快 |
+| 是否保留progress | load时保留在Map，不显示 | 完全跳过 | 安全起见，完整保留但隐藏 |
+
+#### 源码测试证据
+
+**源码位置**：
+- `src/utils/sessionStorage.ts:140-157`：isTranscriptMessage/isChainParticipant
+- `src/utils/sessionStorage.ts:159-179`：LegacyProgressEntry/isLegacyProgressEntry
+- `src/utils/sessionStorage.ts:187-197`：EPHEMERAL_PROGRESS_TYPES
+
+**测试覆盖**：
+- `tests/sessionStorage.test.ts`：旧会话progress bridge测试
+- 证据边界：大量连续progress的性能无测试
+
+---
+
+### 4.8 SDK API与底层存储边界
+
+#### 边界划分
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    SDK API层                                │
+│  sdkQuerySessions.ts / fileCheckpoint.ts                   │
+├───────────────────────────┬─────────────────────────────────┤
+│       共享格式层          │                                 │
+│  JSONL schema            │                                 │
+│  sessionStoragePortable  │                                 │
+│  (纯函数，无状态)        │                                 │
+├───────────────────────────┴─────────────────────────────────┤
+│                  CLI底层存储层                             │
+│  sessionStorage.ts (Project单例)                          │
+│  fileHistory.ts                                           │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**共享部分**：
+- JSONL行格式
+- `sessionStoragePortable.ts`（纯函数，无内部依赖）
+- `LITE_READ_BUF_SIZE`、`SKIP_PRECOMPACT_THRESHOLD`常量
+- `readHeadAndTail`、`readTranscriptForLoad`、`extractLastJsonStringField`
+
+**CLI独有**：
+- `Project`单例、队列、flush
+- `recordTranscript`、`insertMessageChain`
+- `fileHistory.ts`（CLI版本）
+- cleanup钩子、遥测
+
+**SDK独有**：
+- `sdkQuerySessions.ts`查询API
+- `fileCheckpoint.ts`SDK版本
+- SDK内部状态管理
+
+#### 交互边界
+
+**SDK写入元数据 → CLI读取**：
+```
+SDK: renameSession/tagSession
+  ↓
+append custom-title/tag到JSONL尾部
+  ↓
+CLI: reAppendSessionMetadata
+  ↓
+先readFileTailSync → 提取SDK写入的最新值
+  ↓
+刷新缓存后再追加 → SDK写入不会被覆盖
+```
+
+**CLI写入 → SDK查询**：
+```
+CLI: appendEntry写入消息
+  ↓
+SDK: listSessions/readSession
+  ↓
+使用sessionStoragePortable读取
+  ↓
+格式完全兼容
+```
+
+**关键边界约束**：
+- SDK不使用`Project`单例，无队列
+- CLI不调用SDK查询API
+- 共享格式永远向后兼容
+
+---
+
+### 4.9 主控制流
 
 完整写入队列与 flush 流：
 
@@ -160,7 +973,7 @@ loadTranscriptFile()
 运行 recoverOrphanedParallelToolResults() 恢复并行分支
 ```
 
-### 4.4 数据结构与持久化
+### 4.10 数据结构与持久化
 
 物理存储结构：
 
@@ -221,7 +1034,7 @@ type TranscriptMessage = {
 - 关联：按 `messageId` 关联，不是按 UUID
 - Fork 策略：分叉时不复制文件历史快照
 
-### 4.5 跨子系统依赖
+### 4.11 跨子系统依赖
 
 - **SDK Query Sessions**：共享底层 JSONL 格式，但 SDK 负责查询会话，本文负责 CLI 会话持久化
 - **File Checkpoint**：属于 SDK 设计范围，本文只描述文件历史快照边界
