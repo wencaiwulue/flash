@@ -592,7 +592,7 @@ Windows 注册表与路径：
 - **Main**：`main.tsx` 早期 CLI 处理阶段使用 `--handle-uri`，本文只描述调用点
 - **Desktop Deep Link**：`desktopDeepLink.ts` 用于反向 `claude://` 协议调用，本文描述
 
-## 6. 失败语义与工程取舍
+## 5. 失败语义与工程取舍
 
 ### 6.1 失败语义
 
@@ -644,7 +644,7 @@ Windows 注册表与路径：
 - `handleUrlSchemeLaunch()` 仅在 `__CFBundleIdentifier` 匹配时触发
 - 协议处理程序独立于主会话运行
 
-## 7. 现状验收标准
+## 6. 现状验收标准
 
 | 初始状态与输入 | 执行场景 | 必须观察到的行为 | 禁止发生的副作用 |
 |---|---|---|---|
@@ -662,7 +662,7 @@ Windows 注册表与路径：
 | 超长 q（> 1000 字符但 ≤ 5000） | 点击链接 | 显示 banner，警告需滚动查看 | 不能静默接受超长 q |
 | repo 解析有本地克隆 | 点击链接 | 显示 last fetch 时间 | 不能跳过 freshness 检查 |
 
-## 8. 代码与测试证据
+## 7. 代码与测试证据
 
 | 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
 |---|---|---|---|
@@ -700,7 +700,7 @@ Windows 注册表与路径：
 - 桌面双向链接测试（`claude://` 调用）
 - 路径转换测试（Windows POSIX ↔ native）
 
-## 9. 文件覆盖与相关子系统
+## 8. 文件覆盖与相关子系统
 
 [Coverage](../../architecture/coverage/deep-link.yaml)
 
@@ -724,7 +724,7 @@ Windows 注册表与路径：
 - `src/utils/backgroundHousekeeping.ts` → 主归其他 spec，本文只描述调用点
 - `src/main.tsx` → 主归其他 spec，本文只描述早期 CLI 处理阶段
 
-## 10. 改进建议
+## 9. 改进建议
 
 | 优先级 | 触发场景与证据 | 建议方向 | 回归风险 | 验收方式 | 工作量 | 置信度 |
 |---|---|---|---|---|---|---|

@@ -401,7 +401,126 @@ formatSavedToolCalls() 格式化输出
     └─ 不实际执行
 ```
 
-### 4.4 数据结构
+### 4.4 模块设计卡
+
+#### 模块：诊断采集（diagLogs）
+
+| 维度 | 详情 |
+|-----|-----|
+| **入口签名** | `logForDiagnosticsNoPII(level: DiagnosticLogLevel, event: string, data?: Record<string, unknown>): void`<br>`withDiagnosticsTiming<T>(event: string, fn: () => Promise<T>, getData?: (result: T) => Record<string, unknown>): Promise<T>` |
+| **关键类型** | `DiagnosticLogLevel: 'debug' \| 'info' \| 'warn' \| 'error'`<br>`DiagnosticLogEntry: { timestamp: string; level: DiagnosticLogLevel; event: string; data: Record<string, unknown> }` |
+| **输入输出** | 输入：日志级别、事件名称、可选安全数据<br>输出：同步追加到 `CLAUDE_CODE_DIAGNOSTICS_FILE` 环境变量指定的 JSONL 文件；失败时静默处理 |
+| **诊断与进程状态** | 仅依赖环境变量和同步文件 I/O，不维护内部状态；`withDiagnosticsTiming` 包装器记录 `{event}_started`、`{event}_completed`/`{event}_failed` 并附带 `duration_ms` |
+| **采集/过滤/导出/关闭流程** | 无过滤，无条件写入；导出由外部设置环境变量启用；无关闭流程，静默失败保证主流程不受影响；目录不存在时自动创建 |
+| **错误与隐私** | 严格禁止 PII（文件路径、项目名、仓库名、prompts 等），仅记录事件名与安全数据；文件 I/O 失败完全静默不传播；使用 `jsonStringify` 安全序列化 |
+| **设计取舍/备选** | 同步追加而非缓冲：保证崩溃时不丢失事件；备选：异步写入 + 缓冲（但会增加复杂性和丢失风险）；JSONL 格式：便于逐行解析与部分损坏恢复 |
+| **源码测试证据** | `src/utils/diagLogs.ts:26-57` (logForDiagnosticsNoPII), `72-94` (withDiagnosticsTiming) |
+
+#### 模块：调试过滤（debugFilter）
+
+| 维度 | 详情 |
+|-----|-----|
+| **入口签名** | `parseDebugFilter(filterString?: string): DebugFilter \| null`<br>`extractDebugCategories(message: string): string[]`<br>`shouldShowDebugCategories(categories: string[], filter: DebugFilter \| null): boolean`<br>`shouldShowDebugMessage(message: string, filter: DebugFilter \| null): boolean` |
+| **关键类型** | `DebugFilter: { include: string[]; exclude: string[]; isExclusive: boolean }` |
+| **输入输出** | 输入：过滤字符串（如 `api,git` 或 `!mcp,!1p`）或调试消息<br>输出：解析后的 `DebugFilter` 对象或布尔值指示是否显示 |
+| **诊断与进程状态** | 纯函数模块，无状态；`parseDebugFilter` 使用 `memoize` 避免重复解析相同字符串 |
+| **采集/过滤/导出/关闭流程** | 支持多种分类提取模式：`category: message`、`[CATEGORY] message`、`MCP server "name": message`、`[ANT-ONLY] 1P event: tengu_timer`；混合包含/排除模式返回 `null`（显示全部） |
+| **错误与隐私** | 混合模式静默返回 `null`，不抛异常；不涉及 PII 处理，仅处理分类前缀 |
+| **设计取舍/备选** | 不支持混合模式：避免用户困惑；备选：定义明确的优先级规则（但会增加复杂度）；去重分类：防止重复匹配同一类；备选：保留全部（但效率稍低） |
+| **源码测试证据** | `src/utils/debugFilter.ts:16-52` (parseDebugFilter), `65-107` (extractDebugCategories), `116-138` (shouldShowDebugCategories), `145-157` (shouldShowDebugMessage) |
+
+#### 模块：内存诊断与 Heap Dump（heapDumpService）
+
+| 维度 | 详情 |
+|-----|-----|
+| **入口签名** | `performHeapDump(trigger: 'manual' \| 'auto-1.5GB' = 'manual', dumpNumber = 0): Promise<HeapDumpResult>`<br>`captureMemoryDiagnostics(trigger: 'manual' \| 'auto-1.5GB', dumpNumber = 0): Promise<MemoryDiagnostics>` |
+| **关键类型** | `MemoryDiagnostics: { timestamp, sessionId, trigger, dumpNumber, uptimeSeconds, memoryUsage, memoryGrowthRate, v8HeapStats, v8HeapSpaces?, resourceUsage, activeHandles, activeRequests, openFileDescriptors?, analysis, smapsRollup?, platform, nodeVersion, ccVersion }`<br>`HeapDumpResult: { success: boolean; heapPath?: string; diagPath?: string; error?: string }` |
+| **输入输出** | 输入：触发原因（manual/auto-1.5GB）、dump 序号<br>输出：桌面路径下的 `{sessionId}.heapsnapshot` 和 `{sessionId}-diagnostics.json`（权限 0o600） |
+| **诊断与进程状态** | 先捕获诊断（可靠、轻量），再写入 heap snapshot（可能 OOM）；v8HeapStats 包含 `detachedContexts`（V8 泄漏强信号）；`/proc/self/fd` 仅 Linux；`smaps_rollup` 仅 Linux |
+| **采集/过滤/导出/关闭流程** | 采集顺序：先诊断后 snapshot（保证至少诊断留存）；无过滤，全量指标；导出路径：桌面（用户易发现）；无关闭，Promise 完成即结束 |
+| **错误与隐私** | heap snapshot 可能包含用户代码，但仅写入本地 0o600 权限文件，不上传；诊断 JSON 不含 PII；`writeHeapSnapshot` 失败被捕获，返回 `{ success: false, error }`；Bun 环境使用 `Bun.generateHeapSnapshot` + `Bun.gc(true)` |
+| **设计取舍/备选** | 诊断先行：snapshot 可能崩溃但诊断已保存；备选：同时写（但浪费内存）；权限 0o600：防止其他用户读取；备选：更宽松权限（但隐私风险高）；Node.js 用 streaming pipeline：减少内存占用；备选：同步写入（但大堆阻塞） |
+| **源码测试证据** | `src/utils/heapDumpService.ts:88-212` (captureMemoryDiagnostics), `221-278` (performHeapDump), `284-303` (writeHeapSnapshot) |
+
+#### 模块：诊断导出（diagnosticExport + perf-issue）
+
+| 维度 | 详情 |
+|-----|-----|
+| **入口签名** | `writeNewDiagnosticJson(path: string, value: unknown): Promise<void>`<br>`buildPerfIssueReport(context: LocalJSXCommandContext, overrides?: Partial<PerfIssueDependencies>): PerfIssueReport`<br>`sanitizeErrorForDiagnostics(error: string): { category: string }`<br>`categorizeError(redactedError: string): string` |
+| **关键类型** | `PerfIssueReport: { schemaVersion: 1; kind: 'claude-code-performance-diagnostics'; generatedAt; version; platform; arch; runtimeVersion; startup; query; recentErrors; mcpServerCount; memory }` |
+| **输入输出** | 输入：目标路径、诊断值对象<br>输出：原子性创建文件（`wx` 模式，不覆盖已有文件），权限 0o600 |
+| **诊断与进程状态** | `recentErrors` 最多 20 条，仅保留分类；`query.checkpoints` 截断到最近 256 条；`redactSensitiveInfo` 用于分类但不导出原始内容 |
+| **采集/过滤/导出/关闭流程** | 脱敏流程：先 `redactSensitiveInfo`，再 `categorizeError`，最后仅导出 `category`；错误文本截断到 8192 字符，分类截断到 500 字符，控制字符被移除；导出文件权限强制 0o600 |
+| **错误与隐私** | 严格隐私边界：诊断导出绝不包含用户代码、文件路径、API key、prompts 等；仅包含错误分类、时间戳、性能指标、内存使用、checkpoint 名称；`writeNewDiagnosticJson` 不覆盖已有文件避免数据丢失 |
+| **设计取舍/备选** | 仅保留分类而非错误详情：隐私优先；备选：脱敏后导出详情（但仍有漏网风险）；`wx` 模式不覆盖：防止误覆盖用户文件；备选：自动生成唯一文件名（但用户更难识别） |
+| **源码测试证据** | `src/utils/diagnosticExport.ts:4-16` (writeNewDiagnosticJson), `src/commands/perf-issue/perf-issue.tsx:22-31` (categorizeError), `33-42` (sanitizeErrorForDiagnostics), `53-94` (buildPerfIssueReport) |
+
+#### 模块：Doctor 诊断（doctorDiagnostic）
+
+| 维度 | 详情 |
+|-----|-----|
+| **入口签名** | `getDoctorDiagnostic(): Promise<DiagnosticInfo>`<br>`getCurrentInstallationType(): Promise<InstallationType>`<br>`detectMultipleInstallations(): Promise<Array<{ type: string; path: string }>>` |
+| **关键类型** | `InstallationType: 'npm-global' \| 'npm-local' \| 'native' \| 'package-manager' \| 'development' \| 'unknown'`<br>`DiagnosticInfo: { installationType, version, installationPath, invokedBinary, configInstallMethod, autoUpdates, hasUpdatePermissions, multipleInstallations, warnings, packageManager?, ripgrepStatus }` |
+| **输入输出** | 输入：无（检查进程环境与配置）<br>输出：安装类型、版本、路径、多安装冲突、配置警告、权限状态、ripgrep 状态 |
+| **诊断与进程状态** | 检查维度：`NODE_ENV`、`isInBundledMode()`、路径模式、npm 全局/本地安装、多个安装冲突、PATH 配置、managed-settings schema 合法性、Linux glob 模式警告；多方验证安装类型而非单一检测 |
+| **采集/过滤/导出/关闭流程** | 并行检查：`getCurrentInstallationType`、`detectMultipleInstallations`、`detectConfigurationIssues`；无过滤，全量收集；仅显示不自动修复；无关闭 |
+| **错误与隐私** | 不收集或导出 PII；仅检查本地配置与路径模式；所有检测失败静默处理，返回合理默认值 |
+| **设计取舍/备选** | 多方验证而非单一检测：避免误判；备选：仅检查一个标志（但不可靠）；仅建议不自动修复：避免破坏用户配置；备选：提供一键修复（但风险高）；Windows 路径归一化：解决大小写与分隔符问题 |
+| **源码测试证据** | `src/utils/doctorDiagnostic.ts:86-148` (getCurrentInstallationType), `205-315` (detectMultipleInstallations), `317-485` (detectConfigurationIssues), `514-625` (getDoctorDiagnostic) |
+
+#### 模块：上下文警告（doctorContextWarnings）
+
+| 维度 | 详情 |
+|-----|-----|
+| **入口签名** | `checkContextWarnings(tools: Tool[], agentInfo: AgentDefinitionsResult \| null, getToolPermissionContext: () => Promise<ToolPermissionContext>): Promise<ContextWarnings>` |
+| **关键类型** | `ContextWarning: { type: 'claudemd_files' \| 'agent_descriptions' \| 'mcp_tools' \| 'unreachable_rules'; severity: 'warning' \| 'error'; message; details; currentValue; threshold }`<br>`ContextWarnings: { claudeMdWarning, agentWarning, mcpWarning, unreachableRulesWarning }` |
+| **输入输出** | 输入：工具列表、agent 信息、权限上下文获取器<br>输出：四类上下文警告（各有阈值、当前值、详情） |
+| **诊断与进程状态** | `checkClaudeMdFiles`: 文件 >40k 字符<br>`checkAgentDescriptions`: agent descriptions >15k tokens<br>`checkMcpTools`: MCP tools >25k tokens<br>`checkUnreachableRules`: 权限规则被遮蔽（specific allow 被 tool-wide ask 遮蔽）；所有检查并行执行 |
+| **采集/过滤/导出/关闭流程** | 各检查独立失败静默处理；无过滤，超过阈值即警告；仅显示不自动修复；无关闭 |
+| **错误与隐私** | 不收集或导出 PII；仅统计 token/字符计数与规则结构；不读取具体文件内容（仅长度） |
+| **设计取舍/备选** | 并行执行：快速响应 `/doctor` 命令；备选：串行（但延迟高）；`countMcpToolTokens` 失败降级到字符估算：保证部分诊断可用；备选：直接失败（但可用性差） |
+| **源码测试证据** | `src/utils/doctorContextWarnings.ts:43-68` (checkClaudeMdFiles), `73-114` (checkAgentDescriptions), `119-207` (checkMcpTools), `212-241` (checkUnreachableRules), `246-265` (checkContextWarnings) |
+
+#### 模块：调试工具调用（debug-tool-call）
+
+| 维度 | 详情 |
+|-----|-----|
+| **入口签名** | `collectToolCalls(messages: Message[]): SavedToolCall[]`<br>`formatSavedToolCalls(calls: SavedToolCall[], tools: Tools, validate: boolean): string`<br>`inspectSavedInputSchema(toolCall: SavedToolCall, tool: Tool): ValidationResult` |
+| **关键类型** | `SavedToolCall: { id: string; name: string; input: unknown; results: Array<{ id: string; isError: boolean; content: unknown; elapsedMs?: number }> }` |
+| **输入输出** | 输入：会话消息列表、工具 ID（可选）、`--validate` 标志（可选）<br>输出：工具调用列表（按 ID 配对 tool_use/tool_result）或单个工具详情 + schema 验证 |
+| **诊断与进程状态** | 配对逻辑：同一 tool_use ID 可能有多个 result（重试或多轮）；计算 `elapsedMs`；`--validate` 使用 Zod schema 验证输入，不调用 `call()` 或 `checkPermissions()` |
+| **采集/过滤/导出/关闭流程** | 无过滤，遍历全部消息；无导出，仅在 REPL 显示；无关闭 |
+| **错误与隐私** | 不执行工具，不产生副作用；不触发权限检查；不发送网络请求；仅验证本地 schema；截断大结果便于显示 |
+| **设计取舍/备选** | 只读不执行：安全第一；备选：允许重放（但风险高）；支持多 result：适应重试与多轮场景；备选：仅取最后一个（但信息丢失） |
+| **源码测试证据** | `src/commands/debug-tool-call/debug-tool-call.tsx:58-93` (call), `src/commands/debug-tool-call/inspection.ts` (collectToolCalls, formatSavedToolCalls, inspectSavedInputSchema) |
+
+#### 模块：IDE 诊断基线（DiagnosticTrackingService）
+
+| 维度 | 详情 |
+|-----|-----|
+| **入口签名** | `DiagnosticTrackingService.getInstance(): DiagnosticTrackingService`<br>`initialize(mcpClient: MCPServerConnection): void`<br>`beforeFileEdited(filePath: string): Promise<void>`<br>`getNewDiagnostics(): Promise<DiagnosticFile[]>`<br>`reset(): void`<br>`static formatDiagnosticsSummary(files: DiagnosticFile[]): string` |
+| **关键类型** | `Diagnostic: { message; severity: 'Error' \| 'Warning' \| 'Info' \| 'Hint'; range; source?; code? }`<br>`DiagnosticFile: { uri: string; diagnostics: Diagnostic[] }` |
+| **输入输出** | 输入：文件路径（编辑前）<br>输出：新诊断列表（对比 baseline） |
+| **诊断与进程状态** | 单例模式维护全局状态：`baseline` Map（归一化路径 → 诊断数组）、`rightFileDiagnosticsState` Map（跟踪 `_claude_fs_right` URI 变化）、`lastProcessedTimestamps` Map；支持 `file://`、`_claude_fs_right:`、`_claude_fs_left:` 三种 URI 协议 |
+| **采集/过滤/导出/关闭流程** | 编辑前：`beforeFileEdited` 保存 baseline；编辑后：`getNewDiagnostics` 获取当前诊断并对比；优先使用 `_claude_fs_right` 诊断（Claude 修改的文件）；`reset()` 清空状态供新 query 使用；诊断摘要截断到 4000 字符 |
+| **错误与隐私** | IDE RPC 调用失败静默处理；无 PII 处理，仅传递 IDE 诊断；归一化路径解决 Windows 大小写与分隔符问题；不导出，仅在会话内使用 |
+| **设计取舍/备选** | 归一化路径作为 key：解决跨平台 URI 匹配；备选：原始 URI（但 Windows 匹配失败）；优先 `_claude_fs_right`：检测 Claude 引入的新问题；备选：仅 `file://`（但可能遗漏）；单例：跨 query 保持基线；备选：每次重建（但历史丢失） |
+| **源码测试证据** | `src/services/diagnosticTracking.ts:44-49` (getInstance), `135-182` (beforeFileEdited), `188-283` (getNewDiagnostics), `352-380` (formatDiagnosticsSummary) |
+
+#### 模块：Event Loop Stall Detector（DISABLED 占位）
+
+| 维度 | 详情 |
+|-----|-----|
+| **入口签名** | `startEventLoopStallDetector(): EventLoopStallDetectorStatus` |
+| **关键类型** | `EventLoopStallDetectorStatus: { enabled: false }` |
+| **输入输出** | 输入：无<br>输出：固定返回 `{ enabled: false }` |
+| **诊断与进程状态** | 无状态，无实际功能 |
+| **采集/过滤/导出/关闭流程** | 无采集、无过滤、无导出、无关闭流程 |
+| **错误与隐私** | 不涉及错误处理或隐私数据 |
+| **设计取舍/备选** | 仅占位不实现：为未来功能预留接口；备选：完整实现（但当前优先级低）；返回 `{ enabled: false }` 而非 `undefined`：调用方无需 null 检查 |
+| **源码测试证据** | `src/utils/eventLoopStallDetector.ts:1-6` |
+
+### 4.5 数据结构
 
 #### 调试相关
 
