@@ -1996,6 +1996,8 @@ Shell 命令：
 
 ## 8. 文件覆盖与相关子系统
 
+[Coverage](../../architecture/coverage/hooks-system.yaml)
+
 ### 8.1 源文件覆盖
 
 | 文件 | 主要职责 | 公开接口 |

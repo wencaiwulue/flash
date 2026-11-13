@@ -333,7 +333,7 @@ SDK模式可选跳过前缀: 当`CLAUDE_AGENT_SDK_MCP_NO_PREFIX=true`，SDK服�
 
 ---
 
-## 4.7 模块设计卡片
+### 4.7 模块设计卡片
 
 ### 4.7.1 配置发现模块 (config.ts)
 

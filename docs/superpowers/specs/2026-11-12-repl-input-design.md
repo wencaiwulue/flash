@@ -1768,6 +1768,8 @@ lazySpaceInputFilter(input, key) → input'
 
 ## 8. 文件覆盖与相关子系统
 
+[Coverage](../../architecture/coverage/repl-input.yaml)
+
 ### 核心输入模块
 
 | 组号 | 文件 | kind | section | summary |

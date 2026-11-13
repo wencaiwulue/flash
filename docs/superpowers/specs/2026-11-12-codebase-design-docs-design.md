@@ -412,7 +412,7 @@ bun scripts/check-design-docs.ts [--require-approved]
 
 ## 8. 文件覆盖与相关子系统
 
-[Documentation-system coverage](../../architecture/coverage/documentation-system.yaml)
+[Coverage](../../architecture/coverage/documentation-system.yaml)
 
 本 spec 的主 coverage 只包含：
 
