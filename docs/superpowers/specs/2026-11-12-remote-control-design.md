@@ -388,7 +388,519 @@ type EventRecord = {
 - 重放时 `seq` 必须 > `after` 且连续（除非 `replay_reset`）
 - `client_request_id` 用于幂等，相同 request 必须返回相同结果
 
-### 4.5 跨子系统依赖
+### 4.5 WebSocket/HTTP/direct-connect 传输层
+
+#### 4.5.1 SessionsWebSocket (CCR 传输层)
+
+##### 真实入口签名/关键类型
+```typescript
+// src/remote/SessionsWebSocket.ts
+export class SessionsWebSocket {
+  constructor(
+    private readonly sessionId: string,
+    private readonly orgUuid: string,
+    private readonly getAccessToken: () => string,
+    private readonly callbacks: SessionsWebSocketCallbacks,
+  ) {}
+
+  async connect(): Promise<void>
+  sendControlResponse(response: SDKControlResponse): void
+  sendControlRequest(request: SDKControlRequestInner): void
+  isConnected(): boolean
+  close(): void
+  reconnect(): void
+}
+
+export type SessionsWebSocketCallbacks = {
+  onMessage: (message: SessionsMessage) => void
+  onClose?: () => void
+  onError?: (error: Error) => void
+  onConnected?: () => void
+  onReconnecting?: () => void
+}
+
+const RECONNECT_DELAY_MS = 2000
+const MAX_RECONNECT_ATTEMPTS = 5
+const PING_INTERVAL_MS = 30000
+const MAX_SESSION_NOT_FOUND_RETRIES = 3
+const PERMANENT_CLOSE_CODES = new Set([4003])
+```
+
+##### 输入输出
+- **输入**: WebSocket NDJSON 帧，包括 SDKMessage、control_request、control_response、control_cancel_request
+- **输出**: 认证通过 Header 传递；控制请求/响应通过 WebSocket 发送
+- **协议 URL**: `wss://api.anthropic.com/v1/sessions/ws/{sessionId}/subscribe?organization_uuid=...`
+
+##### 连接/会话状态
+```typescript
+type WebSocketState = 'connecting' | 'connected' | 'closed'
+
+// 内部状态
+private ws: WebSocketLike | null = null
+private state: WebSocketState = 'closed'
+private reconnectAttempts = 0
+private sessionNotFoundRetries = 0
+private pingInterval: NodeJS.Timeout | null = null
+private reconnectTimer: NodeJS.Timeout | null = null
+```
+
+##### 创建/消息/重连/停止流程
+1. **创建流程**: `connect()` → 构建 URL → 创建 Bun/Node WebSocket → 发送 auth header → `onConnected`
+2. **消息流程**: `onMessage` → 解析 NDJSON → `isSessionsMessage()` → `callbacks.onMessage()`
+3. **重连流程**: `handleClose()` → 检查非永久错误码 → `scheduleReconnect(2000ms * attempt)` → 5次后放弃 → 4001最多3次
+4. **停止流程**: `close()` → 清除定时器 → `ws.close()` → 状态设为 `closed`
+
+##### 错误与安全
+- **4001 (Session Not Found)**: 最多重试3次，处理 compaction 窗口
+- **4003 (Unauthorized)**: 永久失败，不重试
+- **Ping**: 每30秒发送，保持连接活跃
+- **认证**: 通过 Authorization header 传递 Bearer token，不在 URL 中暴露
+
+##### 设计取舍/备选
+- **Header 认证 vs 消息认证**: 选择 Header，避免在消息帧中暴露 token（更安全）
+- **5次重试上限 vs 无限重试**: 选择有限重试，避免服务器过载；viewerOnly 模式永不放弃
+- **指数退避 vs 固定延迟**: 选择固定2000ms首次，简化实现且足够用户体验
+
+##### 源码测试证据
+- **src/remote/SessionsWebSocket.ts:17-26, 234-288**: 重连策略实现
+- **tests/directConnect.test.ts**: direct-connect 模式下类似验证；CCR 模式验证通过集成测试
+
+---
+
+#### 4.5.2 startServer (Direct-Connect HTTP/WebSocket 服务器)
+
+##### 真实入口签名/关键类型
+```typescript
+// src/server/server.ts
+export type ServerHandle = {
+  port: number | null
+  stop: (closeIdleConnections?: boolean) => void
+}
+
+export function startServer(
+  config: ServerConfig,
+  sessionManager: SessionManager,
+  logger: ServerLogger,
+): ServerHandle
+
+type ServerConfig = {
+  port: number
+  host: string
+  authToken: string
+  unix?: string
+  idleTimeoutMs?: number
+  maxSessions?: number
+  workspace?: string
+  allowDangerousSkipPermissions?: boolean
+}
+```
+
+##### 输入输出
+- **HTTP 端点**:
+  - `GET /health`: 返回协议版本、PID、服务器版本
+  - `POST /sessions`: 创建会话（64KB 限制）
+  - `GET /sessions/{id}`: 获取会话信息
+  - `DELETE /sessions/{id}`: 删除会话
+  - `GET /sessions/{id}/ws?after=N`: WebSocket 升级
+- **WebSocket 帧**: NDJSON 行，最大 4MB（服务器→客户端）或 1MB（客户端→服务器）
+
+##### 连接/会话状态
+```typescript
+const sockets = new Set<{ close: (code?: number, reason?: string) => void }>()
+const readySockets = new Set<object>()
+const detachBySocket = new WeakMap<object, () => void>()
+
+// WebSocket 生命周期
+// open → attach → ready → message → close → detach
+```
+
+##### 创建/附加/消息/停止流程
+1. **创建流程**: `POST /sessions` → `authenticated()` → `parseSessionRequest()` → `sessionManager.createSession()` → 返回 ws_url
+2. **附加流程**: `GET /sessions/{id}/ws` → 验证 session 存在 → `upgrade()` → `sessionManager.attach(after)` → 发送 `direct_connect/ready` → 重放事件
+3. **消息流程**: `websocket.message` → 分行解析 NDJSON → `sessionManager.handleClientMessage()` → 错误通过 `direct_connect/error` 帧返回
+4. **停止流程**: `serverHandle.stop()` → 关闭所有 socket → `server.stop()` → 删除 Unix socket
+
+##### 错误与安全
+- **认证**: `Authorization: Bearer <token>` + SHA-256 时间安全比较
+- **Unix Socket**: 权限 `0o600`，父目录 `0o700`
+- **帧大小**: 入站 1MB，出站 4MB；超限关闭连接（1009）
+- **JSON 错误**: 关闭连接（1007）
+- **Keepalive**: 每15秒发送 `keep_alive` 帧
+
+##### 设计取舍/备选
+- **NDJSON vs 二进制协议**: 选择 NDJSON，便于调试，避免帧边界解析复杂性
+- **HTTP POST + WebSocket vs 全 WebSocket**: 选择分离，利用 HTTP 可靠性处理请求，WebSocket 处理流式输出
+- **Bun.serve 原生 vs 第三方库**: 选择原生，避免依赖，性能更好
+
+##### 源码测试证据
+- **src/server/server.ts:30-33**: 认证实现
+- **src/server/server.ts:94-95, 290-295**: Unix socket 权限
+- **tests/directConnect.test.ts:192-218, 403-415**: 认证与真实传输测试
+
+---
+
+### 4.6 SessionManager 会话管理模块
+
+#### 真实入口签名/关键类型
+```typescript
+// src/server/sessionManager.ts
+export class SessionManager {
+  constructor(backend: SessionBackend, options: SessionManagerOptions) {}
+
+  async createSession(request: CreateSessionRequest): Promise<CreateSessionResult>
+  async getSession(sessionId: string): Promise<Record<string, unknown>>
+  async deleteSession(sessionId: string): Promise<Record<string, unknown>>
+  async attach(
+    sessionId: string,
+    after: number,
+    send: (record: Record<string, unknown>) => void,
+  ): Promise<() => void>
+  async handleClientMessage(sessionId: string, raw: unknown): Promise<void>
+  async reapIdleSessions(): Promise<void>
+  async destroyAll(): Promise<void>
+  async flush(): Promise<void>
+}
+
+export type SessionManagerOptions = {
+  idleTimeoutMs: number
+  maxSessions: number
+  workspace?: string
+  allowDangerousSkipPermissions?: boolean
+  configDir?: string
+  eventLogLimitBytes?: number
+  idleSweepIntervalMs?: number
+}
+
+export type CreateSessionRequest = {
+  cwd?: string
+  dangerouslySkipPermissions?: boolean
+  sessionId?: string
+  clientRequestId?: string
+}
+
+export type CreateSessionResult = {
+  sessionId: string
+  workDir: string
+  state: SessionState
+  resumed: boolean
+  lastSeq: number
+}
+```
+
+#### 输入输出
+- **输入**: `CreateSessionRequest`（cwd、sessionId、clientRequestId、dangerouslySkipPermissions）
+- **输出**: `CreateSessionResult` + 持久化到 `~/.claude/server-sessions.json` + 事件日志 `~/.claude/server-events/{id}.jsonl`
+
+#### 连接/会话状态
+```typescript
+type SessionState = 'starting' | 'running' | 'detached' | 'stopping' | 'stopped'
+
+type RuntimeSession = {
+  info: SessionInfo
+  backend: BackendSession | null
+  connections: Set<Connection>
+  controlIds: Map<string, string>  // request_id → hash 用于幂等
+  pendingControls: Set<string>
+  restored: boolean
+  eventChain: Promise<void>
+}
+
+type SessionInfo = {
+  id: string
+  status: SessionState
+  createdAt: number
+  workDir: string
+  process: ChildProcess | null
+  sessionKey?: string  // process start token
+  lastActiveAt: number
+  lastSeq: number
+  transcriptSessionId: string
+  permissionMode?: string
+  exit?: SessionExit
+}
+
+// 内部状态
+private readonly sessions = new Map<string, RuntimeSession>()
+private readonly idempotency = new Map<string, { hash: string; result: CreateSessionResult }>()
+private ownerId: string = randomUUID()
+private indexCorrupt = false
+private shuttingDown = false
+private idleTimer: ReturnType<typeof setInterval> | null = null
+private mutation: Promise<unknown> = Promise.resolve()
+private persistence: Promise<void> = Promise.resolve()
+```
+
+#### 创建/附加/消息/停止流程
+1. **创建流程**:
+   - `createSession()` → `enqueue()`（顺序化）→ `resolveCwd()` → 检查 `clientRequestId` 幂等 → `backend.create()` → `publish()` 事件 → `persist()` → 返回
+   - Resume 流程: 提供 `sessionId` → 验证 transcript 存在 → 重启后端 → 恢复状态
+
+2. **附加流程**:
+   - `attach()` → 读取 `{id}.jsonl` → 检查 `replayReset`（旧事件丢失或不连续）→ 发送 `direct_connect/ready` → 重放 `seq > after` → 注册 `send` 回调 → 返回 detach 函数
+   - 状态变化: 最后一个连接 detach → `detached`；新连接 attach → `running`
+
+3. **消息流程**:
+   - `handleClientMessage()` → 解析消息 → `user`: 写入后端 stdin → `control_response`: 检查 `controlIds` 幂等 → `control_request`: 处理 `interrupt` → 忽略 `keep_alive`
+
+4. **停止流程**:
+   - `deleteSession()` → 状态设为 `stopping` → `backend.stop()` → 状态设为 `stopped` → `persist()`
+   - `destroyAll()` → 关闭所有 active session → `backend.destroyAll()`
+
+#### 错误与安全
+- **索引损坏**: `indexCorrupt = true`，阻止 resume，允许创建新会话
+- **权限模式**: `dangerouslySkipPermissions` 需服务器端显式启用
+- **幂等冲突**: 相同 `clientRequestId` 不同参数 → 409 Conflict
+- **CWD 限制**: 必须在 workspace 或启动目录内
+- **事件日志**: 权限 `0o600`，不可见其他用户
+
+#### 设计取舍/备选
+- **sessionKey (processStartToken)**: 使用进程启动时间+PID 验证，防止重放不同进程的会话
+- **原子索引写入**: 临时文件 + `rename()`，避免崩溃留下半写文件
+- **事件日志轮转**: 超过 `eventLogLimitBytes`（默认16MB）→ 保留后半部分 → 新连接收到 `replay_reset: true`
+- **顺序化 mutation**: 通过 `mutation` Promise 队列串行化所有创建/删除操作
+
+#### 源码测试证据
+- **src/server/sessionManager.ts:674-704**: attach 与重放实现
+- **src/server/sessionManager.ts:706-724**: 事件日志轮转
+- **src/server/sessionManager.ts:310-322**: 原子索引写入
+- **src/server/sessionManager.ts:927-940**: idle 会话回收
+- **tests/directConnect.test.ts:233-276, 324-335, 417-443**: 事件重放、idle 回收、幂等、轮转测试
+
+---
+
+### 4.7 序列号重放与幂等机制
+
+#### 真实入口签名/关键类型
+```typescript
+// src/server/sessionManager.ts
+const DEFAULT_EVENT_LIMIT = 16 * 1024 * 1024
+
+type EventRecord = {
+  type: string
+  subtype?: string
+  seq: number
+  // ... 其他字段
+}
+
+type Connection = {
+  send: (record: Record<string, unknown>) => void
+  replaying: boolean
+  buffered: Record<string, unknown>[]
+  sentSeq: number  // 最后发送的 seq
+}
+
+type RuntimeSession = {
+  info: { lastSeq: number }
+  // ...
+}
+
+// 幂等键
+private readonly idempotency = new Map<string, { hash: string; result: CreateSessionResult }>()
+
+// 控制响应幂等
+controlIds: Map<string, string>  // request_id → hash
+```
+
+#### 输入输出
+- **输入 (attach)**: `?after=N`（最后接收的 seq）
+- **输出 (ready)**: `{ type: 'direct_connect', subtype: 'ready', last_seq: X, replayed_from: Y, replay_reset?: boolean }`
+- **事件帧**: 所有事件带 `seq: number`，单调递增
+
+#### 连接/会话状态
+- **服务器端**: `session.lastSeq`（当前最大 seq）
+- **连接端**: `connection.sentSeq`（最后发送给此连接的 seq）
+- **客户端**: `lastSeq`（最后接收的 seq），作为重连 `after` 参数
+
+#### 流程
+1. **发送流程**: `publish()` → `publishNow()` → `lastSeq++` → `appendFile()` → 轮转检查 → 发送给所有连接
+2. **重放流程**: `attach()` → 读取 `{id}.jsonl` → 过滤 `seq > after` → 按顺序发送 → `replay_reset` 当旧事件丢失或不连续
+3. **幂等流程 (创建会话)**: `clientRequestId` → SHA-256 hash 整个请求 → 命中 idempotency Map → 直接返回缓存结果
+4. **幂等流程 (控制响应)**: `request_id` → SHA-256 hash 整个消息 → 已存在且 hash 不同 → `CONTROL_ID_CONFLICT` 错误；已存在且相同 → 忽略
+
+#### 错误与安全
+- **序列间隙**: 客户端检测到 `seq !== lastSeq + 1` → 关闭连接（4000）
+- **replay_reset**: 客户端应重建初始状态，假设历史丢失
+- **哈希比较**: 使用 SHA-256，避免时序攻击（对 createSession 使用时间安全比较）
+
+#### 设计取舍/备选
+- **单调递增 vs 向量时钟**: 选择单调递增，简单且足以满足单一会话顺序
+- **只保留后半部分 vs 完整历史**: 选择后半部分，平衡磁盘使用和重放能力
+- **replay_reset 标志 vs 从头重放**: 选择标志，让客户端决定如何处理（可显示"会话历史不完整"）
+
+#### 源码测试证据
+- **src/server/sessionManager.ts:674-704**: 重放逻辑
+- **src/server/sessionManager.ts:827-841**: 控制响应幂等去重
+- **tests/directConnect.test.ts:233-276, 278-301, 417-430**: 重放、幂等、轮转测试
+
+---
+
+### 4.8 权限生成与处理
+
+#### 真实入口签名/关键类型
+```typescript
+// src/remote/RemoteSessionManager.ts
+export type RemotePermissionResponse =
+  | { behavior: 'allow'; updatedInput: Record<string, unknown> }
+  | { behavior: 'deny'; message: string }
+
+export type RemoteSessionCallbacks = {
+  onPermissionRequest: (request: SDKControlPermissionRequest, requestId: string) => void
+  onPermissionCancelled?: (requestId: string, toolUseId: string | undefined) => void
+}
+
+export class RemoteSessionManager {
+  private pendingPermissionRequests: Map<string, SDKControlPermissionRequest> = new Map()
+  respondToPermissionRequest(requestId: string, result: RemotePermissionResponse): void
+}
+
+// src/server/sessionManager.ts
+type RuntimeSession = {
+  controlIds: Map<string, string>
+  pendingControls: Set<string>
+}
+```
+
+#### 输入输出
+- **服务器→客户端**: `control_request` (subtype: 'can_use_tool', request_id, tool_name, input, tool_use_id)
+- **客户端→服务器**: `control_response` (request_id, response: { subtype: 'success', behavior, updatedInput/message })
+- **服务器→后端**: 写入 stdin，格式与本地一致
+
+#### 连接/会话状态
+- **RemoteSessionManager**: `pendingPermissionRequests: Map<requestId, request>`
+- **SessionManager**: `pendingControls: Set<requestId>`, `controlIds: Map<requestId, hash>`
+
+#### 流程
+1. **权限请求流程**: 后端 → `control_request` → `publish()` → 所有连接 → 客户端 `onPermissionRequest()` → 用户决定
+2. **权限响应流程**: 用户 → `respondToPermissionRequest()` → 发送 `control_response` → 服务器检查幂等 → 未处理 → 写入后端 → 从 `pendingControls` 删除
+3. **权限取消流程**: 后端退出 → `control_invalidated` → 客户端清理 pending → `onPermissionCancelled()`
+4. **未知子类型**: 返回 `control_response` (subtype: 'error')，避免服务器挂起等待
+
+#### 错误与安全
+- **权限冲突**: 相同 `request_id` 不同响应 → `CONTROL_ID_CONFLICT` 错误，不转发后端
+- **超时处理**: 暂无超时清理（内存泄漏风险）
+- **权限绕过**: `dangerouslySkipPermissions` 需客户端和服务器同时启用
+
+#### 设计取舍/备选
+- **request_id 幂等**: 网络重发不会导致重复执行权限决策
+- **pendingControls**: 后端退出时通知客户端哪些请求失效
+- **viewerOnly 模式**: 不发送 interrupt，只观察
+
+#### 源码测试证据
+- **src/remote/RemoteSessionManager.ts:153-183**: 控制消息处理
+- **src/server/sessionManager.ts:827-841**: 服务器端控制响应处理
+- **tests/directConnect.test.ts:278-301**: 控制响应去重测试
+
+---
+
+### 4.9 重连与会话生命周期
+
+#### 真实入口签名/关键类型
+```typescript
+// src/remote/SessionsWebSocket.ts
+const RECONNECT_DELAY_MS = 2000
+const MAX_RECONNECT_ATTEMPTS = 5
+const MAX_SESSION_NOT_FOUND_RETRIES = 3
+const PERMANENT_CLOSE_CODES = new Set([4003])
+
+// src/server/sessionManager.ts
+export type SessionManagerOptions = {
+  idleTimeoutMs: number
+  idleSweepIntervalMs?: number
+}
+
+type SessionState = 'starting' | 'running' | 'detached' | 'stopping' | 'stopped'
+```
+
+#### 输入输出
+- **重连输入**: `after=N`（最后接收的 seq）
+- **会话信息**: `state`、`lastActiveAt`、`exit`（code、signal、reason）
+
+#### 连接/会话状态
+- **客户端 (SessionsWebSocket)**: `connecting` → `connected` → `closed`；`reconnectAttempts`、`sessionNotFoundRetries`
+- **客户端 (DirectConnectSessionManager)**: `ready` 标志；`lastSeq`、`attempts`
+- **服务器 (SessionManager)**: 会话状态机；`connections.size`
+
+#### 流程
+1. **CCR 重连流程**: WebSocket close → 非 4003 → 5次内 → `scheduleReconnect(2000ms)` → 4001 → 最多3次 → `onReconnecting` → 成功 → `onConnected` → 失败 → `onDisconnected`
+2. **Direct-Connect 重连流程**: WebSocket close → 非手动 → 5次内 → 指数退避 (250ms*2^(attempt-1), max 2000ms) → `onReconnecting(attempt)` → 成功 → 发送缓冲消息
+3. **Idle 回收流程**: `idleTimer`（每 idleSweepIntervalMs）→ `reapIdleSessions()` → 扫描 → `status === detached` 且 `connections.size === 0` 且 `now - lastActiveAt >= idleTimeoutMs` → `deleteSession()`
+4. **服务器重启恢复**: 启动 → 读取 `server-sessions.json` → 之前 active 的会话 → `status = stopped` → `publish(control_invalidated)`
+
+#### 错误与安全
+- **4001 (Session Not Found)**: 最多重试3次，处理 compaction 窗口
+- **4003 (Unauthorized)**: 永久失败
+- **detached 会话**: 可继续运行，无客户端连接也不停止，直到 idle 超时
+
+#### 设计取舍/备选
+- **detached 状态**: 允许会话在无客户端时继续运行，用户可断线重连
+- **idle 超时**: 防止孤儿会话无限运行，默认可配置
+- **viewerOnly 永不放弃**: 辅助模式下持续尝试重连
+
+#### 源码测试证据
+- **src/remote/SessionsWebSocket.ts:234-288**: CCR 重连策略
+- **src/server/directConnectManager.ts:153-166**: Direct-Connect 重连策略
+- **src/server/sessionManager.ts:927-940**: idle 回收
+- **tests/directConnect.test.ts:324-335**: idle 回收测试
+
+---
+
+### 4.10 认证与会话安全
+
+#### 真实入口签名/关键类型
+```typescript
+// src/server/server.ts
+function authenticated(request: Request, token: string): boolean {
+  const header = request.headers.get('authorization') ?? ''
+  return header.startsWith('Bearer ') && tokenMatches(header.slice(7), token)
+}
+
+function tokenMatches(actual: string, expected: string): boolean {
+  const left = createHash('sha256').update(actual).digest()
+  const right = createHash('sha256').update(expected).digest()
+  return timingSafeEqual(left, right)
+}
+
+// src/server/sessionManager.ts
+type SessionIndexEntry = {
+  ownerId?: string
+}
+private ownerId: string = randomUUID()
+```
+
+#### 输入输出
+- **认证输入**: `Authorization: Bearer <token>` header
+- **持久化权限**: `~/.claude/server-sessions.json` (0o600)、`~/.claude/server-events/{id}.jsonl` (0o600)、Unix socket (0o600)
+
+#### 连接/会话状态
+- **服务器**: `ownerId`（标识服务器实例，防止加载其他服务器的会话）
+- **会话**: `sessionKey` (processStartToken，验证进程身份)
+
+#### 流程
+1. **认证流程**: 每个 HTTP 请求 → `authenticated()` → 检查 Bearer token → SHA-256 哈希 → 时间安全比较
+2. **持久化安全流程**: `mkdir()` → `chmod(0o700)` → 写入临时文件 → `chmod(0o600)` → `rename()`
+3. **会话归属检查**: 加载索引 → `index.ownerId !== this.ownerId` → 拒绝
+
+#### 错误与安全
+- **token 不在 URL**: 避免出现在访问日志中
+- **时间安全比较**: `timingSafeEqual()`，防止时序攻击
+- **Unix socket 权限**: `0o600`，只有运行用户可读写
+- **目录权限**: `0o700`，只有运行用户可列表和访问
+- **ownerId**: 防止不同服务器实例互相加载会话
+
+#### 设计取舍/备选
+- **Bearer token vs 其他方案**: 选择 Bearer token，简单且标准
+- **SHA-256 哈希 vs 明文比较**: 选择哈希，防止内存泄漏暴露原始 token（但仍需安全存储 token）
+- **临时文件 + rename**: 防止崩溃留下半写文件，原子更新
+
+#### 源码测试证据
+- **src/server/server.ts:30-33**: 认证实现
+- **src/server/server.ts:94-95, 290-295**: Unix socket 权限
+- **src/server/sessionManager.ts:193-271**: 初始化与 ownerId
+- **tests/directConnect.test.ts:192-218, 403-415**: 认证与真实传输测试
+
+---
+
+### 4.11 跨子系统依赖
 
 | 上游输入 | 下游副作用 | 相关 spec |
 |---|---|---|
