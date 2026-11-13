@@ -161,7 +161,7 @@ import { feature } from 'bun:bundle'
 function feature(name: string): boolean  // 构建时由 Bun 根据传入的 `features` 数组替换为 `true`/`false`，DCE 移除 `if (feature('DISABLED')) { ... }` 块
 
 // SDK 类型生成 (scripts/generate-sdk-types.ts)
-function generateSdkTypes(): Promise<void>  // 生成 coreTypes.generated.ts 和 controlTypes.ts
+function generateSdkTypes(): void  // 生成 coreTypes.generated.ts 和 controlTypes.ts
 
 // 验收 fixture (tests/fixtures/)
 // feature-check.ts: 导出注册表访问器，不执行验收
@@ -172,6 +172,127 @@ function generateSdkTypes(): Promise<void>  // 生成 coreTypes.generated.ts 和
 // exports['.'].import: ./dist/sdk.mjs
 // exports['.'].types: ./dist/types/entrypoints/agentSdkTypes.d.ts
 ```
+
+### 模块设计卡
+
+#### 模块 4.1: CLI/SDK 构建 (scripts/build.ts)
+
+| 维度 | 详情 |
+|------|------|
+| **真实入口签名** | 无显式函数，作为脚本直接执行 (import.meta.main 隐式入口) |
+| **关键类型** | - `BuildConfig`: Bun.build 配置对象<br>- `DefineMap`: { [key: string]: string } 宏替换映射<br>- `BuildOutput`: { path: string, ... } 构建输出 |
+| **输入** | - 环境变量: `BUILD_OUTDIR` (默认 'dist')<br>- 源文件: `src/entrypoints/cli.tsx`, `src/entrypoints/agentSdkTypes.ts`<br>- 配置: `package.json`, `scripts/externalFeatureProfile.ts` |
+| **输出** | - `dist/main.js`: CLI 可执行文件 (带 shebang `#!/usr/bin/env bun`)<br>- `dist/sdk.mjs`: SDK ESM 模块<br>- 控制台: 输出文件路径日志<br>- 权限: `dist/main.js` 设置为 0o755 |
+| **构建配置** | - 两次 `Bun.build` 调用: CLI + SDK<br>- `target: 'bun'`<br>- `format: 'esm'`<br>- `features: [...EXTERNAL_FEATURES]`<br>- `define`: MACRO.* + `process.env.USER_TYPE` 替换<br>- `loader`: { '.md': 'text', '.txt': 'text' } |
+| **生成流程** | 1. 调用 `generateSdkTypes()` 生成类型<br>2. 构建 CLI 入口: `src/entrypoints/cli.tsx` → `dist/main.js`<br>3. 构建 SDK 入口: `src/entrypoints/agentSdkTypes.ts` → `dist/sdk.mjs`<br>4. 对 `dist/main.js` 执行 `chmod 0o755` |
+| **错误处理** | - 构建失败: 打印所有 logs，`process.exit(1)`<br>- `generateSdkTypes()` 抛出错误直接终止 |
+| **兼容性** | - 支持 `BUILD_OUTDIR` 环境变量覆盖输出目录<br>- 硬编码 shebang 仅兼容 Unix-like 系统 |
+| **设计取舍** | - 不封装 buildCLI/buildSDK 函数: 直接循环 `builds` 数组，简化代码<br>- 不使用 Promise.all 并行构建: 顺序构建便于日志阅读<br>- shebang 通过 `banner` 字段注入，而非后处理写入 |
+| **备选方案** | - 使用单个 `Bun.build` 多入口: 无法为每个入口单独设置 banner<br>- 后处理写入 shebang: 更脆弱，需要处理编码问题 |
+| **源码证据** | `scripts/build.ts:1-61` |
+| **测试证据** | `tests/buildArtifacts.test.ts:6-32` 验证 CLI/SDK 存在性、shebang、可执行权限、SDK import smoke |
+
+#### 模块 4.2: MACRO 注入与运行时回退 (src/runtimeMacros.ts)
+
+| 维度 | 详情 |
+|------|------|
+| **真实入口签名** | 无导出函数，作为副作用模块导入 (`import '../runtimeMacros.js'`) |
+| **关键类型** | - `MACRO` 全局对象类型: `{ VERSION: string, BUILD_TIME: string, PACKAGE_URL: string, NATIVE_PACKAGE_URL: string, VERSION_CHANGELOG: string, FEEDBACK_CHANNEL: string, ISSUES_EXPLAINER: string }` |
+| **输入** | - `package.json` (读取 version 字段)<br>- 构建时 `define` 配置 (来自 `scripts/build.ts`) |
+| **输出** | - 全局 `MACRO` 对象 (仅在直接源码执行时)<br>- 构建时 `MACRO.*` 被替换为字面量字符串 |
+| **注入配置** | - `MACRO.VERSION`: `JSON.stringify(packageJson.version)`<br>- `MACRO.BUILD_TIME`: `JSON.stringify(new Date().toISOString())`<br>- `MACRO.PACKAGE_URL`: `JSON.stringify('https://www.npmjs.com/package/' + packageJson.name)`<br>- `MACRO.NATIVE_PACKAGE_URL`: 同 PACKAGE_URL<br>- `MACRO.VERSION_CHANGELOG`: `''` (空)<br>- `MACRO.FEEDBACK_CHANNEL`: `''` (空)<br>- `MACRO.ISSUES_EXPLAINER`: `''` (空)<br>- `process.env.USER_TYPE`: `JSON.stringify('external')`<br>- `process.env.CLAUDE_CODE_VERIFY_PLAN`: `JSON.stringify('false')` |
+| **回退流程** | 1. 检查 `typeof MACRO === 'undefined'`<br>2. 如果未定义，使用 `Object.assign(globalThis, { MACRO: { ... } })` 设置默认值<br>3. 默认值从 `packageJson.version` 读取，BUILD_TIME 为空字符串 |
+| **错误处理** | - 无显式错误处理: `package.json` 导入失败会导致模块加载失败 |
+| **兼容性** | - 生产构建: Bun 内联替换，无运行时开销<br>- 直接源码执行 (测试、`bun run dev`): 回退到 runtimeMacros 默认值<br>- SDK 消费者导入: 同样需要 runtimeMacros 回退 |
+| **设计取舍** | - 使用全局对象而非导出: 便于构建时替换，无需改动导入路径<br>- 空字符串作为未配置宏的默认值: 避免 `undefined` 导致的运行时错误<br>- `BUILD_TIME` 默认值为空: 避免非构建环境出现过期时间戳 |
+| **备选方案** | - 使用导出常量: 构建时替换需要更复杂的配置<br>- 使用环境变量: 构建时内联不如 define 直接<br>- 始终设置 globalThis: 会覆盖构建时注入的值 |
+| **源码证据** | `src/runtimeMacros.ts:1-17`, `scripts/build.ts:10-20` |
+| **测试证据** | 无直接单测，通过 `enabledFeatures.test.ts` 间接验证 |
+
+#### 模块 4.3: 类型声明生成 (scripts/generate-sdk-types.ts)
+
+| 维度 | 详情 |
+|------|------|
+| **真实入口签名** | `export function generateSdkTypes(): void` |
+| **关键类型** | - `GenerationTarget`: `{ schemaPath: string, outputPath: string, prelude?: string }`<br>- 生成目标: coreSchemas.ts → coreTypes.generated.ts, controlSchemas.ts → controlTypes.ts |
+| **输入** | - `src/entrypoints/sdk/coreSchemas.ts`: 核心 Zod Schema 定义<br>- `src/entrypoints/sdk/controlSchemas.ts`: 控制协议 Zod Schema 定义 |
+| **输出** | - `src/entrypoints/sdk/coreTypes.generated.ts`: 生成的类型声明<br>- `src/entrypoints/sdk/controlTypes.ts`: 生成的类型声明 (含 prelude)<br>- 控制台: `Generated ${target.outputPath} (${schemaNames.length} types)` |
+| **生成规则** | - 正则匹配: `/^export const (\w+Schema)\s*=/gm`<br>- 命名约定: `XxxSchema` → `Xxx` 类型名<br>- 类型推导: `export type Xxx = z.infer<ReturnType<typeof schemas.XxxSchema>>`<br>- controlTypes.ts 额外添加 `export * from './coreTypes.js'` prelude |
+| **生成流程** | 1. 遍历 `targets` 数组<br>2. 读取 schema 源文件<br>3. 正则提取所有 `export const XxxSchema` 名称<br>4. 如果无匹配，抛出错误 `No exported schemas found in ${target.schemaPath}`<br>5. 生成类型声明代码<br>6. 写入输出文件<br>7. 打印日志 |
+| **错误处理** | - 无匹配 schema: 抛出错误，不继续构建<br>- 文件读写错误: Node.js fs 异常会终止执行 |
+| **兼容性** | - 仅支持 `export const XxxSchema =` 格式的命名约定<br>- 仅支持顶层导出的 schema<br>- 不支持动态 schema 或条件导出 |
+| **设计取舍** | - 使用正则而非 TypeScript AST: 简单快速，满足当前需求<br>- 无匹配时明确失败而非生成空文件: 避免静默失败导致类型缺失<br>- 生成文件包含 `// Generated by ...` 头: 防止手动编辑 |
+| **备选方案** | - 使用 `ts-morph` 解析 AST: 更健壮但更复杂<br>- 使用 `tsc --declaration`: 不够精确，无法直接映射 Zod schema<br>- 允许无匹配时继续: 可能导致类型缺失被忽略 |
+| **源码证据** | `scripts/generate-sdk-types.ts:1-48` |
+| **测试证据** | 本 spec 不包含，归属于 `sdk-type-generation` spec |
+
+#### 模块 4.4: feature() DCE 功能裁剪 (bun:bundle + EXTERNAL_FEATURES)
+
+| 维度 | 详情 |
+|------|------|
+| **真实入口签名** | `import { feature } from 'bun:bundle'`<br>`function feature(name: string): boolean` (由 Bun 提供) |
+| **关键类型** | - `EXTERNAL_FEATURES`: 只读常量数组 `readonly string[]`<br>- 支持的 feature 名称: `'AGENT_MEMORY_SNAPSHOT'`, `'AGENT_TRIGGERS'`, `'AGENT_TRIGGERS_REMOTE'`, `'VOICE_MODE'`, `'BRIDGE_MODE'`, `'ULTRAPLAN'`, `'FILE_PERSISTENCE'`, `'KAIROS_BRIEF'`, `'MONITOR_TOOL'`, `'TEMPLATES'`, `'OPEN_RUNNER'`, `'OVERFLOW_TEST_TOOL'`, `'TERMINAL_PANEL'`, `'PROACTIVE'`, `'COORDINATOR_MODE'`, `'EXPERIMENTAL_SKILL_SEARCH'`, `'UDS_INBOX'`, `'DAEMON'`, `'WORKFLOW_SCRIPTS'`, `'CONTEXT_COLLAPSE'`, `'DIRECT_CONNECT'`, `'BG_SESSIONS'`, `'REACTIVE_COMPACT'`, `'SSH_REMOTE'`, `'BUDDY'`, `'FORK_SUBAGENT'`, `'HISTORY_SNIP'`, `'REVIEW_ARTIFACT'`, `'KAIROS'`, `'KAIROS_GITHUB_WEBHOOKS'`, `'CHICAGO_MCP'`, `'COMMIT_ATTRIBUTION'`, `'BASH_CLASSIFIER'`, `'WEB_BROWSER_TOOL'` |
+| **输入** | - `Bun.build({ features: [...EXTERNAL_FEATURES] })`<br>- 源码中 `feature('Xxx')` 调用 |
+| **输出** | - 构建时 `feature('Xxx')` 替换为 `true` 或 `false`<br>- DCE (Dead Code Elimination) 移除 `if (false) { ... }` 块<br>- 不在 EXTERNAL_FEATURES 中的功能代码完全不进入 bundle |
+| **DCE 使用模式** | - 条件定义: `const someTool = feature('Xxx') ? { ... } : null`<br>- 条件注册: `if (feature('Xxx')) { commands.push(...) }`<br>- 条件导入: `if (feature('Xxx')) { await import('./xxx.js') }`<br>- 条件环境设置: `if (feature('ABLATION_BASELINE') && ...) { process.env.Xxx = '1' }` |
+| **裁剪流程** | 1. `scripts/build.ts` 传入 `features: [...EXTERNAL_FEATURES]`<br>2. `tests/fixtures/verify-enabled-features.ts` 同样传入 `features: [...EXTERNAL_FEATURES]`<br>3. Bun 构建时识别 `feature('Xxx')` 调用<br>4. 替换为布尔字面量<br>5. 执行 DCE 移除不可达代码 |
+| **错误处理** | - 无显式错误处理: `feature()` 未在编译时可评估位置使用可能导致 DCE 失败，代码仍留在 bundle 中 |
+| **兼容性** | - `feature()` 只能用在编译时可评估位置: 参数必须是字符串字面量<br>- 不能依赖运行时状态判断 feature 可用性<br>- 不能动态构建 feature 名称 |
+| **设计取舍** | - 使用 `[...EXTERNAL_FEATURES]` 展开而非直接引用: 确保两个构建使用相同列表 (build.ts + verify-enabled-features.ts)<br>- `as const` 确保数组只读: 防止意外修改<br>- 不在代码中维护 internal 列表: 避免与 EXTERNAL_FEATURES 重复 |
+| **备选方案** | - 运行时 `process.env.FEATURE_Xxx` 检查: 禁用功能代码仍留在 bundle 中<br>- 多个入口点分支: 维护成本高，容易 drift<br>- 仅靠类型系统区分: 不影响最终 bundle 内容 |
+| **源码证据** | `scripts/externalFeatureProfile.ts:1-41`, `src/entrypoints/cli.tsx:2-342` (大量 feature() 调用) |
+| **测试证据** | `tests/enabledFeatures.test.ts` 验证工具数量、指定工具存在/不存在、命令包含/排除 |
+
+#### 模块 4.5: USER_TYPE=external 与 external disabled 限制
+
+| 维度 | 详情 |
+|------|------|
+| **真实入口签名** | - 构建时注入: `'process.env.USER_TYPE': JSON.stringify('external')`<br>- 运行时读取: `process.env.USER_TYPE` |
+| **关键类型** | - USER_TYPE 值: `'external'` (外部用户) 或 `'ant'` (内部员工)<br>- 不在 EXTERNAL_FEATURES 中的功能隐式 disabled |
+| **输入** | - `scripts/build.ts` define 配置<br>- `tests/fixtures/verify-enabled-features.ts` define 配置 |
+| **输出** | - 构建时 `process.env.USER_TYPE` 替换为 `'external'` 字面量<br>- DCE 移除 `if (process.env.USER_TYPE === 'ant') { ... }` 块 |
+| **限制层级** | 1. **DCE 层**: 不在 EXTERNAL_FEATURES → `feature('Xxx')` → `false` → 代码移除<br>2. **USER_TYPE 层**: `process.env.USER_TYPE === 'external'` → 内部代码移除<br>3. **注册层**: 工具/命令注册表条件注册<br>4. **Availability 层**: `availability` 回调宿主环境检查<br>5. **运行时层**: `isEnabled()` 回调当前状态检查 |
+| **流程** | 1. 构建时注入 `USER_TYPE: 'external'`<br>2. DCE 移除内部-only 代码路径<br>3. EXTERNAL_FEATURES 控制外部包含的功能<br>4. 运行时 Availability/isEnabled 进一步控制可用性 |
+| **错误处理** | - 无显式错误处理: 需要通过验收测试验证配置正确 |
+| **兼容性** | - 测试环境同样设置 `USER_TYPE: 'external'`: 确保验收真实 profile<br>- `CLAUDE_CODE_VERIFY_PLAN: 'false'`: 禁用计划验证 |
+| **设计取舍** | - 两层限制 (EXTERNAL_FEATURES + USER_TYPE): 提供灵活性，某些功能可以在两个 profile 中但受 USER_TYPE 限制<br>- 验收测试同样使用 `USER_TYPE: 'external'`: 确保验收真实交付内容 |
+| **备选方案** | - 仅用 EXTERNAL_FEATURES: 不够灵活，无法区分"在两个 profile 但有条件"的功能<br>- 仅用 USER_TYPE: 无法精细控制功能子集 |
+| **源码证据** | `scripts/build.ts:18-19`, `tests/fixtures/verify-enabled-features.ts:14-16` |
+| **测试证据** | `tests/enabledFeatures.test.ts` 验证外部 profile 包含正确工具/命令 |
+
+#### 模块 4.6: 构建产物验证 (tests/buildArtifacts.test.ts)
+
+| 维度 | 详情 |
+|------|------|
+| **真实入口签名** | `test('packages an executable CLI, importable SDK, and matching declarations', async () => { ... })` |
+| **关键类型** | - `BunFile`: Bun 文件对象<br>- `Bun.spawnSync`: 子进程 spawn 结果 |
+| **输入** | - `dist/main.js`: CLI 可执行文件<br>- `dist/sdk.mjs`: SDK 模块<br>- `dist/types/entrypoints/agentSdkTypes.d.ts`: 类型声明<br>- `package.json`: exports 配置 |
+| **输出** | - 测试通过/失败<br>- 断言验证 5 个维度: 文件存在性、shebang、可执行权限、SDK import、package.json exports |
+| **验证配置** | - SDK import smoke: `Bun.spawnSync` 执行 `import('./dist/sdk.mjs')` 验证有效<br>- package.json exports: 验证 `exports['.'].import` 和 `exports['.'].types` 路径正确 |
+| **验证流程** | 1. 验证 `dist/main.js` 存在<br>2. 验证内容以 `#!/usr/bin/env bun` 开头<br>3. 验证权限包含可执行位 (mode & 0o111)<br>4. 验证 `dist/sdk.mjs` 存在<br>5. 验证 `dist/types/entrypoints/agentSdkTypes.d.ts` 存在<br>6. SDK import smoke 测试: spawn 子进程 import，验证 stderr 为空，exitCode 为 0<br>7. 验证 package.json exports 配置正确 |
+| **错误处理** | - 任何断言失败导致测试失败<br>- SDK import smoke 失败会显示 stderr 内容 |
+| **兼容性** | - 可执行权限检查仅在 Unix-like 系统有意义<br>- SDK import 使用 Bun，验证 ESM 兼容性 |
+| **设计取舍** | - SDK import smoke 使用子进程: 隔离测试环境，避免污染当前进程<br>- 仅验证存在性和基本结构: 不验证功能完整性 (由 enabledFeatures.test.ts 负责) |
+| **备选方案** | - 在当前进程 import SDK: 可能污染测试环境<br>- 使用 TypeScript 类型检查: 更慢，且不验证运行时可导入性 |
+| **源码证据** | `tests/buildArtifacts.test.ts:1-33` |
+| **测试证据** | 该模块自身就是测试 |
+
+#### 模块 4.7: Feature Profile 验收 (tests/fixtures/verify-enabled-features.ts)
+
+| 维度 | 详情 |
+|------|------|
+| **真实入口签名** | 无显式函数，作为脚本直接执行，接收 `outdir` 参数 |
+| **关键类型** | - `FeatureProfile`: 验收输出对象 (toolCount, nullCount, toolNames, commandNames, sleepInitiallyEnabled, proactiveActive, sleepWhenActive, workerType, workerBackground, workerHasBash, workerHasAgent, reactiveCompactEnabled, hasHunterSkill, hasProactiveCommand, hasPeersCommand, hasRemoteControlServerCommand, hasWorkflowsCommand, hasBuddyCommand, hasForkCommand, hasForceSnipCommand, hasAssistantCommand, hasUltraplan, hasVoice, hasBrief) |
+| **输入** | - 命令行参数: `outdir` (输出目录)<br>- `tests/fixtures/feature-check.ts`: fixture 入口<br>- `EXTERNAL_FEATURES`: 同一功能列表 |
+| **输出** | - 控制台: `FEATURE_PROFILE=${JSON.stringify({ ... })}`<br>- 构建产物: `${outdir}/feature-check.js` |
+| **验证配置** | - 与 `scripts/build.ts` 相同的 `features`、`define`、`loader` 配置<br>- 独立子进程加载 bundle，避免污染 |
+| **验证流程** | 1. 读取 `outdir` 参数<br>2. 使用 `EXTERNAL_FEATURES` 和 `USER_TYPE: 'external'` 构建 `feature-check.ts`<br>3. 动态 import 构建后的 `feature-check.js`<br>4. 调用导出函数访问注册表:<br>   - `getAllBaseTools()` → 工具列表<br>   - `builtInCommandNames()` → 命令名称 Set<br>   - `getCoordinatorAgents()` → worker 列表<br>   - `isReactiveCompactEnabled()` → reactive compact 标志<br>   - `getBundledSkills()` → skill 列表<br>   - `initBundledSkills()` → 初始化 skill<br>   - `activateProactive('command')` / `deactivateProactive()` → 切换 proactive 状态<br>   - `isProactiveActive()` → proactive 状态<br>5. 验证 Sleep 工具初始 disabled、proactive 激活后 enabled<br>6. 输出 FEATURE_PROFILE JSON |
+| **错误处理** | - 构建失败: 抛出错误，包含所有 logs<br>- 缺少 outdir 参数: 抛出错误 |
+| **兼容性** | - 固定离线环境: 不依赖外部服务<br>- 子进程显式覆盖 env: 外层环境不影响 profile 结果 |
+| **设计取舍** | - 动态 import 构建后的 bundle: 验收真实产物，而非源码<br>- 同一 EXTERNAL_FEATURES 列表: 确保验收与生产构建一致<br>- 验证行为而非仅数量: 确保工具正确注册和工作 |
+| **备选方案** | - 仅源码测试: 不验证实际 bundle 内容<br>- 仅验证工具数量: 数量正确不代表注册正确<br>- 在当前进程测试: 可能污染测试环境 |
+| **源码证据** | `tests/fixtures/verify-enabled-features.ts:1-79` |
+| **测试证据** | 该模块是 `enabledFeatures.test.ts` 的基础设施 |
 
 ## 5. 失败语义与工程取舍
 
