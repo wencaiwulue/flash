@@ -401,7 +401,115 @@ interface SkillIndexEntry {
 - **远程技能缓存**: ~/.claude/skill-cache/${sha256Hash}/ 目录，含SKILL.md和.skillhub.json元数据
 - **无其他持久化**: 动态技能、条件技能激活状态均会话级，不保存
 
-### 4.5 跨子系统依赖
+### 4.5 模块设计卡
+
+#### 4.5.1 技能来源与 frontmatter 解析
+
+| 维度 | 内容 |
+|------|------|
+| **入口签名** | `parseSkillFrontmatterFields(frontmatter: FrontmatterData, markdownContent: string, resolvedName: string, descriptionFallbackLabel?: 'Skill' | 'Custom command'): { displayName?: string, description: string, hasUserSpecifiedDescription: boolean, allowedTools: string[], argumentHint?: string, argumentNames: string[], whenToUse?: string, version?: string, model?: string, disableModelInvocation: boolean, userInvocable: boolean, hooks?: HooksSettings, executionContext?: 'fork', agent?: string, effort?: EffortValue, shell?: FrontmatterShell }` |
+| **关键类型** | `FrontmatterData`: YAML frontmatter；`PromptCommand`: 技能对象；`HooksSettings`: hooks 配置；`EffortValue`: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 1-9 |
+| **输入输出** | 输入: YAML frontmatter + Markdown 内容；输出: 解析后的技能字段对象 |
+| **状态与缓存** | 无状态，纯解析。解析结果被 memoized 在 `getSkillDirCommands` 中 |
+| **支持字段** | `name`, `description`, `allowed-tools`, `argument-hint`, `arguments`, `when-to-use`, `version`, `model`, `disable-model-invocation`, `user-invocable`, `hooks`, `context`, `agent`, `effort`, `paths`, `shell` |
+| **设计取舍** | 复用 `markdownConfigLoader` 而不是重写，保持 legacy `/commands/` 向后兼容；所有新功能仅在 `/skills/` 目录生效 |
+| **源码证据** | `src/skills/loadSkillsDir.ts:185-264` (parseSkillFrontmatterFields), `src/skills/loadSkillsDir.ts:270-401` (createSkillCommand) |
+| **测试证据** | 无直接测试，通过 skillSearch 相关测试间接覆盖 |
+
+#### 4.5.2 技能加载与来源优先级
+
+| 维度 | 内容 |
+|------|------|
+| **入口签名** | `getSkillDirCommands(cwd: string): Promise<Command[]>` |
+| **来源优先级** | `policySettings` (企业) > `userSettings` (用户) > `projectSettings` (项目，从 cwd 向上) > `additional dirs` (--add-dir) > `legacy commands` > `bundled skills` > `plugin skills` > `mcp skills` > `remote skills` |
+| **加载流程** | 1. 并行加载所有来源；2. 通过 `realpath` 去重；3. 分离 `unconditional` 和 `conditional`；4. 返回无条件技能，条件技能存入 `conditionalSkills` Map |
+| **realpath 去重** | 使用 `fs.promises.realpath(filePath)` 获取规范路径，Map 存储已见路径；相同技能从多个来源加载时，高优先级来源获胜 |
+| **状态与缓存** | `lodash-es/memoize` 缓存 `getSkillDirCommands` 结果；`dynamicSkills` (Map), `conditionalSkills` (Map), `activatedConditionalSkillNames` (Set) |
+| **裸模式** | `--bare` 跳过自动发现，仅加载显式 `--add-dir` |
+| **安全边界** | `skillsLocked` 策略可禁用非托管技能 |
+| **源码证据** | `src/skills/loadSkillsDir.ts:638-803` (getSkillDirCommands), `src/skills/loadSkillsDir.ts:726-763` (realpath deduplication) |
+
+#### 4.5.3 动态发现机制
+
+| 维度 | 内容 |
+|------|------|
+| **入口签名** | `discoverSkillDirsForPaths(filePaths: string[], cwd: string): Promise<string[]>`; `addSkillDirectories(dirs: string[]): Promise<void>` |
+| **触发时机** | Read/Write/Edit 文件操作时，向上遍历查找 `.claude/skills` 目录 |
+| **发现范围** | 仅在 cwd 以下，不含 cwd 本身（cwd 启动时已加载） |
+| **gitignore 检查** | 发现后检查目录是否被 gitignore，是则跳过（避免加载 node_modules 等依赖中的技能） |
+| **去重机制** | `dynamicSkillDirs` Set 记录已检查路径 |
+| **深度排序** | 返回目录按深度排序，深目录在前；后续反向处理，浅目录先加载，深目录覆盖浅目录 |
+| **状态与缓存** | `dynamicSkillDirs` (Set), `dynamicSkills` (Map)；`skillsLoaded` signal 通知其他模块清除缓存 |
+| **源码证据** | `src/skills/loadSkillsDir.ts:861-915` (discoverSkillDirsForPaths), `src/skills/loadSkillsDir.ts:923-975` (addSkillDirectories) |
+
+#### 4.5.4 条件激活与路径匹配
+
+| 维度 | 内容 |
+|------|------|
+| **入口签名** | `activateConditionalSkillsForPaths(filePaths: string[], cwd: string): string[]` |
+| **paths 格式** | YAML 中 `paths` 字段接受字符串或数组；使用 `ignore` 库，gitignore 语法；自动去除 `/**` 后缀（ignore 库将 "path" 视为匹配路径本身及其内部所有内容） |
+| **激活条件** | 任一 `filePaths` 匹配技能的 `paths` 模式 |
+| **激活后流程** | 技能从 `conditionalSkills` 移除，加入 `dynamicSkills`，记录到 `activatedConditionalSkillNames`，emit `skillsLoaded` signal |
+| **生命周期** | `activatedConditionalSkillNames` 跨缓存清除持久存在（`clearSkillCaches` 不清除此 Set），用户激活的技能不因重新加载而消失 |
+| **失效机制** | 暂无自动失效（改进建议见第9章） |
+| **源码证据** | `src/skills/loadSkillsDir.ts:159-178` (parseSkillPaths), `src/skills/loadSkillsDir.ts:997-1058` (activateConditionalSkillsForPaths) |
+
+#### 4.5.5 本地技能搜索
+
+| 维度 | 内容 |
+|------|------|
+| **入口签名** | `searchLocalSkills(query: string, context: ToolUseContext, options?: { limit?: number, index?: SkillIndexEntry[] }): Promise<LocalSkillMatch[]>` |
+| **模糊搜索** | 使用 Fuse.js，键权重：`name: 0.3`, `description: 0.5`, `whenToUse: 0.2`，阈值 0.4 |
+| **去词回退** | 无结果时去除 `about`, `after`, `before`, `check`, `could`, `from`, `have`, `into`, `please`, `should`, `that`, `this`, `with`, `would` 等停用词重试 |
+| **可见性跟踪** | `getVisibleSkillNames` 检查历史 `skill_discovery` 附件和 `Skill` 调用，避免重复推荐同一技能 |
+| **预取触发** | `user_input`, `write_pivot`, `subagent_spawn` 三种信号触发预取 |
+| **状态与缓存** | `indexCache` Map (cwd -> Promise<SkillIndexEntry[]>) |
+| **源码证据** | `src/services/skillSearch/localSearch.ts:68-127` (Fuse.js + stopword removal), `src/services/skillSearch/localSearch.ts:135-150` (visibility tracking), `src/services/skillSearch/prefetch.ts:142-161` (prefetch triggers) |
+| **测试证据** | `tests/skillSearch.test.ts:81-182` (search ranking, visibility tracking, prefetch) |
+
+#### 4.5.6 SkillTool 执行
+
+| 维度 | 内容 |
+|------|------|
+| **入口签名** | `SkillTool.call({ skill: string, args?: string }, context: ToolUseContext, canUseTool: CanUseToolFn, parentMessage: AssistantMessage, onProgress?: ToolCallProgress<Progress>): Promise<ToolResult<Output>>` |
+| **验证流程** | `validateInput`: 去除前缀 `/`；检查技能存在；检查 `disableModelInvocation`；检查是 prompt 类型 |
+| **权限检查** | `checkPermissions`: 检查 deny 规则；检查 allow 规则；检查是否仅使用 `SAFE_SKILL_PROPERTIES`（是则自动 allow）；否则询问用户 |
+| **inline 执行** | `context !== 'fork'`: 调用 `processPromptSlashCommand` 展开技能，参数替换，执行 shell 注入（非 MCP），返回 `newMessages` |
+| **fork 执行** | `context === 'fork'`: 调用 `executeForkedSkill`，创建新 agentId，运行子代理，独立 token 预算，返回执行结果文本，最后 `clearInvokedSkillsForAgent` |
+| **inline vs fork 差异** | inline: 当前会话展开，共享状态，速度快；fork: 隔离子代理，独立 token，状态不污染主会话 |
+| **SAFE_SKILL_PROPERTIES** | `type`, `progressMessage`, `contentLength`, `argNames`, `model`, `effort`, `source`, `pluginInfo`, `disableNonInteractive`, `skillRoot`, `context`, `agent`, `getPromptForCommand`, `frontmatterKeys`, `name`, `description`, `hasUserSpecifiedDescription`, `isEnabled`, `isHidden`, `aliases`, `isMcp`, `argumentHint`, `whenToUse`, `paths`, `version`, `disableModelInvocation`, `userInvocable`, `loadedFrom`, `immediate`, `userFacingName` |
+| **源码证据** | `src/tools/SkillTool/SkillTool.ts:122-289` (executeForkedSkill), `src/tools/SkillTool/SkillTool.ts:354-430` (validateInput), `src/tools/SkillTool/SkillTool.ts:432-578` (checkPermissions), `src/tools/SkillTool/SkillTool.ts:580-840` (call), `src/tools/SkillTool/SkillTool.ts:871-933` (SAFE_SKILL_PROPERTIES) |
+
+#### 4.5.7 远程技能搜索与加载
+
+| 维度 | 内容 |
+|------|------|
+| **入口签名** | `searchRemoteSkills(query: string, options?: { limit?: number }): Promise<RemoteSkillMatch[]>`; `loadRemoteSkill(slug: string, url: string): Promise<{ cacheHit: boolean, latencyMs: number, skillPath: string, content: string, fileCount: number, totalBytes: number, fetchMethod: string }>` |
+| **命名前缀** | 远程技能命名为 `_canonical_${namespace}/${slug}` 避免本地冲突 |
+| **缓存机制** | 基于 SHA-256 内容哈希缓存，缓存目录 `~/.claude/skill-cache/${sha256Hash}/`；缓存命中直接返回 |
+| **in-flight 去重** | Map 存储 pending 请求，同一 `slug` + `url` 共享请求 |
+| **zip 安全检查** | 断言无符号链接（检查 external attributes）；断言路径安全（无 `../`，非绝对，不含 `\\`）；限制最多 100 文件，5MB 解压 |
+| **支持 URL** | `gs://` (默认), `https://`, `http://`, `s3://` |
+| **执行流程** | `executeRemoteSkill`: 从缓存/网络加载；去除 frontmatter；替换 `${CLAUDE_SKILL_DIR}` 和 `${CLAUDE_SESSION_ID}`；`addInvokedSkill`；直接包装为 user 消息 |
+| **状态与缓存** | `discovered` Map (slug -> DiscoveredRemoteSkill), `inFlight` Map (key -> Promise) |
+| **源码证据** | `src/services/skillSearch/remoteSearch.ts:32` (canonical prefix), `src/services/skillSearch/remoteSkillLoader.ts:48-69` (zip security), `src/services/skillSearch/remoteSkillLoader.ts:93-136` (SHA-256 cache), `src/services/skillSearch/remoteSkillLoader.ts:174-190` (in-flight dedup) |
+| **测试证据** | `tests/remoteSkills.test.ts:115-166` (cache, zip security) |
+
+#### 4.5.8 技能变更检测与缓存失效
+
+| 维度 | 内容 |
+|------|------|
+| **入口签名** | `skillChangeDetector.initialize(): Promise<void>`; `clearSkillCaches(): void` |
+| **文件监听** | 使用 chokidar 监听 `~/.claude/skills`, `~/.claude/commands`, `.claude/skills`, `.claude/commands`, 附加目录的 `.claude/skills` |
+| **Bun 死锁规避** | Bun 下使用 `usePolling: true` 替代 `fs.watch`，2s 轮询间隔；避免 PathWatcherManager 死锁 |
+| **文件稳定等待** | `awaitWriteFinish`: 1000ms 稳定阈值，500ms 轮询；避免读写竞争 |
+| **变更去抖** | 300ms debounce，批量处理所有 pending 路径，避免频繁重载 |
+| **缓存失效** | `clearSkillCaches()` 清除 `getSkillDirCommands` memoize，清除 `loadMarkdownFilesForSubdir` memoize，清除 `conditionalSkills`，**不**清除 `activatedConditionalSkillNames`；`clearCommandsCache()` 清除 commands 相关缓存；`resetSentSkillNames()` 重置已发送技能名 |
+| **错误隔离** | ConfigChange hook 可阻断重载；chokidar 事件独立失败，不影响其他目录监听 |
+| **状态与缓存** | `watcher`, `reloadTimer`, `pendingChangedPaths` Set, `initialized/disposed` flags, `skillsChanged` signal |
+| **源码证据** | `src/utils/skills/skillChangeDetector.ts:28-34` (stability), `src/utils/skills/skillChangeDetector.ts:43` (debounce), `src/utils/skills/skillChangeDetector.ts:63` (Bun polling), `src/utils/skills/skillChangeDetector.ts:111-133` (watch options), `src/utils/skills/skillChangeDetector.ts:258-280` (batch reload), `src/skills/loadSkillsDir.ts:806-811` (clearSkillCaches) |
+
+### 4.6 跨子系统依赖
 
 | 依赖 | 用途 | 归属spec | 本文仅描述 |
 |------|------|---------|-----------|
