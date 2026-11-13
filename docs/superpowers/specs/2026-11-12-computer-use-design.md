@@ -22,7 +22,7 @@ Computer Use 是 Claude Code 提供的桌面与浏览器自动化能力，支持
 - 同一台主机不能由多个会话并发控制，必须通过跨进程锁明确持有者并处理进程死亡、锁损坏和过期恢复。
 - 截图、输入、剪贴板和系统组合键具有不同隐私边界；应用授权必须精确匹配，TCC 缺失必须在动作前失败。
 - Native Adapter 当前依赖 macOS Swift/Rust 与 CFRunLoop，Zavora 通过 MCP 提供另一后端；统一接口不能掩盖两者能力和清理方式差异。
-- 坐标必须保留显示器原点、物理像素与缩放元数据，归一化输入限制在 `[0,1]`，避免多显示器下误操作。
+- 坐标必须保留显示器原点、物理像素与缩放元数据，归一化输入限制在 [0,1]，避免多显示器下误操作。
 - 回合自然结束、流式中止和工具中止都必须恢复隐藏应用、注销 ESC、关闭后端并释放锁；单个清理步骤失败不得阻断其余步骤。
 
 ## 2. 设计理由与备选方案
@@ -109,70 +109,14 @@ Computer Use 是 Claude Code 提供的桌面与浏览器自动化能力，支持
 
 ## 4. 架构、模块与数据流
 
-### 4.1 后端抽象
+### 4.1 后端抽象模块
 
-#### 4.1.1 后端接口
-
-```typescript
-type ComputerUseBackendKind = 'zavora' | 'native-adapter';
-
-type ComputerUseBackend = {
-  kind: ComputerUseBackendKind;
-  listTools(): Promise<ComputerUseTool[]>;
-  dispatch(
-    name: string,
-    args: unknown,
-    context: ComputerUseSessionContext,
-    signal: AbortSignal,
-  ): Promise<CuCallToolResult>;
-  close(): Promise<void>;
-};
-```
-
-#### 4.1.2 执行器抽象
-
-`ComputerExecutor` 定义了与平台无关的桌面控制接口：
+#### 真实入口签名/关键类型
 
 ```typescript
-type ComputerExecutor = {
-  capabilities: ComputerUseCapabilities & { hostBundleId: string };
-  
-  // 截图相关
-  screenshot(opts: { allowedBundleIds: string[]; displayId?: number }): Promise<ScreenshotResult>;
-  zoom(region: { x: number; y: number; w: number; h: number }, ...): Promise<...>;
-  resolvePrepareCapture(opts: { ... }): Promise<ResolvePrepareCaptureResult>;
-  
-  // 输入相关
-  key(keySequence: string, repeat?: number): Promise<void>;
-  holdKey(keyNames: string[], durationMs: number): Promise<void>;
-  type(text: string, opts: { viaClipboard: boolean }): Promise<void>;
-  moveMouse(x: number, y: number): Promise<void>;
-  click(x: number, y: number, button: 'left' | 'right' | 'middle', count: 1 | 2 | 3, modifiers?: string[]): Promise<void>;
-  drag(from: { x: number; y: number } | undefined, to: { x: number; y: number }): Promise<void>;
-  scroll(x: number, y: number, dx: number, dy: number): Promise<void>;
-  
-  // 剪贴板
-  readClipboard(): Promise<string>;
-  writeClipboard(text: string): Promise<void>;
-  
-  // 应用管理
-  prepareForAction(allowlistBundleIds: string[], displayId?: number): Promise<string[]>;
-  getFrontmostApp(): Promise<FrontmostApp | null>;
-  listInstalledApps(): Promise<InstalledApp[]>;
-  listRunningApps(): Promise<RunningApp[]>;
-  openApp(bundleId: string): Promise<void>;
-  
-  // 显示管理
-  getDisplaySize(displayId?: number): Promise<DisplayGeometry>;
-  listDisplays(): Promise<DisplayGeometry[]>;
-};
-```
+// src/utils/computerUse/hostAdapter.ts
+function getComputerUseHostAdapter(): ComputerUseHostAdapter
 
-#### 4.1.3 Host Adapter 接口
-
-`ComputerUseHostAdapter` 是 Native Adapter 的核心接口，连接 MCP 包与具体实现：
-
-```typescript
 type ComputerUseHostAdapter = {
   serverName: string;
   logger: Logger;
@@ -183,169 +127,644 @@ type ComputerUseHostAdapter = {
   getAutoUnhideEnabled(): boolean;
   cropRawPatch(...args: unknown[]): Buffer | null;
 };
+
+type OsPermissionState =
+  | { granted: true }
+  | { granted: false; accessibility: boolean; screenRecording: boolean };
 ```
 
-#### 4.1.4 Session Context 接口
+#### 输入输出
 
-`ComputerUseSessionContext` 定义了工具执行期间与 Claude Code 会话状态交互的接口：
+| 输入 | 类型 | 说明 |
+|------|------|------|
+| 无（单例） | - | 模块级缓存 `cached: ComputerUseHostAdapter | undefined` |
+
+| 输出 | 类型 | 说明 |
+|------|------|------|
+| hostAdapter.serverName | string | 恒为 "computer-use" |
+| hostAdapter.logger | Logger | Debug 日志适配器 |
+| hostAdapter.executor | ComputerExecutor | CLI 执行器实例 |
+
+#### 会话/显示/锁状态
+
+- **会话状态**：无状态单例，与 `sessionId` 无关
+- **显示状态**：通过 `executor` 间接访问
+- **锁状态**：通过 `SessionContext` 接口访问，不在此模块
+
+#### 准备/执行/中止/清理流程
+
+- **准备**：首次调用 `getComputerUseHostAdapter()` 时创建单例
+- **执行**：每次工具调用通过 `wrapper.tsx` 转发到 `hostAdapter`
+- **中止**：通过传入的 `AbortSignal` 向上传播
+- **清理**：无内部清理，由 `cleanupComputerUseAfterTurn` 负责
+
+#### 错误与安全
+
+| 错误类型 | 触发条件 | 处理 |
+|----------|----------|------|
+| `getChicagoEnabled()` 为 false | `isDisabled()` 返回 true，MCP 服务器不可用 |
+| TCC 权限缺失 | `ensureOsPermissions()` 返回 `{granted: false, accessibility, screenRecording}` | 结构化错误向上传播 |
+
+#### 设计取舍/备选
+
+| 选项 | 取舍 |
+|------|------|
+| 单例 vs 每次创建 | 选择单例，避免重复加载 Swift Helper |
+| `cropRawPatch` 返回 null | 像素验证当前禁用，留作扩展 |
+
+#### 源码测试证据
+
+- **源码**：`src/utils/computerUse/hostAdapter.ts`
+- **测试**：`tests/computerUseBackends.test.ts` 覆盖 `getSubGates()`、`isDisabled()`
+- **关联**：`packages/desktop/computer-use-mcp` 提供类型契约
+
+---
+
+### 4.2 执行器模块
+
+#### 真实入口签名/关键类型
 
 ```typescript
-type ComputerUseSessionContext = {
-  // 读取
-  getAllowedApps(): readonly AppGrant[];
-  getGrantFlags(): CuGrantFlags;
-  getUserDeniedBundleIds(): readonly string[];
-  getSelectedDisplayId(): number | undefined;
-  getDisplayPinnedByModel(): boolean;
-  getDisplayResolvedForApps(): string | undefined;
-  getLastScreenshotDims(): ScreenshotDims | undefined;
-  
-  // 写入
-  onPermissionRequest(request: CuPermissionRequest, dialogSignal: AbortSignal): Promise<CuPermissionResponse>;
-  onAllowedAppsChanged(apps: readonly AppGrant[], flags: CuGrantFlags): void;
-  onAppsHidden(bundleIds: readonly string[]): void;
-  onResolvedDisplayUpdated(displayId: number): void;
-  onDisplayPinned(displayId: number | undefined): void;
-  onDisplayResolvedForApps(key: string | undefined): void;
-  onScreenshotCaptured(dims: ScreenshotDims): void;
-  
-  // 锁
-  checkCuLock(): Promise<{ holder: string | undefined; isSelf: boolean }>;
-  acquireCuLock(): Promise<void>;
-  formatLockHeldMessage(holder: string): string;
-};
+// src/utils/computerUse/executor.ts
+function createCliExecutor(opts: {
+  getMouseAnimationEnabled: () => boolean;
+  getHideBeforeActionEnabled: () => boolean;
+  input?: ReturnType<typeof requireComputerUseInput>;
+  swift?: ReturnType<typeof requireComputerUseSwift>;
+}): ComputerExecutor
+
+export async function unhideComputerUseApps(
+  bundleIds: readonly string[]
+): Promise<void>
+
+// 关键内部函数
+function moveAndSettle(input: Input, x: number, y: number): Promise<void>
+function releasePressed(input: Input, pressed: string[]): Promise<void>
+async function withModifiers<T>(
+  input: Input, mods: string[], fn: () => Promise<T>
+): Promise<T>
+async function typeViaClipboard(input: Input, text: string): Promise<void>
+async function animatedMove(
+  input: Input, targetX: number, targetY: number, mouseAnimationEnabled: boolean
+): Promise<void>
 ```
 
-### 4.2 截图与输入
+#### 输入输出
 
-#### 4.2.1 截图流程
+| 输入 | 类型 | 说明 |
+|------|------|------|
+| opts.getMouseAnimationEnabled | () => boolean | 子门控回调 |
+| opts.getHideBeforeActionEnabled | () => boolean | 子门控回调 |
+| opts.input | optional | 注入的输入模块（测试用） |
+| opts.swift | optional | 注入的 Swift 模块（测试用） |
 
-1. **Prepare Capture**：`resolvePrepareCapture` 执行权限检查、显示解析、应用隐藏
-2. **Screenshot Capture**：`screenshot` 调用 Swift 端的 `captureExcluding`
-3. **Resize**：使用 `targetImageSize` 将物理像素缩放到 API 目标尺寸（max 1568x1568, 1.15M pixels）
-4. **Metadata Recording**：`onScreenshotCaptured` 记录显示原点、尺寸、缩放因子
+| 输出 | 类型 | 说明 |
+|------|------|------|
+| executor.capabilities | { screenshotFiltering: 'native', platform: 'darwin', hostBundleId: string } | 能力声明 |
+| executor.screenshot() | Promise<ScreenshotResult> | 截图，已缩放到 API 目标尺寸 |
+| executor.prepareForAction() | Promise<string[]> | 返回被隐藏的 bundleId 列表 |
 
-#### 4.2.2 坐标系统
+#### 会话/显示/锁状态
 
-支持两种坐标模式：
+- **会话状态**：通过 `terminalBundleId` 检测 Surrogate Host
+- **显示状态**：`resolvePrepareCapture` 记录 `displayResolvedForApps`
+- **锁状态**：不直接访问锁，由上层协调
 
-- **Normalized**：`[0, 1]` 范围的归一化坐标，原点在左上角
-- **Pixels**：物理像素坐标，带显示原点偏移
-
-坐标转换公式（Native Adapter）：
-```
-logical_x = (pixel_x - origin_x) / width
-logical_y = (pixel_y - origin_y) / height
-```
-
-#### 4.2.3 输入执行
-
-输入操作通过 `drainRunLoop` 包装，确保 CFRunLoop 正常运转：
-
-- **Key Sequence**：`key` 方法支持 `ctrl+shift+a` 格式，8ms 间隔
-- **Type via Clipboard**：保存剪贴板 → 写入文本 → 验证 → Cmd+V → 恢复
-- **Mouse Move**：`moveAndSettle` 立即移动 + 50ms 等待
-- **Mouse Drag**：`animatedMove` 使用 ease-out-cubic 缓动，60fps，最长 0.5s
-
-#### 4.2.4 Native Helper
-
-Swift 二进制通过 JSON Lines 协议与 Node.js 通信：
+#### 坐标缩放
 
 ```typescript
-class NativeHelperClient {
-  request<T>(method: string, params?: Record<string, unknown>): Promise<T>;
-  onEvent(event: 'escape', listener: () => void): () => void;
-  close(): Promise<void>;
+// 坐标转换：Logical → Physical → API Target
+function computeTargetDims(
+  logicalW: number, logicalH: number, scaleFactor: number
+): [number, number] {
+  const physW = Math.round(logicalW * scaleFactor);
+  const physH = Math.round(logicalH * scaleFactor);
+  return targetImageSize(physW, physH, API_RESIZE_PARAMS);
 }
 ```
 
-每请求 30s 超时，支持 AbortSignal，事件驱动接收 Escape 按键。
+- **API_RESIZE_PARAMS**：最大 1568x1568，总像素 ≤ 1.15M
+- **Native 坐标**：带显示原点偏移 `(origin_x, origin_y)`
+- **Normalized**：[0,1] 归一化，原点左上角
 
-### 4.3 应用隐藏与显示
-
-#### 4.3.1 隐藏白名单
-
-`prepareForAction` 接收 `allowlistBundleIds`，隐藏所有不在白名单的应用。终端作为 Surrogate Host 被豁免：
+#### Surrogate Host
 
 ```typescript
-const surrogateHost = terminalBundleId ?? CLI_HOST_BUNDLE_ID;
-const withoutTerminal = (allowed: readonly string[]): string[] => 
-  terminalBundleId === null ? [...allowed] : allowed.filter(id => id !== terminalBundleId);
+// src/utils/computerUse/common.ts
+const CLI_HOST_BUNDLE_ID = 'com.anthropic.claude-code.cli-no-window'
+const surrogateHost = terminalBundleId ?? CLI_HOST_BUNDLE_ID
+
+function getTerminalBundleId(): string | null {
+  const cfBundleId = process.env.__CFBundleIdentifier
+  if (cfBundleId) return cfBundleId
+  return TERMINAL_BUNDLE_ID_FALLBACK[env.terminal ?? ''] ?? null
+}
 ```
 
-#### 4.3.2 Sentinel Apps
+- **豁免隐藏**：`prepareDisplay(allowlist, surrogateHost, ...)`
+- **豁免截图**：`withoutTerminal(allowed)` 过滤终端 bundleId
+- **检测方式**：优先 `__CFBundleIdentifier`，次查表 fallback
 
-`SENTINEL_APPS` 定义了敏感应用，包括 Terminal、Finder、System Settings 等，用于权限对话框的特殊提示。
+#### 准备/执行/中止/清理流程
 
-#### 4.3.3 显示解析
+| 阶段 | 流程 |
+|------|------|
+| **准备** | `prepareForAction()` → `cu.apps.prepareDisplay()` + `drainRunLoop` 包装 |
+| **执行** | 鼠标键盘操作通过 `drainRunLoop()` 包装，确保 CFRunLoop 泵动 |
+| **中止** | `AbortSignal` 由 `drainRunLoop` 转发到 `NativeHelperClient.request()` |
+| **清理** | `unhideComputerUseApps()` 单独导出，供 `cleanup.ts` 调用 |
 
-`autoResolve` 模式：
-1. 查找目标应用窗口所在的显示器
-2. 如果找不到，使用主显示器
-3. 记录 `displayResolvedForApps` 键
+#### 错误与安全
 
-### 4.4 锁与 ESC 中止
+| 错误类型 | 触发条件 | 处理 |
+|----------|----------|------|
+| 输入序列部分失败 | `holdKey()`/`drag()` 中途抛错 | `releasePressed()` 逆序释放已按下键/修饰键，鼠标按钮最终释放 |
+| `typeViaClipboard` 回写验证失败 | `pbpaste` 结果不一致 | 不按 Cmd+V，抛错，`finally` 恢复原始剪贴板 |
+| `unhideComputerUseApps()` 超时/失败 | 由 `cleanup.ts` 5s 超时处理 | 记录日志，继续执行后续清理 |
 
-#### 4.4.1 文件锁
+#### 设计取舍/备选
 
-使用 O_EXCL 原子创建的文件锁，位于 `~/.claude/computer-use.lock`：
+| 选项 | 取舍 |
+|------|------|
+| `moveAndSettle` 50ms vs 更长 | 选择 50ms，平衡响应性与 HID 事件稳定时间 |
+| `animatedMove` 60fps ease-out-cubic | 选择缓动，避免拖拽跳变；最长 0.5s |
+| `typeViaClipboard` 读回验证 vs 不验证 | 选择验证，避免粘贴错误内容 |
+| `typeViaClipboard` 恢复前 sleep 100ms | 选择 sleep，避免目标应用尚未粘贴我们就恢复 |
+| CLI 无窗口 | 不做 `setIgnoreMouseEvents` |
+
+#### 源码测试证据
+
+- **源码**：`src/utils/computerUse/executor.ts`
+- **测试**：`tests/computerUseExecutor.test.ts` 覆盖 `holdKey` 释放、`drag` 释放、`typeViaClipboard` 回写验证
+- **证据**：第 4.2 节 `computeTargetDims` 坐标缩放
+
+---
+
+### 4.3 Native Helper 通信模块
+
+#### 真实入口签名/关键类型
 
 ```typescript
-type ComputerUseLock = {
-  sessionId: string;
-  pid: number;
-  acquiredAt: number;
+// src/utils/computerUse/nativeHelper.ts
+export type ComputerUseHelper = {
+  request<T>(
+    method: string,
+    params?: Record<string, unknown>,
+    options?: { signal?: AbortSignal; timeoutMs?: number }
+  ): Promise<T>;
+  onEvent(event: 'escape', listener: () => void): () => void;
+  close(): Promise<void>;
 };
+
+class NativeHelperClient implements ComputerUseHelper {
+  constructor(child: ChildProcessWithoutNullStreams);
+}
+
+export function getComputerUseHelper(): ComputerUseHelper;
+export async function closeComputerUseHelper(): Promise<void>;
 ```
 
-锁获取流程：
-1. 尝试 `wx` 模式创建
-2. 如果存在，检查是否为自己或过期
-3. 过期则删除重试
+#### JSON Lines 协议
 
-#### 4.4.2 Escape 热键
+```
+// 请求线
+{"id":"<uuid>","method":"<method>","params":<object>}\n
 
-Native Adapter 注册 CGEventTap 监听 Escape 按键：
+// 响应线
+{"id":"<uuid>","ok":true,"result":<value>}\n
+{"id":"<uuid>","ok":false,"error":"<message>"}\n
 
-- 用户按下 Escape → 触发 `abortController.abort()`
-- 模型合成的 Escape → 通过 `notifyExpectedEscape` 豁免
+// 事件线
+{"event":"escape"}\n
+```
 
-#### 4.4.3 通知
+- **每线一个 JSON**：无嵌套帧
+- **超时**：默认 30s，可配置 `timeoutMs`
+- **stderr**：仅诊断，不解析，不记录（避免敏感桌面数据）
 
-- **Enter**："Claude is using your computer · press Esc to stop"
-- **Exit**："Claude is done using your computer"
+#### 输入输出
 
-### 4.5 权限与隐私
+| 输入 | 类型 | 说明 |
+|------|------|------|
+| method | string | Swift 方法名，如 `screenshot.captureExcluding` |
+| params | Record<string, unknown> | 方法参数 |
+| options.signal | AbortSignal? | 中止信号 |
+| options.timeoutMs | number? | 超时，默认 30000 |
 
-#### 4.5.1 OS 权限检查
+| 输出 | 类型 | 说明 |
+|------|------|------|
+| result | T | 反序列化的结果 |
+| event: 'escape' | 事件 | 用户按 ESC 时触发 |
 
-TCC 权限预检查：
-- Accessibility（辅助功能）
-- Screen Recording（屏幕录制）
+#### 会话/显示/锁状态
 
-失败返回 `tcc_denied` 结构化错误。
+- **会话状态**：`getComputerUseHelper()` 单例缓存
+- **显示状态**：不直接访问，由 Swift 侧处理
+- **锁状态**：不直接访问，由上层协调
 
-#### 4.5.2 应用授权
+#### 准备/执行/中止/清理流程
 
-`ComputerUseApproval` 对话框显示：
-- 请求的应用列表
-- 权限标志（剪贴板读写、系统组合键）
-- TCC 状态
-- 将被隐藏的应用预览
+| 阶段 | 流程 |
+|------|------|
+| **准备** | `getComputerUseHelper()` 首次调用时 `spawn()` Swift 二进制 |
+| **执行** | `request()` → 写 stdin JSON Line → 读 stdout JSON Line |
+| **中止** | `signal?.addEventListener('abort')` → `reject(abortError())` |
+| **清理** | `close()` → `stdin.end()` → 250ms 后 `SIGTERM` |
 
-#### 4.5.3 权限标志
+#### 错误与安全
+
+| 错误类型 | 触发条件 | 处理 |
+|----------|----------|------|
+| `AbortError` | `options.signal` 触发 | 清理 pending map、timer、监听器 |
+| 超时 | `options.timeoutMs` 到期 | 同上，抛错含方法名 |
+| Helper 意外退出 | `child.on('exit')` | `failAll()` 所有 pending 请求 |
+| stderr 数据 | 任意 | 静默消费，不记录（避免敏感桌面数据） |
+
+#### 设计取舍/备选
+
+| 选项 | 取舍 |
+|------|------|
+| JSON Lines vs Protocol Buffers | 选择 JSON Lines，人类可读，无需预编译 |
+| 30s 默认超时 | 平衡慢速操作与用户体验 |
+| 250ms SIGTERM 延迟 | 给 Swift 侧优雅退出机会 |
+
+#### 源码测试证据
+
+- **源码**：`src/utils/computerUse/nativeHelper.ts`
+- **测试**：`tests/computerUseNativeHelper.test.ts` 覆盖 JSON Lines 协议、事件监听、超时与 AbortSignal
+- **证据**：第 4.3 节 `NativeHelperClient`
+
+---
+
+### 4.4 drainRunLoop 模块
+
+#### 真实入口签名/关键类型
 
 ```typescript
+// src/utils/computerUse/drainRunLoop.ts
+export async function drainRunLoop<T>(
+  fn: () => Promise<T>,
+  cu: ReturnType<typeof requireComputerUseSwift> = requireComputerUseSwift()
+): Promise<T>;
+
+// 内部状态
+let pump: ReturnType<typeof setInterval> | undefined
+let pending = 0
+let drainInFlight = false
+const TIMEOUT_MS = 30_000
+```
+
+#### 输入输出
+
+| 输入 | 类型 | 说明 |
+|------|------|------|
+| fn | () => Promise<T> | 要执行的 Swift/NAPI 函数 |
+| cu | optional | 注入的 Swift 模块（测试用） |
+
+| 输出 | 类型 | 说明 |
+|------|------|------|
+| fn() 的结果 | T | 透传返回值 |
+
+#### 会话/显示/锁状态
+
+- **会话状态**：进程级共享 `pump`、`pending` 计数器
+- **显示状态**：不直接访问
+- **锁状态**：不直接访问
+
+#### 准备/执行/中止/清理流程
+
+| 阶段 | 流程 |
+|------|------|
+| **准备** | `retain()` → `pending++` → 启动 `setInterval(drainTick, 1, cu)` |
+| **执行** | `Promise.race([fn(), timeout])`，同时泵动 |
+| **中止** | 超时或 AbortSignal 触发，孤儿 Promise 附加 `.catch(() => {})` 避免 `unhandledRejection` |
+| **清理** | `release()` → `pending--` → `pending <= 0` 时 clearInterval |
+
+#### 错误与安全
+
+| 错误类型 | 触发条件 | 处理 |
+|----------|----------|------|
+| 30s 超时 | `TIMEOUT_MS` 到期 | 抛错 `computer-use native call exceeded 30000ms` |
+| `drainTick()` 抛错 | `_drainMainRunLoop()` 失败 | 静默 `.catch()`，不掩盖实际 `fn()` 错误 |
+
+#### 设计取舍/备选
+
+| 选项 | 取舍 |
+|------|------|
+| setInterval 1ms vs 更长 | 选择 1ms，快速响应 CFRunLoop 事件 |
+| 30s 超时 vs 无超时 | 选择 30s，避免挂起 CLI |
+| 孤儿 Promise 附加 catch | 避免 `unhandledRejection` |
+
+#### 源码测试证据
+
+- **源码**：`src/utils/computerUse/drainRunLoop.ts`
+- **测试**：`tests/computerUseExecutor.test.ts` 间接覆盖
+- **证据**：第 4.4 节 `drainRunLoop` 包装所有 Swift 调用
+
+---
+
+### 4.5 文件锁模块
+
+#### 真实入口签名/关键类型
+
+```typescript
+// src/utils/computerUse/computerUseLock.ts
+type ComputerUseLock = {
+  readonly sessionId: string;
+  readonly pid: number;
+  readonly acquiredAt: number;
+};
+
+export type AcquireResult =
+  | { readonly kind: 'acquired'; readonly fresh: boolean }
+  | { readonly kind: 'blocked'; readonly by: string };
+
+export type CheckResult =
+  | { readonly kind: 'free' }
+  | { readonly kind: 'held_by_self' }
+  | { readonly kind: 'blocked'; readonly by: string };
+
+export async function checkComputerUseLock(): Promise<CheckResult>;
+export function isLockHeldLocally(): boolean;
+export async function tryAcquireComputerUseLock(): Promise<AcquireResult>;
+export async function releaseComputerUseLock(): Promise<boolean>;
+```
+
+#### O_EXCL 锁与 PID 复用
+
+```typescript
+// 原子创建（O_EXCL）
+async function tryCreateExclusive(lock: ComputerUseLock): Promise<boolean> {
+  try {
+    await writeFile(getLockPath(), jsonStringify(lock), { flag: 'wx' });
+    return true;
+  } catch (e: unknown) {
+    if (getErrnoCode(e) === 'EEXIST') return false;
+    throw e;
+  }
+}
+
+// PID 存活探测
+function isProcessRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+```
+
+- **O_EXCL**：`flag: 'wx'` 保证仅一个进程创建成功
+- **PID 复用风险**：进程死亡后，锁文件仍存在 → 同 PID 新进程被误判为存活 → 极小概率可接受
+- **锁路径**：`join(getClaudeConfigHomeDir(), 'computer-use.lock')`
+
+#### 输入输出
+
+| 输入 | 类型 | 说明 |
+|------|------|------|
+| 无（状态从全局获取） | - | `sessionId` 来自 `getSessionId()`、`pid` 来自 `process.pid` |
+
+| 输出 | 类型 | 说明 |
+|------|------|------|
+| `AcquireResult` | Union | 区分 `acquired`/`blocked`；`acquired` 分 `fresh: boolean` 用于决定是否发 enter 通知 |
+| `CheckResult` | Union | `defersLockAcquire` 工具用（如 `request_access`） |
+
+#### 会话/显示/锁状态
+
+- **会话状态**：`unregisterCleanup` 存在表示本地持有锁（零 syscall 检查）
+- **显示状态**：不直接访问
+- **锁状态**：
+  - `sessionId`、`pid`、`acquiredAt` 写入锁文件
+  - `isLockHeldLocally()` 零 syscall 快速路径
+  - `registerLockCleanup()` 注册进程退出清理
+
+#### 准备/执行/中止/清理流程
+
+| 阶段 | 流程 |
+|------|------|
+| **检查** | `checkComputerUseLock()` → 读锁 → 检查 PID 存活 → 可恢复则 `unlink` |
+| **获取** | `tryAcquireComputerUseLock()` → O_EXCL 创建 → 若存在则检查归属/PID → 可恢复则 `unlink` 重试一次 → 注册 shutdown cleanup |
+| **中止** | 不提供主动放弃，仅回合结束/进程退出释放 |
+| **清理** | `releaseComputerUseLock()` → `unregisterCleanup` → `unlink` 锁文件（仅自己持有） |
+
+#### 错误与安全
+
+| 错误类型 | 触发条件 | 处理 |
+|----------|----------|------|
+| 锁文件损坏/不可解析 | `jsonParse` 失败 | 视为 stale，`unlink` 后重试 |
+| `unlink` 失败 | 权限/竞态 | 静默 `catch(() => {})`，不阻塞重试/退出 |
+
+#### 设计取舍/备选
+
+| 选项 | 取舍 |
+|------|------|
+| 文件锁 vs 内存锁/命名信号量 | 选择文件锁，跨进程，持久化，可检查持有者 |
+| 重试一次 vs 无限重试 | 选择一次，避免 livelock |
+| 零 syscall `isLockHeldLocally()` | 避免非 CU 回合碰磁盘 |
+
+#### 源码测试证据
+
+- **源码**：`src/utils/computerUse/computerUseLock.ts`
+- **测试**：`tests/computerUseBackends.test.ts` 覆盖 acquire/release/check、stale recovery、reentrant
+- **证据**：第 4.5 节 O_EXCL 与 PID 存活检查
+
+---
+
+### 4.6 ESC 热键模块
+
+#### 真实入口签名/关键类型
+
+```typescript
+// src/utils/computerUse/escHotkey.ts
+export async function registerEscHotkey(onEscape: () => void): Promise<boolean>;
+export async function unregisterEscHotkey(): Promise<void>;
+export async function notifyExpectedEscape(): Promise<void>;
+
+// 内部状态
+let registered = false
+```
+
+#### CGEventTap ESC
+
+- **注册**：`cu.hotkey.registerEscape(onEscape)` → Swift 侧 `CGEvent.tapCreate` 监听系统 ESC
+- **消费**：注册期间 ESC 被全局消费（PI 防御：注入的 Escape 无法关闭对话框）
+- **豁免**：`notifyExpectedEscape()` → Swift 侧 100ms 窗口，此窗口内的 ESC 不触发 abort
+- **失败降级**：`registerEscape` 返回 `false` → 记录警告，CU 仍可用，只是没有 ESC abort
+
+#### 输入输出
+
+| 输入 | 类型 | 说明 |
+|------|------|------|
+| onEscape | () => void | ESC 回调，通常是 `abortController.abort()` |
+
+| 输出 | 类型 | 说明 |
+|------|------|------|
+| `registerEscHotkey` | Promise<boolean> | `false` 表示 CGEventTap 创建失败（通常缺少辅助权限） |
+
+#### 会话/显示/锁状态
+
+- **会话状态**：`registered` 布尔表示本进程已注册
+- **显示状态**：不直接访问
+- **锁状态**：不直接访问
+
+#### 准备/执行/中止/清理流程
+
+| 阶段 | 流程 |
+|------|------|
+| **准备** | `registerEscHotkey()` → `cu.hotkey.registerEscape()` → 设 `registered = true` |
+| **执行** | 用户按 ESC → Swift 侧 tap 回调 → 触发 `onEscape()` |
+| **中止** | 模型合成 ESC → `key("escape")`/`holdKey(["escape"])` 内调用 `notifyExpectedEscape()` |
+| **清理** | `unregisterEscHotkey()` → `cu.hotkey.unregister()` → 设 `registered = false` |
+
+#### 错误与安全
+
+| 错误类型 | 触发条件 | 处理 |
+|----------|----------|------|
+| `registerEscape` 返回 `false` | 缺少辅助权限或 tapCreate 失败 | 记录警告，CU 继续工作（无 ESC abort） |
+| `unregister` 抛错 | NAPI 异常 | `try/finally` 确保 `registered` 仍设 `false`，不阻塞锁释放 |
+
+#### 设计取舍/备选
+
+| 选项 | 取舍 |
+|------|------|
+| 全局消费 ESC | PI 防御：注入的 Escape 不能关闭对话框 |
+| 100ms 豁免窗口 | 平衡模型合成 Escape 与真实用户 Escape |
+
+#### 源码测试证据
+
+- **源码**：`src/utils/computerUse/escHotkey.ts`
+- **测试**：`tests/computerUseBackends.test.ts` 间接覆盖
+- **证据**：第 4.6 节 `notifyExpectedEscape` 模型 ESC 豁免
+
+---
+
+### 4.7 应用隐藏与显示解析模块
+
+#### 真实入口签名/关键类型
+
+```typescript
+// executor.ts 内
+async resolvePrepareCapture(opts: {
+  allowedBundleIds: string[];
+  preferredDisplayId?: number;
+  autoResolve: boolean;
+  doHide?: boolean;
+}): Promise<ResolvePrepareCaptureResult>;
+
+async prepareForAction(
+  allowlistBundleIds: string[],
+  displayId?: number
+): Promise<string[]>;
+
+async previewHideSet(
+  allowlistBundleIds: string[],
+  displayId?: number
+): Promise<Array<{ bundleId: string; displayName: string }>>;
+
+// common.ts
+export const CLI_HOST_BUNDLE_ID = 'com.anthropic.claude-code.cli-no-window';
+export function getTerminalBundleId(): string | null;
+```
+
+#### Sentinel Apps
+
+- **定义位置**：`src/external-stubs/computer-use-sentinel-apps.ts`
+- **内容**：Terminal、Finder、System Settings 等敏感应用
+- **用途**：权限对话框特殊提示（如 "您确定要授权 Claude 控制终端吗？"）
+
+#### 显示解析
+
+```typescript
+// autoResolve 流程
+1. cu.apps.findWindowDisplays(allowedBundleIds)
+2. 找到目标应用窗口所在的显示器
+3. 未找到时回退到主显示器
+4. 记录 displayResolvedForApps（避免反复解析）
+```
+
+#### 输入输出
+
+| 输入 | 类型 | 说明 |
+|------|------|------|
+| allowlistBundleIds | string[] | 允许的应用 bundleId 列表 |
+| autoResolve | boolean | 是否自动解析显示器 |
+| doHide | boolean? | 是否实际隐藏（预览用） |
+
+| 输出 | 类型 | 说明 |
+|------|------|------|
+| hidden | string[] | 被隐藏的 bundleId 列表 |
+| activated | string | undefined | 被激活的应用 bundleId |
+
+#### 会话/显示/锁状态
+
+- **会话状态**：`hiddenDuringTurn` 存入 `appState.computerUseMcpState`
+- **显示状态**：`displayResolvedForApps` 存入 session context
+- **锁状态**：不直接访问
+
+#### unhide 超时与失败降级
+
+```typescript
+// cleanup.ts
+const UNHIDE_TIMEOUT_MS = 5000;
+
+const unhide = unhideComputerUseApps([...hidden]).catch(...);
+const timeout = withResolvers<void>();
+const timer = setTimeout(timeout.resolve, UNHIDE_TIMEOUT_MS);
+await Promise.race([unhide, timeout.promise]).finally(() => clearTimeout(timer));
+```
+
+- **超时 5s**：`unhide` 超时时不等待，继续后续清理（锁释放、ESC 注销）
+- **失败降级**：`unhide` 抛错时仅记录日志，不阻塞
+
+#### 准备/执行/中止/清理流程
+
+| 阶段 | 流程 |
+|------|------|
+| **准备** | `resolvePrepareCapture()` / `prepareForAction()` → `drainRunLoop` 包装 |
+| **执行** | Swift 侧 `prepareDisplay()` 隐藏非白名单应用 |
+| **中止** | `drainRunLoop` 超时/Abort 传播 |
+| **清理** | `cleanupComputerUseAfterTurn()` 调用 `unhideComputerUseApps()`，5s 超时 |
+
+#### 错误与安全
+
+| 错误类型 | 触发条件 | 处理 |
+|----------|----------|------|
+| `prepareDisplay` 抛错 | 窗口操作失败 | 记录警告，继续动作执行 |
+| `unhide` 超时/失败 | 5s 未完成或抛错 | 记录日志，继续释放锁/注销热键 |
+
+#### 设计取舍/备选
+
+| 选项 | 取舍 |
+|------|------|
+| `prepareDisplay` `drainRunLoop` 包装 | 避免窗口事件堆积/闪烁 |
+| 5s unhide 超时 | 避免 abort 路径被挂起 |
+| Swift `unhide` 继续后台运行 | 不阻塞 CLI，即使超时 |
+| 终端 Surrogate Host | 终端不被隐藏，不被截图 |
+
+#### 源码测试证据
+
+- **源码**：`src/utils/computerUse/executor.ts`（`prepareForAction`/`resolvePrepareCapture`）、`cleanup.ts`（unhide 超时）
+- **测试**：`tests/computerUseBackends.test.ts` 覆盖 `prepareForAction`、`hiddenDuringTurn` 状态管理
+- **证据**：第 4.7 节 Surrogate Host、Sentinel Apps、显示解析
+
+---
+
+### 4.8 权限隐私模块
+
+#### 真实入口签名/关键类型
+
+```typescript
+// hostAdapter.ts
+ensureOsPermissions(): Promise<OsPermissionState>;
+
+// 来自 external-stubs
 type CuGrantFlags = {
   clipboardRead: boolean;
   clipboardWrite: boolean;
   systemKeyCombos: boolean;
 };
-```
 
-#### 4.5.4 子门控
-
-```typescript
 type CuSubGates = {
   pixelValidation: boolean;
   clipboardPasteMultiline: boolean;
@@ -356,31 +775,122 @@ type CuSubGates = {
 };
 ```
 
-### 4.6 Native 与 Stub 边界
+#### 输入输出
 
-#### 4.6.1 外部存根
+| 输入 | 类型 | 说明 |
+|------|------|------|
+| 无（权限检查来自 Swift 侧） | - | `cu.tcc.checkAccessibility()`、`cu.tcc.checkScreenRecording()` |
 
-`src/external-stubs/computer-use-*.ts` 提供：
-- `computer-use-types.ts`：类型定义
-- `computer-use-native.ts`：Native 后端工厂
-- `computer-use-mcp.ts`：Zavora 后端工厂
-- `computer-use-swift.ts`：Swift 加载器
-- `computer-use-input.ts`：输入加载器
-- `computer-use-sentinel-apps.ts`：敏感应用目录
+| 输出 | 类型 | 说明 |
+|------|------|------|
+| `OsPermissionState` | Union | `{granted: true}` 或带 accessibility/screenRecording 布尔 |
 
-#### 4.6.2 动态加载
+#### 会话/显示/锁状态
 
-Native 模块按需动态导入：
-- 截图不加载输入模块
-- 非 CU 回合不加载任何 CU 模块
-- Swift 二进制首次使用时 spawn
+- **会话状态**：`allowedApps`、`grantFlags`、`userDeniedBundleIds` 存入 session context
+- **显示状态**：不直接访问
+- **锁状态**：不直接访问
 
-#### 4.6.3 边界检查
+#### 准备/执行/中止/清理流程
 
-- 所有工具输入 schema 禁用 `additionalProperties`
-- 像素坐标验证范围
-- 归一化坐标验证 [0,1]
-- 目标应用精确匹配（非前缀）
+| 阶段 | 流程 |
+|------|------|
+| **准备** | `ensureOsPermissions()` → `cu.tcc.checkAccessibility()` + `checkScreenRecording()` |
+| **执行** | 工具调用前 `def checkPermissions` |
+| **中止** | 不适用 |
+| **清理** | 不适用 |
+
+#### 错误与安全
+
+| 错误类型 | 触发条件 | 处理 |
+|----------|----------|------|
+| `tcc_denied` | Accessibility 或 Screen Recording 缺失 | 结构化错误向上传播 |
+| 目标应用未授权 | 精确 bundleId 检查失败 | 拒绝执行 |
+
+#### 设计取舍/备选
+
+| 选项 | 取舍 |
+|------|------|
+| 精确 bundleId 匹配 | 非前缀，避免误授权 |
+| 剪贴板通过 pbpaste/pbcopy | 无 Electron clipboard，CLI 适配 |
+| 子门控细粒度控制 | 各功能可单独关 |
+
+#### 源码测试证据
+
+- **源码**：`src/utils/computerUse/hostAdapter.ts`（`ensureOsPermissions`）、`src/external-stubs/computer-use-types.ts`
+- **测试**：`tests/computerUseBackends.test.ts` 覆盖 TCC 检查、精确授权、子门控
+- **证据**：第 4.8 节权限标志与子门控
+
+---
+
+### 4.9 回合清理模块
+
+#### 真实入口签名/关键类型
+
+```typescript
+// src/utils/computerUse/cleanup.ts
+export async function cleanupComputerUseAfterTurn(
+  ctx: Pick<
+    ToolUseContext,
+    'getAppState' | 'setAppState' | 'sendOSNotification'
+  >
+): Promise<void>;
+
+const UNHIDE_TIMEOUT_MS = 5000;
+```
+
+#### 输入输出
+
+| 输入 | 类型 | 说明 |
+|------|------|------|
+| ctx.getAppState | () => AppState | 读取 `hiddenDuringTurn` |
+| ctx.setAppState | (updater) => void | 清空 `hiddenDuringTurn` |
+| ctx.sendOSNotification | (notification) => void | 发 exit 通知 |
+
+| 输出 | 类型 | 说明 |
+|------|------|------|
+| 无 | - | 仅副作用 |
+
+#### 会话/显示/锁状态
+
+- **会话状态**：读取/清空 `appState.computerUseMcpState.hiddenDuringTurn`
+- **显示状态**：不直接访问
+- **锁状态**：检查 `isLockHeldLocally()` 零 syscall 快速路径
+
+#### 准备/执行/中止/清理流程
+
+| 阶段 | 流程 |
+|------|------|
+| **调用位置** | 1. 自然回合结束（stopHooks.ts）；2. 流式中止（query.ts）；3. 工具执行中止（query.ts） |
+| **执行** | 1. `unhideComputerUseApps()` + 5s 超时；2. Zavora backend `close()`；3. `unregisterEscHotkey()`；4. `releaseComputerUseLock()` |
+| **中止** | 不适用（本身就是中止处理） |
+| **幂等** | 各步骤相互隔离，一步失败不影响其余 |
+
+#### 错误与安全
+
+| 错误类型 | 触发条件 | 处理 |
+|----------|----------|------|
+| `unhide` 超时/失败 | `cleanupComputerUseAfterTurn` 继续 |
+| `closeComputerUseBackend` 失败 | 记录日志，继续后续清理 |
+| `unregisterEscHotkey` 失败 | `try/catch` 吞错，继续释放锁 |
+| 各步骤隔离 | 一步失败不阻塞其余 |
+
+#### 设计取舍/备选
+
+| 选项 | 取舍 |
+|------|------|
+| 三调用点归一 | 统一自然结束与中止清理路径 |
+| 零 syscall `isLockHeldLocally()` 预检 | 非 CU 回合不碰磁盘 |
+| 动态 import | 非 CU 回合不加载 native 模块 |
+| 各步骤隔离 | unhide 失败不阻塞锁释放 |
+
+#### 源码测试证据
+
+- **源码**：`src/utils/computerUse/cleanup.ts`
+- **测试**：`tests/computerUseBackends.test.ts` 覆盖三调用点、幂等清理
+- **证据**：第 4.9 节三调用点与隔离清理
+
+---
 
 ## 5. 失败语义与工程取舍
 
@@ -410,7 +920,7 @@ Native 模块按需动态导入：
 ### 5.4 失败传播与工程取舍
 
 | 触发条件 | 语义与清理 | 调用方可见结果 |
-|---|---|---|
+|----------|----------|------------|
 | Accessibility 或 Screen Recording 缺失 | 在执行截图/输入前结束，不尝试绕过 TCC | 返回结构化 `tcc_denied` |
 | 目标应用未授权或指针下应用未授权 | 精确 bundle ID 检查在 prepare/input 前拒绝 | 返回权限工具错误，不执行桌面动作 |
 | Native Helper 请求超过 30s 或收到 abort | 请求取消并向上传播；Escape 用户事件中止当前控制器 | 结构化工具错误或保留 Abort 语义 |
@@ -433,19 +943,19 @@ Native 模块按需动态导入：
 ## 7. 代码与测试证据
 
 | 设计陈述 | 代码证据 | 测试证据 |
-|---|---|---|
-| 双后端、坐标、授权、TCC、截图与结构化错误 | `src/utils/computerUse/hostAdapter.ts`、`mcpServer.ts`、`wrapper.tsx`、`executor.ts` | `tests/computerUseBackends.test.ts` 覆盖 Native/Zavora 工厂、显示原点、全部 TCC 组合、精确授权、独立剪贴板/组合键门控、截图元数据和 Abort 边界；`computerUseWrapper.test.ts` 覆盖结果转换。 |
-| Native Helper JSON Lines 与输入/截图转发 | `nativeHelper.ts`、`swiftLoader.ts`、`inputLoader.ts`、`drainRunLoop.ts` | `tests/computerUseNativeHelper.test.ts` 覆盖平台检测、鼠标键盘 Unicode、Swift 方法转发、热键事件及响应/事件/abort/close 协议。 |
-| 输入失败清理与有界 runloop drain | `executor.ts`、`drainRunLoop.ts` | `tests/computerUseExecutor.test.ts` 覆盖 holdKey 部分失败、逆序释放、drag 失败释放、click 修饰键清理及并发 capture。 |
-| 锁、ESC 与回合清理 | `computerUseLock.ts`、`escHotkey.ts`、`cleanup.ts` | 相关单元和共享测试提供局部证据；真实多进程锁竞争、用户 ESC 与 macOS 桌面 unhide 仍需独立桌面环境验收。 |
-| 原生构建与敏感应用边界 | `native/OpenComputerUseHelper.swift`、`native/build.sh`、`appNames.ts` | `computerUseBackends.test.ts` 验证 sentinel catalog 和严格 schema；Swift 二进制真实 TCC 行为不能由 mock 测试替代。 |
+|----------|----------|----------|
+| 双后端、坐标、授权、TCC、截图与结构化错误 | `src/utils/computerUse/hostAdapter.ts`、`mcpServer.ts`、`wrapper.tsx`、`executor.ts` | `tests/computerUseBackends.test.ts` 覆盖 Native/Zavora 工厂、显示原点、全部 TCC 组合、精确授权、独立剪贴板/组合键门控、截图元数据和 Abort 边界；`computerUseWrapper.test.ts` 覆盖结果转换 |
+| Native Helper JSON Lines 与输入/截图转发 | `nativeHelper.ts`、`swiftLoader.ts`、`inputLoader.ts`、`drainRunLoop.ts` | `tests/computerUseNativeHelper.test.ts` 覆盖平台检测、鼠标键盘 Unicode、Swift 方法转发、热键事件及响应/事件/abort/close 协议 |
+| 输入失败清理与有界 runloop drain | `executor.ts`、`drainRunLoop.ts` | `tests/computerUseExecutor.test.ts` 覆盖 holdKey 部分失败、逆序释放、drag 失败释放、click 修饰键清理及并发 capture |
+| 锁、ESC 与回合清理 | `computerUseLock.ts`、`escHotkey.ts`、`cleanup.ts` | 相关单元和共享测试提供局部证据；真实多进程锁竞争、用户 ESC 与 macOS 桌面 unhide 仍需独立桌面环境验收 |
+| 原生构建与敏感应用边界 | `native/OpenComputerUseHelper.swift`、`native/build.sh`、`appNames.ts` | `computerUseBackends.test.ts` 验证 sentinel catalog 和严格 schema；Swift 二进制真实 TCC 行为不能由 mock 测试替代 |
 
 ## 8. 文件覆盖与相关子系统
 
 [Coverage](../../architecture/coverage/computer-use.yaml)
 
 | 文件分组 | 主拥有职责 | 相关子系统与边界 |
-|---|---|---|
+|----------|----------|----------------|
 | `src/utils/computerUse/executor.ts`、`hostAdapter.ts`、`mcpServer.ts` | 平台无关执行、宿主适配与 MCP 工具服务 | SessionContext 连接 AppState、权限对话框与会话锁 |
 | `nativeHelper.ts`、`swiftLoader.ts`、`inputLoader.ts`、`drainRunLoop.ts` | Native 动态加载、JSON Lines、输入与 runloop | Swift/Rust 实现位于 native helper，不由 TypeScript 层复制 |
 | `computerUseLock.ts`、`escHotkey.ts`、`cleanup.ts` | 互斥、用户中止和资源释放 | query/stopHooks 提供三个回合结束调用点 |
