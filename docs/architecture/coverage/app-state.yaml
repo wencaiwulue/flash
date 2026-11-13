@@ -1,0 +1,74 @@
+schema_version: 1
+spec_id: app-state
+spec: ../../superpowers/specs/2026-11-12-app-state-design.md
+status: draft
+groups:
+  - id: app-state-store
+    kind: source
+    section: 4
+    summary: AppState 类型定义、默认状态构造、核心状态字段（settings、tasks、mcp、plugins 等）
+    files:
+      - src/state/AppStateStore.ts
+  - id: app-state-store-impl
+    kind: source
+    section: 4
+    summary: 基础 Store 实现（getState、setState、subscribe），无 React 依赖
+    files:
+      - src/state/store.ts
+  - id: app-state-react
+    kind: source
+    section: 4
+    summary: React
+      集成（AppStateProvider、useAppState、useSetAppState、useAppStateStore），使用
+      useSyncExternalStore
+    files:
+      - src/state/AppState.tsx
+  - id: app-state-on-change
+    kind: source
+    section: 4
+    summary: onChangeAppState 钩子实现，同步状态到 CCR、全局配置文件、auth 缓存等
+    files:
+      - src/state/onChangeAppState.ts
+  - id: app-state-selectors
+    kind: source
+    section: 4
+    summary: 计算选择器（getViewedTeammateTask、getActiveAgentForInput）
+    files:
+      - src/state/selectors.ts
+  - id: app-state-teammate-view-helpers
+    kind: source
+    section: 4
+    summary: Teammate 视图辅助函数（enterTeammateView、exitTeammateView、stopOrDismissAgent）
+    files:
+      - src/state/teammateViewHelpers.ts
+  - id: bootstrap-state
+    kind: source
+    section: 4
+    summary: Bootstrap State 管理（与 AppState 分离，会话级全局变量）
+    files:
+      - src/bootstrap/state.ts
+  - id: context-state
+    kind: source
+    section: 4
+    summary: Context 状态管理
+    files:
+      - src/context.ts
+      - src/context/QueuedMessageContext.tsx
+      - src/context/fpsMetrics.tsx
+      - src/context/mailbox.tsx
+      - src/context/modalContext.tsx
+      - src/context/overlayContext.tsx
+      - src/context/promptOverlayContext.tsx
+      - src/context/stats.tsx
+  - id: history-state
+    kind: source
+    section: 4
+    summary: 历史记录管理
+    files:
+      - src/history.ts
+  - id: project-onboarding
+    kind: source
+    section: 4
+    summary: 项目引导状态
+    files:
+      - src/projectOnboardingState.ts

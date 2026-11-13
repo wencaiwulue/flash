@@ -1,0 +1,41 @@
+schema_version: 1
+spec_id: commit-attribution
+spec: ../../superpowers/specs/2026-11-12-commit-attribution-design.md
+status: draft
+groups:
+  - id: commit-attribution-core
+    kind: source
+    section: 4
+    summary: 核心归因状态定义、文件变更跟踪、贡献计算、快照/恢复、Git 工具辅助函数
+    files:
+      - src/utils/commitAttribution.ts
+  - id: attribution-hooks
+    kind: source
+    section: 4
+    summary: Edit/Write/Bash 工具钩子、文件内容缓存、HEAD 协调、持久化队列
+    files:
+      - src/utils/attributionHooks.ts
+  - id: attribution-trailer
+    kind: source
+    section: 4
+    summary: 公共 commit trailer 构建、计数器增量计算
+    files:
+      - src/utils/attributionTrailer.ts
+  - id: attribution-ui
+    kind: source
+    section: 4
+    summary: 归因文本生成、增强 PR 归因、用户消息统计、记忆访问统计
+    files:
+      - src/utils/attribution.ts
+  - id: post-commit-attribution
+    kind: source
+    section: 4
+    summary: prepare-commit-msg 钩子安装/卸载、Git 侧状态持久化、独立归因入口
+    files:
+      - src/utils/postCommitAttribution.ts
+  - id: commit-attribution-tests
+    kind: test
+    section: 7
+    summary: 提交归因完整测试覆盖（工具跟踪、Git 钩子、快照恢复、HEAD 协调等）
+    files:
+      - tests/commitAttributionWave2.test.ts

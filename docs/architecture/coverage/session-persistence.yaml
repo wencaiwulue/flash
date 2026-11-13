@@ -1,0 +1,67 @@
+schema_version: 1
+spec_id: session-persistence
+spec: ../../superpowers/specs/2026-11-12-session-persistence-design.md
+status: draft
+groups:
+  - id: additional-files-source
+    kind: source
+    section: 4
+    summary: Additional files
+    files:
+      - src/commands/session/index.ts
+      - src/commands/session/session.tsx
+      - src/migrations/migrateFennecToOpus.ts
+      - src/migrations/migrateLegacyOpusToCurrent.ts
+      - src/migrations/migrateOpusToOpus1m.ts
+      - src/migrations/migrateSonnet1mToSonnet45.ts
+      - src/migrations/migrateSonnet45ToSonnet46.ts
+      - src/migrations/resetAutoModeOptInForDefaultOffer.ts
+      - src/migrations/resetProToOpusDefault.ts
+      - src/utils/sessionActivity.ts
+      - src/utils/sessionDataUploader.ts
+      - src/utils/sessionEnvVars.ts
+      - src/utils/sessionEnvironment.ts
+      - src/utils/sessionFileAccessHooks.ts
+      - src/utils/sessionIngressAuth.ts
+      - src/utils/sessionRestore.ts
+      - src/utils/sessionStart.ts
+      - src/utils/sessionState.ts
+      - src/utils/sessionTitle.ts
+      - src/utils/sessionUrl.ts
+      - src/utils/telemetry/sessionTracing.ts
+  - id: additional-files-test
+    kind: test
+    section: 7
+    summary: Additional files
+    files:
+      - tests/backgroundSessionsDist.test.ts
+  - id: commands
+    kind: source
+    section: 4
+    summary: Command implementations
+    files:
+      - src/commands/backfill-sessions/index.ts
+  - id: session-storage-core
+    kind: source
+    section: 4
+    summary: 核心会话持久化，JSONL 写入队列与 flush
+    files:
+      - src/utils/sessionStorage.ts
+  - id: session-storage-portable
+    kind: source
+    section: 4
+    summary: 可移植会话存储工具，JSONL 头尾读取、路径处理、轻量元数据提取
+    files:
+      - src/utils/sessionStoragePortable.ts
+  - id: file-history
+    kind: source
+    section: 4
+    summary: 文件历史与快照（注意：fileCheckpointing.ts 归属 SDK 覆盖范围）
+    files:
+      - src/utils/fileHistory.ts
+  - id: session-storage-tests
+    kind: test
+    section: 7
+    summary: 会话持久化核心测试
+    files:
+      - tests/sessionChainRecovery.test.ts

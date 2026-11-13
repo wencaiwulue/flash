@@ -1,0 +1,216 @@
+schema_version: 1
+spec_id: ink-platform
+spec: ../../superpowers/specs/2026-11-12-ink-platform-design.md
+status: draft
+groups:
+  - id: additional-files
+    kind: source
+    section: 4
+    summary: Additional files
+    files:
+      - src/components/FilePathLink.tsx
+      - src/components/ThinkingToggle.tsx
+      - src/components/messages/HighlightedThinkingText.tsx
+      - src/hooks/useBlink.ts
+      - src/ink/bidi.ts
+      - src/ink/components/AppContext.ts
+      - src/ink/components/ClockContext.tsx
+      - src/ink/components/CursorDeclarationContext.ts
+      - src/ink/components/ErrorOverview.tsx
+      - src/ink/components/ScrollBox.tsx
+      - src/ink/components/StdinContext.ts
+      - src/ink/components/TerminalFocusContext.tsx
+      - src/ink/components/TerminalSizeContext.tsx
+      - src/ink/events/emitter.ts
+      - src/ink/events/focus-event.ts
+      - src/ink/events/keyboard-event.ts
+      - src/ink/events/paste-event.ts
+      - src/ink/events/resize-event.ts
+      - src/ink/events/terminal-event.ts
+      - src/ink/hooks/use-declared-cursor.ts
+      - src/ink/hooks/use-search-highlight.ts
+      - src/ink/layout/geometry.ts
+      - src/ink/line-width-cache.ts
+      - src/ink/root.ts
+      - src/ink/stringWidth.ts
+      - src/ink/termio.ts
+      - src/ink/termio/esc.ts
+      - src/ink/termio/parser.ts
+      - src/ink/termio/sgr.ts
+      - src/ink/useTerminalNotification.ts
+      - src/ink/widest-line.ts
+      - src/utils/errorLogSink.ts
+      - src/utils/ink.ts
+      - src/utils/sinks.ts
+      - src/utils/thinking.ts
+  - id: ink-core
+    kind: source
+    section: 4
+    summary: Ink 核心类与渲染生命周期
+    files:
+      - src/ink/ink.tsx
+      - src/ink.ts
+  - id: reconciler
+    kind: source
+    section: 4
+    summary: React reconciler 自定义集成
+    files:
+      - src/ink/reconciler.ts
+  - id: dom
+    kind: source
+    section: 4
+    summary: Ink DOM 树与 Yoga 节点关联
+    files:
+      - src/ink/dom.ts
+  - id: layout
+    kind: source
+    section: 4
+    summary: Yoga 布局引擎集成与测量
+    files:
+      - src/ink/layout/engine.ts
+      - src/ink/layout/node.ts
+      - src/ink/layout/yoga.ts
+      - src/ink/measure-element.ts
+      - src/ink/measure-text.ts
+      - src/ink/wrap-text.ts
+      - src/ink/squash-text-nodes.ts
+      - src/ink/get-max-width.ts
+      - src/ink/tabstops.ts
+  - id: screen
+    kind: source
+    section: 4
+    summary: 屏幕缓冲区与样式/字符/超链接池化
+    files:
+      - src/ink/screen.ts
+  - id: renderer
+    kind: source
+    section: 4
+    summary: 渲染器与节点渲染到输出
+    files:
+      - src/ink/renderer.ts
+      - src/ink/render-to-screen.ts
+      - src/ink/render-node-to-output.ts
+      - src/ink/render-border.ts
+      - src/ink/output.ts
+      - src/ink/node-cache.ts
+  - id: diff-optimizer
+    kind: source
+    section: 4
+    summary: 屏幕 diff 与补丁优化
+    files:
+      - src/ink/log-update.ts
+      - src/ink/optimizer.ts
+  - id: terminal
+    kind: source
+    section: 4
+    summary: 终端 I/O 与模式管理
+    files:
+      - src/ink/terminal.ts
+      - src/ink/termio/ansi.ts
+      - src/ink/termio/csi.ts
+      - src/ink/termio/dec.ts
+      - src/ink/termio/osc.ts
+      - src/ink/termio/tokenize.ts
+      - src/ink/termio/types.ts
+      - src/ink/clearTerminal.ts
+      - src/ink/supports-hyperlinks.ts
+  - id: input-parsing
+    kind: source
+    section: 4
+    summary: 终端输入解析与状态机
+    files:
+      - src/ink/parse-keypress.ts
+      - src/ink/terminal-querier.ts
+      - src/ink/terminal-focus-state.ts
+  - id: events
+    kind: source
+    section: 4
+    summary: 事件分发、焦点管理与 hit-test
+    files:
+      - src/ink/events/dispatcher.ts
+      - src/ink/events/event.ts
+      - src/ink/events/input-event.ts
+      - src/ink/events/click-event.ts
+      - src/ink/events/event-handlers.ts
+      - src/ink/events/terminal-focus-event.ts
+      - src/ink/focus.ts
+      - src/ink/hit-test.ts
+  - id: selection-scroll
+    kind: source
+    section: 4
+    summary: 文本选择、搜索高亮与光标管理
+    files:
+      - src/ink/selection.ts
+      - src/ink/searchHighlight.ts
+      - src/ink/cursor.ts
+  - id: components
+    kind: source
+    section: 4
+    summary: Ink 基础组件（Box、Text、Ansi 等）
+    files:
+      - src/ink/components/Box.tsx
+      - src/ink/components/Text.tsx
+      - src/ink/components/Newline.tsx
+      - src/ink/components/Spacer.tsx
+      - src/ink/components/RawAnsi.tsx
+      - src/ink/components/NoSelect.tsx
+      - src/ink/components/Link.tsx
+      - src/ink/components/Button.tsx
+      - src/ink/components/App.tsx
+      - src/ink/components/AlternateScreen.tsx
+  - id: hooks
+    kind: source
+    section: 4
+    summary: Ink hooks（useInput、useFocus、useTerminalViewport 等）
+    files:
+      - src/ink/hooks/use-input.ts
+      - src/ink/hooks/use-app.ts
+      - src/ink/hooks/use-stdin.ts
+      - src/ink/hooks/use-animation-frame.ts
+      - src/ink/hooks/use-interval.ts
+      - src/ink/hooks/use-selection.ts
+      - src/ink/hooks/use-terminal-viewport.ts
+      - src/ink/hooks/use-terminal-title.ts
+      - src/ink/hooks/use-tab-status.ts
+      - src/ink/hooks/use-terminal-focus.ts
+  - id: styles-ansi
+    kind: source
+    section: 4
+    summary: 样式、ANSI 处理与颜色
+    files:
+      - src/ink/styles.ts
+      - src/ink/colorize.ts
+      - src/ink/wrapAnsi.ts
+      - src/ink/Ansi.tsx
+  - id: frame-state
+    kind: source
+    section: 4
+    summary: Frame 状态、常量与实例管理
+    files:
+      - src/ink/frame.ts
+      - src/ink/constants.ts
+      - src/ink/instances.ts
+  - id: devtools
+    kind: source
+    section: 4
+    summary: React DevTools 连接
+    files:
+      - src/ink/devtools.ts
+  - id: utilities
+    kind: source
+    section: 4
+    summary: Ink 工具函数
+    files:
+      - src/ink/warn.ts
+  - id: native-ts
+    kind: source
+    section: 4
+    summary: Native TypeScript 绑定（特别是 Yoga 布局）
+    files:
+      - src/native-ts/yoga-layout/index.ts
+  - id: tests
+    kind: test
+    section: 7
+    summary: Ink 平台相关测试
+    files:
+      - tests/inkDevtools.test.ts

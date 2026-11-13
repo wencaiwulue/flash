@@ -1,0 +1,55 @@
+schema_version: 1
+spec_id: lsp
+spec: ../../superpowers/specs/2026-11-12-lsp-design.md
+status: draft
+groups:
+  - id: lsp-manager
+    kind: source
+    section: 4
+    summary: LSP服务入口、管理器实现（单例、初始化、关闭、服务器路由）
+    files:
+      - src/services/lsp/manager.ts
+      - src/services/lsp/LSPServerManager.ts
+  - id: lsp-server-instance
+    kind: source
+    section: 4
+    summary: LSP服务器实例实现（启动/停止、健康检查、请求发送、通知处理、重启策略）
+    files:
+      - src/services/lsp/LSPServerInstance.ts
+  - id: lsp-client
+    kind: source
+    section: 4
+    summary: LSP客户端实现（lazy load、vscode-jsonrpc封装）
+    files:
+      - src/services/lsp/LSPClient.ts
+  - id: lsp-config
+    kind: source
+    section: 4
+    summary: LSP配置获取（从插件加载）
+    files:
+      - src/services/lsp/config.ts
+  - id: lsp-types
+    kind: source
+    section: 4
+    summary: LSP类型定义
+    files:
+      - src/services/lsp/types.ts
+  - id: lsp-passive-feedback
+    kind: source
+    section: 4
+    summary: 被动诊断注册、去重、容量限制、跨回合记忆
+    files:
+      - src/services/lsp/passiveFeedback.ts
+  - id: lsp-tool
+    kind: source
+    section: 4
+    summary: LSP工具实现（所有LSP操作、位置1-based/0-based转换、gitignore过滤）
+    files:
+      - src/tools/LSPTool/LSPTool.ts
+  - id: lsp-tests
+    kind: test
+    section: 7
+    summary: LSP测试（基本配置、生命周期、崩溃重启）
+    files:
+      - tests/lsp.test.ts
+      - tests/lspLifecycle.test.ts

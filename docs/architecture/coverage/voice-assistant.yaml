@@ -1,0 +1,66 @@
+schema_version: 1
+spec_id: voice-assistant
+spec: ../../superpowers/specs/2026-11-12-voice-assistant-design.md
+status: draft
+groups:
+  - id: commands
+    kind: source
+    section: 4
+    summary: Command implementations
+    files:
+      - src/commands/voice/index.ts
+  - id: voice-mode-enabled
+    kind: source
+    section: 4
+    summary: 语音模式启用检查（Growthbook kill-switch + OAuth）
+    files:
+      - src/voice/voiceModeEnabled.ts
+  - id: voice-service
+    kind: source
+    section: 4
+    summary: 录音核心逻辑、平台适配（原生/arecord/sox）、环境检查、权限请求
+    files:
+      - src/services/voice.ts
+  - id: voice-keyterms
+    kind: source
+    section: 4
+    summary: STT 提升术语生成（全局术语 + 项目名 + 分支名 + 最近文件名）
+    files:
+      - src/services/voiceKeyterms.ts
+  - id: voice-stream-stt
+    kind: source
+    section: 4
+    summary: voice_stream WebSocket 连接、协议处理、finalize 逻辑、重连逻辑、Nova 3 开关、代理/mTLS 支持
+    files:
+      - src/services/voiceStreamSTT.ts
+  - id: voice-context
+    kind: source
+    section: 4
+    summary: 语音状态共享上下文（React context）
+    files:
+      - src/context/voice.tsx
+  - id: use-voice
+    kind: source
+    section: 4
+    summary: 语音主 hook、hold-to-talk 逻辑、focus 模式逻辑、静默drop 重放、early error
+      重试、键释放检测、音频电平计算、语言归一化
+    files:
+      - src/hooks/useVoice.ts
+  - id: use-voice-enabled
+    kind: source
+    section: 4
+    summary: React hook，结合 user intent + auth + growthbook
+    files:
+      - src/hooks/useVoiceEnabled.ts
+  - id: use-voice-integration
+    kind: source
+    section: 4
+    summary: 与终端输入框集成、键事件处理、占位文本管理、临时占位符波形显示锚定、键绑定处理
+    files:
+      - src/hooks/useVoiceIntegration.tsx
+  - id: cmd-voice
+    kind: source
+    section: 4
+    summary: /voice 命令实现、预检查、启用/禁用、提示显示
+    files:
+      - src/commands/voice/voice.ts

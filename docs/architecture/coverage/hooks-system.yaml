@@ -1,0 +1,101 @@
+schema_version: 1
+spec_id: hooks-system
+spec: ../../superpowers/specs/2026-11-12-hooks-system-design.md
+status: draft
+groups:
+  - id: utils-hooks
+    kind: source
+    section: 4
+    summary: 钩子执行核心 - 钩子执行和注册核心
+    files:
+      - src/utils/hooks/AsyncHookRegistry.ts
+      - src/utils/hooks/execAgentHook.ts
+      - src/utils/hooks/execHttpHook.ts
+      - src/utils/hooks/execPromptHook.ts
+      - src/utils/hooks/hookEvents.ts
+      - src/utils/hooks/hookHelpers.ts
+      - src/utils/hooks/hooksConfigManager.ts
+      - src/utils/hooks/hooksConfigSnapshot.ts
+      - src/utils/hooks/hooksSettings.ts
+      - src/utils/hooks/postSamplingHooks.ts
+      - src/utils/hooks/registerFrontmatterHooks.ts
+      - src/utils/hooks/sessionHooks.ts
+      - src/utils/hooks/ssrfGuard.ts
+  - id: hooks-ui
+    kind: source
+    section: 4
+    summary: 钩子 UI 组件 - 钩子相关的 React 组件
+    files:
+      - src/components/hooks/HooksConfigMenu.tsx
+      - src/components/hooks/PromptDialog.tsx
+      - src/components/hooks/SelectEventMode.tsx
+      - src/components/hooks/SelectHookMode.tsx
+      - src/components/hooks/SelectMatcherMode.tsx
+      - src/components/hooks/ViewHookMode.tsx
+  - id: hooks-schemas
+    kind: source
+    section: 4
+    summary: Hooks Zod schemas - 钩子配置的类型定义
+    files:
+      - src/schemas/hooks.ts
+  - id: uncovered-hooks
+    kind: source
+    section: 4
+    summary: 未覆盖的 React hooks
+    files:
+      - src/hooks/notifs/useTeammateShutdownNotification.ts
+      - src/hooks/useAfterFirstRender.ts
+      - src/hooks/useApiKeyVerification.ts
+      - src/hooks/useAssistantHistory.ts
+      - src/hooks/useAwaySummary.ts
+      - src/hooks/useCancelRequest.ts
+      - src/hooks/useChromeExtensionNotification.tsx
+      - src/hooks/useClaudeCodeHintRecommendation.tsx
+      - src/hooks/useClipboardImageHint.ts
+      - src/hooks/useCommandKeybindings.tsx
+      - src/hooks/useCommandQueue.ts
+      - src/hooks/useCopyOnSelect.ts
+      - src/hooks/useDeferredHookMessages.ts
+      - src/hooks/useDiffData.ts
+      - src/hooks/useDirectConnect.ts
+      - src/hooks/useDoublePress.ts
+      - src/hooks/useDynamicConfig.ts
+      - src/hooks/useElapsedTime.ts
+      - src/hooks/useExitOnCtrlCD.ts
+      - src/hooks/useExitOnCtrlCDWithKeybindings.ts
+      - src/hooks/useFileHistorySnapshotInit.ts
+      - src/hooks/useGlobalKeybindings.tsx
+      - src/hooks/useIdeAtMentioned.ts
+      - src/hooks/useIdeConnectionStatus.ts
+      - src/hooks/useIdeLogging.ts
+      - src/hooks/useIdeSelection.ts
+      - src/hooks/useInboxPoller.ts
+      - src/hooks/useIssueFlagBanner.ts
+      - src/hooks/useLogMessages.ts
+      - src/hooks/useLspPluginRecommendation.tsx
+      - src/hooks/useMainLoopModel.ts
+      - src/hooks/useManagePlugins.ts
+      - src/hooks/useMemoryUsage.ts
+      - src/hooks/useMergedClients.ts
+      - src/hooks/useMergedCommands.ts
+      - src/hooks/useMinDisplayTime.ts
+      - src/hooks/useNotifyAfterTimeout.ts
+      - src/hooks/useOfficialMarketplaceNotification.tsx
+      - src/hooks/usePasteHandler.ts
+      - src/hooks/usePluginRecommendationBase.tsx
+      - src/hooks/usePrStatus.ts
+      - src/hooks/usePromptsFromClaudeInChrome.tsx
+      - src/hooks/useQueueProcessor.ts
+      - src/hooks/useRemoteSession.ts
+      - src/hooks/useReplBridge.tsx
+      - src/hooks/useSearchInput.ts
+      - src/hooks/useSessionBackgrounding.ts
+      - src/hooks/useSettings.ts
+      - src/hooks/useSettingsChange.ts
+      - src/hooks/useSwarmInitialization.ts
+      - src/hooks/useTeleportResume.tsx
+      - src/hooks/useTerminalSize.ts
+      - src/hooks/useTimeout.ts
+      - src/hooks/useTurnDiffs.ts
+      - src/hooks/useUpdateNotification.ts
+      - src/hooks/useVirtualScroll.ts

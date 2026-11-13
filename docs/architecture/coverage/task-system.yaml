@@ -1,0 +1,172 @@
+schema_version: 1
+spec_id: task-system
+spec: ../../superpowers/specs/2026-11-13-task-system-design.md
+status: draft
+groups:
+  - id: task-core
+    kind: source
+    section: 4
+    summary: Task 核心类型、状态机、ID 生成、基础接口
+    files:
+      - src/Task.ts
+      - src/tasks.ts
+      - src/tasks/types.ts
+      - src/tasks/pillLabel.ts
+  - id: task-framework
+    kind: source
+    section: 4
+    summary: 任务框架，包括注册、更新、驱逐、轮询、attachments 生成
+    files:
+      - src/utils/task/framework.ts
+  - id: task-disk-output
+    kind: source
+    section: 4
+    summary: 任务输出文件管理，包括 DiskTaskOutput、增量读取、输出 cap、格式化
+    files:
+      - src/utils/task/diskOutput.ts
+      - src/utils/task/TaskOutput.ts
+      - src/utils/task/outputFormatting.ts
+      - src/utils/task/sdkProgress.ts
+  - id: task-stop
+    kind: source
+    section: 4
+    summary: 统一的任务停止入口 StopTaskError、stopTask()
+    files:
+      - src/tasks/stopTask.ts
+  - id: task-local-shell
+    kind: source
+    section: 4
+    summary: LocalShellTask 实现，包括 spawn、kill、输出处理
+    files:
+      - src/tasks/LocalShellTask/LocalShellTask.tsx
+      - src/tasks/LocalShellTask/guards.ts
+      - src/tasks/LocalShellTask/killShellTasks.ts
+  - id: task-in-process-teammate
+    kind: source
+    section: 4
+    summary: InProcessTeammateTask 实现
+    files:
+      - src/tasks/InProcessTeammateTask/types.ts
+      - src/tasks/InProcessTeammateTask/InProcessTeammateTask.tsx
+  - id: task-monitor-mcp
+    kind: source
+    section: 4
+    summary: MonitorMcpTask 实现
+    files:
+      - src/tasks/MonitorMcpTask/MonitorMcpTask.ts
+  - id: task-dream
+    kind: source
+    section: 4
+    summary: DreamTask 实现
+    files:
+      - src/tasks/DreamTask/DreamTask.ts
+  - id: task-local-main-session
+    kind: source
+    section: 4
+    summary: LocalMainSessionTask 实现
+    files:
+      - src/tasks/LocalMainSessionTask.ts
+  - id: todo-tasks-core
+    kind: source
+    section: 4
+    summary: Todo list 任务持久化、claim/block 逻辑、task list 管理
+    files:
+      - src/utils/tasks.ts
+  - id: task-create-tool
+    kind: source
+    section: 4
+    summary: TaskCreateTool 实现
+    files:
+      - src/tools/TaskCreateTool/TaskCreateTool.ts
+      - src/tools/TaskCreateTool/prompt.ts
+      - src/tools/TaskCreateTool/constants.ts
+  - id: task-get-tool
+    kind: source
+    section: 4
+    summary: TaskGetTool 实现
+    files:
+      - src/tools/TaskGetTool/TaskGetTool.ts
+      - src/tools/TaskGetTool/prompt.ts
+      - src/tools/TaskGetTool/constants.ts
+  - id: task-list-tool
+    kind: source
+    section: 4
+    summary: TaskListTool 实现
+    files:
+      - src/tools/TaskListTool/TaskListTool.ts
+      - src/tools/TaskListTool/prompt.ts
+      - src/tools/TaskListTool/constants.ts
+  - id: task-update-tool
+    kind: source
+    section: 4
+    summary: TaskUpdateTool 实现
+    files:
+      - src/tools/TaskUpdateTool/TaskUpdateTool.ts
+      - src/tools/TaskUpdateTool/prompt.ts
+      - src/tools/TaskUpdateTool/constants.ts
+  - id: task-stop-tool
+    kind: source
+    section: 4
+    summary: TaskStopTool 实现（包含 KillShell 别名）
+    files:
+      - src/tools/TaskStopTool/TaskStopTool.ts
+      - src/tools/TaskStopTool/UI.tsx
+      - src/tools/TaskStopTool/prompt.ts
+  - id: task-output-tool
+    kind: source
+    section: 4
+    summary: TaskOutputTool 实现
+    files:
+      - src/tools/TaskOutputTool/constants.ts
+  - id: todo-write-tool
+    kind: source
+    section: 4
+    summary: TodoWriteTool 实现
+    files:
+      - src/tools/TodoWriteTool/TodoWriteTool.ts
+      - src/tools/TodoWriteTool/prompt.ts
+      - src/tools/TodoWriteTool/constants.ts
+  - id: task-hooks
+    kind: source
+    section: 4
+    summary: 任务相关 hooks
+    files:
+      - src/hooks/useTasksV2.ts
+      - src/hooks/useTaskListWatcher.ts
+      - src/hooks/useScheduledTasks.ts
+      - src/hooks/useBackgroundTaskNavigation.ts
+  - id: task-ui-components
+    kind: source
+    section: 4
+    summary: 任务 UI 组件（后台任务、列表、详情等）
+    files:
+      - src/components/TaskListV2.tsx
+      - src/components/ResumeTask.tsx
+      - src/components/tasks/AsyncAgentDetailDialog.tsx
+      - src/components/tasks/BackgroundTask.tsx
+      - src/components/tasks/BackgroundTaskStatus.tsx
+      - src/components/tasks/BackgroundTasksDialog.tsx
+      - src/components/tasks/DreamDetailDialog.tsx
+      - src/components/tasks/InProcessTeammateDetailDialog.tsx
+      - src/components/tasks/MonitorMcpDetailDialog.tsx
+      - src/components/tasks/RemoteSessionDetailDialog.tsx
+      - src/components/tasks/RemoteSessionProgress.tsx
+      - src/components/tasks/ShellDetailDialog.tsx
+      - src/components/tasks/ShellProgress.tsx
+      - src/components/tasks/WorkflowDetailDialog.tsx
+      - src/components/tasks/renderToolActivity.tsx
+      - src/components/tasks/taskStatusUtils.tsx
+  - id: task-summary
+    kind: source
+    section: 4
+    summary: 任务摘要工具
+    files:
+      - src/utils/taskSummary.ts
+  - id: commands
+    kind: source
+    section: 4
+    summary: 状态相关命令实现
+    files:
+      - src/commands/status/index.ts
+      - src/commands/status/status.tsx
+      - src/commands/statusline.tsx

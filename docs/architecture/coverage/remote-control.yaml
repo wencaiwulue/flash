@@ -1,0 +1,70 @@
+schema_version: 1
+spec_id: remote-control
+spec: ../../superpowers/specs/2026-11-12-remote-control-design.md
+status: draft
+groups:
+  - id: additional-files
+    kind: source
+    section: 4
+    summary: Additional files
+    files:
+      - src/commands/remote-env/index.ts
+      - src/commands/remote-env/remote-env.tsx
+      - src/commands/remote-setup/api.ts
+      - src/commands/remote-setup/index.ts
+      - src/commands/remote-setup/remote-setup.tsx
+      - src/server/serverBanner.ts
+      - src/utils/background/remote/preconditions.ts
+      - src/utils/background/remote/remoteSession.ts
+  - id: remote-client
+    kind: source
+    section: 4
+    summary: CCR 模式客户端：远程会话管理、WebSocket 连接、SDK 消息适配、权限桥接
+    files:
+      - src/remote/RemoteSessionManager.ts
+      - src/remote/SessionsWebSocket.ts
+      - src/remote/sdkMessageAdapter.ts
+      - src/remote/remotePermissionBridge.ts
+  - id: remote-server
+    kind: source
+    section: 4
+    summary: Direct Connect 服务器：HTTP/WebSocket 服务、会话管理、进程后端、锁文件
+    files:
+      - src/server/server.ts
+      - src/server/sessionManager.ts
+      - src/server/directConnectManager.ts
+      - src/server/createDirectConnectSession.ts
+      - src/server/directConnectTransport.ts
+      - src/server/connectHeadless.ts
+      - src/server/lockfile.ts
+      - src/server/parseConnectUrl.ts
+      - src/server/types.ts
+      - src/server/serverLog.ts
+      - src/server/backends/processBackend.ts
+      - src/server/backends/dangerousBackend.ts
+  - id: remote-control-command
+    kind: source
+    section: 4
+    summary: remote-control-server 命令入口与服务器生命周期管理
+    files:
+      - src/commands/remoteControlServer/index.ts
+      - src/commands/remoteControlServer/server.ts
+  - id: remote-sdk-control
+    kind: source
+    section: 4
+    summary: SDK 远程控制适配层：连接 RemoteControlHandle 与内部查询
+    files:
+      - src/utils/sdkRemoteControl.ts
+  - id: remote-transport
+    kind: source
+    section: 4
+    summary: 直接连接传输辅助：Unix socket 路径解析、HTTP/WebSocket URL 构造
+    files:
+      - src/transport/transport.ts
+      - src/transport/processTransportTypes.ts
+  - id: remote-tests
+    kind: test
+    section: 7
+    summary: 远程控制与 direct-connect 测试：认证、幂等、重放、权限、空闲回收、Unix socket
+    files:
+      - tests/directConnect.test.ts

@@ -1,0 +1,29 @@
+schema_version: 1
+spec_id: buddy
+spec: ../../superpowers/specs/2026-11-12-buddy-design.md
+status: draft
+groups:
+  - id: additional-files
+    kind: test
+    section: 7
+    summary: Additional files
+    files:
+      - tests/buddyFork.test.ts
+  - id: commands
+    kind: source
+    section: 4
+    summary: Command implementations
+    files:
+      - src/commands/buddy/index.ts
+  - id: buddy-core
+    kind: source
+    section: 4
+    summary: Buddy core logic, sprite rendering, notifications
+    files:
+      - src/buddy/CompanionSprite.tsx
+      - src/buddy/companion.ts
+      - src/buddy/companionObserver.ts
+      - src/buddy/prompt.ts
+      - src/buddy/sprites.ts
+      - src/buddy/types.ts
+      - src/buddy/useBuddyNotification.tsx

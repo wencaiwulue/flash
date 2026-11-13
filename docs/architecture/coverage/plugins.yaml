@@ -1,0 +1,150 @@
+schema_version: 1
+spec_id: plugins
+spec: ../../superpowers/specs/2026-11-12-plugins-design.md
+status: draft
+groups:
+  - id: additional-files
+    kind: test
+    section: 7
+    summary: Additional files
+    files:
+      - tests/npmMarketplace.test.ts
+  - id: types
+    kind: source
+    section: 4
+    summary: 插件类型定义模块，定义插件系统的核心数据结构、错误类型、和组件接口
+    files:
+      - src/types/plugin.ts
+  - id: loader
+    kind: source
+    section: 4
+    summary: 插件加载核心模块，负责插件发现、加载、验证、缓存管理，是整个插件系统的入口
+    files:
+      - src/utils/plugins/pluginLoader.ts
+  - id: schemas
+    kind: source
+    section: 4
+    summary: 插件数据验证schema，定义plugin.json、marketplace.json等配置文件的schema和类型
+    files:
+      - src/utils/plugins/schemas.ts
+  - id: marketplace
+    kind: source
+    section: 4
+    summary: 插件市场管理模块，负责市场源注册、缓存、更新等功能
+    files:
+      - src/utils/plugins/marketplaceManager.ts
+      - src/utils/plugins/marketplaceHelpers.ts
+      - src/utils/plugins/officialMarketplace.ts
+      - src/utils/plugins/officialMarketplaceGcs.ts
+      - src/utils/plugins/officialMarketplaceStartupCheck.ts
+  - id: installed
+    kind: source
+    section: 4
+    summary: 已安装插件管理，跟踪全局安装元数据、多scope、版本管理
+    files:
+      - src/utils/plugins/installedPluginsManager.ts
+      - src/utils/plugins/pluginVersioning.ts
+      - src/utils/plugins/pluginDirectories.ts
+  - id: components
+    kind: source
+    section: 4
+    summary: 插件组件加载，加载插件提供的commands、agents、skills、hooks、output styles等
+    files:
+      - src/utils/plugins/loadPluginCommands.ts
+      - src/utils/plugins/loadPluginAgents.ts
+      - src/utils/plugins/loadPluginHooks.ts
+      - src/utils/plugins/loadPluginOutputStyles.ts
+      - src/utils/plugins/walkPluginMarkdown.ts
+  - id: integration
+    kind: source
+    section: 4
+    summary: 插件与其他子系统的集成，包括MCP、LSP集成
+    files:
+      - src/utils/plugins/mcpPluginIntegration.ts
+      - src/utils/plugins/lspPluginIntegration.ts
+      - src/utils/plugins/mcpbHandler.ts
+  - id: operations
+    kind: source
+    section: 4
+    summary: 插件操作服务，包括安装、卸载、启用、禁用等操作
+    files:
+      - src/services/plugins/pluginOperations.ts
+      - src/services/plugins/pluginCliCommands.ts
+      - src/services/plugins/PluginInstallationManager.ts
+  - id: ui
+    kind: source
+    section: 4
+    summary: 插件用户界面，/plugin命令的界面组件
+    files:
+      - src/commands/plugin/plugin.tsx
+      - src/commands/plugin/DiscoverPlugins.tsx
+      - src/commands/plugin/ManagePlugins.tsx
+      - src/commands/plugin/BrowseMarketplace.tsx
+      - src/commands/plugin/ManageMarketplaces.tsx
+      - src/commands/plugin/AddMarketplace.tsx
+      - src/commands/plugin/PluginOptionsDialog.tsx
+      - src/commands/plugin/PluginOptionsFlow.tsx
+      - src/commands/plugin/PluginSettings.tsx
+      - src/commands/plugin/ValidatePlugin.tsx
+      - src/commands/plugin/PluginErrors.tsx
+      - src/commands/plugin/PluginTrustWarning.tsx
+      - src/commands/plugin/UnifiedInstalledCell.tsx
+      - src/commands/plugin/pluginDetailsHelpers.tsx
+      - src/commands/plugin/usePagination.ts
+      - src/commands/plugin/types.ts
+      - src/commands/plugin/unifiedTypes.ts
+      - src/commands/plugin/parseArgs.ts
+      - src/commands/plugin/index.tsx
+      - src/commands/reload-plugins/index.ts
+      - src/commands/reload-plugins/reload-plugins.ts
+  - id: builtin
+    kind: source
+    section: 4
+    summary: 内置插件管理，内置插件的定义和注册
+    files:
+      - src/plugins/builtinPlugins.ts
+      - src/plugins/bundled/index.ts
+  - id: utils
+    kind: source
+    section: 4
+    summary: 插件工具模块，包括缓存、策略、黑名单、自动更新、依赖解析等辅助功能
+    files:
+      - src/utils/plugins/cacheUtils.ts
+      - src/utils/plugins/zipCache.ts
+      - src/utils/plugins/zipCacheAdapters.ts
+      - src/utils/plugins/pluginBlocklist.ts
+      - src/utils/plugins/pluginPolicy.ts
+      - src/utils/plugins/pluginAutoupdate.ts
+      - src/utils/plugins/dependencyResolver.ts
+      - src/utils/plugins/orphanedPluginFilter.ts
+      - src/utils/plugins/validatePlugin.ts
+      - src/utils/plugins/pluginOptionsStorage.ts
+      - src/utils/plugins/pluginInstallationHelpers.ts
+      - src/utils/plugins/gitAvailability.ts
+      - src/utils/plugins/parseMarketplaceInput.ts
+      - src/utils/plugins/headlessPluginInstall.ts
+      - src/utils/plugins/performStartupChecks.tsx
+      - src/utils/plugins/pluginStartupCheck.ts
+      - src/utils/plugins/installCounts.ts
+      - src/utils/plugins/hintRecommendation.ts
+      - src/utils/plugins/lspRecommendation.ts
+      - src/utils/plugins/fetchTelemetry.ts
+      - src/utils/plugins/managedPlugins.ts
+      - src/utils/plugins/pluginIdentifier.ts
+      - src/utils/plugins/pluginFlagging.ts
+      - src/utils/plugins/refresh.ts
+      - src/utils/plugins/reconciler.ts
+      - src/utils/plugins/addDirPluginSettings.ts
+      - src/utils/settings/pluginOnlyPolicy.ts
+  - id: cli
+    kind: source
+    section: 4
+    summary: CLI处理，插件相关的命令处理
+    files:
+      - src/cli/handlers/plugins.ts
+  - id: telemetry
+    kind: source
+    section: 4
+    summary: 插件遥测，插件相关事件的遥测上报
+    files:
+      - src/utils/telemetry/pluginTelemetry.ts

@@ -32,6 +32,8 @@ The external build uses `USER_TYPE=external` and `features: []`. Internal or exp
 
 `AppState` is the shared state container for model selection, permissions, MCP clients/tools, tasks, plugins, file history, and UI state. The SDK wraps this machinery in `src/utils/sdkQuery.ts`; it does not spawn the interactive Ink UI.
 
+For the concrete entry signatures, state ownership, persistence ordering, recovery branches, cleanup semantics, and design trade-offs behind this flow, read [Query Core 对话与工具执行设计](superpowers/specs/2026-11-12-query-core-design.md).
+
 ## SDK composition
 
 - `src/utils/sdkQuery.ts`: async query input/output, permissions, MCP lifecycle, model controls, and resource cleanup.
@@ -53,3 +55,7 @@ Session files live below the configured Claude home's `projects/` directory. Por
 `USER_TYPE === 'ant'` and `feature(...)` guard internal functionality, including KAIROS/proactive workflows, internal compaction, browser/computer use, coordinator workflows, and remote daemon modes. The external build does not advertise these as stable capabilities.
 
 Disabled modules may return `false`, an empty collection, or an explicit unavailable error. They are intentionally different from completed implementations. Verification status belongs in `docs/STATUS.md`; release history belongs in `docs/RELEASE.md`.
+
+## Subsystem design specifications
+
+The retrospective subsystem designs, review status, and primary file ownership index are maintained in [Subsystem design specs](architecture/INDEX.md). This page remains the product-level summary; subsystem prose lives in the linked specs rather than being duplicated here.

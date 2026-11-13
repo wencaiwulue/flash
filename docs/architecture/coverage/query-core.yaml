@@ -1,0 +1,39 @@
+schema_version: 1
+spec_id: query-core
+spec: ../../superpowers/specs/2026-11-12-query-core-design.md
+status: draft
+groups:
+  - id: additional-files
+    kind: source
+    section: 4
+    summary: Additional files
+    files:
+      - src/commands/context/apiView.ts
+      - src/commands/context/context-noninteractive.ts
+      - src/commands/context/context.tsx
+      - src/commands/context/index.ts
+      - src/main.tsx
+      - src/utils/context.ts
+      - src/utils/contextAnalysis.ts
+      - src/utils/contextSuggestions.ts
+      - src/utils/queryContext.ts
+      - src/utils/queryProfiler.ts
+      - src/utils/telemetry/bigqueryExporter.ts
+  - id: query-core
+    kind: source
+    section: 4
+    summary: Query Core 核心执行模块，负责跨轮次状态管理、单轮模型工具循环、以及辅助函数
+    files:
+      - src/QueryEngine.ts
+      - src/query.ts
+      - src/utils/queryHelpers.ts
+  - id: query-utils
+    kind: source
+    section: 4
+    summary: Query 相关工具
+    files:
+      - src/query/config.ts
+      - src/query/deps.ts
+      - src/query/stopHooks.ts
+      - src/query/tokenBudget.ts
+      - src/query/transitions.ts

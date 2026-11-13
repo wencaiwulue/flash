@@ -1,0 +1,74 @@
+schema_version: 1
+spec_id: messaging-primitives
+spec: ../../superpowers/specs/2026-11-12-messaging-primitives-design.md
+status: draft
+groups:
+  - id: mailbox
+    kind: source
+    section: 4
+    summary: Mailbox 邮箱 - 消息存储和等待机制
+    files:
+      - src/utils/mailbox.ts
+  - id: message-queue-manager
+    kind: source
+    section: 4
+    summary: 统一命令队列 - 模块级单例队列、三级优先级
+    files:
+      - src/utils/messageQueueManager.ts
+  - id: peer-address
+    kind: source
+    section: 4
+    summary: 对等地址解析 - URI 风格方案解析
+    files:
+      - src/utils/peerAddress.ts
+  - id: direct-member-message
+    kind: source
+    section: 4
+    summary: 团队成员直接消息 - @agent-name 语法解析
+    files:
+      - src/utils/directMemberMessage.ts
+  - id: control-message-compat
+    kind: source
+    section: 4
+    summary: 控制消息兼容性 - requestId → request_id 键名标准化
+    files:
+      - src/utils/controlMessageCompat.ts
+  - id: message-predicates
+    kind: source
+    section: 4
+    summary: 消息谓词函数 - isHumanTurn 判断纯用户输入回合
+    files:
+      - src/utils/messagePredicates.ts
+  - id: messages-mappers
+    kind: source
+    section: 4
+    summary: SDK 消息映射 - 内部格式与 SDK 格式双向转换
+    files:
+      - src/utils/messages/mappers.ts
+  - id: messages-system-init
+    kind: source
+    section: 4
+    summary: 系统初始化消息 - 构建会话元数据
+    files:
+      - src/utils/messages/systemInit.ts
+  - id: uds-messaging-test
+    kind: test
+    section: 7
+    summary: UDS 消息测试 - 验证真实 socket 服务
+    files:
+      - tests/kairos.test.ts
+      - tests/messageRenderers.test.ts
+      - tests/monitorToolIntegration.test.ts
+  - id: constants-messages
+    kind: source
+    section: 4
+    summary: 消息相关常量
+    files:
+      - src/constants/messages.ts
+  - id: uncovered-message-types
+    kind: source
+    section: 4
+    summary: 未覆盖的消息类型定义
+    files:
+      - src/types/message.ts
+      - src/types/messageQueueTypes.ts

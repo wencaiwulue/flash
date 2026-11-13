@@ -1,0 +1,39 @@
+schema_version: 1
+spec_id: diagnostics
+spec: ../../superpowers/specs/2026-11-12-diagnostics-design.md
+status: draft
+groups:
+  - id: diagnostics-commands
+    kind: source
+    section: 4
+    summary: Diagnostics commands
+    files:
+      - src/commands/ant-trace/ant-trace.tsx
+      - src/commands/ant-trace/index.ts
+      - src/commands/ant-trace/recorder.ts
+      - src/commands/bughunter/index.ts
+      - src/commands/ctx_viz/ctx_viz.tsx
+      - src/commands/ctx_viz/index.ts
+      - src/commands/ctx_viz/messageTokens.ts
+      - src/commands/debug-tool-call/debug-tool-call.tsx
+      - src/commands/debug-tool-call/index.ts
+      - src/commands/debug-tool-call/inspection.ts
+      - src/commands/doctor/doctor.tsx
+      - src/commands/doctor/index.ts
+      - src/commands/heapdump/heapdump.ts
+      - src/commands/heapdump/index.ts
+      - src/commands/perf-issue/index.ts
+      - src/commands/perf-issue/perf-issue.tsx
+      - src/utils/debugFilter.ts
+  - id: diagnostics-tests
+    kind: test
+    section: 7
+    summary: Diagnostics tests
+    files:
+      - tests/bughunter.test.ts
+      - tests/debugToolCallCommand.test.ts
+      - tests/w6Logs.test.ts
+      - tests/w6Maintenance.test.ts
+      - tests/w6MoreRight.test.tsx
+      - tests/w6Tungsten.test.ts
+      - tests/w6TungstenFixture.tsx

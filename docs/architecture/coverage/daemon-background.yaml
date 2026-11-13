@@ -1,0 +1,65 @@
+schema_version: 1
+spec_id: daemon-background
+spec: ../../superpowers/specs/2026-11-12-daemon-background-design.md
+status: draft
+groups:
+  - id: daemon-main
+    kind: source
+    section: 4
+    summary: 守护进程命令与生命周期、PID记录、状态查询
+    files:
+      - src/daemon/main.ts
+  - id: daemon-supervisor
+    kind: source
+    section: 4
+    summary: Supervisor指数退避重启、进程管理、状态跟踪
+    files:
+      - src/daemon/supervisor.ts
+  - id: daemon-worker-registry
+    kind: source
+    section: 4
+    summary: Worker类型定义（assistant/remote-control）
+    files:
+      - src/daemon/workerRegistry.ts
+  - id: bg-cli
+    kind: source
+    section: 4
+    summary: 后台会话命令与生命周期（launch/attach/logs/kill/ps）
+    files:
+      - src/cli/bg.ts
+  - id: uds-registry
+    kind: source
+    section: 4
+    summary: UDS会话注册与发现、原子操作、权限验证
+    files:
+      - src/utils/udsRegistry.ts
+  - id: uds-messaging
+    kind: source
+    section: 4
+    summary: UDS服务器实现、ping/pong、消息处理、帧限制、连接管理
+    files:
+      - src/utils/udsMessaging.ts
+  - id: uds-client
+    kind: source
+    section: 4
+    summary: UDS客户端实现、ping、会话枚举、消息发送
+    files:
+      - src/utils/udsClient.ts
+  - id: daemon-tests
+    kind: test
+    section: 7
+    summary: 守护进程测试（启动/停止/状态查询、Supervisor重启、幂等启动、陈旧记录检测）
+    files:
+      - tests/daemon.test.ts
+  - id: background-sessions-tests
+    kind: test
+    section: 7
+    summary: 后台会话测试（会话发现/附着/日志/终止、身份验证、墓碑机制、并发会话）
+    files:
+      - tests/backgroundSessions.test.ts
+  - id: uds-messaging-tests
+    kind: test
+    section: 7
+    summary: UDS消息传递测试（ping/pong发现、消息发送、帧限制、会话识别）
+    files:
+      - tests/udsMessaging.test.ts

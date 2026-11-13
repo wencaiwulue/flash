@@ -1,0 +1,38 @@
+schema_version: 1
+spec_id: review-analysis
+spec: ../../superpowers/specs/2026-11-12-review-analysis-design.md
+status: draft
+groups:
+  - id: review-artifact-tool
+    kind: source
+    section: 4
+    summary: 审查工件工具 - 独立审查代理工具
+    files:
+      - src/tools/ReviewArtifactTool/ReviewArtifactTool.ts
+  - id: ctx-inspect-tool
+    kind: source
+    section: 4
+    summary: 上下文检查工具 - 检查上下文使用情况
+    files:
+      - src/tools/CtxInspectTool/CtxInspectTool.ts
+  - id: insights-command
+    kind: source
+    section: 4
+    summary: 洞察命令 - 会话元数据和分析
+    files:
+      - src/commands/insights.ts
+      - src/commands/insights/sessionMeta.ts
+  - id: context-analysis
+    kind: source
+    section: 4
+    summary: 上下文分析 - 上下文相关工具
+    files:
+      - src/utils/analyzeContext.ts
+      - src/utils/readEditContext.ts
+      - src/utils/workloadContext.ts
+  - id: review-test
+    kind: test
+    section: 7
+    summary: 审查测试 - 审查工具相关测试
+    files:
+      - tests/reviewArtifact.test.ts

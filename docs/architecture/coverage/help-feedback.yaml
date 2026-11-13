@@ -1,0 +1,26 @@
+schema_version: 1
+spec_id: help-feedback
+spec: ../../superpowers/specs/2026-11-12-help-feedback-design.md
+status: draft
+groups:
+  - id: additional-files
+    kind: source
+    section: 4
+    summary: Additional files
+    files:
+      - src/commands/feedback/feedback.tsx
+      - src/commands/feedback/feedbackAvailability.ts
+      - src/commands/feedback/index.ts
+      - src/components/FeedbackSurvey/feedbackSurveyShared.ts
+      - src/utils/dxt/helpers.ts
+  - id: commands
+    kind: source
+    section: 4
+    summary: Command implementations
+    files:
+      - src/commands/advisor.ts
+      - src/commands/btw/btw.tsx
+      - src/commands/btw/index.ts
+      - src/commands/help/help.tsx
+      - src/commands/help/index.ts
+      - src/commands/issue/index.ts

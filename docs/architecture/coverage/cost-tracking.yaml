@@ -1,0 +1,70 @@
+schema_version: 1
+spec_id: cost-tracking
+spec: ../../superpowers/specs/2026-11-12-cost-tracking-design.md
+status: draft
+groups:
+  - id: cost-tracker-core
+    kind: source
+    section: 4
+    summary: 成本累加、格式化、会话持久化与恢复、用量汇总、Advisor 递归处理
+    files:
+      - src/cost-tracker.ts
+  - id: cost-hook
+    kind: source
+    section: 4
+    summary: 会话退出时自动打印成本并保存、React hook
+    files:
+      - src/costHook.ts
+  - id: model-cost-config
+    kind: source
+    section: 4
+    summary: 模型定价配置、成本计算函数、定价 tier 定义、未知模型降级、定价字符串格式化
+    files:
+      - src/utils/modelCost.ts
+  - id: billing-access
+    kind: source
+    section: 4
+    summary: 成本显示权限判断、订阅/角色检查、测试用 mock 覆盖
+    files:
+      - src/utils/billing.ts
+  - id: extra-usage-util
+    kind: source
+    section: 4
+    summary: 超额使用计费判断（fast mode、1M context、Opus 4.6 等）
+    files:
+      - src/utils/extraUsage.ts
+  - id: claude-ai-limits
+    kind: source
+    section: 4
+    summary: 限额状态管理、响应头解析、early warning 检测、状态变更事件、overage disabled reason 缓存
+    files:
+      - src/services/claudeAiLimits.ts
+  - id: usage-api
+    kind: source
+    section: 4
+    summary: 用量/限额 API 调用、Utilization/RateLimit/ExtraUsage 类型定义
+    files:
+      - src/services/api/usage.ts
+  - id: cmd-cost
+    kind: source
+    section: 4
+    summary: /cost 命令实现、懒加载元数据
+    files:
+      - src/commands/cost/cost.ts
+      - src/commands/cost/index.ts
+  - id: cmd-usage
+    kind: source
+    section: 4
+    summary: /usage 命令实现（打开 Settings 到 Usage 标签）
+    files:
+      - src/commands/usage/usage.tsx
+      - src/commands/usage/index.ts
+  - id: cmd-extra-usage
+    kind: source
+    section: 4
+    summary: /extra-usage 命令实现（交互/非交互双版本）、权限判断流程分支、管理员请求
+    files:
+      - src/commands/extra-usage/extra-usage-core.ts
+      - src/commands/extra-usage/extra-usage.tsx
+      - src/commands/extra-usage/extra-usage-noninteractive.ts
+      - src/commands/extra-usage/index.ts

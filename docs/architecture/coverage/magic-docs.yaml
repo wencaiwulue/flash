@@ -1,0 +1,29 @@
+schema_version: 1
+spec_id: magic-docs
+spec: ../../superpowers/specs/2026-11-12-magic-docs-design.md
+status: draft
+groups:
+  - id: magic-docs-core
+    kind: source
+    section: 4
+    summary: Magic Docs 核心发现、跟踪与更新逻辑
+    files:
+      - src/services/MagicDocs/magicDocs.ts
+  - id: magic-docs-prompts
+    kind: source
+    section: 4
+    summary: Magic Docs 提示模板、自定义加载与变量替换
+    files:
+      - src/services/MagicDocs/prompts.ts
+  - id: magic-docs-init
+    kind: source
+    section: 4
+    summary: Magic Docs 初始化与后台集成
+    files:
+      - src/utils/backgroundHousekeeping.ts
+  - id: magic-docs-caches
+    kind: source
+    section: 4
+    summary: Magic Docs 会话清理与缓存清除
+    files:
+      - src/commands/clear/caches.ts

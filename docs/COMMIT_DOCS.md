@@ -24,3 +24,12 @@
 3. 每个实施任务执行对应测试，完成后再运行全量测试、typecheck 和 build。
 4. 缺少设计理由、备选方案不采用原因或实施顺序依据的文档不得通过评审，即使章节齐全、命令可执行。
 5. CI 不再运行 commit 级 `docs:check`。文档质量由逐功能评审和实际实施验证保证。
+
+## 回溯性子系统设计档案
+
+- 子系统 spec 必须具有 frontmatter `id`、`batch`、`status`，并使用九章模板。planned 只在 manifest 登记，不创建空 spec 或 coverage；draft/approved 必须有完整正文。
+- `src/`、`tests/`、`scripts/` 中的每个手写文件恰有一个主 spec。功能专用入口、命令、UI、hook 与测试按运行时职责归属，跨域引用不复制正文或重复归属。
+- `docs/architecture/coverage/manifest.yaml` 是 roots、spec 注册与排除规则的唯一来源；coverage YAML 显式列文件，`docs/architecture/INDEX.md` 只负责导航。
+- 生成代码和二进制排除必须有有界 glob、原因与 `source_spec`。不得按文件名或扩展名猜测：`src/entrypoints/sdk/settingsTypes.generated.ts` 是手写 re-export，必须纳入覆盖。
+- 关键行为使用路径与符号佐证。测试存在不等于通过，mock 不等于 live；实际结果只写入 `docs/STATUS.md` 或验证记录。
+- 每批同时运行结构检查和人工语义评审。自动检查通过不证明架构语义正确，也不能替代对“设计推断”和 P0/P1 建议证据的审查。

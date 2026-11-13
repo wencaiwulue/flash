@@ -1,0 +1,148 @@
+schema_version: 1
+spec_id: auth
+spec: ../../superpowers/specs/2026-11-12-auth-design.md
+status: draft
+groups:
+  - id: additional-files
+    kind: source
+    section: 4
+    summary: Additional files
+    files:
+      - src/commands/install-github-app/ApiKeyStep.tsx
+      - src/commands/install-github-app/CheckExistingSecretStep.tsx
+      - src/commands/install-github-app/CheckGitHubStep.tsx
+      - src/commands/install-github-app/ChooseRepoStep.tsx
+      - src/commands/install-github-app/CreatingStep.tsx
+      - src/commands/install-github-app/ErrorStep.tsx
+      - src/commands/install-github-app/ExistingWorkflowStep.tsx
+      - src/commands/install-github-app/InstallAppStep.tsx
+      - src/commands/install-github-app/OAuthFlowStep.tsx
+      - src/commands/install-github-app/SuccessStep.tsx
+      - src/commands/install-github-app/WarningsStep.tsx
+      - src/commands/install-github-app/index.ts
+      - src/commands/install-github-app/install-github-app.tsx
+      - src/commands/install-github-app/setupGitHubActions.ts
+      - src/commands/install-github-app/types.ts
+      - src/commands/login/index.ts
+      - src/commands/login/login.tsx
+      - src/commands/logout/index.ts
+      - src/commands/logout/logout.tsx
+  - id: commands
+    kind: source
+    section: 4
+    summary: Command implementations
+    files:
+      - src/commands/oauth-refresh/index.ts
+      - src/commands/oauth-refresh/oauthRefresh.ts
+  - id: auth-core
+    kind: source
+    section: 4
+    summary: 核心认证逻辑、token 管理、缓存、并发控制、apiKeyHelper、账户信息查询
+    files:
+      - src/utils/auth.ts
+  - id: auth-portable
+    kind: source
+    section: 4
+    summary: API key 便携操作（如 Keychain 删除）、normalize 函数
+    files:
+      - src/utils/authPortable.ts
+  - id: auth-file-descriptor
+    kind: source
+    section: 4
+    summary: FD 传递 token 读取、CCR subprocess 持久化、已知路径文件读写
+    files:
+      - src/utils/authFileDescriptor.ts
+  - id: secure-storage-types
+    kind: source
+    section: 4
+    summary: 安全存储类型定义（SecureStorageData、SecureStorage 接口、McpOAuthTokenData 等）
+    files:
+      - src/utils/secureStorage/types.ts
+  - id: secure-storage-factory
+    kind: source
+    section: 4
+    summary: 安全存储工厂函数，平台选择（macOS/Linux/other）
+    files:
+      - src/utils/secureStorage/index.ts
+  - id: secure-storage-macos
+    kind: source
+    section: 4
+    summary: macOS Keychain 存储实现、缓存管理（30 秒 TTL、generation、in-flight）、Keychain 预取
+    files:
+      - src/utils/secureStorage/macOsKeychainStorage.ts
+      - src/utils/secureStorage/macOsKeychainHelpers.ts
+      - src/utils/secureStorage/keychainPrefetch.ts
+  - id: secure-storage-linux
+    kind: source
+    section: 4
+    summary: Linux libsecret (secret-tool) 存储实现、测试支持
+    files:
+      - src/utils/secureStorage/linuxSecretStorage.ts
+  - id: secure-storage-plaintext
+    kind: source
+    section: 4
+    summary: Plaintext fallback 存储实现（~/.claude/.credentials.json，权限 0o600）
+    files:
+      - src/utils/secureStorage/plainTextStorage.ts
+  - id: secure-storage-fallback
+    kind: source
+    section: 4
+    summary: Fallback 组合模式实现（优先 primary，失败用 secondary；成功后删除 secondary）
+    files:
+      - src/utils/secureStorage/fallbackStorage.ts
+  - id: oauth-service
+    kind: source
+    section: 4
+    summary: OAuth 授权流程服务（浏览器自动回调 + 手动代码输入双路径）
+    files:
+      - src/services/oauth/index.ts
+  - id: oauth-client
+    kind: source
+    section: 4
+    summary: OAuth 客户端逻辑（token 交换、刷新、profile 获取、API key 创建、账户信息存储）
+    files:
+      - src/services/oauth/client.ts
+  - id: oauth-profile
+    kind: source
+    section: 4
+    summary: Profile 端点调用（OAuth token 或 API key）
+    files:
+      - src/services/oauth/getOauthProfile.ts
+  - id: oauth-constants
+    kind: source
+    section: 4
+    summary: OAuth 配置、endpoints、scopes、beta header、不同环境（prod/staging/local/custom）
+    files:
+      - src/constants/oauth.ts
+  - id: oauth-crypto
+    kind: source
+    section: 4
+    summary: PKCE code verifier/challenge、state 生成
+    files:
+      - src/services/oauth/crypto.ts
+  - id: oauth-auth-code-listener
+    kind: source
+    section: 4
+    summary: OAuth 回调本地服务器（自动路径）、随机端口监听、授权码接收
+    files:
+      - src/services/oauth/auth-code-listener.ts
+  - id: oauth-types
+    kind: source
+    section: 4
+    summary: OAuth
+      类型定义（OAuthTokens、OAuthProfileResponse、SubscriptionType、RateLimitTier 等）
+    files:
+      - src/services/oauth/types.ts
+  - id: cli-auth-handlers
+    kind: source
+    section: 4
+    summary: /login、/logout、/auth 命令处理、installOAuthTokens 安装流程
+    files:
+      - src/cli/handlers/auth.ts
+  - id: test-auth
+    kind: test
+    section: 7
+    summary: 认证相关测试（oauthRefresh.test.ts、linuxSecretStorage.test.ts）
+    files:
+      - tests/oauthRefresh.test.ts
+      - tests/linuxSecretStorage.test.ts

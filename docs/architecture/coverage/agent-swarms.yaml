@@ -1,0 +1,212 @@
+schema_version: 1
+spec_id: agent-swarms
+spec: ../../superpowers/specs/2026-11-12-agent-swarms-design.md
+status: draft
+groups:
+  - id: agent-tool-core
+    kind: source
+    section: 4
+    summary: AgentTool 核心实现，包括 spawn agent、fork 子代理、同步/异步执行、worktree 隔离
+    files:
+      - src/tools/AgentTool/AgentTool.tsx
+      - src/tools/AgentTool/agentToolUtils.ts
+      - src/tools/AgentTool/forkSubagent.ts
+      - src/tools/AgentTool/runAgent.ts
+      - src/tools/AgentTool/builtInAgents.ts
+      - src/tools/AgentTool/UI.tsx
+      - src/tools/AgentTool/prompt.ts
+      - src/tools/AgentTool/constants.ts
+      - src/tools/AgentTool/resumeAgent.ts
+  - id: agent-memory
+    kind: source
+    section: 4
+    summary: Agent 内存管理与快照机制
+    files:
+      - src/tools/AgentTool/agentMemory.ts
+      - src/tools/AgentTool/agentMemorySnapshot.ts
+      - src/tools/AgentTool/agentMemorySnapshotMerge.ts
+      - src/tools/AgentTool/loadAgentsDir.ts
+      - src/tools/AgentTool/agentColorManager.ts
+  - id: team-tools
+    kind: source
+    section: 4
+    summary: TeamCreateTool 和 TeamDeleteTool，用于创建和解散团队
+    files:
+      - src/tools/TeamCreateTool/TeamCreateTool.ts
+      - src/tools/TeamCreateTool/UI.tsx
+      - src/tools/TeamCreateTool/prompt.ts
+      - src/tools/TeamCreateTool/constants.ts
+      - src/tools/TeamDeleteTool/TeamDeleteTool.ts
+      - src/tools/TeamDeleteTool/UI.tsx
+      - src/tools/TeamDeleteTool/prompt.ts
+      - src/tools/TeamDeleteTool/constants.ts
+  - id: swarm-mailbox
+    kind: source
+    section: 4
+    summary: 基于文件系统的 mailbox 消息传递，支持跨进程和同进程通信
+    files:
+      - src/utils/teammateMailbox.ts
+  - id: swarm-team-state
+    kind: source
+    section: 4
+    summary: 团队文件读写、team directory 管理、团队发现
+    files:
+      - src/utils/swarm/teamHelpers.ts
+      - src/utils/swarm/constants.ts
+      - src/utils/teamDiscovery.ts
+  - id: swarm-permission-sync
+    kind: source
+    section: 4
+    summary: 团队权限同步，包括 UI bridge 和 mailbox 双路径
+    files:
+      - src/utils/swarm/permissionSync.ts
+      - src/utils/swarm/leaderPermissionBridge.ts
+  - id: swarm-in-process-runner
+    kind: source
+    section: 4
+    summary: in-process teammate 执行器、权限同步 bridge、teammate 初始化
+    files:
+      - src/utils/swarm/inProcessRunner.ts
+      - src/utils/swarm/teammateInit.ts
+      - src/utils/swarm/spawnInProcess.ts
+      - src/utils/swarm/spawnUtils.ts
+      - src/utils/swarm/It2SetupPrompt.tsx
+  - id: swarm-backends
+    kind: source
+    section: 4
+    summary: 多后端支持（in-process、tmux、iTerm2）
+    files:
+      - src/utils/swarm/backends/types.ts
+      - src/utils/swarm/backends/registry.ts
+      - src/utils/swarm/backends/ITermBackend.ts
+      - src/utils/swarm/backends/InProcessBackend.ts
+      - src/utils/swarm/backends/PaneBackendExecutor.ts
+      - src/utils/swarm/backends/TmuxBackend.ts
+      - src/utils/swarm/backends/detection.ts
+      - src/utils/swarm/backends/it2Setup.ts
+      - src/utils/swarm/backends/teammateModeSnapshot.ts
+  - id: swarm-layout-reconnection
+    kind: source
+    section: 4
+    summary: teammate 布局管理、颜色分配、团队重连
+    files:
+      - src/utils/swarm/teammateLayoutManager.ts
+      - src/utils/swarm/teammatePromptAddendum.ts
+      - src/utils/swarm/teammateModel.ts
+      - src/utils/swarm/reconnection.ts
+  - id: coordinator
+    kind: source
+    section: 4
+    summary: Coordinator 模式，包括系统提示、worker 能力说明、coordinator 用户上下文
+    files:
+      - src/coordinator/coordinatorMode.ts
+      - src/coordinator/workerAgent.ts
+  - id: swarm-utils
+    kind: source
+    section: 4
+    summary: Swarm 基础工具（teammate 检测、agent ID 生成、feature flag）
+    files:
+      - src/utils/teammate.ts
+      - src/utils/teammateContext.ts
+      - src/utils/inProcessTeammateHelpers.ts
+      - src/utils/collapseTeammateShutdowns.ts
+      - src/utils/agentContext.ts
+      - src/utils/agentId.ts
+      - src/utils/agentSwarmsEnabled.ts
+      - src/utils/teamMemoryOps.ts
+  - id: swarm-ui-components
+    kind: source
+    section: 4
+    summary: Swarm UI 组件（teammate view、inbox、notifications、权限 hooks）
+    files:
+      - src/components/TeammateViewHeader.tsx
+      - src/components/messages/teamMemCollapsed.tsx
+      - src/components/messages/teamMemSaved.ts
+      - src/components/teams/TeamStatus.tsx
+      - src/components/teams/TeamsDialog.tsx
+      - src/hooks/useTeammateViewAutoExit.ts
+      - src/hooks/useSwarmPermissionPoller.ts
+      - src/hooks/toolPermission/handlers/swarmWorkerHandler.ts
+  - id: agent-editor-ui
+    kind: source
+    section: 4
+    summary: Agent 编辑器 UI 组件（列表、菜单、颜色选择、向导等）
+    files:
+      - src/components/agents/AgentDetail.tsx
+      - src/components/agents/AgentEditor.tsx
+      - src/components/agents/AgentNavigationFooter.tsx
+      - src/components/agents/AgentsList.tsx
+      - src/components/agents/AgentsMenu.tsx
+      - src/components/agents/ColorPicker.tsx
+      - src/components/agents/ModelSelector.tsx
+      - src/components/agents/SnapshotUpdateDialog.tsx
+      - src/components/agents/ToolSelector.tsx
+      - src/components/agents/agentFileUtils.ts
+      - src/components/agents/generateAgent.ts
+      - src/components/agents/types.ts
+      - src/components/agents/utils.ts
+      - src/components/agents/validateAgent.ts
+  - id: agent-editor-wizard
+    kind: source
+    section: 4
+    summary: Agent 创建向导组件
+    files:
+      - src/components/agents/new-agent-creation/CreateAgentWizard.tsx
+      - src/components/agents/new-agent-creation/types.ts
+      - src/components/agents/new-agent-creation/wizard-steps/ColorStep.tsx
+      - src/components/agents/new-agent-creation/wizard-steps/ConfirmStep.tsx
+      - src/components/agents/new-agent-creation/wizard-steps/ConfirmStepWrapper.tsx
+      - src/components/agents/new-agent-creation/wizard-steps/DescriptionStep.tsx
+      - src/components/agents/new-agent-creation/wizard-steps/GenerateStep.tsx
+      - src/components/agents/new-agent-creation/wizard-steps/LocationStep.tsx
+      - src/components/agents/new-agent-creation/wizard-steps/MemoryStep.tsx
+      - src/components/agents/new-agent-creation/wizard-steps/MethodStep.tsx
+      - src/components/agents/new-agent-creation/wizard-steps/ModelStep.tsx
+      - src/components/agents/new-agent-creation/wizard-steps/PromptStep.tsx
+      - src/components/agents/new-agent-creation/wizard-steps/ToolsStep.tsx
+      - src/components/agents/new-agent-creation/wizard-steps/TypeStep.tsx
+  - id: shared-spawn-multi-agent
+    kind: source
+    section: 4
+    summary: 共享的多 agent spawn 逻辑
+    files:
+      - src/tools/shared/spawnMultiAgent.ts
+  - id: commands
+    kind: source
+    section: 4
+    summary: Agent 相关命令实现
+    files:
+      - src/commands/agents/agents.tsx
+      - src/commands/agents/index.ts
+      - src/commands/fork/index.ts
+  - id: ui-hints
+    kind: source
+    section: 4
+    summary: UI 提示组件
+    files:
+      - src/components/Spinner/teammateSelectHint.ts
+  - id: agent-memory-tests
+    kind: test
+    section: 7
+    summary: Agent 内存快照测试（快照初始化、时间戳验证、保留变更、回滚机制）
+    files:
+      - tests/agentMemorySnapshot.test.ts
+  - id: agent-tool-uncovered
+    kind: source
+    section: 4
+    summary: AgentTool 未覆盖的文件
+    files:
+      - src/tools/AgentTool/agentDisplay.ts
+      - src/tools/AgentTool/built-in/claudeCodeGuideAgent.ts
+      - src/tools/AgentTool/built-in/exploreAgent.ts
+      - src/tools/AgentTool/built-in/generalPurposeAgent.ts
+      - src/tools/AgentTool/built-in/planAgent.ts
+      - src/tools/AgentTool/built-in/statuslineSetup.ts
+      - src/tools/AgentTool/built-in/verificationAgent.ts
+  - id: task-uncovered
+    kind: source
+    section: 4
+    summary: 任务相关未覆盖的文件
+    files:
+      - src/tasks/LocalAgentTask/LocalAgentTask.tsx
+      - src/tasks/RemoteAgentTask/RemoteAgentTask.tsx

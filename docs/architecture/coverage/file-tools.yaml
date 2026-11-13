@@ -1,0 +1,111 @@
+schema_version: 1
+spec_id: file-tools
+spec: ../../superpowers/specs/2026-11-12-file-tools-design.md
+status: draft
+groups:
+  - id: additional-files
+    kind: source
+    section: 4
+    summary: Additional files
+    files:
+      - src/commands/copy/copy.tsx
+      - src/commands/copy/index.ts
+      - src/commands/files/files.ts
+      - src/commands/files/index.ts
+      - src/utils/fileOperationAnalytics.ts
+      - src/utils/filePersistence/filePersistence.ts
+      - src/utils/filePersistence/outputsScanner.ts
+      - src/utils/filePersistence/types.ts
+      - src/utils/fileStateCache.ts
+      - src/utils/headlessProfiler.ts
+      - src/utils/hooks/fileChangedWatcher.ts
+      - src/utils/lockfile.ts
+      - src/utils/profilerBase.ts
+      - src/utils/startupProfiler.ts
+      - src/utils/tempfile.ts
+  - id: file-read-tool
+    kind: source
+    section: 4
+    summary: FileReadTool implementation for reading text, images, PDFs, and
+      notebooks with caching and deduplication
+    files:
+      - src/tools/FileReadTool/FileReadTool.ts
+      - src/tools/FileReadTool/constants.ts
+      - src/tools/FileReadTool/limits.ts
+      - src/tools/FileReadTool/prompt.ts
+      - src/tools/FileReadTool/UI.tsx
+      - src/tools/FileReadTool/imageProcessor.ts
+  - id: file-write-tool
+    kind: source
+    section: 4
+    summary: FileWriteTool implementation for creating and overwriting files with
+      concurrent modification detection
+    files:
+      - src/tools/FileWriteTool/FileWriteTool.ts
+      - src/tools/FileWriteTool/constants.ts
+      - src/tools/FileWriteTool/prompt.ts
+      - src/tools/FileWriteTool/UI.tsx
+  - id: file-edit-tool
+    kind: source
+    section: 4
+    summary: FileEditTool implementation for in-place file editing with exact string
+      replacement and concurrent modification detection
+    files:
+      - src/tools/FileEditTool/FileEditTool.ts
+      - src/tools/FileEditTool/constants.ts
+      - src/tools/FileEditTool/prompt.ts
+      - src/tools/FileEditTool/types.ts
+      - src/tools/FileEditTool/UI.tsx
+      - src/tools/FileEditTool/utils.ts
+  - id: glob-tool
+    kind: source
+    section: 4
+    summary: GlobTool implementation for finding files by wildcard patterns
+    files:
+      - src/tools/GlobTool/GlobTool.ts
+      - src/tools/GlobTool/prompt.ts
+      - src/tools/GlobTool/UI.tsx
+  - id: grep-tool
+    kind: source
+    section: 4
+    summary: GrepTool implementation for searching file contents using ripgrep backend
+    files:
+      - src/tools/GrepTool/GrepTool.ts
+      - src/tools/GrepTool/prompt.ts
+      - src/tools/GrepTool/UI.tsx
+  - id: notebook-edit-tool
+    kind: source
+    section: 4
+    summary: NotebookEditTool implementation for editing Jupyter notebook cells
+    files:
+      - src/tools/NotebookEditTool/NotebookEditTool.ts
+      - src/tools/NotebookEditTool/constants.ts
+      - src/tools/NotebookEditTool/prompt.ts
+      - src/tools/NotebookEditTool/UI.tsx
+  - id: file-utils
+    kind: source
+    section: 4
+    summary: Shared file utilities including mtime handling, line endings, and
+      dual-path file reading
+    files:
+      - src/utils/file.ts
+      - src/utils/fileRead.ts
+      - src/utils/fileReadCache.ts
+      - src/utils/fsOperations.ts
+      - src/utils/readFileInRange.ts
+  - id: notebook-pdf-image-utils
+    kind: source
+    section: 4
+    summary: Specialized utilities for notebook, PDF, and image file handling
+    files:
+      - src/utils/notebook.ts
+      - src/utils/pdf.ts
+      - src/utils/pdfUtils.ts
+      - src/utils/imageResizer.ts
+  - id: search-utils
+    kind: source
+    section: 4
+    summary: Search utilities for glob pattern matching and ripgrep integration
+    files:
+      - src/utils/glob.ts
+      - src/utils/ripgrep.ts

@@ -1,0 +1,144 @@
+schema_version: 1
+spec_id: skills
+spec: ../../superpowers/specs/2026-11-12-skills-design.md
+status: draft
+groups:
+  - id: commands
+    kind: source
+    section: 4
+    summary: Command implementations
+    files:
+      - src/commands/skills/index.ts
+      - src/commands/skills/skills.tsx
+  - id: skills-load
+    kind: source
+    section: 4
+    summary: 技能加载器，从目录加载技能、frontmatter解析、动态发现
+    files:
+      - src/skills/loadSkillsDir.ts
+  - id: skills-bundled
+    kind: source
+    section: 4
+    summary: 内置技能注册和管理
+    files:
+      - src/skills/bundledSkills.ts
+      - src/skills/bundled/index.ts
+      - src/skills/bundled/verify.ts
+      - src/skills/bundled/verifyContent.ts
+      - src/skills/bundled/loop.ts
+      - src/skills/bundled/claudeApi.ts
+      - src/skills/bundled/claudeApiContent.ts
+      - src/skills/bundled/remember.ts
+      - src/skills/bundled/loremIpsum.ts
+      - src/skills/bundled/debug.ts
+      - src/skills/bundled/stuck.ts
+      - src/skills/bundled/scheduleRemoteAgents.ts
+      - src/skills/bundled/dream.ts
+      - src/skills/bundled/batch.ts
+      - src/skills/bundled/updateConfig.ts
+      - src/skills/bundled/hunter.ts
+      - src/skills/bundled/keybindings.ts
+      - src/skills/bundled/claudeInChrome.ts
+      - src/skills/bundled/skillify.ts
+      - src/skills/bundled/simplify.ts
+  - id: skills-mcp
+    kind: source
+    section: 4
+    summary: MCP技能集成
+    files:
+      - src/skills/mcpSkills.ts
+      - src/skills/mcpSkillBuilders.ts
+  - id: skill-tool
+    kind: source
+    section: 4
+    summary: SkillTool工具实现，技能调用、fork执行、远程技能加载
+    files:
+      - src/tools/SkillTool/SkillTool.ts
+      - src/tools/SkillTool/prompt.ts
+      - src/tools/SkillTool/constants.ts
+      - src/tools/SkillTool/UI.tsx
+  - id: discover-skills-tool
+    kind: source
+    section: 4
+    summary: DiscoverSkillsTool工具实现，本地和远程技能搜索
+    files:
+      - src/tools/DiscoverSkillsTool/DiscoverSkillsTool.ts
+      - src/tools/DiscoverSkillsTool/prompt.ts
+  - id: skill-search-local
+    kind: source
+    section: 4
+    summary: 本地技能搜索、索引构建、可见性跟踪
+    files:
+      - src/services/skillSearch/localSearch.ts
+  - id: skill-search-remote
+    kind: source
+    section: 4
+    summary: 远程技能搜索、SkillHub客户端、技能缓存
+    files:
+      - src/services/skillSearch/remoteSearch.ts
+      - src/services/skillSearch/remoteSkillLoader.ts
+      - src/services/skillSearch/remoteSkillState.ts
+      - src/services/skillSearch/skillhubClient.ts
+  - id: skill-search-prefetch
+    kind: source
+    section: 4
+    summary: 技能发现预取、write pivot检测、信号处理
+    files:
+      - src/services/skillSearch/prefetch.ts
+      - src/services/skillSearch/signals.ts
+  - id: skill-search-feature
+    kind: source
+    section: 4
+    summary: 技能搜索功能开关
+    files:
+      - src/services/skillSearch/featureCheck.ts
+  - id: skill-search-telemetry
+    kind: source
+    section: 4
+    summary: 技能搜索遥测事件
+    files:
+      - src/services/skillSearch/telemetry.ts
+  - id: skill-change-detector
+    kind: source
+    section: 4
+    summary: 技能文件变更检测、自动重载、chokidar监听器
+    files:
+      - src/utils/skills/skillChangeDetector.ts
+  - id: skill-hooks
+    kind: source
+    section: 4
+    summary: 技能相关React hooks
+    files:
+      - src/hooks/useSkillsChange.ts
+      - src/hooks/useSkillImprovementSurvey.ts
+      - src/utils/hooks/skillImprovement.ts
+      - src/utils/hooks/registerSkillHooks.ts
+  - id: skill-components
+    kind: source
+    section: 4
+    summary: 技能UI组件
+    files:
+      - src/components/SkillImprovementSurvey.tsx
+      - src/components/skills/SkillsMenu.tsx
+  - id: skill-telemetry
+    kind: source
+    section: 4
+    summary: 技能使用跟踪遥测
+    files:
+      - src/utils/telemetry/skillLoadedEvent.ts
+      - src/utils/suggestions/skillUsageTracking.ts
+  - id: skills-tests
+    kind: test
+    section: 7
+    summary: 技能测试文件
+    files:
+      - tests/skillSearch.test.ts
+      - tests/remoteSkills.test.ts
+  - id: skills-bundled-verify
+    kind: source
+    section: 4
+    summary: 内置 verify 技能
+    files:
+      - src/skills/bundled/verify/SKILL.md
+      - src/skills/bundled/verify/examples/cli.md
+      - src/skills/bundled/verify/examples/server.md

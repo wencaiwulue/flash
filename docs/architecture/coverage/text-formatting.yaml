@@ -1,0 +1,79 @@
+schema_version: 1
+spec_id: text-formatting
+spec: ../../superpowers/specs/2026-11-12-text-formatting-design.md
+status: draft
+groups:
+  - id: markdown
+    kind: source
+    section: 4
+    summary: Markdown 渲染 - marked 词法分析和自定义格式化
+    files:
+      - src/utils/markdown.ts
+  - id: cli-highlight
+    kind: source
+    section: 4
+    summary: 代码高亮 - cli-highlight 和 highlight.js 集成
+    files:
+      - src/utils/cliHighlight.ts
+  - id: format-utils
+    kind: source
+    section: 4
+    summary: 格式化工具 - 文件大小、时间、数字格式化
+    files:
+      - src/utils/format.ts
+  - id: highlight-match
+    kind: source
+    section: 4
+    summary: 搜索高亮 - 忽略大小写匹配、逆高亮
+    files:
+      - src/utils/highlightMatch.tsx
+  - id: display-tags
+    kind: source
+    section: 4
+    summary: 显示标签 - 仅剥离小写标签、保留用户内容
+    files:
+      - src/utils/displayTags.ts
+  - id: hyperlink
+    kind: source
+    section: 4
+    summary: 超链接 - OSC 8 超链接、支持检测和回退
+    files:
+      - src/utils/hyperlink.ts
+  - id: heatmap
+    kind: source
+    section: 4
+    summary: 热图 - GitHub 风格热图
+    files:
+      - src/utils/heatmap.ts
+  - id: horizontal-scroll
+    kind: source
+    section: 4
+    summary: 水平滚动 - 边缘滚动策略、箭头宽度计算
+    files:
+      - src/utils/horizontalScroll.ts
+  - id: logo-v2-utils
+    kind: source
+    section: 4
+    summary: Logo v2 布局工具 - Logo 显示格式化
+    files:
+      - src/utils/logoV2Utils.ts
+  - id: color-commands
+    kind: source
+    section: 4
+    summary: 颜色命令 - 颜色相关命令
+    files:
+      - src/commands/color/color.ts
+      - src/commands/color/index.ts
+  - id: output-styles
+    kind: source
+    section: 4
+    summary: 输出样式加载
+    files:
+      - src/outputStyles/loadOutputStylesDir.ts
+  - id: constants-formatting
+    kind: source
+    section: 4
+    summary: 格式化相关常量
+    files:
+      - src/constants/figures.ts
+      - src/constants/outputStyles.ts

@@ -1,0 +1,53 @@
+schema_version: 1
+spec_id: session-search-recovery
+spec: ../../superpowers/specs/2026-11-12-session-search-recovery-design.md
+status: draft
+groups:
+  - id: session-search
+    kind: source
+    section: 4
+    summary: 会话搜索 — AI 驱动的会话搜索、关键词过滤、转录本提取
+    files:
+      - src/utils/agenticSessionSearch.ts
+  - id: conversation-recovery
+    kind: source
+    section: 4
+    summary: 会话恢复 — 消息反序列化、中断检测、技能状态恢复
+    files:
+      - src/utils/conversationRecovery.ts
+  - id: session-listing
+    kind: source
+    section: 4
+    summary: 会话列表 — 候选发现、读取、排序、项目候选收集
+    files:
+      - src/utils/listSessionsImpl.ts
+  - id: assistant-discovery
+    kind: source
+    section: 4
+    summary: 远程助手会话发现
+    files:
+      - src/assistant/sessionDiscovery.ts
+  - id: concurrent-sessions
+    kind: source
+    section: 4
+    summary: 并发会话 — 注册、墓碑、更新、计数
+    files:
+      - src/utils/concurrentSessions.ts
+  - id: cross-project-resume
+    kind: source
+    section: 4
+    summary: 跨项目恢复检查
+    files:
+      - src/utils/crossProjectResume.ts
+  - id: backfill-command
+    kind: source
+    section: 4
+    summary: 历史回填命令
+    files:
+      - src/commands/backfill-sessions/backfill-sessions.ts
+  - id: recovery-tests
+    kind: test
+    section: 7
+    summary: 会话恢复与回填测试
+    files:
+      - tests/backfillSessionsCommand.test.ts

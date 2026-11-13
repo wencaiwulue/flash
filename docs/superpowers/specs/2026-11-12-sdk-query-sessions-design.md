@@ -1,116 +1,428 @@
 ---
+id: sdk-query-sessions
+batch: 0
 title: SDK Query、Session、控制面与 Checkpoint 设计
 date: 2026-11-12
-status: approved
+status: draft
 ---
 
 # SDK Query、Session、控制面与 Checkpoint 设计
 
-## 1. 问题与为什么需要统一生命周期
+## 1. 问题与约束
 
 SDK 调用方需要的不只是发送一个 prompt。可靠的查询还包括异步输入输出、权限与控制请求、会话恢复、上下文读取、任务停止，以及按消息恢复文件状态。若这些能力各自维护状态，模型消息、持久化消息和文件快照会失去同一 UUID 的对应关系，取消和恢复也无法形成一致的生命周期。
 
-本功能将这些接口放在同一设计中，是因为它们共享三条约束：
+本功能将这些接口放在同一设计中，因为它们共享三条约束：
+- **消息身份**：query、session transcript 和 checkpoint 都以 user message UUID 关联
+- **生命周期一致性**：创建、流式输出、控制、停止、恢复和回滚必须经过同一 query/session 状态
+- **恢复语义分离但配套**：session 恢复对话，checkpoint 恢复该消息对应的文件状态；两者需要协调，但不能合并成一次不透明的全量恢复
 
-- **消息身份**：query、session transcript 和 checkpoint 都以 user message UUID 关联。
-- **生命周期一致性**：创建、流式输出、控制、停止、恢复和 rewind 必须经过同一 query/session 状态。
-- **恢复语义分离但配套**：session 恢复对话，checkpoint 恢复该消息对应的文件状态；两者需要协调，但不能合并成一次不透明的全量恢复。
+## 2. 设计理由与备选方案
+
+### 公开 API 分层设计
+
+**设计**：SDK 公开 API 分为两层
+- 上层：`query()`、`unstable_v2_createSession()`、`listSessions()` 等
+- 下层：内部实现模块 `sdkQuery.ts`、`sdkSessions.ts`、`sdkControl.ts`
+
+**备选方案**：
+- 单一层 API → 不采用，内部实现细节会暴露给用户
+- 三层以上 → 不采用，过度设计
+
+**选择理由**：
+- 清晰的公开/内部边界
+- 内部实现可独立演进，不影响公开 API
+- 便于测试和维护
+
+### 异步输入输出与 UserMessageChannel
+
+**设计**：使用 `UserMessageChannel` 统一处理一次性字符串输入和异步流输入。
+
+**备选方案**：
+- 分别提供两套 API → 不采用，用户体验不一致
+- 使用回调而非 AsyncGenerator → 不采用，不符合现代 JS 习惯
+
+**选择理由**：
+- 统一的输入模型，用户体验一致
+- AsyncGenerator 符合现代 JS 异步模式
+- 内置队列支持背压
+
+### 持久化 Lease 机制
+
+**设计**：会话持久化是进程全局状态，通过引用计数 Lease 管理。
+
+**备选方案**：
+- 每个 query 独立配置 → 不采用，QueryEngine 内部难以支持交错持久化
+- 完全禁用并发 queries → 不采用，过度限制使用场景
+
+**选择理由**：
+- 限制最小化，仅限制不同 persistSession 值的并发
+- 引用计数确保正确清理
+- 明确的错误信息告知用户限制
+
+**证据**：`sdkQueryLifecycle.test.ts` 验证了多次 `return()` 只执行一次清理
+
+### parentUuid DAG 恢复
+
+**设计**：使用 `recoverOrphanedParallelToolResults()` 纯函数恢复并行 assistant 分支。
+
+**备选方案**：
+- 单 parentUuid 链表遍历 → 不采用，会丢失同一 API 消息的其他 content block 分支
+- 存储时展开 DAG → 不采用，存储格式复杂
+
+**选择理由**：
+- 纯函数，易于测试
+- 保持存储格式简单
+- 完整恢复并行分支
+
+**证据**：`sdkSessions.test.ts` 验证了恢复顺序与分页行为
+
+### Session 分叉时不复制文件快照
+
+**设计**：`forkSession()` 创建新会话时，复制 transcript 但不复制文件快照。
+
+**备选方案**：
+- 复制所有快照 → 不采用，磁盘空间膨胀，分叉变慢
+- 惰性复制 → 不采用，实现复杂度高
+
+**选择理由**：
+- 分叉快速，磁盘空间占用小
+- 简单可靠
+- 分叉通常是为了探索不同方向，不需要完整历史快照
+
+**证据**：fork 测试验证只复制 transcript
+
+### 控制面直接委托现有生产实现
+
+**设计**：所有 SDK 控制方法都直接委托给现有生产实现，不引入影子状态。
+
+**备选方案**：
+- 复制生产逻辑 → 不采用，逻辑漂移风险
+- 中间层抽象 → 不采用，过度设计
+
+**选择理由**：
+- 行为与 CLI 一致
+- 避免逻辑重复和漂移
+- 利用现有生产测试覆盖
+
+**证据**：`sdkControls.test.ts` 验证了 null 键删除与模型元数据通知
+
+## 3. 目标与非目标
 
 ### 目标
 
-- 提供可结束、可中断、可恢复的异步 query 生命周期。
-- 复用同一消息转换与持久化规则，避免 CLI 与 SDK 行为漂移。
-- 让控制方法直接操作现有生产状态，不引入影子状态。
-- 按消息精确关联文件快照和 rewind，同时提供无副作用 dry run。
+- 提供可结束、可中断、可恢复的异步 query 生命周期
+- 复用同一消息转换与持久化规则，避免 CLI 与 SDK 行为漂移
+- 让控制方法直接操作现有生产状态，不引入影子状态
+- 按消息精确关联文件快照和回滚，同时提供无副作用 dry run
 
 ### 非目标
 
-- 不重新实现模型传输协议，不把 remote-control 当作 query 默认实现。
-- 不把 CLI UI 状态复制到 SDK，不把 session 恢复等同于文件系统回滚。
-- 不用全局 checkpoint 配置共享不同 query 的快照。
+- 不重新实现模型传输协议，不把 remote-control 当作 query 默认实现
+- 不把 CLI UI 状态复制到 SDK，不把 session 恢复等同于文件系统回滚
+- 不用全局 checkpoint 配置共享不同 query 的快照
 
-## 2. 为什么采用这些接口边界
+## 4. 架构、模块与数据流
 
-| 模块 | 设计职责 | 为什么必须独立 |
-|---|---|---|
-| `createSdkQuery()` | 创建异步 query，串联消息 channel、控制请求、权限和清理 | 避免调用方自行拼接异步生成器与控制协议，保证取消/中断也能完成清理 |
-| `createSdkSession()` / `resumeSdkSession()` | 创建或恢复多轮会话 | 避免把多轮对话误当成一次性 prompt；复用 transcript 才能保持上下文 |
-| `sdkSessions.ts` | 读取、列出、重命名、标记、fork JSONL session | 封装持久化格式和 parentUuid 链，避免 SDK 与 CLI 各自解释文件 |
-| `sessionChainRecovery.ts` | 恢复并行 assistant sibling 与 tool results | 单 parent 遍历会漏掉并行分支；纯函数让 CLI 与 SDK 共享 DAG 规则 |
-| `sdkControl.ts` | context usage、flag/settings、stopTask、reloadPlugins | 将控制操作映射到现有生产状态，避免复制状态推导逻辑 |
-| `FileCheckpointing` | 按 userMessageId 注册、等待并恢复文件快照 | 解决消息已到达但快照未完成的问题，不能用全量恢复替代精确 rewind |
+### 公开 API 层级
 
-这些边界让查询生命周期、持久化格式、控制面和文件恢复可以独立测试和替换。DAG recovery 不读取 analytics 或 CLI AppState，控制接口只组合现有状态函数，checkpoint 不依赖远程协议。
-
-`createSdkSession()` 与 `resumeSdkSession()` 不是另一套查询实现：它们复用 query 和消息转换，避免 CLI 与 SDK 的模型行为漂移。
-
-## 3. 生命周期与数据流
-
-```text
-用户消息 UUID
-   → 注册 snapshot Promise
-   → query 处理消息与工具调用
-   → session JSONL 记录 parentUuid
-   → 控制请求 / 状态更新
-   → 恢复 session
-   → 按 UUID 等待 snapshot 后 rewind 文件
+```
+┌─────────────────────────────────────────────────────────┐
+│         Public API (agentSdkTypes.ts)                   │
+│  ┌─────────────────────────────────────────────────┐  │
+│  │  query() / unstable_v2_createSession()          │  │
+│  │  listSessions() / getSessionMessages()          │  │
+│  │  forkSession() / renameSession()                │  │
+│  └─────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────┐
+│         Internal Implementation                         │
+│  ┌─────────────┐  ┌─────────────┐  ┌───────────────┐ │
+│  │ sdkQuery.ts │  │sdkSessions.ts│  │ sdkControl.ts│ │
+│  └─────────────┘  └─────────────┘  └───────────────┘ │
+└─────────────────────────────────────────────────────────┘
 ```
 
-### 3.1 Query 与消息 channel
+### 内部接口边界
 
-`createSdkQuery()` 负责异步消息输入、模型输出、控制请求、权限与清理。调用方通过 async iterable 接收消息，而不是自己管理控制帧。interrupt、abort、return 和底层 transport teardown 必须沿同一生命周期传播，避免只停止模型生成却遗留 watcher、任务或文件句柄。
+| 模块 | 设计职责 | 公开边界 | 内部依赖 |
+|---|---|---|---|
+| `agentSdkTypes.ts` | 类型聚合与公开 API 重导出 | 所有公开类型与函数 | `sdkQuery.ts`、`sdkSessionConversation.ts`、`sdkSessions.ts` |
+| `sdkQuery.ts` | 创建异步 query，串联消息 channel、控制请求、权限和清理 | `createSdkQuery()` 工厂函数 | `QueryEngine.ask`、`sdkControl.ts`、`fileCheckpointing.ts` |
+| `sdkSessionConversation.ts` | 会话包装器，管理后台消费流 | `createSdkSession()`、`resumeSdkSession()`、`promptSdkSession()` | `sdkQuery.ts`、`sdkSessions.ts` |
+| `sdkSessions.ts` | 读取、列表、重命名、标记、分叉 JSONL session | `listSdkSessions()`、`getSdkSessionMessages()` 等 | `sessionChainRecovery.ts`、`sessionStoragePortable.ts` |
+| `sessionChainRecovery.ts` | 恢复并行 assistant 分支与工具结果 | `recoverOrphanedParallelToolResults()` | 纯函数，无外部依赖 |
+| `sdkControl.ts` | 上下文使用、标志/设置、停止任务、重载插件 | `getSdkContextUsage()`、`applySdkFlagSettings()` 等 | `bootstrap/state.ts`、`settings/settings.ts`、`plugins/refresh.ts` |
+| `FileCheckpointing` | 按 userMessageId 注册、等待并恢复文件快照 | `FileCheckpointing` 类 | `fileHistory.ts` |
 
-### 3.2 Session 与并行 DAG
+关键原则：所有内部模块都不依赖 CLI 应用状态（`AppState`）之外的 CLI 特有结构，`sdkSessions.ts` 与 `sessionChainRecovery.ts` 甚至不读取 `AppState`，确保 SDK 会话访问器在 CLI 未启动时也可运行。
 
-`createSdkSession()` 创建多轮会话，`resumeSdkSession()` 从既有 transcript 恢复。JSONL 读取、列出、重命名、标记和 fork 由 session 工具统一处理，避免 CLI 和 SDK 对文件格式做不同解释。
+### 异步输入输出数据流
 
-单 parent 反向遍历只能恢复一条分支。`recoverOrphanedParallelToolResults()` 以 API message id 聚合 assistant sibling，以 parentUuid 聚合 tool_result，再将未见过的分支插回该 group 最后的主链 anchor 后。这样 CLI resume 与 SDK reads 使用相同 DAG，且不共享 CLI 状态。
+```
+┌─────────────┐
+│ SDK Caller  │
+└──────┬──────┘
+       │ push()
+       ▼
+┌──────────────────────┐
+│  UserMessageChannel  │
+│  [queue, closed,     │
+│   waiters]           │
+└──────┬───────────────┘
+       │ iterate()
+       ▼
+┌─────────────────────────────────┐
+│  createSdkQuery.run() generator │
+│  ┌───────────────────────────┐ │
+│  │ fileCheckpointing.make-  │ │
+│  │ Snapshot(userMsg.uuid)   │ │
+│  └───────────┬───────────────┘ │
+│              ▼                 │
+│     ┌─────────────────┐        │
+│     │  QueryEngine.ask│        │
+│     │  (model loop)   │        │
+│     └────────┬────────┘        │
+└──────────────┼─────────────────┘
+               │ yield
+               ▼
+         ┌───────────────┐
+         │ SDK Output    │
+         │ (async gen)   │
+         └───────────────┘
+```
 
-### 3.3 控制面
+### Query 完整控制流
 
-`getSdkContextUsage()` 复用 `collectContextData()`，不另算 token。`applySdkFlagSettings()` 合并 flag settings，删除 null 键并通知 change detector；model 变化额外更新 override 与 session metadata。`getSdkSettings()` 返回 settings sources 与当前 model/effort。`stopSdkTask()` 调用现有 stopTask。`reloadSdkPlugins()` 先刷新插件，再并行读取 commands 和 cache-only plugin state，返回 commands、agents、plugins、mcpServers 和 error_count。
+```typescript
+// 1. 调用方创建 query
+const q = createSdkQuery({
+  prompt: asyncIterable,
+  options: { persistSession: true }
+});
 
-选择复用生产状态函数，是为了让 SDK 控制结果与 CLI 实际行为一致，而不是让 SDK 另建一套“看起来正确”的状态。
+// 2. 首次调用初始化（懒加载）
+await q.getSettings();
+// 内部：
+//   - acquireSessionPersistence(true)
+//   - bootstrap/state 设置
+//   - MCP 连接
+//   - 工具池组装
+//   - FileCheckpointing 实例化
 
-### 3.4 Checkpoint 与 rewind
+// 3. 消费输出
+for await (const msg of q) {
+  // 处理消息
+}
 
-`makeSnapshot(messageId)` 在启动异步工作前将 Promise 放入 pending map；同一 UUID 复用该 Promise。`rewindFiles()` 先等待对应 snapshot，再调用共享 `rewindFileCheckpoint()`：
+// 4. 显式结束（或通过 return() / Symbol.asyncDispose）
+await q.return(undefined);
+// 内部清理流程：
+//   ├─ remoteController.stop() (if active)
+//   ├─ cleanupClients(mcp clients)
+//   ├─ runCleanupFunctions()
+//   ├─ flushSessionStorage()
+//   └─ releasePersistence()
+```
 
-- checkpointing 未启用 → 返回 disabled；
-- 目标 checkpoint 不存在 → 返回 not found；
-- snapshot 创建失败 → 返回创建错误；
-- dry run → 只返回 diff stats；
-- 正式恢复 → 调用 fileHistoryRewind 并捕获错误。
+### Session 架构
 
-先注册 Promise 是为了等待“该消息对应的 snapshot”，不是等待任意文件写入。dry run 与正式恢复分离，是为了先审查范围再产生副作用。checkpoint 按 query 实例隔离，是为了避免不同 query 相互覆盖快照。
+`SDKSession` 是对 `createSdkQuery()` 的轻量级包装器，内部维护独立的后台消费流：
 
-## 4. 为什么按这个顺序实施
+```typescript
+class LocalSdkSession implements SDKSession {
+  readonly #channel = new UserMessageChannel();
+  readonly #query: ReturnType<typeof createSdkQuery>;
+  readonly #background: Promise<void>;
+  readonly #messages: SDKMessage[] = [];
+  #sessionId: string | undefined;
+  readonly #waiters = new Set<() => void>();
+  #closed = false;
+  #error: unknown;
 
-1. **先固定 UUID、query 输入输出和清理**：后续 session 与 checkpoint 都依赖消息身份和可结束生命周期。
-2. **再实现 JSONL 与 DAG 恢复**：先保证对话历史完整，再决定文件回滚点。
-3. **再接入控制方法**：通过现有生产状态避免重复实现，减少接口之间不一致。
-4. **最后用 snapshot Promise 关联文件恢复**：验证消息与快照的对应关系，再实现 dry run 和失败分支。
+  // 消费循环
+  private async consume(): Promise<void>;
+}
+```
 
-这个顺序让每一步都有独立可验证产物，避免先做一个全量 rewind 再反推其消息和状态含义。
+### parentUuid DAG 结构
 
-## 5. 失败语义
+会话持久化 JSONL 中的每条消息都包含：
+- `uuid`：消息自身唯一 ID
+- `parentUuid`：前驱消息 ID，构成链表
+- 对于 assistant 消息，可能包含 `message.id`（API 返回的 msg-* ID）
 
-| 失败 | 处理 |
+并行工具调用的 DAG 恢复问题：单个 `parentUuid` 链表遍历会丢失同一 API 消息的其他 content block 分支。
+
+```
+原始 JSONL 顺序（写入顺序）：
+  User (root)
+    ├─ Assistant A (api: msg-parallel, parent: root)
+    │  └─ ToolResult A (parent: A)
+    └─ Assistant B (api: msg-parallel, parent: A)
+       └─ ToolResult B (parent: B)
+
+单 parent 遍历结果（只恢复一条分支）：
+  User → A → ToolResult A → [B 丢失]
+
+DAG 恢复后完整链条：
+  User → A → B → ToolResult B → ToolResult A
+```
+
+### DAG 恢复算法
+
+`recoverOrphanedParallelToolResults()` 是纯函数，输入：
+- `messages: Map<UUID, T>`：所有消息按 UUID 索引
+- `chain: T[]`：从叶节点回溯的主链
+- `seen: Set<UUID>`：已在主链中的消息
+
+输出：
+- 完整 `chain` 包含所有并行分支
+- `recoveredCount`：恢复的消息数
+
+算法步骤：
+1. 从主链收集所有 API message ID → anchor point（anchor = 同一 API ID 在主链上的最后一条消息）
+2. 收集：按 API ID 分组的所有 assistant 消息、按 assistant UUID 分组的所有 tool result 消息
+3. 对每个组，找出不在 seen 中的孤儿
+4. 按 timestamp 稳定排序
+5. 插入到 anchor point 之后
+
+## 5. 失败语义与工程取舍
+
+### UserMessageChannel 错误与关闭边界
+
+| 操作 | 行为 | 后续操作 |
+|---|---|---|
+| `push()` 在 `close()` 后 | 抛出 `Error("Cannot stream input after the query closes")` | 不可用 |
+| `fail(error)` | 关闭 channel，存储错误 | `iterate()` 会抛出错误 |
+| `query.return()` | 触发完整清理流程 | `close()` 安全幂等 |
+| `query.interrupt()` | 中止 AbortController，触发模型循环中断 | 仍需调用 `return()` 完成清理 |
+
+### Query 清理保证
+
+| 退出路径 | `cleanupClients` | `runCleanupFunctions` | `flushSessionStorage` | `releasePersistence` |
+|---|---|---|---|---|
+| 正常 `for await` 完成 | ✓ | ✓ | ✓ | ✓ |
+| `query.return()` | ✓ | ✓ | ✓ | ✓ |
+| `query.return()` 多次调用 | 仅第一次 | 仅第一次 | 仅第一次 | 仅第一次 |
+| 迭代器抛出错误 | ✓ | ✓ | ✓ | ✓ |
+| `query.interrupt()` | 需配合 `return()` | 需配合 `return()` | 需配合 `return()` | 需配合 `return()` |
+
+### 工程取舍
+
+- **全局 Lease vs 独立配置**：选择全局 Lease，QueryEngine 内部难以支持交错持久化
+- **不复制快照 vs 完整分叉**：选择不复制，分叉快速且磁盘空间占用小
+- **纯函数 DAG 恢复 vs 存储展开**：选择纯函数，存储格式简单
+- **直接委托 vs 中间抽象**：选择直接委托，避免逻辑漂移
+
+## 6. 现状验收标准
+
+### Query 接口
+
+- `Query` 必须实现 `AsyncGenerator<SDKMessage, void>`
+- 必须提供 `interrupt()`、`setPermissionMode()`、`setModel()`、`setMaxThinkingTokens()` 等控制方法
+- 必须提供 `supportedCommands()`、`supportedModels()`、`mcpServerStatus()`、`accountInfo()` 等状态查询方法
+- 必须提供 `rewindFiles()` 支持 dry run
+- 必须提供 `streamInput()` 支持异步流输入
+
+### Session 接口
+
+- `SDKSession` 必须提供 `send()`、`stream()`、`close()` 方法
+- 必须实现 `Symbol.asyncDispose`
+- 必须提供 `listSessions()`、`getSessionInfo()`、`getSessionMessages()`、`renameSession()`、`tagSession()`、`forkSession()` 等访问器
+
+### Session 恢复
+
+- 必须正确恢复并行 assistant 分支
+- 必须正确处理分页
+- 分叉时必须复制 transcript 但不复制文件快照
+
+### 控制面
+
+- 所有控制方法必须直接委托给现有生产实现
+- `applySdkFlagSettings()` 必须删除 null 键
+- 模型变化必须更新 override 和 metadata
+
+## 7. 代码与测试证据
+
+### 状态所有权
+
+| 状态 | 所有者 | 访问边界 | 持久化 |
+|---|---|---|---|
+| `activePersistenceLease` | `sdkQuery.ts` | 模块级私有 | 否 |
+| `UserMessageChannel.queue` | 每个 Query 实例 | Query 内部 | 否 |
+| `FileCheckpointing.#pendingSnapshots` | 每个 Query 实例 | Query 内部 | 否 |
+| `LocalSdkSession.#messages` | 每个 Session 实例 | Session 内部 | 否 |
+| session JSONL 文件 | 文件系统 | `sdkSessions.ts` + `sessionStoragePortable.ts` | 是 |
+| 文件历史快照 | 文件系统 | `fileHistory.ts` | 是 |
+
+### 现有测试覆盖
+
+| 测试文件 | 覆盖能力 |
 |---|---|
-| Query interrupt/abort/return | 沿 query 生命周期停止并清理 transport、任务和 watcher |
-| 并行 transcript 分支缺失 | 用共享 DAG helper 恢复，不能简单丢弃 |
-| 控制请求涉及 model 变化 | 更新 override、change detector 和 session metadata，不只改一个变量 |
-| Snapshot 创建失败 | 返回 checkpoint 创建错误，不使用旧文件状态冒充可恢复 |
-| 无 checkpoint 或功能关闭 | 返回明确 canRewind=false，不写文件 |
-| dry run | 只返回统计，不执行恢复 |
-| 正式恢复异常 | 返回带 error 的 canRewind=false，不把部分恢复当成成功 |
+| `sdkQueryLifecycle.test.ts` | `query.return()` 清理执行一次 |
+| `sdkSessions.test.ts` | 列出/读取/重命名/标记/分叉会话 |
+| `sdkSessions.test.ts` | 恢复并行 assistant 分支 |
+| `sdkSessions.test.ts` | 不恢复无关联分支 |
+| `sdkSessions.test.ts` | 消息分页 |
+| `sdkControls.test.ts` | 读取 usage/settings、重载插件、停止任务 |
+| `sdkControls.test.ts` | 删除 null 标志、模型元数据通知 |
+| `sdkRewind.test.ts` | 文件回滚与 dry run |
+| `sdkMcp.test.ts` | MCP 服务器管理 |
+| `sdkRemoteControl.test.ts` | 远程控制桥接 |
+| `sdkCron.test.ts` | Cron 任务调度 |
 
-## 6. 验收设计与测试理由
+### 隔离性验证
 
-- **Query 生命周期**：验证异步输入、流式输出、interrupt、abort 和清理顺序，避免“返回消息即成功”的假验收。
-- **Session 恢复与 fork**：验证 parentUuid、并行 sibling、tool result、分页和 fork UUID 重写，确保恢复完整且不重复。
-- **控制面**：验证 flag 合并/null 删除、model metadata、context usage、stopTask、plugin reload 返回值均来自生产实现。
-- **Checkpoint**：验证同 UUID snapshot 只创建一次、rewind 等待对应 Promise、dry run 不写文件，以及缺 checkpoint、snapshot 失败和恢复失败的错误。
-- **隔离性**：DAG recovery 不读 CLI analytics/AppState，控制测试不启动真实模型，checkpoint 不依赖远程文件服务。
+- `sdkSessions.ts` 不读取 `AppState` ✓
+- `sessionChainRecovery.ts` 是纯函数 ✓
+- DAG 恢复不读取 analytics 或 CLI UI 状态 ✓
+- 控制面不复制生产状态逻辑 ✓
 
-这些测试分别证明异步行为可结束、历史可恢复、状态不重复、文件可回滚且作用域不串扰。最后执行全量测试、typecheck 和 build，确认 CLI 与 SDK 的共同交付没有被破坏。
+## 8. 文件覆盖与相关子系统
+
+本设计的覆盖率文件位于 [Coverage](../../architecture/coverage/sdk-query-sessions.yaml)。
+
+### 相关文件
+
+- `src/entrypoints/agentSdkTypes.ts`：公开 API 类型与重导出
+- `src/entrypoints/sdk/sdkQuery.ts`：Query 创建与生命周期
+- `src/entrypoints/sdk/sdkSessionConversation.ts`：Session 包装器
+- `src/entrypoints/sdk/sdkSessions.ts`：Session 访问器
+- `src/entrypoints/sdk/sessionChainRecovery.ts`：DAG 恢复算法
+- `src/entrypoints/sdk/sdkControl.ts`：控制面方法
+- `src/entrypoints/sdk/fileCheckpointing.ts`：文件快照与回滚
+
+### 相关子系统
+
+- SDK Type Generation：SDK 类型生成
+- Session Persistence：会话持久化
+- File History：文件历史与回滚
+
+## 9. 改进建议
+
+### 短期改进（<1个月）
+
+1. **明确 `interrupt()` 与 `return()` 的组合契约**：当前设计要求调用 `interrupt()` 后仍需调用 `return()` 完成清理，但这容易被误用。建议在 `interrupt()` 内部启动清理但仍允许 `return()` 安全调用。
+
+2. **增加超时机制**：`UserMessageChannel` 和 MCP 连接当前没有超时配置，可能导致查询挂起。建议添加可配置的超时选项。
+
+3. **改进并发 query 限制**：当前仅限制 `persistSession` 不同的并发，建议实现真正的交错持久化支持，或提供更明确的错误恢复路径。
+
+### 中期改进（1-3个月）
+
+1. **Session 分叉时可选复制快照**：为需要完整分叉体验的用户提供 `copySnapshots: boolean` 选项，默认保持当前行为（不复制）。
+
+2. **快照 Promise 持久化**：当前 `#pendingSnapshots` 仅存在于内存中，如果在快照创建完成前进程崩溃，`rewindFiles()` 无法等待。建议将 pending 状态也写入磁盘。
+
+3. **查询上下文快照**：允许用户在任意点保存查询上下文（不仅是用户消息边界），支持更细粒度的回滚。
+
+### 长期探索（>3个月）
+
+1. **分布式 Session 存储**：探索将 session JSONL 存储在数据库或云存储中，支持跨设备会话同步。
+
+2. **增量快照**：当前文件快照是全量的，建议实现增量快照以减少存储空间和 I/O。
+
+3. **SDK 进程隔离**：当前 SDK 在同一进程中运行，建议提供可选的子进程隔离模式，提高稳定性。

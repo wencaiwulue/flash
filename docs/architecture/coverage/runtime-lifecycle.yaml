@@ -1,0 +1,103 @@
+schema_version: 1
+spec_id: runtime-lifecycle
+spec: ../../superpowers/specs/2026-11-12-runtime-lifecycle-design.md
+status: draft
+groups:
+  - id: additional-files
+    kind: source
+    section: 4
+    summary: Additional files
+    files:
+      - src/services/AgentSummary/agentSummary.ts
+      - src/services/PromptSuggestion/promptSuggestion.ts
+      - src/services/PromptSuggestion/speculation.ts
+      - src/services/analytics/config.ts
+      - src/services/analytics/datadog.ts
+      - src/services/analytics/firstPartyEventLogger.ts
+      - src/services/analytics/firstPartyEventLoggingExporter.ts
+      - src/services/analytics/growthbook.ts
+      - src/services/analytics/metadata.ts
+      - src/services/analytics/sink.ts
+      - src/services/analytics/sinkKillswitch.ts
+      - src/services/awaySummary.ts
+      - src/services/claudeAiLimitsHook.ts
+      - src/services/compact/compactWarningHook.ts
+      - src/services/compact/snipCompact.ts
+      - src/services/compact/snipProjection.ts
+      - src/services/internalLogging.ts
+      - src/services/mockRateLimits.ts
+      - src/services/prSubscriptions.ts
+      - src/services/preventSleep.ts
+      - src/services/rateLimitMessages.ts
+      - src/services/rateLimitMocking.ts
+      - src/services/sessionTranscript/sessionTranscript.ts
+      - src/services/tips/tipHistory.ts
+      - src/services/tips/tipRegistry.ts
+      - src/services/tips/tipScheduler.ts
+      - src/services/tips/types.ts
+      - src/services/tokenEstimation.ts
+      - src/services/toolUseSummary/toolUseSummaryGenerator.ts
+      - src/services/tools/StreamingToolExecutor.ts
+      - src/services/tools/toolHooks.ts
+      - src/services/tools/toolOrchestration.ts
+      - src/services/vcr.ts
+  - id: abort-controller
+    kind: source
+    section: 4
+    summary: AbortController 创建与弱引用父子取消层次结构
+    files:
+      - src/utils/abortController.ts
+  - id: combined-abort-signal
+    kind: source
+    section: 4
+    summary: 组合信号与超时（Bun 定时器优化）
+    files:
+      - src/utils/combinedAbortSignal.ts
+  - id: cleanup-registry
+    kind: source
+    section: 4
+    summary: 清理函数注册表与运行器
+    files:
+      - src/utils/cleanupRegistry.ts
+  - id: cleanup-old-files
+    kind: source
+    section: 4
+    summary: 旧文件清理（消息、会话、缓存、npm 等）
+    files:
+      - src/utils/cleanup.ts
+  - id: graceful-shutdown
+    kind: source
+    section: 4
+    summary: 优雅退出与信号处理、终端状态恢复
+    files:
+      - src/utils/gracefulShutdown.ts
+  - id: idle-timeout
+    kind: source
+    section: 4
+    summary: SDK 模式空闲超时管理
+    files:
+      - src/utils/idleTimeout.ts
+  - id: activity-manager
+    kind: source
+    section: 4
+    summary: 用户与 CLI 活动跟踪与活跃时间统计
+    files:
+      - src/utils/activityManager.ts
+  - id: event-loop-stall-detector
+    kind: source
+    section: 4
+    summary: 事件循环停滞检测器（占位）
+    files:
+      - src/utils/eventLoopStallDetector.ts
+  - id: process-identity
+    kind: source
+    section: 4
+    summary: 进程身份与开始时间令牌（跨平台 PID 重用检测）
+    files:
+      - src/utils/processIdentity.ts
+  - id: generic-process-utils
+    kind: source
+    section: 4
+    summary: 通用进程工具（存活检测、树遍历）
+    files:
+      - src/utils/genericProcessUtils.ts

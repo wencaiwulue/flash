@@ -1,0 +1,67 @@
+schema_version: 1
+spec_id: git-integration
+spec: ../../superpowers/specs/2026-11-12-git-integration-design.md
+status: draft
+groups:
+  - id: additional-files
+    kind: source
+    section: 4
+    summary: Additional files
+    files:
+      - src/components/FeedbackSurvey/useDebouncedDigitInput.ts
+      - src/utils/gitSettings.ts
+      - src/utils/githubRepoPathMapping.ts
+      - src/utils/teleport/gitBundle.ts
+  - id: commands
+    kind: source
+    section: 4
+    summary: Command implementations
+    files:
+      - src/commands/autofix-pr/index.ts
+      - src/commands/branch/branch.ts
+      - src/commands/branch/index.ts
+      - src/commands/commit-push-pr.ts
+      - src/commands/commit.ts
+  - id: git-core
+    kind: source
+    section: 4
+    summary: Git 仓库发现、分支/HEAD 读取、远程 URL、状态读取、裸仓库防护、变更文件列表
+    files:
+      - src/utils/git.ts
+  - id: git-filesystem
+    kind: source
+    section: 4
+    summary: Git 元数据直接读取、文件监控缓存、ref/SHA 验证、Git 目录解析、config 解析
+    files:
+      - src/utils/git/gitFilesystem.ts
+      - src/utils/git/gitConfigParser.ts
+  - id: git-ignore
+    kind: source
+    section: 4
+    summary: Gitignore 解析工具
+    files:
+      - src/utils/git/gitignore.ts
+  - id: git-diff
+    kind: source
+    section: 4
+    summary: Git diff 解析、统计、hunks 处理、单文件 diff、未跟踪文件处理
+    files:
+      - src/utils/gitDiff.ts
+  - id: github-integration
+    kind: source
+    section: 4
+    summary: GitHub 认证状态、远程 URL 解析与标准化、仓库哈希
+    files:
+      - src/utils/github/ghAuthStatus.ts
+  - id: pr-reference
+    kind: source
+    section: 4
+    summary: PR 引用解析（如
+    files:
+      - src/utils/prReference.ts
+  - id: git-tests
+    kind: test
+    section: 7
+    summary: Git 相关测试
+    files:
+      - tests/changedFiles.test.ts

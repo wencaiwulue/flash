@@ -1,0 +1,20 @@
+schema_version: 1
+spec_id: experimental-features
+spec: ../../superpowers/specs/2026-11-12-experimental-features-design.md
+status: draft
+groups:
+  - id: experimental-tools
+    kind: source
+    section: 4
+    summary: 实验工具 - 实验性工具实现
+    files:
+      - src/tools/OverflowTestTool/OverflowTestTool.ts
+      - src/tools/SyntheticOutputTool/SyntheticOutputTool.ts
+      - src/tools/SyntheticOutputTool/constants.ts
+      - src/tools/testing/TestingPermissionTool.tsx
+  - id: betas
+    kind: source
+    section: 4
+    summary: 功能开关 - 实验性功能开关
+    files:
+      - src/utils/betas.ts

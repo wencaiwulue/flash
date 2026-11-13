@@ -1,0 +1,82 @@
+schema_version: 1
+spec_id: repl-input
+spec: ../../superpowers/specs/2026-11-12-repl-input-design.md
+status: draft
+groups:
+  - id: group-1
+    kind: source
+    section: 4
+    summary: PromptInput 主组件和输入模式
+    files:
+      - src/components/PromptInput/PromptInput.tsx
+      - src/components/PromptInput/inputModes.ts
+      - src/components/PromptInput/inputPaste.ts
+  - id: group-2
+    kind: source
+    section: 4
+    summary: 编辑器视图组件
+    files:
+      - src/components/TextInput.tsx
+      - src/components/VimTextInput.tsx
+  - id: group-3
+    kind: source
+    section: 4
+    summary: 文本编辑核心 Hooks
+    files:
+      - src/hooks/useTextInput.ts
+      - src/hooks/useVimInput.ts
+      - src/hooks/useInputBuffer.ts
+  - id: group-4
+    kind: source
+    section: 4
+    summary: 自动补全和建议系统
+    files:
+      - src/hooks/useTypeahead.tsx
+      - src/utils/suggestions/commandSuggestions.ts
+      - src/utils/suggestions/directoryCompletion.ts
+      - src/utils/suggestions/shellHistoryCompletion.ts
+      - src/hooks/fileSuggestions.ts
+      - src/hooks/unifiedSuggestions.ts
+  - id: group-5
+    kind: source
+    section: 4
+    summary: 历史导航和搜索
+    files:
+      - src/hooks/useArrowKeyHistory.tsx
+      - src/hooks/useHistorySearch.ts
+  - id: group-6
+    kind: source
+    section: 4
+    summary: 提示建议和投机执行
+    files:
+      - src/hooks/usePromptSuggestion.ts
+  - id: group-7
+    kind: source
+    section: 4
+    summary: 键绑定系统
+    files:
+      - src/keybindings/types.ts
+      - src/keybindings/parser.ts
+      - src/keybindings/match.ts
+      - src/keybindings/resolver.ts
+      - src/keybindings/defaultBindings.ts
+      - src/keybindings/loadUserBindings.ts
+      - src/keybindings/KeybindingContext.tsx
+      - src/keybindings/reservedShortcuts.ts
+  - id: group-8
+    kind: source
+    section: 4
+    summary: Vim 模式实现
+    files:
+      - src/vim/types.ts
+      - src/vim/transitions.ts
+      - src/vim/operators.ts
+      - src/vim/motions.ts
+      - src/vim/textObjects.ts
+  - id: group-9
+    kind: source
+    section: 4
+    summary: 基础设施
+    files:
+      - src/utils/Cursor.ts
+      - src/utils/intl.ts

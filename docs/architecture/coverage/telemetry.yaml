@@ -1,0 +1,16 @@
+schema_version: 1
+spec_id: telemetry
+spec: ../../superpowers/specs/2026-11-12-telemetry-design.md
+status: draft
+groups:
+  - id: telemetry-core
+    kind: source
+    section: 4
+    summary: Telemetry core utilities
+    files:
+      - src/utils/telemetry/betaSessionTracing.ts
+      - src/utils/telemetry/events.ts
+      - src/utils/telemetry/instrumentation.ts
+      - src/utils/telemetry/logger.ts
+      - src/utils/telemetry/perfettoTracing.ts
+      - src/utils/telemetryAttributes.ts

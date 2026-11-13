@@ -1,0 +1,45 @@
+schema_version: 1
+spec_id: attachments
+spec: ../../superpowers/specs/2026-11-12-attachments-design.md
+status: draft
+groups:
+  - id: attachments-core
+    kind: source
+    section: 4
+    summary: 核心附件处理 — 附件获取、消息创建、类型定义
+    files:
+      - src/utils/attachments.ts
+  - id: image-processing
+    kind: source
+    section: 4
+    summary: 图片处理 — 剪贴板、存储、验证、调整大小
+    files:
+      - src/utils/imagePaste.ts
+      - src/utils/imageStore.ts
+      - src/utils/imageValidation.ts
+  - id: paste-store
+    kind: source
+    section: 4
+    summary: 文本粘贴存储
+    files:
+      - src/utils/pasteStore.ts
+  - id: config-types
+    kind: source
+    section: 4
+    summary: 配置与常量类型
+    files:
+      - src/constants/apiLimits.ts
+  - id: hooks-integration
+    kind: source
+    section: 4
+    summary: 钩子系统集成
+    files:
+      - src/utils/hooks.ts
+      - src/services/lsp/LSPDiagnosticRegistry.ts
+  - id: diagnostics-telemetry
+    kind: source
+    section: 4
+    summary: 诊断与遥测
+    files:
+      - src/services/analytics/index.ts
+      - src/services/diagnosticTracking.ts
