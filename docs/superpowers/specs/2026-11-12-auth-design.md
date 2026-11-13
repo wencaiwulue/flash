@@ -94,6 +94,91 @@ Claude Code 需要支持多种认证方式：OAuth 2.0（Claude.ai 用户）、A
 
 ## 4. 架构、模块与数据流
 
+### 4.0 模块设计卡
+
+#### 模块设计卡：OAuth 浏览器/手动流程 (OAuthService)
+
+| 项目 | 内容 |
+|-----|-----|
+| **真实入口签名** | `OAuthService.startOAuthFlow(authURLHandler: (url: string, automaticUrl?: string) => Promise<void>, options?: { loginWithClaudeAi?: boolean; inferenceOnly?: boolean; expiresIn?: number; orgUUID?: string; loginHint?: string; loginMethod?: string; skipBrowserOpen?: boolean }): Promise<OAuthTokens>` |
+| **关键类型** | `OAuthTokens { accessToken: string; refreshToken: string | null; expiresAt: number | null; scopes: string[]; subscriptionType: SubscriptionType | null; rateLimitTier: RateLimitTier | null; profile?: OAuthProfileResponse; tokenAccount?: { uuid: string; emailAddress: string; organizationUuid?: string } }` |
+| **输入** | 回调函数 `authURLHandler` 处理授权 URL；可选参数控制登录方式、scope、组织等 |
+| **输出** | 返回完整的 `OAuthTokens` 对象；失败抛出异常 |
+| **状态与文件布局** | - 内存状态：`codeVerifier`（PKCE 验证串）、`authCodeListener`（本地回调服务器）、`port`（监听端口）、`manualAuthCodeResolver`（手动流程 Promise）<br>- 无持久化文件，token 委托给 `auth.ts` 保存 |
+| **认证流程** | 1. 启动本地服务器 `AuthCodeListener` 监听随机端口<br>2. 生成 PKCE `codeVerifier` + `codeChallenge`、随机 `state`<br>3. 构建两条授权 URL：`manualFlowUrl`（用户手动复制粘贴 code）、`automaticFlowUrl`（localhost 回调）<br>4. 调用 `authURLHandler(manualFlowUrl, automaticFlowUrl)` 展示给用户；非 `skipBrowserOpen` 时自动打开浏览器到 `automaticFlowUrl`<br>5. 等待授权码：自动流程通过 `localhost:port/callback` 接收，手动流程通过 `handleManualAuthCodeInput()` 接收<br>6. 用 `exchangeCodeForTokens()` 交换 tokens<br>7. 用 `fetchProfileInfo()` 获取用户订阅信息<br>8. 自动流程成功时调用 `AuthCodeListener.handleSuccessRedirect()` 展示成功页面<br>9. 返回格式化后的 `OAuthTokens` |
+| **错误与安全** | - PKCE 保护：`codeVerifier` 仅在客户端内存中，不落地<br>- `state` 参数防止 CSRF 攻击<br>- 失败时若有 pending 自动流程，调用 `handleErrorRedirect()` 展示错误页<br>- 最终调用 `cleanup()` 关闭本地服务器释放端口 |
+| **设计取舍/备选** | - **双路径设计**：自动路径最佳体验，手动路径作为 fallback（无浏览器环境）<br>- 备选：仅手动路径 → 体验差；仅自动路径 → 某些环境不可用<br>- **本地服务器随机端口**：避免端口冲突，更安全<br>- 备选：固定端口 → 冲突风险高 |
+| **源码测试证据** | `src/services/oauth/index.ts:21-196` |
+
+---
+
+#### 模块设计卡：Token 刷新并发与跨进程锁 (checkAndRefreshOAuthTokenIfNeeded)
+
+| 项目 | 内容 |
+|-----|-----|
+| **真实入口签名** | `function checkAndRefreshOAuthTokenIfNeeded(retryCount = 0, force = false): Promise<boolean>` |
+| **关键类型** | `pendingRefreshCheck: Promise<boolean> | null`（同进程去重）、`lockfile.lock(path)`（跨进程锁） |
+| **输入** | `retryCount`（锁获取重试次数，默认 0）；`force`（强制刷新，忽略过期检查，默认 false） |
+| **输出** | `true` 表示已刷新；`false` 表示未过期/已被其他进程刷新/失败 |
+| **状态与文件布局** | - 内存状态：`pendingRefreshCheck`（模块级变量，同进程去重）<br>- 文件系统：锁文件位于 `~/.claude/` 目录（由 `lockfile` 模块管理）<br>- 验证点：`regular file`（锁文件是常规文件）、`0o600`（权限控制）、`JSON`（token 格式）、`token` 非空（有效性验证） |
+| **刷新流程** | 1. **同进程去重**：`retryCount === 0 && !force` 时检查 `pendingRefreshCheck`，有则复用其结果<br>2. 调用 `invalidateOAuthCacheIfDiskChanged()` 检查 `.credentials.json` mtime，变更则清缓存<br>3. **过期检查**：`force = false` 时调用 `isOAuthTokenExpired(tokens.expiresAt)`（提前 5 分钟）<br>4. **二次读取**：异步调用 `getClaudeAIOAuthTokensAsync()` 重新读取，检查是否已被其他进程刷新<br>5. **跨进程锁获取**：调用 `lockfile.lock(getClaudeConfigHomeDir())`；失败时等待重试（最多 5 次，指数退避）<br>6. **持有锁后三次检查**：再次异步读取 tokens，确认仍需刷新（等待锁期间可能被其他进程刷新）<br>7. 调用 `refreshOAuthToken()` 请求新 tokens<br>8. `saveOAuthTokensIfNeeded()` 保存新 tokens<br>9. `clearOAuthTokenCache()` 清空缓存<br>10. 释放锁，返回结果<br>11. **Stale token 处理**：若刷新失败但有缓存的未过期 tokens，返回 `true` |
+| **错误与安全** | - **刷新去重**：同进程 `pendingRefreshCheck` + 跨进程 `lockfile` 双重去重<br>- **密钥不进入日志/argv**：刷新失败时 `safeRefreshError()` 将 token 替换为 `<redacted>`<br>- **锁释放保证**：Promise `finally` 块中调用 `release()`<br>- 锁获取失败达到 `MAX_RETRIES=5` 时记录事件并返回 `false` |
+| **设计取舍/备选** | - **双重去重**：同进程变量（快速无 IO）+ 跨进程文件锁（正确但慢）<br>- 备选：仅进程内 → 跨进程场景不安全；仅文件锁 → 同进程内不必要的 IO<br>- **提前 5 分钟刷新**：避免请求时才发现过期<br>- 备选：无提前量 → 用户体验差；过长 → 刷新频繁<br>- **锁获取后重新检查**：避免等待期间被其他进程刷新导致的重复刷新<br>- 备选：不检查 → 可能用无效 refresh token 请求导致被吊销 |
+| **源码测试证据** | `src/utils/auth.ts:1428-1562`、`tests/oauthRefresh.test.ts` |
+
+---
+
+#### 模块设计卡：Keychain / libsecret / Plaintext Fallback 多层存储 (SecureStorage)
+
+| 项目 | 内容 |
+|-----|-----|
+| **真实入口签名** | `function getSecureStorage(): SecureStorage`；`interface SecureStorage { name: string; read(): SecureStorageData | null; readAsync(): Promise<SecureStorageData | null>; update(data: SecureStorageData): { success: boolean; warning?: string }; delete(): boolean }` |
+| **关键类型** | `SecureStorageData { claudeAiOauth?: OAuthTokens; trustedDeviceToken?: string; pluginSecrets?: Record<string, Record<string, string>>; mcpOAuth?: Record<string, McpOAuthTokenData>; mcpOAuthClientConfig?: Record<string, McpOAuthClientConfig>; mcpXaaIdp?: Record<string, McpXaaIdpData>; mcpXaaIdpConfig?: Record<string, McpXaaIdpConfig> }` |
+| **输入** | `update()` 接收完整 `SecureStorageData`；`read()` / `delete()` 无参数 |
+| **输出** | `read()` 返回 `SecureStorageData | null`；`update()` 返回 `{ success: boolean; warning?: string }`；`delete()` 返回 `boolean` |
+| **状态与文件布局** | - macOS：Keychain 条目 `service="Claude Code-credentials" account="$USER"`，30 秒 TTL 缓存<br>- Linux：libsecret (secret-tool) 条目 `service="Claude Code-credentials" account="$USER"`<br>- Fallback：`~/.claude/.credentials.json`，权限 `0o600`，plaintext JSON<br>- **验证层级**：`regular file`（所有文件读取）、`0o600`（plaintext/CCR 文件）、`≤4096`（Keychain stdin 限制）、`JSON`（格式验证）、`token`（有效性） |
+| **存储读取/回退流程** | 1. **平台选择**：`getSecureStorage()` 按平台返回组合后的 `createFallbackStorage(primary, secondary)`<br>   - macOS：`primary=macOsKeychainStorage`, `secondary=plainTextStorage`<br>   - Linux：`primary=linuxSecretStorage`, `secondary=plainTextStorage`<br>   - 其他：`plainTextStorage`<br>2. **read() 流程**：`createFallbackStorage.read()` 优先调用 `primary.read()`，返回非 null 则直接返回，否则调用 `secondary.read()` 并兜底返回 `{}`<br>3. **update() 流程**：<br>   - 先读取 `primaryDataBefore = primary.read()`<br>   - 尝试 `primary.update(data)`，成功则：<br>     - 若 `primaryDataBefore === null`（首次从 secondary 迁移），调用 `secondary.delete()` 清理旧数据<br>     - 返回结果<br>   - primary 失败则调用 `secondary.update(data)`，成功则：<br>     - 若 `primaryDataBefore !== null`（primary 有 stale 数据），调用 `primary.delete()` 防止 stale 数据 shadow 新数据<br>     - 返回结果（含 `warning`）<br>   - 都失败返回 `{ success: false }`<br>4. **delete() 流程**：同时删除 primary 和 secondary，任一成功则返回 true |
+| **macOS Keychain 特殊流程** | - **缓存策略**：30 秒 TTL，`keychainCacheState` 含 `{ data, cachedAt, generation, readInFlight }`<br>- **Stale-while-error**：读取失败时若有旧缓存继续使用，不返回 null<br>- **Stdin 优先**：`security -i` 通过 stdin 输入命令避免 credentials 出现在 ps/top，限制 `SECURITY_STDIN_LINE_LIMIT=4096-64` 字节<br>- **Hex 编码**：payload 转 hex 避免 escaping 问题<br>- **Fallback to argv**：超过限制时用 argv 模式（有泄露风险但比 plaintext 好）<br>- **Generation 防止 stale 写**：`readAsync()` 捕获 generation，若中途被 invalidate 则不覆盖缓存<br>- **预取优化**：启动时 `startKeychainPrefetch()` 并行读取，结果 prime 缓存 |
+| **Linux Secret Service 特殊流程** | - 调用 `secret-tool lookup/store/clear` 命令<br>- 默认超时 `DEFAULT_TIMEOUT_MS=5000`ms<br>- 失败时 fallback 到 plaintext |
+| **错误与安全** | - **密钥不进入日志/argv**：macOS Keychain 优先 stdin 模式，仅超出 4096 字节时 fallback 到 argv（hex 编码）<br>- **权限控制**：plaintext 文件强制 `0o600`；CCR 目录 `0o700`<br>- **Stale token 防护**：primary update 失败时删除 primary 数据，防止 stale 数据 shadow secondary 新数据<br>- **Stale-while-error**：Keychain 读取失败时返回旧缓存，不直接失败 |
+| **设计取舍/备选** | - **多层 fallback**：可用性优先，安全存储失败时不阻止使用<br>- 备选：不 fallback → 可用性差；仅 plaintext → 不安全<br>- **30 秒缓存**：避免频繁 spawn `security` 命令（每次 ~500ms）<br>- 备选：无缓存 → 慢；更长 → 跨进程变更延迟更久<br>- **Stdin 优先 + argv fallback**：大多数情况下 credentials 不出现在进程列表<br>- 备选：仅 argv → 易泄露；仅 stdin → 大 payload 失败<br>- **迁移时清理 secondary**：首次写入 primary 成功时删除 secondary 避免混淆<br>- 备选：不删除 → 用户可能困惑为何有两份 |
+| **源码测试证据** | `src/utils/secureStorage/index.ts:7-20`、`src/utils/secureStorage/macOsKeychainStorage.ts:26-231`、`src/utils/secureStorage/linuxSecretStorage.ts:72-128`、`src/utils/secureStorage/plainTextStorage.ts:19-84`、`src/utils/secureStorage/fallbackStorage.ts:7-70`、`tests/linuxSecretStorage.test.ts` |
+
+---
+
+#### 模块设计卡：CCShare Credential (authFileDescriptor)
+
+| 项目 | 内容 |
+|-----|-----|
+| **真实入口签名** | `function getOAuthTokenFromFileDescriptor(): string | null`、`function getApiKeyFromFileDescriptor(): string | null`、`function maybePersistTokenForSubprocesses(path: string, token: string, tokenName: string): void` |
+| **关键类型** | `CCR_OAUTH_TOKEN_PATH = "/home/claude/.claude/remote/.oauth_token"`、`CCR_API_KEY_PATH = "/home/claude/.claude/remote/.api_key"` |
+| **输入** | 环境变量：`CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR` / `CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR`（指向 FD 编号）；文件系统：CCR 已知路径 |
+| **输出** | token 字符串或 null |
+| **状态与文件布局** | - 内存：`bootstrap/state` 中的 `getOauthTokenFromFd()` / `setOauthTokenFromFd()` 缓存<br>- 文件系统：`/home/claude/.claude/remote/.oauth_token`、`.api_key`、`.session_ingress_token`，权限 `0o600`；目录 `0o700`<br>- **凭证所有权与权限边界**：仅在 `CLAUDE_CODE_REMOTE` 环境中写入，隔离用户本地配置；FD 传递避免 token 出现在 env/argv/ps |
+| **读取流程** | 1. 检查 `bootstrap/state` 缓存，有则直接返回<br>2. 检查环境变量 `[envVar]`（如 `CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR`）：<br>   - 无 env var：直接尝试从 `wellKnownPath` 读取文件<br>   - 有 env var：解析 FD 编号，从 `/dev/fd/${fd}`（macOS/BSD）或 `/proc/self/fd/${fd}`（Linux）读取<br>3. FD 读取成功则调用 `maybePersistTokenForSubprocesses()` 写入 `wellKnownPath`<br>4. FD 读取失败（ENXIO 等，常见于 subprocess）则 fallback 到 `wellKnownPath` 文件<br>5. 结果存入缓存并返回 |
+| **持久化流程 (maybePersistTokenForSubprocesses)** | 1. 检查 `CLAUDE_CODE_REMOTE` 环境变量，非 CCR 环境直接返回<br>2. 创建目录 `/home/claude/.claude/remote/`，mode `0o700`<br>3. 写入 token 到指定路径，mode `0o600`<br>4. 记录 debug 日志 |
+| **错误与安全** | - **权限边界**：仅在 CCR 环境写入磁盘，非托管环境不污染用户文件系统<br>- **FD 传递安全**：token 不在 env/argv/ps 中出现<br>- **权限控制**：文件强制 `0o600`，目录 `0o700`<br>- **静默 ENOENT**：CCR 以外路径不存在是预期，不记录错误；其他错误（EACCES 等）记录 debug 日志 |
+| **设计取舍/备选** | - **FD + 已知文件双路径**：FD 更安全但无法跨越 exec/tmux 边界，已知文件作为 fallback 供 subprocess 使用<br>- 备选：仅 FD → subprocess 不可用；仅文件 → 安全边界弱<br>- **仅 CCR 持久化**：防止污染用户本地文件系统<br>- 备选：总是持久化 → 托管与本地边界模糊 |
+| **源码测试证据** | `src/utils/authFileDescriptor.ts:13-196` |
+
+---
+
+#### 模块设计卡：错误脱敏 (safeRefreshError)
+
+| 项目 | 内容 |
+|-----|-----|
+| **真实入口签名** | `function safeRefreshError(error: unknown, tokens: OAuthTokens): string` |
+| **关键类型** | `OAuthTokens { accessToken: string; refreshToken: string | null; ... }` |
+| **输入** | 原始 `error`（可能包含 token）；当前 `tokens` 对象 |
+| **输出** | 脱敏后的错误消息字符串，token 被替换为 `<redacted>` |
+| **状态与文件布局** | 无状态，纯函数；不读写文件 |
+| **脱敏流程** | 1. 调用 `errorMessage(error)` 获取原始错误字符串<br>2. 遍历 `[tokens.accessToken, tokens.refreshToken]`<br>3. 对每个非空 secret，调用 `message.replaceAll(secret, '<redacted>')`<br>4. 返回替换后的消息 |
+| **错误与安全** | - **密钥不进入日志/argv**：所有输出 token 的地方调用 `safeRefreshError()` 或等效 redact<br>- 不抛出异常，总是返回字符串 |
+| **设计取舍/备选** | - **手动替换**：简单直接，需要在所有输出 token 的地方调用<br>- 备选：结构化错误类型自动 redact → 需修改所有错误处理路径（当前未采用）；模板字符串 tag → 侵入性大 |
+| **源码测试证据** | `src/commands/oauth-refresh/oauthRefresh.ts:34-40`、`tests/oauthRefresh.test.ts` |
+
+---
+
 ### 4.1 入口与公共契约
 
 ```typescript
@@ -390,6 +475,54 @@ type AuthTokenSource =
 - 按平台优先级从 Keychain/libsecret 读取，失败则 fallback 到 plaintext
 - CCR 环境下优先从 FD 读取，失败则从已知路径文件读取
 - 缓存失效时重新读取存储
+
+### 4.5a 验证规则与模块归属补充
+
+| 验证项 | 应用场景 | 所属模块 | 验证内容 |
+|-----|-----|-----|-----|
+| **regular file** | 所有文件读取 | `plainTextStorage`、`authFileDescriptor` | 必须是常规文件，非目录/设备 |
+| **0o600 权限** | plaintext fallback、CCR 已知路径 | `plainTextStorage`、`authFileDescriptor` | 文件权限必须为 0o600，防止其他用户读取；CCR 目录权限 0o700 |
+| **≤4096 字节** | macOS Keychain stdin 模式 | `macOsKeychainStorage` | 命令行长度不超过 4096-64 字节，超过则 fallback 到 argv |
+| **合法 JSON** | 所有 credential 解析 | 所有存储模块 | 必须能解析为 `SecureStorageData` 结构 |
+| **token 非空** | OAuth/API key 使用前 | `auth.ts` | `access_token/api_key` 不能为空字符串 |
+
+#### 刷新去重与 Stale Token 防护
+
+| 层级 | 机制 | 所属模块 | 防护目标 |
+|-----|-----|-----|-----|
+| **同进程去重** | `pendingRefreshCheck: Promise<boolean> | null` | `auth.ts` | 同进程内并发刷新请求只执行一次 |
+| **跨进程锁** | `lockfile.lock(getClaudeConfigHomeDir())` | `auth.ts` | 跨进程并发刷新只执行一次 |
+| **持有锁后二次检查** | 获取锁后再次异步读取 tokens | `auth.ts` | 等待锁期间可能被其他进程刷新 |
+| **Stale token shadow 防护** | primary update 失败时调用 `primary.delete()` | `fallbackStorage.ts` | 防止 primary 旧数据 shadow secondary 新数据 |
+| **Stale-while-error** | Keychain 读取失败时返回旧缓存 | `macOsKeychainStorage.ts` | 瞬时错误不导致用户"被登出" |
+| **Generation 防 stale 写** | `keychainCacheState.generation` | `macOsKeychainHelpers.ts` | 防止 `readAsync()` 中途被 invalidate 后用 stale 结果覆盖缓存 |
+
+#### 密钥不进入日志/argv 策略
+
+| 层级 | 机制 | 所属模块 | 场景 |
+|-----|-----|-----|-----|
+| **Stdin 优先** | `security -i` 通过 stdin 输入命令 | `macOsKeychainStorage.ts` | macOS Keychain 写入，避免 payload 出现在 ps/top |
+| **Hex 编码** | payload 转 hex 后传入 | `macOsKeychainStorage.ts` | 必须用 argv 时，hex 编码不直观可见 |
+| **Redact 替换** | `safeRefreshError()` 将 token 替换为 `<redacted>` | `oauthRefresh.ts` | 错误消息、日志输出 |
+| **环境隔离** | CCR 环境不读取用户本地配置 | `auth.ts` | 托管会话凭证边界 |
+
+#### Linux Secret Service Fallback
+
+| 层级 | 机制 | 所属模块 |
+|-----|-----|-----|
+| **Primary 存储** | `linuxSecretStorage` 调用 `secret-tool lookup/store/clear` | `linuxSecretStorage.ts` |
+| **Fallback 存储** | `createFallbackStorage(linuxSecretStorage, plainTextStorage)` | `getSecureStorage()` |
+| **超时控制** | `DEFAULT_TIMEOUT_MS = 5000` ms | `linuxSecretStorage.ts` |
+| **权限控制** | plaintext 文件权限 `0o600` | `plainTextStorage.ts` |
+
+#### 凭证所有权与权限边界
+
+| 场景 | 凭证来源 | 所有权边界 | 所属模块 |
+|-----|-----|-----|-----|
+| **托管会话 (CCR)** | FD → `/home/claude/.claude/remote/.oauth_token` | 不读取用户本地 `~/.claude/settings.json` | `authFileDescriptor.ts`、`auth.ts` |
+| **Claude Desktop** | `CLAUDE_CODE_OAUTH_TOKEN` 或 FD | 不读取用户本地 API key | `auth.ts` |
+| **独立 CLI 会话** | Keychain / libsecret / `~/.claude/.credentials.json` | 用户本地凭证，与托管隔离 | `secureStorage/*` |
+| **环境变量** | `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` | 最高优先级，覆盖持久化存储 | `auth.ts` |
 
 ### 4.6 跨子系统依赖
 
