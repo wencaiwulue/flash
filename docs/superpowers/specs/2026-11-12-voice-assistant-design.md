@@ -130,7 +130,101 @@ async function getVoiceKeyterms(
 2. **Hold-to-talk 路径**：用户按住语音键（默认空格）→ startRecordingSession() 启动录音 + connectVoiceStream() → 缓冲音频 → onReady flush → onTranscript 累积 → 释放键 → stopRecording() → finalize() → onTranscript 最终转录
 3. **Focus 模式路径**：终端获得焦点 → startRecordingSession() → 录音/转录 → 失去焦点或静默超时 → finishRecording()
 
-### 4.2 模块与状态所有权
+---
+
+### 4.2 模块设计卡
+
+#### 模块 1：音频采集服务 (voice.ts)
+
+| 项目 | 内容 |
+|------|------|
+| **入口签名** | `async function startRecording(onData: (chunk: Buffer) => void, onEnd: () => void, options?: { silenceDetection?: boolean }): Promise<boolean>`<br>`function stopRecording(): void`<br>`async function checkRecordingAvailability(): Promise<RecordingAvailability>`<br>`async function requestMicrophonePermission(): Promise<boolean>` |
+| **关键类型** | `type RecordingAvailability = { available: boolean; reason: string | null }`<br>`const RECORDING_SAMPLE_RATE = 16000`<br>`const RECORDING_CHANNELS = 1` |
+| **输入输出** | 输入：音频数据回调、结束回调、静音检测选项<br>输出：是否成功启动录音<br>回调输出：16kHz 16-bit 单声道 PCM 音频块 (Buffer) |
+| **状态与计时器** | 模块级状态：`audioNapi` (native 模块)、`audioNapiPromise` (加载 Promise)、`activeRecorder` (子进程)、`nativeRecordingActive` (native 录音状态)、`arecordProbe` (arecord 探测结果，memoized)、`linuxAlsaCardsMemo` (ALSA 卡探测，memoized)<br>计时器：probeArecord 150ms 定时器 |
+| **录音/连接/停止/取消流程** | 1. 优先尝试 native audio-capture-napi (cpal)<br>2. 失败时 fallback：Linux → arecord → SoX；macOS → SoX<br>3. stopRecording 优先停止 native 录音，否则 kill 子进程<br>4. arecord 探测：spawn 后 150ms 仍存活则认为可用 |
+| **错误与隐私** | 远程环境 (CCR/Homespace) 禁用<br>权限拒绝：macOS TCC 弹窗<br>WSL 检测：Win10/WSL1 提示使用原生 Windows<br>音频块复制：Buffer.from 防止 ArrayBuffer 共享竞争 |
+| **设计取舍/备选** | 延迟加载 native 模块：第一次按键才 import，避免启动时权限弹窗和阻塞<br>arecord 探测 memoize：避免每次按键 150ms 延迟<br>SoX --buffer 1024：强制小 chunk 刷新，减少延迟<br>备选方案：启动时预加载，但权限弹窗过早出现影响体验 |
+| **源码测试证据** | `src/services/voice.ts:40-60` (loadAudioNapi)<br>`src/services/voice.ts:99-142` (probeArecord)<br>`src/services/voice.ts:283-352` (checkRecordingAvailability)<br>`src/services/voice.ts:359-420` (startRecording)<br>无自动化测试，需手动验证各平台 fallback |
+
+---
+
+#### 模块 2：useVoice 状态机 (useVoice.ts)
+
+| 项目 | 内容 |
+|------|------|
+| **入口签名** | `function useVoice({ onTranscript, onError, enabled, focusMode }: UseVoiceOptions): UseVoiceReturn`<br>`function handleKeyEvent(fallbackMs?: number): void` |
+| **关键类型** | `type VoiceState = 'idle' | 'recording' | 'processing'`<br>`type UseVoiceOptions = { onTranscript: (text: string) => void; onError?: (message: string) => void; enabled: boolean; focusMode: boolean }`<br>`const RELEASE_TIMEOUT_MS = 200`<br>`const REPEAT_FALLBACK_MS = 600`<br>`const FIRST_PRESS_FALLBACK_MS = 2000`<br>`const FOCUS_SILENCE_TIMEOUT_MS = 5000`<br>`const AUDIO_LEVEL_BARS = 16` |
+| **输入输出** | 输入：enabled 开关、focusMode 开关、onTranscript/onError 回调<br>输出：当前状态、handleKeyEvent 函数<br>回调输出：累积转录文本、错误消息 |
+| **状态与计时器** | useRef 状态：`stateRef` (当前状态)、`connectionRef` (STT 连接)、`accumulatedRef` (累积转录)、`fullAudioRef` (完整音频用于重放)、`sessionGenRef` (会话世代，防僵尸回调)、`attemptGenRef` (尝试世代，防早期错误重试冲突)、`retryUsedRef` (是否已重试)、`silentDropRetriedRef` (是否已静默重放)、`focusTriggeredRef` (是否由 focus 触发)、`silenceTimedOutRef` (是否静默超时)、`hasAudioSignalRef` (是否有音频信号)、`everConnectedRef` (是否已连接)、`audioLevelsRef` (音频电平直方图)<br>计时器：`releaseTimerRef` (200ms 释放检测)、`repeatFallbackTimerRef` (600ms/2000ms 自动重复 fallback)、`focusSilenceTimerRef` (5000ms focus 静默超时)、`cleanupTimerRef` (清理) |
+| **录音/连接/停止/取消流程** | **启动流程** (startRecordingSession)：<br>1. 同步 updateState('recording') — 避免竞态<br>2. 并行：checkRecordingAvailability + startRecording (立即缓冲) + getVoiceKeyterms + connectVoiceStream<br>3. onReady 时 flush 缓冲音频 (32KB coalesce)<br>4. onTranscript 累积/显示中间结果<br><br>**释放流程** (finishRecording)：<br>1. stopRecording()<br>2. connection.finalize() — 发送 CloseStream<br>3. 检测静默 drop：no_data_timeout + 有音频信号 + wsConnected + !focusTriggered + !silentDropRetried → 重放 fullAudioRef 到新连接 (250ms 延迟)<br>4. onTranscript 最终结果<br>5. cleanup()<br><br>**键释放检测**：<br>1. 第一次按键：启动 fallback timer (600ms/2000ms)<br>2. 第二次按键 (auto-repeat)：arm release timer (200ms)<br>3. 按键间隙 >200ms：触发 finishRecording<br><br>**早期错误重试**：收到 onError 且无 transcript → 重试一次 (250ms 延迟) |
+| **错误与隐私** | 静默 drop：重放完整音频 (非 focus 模式)<br>早期连接失败：透明重试一次 (250ms 延迟)<br>网络错误：区分 WS 未连接 vs 已连接但无转录<br>权限错误：委托给 checkRecordingAvailability<br>会话世代 (sessionGenRef)：防止僵尸回调写入新会话状态<br>fullAudioRef 仅在非 focus 模式保存，节省内存 |
+| **设计取舍/备选** | **API 内建 endpointing 与 Focus 5s 静默超时**：voice_stream 用 endpointing_ms=300/utterance_end_ms=1000；Focus 模式叠加 5s 静默超时停止录音<br>**fullAudioRef 重放**：缓存完整音频 (~2MB/60s)，解决 1% 静默 drop；仅非 focus 模式<br>**release timers**：双 timer + auto-repeat 检测；200ms 释放 + 600ms fallback + 2000ms 修饰键 fallback<br>**备选方案**：单 timer 但误触发率高；不重放但用户体验差<br>**状态同步优先**：updateState('recording') 在 await 之前，避免竞态<br>**音频 coalesce**：32KB 切片减少 WS 帧数 |
+| **源码测试证据** | `src/hooks/useVoice.ts:157-177` (常量)<br>`src/hooks/useVoice.ts:185-197` (computeLevel)<br>`src/hooks/useVoice.ts:284-321` (cleanup)<br>`src/hooks/useVoice.ts:322-522` (finishRecording + 静默检测)<br>`src/hooks/useVoice.ts:539-571` (armFocusSilenceTimer)<br>`src/hooks/useVoice.ts:573-631` (focus effect)<br>`src/hooks/useVoice.ts:633-1011` (startRecordingSession)<br>`src/hooks/useVoice.ts:1014-1127` (handleKeyEvent)<br>无自动化测试，需手动验证 hold-to-talk、focus 模式、静默重放 |
+
+---
+
+#### 模块 3：权限与设备错误处理 (voice.ts + useVoice.ts)
+
+| 项目 | 内容 |
+|------|------|
+| **入口签名** | `async function checkRecordingAvailability(): Promise<RecordingAvailability>`<br>`async function requestMicrophonePermission(): Promise<boolean>`<br>`function isVoiceModeEnabled(): boolean` (voiceModeEnabled.ts) |
+| **关键类型** | `type RecordingAvailability = { available: boolean; reason: string | null }`<br>`isRunningOnHomespace()` (远程环境检测)<br>`isEnvTruthy(CLAUDE_CODE_REMOTE)` |
+| **输入输出** | 输入：无 (检查环境)<br>输出：可用性 + 错误原因字符串<br>原因包含安装指引 (如 `brew install sox`) 或环境说明 (WSL/远程) |
+| **状态与计时器** | `arecordProbe` (memoized)、`linuxAlsaCardsMemo` (memoized)、`voiceModule` (延迟加载) |
+| **录音/连接/停止/取消流程** | **检查流程**：<br>1. 远程环境 → 立即拒绝<br>2. native 可用 → 接受<br>3. Windows → 拒绝 (无 fallback)<br>4. Linux：arecord probe → 成功则接受；否则检查 SoX<br>5. macOS：检查 SoX<br><br>**权限流程**：<br>1. requestMicrophonePermission 启动一次短暂录音<br>2. macOS TCC 弹窗在第一次实际录音时触发<br>3. 不使用 TCC API (ad-hoc 签名不可靠)<br><br>**CCR 禁用边界**：`isRunningOnHomespace() || isEnvTruthy(CLAUDE_CODE_REMOTE)` → 禁用，提示用户本地运行 |
+| **错误与隐私** | 远程环境检测：防止在无麦克风环境尝试录音<br>WSL 检测：区分 WSLg (可用) vs WSL1/Win10 (不可用)<br>SoX/arecord 缺失：提供安装命令<br>权限拒绝：优雅提示而不崩溃<br>隐私：仅在用户实际使用时请求权限，不启动时预加载<br>错误原因字符串面向用户，提供可操作指引 |
+| **设计取舍/备选** | **原生/arecord/SoX fallback 链**：优先 native (低延迟/权限集成)，然后 arecord (Linux)，然后 SoX (通用)<br>**probe memoization**：设备可用性不变，避免每次按键 150ms 延迟<br>**不使用 TCC API**：ad-hoc 签名/跨架构二进制 TCC 状态不可靠，实际录音探测更可信<br>**备选方案**：每次按键都 probe，但延迟增加；使用 TCC API，但误报率高 |
+| **源码测试证据** | `src/services/voice.ts:283-352` (checkRecordingAvailability)<br>`src/services/voice.ts:265-281` (requestMicrophonePermission)<br>`src/services/voice.ts:99-142` (probeArecord)<br>`src/services/voice.ts:154-167` (linuxHasAlsaCards)<br>`src/voice/voiceModeEnabled.ts` (功能开关)<br>无自动化测试，需手动验证各平台错误提示 |
+
+---
+
+#### 模块 4：流式连接与取消 (voiceStreamSTT.ts)
+
+| 项目 | 内容 |
+|------|------|
+| **入口签名** | `async function connectVoiceStream(callbacks: VoiceStreamCallbacks, options?: { language?: string; keyterms?: string[] }): Promise<VoiceStreamConnection | null>`<br>`function isVoiceStreamAvailable(): boolean` |
+| **关键类型** | `type VoiceStreamCallbacks = { onTranscript: (text: string, isFinal: boolean) => void; onError: (error: string, opts?: { fatal?: boolean }) => void; onClose: () => void; onReady: (connection: VoiceStreamConnection) => void }`<br>`type VoiceStreamConnection = { send: (audioChunk: Buffer) => void; finalize: () => Promise<FinalizeSource>; close: () => void; isConnected: () => boolean }`<br>`type FinalizeSource = 'post_closestream_endpoint' | 'no_data_timeout' | 'safety_timeout' | 'ws_close' | 'ws_already_closed'`<br>`const KEEPALIVE_INTERVAL_MS = 8000`<br>`const FINALIZE_TIMEOUTS_MS = { safety: 5000, noData: 1500 }`<br>`const VOICE_STREAM_PATH = '/api/ws/speech_to_text/voice_stream'` |
+| **输入输出** | 输入：回调对象、语言代码、keyterms 数组<br>输出：连接对象或 null (无 OAuth)<br>回调输出：onTranscript (中间/最终)、onError、onClose、onReady<br>send() 输入：16kHz 16-bit 单声道 PCM Buffer<br>finalize() 输出：FinalizeSource (如何结束的) |
+| **状态与计时器** | `keepaliveTimer` (8s 间隔)、`finalized` (是否已发送 CloseStream)、`finalizing` (是否正在 finalize)、`upgradeRejected` (HTTP 升级是否拒绝)、`lastTranscriptText` (最后转录文本，用于 endpointing)、`resolveFinalize` (finalize Promise resolve)、`cancelNoDataTimer` (取消 no-data 计时器)<br>计时器：no-data 1.5s、safety 5s |
+| **录音/连接/停止/取消流程** | **连接流程**：<br>1. checkAndRefreshOAuthTokenIfNeeded<br>2. 构建 URL：包含 encoding=linear16, sample_rate=16000, channels=1, endpointing_ms=300, utterance_end_ms=1000, language, keyterms, Nova 3 开关<br>3. 连接 api.anthropic.com (非 claude.ai，避免 CF 指纹挑战)<br>4. onopen：发送 KeepAlive + 启动 8s keepalive + 调用 onReady<br><br>**发送流程**：<br>1. Buffer.from 复制音频块 (防止 NAPI ArrayBuffer 共享)<br>2. 仅在 OPEN 且未 finalized 时发送<br><br>**Finalize 流程**：<br>1. 设 finalizing=true，启动 safety (5s) + no-data (1.5s) 计时器<br>2. setTimeout(0) 发送 CloseStream (让已排队音频先发送)<br>3. 四个 resolve 触发：TranscriptEndpoint post-CloseStream (~300ms)、no-data timeout (1.5s)、WS close (~3-5s)、safety timeout (5s)<br>4. 任一触发后：promote 未报告 interim → resolve → clear timers<br><br>**取消流程**：<br>1. close() 设 finalized=true，clear keepalive，关闭 WS<br>2. finalized 后发送音频被丢弃<br>3. unexpected-response：HTTP 非 101 → destroy req，标记 upgradeRejected，4xx 标记 fatal |
+| **错误与隐私** | 意外响应：HTTP 非 101 → 4xx fatal (不重试)，5xx 可重试<br>upgradeRejected 标记：防止 close 事件重复报错<br>finalizing 期间抑制 onError：避免擦除已累积转录<br>音频块复制：防止 NAPI ArrayBuffer 共享竞争<br>隐私：使用 OAuth Bearer token，不暴露额外凭据<br>服务器：api.anthropic.com 而非 claude.ai (CF 挑战问题)<br>Deepgram Nova 3：通过 query param 选择 STT provider |
+| **设计取舍/备选** | **API 内建 endpointing**：endpointing_ms=300, utterance_end_ms=1000，Deepgram 内置 VAD<br>**CloseStream 延迟发送**：setTimeout(0) 让已排队音频回调先发送<br>**双 finalize 计时器**：1.5s no-data (快速失败静默) + 5s safety (兜底)<br>**keepalive 8s**：防止空闲超时<br>**备选方案**：无 endpointing 需手动判断语音结束，体验差；立即发送 CloseStream 可能丢失末尾音频<br>**Nova 3 自动-finalize 禁用**：Nova 3 跨段累积，自动-finalize 导致重复，仅在最终 TranscriptEndpoint 确认<br>**TranscriptText 自动-finalize (非 Nova 3)**：检测新段 (非前缀) 自动-finalize 前一段 |
+| **源码测试证据** | `src/services/voiceStreamSTT.ts:111-544` (connectVoiceStream)<br>`src/services/voiceStreamSTT.ts:34-47` (常量)<br>`src/services/voiceStreamSTT.ts:144-173` (URL 参数)<br>`src/services/voiceStreamSTT.ts:215-320` (连接对象)<br>`src/services/voiceStreamSTT.ts:357-461` (消息处理)<br>无自动化测试，需手动验证 WS 连接、finalize、错误处理 |
+
+---
+
+#### 模块 5：Focus 模式 (useVoice.ts)
+
+| 项目 | 内容 |
+|------|------|
+| **入口签名** | `function useVoice({ ..., focusMode }: UseVoiceOptions): UseVoiceReturn`<br>focus effect 通过 `useTerminalFocus()` 驱动 |
+| **关键类型** | `const FOCUS_SILENCE_TIMEOUT_MS = 5000`<br>`focusTriggeredRef` (是否由 focus 触发)、`silenceTimedOutRef` (是否静默超时)、`focusSilenceTimerRef` (5s 计时器)、`focusFlushedCharsRef` (已 flush 字符数) |
+| **输入输出** | 输入：focusMode 开关、终端焦点状态 (useTerminalFocus)<br>输出：自动启动/停止录音<br>focus 模式 onTranscript：每个 final 立即 flush，不累积<br>非 focus 模式：累积所有 final，结束时一次性输出 |
+| **状态与计时器** | `focusTriggeredRef` (boolean)、`silenceTimedOutRef` (boolean)、`focusSilenceTimerRef` (5s 计时器)、`focusFlushedCharsRef` (number)<br>Focus 静默计时器：5s 无转录 → finishRecording<br>计时器重置：收到 onTranscript (interim 或 final) 时重置 |
+| **录音/连接/停止/取消流程** | **Focus 启动流程**：<br>1. 终端获得焦点 + enabled + focusMode + idle + !silenceTimedOutRef<br>2. focusTriggeredRef = true<br>3. startRecordingSession()<br>4. armFocusSilenceTimer() (5s)<br><br>**Focus 停止流程**：<br>1. 终端失去焦点 → finishRecording<br>2. 或 5s 静默超时 → finishRecording + silenceTimedOutRef = true<br>3. 按键时重置 silenceTimedOutRef，重新 arm<br><br>**Focus 转录流程**：<br>1. onTranscript isFinal=true → 立即调用回调，不累积<br>2. focusFlushedCharsRef += text.length<br>3. accumulatedRef = ''<br>4. armFocusSilenceTimer() (重置)<br>5. fullAudioRef 不保存 (节省内存，静默重放跳过 focus 模式) |
+| **错误与隐私** | silenceTimedOutRef：防止静默超时后立即重新录音<br>focusFlushedCharsRef：修复静默 drop 检测 (focus 模式 transcriptChars 不为 0)<br>fullAudioRef 仅非 focus 模式保存：节省内存 (focus 会话可能很长)<br>focusTriggeredRef 标记：静默重放跳过 focus 模式<br>终端失去焦点时立即停止，不等待静默超时 |
+| **设计取舍/备选** | **Focus 5s 静默超时**：硬编码 5s，平衡用户体验和资源占用；可考虑改为配置项<br>**静默超时后需按键重新 arm**：避免无限自动录音<br>**每个 final 立即 flush**：给用户连续反馈，体验更好<br>**fullAudioRef 不保存**：focus 会话可能很长 (10min+)，2MB/60s → 20MB，节省内存<br>**备选方案**：可调超时时间 (但增加复杂度)；累积后一次性输出 (但反馈延迟) |
+| **源码测试证据** | `src/hooks/useVoice.ts:176` (FOCUS_SILENCE_TIMEOUT_MS)<br>`src/hooks/useVoice.ts:539-571` (armFocusSilenceTimer)<br>`src/hooks/useVoice.ts:573-631` (focus effect)<br>`src/hooks/useVoice.ts:789-839` (onTranscript focus flush)<br>`src/hooks/useVoice.ts:379-388` (静默重放跳过 focus 模式)<br>无自动化测试，需手动验证 focus 模式启动/停止/静默超时 |
+
+---
+
+#### 模块 6：Keyterms 提升 STT 准确率 (voiceKeyterms.ts)
+
+| 项目 | 内容 |
+|------|------|
+| **入口签名** | `async function getVoiceKeyterms(recentFiles?: ReadonlySet<string>): Promise<string[]>`<br>`function splitIdentifier(name: string): string[]` |
+| **关键类型** | `const GLOBAL_KEYTERMS: readonly string[]` (31 个全局术语)<br>`const MAX_KEYTERMS = 50` |
+| **输入输出** | 输入：recentFiles Set (可选，最近文件)<br>输出：keyterms 数组 (最多 50 个)<br>术语来源：全局术语 + 项目根目录名 + 分支名词 + 最近文件名单词 |
+| **状态与计时器** | 无持久状态，每次调用重新计算<br>纯函数 (除 git/root 探测) |
+| **录音/连接/停止/取消流程** | **Keyterms 生成流程**：<br>1. 从 GLOBAL_KEYTERMS 初始化 Set<br>2. 添加项目根目录 basename (长度 3-50)<br>3. 拆分 git 分支名 (kebab/camel/snake/slash) 成单词，添加长度 3-20 的单词<br>4. 遍历 recentFiles，拆分文件名成单词，填充剩余槽位 (最多 50)<br>5. 返回数组，前 50 个<br><br>**传递流程**：通过 voice_stream URL query param `keyterms` 多次追加，Deepgram 应用关键词 boosting |
+| **错误与隐私** | git/getProjectRoot 失败：静默忽略，继续用已有术语<br>单词长度限制：3-20 字符，避免噪音 (如 "a"、"ts")<br>不包含完整路径，仅文件名，减少隐私暴露<br>Set 去重：避免重复术语 |
+| **设计取舍/备选** | **最多 50 个 keyterms**：防止 URL 过长<br>**全局术语优先**：覆盖通用编程词汇<br>**项目上下文**：根目录名、分支名、文件名，提升项目特定术语准确率<br>**标识符拆分**：camelCase/PascalCase/kebab-case/snake_case/path segments → 单词<br>**备选方案**：更多术语但 URL 可能溢出；手动配置但增加用户负担<br>**不包含术语 nobody speaks**：如 "stdout" → 用 "standard out" (但当前代码仍用缩写) |
+| **源码测试证据** | `src/services/voiceKeyterms.ts:13-31` (GLOBAL_KEYTERMS)<br>`src/services/voiceKeyterms.ts:35-51` (splitIdentifier/fileNameWords)<br>`src/services/voiceKeyterms.ts:63-106` (getVoiceKeyterms)<br>`src/services/voiceStreamSTT.ts:169-173` (keyterms query param)<br>无自动化测试，需手动验证 keyterms 生成和传递 |
+
+---
+
+### 4.3 模块与状态所有权
 
 | 模块/对象 | 拥有的状态 | 主要操作 | 不承担的职责 | 与其他模块的接口 |
 |---|---|---|---|---|
