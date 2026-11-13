@@ -215,7 +215,7 @@ status: draft
 
 **备选方案及不采用原因：**
 - 方案 A：显示所有文件 → 被否决，变更多时会占满整个屏幕
-- 方案 B：用分页（上一页/下一页）→ 被否决，需要额外快捷键，增加学习成本
+- 方案 B：用分页（上一页/下一页） → 被否决，需要额外快捷键，增加学习成本
 - 方案 C：截断路径结尾 → 被否决，用户更关心文件名而不是目录结构
 
 **代价：**
@@ -234,7 +234,7 @@ status: draft
 - `dividerIndex` 是 messages 数组中分隔线的索引
 - 滚动离开底部时 snapshot，滚动回来时清除
 - prepend 消息时调用 `shiftDivider(indexDelta, heightDelta)` 调整位置
-- `countUnseenAssistantTurns` 统计分隔线后的 assistant 轮数（跳过纯 tool-use 轮次）
+- `countUnseenAssistantTurns` 统计分隔线后的 assistant 轮次（跳过纯 tool-use 轮次）
 
 **为什么这样设计：**
 - 用户向上滚动阅读历史时，不应被新消息打断
@@ -337,78 +337,815 @@ status: draft
 
 #### /add-dir 命令入口
 
+**真实入口签名：**
 ```typescript
-// 输入：可选的目录路径
-type Args = string | undefined;
-
-// 输出：React 组件（AddWorkspaceDirectory）或立即 onDone
-type Output = React.ReactNode;
-
-// 调用流程
-call(onDone, context, args)
-  → 无 args？返回 <AddWorkspaceDirectory> 让用户输入
-  → 有 args？validateDirectoryForWorkspace → 成功则返回确认对话框
-  → 用户选择后：
-    → applyPermissionUpdate（权限上下文）
-    → setAdditionalDirectoriesForClaudeMd（bootstrap 状态）
-    → SandboxManager.refreshConfig()
-    → remember=true？persistPermissionUpdate（本地设置）
-    → onDone(message)
+// src/commands/add-dir/add-dir.tsx:53-56
+export async function call(
+  onDone: LocalJSXCommandOnDone,
+  context: LocalJSXCommandContext,
+  args?: string,
+): Promise<React.ReactNode>
 ```
+
+**关键类型：**
+```typescript
+// 输入：可选的目录路径字符串（trimmed）
+// 输出：React 节点或 AddDirError 组件（延迟 onDone）
+
+// 核心内部类型
+type PermissionUpdateDestination = 'localSettings' | 'session'
+```
+
+**输入输出：**
+- 输入：`args?: string` - 可选的目录路径
+- 输出：React.ReactNode - 渲染 AddWorkspaceDirectory 或 AddDirError
+
+**调用流程：**
+1. 解析 args，trim 处理得到 directoryPath
+2. 获取当前 appState（包含 toolPermissionContext）
+3. 如果无 args：直接返回 AddWorkspaceDirectory 输入框
+4. 如果有 args：
+   - 调用 `validateDirectoryForWorkspace` 验证路径
+   - 验证成功：返回 AddWorkspaceDirectory 确认对话框（预填路径）
+   - 验证失败：返回 AddDirError 组件（setTimeout 0 后调用 onDone）
+
+**确认后流程（handleAddDirectory）：**
+1. 根据 remember 选择 destination（'localSettings' 或 'session'）
+2. 构建 `{type: 'addDirectories', directories: [path], destination}`
+3. 调用 `applyPermissionUpdate` 更新 toolPermissionContext
+4. 调用 `setAppState` 更新状态
+5. 调用 `setAdditionalDirectoriesForClaudeMd` 更新 bootstrap 状态
+6. 调用 `SandboxManager.refreshConfig()` 刷新沙箱配置（async 不等待）
+7. 如果 remember=true，调用 `persistPermissionUpdate` 写入本地设置
+8. 调用 `onDone(message)` 退出
+
+**错误处理：**
+- 目录不存在、无权限、不是目录 → validateDirectoryForWorkspace 返回错误
+- persistPermissionUpdate 可能抛出异常 → 捕获并在 message 中提示
+- AddDirError 使用 setTimeout 0 确保错误消息先渲染
+
+**设计取舍：**
+- why：沙箱刷新 async 但不等待 → 用户体验优先，避免阻塞
+- alternative：await SandboxManager.refreshConfig() → 被否决，可能导致明显延迟
+- cost：理论竞态窗口（用户在刷新完成前使用）→ 实际风险很低
+
+**源码证据：**
+- `src/commands/add-dir/add-dir.tsx:53-154` 完整 call 实现
+- `src/commands/add-dir/add-dir.tsx:62-109` handleAddDirectory 内部函数
+- `src/commands/add-dir/add-dir.tsx:24-51` AddDirError 组件
+
+---
 
 #### /diff 命令入口
 
+**真实入口签名：**
 ```typescript
-// 输入：无
-type Args = undefined;
-
-// 输出：React 组件（DiffDialog）
-type Output = React.ReactNode;
-
-// 调用流程
-call(onDone, context)
-  → 动态 import DiffDialog
-  → 返回 <DiffDialog messages={context.messages} onDone={onDone}>
+// src/commands/diff/diff.tsx:4-7
+export const call: LocalJSXCommandCall = async (onDone, context) => {
+  const { DiffDialog } = await import('../../components/diff/DiffDialog.js')
+  return <DiffDialog messages={context.messages} onDone={onDone} />
+}
 ```
+
+**关键类型：**
+```typescript
+// 输入：context.messages 用于提取历史轮次 diff
+// 输出：React 节点（DiffDialog）
+
+// DiffDialog 内部状态
+type ViewMode = 'list' | 'detail'
+type DiffSource = {type: 'current'} | {type: 'turn', turn: TurnDiff}
+```
+
+**输入输出：**
+- 输入：`context.messages: Message[]` - 对话历史
+- 输出：`React.ReactNode` - DiffDialog 组件
+
+**调用流程：**
+1. 动态 import DiffDialog（懒加载）
+2. 返回 `<DiffDialog messages={context.messages} onDone={onDone} />`
+
+**DiffDialog 内部流程：**
+1. 调用 `useRegisterOverlay('diff-dialog')` 禁用聊天快捷键
+2. 调用 `useDiffData()` 获取当前 git diff
+3. 调用 `useTurnDiffs(messages)` 从历史提取轮次 diff
+4. 构建 sources 数组：`[{type: 'current'}, ...turnDiffs]`
+5. 初始 state：viewMode='list', selectedIndex=0, sourceIndex=0
+6. 注册 view-mode 相关快捷键：
+   - list 模式：←/→ 切换源，↑/↓ 选择文件，Enter 进入详情，Esc 关闭
+   - detail 模式：←/Esc 返回列表
+7. 渲染源选择器（如果多个源）、文件列表或 diff 详情
+
+**UI 状态与焦点：**
+- 列表模式：焦点在文件列表，selectedIndex 高亮
+- 详情模式：焦点在 diff 视图，可滚动
+- Esc 关闭：在详情模式下先返回列表，在列表模式下直接关闭
+
+**双数据源处理：**
+- sources 数组包含当前变更和历史轮次
+- sourceIndex 变化时，selectedIndex 重置为 0
+- currentTurn 存在时调用 `turnDiffToDiffData()` 统一格式
+- 源选择器显示 "Current · T1 · T2" 格式，带左右箭头指示器
+
+**设计取舍：**
+- why：动态 import → 减少初始包体积
+- alternative：静态 import → 被否决，diff 功能不是每次会话都用
+- cost：首次打开稍有延迟
+
+**源码证据：**
+- `src/commands/diff/diff.tsx:4-7` call 入口
+- `src/components/diff/DiffDialog.tsx:17-85` 组件 Props + 状态
+- `src/components/diff/DiffDialog.tsx:105` useRegisterOverlay 调用
+- `src/components/diff/DiffDialog.tsx:118-156` 快捷键处理
+
+---
 
 #### /sandbox-toggle 命令入口
 
+**真实入口签名：**
 ```typescript
-// 输入：可选的子命令（如 "exclude npm run test:*"）
-type Args = string | undefined;
-
-// 输出：React 组件（SandboxSettings）或立即 onDone
-type Output = React.ReactNode | null;
-
-// 调用流程
-call(onDone, context, args)
-  → 检查平台支持？不支持则立即 onDone(error)
-  → 检查依赖 → depCheck = SandboxManager.checkDependencies()
-  → 检查启用列表？不允许则立即 onDone(error)
-  → 检查设置锁定？锁定则立即 onDone(error)
-  → 有 args？
-    → 是：子命令处理（如 exclude）→ 立即 onDone
-    → 否：返回 <SandboxSettings onComplete={onDone} depCheck={depCheck}>
+// src/commands/sandbox-toggle/sandbox-toggle.tsx:17-21
+export async function call(
+  onDone: (result?: string) => void,
+  _context: unknown,
+  args?: string,
+): Promise<React.ReactNode | null>
 ```
+
+**关键类型：**
+```typescript
+// 输入：可选的 exclude 子命令
+// 输出：SandboxSettings 组件、null（直接 onDone）
+
+// 沙箱依赖检查结果
+type SandboxDependencyCheck = {
+  errors: string[]
+  warnings: string[]
+}
+```
+
+**输入输出：**
+- 输入：`args?: string` - 可选的子命令（如 "exclude npm run test:*"）
+- 输出：`React.ReactNode | null` - SandboxSettings 或 null（直接调用 onDone）
+
+**调用流程：**
+1. 获取 settings 和 themeName
+2. 检查平台支持：`SandboxManager.isSupportedPlatform()`
+   - 不支持（如 WSL1）：调用 onDone 错误信息，返回 null
+3. 获取 depCheck = `SandboxManager.checkDependencies()`
+4. 检查 enabledPlatforms：`SandboxManager.isPlatformInEnabledList()`
+   - 不允许：调用 onDone 错误信息，返回 null
+5. 检查设置锁定：`SandboxManager.areSandboxSettingsLockedByPolicy()`
+   - 锁定：调用 onDone 错误信息，返回 null
+6. 解析 args：
+   - 无 args：返回 `<SandboxSettings onComplete={onDone} depCheck={depCheck} />`
+   - 有 "exclude"：提取模式，调用 `addToExcludedCommands()`，onDone 成功消息
+   - 其他：调用 onDone 错误消息
+
+**SandboxSettings 内部流程：**
+1. 获取 currentEnabled、currentAutoAllow、settings
+2. 计算 showSocketWarning（warnings 存在且未允许所有 Unix Socket）
+3. 构建 tabs 数组（条件渲染）：
+   - depCheck.errors 非空 → 仅 Dependencies 标签页
+   - depCheck.warnings 非空 → Mode + Dependencies + Overrides + Config
+   - 无问题 → Mode + Overrides + Config
+4. 渲染 Pane + Tabs
+
+**错误处理：**
+- 平台不支持 → 立即 onDone
+- 设置锁定 → 立即 onDone
+- exclude 子命令无模式 → 立即 onDone
+- 沙箱设置写入失败 → SandboxManager 内部处理
+
+**设计取舍：**
+- why：depCheck.errors 时仅显示 Dependencies → 强制用户先解决问题
+- alternative：显示所有标签页但禁用 → 被否决，用户可能困惑为何无法操作
+- cost：标签数组构建逻辑复杂
+
+**源码证据：**
+- `src/commands/sandbox-toggle/sandbox-toggle.tsx:17-127` call 入口
+- `src/components/sandbox/SandboxSettings.tsx:15-160` SandboxSettings 组件
+- `src/components/sandbox/SandboxSettings.tsx:132-151` 标签页条件构建
+
+---
 
 #### FullscreenLayout 入口
 
+**真实入口签名：**
 ```typescript
-type Props = {
-  scrollable: ReactNode;        // 消息列表，可滚动
-  bottom: ReactNode;            // 底部固定区域（提示输入框）
-  overlay?: ReactNode;          // 内联覆盖层（权限对话框）
-  bottomFloat?: ReactNode;      // 右下角浮动元素
-  modal?: ReactNode;            // 模态对话框内容
-  modalScrollRef?: RefObject<ScrollBoxHandle>;
-  scrollRef?: RefObject<ScrollBoxHandle>;
-  dividerYRef?: RefObject<number | null>;
-  hidePill?: boolean;
-  hideSticky?: boolean;
-  newMessageCount?: number;
-  onPillClick?: () => void;
-};
+// src/components/FullscreenLayout.tsx:300-313
+export function FullscreenLayout({
+  scrollable,
+  bottom,
+  overlay,
+  bottomFloat,
+  modal,
+  modalScrollRef,
+  scrollRef,
+  dividerYRef,
+  hidePill = false,
+  hideSticky = false,
+  newMessageCount = 0,
+  onPillClick,
+}: Props): React.ReactNode
 ```
+
+**关键类型：**
+```typescript
+// 完整 Props
+type Props = {
+  scrollable: ReactNode           // 消息列表（可滚动内容）
+  bottom: ReactNode               // 底部固定区域（提示输入框）
+  overlay?: ReactNode             // 内联覆盖层（权限对话框）
+  bottomFloat?: ReactNode         // 右下角浮动元素
+  modal?: ReactNode               // 模态对话框内容
+  modalScrollRef?: RefObject<ScrollBoxHandle>
+  scrollRef?: RefObject<ScrollBoxHandle>
+  dividerYRef?: RefObject<number | null>
+  hidePill?: boolean
+  hideSticky?: boolean
+  newMessageCount?: number
+  onPillClick?: () => void
+}
+
+// useUnseenDivider 返回值
+type UnseenDividerReturn = {
+  dividerIndex: number | null
+  dividerYRef: RefObject<number | null>
+  onScrollAway: (handle: ScrollBoxHandle) => void
+  onRepin: () => void
+  jumpToNew: (handle: ScrollBoxHandle | null) => void
+  shiftDivider: (indexDelta: number, heightDelta: number) => void
+}
+```
+
+**输入输出：**
+- 输入：上述 Props
+- 输出：React.ReactNode - 全屏布局或回退简单布局
+
+**全屏模式流程（isFullscreenEnvEnabled=true）：**
+1. 创建 ScrollChromeContext（提供 setStickyPrompt）
+2. pillVisible 订阅：
+   - useSyncExternalStore 订阅 scrollRef.current
+   - snapshot 计算：scrollTop + pendingDelta + viewportHeight < dividerYRef.current
+   - 仅布尔值翻转时重渲染
+3. 注册超链接点击处理（file:// → openPath，其他 → openBrowser）
+4. 渲染结构：
+   - Box (flexGrow, flexDirection column)
+     - 可选：StickyPromptHeader（1行高度，truncate-end）
+     - ScrollBox (ref=scrollRef)
+       - ScrollChromeContext.Provider
+         - scrollable（消息列表）
+       - overlay（内联对话框）
+     - 可选：NewMessagesPill（count>0 显示 "N new messages"，否则 "Jump to bottom"）
+     - 可选：bottomFloat（右下角浮动）
+   - Box (flexShrink 0)
+     - SuggestionsOverlay
+     - DialogOverlay
+     - Box（bottom 内容）
+   - 可选：ModalContext.Provider + 模态对话框（底部锚定，▔ 分隔线）
+
+**非全屏模式流程：**
+- 直接渲染：`<> {scrollable} {bottom} {overlay} {modal} </>`
+
+**UI 状态与焦点：**
+- ScrollBox 管理滚动状态、订阅、pendingDelta
+- StickyPrompt：用户滚动超过提示时显示，1行高度，点击跳回
+- NewMessagesPill：用户向上滚动且有新消息时显示，居中在底部
+- 模态对话框：底部锚定，maxHeight = terminalRows - MODAL_TRANSCRIPT_PEEK（保留2行历史）
+
+**打开/导航/确认/关闭流程：**
+- 模态打开：通过 modal prop 传入内容，ModalContext 提供尺寸
+- 模态导航：Tabs 可使用 modalScrollRef
+- 模态确认/关闭：modal 内容组件调用自身回调
+- 内联 overlay：通过 overlay prop 传入，在 ScrollBox 内部渲染（保留滚动位置）
+
+**错误处理：**
+- ScrollBox 订阅回调抛出 → React 错误边界捕获（药丸不显示，核心功能不受影响）
+- 超链接点击失败 → 静默捕获
+
+**设计取舍：**
+- why：dividerYRef 是 ref 而非 state → 避免 scroll 时重渲染 REPL
+- why：onRepin 延迟清除 dividerYRef → 避免与 wheel 事件竞态
+- why：粘性提示固定1行 → 避免内容跳动
+
+**源码证据：**
+- `src/components/FullscreenLayout.tsx:40-82` Props 类型 + ScrollChromeContext
+- `src/components/FullscreenLayout.tsx:99-214` useUnseenDivider 钩子
+- `src/components/FullscreenLayout.tsx:300-492` FullscreenLayout 实现
+- `src/components/FullscreenLayout.tsx:326-338` pillVisible 订阅
+
+---
+
+#### useUnseenDivider 钩子
+
+**真实入口签名：**
+```typescript
+// src/components/FullscreenLayout.tsx:99-116
+export function useUnseenDivider(messageCount: number): {
+  dividerIndex: number | null
+  dividerYRef: RefObject<number | null>
+  onScrollAway: (handle: ScrollBoxHandle) => void
+  onRepin: () => void
+  jumpToNew: (handle: ScrollBoxHandle | null) => void
+  shiftDivider: (indexDelta: number, heightDelta: number) => void
+}
+```
+
+**关键类型：**
+```typescript
+// 核心数据
+type UnseenDivider = {
+  firstUnseenUuid: string
+  count: number
+}
+
+// countUnseenAssistantTurns 输入输出
+function countUnseenAssistantTurns(
+  messages: readonly Message[],
+  dividerIndex: number
+): number  // 返回非纯 tool-use 的 assistant 轮次数
+
+// computeUnseenDivider 输入输出
+function computeUnseenDivider(
+  messages: readonly Message[],
+  dividerIndex: number | null
+): UnseenDivider | undefined
+```
+
+**输入输出：**
+- 输入：`messageCount: number` - 当前消息总数
+- 输出：上述返回值对象
+
+**UI 状态与焦点：**
+- dividerIndex：React state（变化时重渲染）- messages 数组中的索引
+- dividerYRef：MutableRefObject（写入不重渲染）- scrollHeight snapshot
+- countRef：MutableRefObject（在 render 中更新）- 当前 messageCount
+
+**onScrollAway 流程：**
+1. 检查是否真正离开底部：
+   - `max = handle.getScrollHeight() - handle.getViewportHeight()`
+   - `handle.getScrollTop() + handle.getPendingDelta() >= max` → 仍在底部，返回
+2. 如果 dividerYRef.current 为 null（首次离开）：
+   - `dividerYRef.current = handle.getScrollHeight()`（snapshot）
+   - `setDividerIndex(countRef.current)`
+
+**onRepin 流程：**
+1. 仅调用 `setDividerIndex(null)`
+2. 不直接清除 dividerYRef.current（避免与 wheel 事件竞态）
+3. useEffect 在 dividerIndex 变为 null 后清除 dividerYRef.current
+
+**jumpToNew 流程：**
+1. `handle.scrollToBottom()`（不直接滚动到 dividerY）
+2. 原因：scrollToBottom 会设置 stickyScroll=true，确保正确渲染
+
+**shiftDivider 流程（prepend 历史消息）：**
+1. `setDividerIndex(idx => idx === null ? null : idx + indexDelta)`
+2. `dividerYRef.current += heightDelta`（ref 同步更新）
+
+**countUnseenAssistantTurns 流程：**
+1. 从 dividerIndex 开始遍历 messages
+2. 跳过 type === 'progress' 的消息
+3. 跳过 assistant 消息且无可见文本（纯 tool-use）
+4. 统计非 assistant → assistant 转换次数
+
+**设计取舍：**
+- why：countRef 在 render 中更新 → 确保 wheel 事件看到最新 count
+- alternative：useEffect 同步 → 被否决，wheel 可能在 effect 前到达
+- cost：React Compiler 会 bail out（单例钩子，可接受）
+
+**源码证据：**
+- `src/components/FullscreenLayout.tsx:99-214` useUnseenDivider 完整实现
+- `src/components/FullscreenLayout.tsx:224-251` countUnseenAssistantTurns + 辅助函数
+- `src/components/FullscreenLayout.tsx:265-286` computeUnseenDivider
+
+---
+
+#### useRegisterOverlay 钩子
+
+**真实入口签名：**
+```typescript
+// src/context/overlayContext.tsx:37-72
+export function useRegisterOverlay(id: string, enabled = true): void
+```
+
+**关键类型：**
+```typescript
+// 内部状态
+type AppStateOverlay = {
+  activeOverlays: Set<string>
+}
+
+// 相关导出
+export function useIsOverlayActive(): boolean
+export function useIsModalOverlayActive(): boolean  // 排除 NON_MODAL_OVERLAYS
+```
+
+**输入输出：**
+- 输入：`id: string, enabled = true`
+- 输出：void
+
+**UI 状态与焦点：**
+- activeOverlays：Set<string>（存储在 AppState）
+- NON_MODAL_OVERLAYS：Set(['autocomplete']) - 不禁用 TextInput 焦点
+
+**打开/注册流程：**
+1. useEffect 在 enabled=true 且 setAppState 存在时：
+   - 如果 id 不在 activeOverlays 中，添加并更新 AppState
+   - cleanup 函数：移除 id
+2. useLayoutEffect（同步清理）在 enabled=true 时：
+   - cleanup：调用 `instances.get(process.stdout)?.invalidatePrevFrame()`
+   - 强制下一次渲染使用 full-damage diff 而非 blit，避免幽灵残留
+
+**full-damage vs blit 设计：**
+- why：invalidatePrevFrame → 高对话框关闭后不留下残影
+- alternative：始终 full-damage → 被否决，性能差
+- cost：需要 useLayoutEffect 确保 cleanup 在 scheduleRender 前运行
+
+**源码证据：**
+- `src/context/overlayContext.tsx:1-109` 完整实现
+- `src/context/overlayContext.tsx:37-72` useRegisterOverlay
+- `src/context/overlayContext.tsx:60-71` invalidatePrevFrame 注释
+
+---
+
+#### DiffDialog 组件
+
+**真实入口签名：**
+```typescript
+// src/components/diff/DiffDialog.tsx:17-23
+type Props = {
+  messages: Message[]
+  onDone: (
+    result?: string,
+    options?: {display?: CommandResultDisplay},
+  ) => void
+}
+
+export function DiffDialog({messages, onDone}: Props): React.ReactNode
+```
+
+**关键类型：**
+```typescript
+// 内部状态
+type ViewMode = 'list' | 'detail'
+type DiffSource = {type: 'current'} | {type: 'turn', turn: TurnDiff}
+
+// 转换函数
+function turnDiffToDiffData(turn: TurnDiff): DiffData
+```
+
+**输入输出：**
+- 输入：messages（用于提取历史轮次 diff）、onDone
+- 输出：React.ReactNode（Dialog 包装的 diff 视图）
+
+**UI 状态与焦点：**
+- viewMode：'list' | 'detail' - 当前视图模式
+- selectedIndex：number - 当前选中文件索引
+- sourceIndex：number - 当前选中源索引
+- prevSourceIndex：RefObject<number> - 检测源切换
+
+**打开流程：**
+1. 调用 `useRegisterOverlay('diff-dialog')` 禁用聊天快捷键
+2. 调用 `useDiffData()` 获取当前 git diff
+3. 调用 `useTurnDiffs(messages)` 获取历史轮次 diff
+4. 构建 sources 数组：`[{type: 'current'}, ...turnDiffs]`
+5. 初始化 state：viewMode='list', selectedIndex=0, sourceIndex=0
+6. useEffect：sourceIndex >= sources.length 时钳制
+7. useEffect：源切换时重置 selectedIndex=0
+
+**导航流程：**
+- list 模式：
+  - ↑/↓：selectedIndex ±1（clamped）
+  - ←：sourceIndex -1（如果 >0）
+  - →：sourceIndex +1（如果 < sources.length-1）
+  - Enter：viewMode='detail'（如果 selectedFile 存在）
+  - Esc：调用 onDone
+- detail 模式：
+  - ←/Esc：viewMode='list'
+
+**确认/关闭流程：**
+- 无确认操作（仅查看）
+- 关闭：list 模式下 Esc 调用 `onDone('Diff dialog dismissed', {display: 'system'})`
+- 详情模式下 Esc 仅返回列表
+
+**空状态处理：**
+- diff.loading → 显示 "Loading diff…"
+- currentTurn 且无文件 → "No file changes in this turn"
+- 无文件但 stats.filesCount>0 → "Too many files to display details"
+- 其他 → "Working tree is clean"
+
+**双数据源设计：**
+- why：统一 DiffData 格式 → 复用同一列表/详情视图
+- why：左/右键在不同模式下行为不同 → 减少学习成本
+- alternative：Tab 切换源 → 被否决，Tab 用于自动补全
+
+**源码证据：**
+- `src/components/diff/DiffDialog.tsx:59-289` 完整实现
+- `src/components/diff/DiffDialog.tsx:67-76` sources 数组
+- `src/components/diff/DiffDialog.tsx:105` useRegisterOverlay
+- `src/components/diff/DiffDialog.tsx:118-156` 快捷键处理
+
+---
+
+#### DiffFileList 组件
+
+**真实入口签名：**
+```typescript
+// 内部组件，仅 DiffDialog 使用
+function DiffFileList({
+  files,
+  selectedIndex,
+}: {
+  files: Array<{path: string; linesAdded: number; linesRemoved: number; ...}>
+  selectedIndex: number
+}): React.ReactNode
+```
+
+**关键类型：**
+```typescript
+// 常量
+const MAX_VISIBLE_FILES = 5
+```
+
+**输入输出：**
+- 输入：files 数组、selectedIndex
+- 输出：React.ReactNode（文件列表 + 上下指示器）
+
+**UI 状态与焦点：**
+- 无内部状态（纯展示）
+- 仅 5 个可见文件，selectedIndex 居中
+
+**可见窗口计算：**
+1. startIndex = max(0, selectedIndex - floor(MAX_VISIBLE_FILES / 2))
+2. endIndex = min(files.length, startIndex + MAX_VISIBLE_FILES)
+3. 如果 endIndex - startIndex < MAX_VISIBLE_FILES，调整 startIndex 向左
+4. 显示：files.slice(startIndex, endIndex)
+
+**上下指示器显示：**
+- startIndex > 0 → "↑ N more files"
+- endIndex < files.length → "↓ N more files"
+
+**路径截断：**
+- 用 `truncateStartToWidth` 截断路径开头
+- 保留文件名在末尾，更容易识别
+
+**设计取舍：**
+- why：MAX_VISIBLE_FILES=5 → 终端高度有限，避免占用过多空间
+- alternative：显示所有 → 被否决，变更多时占满屏幕
+- why：truncateStart → 文件名比目录更重要
+
+**源码证据：**
+- `src/components/diff/DiffFileList.tsx:9` MAX_VISIBLE_FILES
+- `src/components/diff/DiffFileList.tsx:19-36` 可见窗口计算
+- `src/components/diff/DiffFileList.tsx:53-74` 上下指示器
+
+---
+
+#### CustomSelect/Select 组件
+
+**真实入口签名：**
+```typescript
+// src/components/CustomSelect/select.tsx:204-225
+export function Select<T>({
+  isDisabled = false,
+  disableSelection = false,
+  hideIndexes = false,
+  visibleOptionCount = 5,
+  highlightText,
+  options,
+  defaultValue,
+  onCancel,
+  onChange,
+  onFocus,
+  defaultFocusValue,
+  layout = 'compact',
+  inlineDescriptions = false,
+  onUpFromFirstItem,
+  onDownFromLastItem,
+  onInputModeToggle,
+  onOpenEditor,
+  onImagePaste,
+  pastedContents,
+  onRemoveImage,
+}: SelectProps<T>): React.ReactNode
+```
+
+**关键类型：**
+```typescript
+// 选项类型
+type OptionWithDescription<T = string> =
+  | {type?: 'text', label: ReactNode, value: T, description?: string, disabled?: boolean, dimDescription?: boolean}
+  | {type: 'input', label: ReactNode, value: T, onChange: (value: string) => void, placeholder?: string, initialValue?: string, allowEmptySubmitToCancel?: boolean, showLabelWithValue?: boolean, labelValueSeparator?: string, resetCursorOnUpdate?: boolean}
+
+// Props
+type SelectProps<T> = {
+  isDisabled?: boolean
+  disableSelection?: boolean
+  hideIndexes?: boolean
+  visibleOptionCount?: number
+  highlightText?: string
+  options: OptionWithDescription<T>[]
+  defaultValue?: T
+  onCancel?: () => void
+  onChange?: (value: T) => void
+  onFocus?: (value: T) => void
+  defaultFocusValue?: T
+  layout?: 'compact' | 'expanded' | 'compact-vertical'
+  inlineDescriptions?: boolean
+  onUpFromFirstItem?: () => void
+  onDownFromLastItem?: () => void
+  onInputModeToggle?: (value: T) => void
+  onOpenEditor?: (currentValue: string, setValue: (value: string) => void) => void
+  onImagePaste?: (...) => void
+  pastedContents?: Record<number, PastedContent>
+  onRemoveImage?: (id: number) => void
+}
+```
+
+**输入输出：**
+- 输入：上述 Props
+- 输出：React.ReactNode（选项列表）
+
+**UI 状态与焦点：**
+- imagesSelected：boolean（图片粘贴选择模式）
+- selectedImageIndex：number
+- inputValues：Map<T, string>（input 类型选项的值）
+- lastInitialValues：RefObject<Map<T, string>>（检测初始值变化）
+- cursor：通过 useDeclaredCursor 声明在高亮项指示器上
+
+**状态管理（useSelectState）：**
+- 管理 visibleOptionCount、options、value、focusedValue、visibleFromIndex
+- 处理 defaultValue、defaultFocusValue
+
+**键盘导航（useSelectInput）：**
+- ↑：focusedValue 上移（或调用 onUpFromFirstItem）
+- ↓：focusedValue 下移（或调用 onDownFromLastItem）
+- Enter：onChange（如果 !disableSelection）
+- Esc：onCancel
+- Tab：输入模式切换（如果有 input 选项）
+- Ctrl+G：打开外部编辑器（如果有 onOpenEditor）
+
+**布局模式：**
+- 'compact'：单行，可选两列（label + description）
+- 'expanded'：多行，空行分隔
+- 'compact-vertical'：紧凑索引，描述在下一行
+
+**输入选项处理：**
+- 跟踪 inputValues 状态
+- 同步 initialValue 变化（仅用户未编辑时）
+- allowEmptySubmitToCancel：true 时空值也提交，否则取消
+- resetCursorOnUpdate：选项获得焦点或值变化时重置光标到末尾
+
+**高亮文本处理：**
+- 如果 option.label 是字符串且包含 highlightText，高亮匹配部分
+
+**设计取舍：**
+- why：键盘导航优先 → 终端环境鼠标支持不一致
+- why：三种布局 → 适应不同场景
+- why：input 选项内置 → 减少额外组件
+- alternative：分离 Select 和 InputSelect → 被否决，共享逻辑多
+
+**源码证据：**
+- `src/components/CustomSelect/select.tsx:26-225` 类型 + Select 组件
+- `src/components/CustomSelect/select.tsx:204-909` 完整实现
+- `src/components/CustomSelect/useSelectState.ts` 状态管理
+- `src/components/CustomSelect/useSelectNavigation.ts` 导航逻辑
+
+---
+
+#### SandboxSettings 组件
+
+**真实入口签名：**
+```typescript
+// src/components/sandbox/SandboxSettings.tsx:15-28
+type Props = {
+  onComplete: (
+    result?: string,
+    options?: {display?: CommandResultDisplay},
+  ) => void
+  depCheck: SandboxDependencyCheck
+}
+
+export function SandboxSettings({onComplete, depCheck}: Props): React.ReactNode
+```
+
+**关键类型：**
+```typescript
+// 内部类型
+type SandboxMode = 'auto-allow' | 'regular' | 'disabled'
+
+// 依赖检查
+type SandboxDependencyCheck = {
+  errors: string[]
+  warnings: string[]
+}
+```
+
+**输入输出：**
+- 输入：onComplete、depCheck
+- 输出：React.ReactNode（Pane + Tabs）
+
+**UI 状态与焦点：**
+- 无内部状态（从 SandboxManager 读取当前设置）
+- currentEnabled、currentAutoAllow、currentMode 计算自 SandboxManager
+- showSocketWarning：hasWarnings && !allowAllUnixSockets
+
+**标签页动态构建：**
+- depCheck.errors 非空 → [DependenciesTab]
+- depCheck.warnings 非空 → [ModeTab, DependenciesTab, OverridesTab, ConfigTab]
+- 无问题 → [ModeTab, OverridesTab, ConfigTab]
+
+**ModeTab 内部：**
+- 使用 SandboxModeTab 子组件
+- 显示三个选项：
+  - "Sandbox BashTool, with auto-allow" (currentIndicator if selected)
+  - "Sandbox BashTool, with regular permissions"
+  - "No Sandbox"
+- 调用 SandboxManager.setSandboxSettings 更新配置
+- showSocketWarning 时显示警告信息
+
+**确认/关闭流程：**
+- 选择模式选项 → 调用 SandboxManager.setSandboxSettings → onComplete
+- Esc → onComplete(undefined, {display: 'skip'})
+
+**设计取舍：**
+- why：有 errors 时仅显示 Dependencies → 强制解决后才能配置
+- why：warnings 时显示全部 → 让用户知道问题但仍可操作
+- alternative：始终显示所有 → 被否决，用户可能跳过问题
+
+**源码证据：**
+- `src/components/sandbox/SandboxSettings.tsx:29-160` 完整实现
+- `src/components/sandbox/SandboxSettings.tsx:132-151` 标签页构建
+- `src/components/sandbox/SandboxSettings.tsx:162-211` SandboxModeTab
+
+---
+
+#### AddWorkspaceDirectory 组件
+
+**真实入口签名：**
+```typescript
+// src/components/permissions/rules/AddWorkspaceDirectory.tsx
+type Props = {
+  directoryPath?: string
+  permissionContext: ToolPermissionContext
+  onAddDirectory: (path: string, remember: boolean) => void
+  onCancel: () => void
+}
+```
+
+**关键类型：**
+```typescript
+// 记住选项
+type RememberOption =
+  | {type: 'session', label: string}
+  | {type: 'persist', label: string}
+  | {type: 'cancel', label: string}
+
+// 输入状态
+type InputState = {
+  directoryInput: string
+  error: string | null
+  suggestions: string[]
+  selectedSuggestion: number
+}
+```
+
+**输入输出：**
+- 输入：directoryPath（可选）、permissionContext、onAddDirectory、onCancel
+- 输出：React.ReactNode（输入框或确认对话框）
+
+**UI 状态与焦点：**
+- directoryInput：string - 用户输入
+- error：string | null - 验证错误
+- suggestions：string[] - Tab 补全建议
+- selectedSuggestion：number - 当前选中建议索引
+
+**两种渲染分支：**
+1. 无 directoryPath：
+   - 显示输入框 + Tab 补全
+   - Enter 验证 → 成功调用 onAddDirectory(path, false)
+2. 有 directoryPath：
+   - 显示确认对话框 + 三个选项
+   - "Yes, for this session" → onAddDirectory(path, false)
+   - "Yes, and remember this directory" → onAddDirectory(path, true)
+   - "No" → onCancel
+
+**Tab 补全流程：**
+- 100ms debounce 的 getDirectoryCompletions
+- 显示建议列表
+- ↑/↓ 选择，Tab 接受，Esc 关闭建议
+
+**设计取舍：**
+- why：同一组件处理两种场景 → 减少重复
+- why：debounce 100ms → 平衡响应性和性能
+- why：记住选项显式确认 → 避免意外持久化
+
+**源码证据：**
+- `src/components/permissions/rules/AddWorkspaceDirectory.tsx` 完整实现
+- `src/components/permissions/rules/AddWorkspaceDirectory.tsx:267-288` 条件渲染
+- `src/components/permissions/rules/AddWorkspaceDirectory.tsx:32-50` 记住选项
+- `src/components/permissions/rules/AddWorkspaceDirectory.tsx:125-141` 防抖补全
 
 ### 4.2 模块与状态所有权
 
@@ -422,8 +1159,9 @@ type Props = {
 | DiffFileList | 无（纯展示） | 渲染文件列表、上下指示器 | 文件选择逻辑 | files、selectedIndex |
 | FullscreenLayout | stickyPrompt、pillVisible | 滚动订阅、粘性提示、新消息药丸 | 消息渲染 | ScrollChromeContext.setStickyPrompt() |
 | useUnseenDivider | dividerIndex、dividerYRef（ref） | snapshot 位置、检测未读、跳转到底部 | 消息内容解析 | onScrollAway(handle)、onRepin() |
-| CustomSelect | 内部状态（useSelectState） | 键盘导航、选项选择 | 业务逻辑 | options、onChange、onCancel |
+| CustomSelect | 内部状态（useSelectState）+ inputValues | 键盘导航、选项选择 | 业务逻辑 | options、onChange、onCancel |
 | SandboxSettings | 无（状态在沙箱管理器） | 显示标签页、设置模式 | 沙箱隔离实现 | SandboxManager.setSandboxSettings() |
+| useRegisterOverlay | 无（状态在 AppState.activeOverlays） | 注册/注销模态、invalidatePrevFrame | 快捷键裁决本身 | useIsOverlayActive()、useIsModalOverlayActive() |
 
 ### 4.3 主控制流
 
@@ -461,7 +1199,7 @@ type Props = {
 用户输入 /diff
   → 命令 call()
     → 动态 import DiffDialog
-    → 返回 <DiffDialog messages={context.messages} onDone={onDone}>
+    → 返回 <DiffDialog messages={context.messages} onDone={onDone} />
       → useRegisterOverlay('diff-dialog') 禁用聊天快捷键
       → useDiffData() 获取当前 git diff
       → useTurnDiffs(messages) 获取历史轮次 diff
@@ -510,6 +1248,36 @@ type Props = {
   → 用户按 Esc → onCancel()
 ```
 
+#### 覆盖层注册与 full-damage 流程
+
+```
+对话框打开
+  → useRegisterOverlay('dialog-id', enabled=true)
+  → useEffect 添加 id 到 activeOverlays
+  → 聊天快捷键禁用（通过 useIsOverlayActive）
+
+对话框关闭
+  → useLayoutEffect cleanup 调用 invalidatePrevFrame()
+  → 下一次渲染使用 full-damage diff（而非 blit）
+  → 避免高对话框留下的残影
+  → useEffect cleanup 从 activeOverlays 移除 id
+```
+
+#### 沙箱异步刷新竞态处理
+
+```
+用户确认添加目录
+  → applyPermissionUpdate（同步，更新权限）
+  → setAdditionalDirectoriesForClaudeMd（同步，更新 bootstrap）
+  → SandboxManager.refreshConfig()（async，不等待）
+  → onDone(message)（立即调用，不等待沙箱刷新）
+
+设计：async 不等待
+  → why：用户体验优先，避免阻塞
+  → 代价：理论竞态窗口（用户在刷新完成前使用）
+  → 缓解：刷新很快，实际风险很低
+```
+
 ### 4.4 数据结构与持久化
 
 #### 核心数据结构
@@ -517,45 +1285,45 @@ type Props = {
 ```typescript
 // Diff 数据（统一格式，支持当前和历史）
 type DiffData = {
-  stats?: { filesCount: number; linesAdded: number; linesRemoved: number };
+  stats?: { filesCount: number; linesAdded: number; linesRemoved: number }
   files: Array<{
-    path: string;
-    linesAdded: number;
-    linesRemoved: number;
-    isBinary: boolean;
-    isLargeFile: boolean;
-    isTruncated: boolean;
-    isNewFile: boolean;
-  }>;
-  hunks: Map<string, StructuredPatchHunk[]>;
-  loading: boolean;
-};
+    path: string
+    linesAdded: number
+    linesRemoved: number
+    isBinary: boolean
+    isLargeFile: boolean
+    isTruncated: boolean
+    isNewFile: boolean
+  }>
+  hunks: Map<string, StructuredPatchHunk[]>
+  loading: boolean
+}
 
 // 历史轮次 Diff
 type TurnDiff = {
-  turnIndex: number;
-  userPromptPreview: string | null;
-  files: Map<string, { filePath: string; hunks: StructuredPatchHunk[]; ... }>;
-  stats: { filesChanged: number; linesAdded: number; linesRemoved: number };
-};
+  turnIndex: number
+  userPromptPreview: string | null
+  files: Map<string, { filePath: string; hunks: StructuredPatchHunk[]; ... }>
+  stats: { filesChanged: number; linesAdded: number; linesRemoved: number }
+}
 
 // 未读分隔线
 type UnseenDivider = {
-  firstUnseenUuid: string;  // 消息 uuid，用于渲染定位
-  count: number;            // 未读助理轮数（最小为 1）
-};
+  firstUnseenUuid: string  // 消息 uuid，用于渲染定位
+  count: number            // 未读助理轮次数（最小为 1）
+}
 
 // 自定义选择选项
 type SelectOption<T> = {
-  value: T;
-  label: string;
-};
+  value: T
+  label: string
+}
 
 // 沙箱依赖检查
 type SandboxDependencyCheck = {
-  errors: string[];
-  warnings: string[];
-};
+  errors: string[]
+  warnings: string[]
+}
 ```
 
 #### 持久化与恢复
@@ -585,28 +1353,29 @@ type SandboxDependencyCheck = {
 
 | 触发条件 | 检测位置 | 消息/异常如何传播 | 是否重试及上限 | 状态与资源清理 | 调用方可见结果 |
 |---------|---------|-----------------|---------------|--------------|-------------|
-| 目录验证失败（不存在、无权限等） | validateDirectoryForWorkspace | 返回 {resultType: 'error', message: ...} | 否 | 无（验证阶段不修改状态） | add-dir 命令显示帮助消息 |
-| 沙箱平台不支持 | sandbox-toggle.call | 立即 onDone 错误消息 | 否 | 无 | 用户看到平台不支持提示 |
-| 沙箱设置被锁定 | SandboxManager.areSandboxSettingsLockedByPolicy | 立即 onDone 错误消息 | 否 | 无 | 用户看到设置被锁定提示 |
+| 目录验证失败（不存在、无权限等） | validateDirectoryForWorkspace | 返回 {resultType: 'error', message: ...} | 否 | 无（验证阶段不修改状态） | add-dir 命令显示帮助信息 |
+| 沙箱平台不支持 | sandbox-toggle.call | 立即 onDone 错误信息 | 否 | 无 | 用户看到平台不支持提示 |
+| 沙箱设置被锁定 | SandboxManager.areSandboxSettingsLockedByPolicy | 立即 onDone 错误信息 | 否 | 无 | 用户看到设置被锁定提示 |
 | 沙箱依赖缺失 | depCheck.errors 非空 | 仅显示 Dependencies 标签页 | 否 | 无 | 用户看到依赖问题但无法配置 |
 | 对话框 Esc 取消 | Dialog 内置 useKeybindings('confirm:no') | 调用 onCancel 回调 | 否 | 无（对话框关闭） | diff/sandbox-toggle 返回 "dismissed"，add-dir 返回 "did not add" |
-| 沙箱 exclude 子命令无参数 | sandbox-toggle.call | 立即 onDone 错误消息 | 否 | 无 | 用户看到要求提供模式的提示 |
+| 沙箱 exclude 子命令无参数 | sandbox-toggle.call | 立即 onDone 错误信息 | 否 | 无 | 用户看到要求提供模式的提示 |
 | Git diff 加载中 | useDiffData.loading | 显示 "Loading diff…" | 否 | 无 | 用户看到加载状态 |
 | 无变更文件 | diffData.files 为空 | 显示 "Working tree is clean" 或 "No file changes in this turn" | 否 | 无 | 用户看到空状态提示 |
 | 文件太多无法显示详情 | diffData.stats.filesCount > 0 但 diffData.files 为空 | 显示 "Too many files to display details" | 否 | 无 | 用户看到提示但无文件列表 |
 | ScrollBox 订阅回调抛出异常 | useSyncExternalStore | 无显式处理（React 错误边界会捕获） | 否 | 无（药丸可能不显示，但不影响核心功能） | 无（用户可见的回退是不显示药丸） |
+| persistPermissionUpdate 抛出异常 | add-dir handleAddDirectory | 捕获并在 message 中提示 | 否 | 权限和沙箱已更新（部分成功） | 用户看到 "Added ... but failed to save" |
 
 ### 工程取舍说明
 
 **取舍 1：AddDirError 使用 setTimeout 0 调用 onDone**
 - 理由：React 会在返回 null 时立即卸载组件，导致错误消息来不及渲染
 - 代价：需要额外组件包装，逻辑复杂
-- 证据：`src/commands/add-dir/add-dir.tsx:33-39` 注释说明
+- 证据：`src/commands/add-dir/add-dir.tsx:24-51` AddDirError 组件
 
 **取舍 2：DiffDialog 列表/详情模式复用同一组方向键**
 - 理由：减少快捷键数量，避免冲突
 - 代价：用户需要学习上下文相关的行为
-- 证据：`src/components/diff/DiffDialog.tsx:118-136` 视图模式相关的快捷键处理
+- 证据：`src/components/diff/DiffDialog.tsx:118-156` 视图模式相关的快捷键处理
 
 **取舍 3：FullscreenLayout pillVisible 使用 useSyncExternalStore 而不是 prop drilling**
 - 理由：避免每次滚动都重渲染整个 REPL（有 22+ 个 useAppState 选择器）
@@ -621,12 +1390,33 @@ type SandboxDependencyCheck = {
 **取舍 5：countUnseenAssistantTurns 跳过纯 tool-use 的 assistant 轮次**
 - 理由：用户不认为纯工具调用是"新消息"，不应该触发药丸计数
 - 代价：需要检查消息内容，不是仅检查类型
-- 证据：`src/components/FullscreenLayout.tsx:224-243` 跳过逻辑
+- 证据：`src/components/FullscreenLayout.tsx:224-251` 跳过逻辑
 
 **取舍 6：dividerYRef 是 ref 而不是 state，onRepin 时延迟清除**
 - 理由：避免与 wheel 事件竞态（状态更新是异步的，ref 是同步的）
 - 代价：需要 useEffect 在状态提交后清除 ref
 - 证据：`src/components/FullscreenLayout.tsx:187-194` 延迟清除注释
+
+**取舍 7：沙箱 refreshConfig 是 async 但不等待**
+- 理由：用户体验优先，避免阻塞
+- 代价：理论竞态窗口（用户在刷新完成前使用）
+- 缓解：刷新很快，实际风险很低
+- 证据：`src/commands/add-dir/add-dir.tsx:84-92` 注释
+
+**取舍 8：useRegisterOverlay 的 invalidatePrevFrame 使用 useLayoutEffect**
+- 理由：同步清理，确保在 scheduleRender 前运行
+- 代价：需要理解 React effect 顺序
+- 证据：`src/context/overlayContext.tsx:60-71` 注释
+
+**取舍 9：DiffFileList 只显示 5 个文件**
+- 理由：终端高度有限，避免占用过多空间
+- 代价：用户需要滚动，可能看不到全部文件
+- 证据：`src/components/diff/DiffFileList.tsx:9` MAX_VISIBLE_FILES
+
+**取舍 10：CustomSelect 支持三种布局模式**
+- 理由：适应不同场景需求
+- 代价：组件复杂度增加
+- 证据：`src/components/CustomSelect/select.tsx` 多分支渲染
 
 ## 6. 现状验收标准
 
@@ -650,8 +1440,8 @@ type SandboxDependencyCheck = {
 ### /sandbox-toggle 验收
 
 1. 给定在 WSL1 上调用 `/sandbox-toggle`，当执行时，系统必须立即报错，不显示设置界面。
-2. 给定沙箱依赖有错误，当打开时，系统必须仅显示 Dependencies 标签页，不允许配置。
-3. 给定沙箱依赖有警告但无错误，当打开时，系统必须显示所有标签页，但在 Mode 标签页显示警告。
+2. 给定沙箱依赖有 errors，当打开时，系统必须仅显示 Dependencies 标签页，不允许配置。
+3. 给定沙箱依赖有 warnings 但无 errors，当打开时，系统必须显示全部标签页，但在 Mode 标签页显示警告。
 4. 给定用户选择模式选项，当确认时，系统必须立即调用 SandboxManager.setSandboxSettings 并退出。
 5. 给定调用 `/sandbox-toggle exclude "npm run test:*"`，当执行时，系统必须添加到排除列表并写入本地设置。
 
@@ -675,20 +1465,23 @@ type SandboxDependencyCheck = {
 
 | 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
 |---------|---------|----------------|---------|
-| /add-dir 同时更新权限、bootstrap 状态、沙箱配置 | `src/commands/add-dir/add-dir.tsx:62-93` | snapshotUpdateDialog.test.tsx（部分相关） | 沙箱刷新是 async 但命令不等待 |
+| /add-dir 同时更新权限、bootstrap 状态、沙箱配置 | `src/commands/add-dir/add-dir.tsx:62-109` | snapshotUpdateDialog.test.tsx（部分相关） | 沙箱刷新是 async 但命令不等待 |
 | AddWorkspaceDirectory 支持输入和确认两种模式 | `src/components/permissions/rules/AddWorkspaceDirectory.tsx:267-288` | snapshotUpdateDialog.test.tsx | 仅 snapshot 测试，无交互测试 |
-| AddDirError 用 setTimeout 0 调用 onDone | `src/commands/add-dir/add-dir.tsx:33-39` | 无直接测试 | 注释说明 |
+| AddDirError 用 setTimeout 0 调用 onDone | `src/commands/add-dir/add-dir.tsx:24-51` | 无直接测试 | 注释说明 |
 | DiffDialog 支持双数据源（当前/历史） | `src/components/diff/DiffDialog.tsx:67-76` | 无直接测试 | useTurnDiffs 来自消息历史 |
-| DiffDialog 视图模式相关的方向键行为 | `src/components/diff/DiffDialog.tsx:118-136` | 无直接测试 | 注释说明视图模式相关 |
+| DiffDialog 视图模式相关的方向键行为 | `src/components/diff/DiffDialog.tsx:118-156` | 无直接测试 | 注释说明视图模式相关 |
 | DiffFileList 只显示 5 个文件，带上下指示器 | `src/components/diff/DiffFileList.tsx:9, 53-74` | 无直接测试 | MAX_VISIBLE_FILES = 5 |
 | FullscreenLayout pillVisible 用 useSyncExternalStore | `src/components/FullscreenLayout.tsx:326-338` | 无直接测试 | 订阅 ScrollBox，非标准 React 模式 |
 | useUnseenDivider snapshot scrollHeight，支持 shift | `src/components/FullscreenLayout.tsx:99-214` | 无直接覆盖 | dividerYRef 是 ref，dividerIndex 是 state |
-| countUnseenAssistantTurns 跳过纯 tool-use 轮次 | `src/components/FullscreenLayout.tsx:224-243` | 无直接覆盖 | 检查 message.content 块 |
+| countUnseenAssistantTurns 跳过纯 tool-use 轮次 | `src/components/FullscreenLayout.tsx:224-251` | 无直接覆盖 | 检查 message.content 块 |
 | onRepin 延迟清除 dividerYRef 避免竞态 | `src/components/FullscreenLayout.tsx:187-194` | 无直接覆盖 | useEffect 在状态提交后清除 |
 | SandboxSettings 根据依赖检查动态显示标签页 | `src/components/sandbox/SandboxSettings.tsx:132-151` | 无直接覆盖 | errors → 仅 Dependencies；warnings → 全部；无问题 → 无 Dependencies |
 | CustomSelect 支持键盘导航、Enter 确认、Esc 取消 | `src/components/CustomSelect/select.tsx` 及相关 hooks | 无直接覆盖 | Settings 上下文的快捷键 |
-| useRegisterOverlay 禁用聊天快捷键 | `src/components/diff/DiffDialog.tsx:105, src/context/overlayContext.tsx:37-72` | 无直接覆盖 | useRegisterOverlay 注册活动覆盖层，在 overlay 活动时禁用聊天快捷键，关闭时强制下一次渲染使用 full-damage diff 而不是 blit 避免幽灵残留 |
+| useRegisterOverlay 禁用聊天快捷键 | `src/components/diff/DiffDialog.tsx:105, src/context/overlayContext.tsx:37-72` | 无直接覆盖 | useRegisterOverlay 注册活动覆盖层，在 overlay 活动时禁用聊天快捷键，关闭时强制下一次渲染使用 full-damage diff 而非 blit 避免幽灵残留 |
 | 未读分隔线支持 prepend shift | `src/components/FullscreenLayout.tsx:197-214` | 无直接覆盖 | 无限滚动历史消息时使用 |
+| useRegisterOverlay invalidatePrevFrame 用 useLayoutEffect | `src/context/overlayContext.tsx:60-71` | 无直接覆盖 | 同步清理确保在 scheduleRender 前 |
+| 沙箱 refreshConfig async 不等待 | `src/commands/add-dir/add-dir.tsx:84-92` | 无直接覆盖 | 注释说明竞态风险 |
+| CustomSelect 三种布局模式 | `src/components/CustomSelect/select.tsx:312-909` | 无直接覆盖 | compact/expanded/compact-vertical |
 
 ## 8. 文件覆盖与相关子系统
 
@@ -706,7 +1499,8 @@ type SandboxDependencyCheck = {
 | fullscreen-layout | FullscreenLayout、useUnseenDivider、新消息药丸 | 无直接测试 | 消息渲染 |
 | custom-select | CustomSelect 及相关 hooks | 无直接测试 | 业务逻辑 |
 | sandbox-components | SandboxSettings、各标签页组件 | 无直接测试 | 沙箱管理器 |
-| ui-components | OrderedList、TreeSelect | 无直接测试 |  |
+| ui-components | OrderedList、TreeSelect | 无直接测试 | |
+| overlay-context | useRegisterOverlay、useIsOverlayActive | 无直接测试 | 快捷键系统本身 |
 
 ### 相关子系统
 
@@ -727,6 +1521,8 @@ type SandboxDependencyCheck = {
 | P3 | DiffDialog 无搜索/过滤功能，文件多时难以找到 | 添加简单的按路径过滤功能 | 低：作为新增功能 | 用户可以输入过滤字符串，仅显示匹配的文件 | M | 设计推断 |
 | P3 | CustomSelect 无快捷键提示（如 "↑/↓ 选择，Enter 确认，Esc 取消"） | 在底部添加快捷键提示 | 低：仅 UI 添加 | 用户可以在 Select 底部看到快捷键提示 | S | 设计推断 |
 | P3 | add-dir 记住选项后无法在界面中查看或删除已记住的目录 | 添加目录管理界面 | 中：需要新的命令/对话框 | 用户可以通过 `/add-dir list` 或类似命令查看和删除已记住的目录 | L | 设计推断 |
+| P3 | 沙箱 refreshConfig 不等待的竞态窗口 | 添加刷新状态，或在沙箱命令中检查是否需要等待 | 中：改变异步时序 | 沙箱命令执行前确认配置已刷新 | M | 设计推断 |
+| P3 | CustomSelect 输入选项的初始值同步逻辑复杂 | 简化状态管理，考虑使用受控组件模式 | 中：重构核心逻辑 | input 选项行为一致，无边界情况 | M | 设计推断 |
 
 ### 优先级说明
 
