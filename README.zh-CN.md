@@ -1,4 +1,4 @@
-# Claude Code
+# flash
 
 [English](README.md) | **简体中文**
 

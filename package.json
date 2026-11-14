@@ -1,11 +1,11 @@
 {
-  "name": "claude-code",
+  "name": "flash",
   "version": "1.0.1",
-  "description": "Educational/research snapshot of Claude Code: an agentic coding CLI and TypeScript Agent SDK built with Bun, React, and Ink.",
+  "description": "Educational/research snapshot built on Claude Code: an agentic coding CLI and TypeScript Agent SDK built with Bun, React, and Ink.",
   "type": "module",
   "main": "dist/main.js",
   "bin": {
-    "claude-code": "dist/main.js"
+    "flash": "dist/main.js"
   },
   "exports": {
     ".": {

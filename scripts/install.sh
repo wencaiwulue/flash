@@ -2,7 +2,7 @@
 set -eu
 
 REPOSITORY='https://github.com/wencaiwulue/flash'
-BINARY_NAME='claude-code'
+BINARY_NAME='flash'
 RELEASES_URL=${CLAUDE_CODE_DOWNLOAD_BASE_URL:-"$REPOSITORY/releases"}
 RELEASES_URL=${RELEASES_URL%/}
 VERSION=${VERSION:-}
@@ -92,7 +92,7 @@ main() {
 
   archive_name="$BINARY_NAME-$VERSION-$platform-$architecture.tar.gz"
   release_url="$RELEASES_URL/download/$VERSION"
-  work_dir=$(mktemp -d "${TMPDIR:-/tmp}/claude-code-install.XXXXXX")
+  work_dir=$(mktemp -d "${TMPDIR:-/tmp}/flash-install.XXXXXX")
   archive_path="$work_dir/$archive_name"
   manifest_path="$work_dir/SHA256SUMS"
 
@@ -121,20 +121,20 @@ main() {
   actual_checksum=${checksum_output%% *}
   [ "$actual_checksum" = "$expected_checksum" ] || fail "Checksum mismatch for $archive_name."
 
-  tar -xzf "$archive_path" -C "$work_dir" "$BINARY_NAME" || fail 'Unable to extract claude-code from the verified archive.'
+  tar -xzf "$archive_path" -C "$work_dir" "$BINARY_NAME" || fail 'Unable to extract flash from the verified archive.'
   [ -f "$work_dir/$BINARY_NAME" ] && [ ! -L "$work_dir/$BINARY_NAME" ] ||
-    fail 'The archive did not contain a regular claude-code binary.'
+    fail 'The archive did not contain a regular flash binary.'
 
   mkdir -p "$INSTALL_DIR" || fail "Unable to create installation directory: $INSTALL_DIR"
   destination="$INSTALL_DIR/$BINARY_NAME"
   [ ! -d "$destination" ] || fail "Installation destination is a directory: $destination"
-  staging_file=$(mktemp "$INSTALL_DIR/.claude-code.XXXXXX")
+  staging_file=$(mktemp "$INSTALL_DIR/.flash.XXXXXX")
   cp "$work_dir/$BINARY_NAME" "$staging_file"
   chmod 0755 "$staging_file"
   mv -f "$staging_file" "$destination"
   staging_file=''
 
-  printf 'Installed claude-code %s to %s\n' "$VERSION" "$destination"
+  printf 'Installed flash %s to %s\n' "$VERSION" "$destination"
   case ":${PATH:-}:" in
     *":$INSTALL_DIR:"*) ;;
     *)
