@@ -80,6 +80,33 @@ export function getArchiveName(
   return `claude-code-v${version}-${platform}-${arch}.${extension}`
 }
 
+export function getArchiveCreationCommand(
+  target: ReleaseTarget,
+  archivePath: string,
+  binaryName: string,
+): string[] {
+  const isWindows = RELEASE_TARGETS[target].platform === 'win32'
+  const archiveFlags = isWindows ? '-a -cf' : '-czf'
+  return [
+    'tar',
+    ...(isWindows ? ['--force-local'] : []),
+    ...archiveFlags.split(' '),
+    archivePath,
+    binaryName,
+    ...RELEASE_DOCUMENTS,
+  ]
+}
+
+export function getArchiveExtractionCommand(
+  target: ReleaseTarget,
+  archivePath: string,
+  extractDir: string,
+): string[] {
+  const localOption =
+    RELEASE_TARGETS[target].platform === 'win32' ? ['--force-local'] : []
+  return ['tar', ...localOption, '-xf', archivePath, '-C', extractDir]
+}
+
 export function validateReleaseTag(
   tag: string,
   expectedVersion = packageJson.version,
@@ -252,20 +279,15 @@ async function buildBinary(
 
     await rm(archivePath, { force: true })
     await rm(`${archivePath}.sha256`, { force: true })
-    const archiveFlags = spec.platform === 'win32' ? '-a -cf' : '-czf'
     const archive = spawn(
-      [
-        'tar',
-        ...archiveFlags.split(' '),
-        archivePath,
-        binaryName,
-        ...RELEASE_DOCUMENTS,
-      ],
+      getArchiveCreationCommand(target, archivePath, binaryName),
       { cwd: stageDir },
     )
     assertCommandSucceeded(archive, `Create ${basename(archivePath)}`)
 
-    const extract = spawn(['tar', '-xf', archivePath, '-C', extractDir])
+    const extract = spawn(
+      getArchiveExtractionCommand(target, archivePath, extractDir),
+    )
     assertCommandSucceeded(extract, `Extract ${basename(archivePath)}`)
     const archivedFiles = (await readdir(extractDir)).toSorted()
     const expectedFiles = [binaryName, ...RELEASE_DOCUMENTS].toSorted()

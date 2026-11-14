@@ -366,12 +366,12 @@ Replace the hard-coded tar member and expected-file arrays:
 
 ```ts
 const archive = spawn(
-  ['tar', ...archiveFlags.split(' '), archivePath, ...archiveMembers],
+  ['tar', ...(isWindows ? ['--force-local'] : []), ...archiveFlags.split(' '), archivePath, ...archiveMembers],
   { cwd: stageDir },
 )
 assertCommandSucceeded(archive, `Create ${basename(archivePath)}`)
 
-const extract = spawn(['tar', '-xf', archivePath, '-C', extractDir])
+const extract = spawn(['tar', ...(isWindows ? ['--force-local'] : []), '-xf', archivePath, '-C', extractDir])
 assertCommandSucceeded(extract, `Extract ${basename(archivePath)}`)
 const archivedFiles = (await readdir(extractDir)).toSorted()
 const expectedFiles = archiveMembers.toSorted()
@@ -393,7 +393,7 @@ for (const document of RELEASE_DOCUMENTS) {
 }
 ```
 
-Keep the archive output path outside `stageDir` as before, so an old archive cannot accidentally include itself. Do not use `tar ... .` or a wildcard; explicit members are the security and correctness boundary.
+Keep the archive output path outside `stageDir` as before, so an old archive cannot accidentally include itself. Do not use `tar ... .` or a wildcard; explicit members are the security and correctness boundary. Add `--force-local` only for Windows create/extract commands so bsdtar does not interpret a drive-letter path such as `C:\a\flash\archive.zip` as a remote host; macOS tar rejects this option and must omit it.
 
 - [ ] **Step 4: Run focused tests and a real native archive build**
 
