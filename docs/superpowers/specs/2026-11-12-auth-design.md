@@ -667,7 +667,7 @@ type AuthTokenSource =
 
 | 优先级 | 触发场景与证据 | 建议方向 | 回归风险 | 验收方式 | 工作量 | 置信度 |
 |---|---|---|---|---|---|---|
-| P1 | 当前仍有大 payload 时用 argv 的 fallback 路径（credentials 可能出现在 ps）；`SECURITY_STDIN_LINE_LIMIT = 4096 - 64` | 使用 macOS  Security framework 直接调用（通过 Node.js native addon 或 bun:ffi），不 spawn security 命令 | 中（需要正确处理 Keychain 访问权限、代码签名等） | 无论 payload 多大，都不通过进程列表泄露 credentials | L | 设计推断 |
+| P2 | 当前仍有大 payload 时用 argv 的 fallback 路径（credentials 可能出现在 ps）；`SECURITY_STDIN_LINE_LIMIT = 4096 - 64` | 使用 macOS  Security framework 直接调用（通过 Node.js native addon 或 bun:ffi），不 spawn security 命令 | 中（需要正确处理 Keychain 访问权限、代码签名等） | 无论 payload 多大，都不通过进程列表泄露 credentials | L | 设计推断 |
 | P1 | Keychain 缓存 30 秒，跨进程刷新后另一个进程可能最多 30 秒才看到新 token；已有磁盘 mtime 检查机制但只在 refresh 时触发 | 每次读取 tokens 时都检查磁盘 mtime（或 Keychain 自身的修改时间），变更则立即清缓存 | 低（mtime 检查很便宜） | 进程 A 刷新后，进程 B 立即看到新 token（无 30 秒延迟） | S | 已证实 |
 | P2 | token redaction 需要在所有输出 token 的地方手动应用，容易遗漏 | 使用结构化错误类型，自动 redact 敏感字段；或用模板字符串 tag 自动 redact | 中（需要修改所有错误处理路径） | 任何错误消息中都不会出现完整 token | M | 设计推断 |
 | P2 | 当前没有 Windows 原生安全存储实现（只用 plaintext） | 实现 Windows Credential Locker / DPAPI 存储 | 低（只影响 Windows，现有 fallback 仍可用） | Windows 上 credentials 安全存储，无 plaintext 警告 | M | 设计推断 |

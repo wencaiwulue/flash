@@ -1338,6 +1338,6 @@ server.onclose = () => {
 | 优先级 | 触发场景与证据 | 建议方向 | 回归风险 | 验收方式 | 工作量 | 置信度 |
 | --- | --- | --- | --- | --- | --- | --- |
 | P1 | 用户在UI中完成认证后，needs-auth状态仍缓存15分钟，需要手动重连或等待；`src/services/mcp/client.ts` 的 `isMcpAuthCached`、`clearMcpAuthCache` | 当用户完成`/mcp auth`或McpAuthTool执行成功后，自动清除该服务器的needs-auth缓存 | 低，仅影响缓存行为 | 测试完成认证后立即重连成功 | S | 已证实(基于代码阅读) |
-| P1 | 用户不知道为什么某个服务器不连接，看不到缓存状态和TTL剩余时间 | 在`/mcp` UI中显示needs-auth状态的TTL倒计时，或说明"15分钟内不会自动重试" | 无，仅UI | 验证UI显示TTL或说明文案 | S | 设计推断 |
+| P2 | 用户不知道为什么某个服务器不连接，看不到缓存状态和TTL剩余时间 | 在`/mcp` UI中显示needs-auth状态的TTL倒计时，或说明"15分钟内不会自动重试" | 无，仅UI | 验证UI显示TTL或说明文案 | S | 设计推断 |
 | P2 | 当前只有connected/failed/needs-auth，没有connecting/pending-reconnect状态，用户不知道进度 | 增加pending状态，在UI中显示连接进度 | 低，新增状态向后兼容 | 增加连接中状态的UI展示测试，验证状态转换正确 | M | 设计推断 |
 | P2 | 当前错误信息可能不够详细，用户不知道为什么连接失败(网络?认证?配置?)；`src/services/mcp/client.ts` 中的 `logMCPError` 但未展示给用户 | 保存最近连接失败历史和详细错误，在`/mcp` UI中展示 | 低，仅新增信息展示 | 增加错误历史保存和UI展示的测试 | M | 设计推断 |
