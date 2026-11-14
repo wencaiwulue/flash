@@ -233,15 +233,11 @@ test('repository documentation registry has no structural errors', async () => {
 
 test('rejects a non-normalized recommendation section', async () => {
   createCompleteFixture()
-  // Test both bad header and padded priority row case to verify row detection works with extra spaces
   put(
     'docs/superpowers/specs/system-design.md',
     specText().replace(
       '| 优先级 | 触发场景与证据 | 建议方向 | 回归风险 | 验收方式 | 工作量 | 置信度 |',
       '| Priority | Evidence | Direction | Risk | Acceptance | Effort | Confidence |',
-    ).replace(
-      '| P2 | `src/index.ts` 的当前测试边界 | 增加一个边界回归 | 低：仅新增测试 | 新场景通过且原场景不变 | S | 已证实 |',
-      '|  P2  | `src/index.ts` 的当前测试边界 | 增加一个边界回归 | 低：仅新增测试 | 新场景通过且原场景不变 | S | 已证实 |',
     ),
   )
 
@@ -255,7 +251,7 @@ test('rejects ambiguous effort and unsupported high-priority evidence', async ()
     'docs/superpowers/specs/system-design.md',
     specText().replace(
       '| P2 | `src/index.ts` 的当前测试边界 | 增加一个边界回归 | 低：仅新增测试 | 新场景通过且原场景不变 | S | 已证实 |',
-      '| P0 | `src/index.ts` 的假设风险 | 改变核心路径 | 高 | 新场景通过 | S/M | 设计推断 |\n| P1 | `src/index.ts` 的推测性能问题 | 增加缓存 | 中 | 基准更快 | M | 设计推断 |',
+      '|  P0  | `src/index.ts` 的假设风险 | 改变核心路径 | 高 | 新场景通过 | S/M | 设计推断 |\n| P1 | `src/index.ts` 的推测性能问题 | 增加缓存 | 中 | 基准更快 | M | 设计推断 |',
     ),
   )
 
