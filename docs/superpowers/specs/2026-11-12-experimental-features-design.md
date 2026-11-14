@@ -478,7 +478,7 @@ const toolCache = new WeakMap<object, CreateResult>();
 - **tool-system spec**: 工具注册与通用接口
 - **command-system spec**: 命令注册与解析
 - **permissions spec**: TestingPermissionTool 测试权限流程，MonitorTool/BashTool 复用权限逻辑
-- **analytics spec**: tengu_feedback_survey_event 等事件
+- **2026-11-12-telemetry-design.md**: tengu_feedback_survey_event 等事件
 
 ## 5. 失败语义与工程取舍
 
@@ -552,7 +552,7 @@ const toolCache = new WeakMap<object, CreateResult>();
 - **tool-system spec**: 工具注册与通用接口
 - **command-system spec**: 命令注册与解析
 - **permissions spec**: 权限流程测试
-- **analytics spec**: 遥测事件记录
+- **2026-11-12-telemetry-design.md**: 遥测事件记录
 
 ## 9. 改进建议
 
