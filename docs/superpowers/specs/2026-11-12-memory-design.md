@@ -1095,10 +1095,10 @@ async function rollbackConsolidationLock(priorMtime: number | null): Promise<voi
 
 | 优先级 | 触发场景与证据 | 建议方向 | 回归风险 | 验收方式 | 工作量 | 置信度 |
 |-------|---------------|---------|---------|--------|-------|-------|
-| P0 | 记忆系统无专门测试文件，当前所有测试都是集成的 | 补充记忆系统单元测试：truncateEntrypointContent 边界情况、team memory 路径验证（含 symlink 遍历攻击）、extractMemories 并发控制、autoDream 门逻辑、secret 扫描 | 低（仅新增测试） | 每个核心模块有对应测试文件，覆盖主要路径和边界情况 | M | 已证实（明显缺失） |
-| P0 | team memory 路径验证仅在同步时做，文件系统写入权限检查 isTeamMemPath 仅做字符串前缀，不解析 symlink | 在文件系统写入权限检查 isTeamMemPath 中也做完整 symlink 解析验证（类似 validateTeamMemWritePath） | 中（需要修改权限检查逻辑） | symlink 逃出 team 目录的写入被权限检查拒绝 | S | 已证实（PSR M22186/7） |
-| P1 | extractMemories 与主代理互斥，但主代理可能写入不完整 | 增加 "部分提取" 模式：主代理写入了但仍有新内容时，extractMemories 补充缺失部分 | 中（需要协调两个代理的写入，避免冲突） | 测试主代理写入部分记忆后，extractMemories 补充剩余部分 | M | 设计推断 |
-| P1 | MEMORY.md 截断是简单头截断，不考虑相关性或 freshness | 截断时优先保留近期/相关条目，或按文件名前缀分组，保留每个组的前几个 | 中（需要读取所有条目元数据，排序） | 测试大型 MEMORY.md 截断后仍包含最近修改的条目 | M | 设计推断 |
-| P1 | team memory 冲突时仅本地覆盖服务器，无合并提示 | 冲突时先提示用户，说明哪些文件有冲突，让用户选择拉取/覆盖/合并 | 中（需要 UI 交互） | 冲突时用户收到明确提示，可选择操作 | M | 设计推断 |
+| P2 | 记忆系统无专门测试文件，当前所有测试都是集成的 | 补充记忆系统单元测试：truncateEntrypointContent 边界情况、team memory 路径验证（含 symlink 遍历攻击）、extractMemories 并发控制、autoDream 门逻辑、secret 扫描 | 低（仅新增测试） | 每个核心模块有对应测试文件，覆盖主要路径和边界情况 | M | 设计推断 |
+| P2 | team memory 路径验证仅在同步时做，文件系统写入权限检查 isTeamMemPath 仅做字符串前缀，不解析 symlink | 在文件系统写入权限检查 isTeamMemPath 中也做完整 symlink 解析验证（类似 validateTeamMemWritePath） | 中（需要修改权限检查逻辑） | symlink 逃出 team 目录的写入被权限检查拒绝 | S | 设计推断 |
+| P2 | extractMemories 与主代理互斥，但主代理可能写入不完整 | 增加 "部分提取" 模式：主代理写入了但仍有新内容时，extractMemories 补充缺失部分 | 中（需要协调两个代理的写入，避免冲突） | 测试主代理写入部分记忆后，extractMemories 补充剩余部分 | M | 设计推断 |
+| P2 | MEMORY.md 截断是简单头截断，不考虑相关性或 freshness | 截断时优先保留近期/相关条目，或按文件名前缀分组，保留每个组的前几个 | 中（需要读取所有条目元数据，排序） | 测试大型 MEMORY.md 截断后仍包含最近修改的条目 | M | 设计推断 |
+| P2 | team memory 冲突时仅本地覆盖服务器，无合并提示 | 冲突时先提示用户，说明哪些文件有冲突，让用户选择拉取/覆盖/合并 | 中（需要 UI 交互） | 冲突时用户收到明确提示，可选择操作 | M | 设计推断 |
 | P2 | autoDream 仅整理 auto 记忆，不整理 team 记忆 | 扩展 autoDream 支持团队记忆整理（注意锁/并发） | 中（需要协调团队记忆同步和 autoDream） | 测试 autoDream 整理团队记忆，且与团队记忆同步不冲突 | L | 设计推断 |
 | P2 | Session Memory 仅用于压缩，未集成到记忆系统 | 将 Session Memory 与 auto/team 记忆集成，如可从中提取持久记忆 | 中（需要定义边界和流程） | 测试 Session Memory 内容被提取到 auto 记忆 | M | 设计推断 |
