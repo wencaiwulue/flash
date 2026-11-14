@@ -1,6 +1,6 @@
 # Implementation Status
 
-Last updated: 2026-11-11.
+Last updated: 2026-11-14.
 
 Statuses:
 
@@ -16,14 +16,14 @@ Statuses:
 |---|---|
 | `bun install --frozen-lockfile` | Passed |
 | `bun run generate:sdk-types` | Generated 125 core types and 59 control types |
-| `bun run typecheck` | Passed with zero TypeScript errors |
-| `bun run test` | 87 isolated test files, 483 tests and 2415 assertions passed, 1 skipped; zero failures |
+| `bun run typecheck` | Passed on the documentation-consistency branch with zero TypeScript errors |
+| `bun run test` | Passed: all 97 discovered test files completed with zero failures; offline/mock evidence does not promote live-only capabilities |
 | `live-validation` workflow | Run `42940722483` passed; SkillHub executed, model/Cloud were skipped when credentials were absent, and desktop was skipped without a self-hosted runner |
 | Commit documentation | 93 historical SPEC/PLAN pairs plus `self`; full-history `--next` checks passed with path/evidence/duplication gates and independent semantic review for every commit |
 | Linux secret storage | 4 tests, 17 assertions passed with mocked `secret-tool` |
 | npm marketplace | 7 tests passed with mocked npm execution; no registry access |
 | ultraplan polling | Refresh-before-poll test passed |
-| `bun run build` | Built CLI, SDK, and declarations |
+| `bun run build` | Passed for CLI, SDK, and declaration artifacts |
 | `bun dist/main.js --version` | `1.0.0 (Claude Code)` |
 | `bun dist/main.js --help` | Completed successfully |
 | CLI model + Read tool round trip | Returned `CLI_TOOL_ROUNDTRIP_OK` |
@@ -33,6 +33,7 @@ Statuses:
 | Query abort | Ended with `error_during_execution` and cleaned up |
 | Packaged SDK query | `dist/sdk.mjs` returned `DIST_SDK_OK` |
 | Scheduled-task formatting and abort | Tests passed |
+| Design docs structural check | Passed with 0 errors; 68 specs remain draft and await human approval |
 
 Real model checks used the session's configured provider with an isolated `HOME`. No credentials are stored in this repository.
 
@@ -101,14 +102,16 @@ Real model checks used the session's configured provider with an isolated `HOME`
 ## Next implementation order
 
 1. Fix reverse-order skip propagation and skip→retry runner fencing in Workflow, with adversarial DAG-order regressions.
-2. Make model-emitted snip markers survive projection until execution, then add a real query-path regression.
+2. Make model-emitted HISTORY_SNIP markers survive projection until execution, then add a real query-path regression.
 3. Preserve ReviewArtifact's input fields and path scope through permission delegation, with executor-level allow/ask/persistent-allow tests.
-4. Close normal-spawn context staging, remove duplicate archive input, and cover reset-during-persistence recovery.
-5. Repair canonical skillPath/base-directory handling and local cache ownership with integration regressions.
-6. Make standalone live-validation settings loading explicit, or require caller-injected credentials and test the four authentication matrix branches.
-7. Run trusted webhook producer, two-session peer, Cloud Files, Remote Control and env-less perpetual round trips in an authorized Claude OAuth environment.
-8. Run real Google Chrome login-state checks and native Computer Use controls in authorized dedicated browser/desktop environments.
-9. Run SSH and Open Runner against authorized Linux hosts and record backend-specific evidence.
-10. Optionally run a private self-hosted SkillHub registry round trip and any required private-protocol differential verification.
+4. Close normal-spawn context staging in context collapse, remove duplicate archive input, and cover reset-during-persistence recovery in reactive compaction.
+5. Repair canonical skillPath/base-directory handling in Skills integration and local cache ownership with integration regressions.
+6. Make standalone live-validation settings loading explicit, or require caller-injected credentials and test the four authentication matrix branches; live-validation remains Implemented, unverified.
+7. Fix WebBrowser MCP error propagation (WebBrowser drops MCP result.isError).
+8. Close memory symlink handling gaps in the session system.
+9. Run trusted webhook producer, two-session peer, Cloud Files, Remote Control and env-less perpetual round trips in an authorized Claude OAuth environment.
+10. Run real Google Chrome login-state checks and native Computer Use controls in authorized dedicated browser/desktop environments.
+11. Run SSH and Open Runner against authorized Linux hosts and record backend-specific evidence.
+12. Optionally run a private self-hosted SkillHub registry round trip and any required private-protocol differential verification.
 
-Every implementation must add or update its verification evidence here. Build success alone does not promote a feature to **Verified**.
+Every implementation must add or update its verification evidence here. Build success alone does not promote a feature to **Verified**. Offline/mock evidence does not promote live-only capabilities.
