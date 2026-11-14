@@ -50,7 +50,7 @@ status: draft
 
 ### 替换规则（按优先级应用）
 1. `Claude Code`（产品指称）→ `flash`。若该行同时声称 flash 是 "Anthropic's official CLI for Claude"，则该短语删除或改写——flash 不再是官方 CLI（如 `generalPurposeAgent.ts:3` 改为 `You are an agent for flash.`）。
-2. `claude-code`（二进制/归档/命令名）→ `flash`。
+2. `claude-code`（二进制/归档/命令名）→ `flash`。**仅适用于**产物命名链（`scripts/build-binary.ts`、`scripts/install.sh`、`package.json`）与文档/README 示例；`src/` 中的小写 `claude-code` 均为外部标识符（见排除清单），不参与替换。
 3. `claude_code` / `ClaudeCode` / `claudeCode` 标识符 → 默认保留，除非面向用户（当前无）。
 4. **改写而非盲替换**：将 flash 描述为其已不再是的东西（官方 CLI）、作为 Claude Code 快照的归属行、指代上游机制的注释（`CLAUDECODE` hints protocol）一律人工改写，不走 sed。
 
@@ -61,6 +61,8 @@ status: draft
 | `src/types/generated/events_mono/claude_code/**` | 生成代码，上游 schema | 目录结构 |
 | `CLAUDECODE=1` 相关字面量与注释 | 外部 hints 协议 | `src/tools/BashTool/BashTool.tsx:1038`、`src/tools/PowerShellTool/PowerShellTool.tsx:745` |
 | `src/constants/oauth.ts` | 身份/协议常量 | 文件级 |
+| `src/constants/github-app.ts` | GitHub Action 工作流模板，引用真实的 `anthropics/claude-code-action` 仓库与产品 | `:4,40,64,96,135-141` |
+| 小写外部标识符：`claude-code-hint`、`com.anthropic.claude-code-url-handler`、`claude-code-keybindings.json`、`claude-code-github-action`、`anthropics/claude-code`、`claude-code-action`、`claude-code-plugins`、`#claude-code-feedback`、`platform.claude.com/…app=claude-code` | 外部协议、schema URL、GitHub 仓库与 Slack 频道名 | `src/main.tsx:820,965`、`src/keybindings/template.ts:46`、`src/constants/prompts.ts:244,436`、`src/constants/oauth.ts:95,97` |
 | 记录上游构建历史的注释 | 历史事实 | `src/global.d.ts:12`、`src/setup.ts:422`、`src/history.ts:412` |
 | `docs/RELEASE.md:33` legacy URL | 历史仓库名 | 该行 |
 
