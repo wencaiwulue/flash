@@ -52,6 +52,7 @@
 - Modify: `scripts/build-binary.ts:71-72,81,284`
 - Modify: `scripts/install.sh:5,95,124,126,131,137`
 - Modify: `package.json:2,5,8`
+- Modify: `README.md:1`、`README.zh-CN.md:1`（仅标题行，保证测试套件每个提交点全绿；README 其余内容由 Task 3 处理）
 
 **Interfaces:**
 - Consumes: `getBinaryName(target: ReleaseTarget): string`、`getArchiveName(target: ReleaseTarget, version?: string): string`（现有导出，签名不变）
@@ -112,7 +113,7 @@ Unix 用例中 `'/tmp/claude-code.tar.gz'` → `'/tmp/flash.tar.gz'`、`'claude-
 - [ ] **Step 2: 运行测试确认失败**
 
 Run: `bun run test 2>&1 | grep -A2 "release target metadata\|release documentation" | head -30`
-Expected: FAIL — `'claude-code.exe'` 相关断言收到 `'flash.exe'`（实现尚未改）；README 标题断言失败（README 尚未改，属预期，任务 3 修复）。
+Expected: FAIL — `'claude-code.exe'` 相关断言收到 `'flash.exe'`（实现尚未改）；README 标题断言同样失败（实现尚未改，本任务内修复）。
 
 - [ ] **Step 3: 修改产物命名链实现**
 
@@ -145,10 +146,20 @@ Expected: FAIL — `'claude-code.exe'` 相关断言收到 `'flash.exe'`（实现
 
 `scripts/install.sh`：`:5` `BINARY_NAME='flash'`；`:95` `work_dir=$(mktemp -d "${TMPDIR:-/tmp}/flash-install.XXXXXX")`；`:124` `... || fail 'Unable to extract flash from the verified archive.'`；`:126` `... fail 'The archive did not contain a regular flash binary.'`；`:131` `staging_file=$(mktemp "$INSTALL_DIR/.flash.XXXXXX")`；`:137` `printf 'Installed flash %s to %s\n' "$VERSION" "$destination"`。
 
+README 标题（仅第一行，保证打包测试通过）：
+`README.md:1`：
+```markdown
+# flash
+```
+`README.zh-CN.md:1`：
+```markdown
+# flash
+```
+
 - [ ] **Step 4: 运行测试确认产物命名通过**
 
 Run: `bun run test 2>&1 | tail -5`
-Expected: 产物命名相关断言 PASS；仅 README 标题断言仍 FAIL（任务 3 修复，属预期中间态）。
+Expected: 全绿（产物命名断言与 README 标题断言均 PASS）。
 
 Run: `bun scripts/build-binary.ts --validate-only`
 Expected: 退出码 0，无命名报错。
@@ -156,7 +167,7 @@ Expected: 退出码 0，无命名报错。
 - [ ] **Step 5: Commit**
 
 ```bash
-git add tests/releasePackaging.test.ts scripts/build-binary.ts scripts/install.sh package.json
+git add tests/releasePackaging.test.ts scripts/build-binary.ts scripts/install.sh package.json README.md README.zh-CN.md
 git commit -m "Rename release artifacts and installer to flash
 
 Co-Authored-By: Claude <noreply@anthropic.com>"
@@ -219,7 +230,7 @@ sed 会产生 "flash, Anthropic's official CLI for Claude" 这类不通顺结果
 - [ ] **Step 4: 构建与全量测试**
 
 Run: `bun run build 2>&1 | tail -3 && bun run test 2>&1 | tail -5`
-Expected: build 成功；测试全绿（任务 1 后仅剩的 README 标题断言此时仍 FAIL——README 未改；若无其他失败即通过）。
+Expected: build 成功；测试全绿。
 
 - [ ] **Step 5: Commit**
 
@@ -235,8 +246,8 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 ### Task 3: README 与发布文档
 
 **Files:**
-- Modify: `README.md:1,5,63,84,89-99,106-112`
-- Modify: `README.zh-CN.md:1,5,63,84,89-112`
+- Modify: `README.md:5,63,84,89-99,106-112`（标题行已在 Task 1 改毕）
+- Modify: `README.zh-CN.md:5,63,84,89-112`（标题行已在 Task 1 改毕）
 - Modify: `docs/RELEASING.md:3,10,154-160`
 - Modify: `docs/RELEASE.md:21`
 
@@ -244,22 +255,14 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 - Consumes: 任务 1 的产物命名（`flash-vX.Y.Z-…`、`flash`、`flash.exe`），文档示例必须与之逐字符一致；任务 1 Step 1 已断言 README 标题 `# flash`。
 - Produces: 无代码接口；文档与产物命名一致。
 
-- [ ] **Step 1: 更新双语 README**
+- [ ] **Step 1: 更新双语 README（标题行已在 Task 1 改毕）**
 
-`README.md:1`：
-```markdown
-# flash
-```
 `README.md:5`：
 ```markdown
 Educational/research snapshot built on Claude Code: an agentic coding CLI and TypeScript Agent SDK built with Bun, React, and Ink.
 ```
 命令与产物示例（英文版 `:63,84,89-99,106-112`，行号与中文版一致）：`claude-code --version` → `flash --version`；`tar -xzf claude-code-vX.Y.Z-darwin-arm64.tar.gz` → `tar -xzf flash-vX.Y.Z-darwin-arm64.tar.gz`；`./claude-code` → `./flash`；`claude-code.exe` → `flash.exe`；SHA256SUMS grep 示例与 `Get-FileHash` 路径同步。
 
-`README.zh-CN.md:1`：
-```markdown
-# flash
-```
 `README.zh-CN.md:5`：
 ```markdown
 基于 Claude Code 的教学/研究快照：使用 Bun、React 和 Ink 构建的智能体编程 CLI 与 TypeScript Agent SDK。
