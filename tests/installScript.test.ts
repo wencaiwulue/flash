@@ -44,7 +44,7 @@ let requests: string[]
 
 async function createArchive(
   target: ReleaseTarget,
-  memberName = 'claude-code',
+  memberName = 'flash',
 ): Promise<{ name: string; bytes: Buffer; checksum: string }> {
   const name = getArchiveName(target, version)
   const stage = await mkdtemp(join(directory, 'archive-'))
@@ -52,7 +52,7 @@ async function createArchive(
   await writeFile(member, `#!/bin/sh\nprintf '%s\\n' '${target}'\n`)
   await chmod(member, 0o755)
   const members = [memberName]
-  if (memberName === 'claude-code') {
+  if (memberName === 'flash') {
     for (const document of ['README.md', 'README.zh-CN.md']) {
       await writeFile(join(stage, document), document)
       members.push(document)
@@ -73,7 +73,7 @@ async function createArchive(
 }
 
 beforeEach(async () => {
-  directory = await mkdtemp(join(tmpdir(), 'claude-code-installer-test-'))
+  directory = await mkdtemp(join(tmpdir(), 'flash-installer-test-'))
   home = join(directory, 'home')
   installDirectory = join(home, '.local', 'bin')
   temporaryDirectory = join(directory, 'tmp')
@@ -183,7 +183,7 @@ async function fakeUname(system: string, machine: string): Promise<string> {
 }
 
 async function expectNoInstallation(): Promise<void> {
-  await expect(stat(join(installDirectory, 'claude-code'))).rejects.toThrow()
+  await expect(stat(join(installDirectory, 'flash'))).rejects.toThrow()
   expect(await readdir(temporaryDirectory)).toEqual([])
 }
 
@@ -210,13 +210,13 @@ describe('shell installer', () => {
       const path = await fakeUname(system, machine)
       const result = await runInstaller({ PATH: path })
       expectSuccess(result)
-      const binary = join(installDirectory, 'claude-code')
-      expect(result.stdout.toString()).toContain(`Installed claude-code ${tag}`)
+      const binary = join(installDirectory, 'flash')
+      expect(result.stdout.toString()).toContain(`Installed flash ${tag}`)
       expect(result.stdout.toString()).toContain('export PATH=')
       expect((await stat(binary)).mode & 0o777).toBe(0o755)
       expect(requests).toContain(`/download/${tag}/${getArchiveName(target, version)}`)
       expect(await readdir(temporaryDirectory)).toEqual([])
-      expect((await readdir(installDirectory)).sort()).toEqual(['claude-code'])
+      expect((await readdir(installDirectory)).sort()).toEqual(['flash'])
 
       const installed = Bun.spawnSync({
         cmd: [binary],
@@ -240,7 +240,7 @@ describe('shell installer', () => {
       `/download/${tag}/${getArchiveName('bun-darwin-arm64', version)}`,
     )
     expect(result.stdout).not.toContain('export PATH=')
-    const binary = join(installDirectory, 'claude-code')
+    const binary = join(installDirectory, 'flash')
     expect((await stat(binary)).mode & 0o777).toBe(0o755)
     expect(await readdir(temporaryDirectory)).toEqual([])
   })
@@ -268,12 +268,12 @@ describe('shell installer', () => {
       assets.set(manifestPath, Buffer.from(`${updated.join('\n')}\n`))
 
       await mkdir(installDirectory, { recursive: true })
-      const destination = join(installDirectory, 'claude-code')
+      const destination = join(installDirectory, 'flash')
       await writeFile(destination, 'existing installation')
       const result = await runInstaller({ PATH: await fakeUname('Darwin', 'arm64') })
       expectFailure(result)
       expect(await readFile(destination, 'utf8')).toBe('existing installation')
-      expect((await readdir(installDirectory)).sort()).toEqual(['claude-code'])
+      expect((await readdir(installDirectory)).sort()).toEqual(['flash'])
       expect(await readdir(temporaryDirectory)).toEqual([])
     })
   }
@@ -314,7 +314,7 @@ describe('shell installer', () => {
 
   test('rejects an archive without the expected binary', async () => {
     const target = getReleaseTarget('bun-darwin-arm64')
-    const archive = await createArchive(target, 'not-claude-code')
+    const archive = await createArchive(target, 'not-flash')
     assets.set(`/download/${tag}/${archive.name}`, archive.bytes)
     assets.set(
       `/download/${tag}/SHA256SUMS`,
@@ -355,10 +355,10 @@ describe('shell installer', () => {
     const name = getArchiveName('bun-darwin-arm64', version)
     const stage = await mkdtemp(join(directory, 'symlink-archive-'))
     await writeFile(join(stage, 'referent'), 'not an installed binary')
-    await symlink('referent', join(stage, 'claude-code'))
+    await symlink('referent', join(stage, 'flash'))
     const archive = join(directory, 'symlink.tar.gz')
     const tar = Bun.spawnSync({
-      cmd: ['tar', '-czf', archive, '-C', stage, 'claude-code'],
+      cmd: ['tar', '-czf', archive, '-C', stage, 'flash'],
       stdout: 'pipe',
       stderr: 'pipe',
     })
@@ -389,7 +389,7 @@ describe('shell installer', () => {
     const result = await runInstaller({ PATH: path })
     expect(result.exitCode).toBe(1)
     expect(result.stderr).toContain('Warning: unable to remove temporary directory')
-    expect((await stat(join(installDirectory, 'claude-code'))).mode & 0o777).toBe(
+    expect((await stat(join(installDirectory, 'flash'))).mode & 0o777).toBe(
       0o755,
     )
   })
@@ -430,7 +430,7 @@ describe('shell installer', () => {
   test('replaces a destination symlink without changing its referent', async () => {
     await mkdir(installDirectory, { recursive: true })
     const referent = join(directory, 'referent')
-    const destination = join(installDirectory, 'claude-code')
+    const destination = join(installDirectory, 'flash')
     await writeFile(referent, 'do not modify')
     await symlink(referent, destination)
 
