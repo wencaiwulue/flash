@@ -23,6 +23,8 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
+      - name: Validate shell installer
+        run: sh -n scripts/install.sh
       - id: version
         name: Validate package and tag versions
         env:
@@ -126,3 +128,4 @@ jobs:
             build/release/*.tar.gz
             build/release/*.zip
             build/release/SHA256SUMS
+            scripts/install.sh

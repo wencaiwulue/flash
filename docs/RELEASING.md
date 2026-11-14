@@ -8,8 +8,10 @@ This guide defines the release process for standalone `claude-code` binaries and
 
 - 版本唯一来源是 `package.json`；标签必须采用严格的 `vX.Y.Z` 格式并与该版本完全一致。/ `package.json` is the single version source. Tags must use strict `vX.Y.Z` semver and match it exactly.
 - 发布产物命名为 `claude-code-vX.Y.Z-<platform>-<arch>.tar.gz`，Windows 使用 `.zip`。/ Assets follow `claude-code-vX.Y.Z-<platform>-<arch>.tar.gz`, with `.zip` on Windows.
+- Release 恰好包含八个资产：六个平台归档、覆盖六个归档的 `SHA256SUMS`，以及独立的 `install.sh`。安装器强制校验归档，但自身不纳入 `SHA256SUMS`。/ A Release contains exactly eight assets: six platform archives, `SHA256SUMS` covering those archives, and a standalone `install.sh`. The installer always verifies archives but is not itself listed in `SHA256SUMS`.
 - 首发目标为 macOS ARM64/x64、Linux ARM64/x64、Windows ARM64/x64。/ Targets are macOS ARM64/x64, Linux ARM64/x64, and Windows ARM64/x64.
 - 每个目标在对应原生 OS/架构上编译并执行，不能使用未运行验证的交叉产物。/ Every target is compiled and executed on its native OS/architecture; unexecuted cross-compiled assets are not allowed.
+- 每个平台归档恰好包含二进制、`README.md` 和 `README.zh-CN.md`；解包检查同时验证成员集合及两份文档与源文件逐字节一致。/ Each platform archive contains exactly the binary, `README.md`, and `README.zh-CN.md`. Extraction checks verify both the exact member set and byte-for-byte equality of the documents with their sources.
 - 标签发布先复用完整 CI，再验证六个归档、解包执行结果和 SHA-256。/ Tagged releases reuse the full CI, then verify all six archives, post-extraction execution, and SHA-256 checksums.
 - 手动运行只上传保留七天的 workflow artifacts，不创建 Release。/ Manual runs upload workflow artifacts retained for seven days and never create a Release.
 - 本次发布形式不包含 npm 包、签名、公证或自动更新器变更。/ This release channel does not include npm publishing, signing, notarization, or updater changes.
@@ -31,6 +33,7 @@ The package version must equal the final tag: for example, package version `1.1.
 Run the same sequence as CI in a clean workspace:
 
 ```bash
+sh -n scripts/install.sh
 bun install --frozen-lockfile
 bun run generate:sdk-types
 bun run typecheck
@@ -96,7 +99,7 @@ gh run list --workflow=release.yml
 
 Alternatively, select **release → Run workflow** in GitHub Actions. Confirm that:
 
-1. `validate` 接受 package 版本。/ `validate` accepts the package version.
+1. `validate` 接受 package 版本并通过 `sh -n` 检查安装器语法。/ `validate` accepts the package version and checks installer syntax with `sh -n`.
 2. `verify` 完整复用普通 CI。/ `verify` reuses the complete normal CI.
 3. 六个 `build` 矩阵任务全部在原生 runner 上成功。/ All six native `build` matrix jobs pass.
 4. 每个 `binary-*` artifact 包含一个归档和对应 `.sha256`。/ Each `binary-*` artifact contains one archive and its `.sha256` sidecar.
@@ -132,9 +135,9 @@ gh run view <run-id>
 gh run view <run-id> --log-failed
 ```
 
-发布顺序为 `validate → verify → build → publish`。只有标签事件能进入 `publish`，并且只有该 job 拥有 `contents: write`。发布阶段会核对恰好六个预期归档、验证各自的 sidecar，生成统一的 `SHA256SUMS`，再次执行 `sha256sum -c`，最后创建带 generated release notes 的 GitHub Release。
+发布顺序为 `validate → verify → build → publish`。只有标签事件能进入 `publish`，并且只有该 job 拥有 `contents: write`。发布阶段会核对恰好六个预期归档、验证各自的 sidecar，生成统一的 `SHA256SUMS`，再次执行 `sha256sum -c`，最后创建带 generated release notes 的 GitHub Release，上传六个归档、`SHA256SUMS` 和 `install.sh`。
 
-The order is `validate → verify → build → publish`. Only a tag event can enter `publish`, and only that job has `contents: write`. Publishing checks the exact six expected archives and their sidecars, creates a combined `SHA256SUMS`, verifies it with `sha256sum -c`, then creates the GitHub Release with generated release notes.
+The order is `validate → verify → build → publish`. Only a tag event can enter `publish`, and only that job has `contents: write`. Publishing checks the exact six expected archives and their sidecars, creates a combined `SHA256SUMS`, verifies it with `sha256sum -c`, then creates the GitHub Release with generated release notes and uploads the six archives, `SHA256SUMS`, and `install.sh`.
 
 发布后从 GitHub Release 重新下载归档和 `SHA256SUMS`，不要复用本地产物。在无 Bun 的干净环境或对应平台上检查：
 
@@ -155,6 +158,26 @@ tar -xzf <archive-name>
 Windows 使用 `tar -xf <archive-name>` 和 `.\claude-code.exe --version`、`.\claude-code.exe --help`，并使用 `Get-FileHash -Algorithm SHA256` 对比 `SHA256SUMS`。
 
 On Windows, extract with `tar -xf <archive-name>`, run `.\claude-code.exe --version` and `.\claude-code.exe --help`, and compare `Get-FileHash -Algorithm SHA256` against `SHA256SUMS`.
+
+在 macOS/Linux 上还要用隔离的 `HOME` 和 `TMPDIR` 执行真实安装器，以验证 latest 重定向、安装器资产、归档校验、默认路径安装和清理；只声明实际运行过的平台：
+
+On macOS/Linux, also run the real installer with isolated `HOME` and `TMPDIR` directories to verify latest-release resolution, the installer asset, archive verification, default-path installation, and cleanup. Claim only platforms actually exercised:
+
+```bash
+install_check="$(mktemp -d)"
+mkdir -p "$install_check/home" "$install_check/tmp"
+(
+  set -e
+  installer="$(mktemp)"
+  trap 'rm -f "$installer"' EXIT
+  curl -fsSL https://github.com/wencaiwulue/flash/releases/latest/download/install.sh -o "$installer"
+  HOME="$install_check/home" TMPDIR="$install_check/tmp" sh "$installer"
+)
+"$install_check/home/.local/bin/claude-code" --version
+"$install_check/home/.local/bin/claude-code" --help
+test -z "$(find "$install_check/tmp" -mindepth 1 -print -quit)"
+rm -rf "$install_check"
+```
 
 ## 7. 失败与修复 | Failures and Fixes
 

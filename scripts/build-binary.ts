@@ -17,6 +17,8 @@ import packageJson from '../package.json'
 import { createBuildOptions } from './build.ts'
 import { generateSdkTypes } from './generate-sdk-types.ts'
 
+export const RELEASE_DOCUMENTS = ['README.md', 'README.zh-CN.md'] as const
+
 export const RELEASE_TARGETS = {
   'bun-darwin-arm64': { platform: 'darwin', arch: 'arm64' },
   'bun-darwin-x64': { platform: 'darwin', arch: 'x64' },
@@ -244,13 +246,21 @@ async function buildBinary(
   try {
     smokeTestBinary(binaryPath, env)
     await copyFile(binaryPath, join(stageDir, binaryName))
-    await copyFile('README.md', join(stageDir, 'README.md'))
+    for (const document of RELEASE_DOCUMENTS) {
+      await copyFile(document, join(stageDir, document))
+    }
 
     await rm(archivePath, { force: true })
     await rm(`${archivePath}.sha256`, { force: true })
     const archiveFlags = spec.platform === 'win32' ? '-a -cf' : '-czf'
     const archive = spawn(
-      ['tar', ...archiveFlags.split(' '), archivePath, binaryName, 'README.md'],
+      [
+        'tar',
+        ...archiveFlags.split(' '),
+        archivePath,
+        binaryName,
+        ...RELEASE_DOCUMENTS,
+      ],
       { cwd: stageDir },
     )
     assertCommandSucceeded(archive, `Create ${basename(archivePath)}`)
@@ -258,12 +268,21 @@ async function buildBinary(
     const extract = spawn(['tar', '-xf', archivePath, '-C', extractDir])
     assertCommandSucceeded(extract, `Extract ${basename(archivePath)}`)
     const archivedFiles = (await readdir(extractDir)).toSorted()
-    const expectedFiles = [binaryName, 'README.md'].toSorted()
+    const expectedFiles = [binaryName, ...RELEASE_DOCUMENTS].toSorted()
     if (
       archivedFiles.length !== expectedFiles.length ||
       archivedFiles.some((name, index) => name !== expectedFiles[index])
     ) {
       throw new Error(`Unexpected archive contents: ${archivedFiles.join(', ')}`)
+    }
+    for (const document of RELEASE_DOCUMENTS) {
+      const [source, extracted] = await Promise.all([
+        readFile(document),
+        readFile(join(extractDir, document)),
+      ])
+      if (!source.equals(extracted)) {
+        throw new Error(`Extracted release document differs: ${document}`)
+      }
     }
     const extractedBinary = join(extractDir, binaryName)
     if (

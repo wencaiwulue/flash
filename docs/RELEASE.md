@@ -1,5 +1,14 @@
 # Release Record
 
+## v1.0.0
+
+### Release scope
+
+- First versioned standalone-binary release for macOS ARM64/x64, Linux ARM64/x64, and Windows ARM64/x64. Each archive contains the platform binary, the English `README.md`, and the Simplified Chinese `README.zh-CN.md`.
+- The root README is English by default and links to its Chinese counterpart; both versions document source builds, manual archives, checksums, and shell installation.
+- A POSIX `sh` installer for macOS/Linux detects the host platform, resolves the latest or an explicitly selected release, verifies the archive against `SHA256SUMS`, and installs `claude-code` without `sudo`. It is published as the separate `install.sh` Release asset.
+- The release gate covers version/help execution, exact archive contents, extraction, and checksums. Model providers, optional native integrations, signing, notarization, and automatic updates remain outside this release's verified scope.
+
 ## Initial restoration release
 
 - **Source baseline**: `4b9d30f` (`asdf`).
