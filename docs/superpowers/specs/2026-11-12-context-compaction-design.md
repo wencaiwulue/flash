@@ -1026,8 +1026,8 @@ interface CompactMetadata {
 - **query-core spec**: 解释query.ts和QueryEngine如何调用压缩、compact boundary处理、withheld错误恢复
 - **sdk-query-sessions spec**: 解释session storage持久化、恢复时UUID链重建
 - **permissions spec**: 压缩时调用preCompact/postCompact hooks可能涉及权限
-- **analytics spec**: `tengu_compact`/`tengu_cached_microcompact`/`tengu_time_based_microcompact`/`tengu_compact_ptl_retry`等事件
-- **prompt-cache-break-detection spec**: `notifyCompaction()`/`notifyCacheDeletion()`调用
+- **[Telemetry](2026-11-12-telemetry-design.md)**: `tengu_compact`/`tengu_cached_microcompact`/`tengu_time_based_microcompact`/`tengu_compact_ptl_retry`等事件
+- **cachedMCState 与 cache_edits API**: `notifyCompaction()`/`notifyCacheDeletion()`调用
 
 ## 5. 失败语义与工程取舍
 
@@ -1137,15 +1137,16 @@ interface CompactMetadata {
 ### 相关子系统
 - **query-core spec**: 压缩入口调用、compact boundary处理、withheld错误恢复
 - **sdk-query-sessions spec**: 持久化、恢复时UUID链重建
-- **analytics spec**: 压缩事件记录
-- **prompt-cache-break-detection spec**: 缓存删除通知
+- **[Telemetry](2026-11-12-telemetry-design.md)**: 压缩事件记录
+- **cachedMCState 与 cache_edits API**: 缓存删除通知
 
 ## 9. 改进建议
 
 | 优先级 | 触发场景与证据 | 建议方向 | 回归风险 | 验收方式 | 工作量 | 置信度 |
-|---|---|---|---|---|---|---|---|
-| P0 | context collapse使用模块级全局状态，多会话/多agent环境下不安全；src/services/contextCollapse/index.ts的generation防过期机制脆弱 | 将collapseStore改为由QueryEngine或SessionContext拥有，而非模块级全局 | 中-高：需修改所有使用点；恢复路径需传递状态 | 编写多会话并发测试验证状态隔离 | M | 已证实（代码结构明显） |
-| P0 | microcompact使用模块级全局cachedMCState，非主线程被禁用；src/services/compact/microCompact.ts:257-296检查isMainThreadSource | 将cachedMCState绑定到QueryEngine或会话上下文 | 中：需修改API层消费pendingCacheEdits的方式 | 编写子agent调用microcompact不污染主状态的测试 | M | 已证实（代码结构明显） |
+|---|---|---|---|---|---|---|
+| P1 | STATUS 记录正常 `startSpawn` 未先写入 `collapseStore.staged`、默认 summarizer 重复提供 archive、reset-during-persistence 缺少回归；第 4/7 章已有对应状态边界 | 关闭正常执行的 staged 生命周期，去除重复 archive 输入，并定义持久化期间 reset 的完成条件 | 高：影响 prompt-too-long 恢复、摘要内容和跨会话状态 | 覆盖同次运行 overflow、恢复后 overflow、reset 与持久化交错；每类运行必须恰好使用一份 archive，且不能提交 reset 前状态 | M | 待运行验证 |
+| P1 | context collapse使用模块级全局状态，多会话/多agent环境下不安全；src/services/contextCollapse/index.ts的generation防过期机制脆弱 | 将collapseStore改为由QueryEngine或SessionContext拥有，而非模块级全局 | 中-高：需修改所有使用点；恢复路径需传递状态 | 编写多会话并发测试验证状态隔离 | M | 已证实（代码结构明显） |
+| P1 | microcompact使用模块级全局cachedMCState，非主线程被禁用；src/services/compact/microCompact.ts:257-296检查isMainThreadSource | 将cachedMCState绑定到QueryEngine或会话上下文 | 中：需修改API层消费pendingCacheEdits的方式 | 编写子agent调用microcompact不污染主状态的测试 | M | 已证实（代码结构明显） |
 | P1 | autocompact circuit breaker仅在连续失败时触发，无reset机制除了成功；src/services/compact/autoCompact.ts:260-265, 341-349 | 增加时间衰减：若最后一次失败很久以前，允许重试；或在用户手动压缩成功后重置 | 低：仅修改计数逻辑 | 测试circuit breaker在时间窗口后或手动压缩后重置 | S | 已证实（代码逻辑） |
 | P1 | reactive compact仅strip images，不尝试其他渐进式策略（如先strip tool results、先snip等）；src/services/compact/reactiveCompact.ts:157-170 | 构建渐进式恢复阶梯：先strip media → 再strip旧tool results → 再snip → 最后full compact | 中：需协调多种策略，避免无限循环 | 测试不同PTL场景下各策略依次尝试 | M | 已证实（当前代码路径简单） |
 | P1 | time-based MC直接修改message content为静态字符串，与cached MC路径不一致；src/services/compact/microCompact.ts:479-496 | time-based MC也使用cache_edits API（若模型支持），或保持统一content-clear但不reset cachedMCState | 低-中：需区分是否仍有有效缓存 | 测试time-based MC在长gap后执行，但缓存仍有效时的行为 | S | 已证实（代码差异明显） |

@@ -562,9 +562,9 @@ export default {
 ## 9. 改进建议
 
 | 优先级 | 触发场景与证据 | 建议方向 | 回归风险 | 验收方式 | 工作量 | 置信度 |
-|-------|---------------|---------|---------|--------|-------|-------|
-| P1 | 当前 Onboarding 流程测试仅验证幂等性，未验证所有步骤 | 添加完整的 Onboarding 流程测试，覆盖所有步骤组合 | 低（仅新增测试） | 测试覆盖 Preflight、Theme、API Key Approval、OAuth Flow、Security Notes、Terminal Setup | L | 设计推断 |
-| P1 | 当前 TrustDialog 测试不足 | 添加 TrustDialog 测试，覆盖非 home/home 目录、所有检测项组合 | 低（仅新增测试） | 测试覆盖信任状态持久化策略 | M | 设计推断 |
+|---|---|---|---|---|---|---|
+| P2 | 当前 Onboarding 流程测试仅验证幂等性，未验证所有步骤 | 添加完整的 Onboarding 流程测试，覆盖所有步骤组合 | 低（仅新增测试） | 测试覆盖 Preflight、Theme、API Key Approval、OAuth Flow、Security Notes、Terminal Setup | L | 设计推断 |
+| P2 | 当前 TrustDialog 测试不足 | 添加 TrustDialog 测试，覆盖非 home/home 目录、所有检测项组合 | 低（仅新增测试） | 测试覆盖信任状态持久化策略 | M | 设计推断 |
 | P2 | 当前项目引导提示无测试 | 添加项目引导提示测试，覆盖最多显示 4 次后隐藏 | 低（仅新增测试） | 测试计数逻辑 | S | 设计推断 |
 | P2 | 当前 Wizard Provider 导航无测试 | 添加 Wizard Provider 非线性导航测试 | 低（仅新增测试） | 测试 goToStep、goNext、goBack、cancel、navigationHistory | M | 设计推断 |
 | P3 | 当前桌面端推荐与 LSP 插件推荐无测试 | 添加推荐展示次数上限测试、禁用逻辑测试 | 低（仅新增测试） | 测试推荐展示与禁用 | M | 设计推断 |
