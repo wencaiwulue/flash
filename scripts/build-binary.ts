@@ -219,7 +219,7 @@ function smokeTestBinary(
 ): void {
   const version = spawn([binaryPath, '--version'], { env })
   assertCommandSucceeded(version, `${binaryPath} --version`)
-  const expectedVersion = `${packageJson.version} (Claude Code)`
+  const expectedVersion = `${packageJson.version} (flash)`
   if (version.stdout.toString().trim() !== expectedVersion) {
     throw new Error(
       `Unexpected binary version: ${version.stdout.toString().trim()}; expected ${expectedVersion}`,

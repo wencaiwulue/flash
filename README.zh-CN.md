@@ -2,7 +2,7 @@
 
 [English](README.md) | **简体中文**
 
-Claude Code 的教学/研究快照：使用 Bun、React 和 Ink 构建的智能体编程 CLI 与 TypeScript Agent SDK。
+基于 Claude Code 的教学/研究快照：使用 Bun、React 和 Ink 构建的智能体编程 CLI 与 TypeScript Agent SDK。
 
 ## 概述
 
