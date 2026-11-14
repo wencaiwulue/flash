@@ -86,7 +86,7 @@ export function createLinuxSecretStorage(
   function storeArgs(): string[] {
     return [
       'store',
-      '--label=Claude Code Credentials',
+      '--label=flash Credentials',
       'service',
       getServiceName(),
       'account',

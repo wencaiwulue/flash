@@ -12,7 +12,7 @@ export function printBanner(
     ? `cc+unix://${config.unix}?token=${token}`
     : `cc://${host}:${actualPort}?token=${token}`
   process.stderr.write(
-    `\nClaude Code Direct Connect (${'direct-connect-v1'})\n` +
+    `\nflash Direct Connect (${'direct-connect-v1'})\n` +
       `Listening: ${config.unix ?? `${config.host}:${actualPort}`}\n` +
       `Connect: ${url}\n` +
       'Keep this URL private. cc:// uses HTTP; use a TLS boundary off-loopback.\n\n',
