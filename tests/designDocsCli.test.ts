@@ -67,7 +67,7 @@ function createFixture(): void {
       summary: 'Source.', files: ['src/index.ts'],
     }],
   }))
-  const headings = REQUIRED_HEADINGS.map(heading => `${heading}\n\n正文。\n`).join('\n')
+  const headingsWithout9 = REQUIRED_HEADINGS.slice(0, -1).map(heading => `${heading}\n\n正文。\n`).join('\n')
   put('docs/superpowers/specs/system-design.md', `---
 id: system
 batch: 0
@@ -76,7 +76,14 @@ status: approved
 ---
 # System
 
-${headings}
+${headingsWithout9}
+
+## 9. 改进建议
+
+| 优先级 | 触发场景与证据 | 建议方向 | 回归风险 | 验收方式 | 工作量 | 置信度 |
+|---|---|---|---|---|---|---|
+| P2 | 测试 | 测试建议 | 低 | 验收 | S | 已证实 |
+
 [Coverage](../../architecture/coverage/system.yaml)
 `)
   put(INDEX_PATH, '# Architecture\n\n[System](../superpowers/specs/system-design.md)\n')

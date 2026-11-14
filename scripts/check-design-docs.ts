@@ -255,7 +255,7 @@ function checkRecommendations(
   if (start < 0) return
   const body = content.slice(start + '## 9. 改进建议'.length)
   const lines = body.split('\n').map(line => line.trim())
-  const rows = lines.filter(line => /^\| P[0-3] \|/.test(line))
+  const rows = lines.filter(line => /^\|\s*P[0-3]\s*\|/.test(line))
   if (!lines.includes(RECOMMENDATION_HEADER) || rows.length === 0) {
     errors.push({
       code: 'RECOMMENDATIONS_TABLE',
@@ -265,24 +265,28 @@ function checkRecommendations(
 
   for (const row of rows) {
     const cells = row.split('|').slice(1, -1).map(cell => cell.trim())
+    let hasRowError = false
     if (cells.length !== 7 || !/^[SML]$/.test(cells[5] ?? '')) {
       errors.push({
         code: 'RECOMMENDATION_ROW',
         message: `${entry.spec} has a malformed recommendation row: ${row}`,
       })
-      continue
+      hasRowError = true
     }
-    const [priority, , , , , , confidence] = cells
-    const unsupported = priority === 'P0'
-      ? !confidence.startsWith('已证实')
-      : priority === 'P1'
-        ? !/^(已证实|待运行验证)/.test(confidence)
-        : false
-    if (unsupported) {
-      errors.push({
-        code: 'RECOMMENDATION_EVIDENCE',
-        message: `${entry.spec} has unsupported ${priority} evidence: ${confidence}`,
-      })
+    // Only check evidence if we have all cells including confidence
+    if (cells.length >= 7) {
+      const [priority, , , , , , confidence] = cells
+      const unsupported = priority === 'P0'
+        ? !confidence.startsWith('已证实')
+        : priority === 'P1'
+          ? !/^(已证实|待运行验证)/.test(confidence)
+          : false
+      if (unsupported) {
+        errors.push({
+          code: 'RECOMMENDATION_EVIDENCE',
+          message: `${entry.spec} has unsupported ${priority} evidence: ${confidence}`,
+        })
+      }
     }
   }
 }
