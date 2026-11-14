@@ -8,6 +8,7 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { promisify } from 'util'
 import { chromium } from 'playwright'
+import treeKill from 'tree-kill'
 import {
   assertLoopbackCdpEndpoint,
   callOpenChromeTool,
@@ -43,21 +44,148 @@ let fakeProfile: string | undefined
 let chromeMcpConfig: ScopedMcpServerConfig | undefined
 
 const execFileAsync = promisify(execFile)
+const fakeChildren = new Set<ChildProcess>()
+
+process.on('exit', () => {
+  if (process.platform === 'win32') return
+  for (const child of fakeChildren) {
+    if (!child.pid) continue
+    try {
+      process.kill(-child.pid, 'SIGKILL')
+    } catch {
+      // The owned process group already exited.
+    }
+  }
+})
+
+function childHasExited(child: ChildProcess): boolean {
+  return child.exitCode !== null || child.signalCode !== null
+}
+
+function fakeChromeTreeExited(child: ChildProcess): boolean {
+  if (process.platform === 'win32') return childHasExited(child)
+  const pid = child.pid
+  if (!pid) return true
+  try {
+    process.kill(-pid, 0)
+    return false
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ESRCH') return true
+    throw error
+  }
+}
+
+async function waitForChildClose(
+  child: ChildProcess,
+  timeoutMs: number,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (fakeChromeTreeExited(child)) return true
+    await Bun.sleep(50)
+  }
+  return fakeChromeTreeExited(child)
+}
+
+async function signalFakeChrome(
+  child: ChildProcess,
+  signal: NodeJS.Signals,
+): Promise<void> {
+  if (process.platform === 'win32' && childHasExited(child)) return
+  const pid = child.pid
+  if (!pid) return
+
+  if (process.platform === 'win32') {
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error(`Fake CDP Chromium ${signal} timed out`)),
+        5_000,
+      )
+      treeKill(pid, signal, error => {
+        clearTimeout(timer)
+        if (error && !childHasExited(child)) reject(error)
+        else resolve()
+      })
+    })
+    return
+  }
+
+  try {
+    // The detached child is the leader of its own process group. Signal only
+    // that owned group so Chromium descendants cannot outlive the fixture.
+    process.kill(-pid, signal)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error
+  }
+}
+
+async function stopFakeChrome(child: ChildProcess): Promise<void> {
+  if (!child.pid || (process.platform === 'win32' && childHasExited(child))) {
+    fakeChildren.delete(child)
+    return
+  }
+  await signalFakeChrome(child, 'SIGTERM')
+  if (await waitForChildClose(child, 5_000)) {
+    fakeChildren.delete(child)
+    return
+  }
+
+  await signalFakeChrome(child, 'SIGKILL')
+  if (!(await waitForChildClose(child, 5_000))) {
+    throw new Error('Fake CDP Chromium did not close after SIGKILL')
+  }
+  fakeChildren.delete(child)
+}
 
 afterEach(async () => {
-  if (chromeMcpConfig) {
-    await clearServerCache('claude-in-chrome', chromeMcpConfig)
-    chromeMcpConfig = undefined
-  }
-  await closeOpenChromeClient()
-  await closeOpenBrowserClient()
-  await closeOpenComputerUseClient()
-  if (fakeChild && fakeChild.exitCode === null) fakeChild.kill('SIGTERM')
+  const config = chromeMcpConfig
+  const child = fakeChild
+  const profile = fakeProfile
+  const fixture = server
+  chromeMcpConfig = undefined
   fakeChild = undefined
-  if (fakeProfile) await rm(fakeProfile, { recursive: true, force: true })
   fakeProfile = undefined
-  if (server) await new Promise<void>(resolve => server!.close(() => resolve()))
   server = undefined
+
+  const cleanups: Array<() => Promise<unknown>> = []
+  if (config) {
+    cleanups.push(async () => {
+      await clearServerCache('claude-in-chrome', config)
+    })
+  }
+  cleanups.push(
+    async () => closeOpenChromeClient(),
+    async () => closeOpenBrowserClient(),
+    async () => closeOpenComputerUseClient(),
+  )
+  if (child) cleanups.push(async () => stopFakeChrome(child))
+  if (profile) {
+    cleanups.push(async () => {
+      if (child) await stopFakeChrome(child)
+      await rm(profile, { recursive: true, force: true })
+    })
+  }
+  if (fixture) {
+    cleanups.push(
+      async () =>
+        new Promise<void>((resolve, reject) => {
+          fixture.close(error => (error ? reject(error) : resolve()))
+        }),
+    )
+  }
+
+  // Preserve cleanup order, but do not let an early failure skip later steps.
+  const errors: unknown[] = []
+  for (const cleanup of cleanups) {
+    try {
+      await cleanup()
+    } catch (error) {
+      errors.push(error)
+    }
+  }
+  if (errors.length > 0) {
+    throw new AggregateError(errors, 'Open backend test cleanup failed')
+  }
 })
 
 async function startFixture(): Promise<void> {
@@ -127,9 +255,10 @@ async function startFakeChromeCdp(): Promise<{ endpoint: string }> {
       `--user-data-dir=${fakeProfile}`,
       'about:blank',
     ],
-    { stdio: 'ignore' },
+    { stdio: 'ignore', detached: process.platform !== 'win32' },
   )
   fakeChild = child
+  fakeChildren.add(child)
   let startupError: unknown
   child.once('error', error => {
     startupError = error
@@ -148,6 +277,7 @@ async function startFakeChromeCdp(): Promise<{ endpoint: string }> {
         lastError = undefined
         break
       }
+      lastError = new Error(`Fake CDP Chromium returned HTTP ${response.status}`)
     } catch (error) {
       lastError = error
     }
@@ -156,6 +286,76 @@ async function startFakeChromeCdp(): Promise<{ endpoint: string }> {
   if (lastError) throw lastError
 
   return { endpoint }
+}
+
+type IsolatedBrowserRoot = {
+  pid: number
+  profile: string
+}
+
+function isolatedBrowserRootKey(root: IsolatedBrowserRoot): string {
+  return `${root.pid}:${root.profile}`
+}
+
+async function snapshotIsolatedBrowserRoots(): Promise<IsolatedBrowserRoot[]> {
+  // Windows retains all functional lifecycle assertions below. POSIX process
+  // assertions remain mandatory and any ps/query failure fails the test.
+  if (process.platform === 'win32') return []
+  const { stdout } = await execFileAsync(
+    'ps',
+    ['-ax', '-o', 'pid=,command='],
+    { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 },
+  )
+  const roots = new Map<number, IsolatedBrowserRoot>()
+  for (const line of stdout.split('\n')) {
+    const processMatch = line.match(/^\s*(\d+)\s+(.*)$/)
+    if (!processMatch) continue
+    const command = processMatch[2]!
+    if (/(?:^|\s)--type=/.test(command)) continue
+    if (!/(?:^|\s)--remote-debugging-pipe(?:\s|$)/.test(command)) continue
+    const profile = command.match(
+      /(?:^|\s)--user-data-dir=(\S*playwright_chromiumdev_profile-[^\s]*)/,
+    )?.[1]
+    if (!profile) continue
+    const pid = Number(processMatch[1])
+    roots.set(pid, { pid, profile })
+  }
+  return [...roots.values()]
+}
+
+async function findNewIsolatedBrowserRoot(
+  before: IsolatedBrowserRoot[],
+): Promise<IsolatedBrowserRoot | undefined> {
+  if (process.platform === 'win32') return undefined
+  const existing = new Set(before.map(isolatedBrowserRootKey))
+  const created = (await snapshotIsolatedBrowserRoots()).filter(
+    root => !existing.has(isolatedBrowserRootKey(root)),
+  )
+  expect(created).toHaveLength(1)
+  return created[0]
+}
+
+async function expectIsolatedBrowserRootExited(
+  root: IsolatedBrowserRoot | undefined,
+): Promise<void> {
+  if (!root) return
+  for (let attempt = 0; attempt < 100; attempt++) {
+    try {
+      const { stdout } = await execFileAsync(
+        'ps',
+        ['-p', String(root.pid), '-o', 'command='],
+        { encoding: 'utf8', timeout: 5_000 },
+      )
+      if (!stdout.includes(root.profile)) return
+    } catch (error) {
+      if ((error as { code?: number }).code === 1) return
+      throw error
+    }
+    await Bun.sleep(50)
+  }
+  throw new Error(
+    `Isolated Chrome root ${root.pid} survived for ${root.profile}`,
+  )
 }
 
 type FakeChromeState = {
@@ -315,6 +515,7 @@ describe('open Chrome CDP lifecycle and tools', () => {
   test('uses independent clients and cleanup for isolated and real Chrome', async () => {
     const { endpoint } = await startFakeChromeCdp()
     const context = chromeContext(endpoint)
+    const rootsBefore = await snapshotIsolatedBrowserRoots()
     const [isolated, chrome, concurrentChrome] = await Promise.all([
       getOpenBrowserClient(),
       getOpenChromeClient(context),
@@ -322,15 +523,39 @@ describe('open Chrome CDP lifecycle and tools', () => {
     ])
     expect(chrome).toBe(concurrentChrome)
     expect(chrome).not.toBe(isolated)
+    expect((await listBrowserTools()).length).toBeGreaterThan(0)
+    const navigated = await WebBrowserTool.call(
+      { action: 'browser_navigate', arguments: { url: 'about:blank' } },
+      {} as ToolUseContext,
+    )
+    expect(navigated.data.isError).not.toBe(true)
+    const isolatedRoot = await findNewIsolatedBrowserRoot(rootsBefore)
 
+    await Promise.all([closeOpenBrowserClient(), closeOpenBrowserClient()])
     await closeOpenBrowserClient()
+    await expectIsolatedBrowserRootExited(isolatedRoot)
     expect(await getOpenChromeClient(context)).toBe(chrome)
     expect((await listOpenChromeTools(context)).length).toBeGreaterThan(0)
 
     await closeOpenChromeClient()
+    const rootsBeforeReopen = await snapshotIsolatedBrowserRoots()
     const nextIsolated = await getOpenBrowserClient()
     expect(nextIsolated).not.toBe(isolated)
     expect((await listBrowserTools()).length).toBeGreaterThan(0)
+    const reopened = await WebBrowserTool.call(
+      { action: 'browser_navigate', arguments: { url: 'about:blank' } },
+      {} as ToolUseContext,
+    )
+    expect(reopened.data.isError).not.toBe(true)
+    const reopenedRoot = await findNewIsolatedBrowserRoot(rootsBeforeReopen)
+    if (isolatedRoot && reopenedRoot) {
+      expect(isolatedBrowserRootKey(reopenedRoot)).not.toBe(
+        isolatedBrowserRootKey(isolatedRoot),
+      )
+    }
+    await nextIsolated.close()
+    await closeOpenBrowserClient()
+    await expectIsolatedBrowserRootExited(reopenedRoot)
   }, 60_000)
 
   test('uses the shared CDP client in the production MCP wrapper and consumes skip permission', async () => {
@@ -367,6 +592,13 @@ describe('open Chrome CDP lifecycle and tools', () => {
   test('preserves the default context, existing tabs, and cookies across detach/reconnect', async () => {
     await startFixture()
     const { endpoint } = await startFakeChromeCdp()
+    const fakePid = fakeChild?.pid
+    expect(fakePid).toBeDefined()
+    const expectFakeChromeAlive = () => {
+      expect(fakeChild?.pid).toBe(fakePid)
+      expect(process.kill(fakePid!, 0)).toBe(true)
+    }
+    expectFakeChromeAlive()
     await runNodeCdp(endpoint, `
       for (const page of context.pages()) await page.close()
       const first = await context.newPage()
@@ -467,6 +699,7 @@ describe('open Chrome CDP lifecycle and tools', () => {
     const closeBrowser = await callOpenChromeTool(context, 'browser_close', {})
     expect(closeBrowser.isError).toBe(true)
     expect((await inspectFakeChrome(endpoint)).pages).toHaveLength(2)
+    expectFakeChromeAlive()
 
     await closeOpenChromeClient()
     const detachedState = await inspectFakeChrome(endpoint)
@@ -476,12 +709,14 @@ describe('open Chrome CDP lifecycle and tools', () => {
       name: 'open_cdp_test',
       value: 'persisted',
     })
+    expectFakeChromeAlive()
 
     const reconnected = await callOpenChromeTool(context, 'browser_tabs', { action: 'list' })
     expect(reconnected.isError).not.toBe(true)
     expect(JSON.stringify(reconnected.content)).toContain('First CDP Page')
     expect(JSON.stringify(reconnected.content)).toContain('Second CDP Page')
     expect((await inspectFakeChrome(endpoint)).pages).toHaveLength(2)
+    expectFakeChromeAlive()
 
     const denied = await callOpenChromeTool(context, 'browser_navigate', {
       url: `http://localhost:${new URL(baseUrl).port}/first`,
@@ -523,6 +758,7 @@ describe('open Computer Use and Browser backends', () => {
 
   test('navigates a real isolated browser to a local page', async () => {
     await startFixture()
+    const rootsBefore = await snapshotIsolatedBrowserRoots()
     const tools = await listBrowserTools()
     expect(tools.some(tool => tool.name === 'browser_navigate')).toBe(true)
     const result = await WebBrowserTool.call(
@@ -530,6 +766,7 @@ describe('open Computer Use and Browser backends', () => {
       {} as ToolUseContext,
     )
     expect(JSON.stringify(result.data.content)).toContain('First CDP Page')
+    const isolatedRoot = await findNewIsolatedBrowserRoot(rootsBefore)
     const snapshot = await WebBrowserTool.call(
       { action: 'browser_snapshot', arguments: {} },
       {} as ToolUseContext,
@@ -540,10 +777,12 @@ describe('open Computer Use and Browser backends', () => {
       {} as ToolUseContext,
     )
     expect(failure.data.isError).toBe(true)
-    await WebBrowserTool.call(
+    const closed = await WebBrowserTool.call(
       { action: 'browser_close', arguments: {} },
       {} as ToolUseContext,
     )
+    expect(closed.data.isError).not.toBe(true)
+    await expectIsolatedBrowserRootExited(isolatedRoot)
   }, 60_000)
 })
 

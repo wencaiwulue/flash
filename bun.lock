@@ -70,6 +70,7 @@
         "lru-cache": "^10.4.0",
         "marked": "^18.0.6",
         "p-map": "^7.0.2",
+        "playwright": "1.66.0-alpha-2026-11-09",
         "plist": "^5.1.0",
         "proper-lockfile": "^4.1.2",
         "qrcode": "^1.5.4",

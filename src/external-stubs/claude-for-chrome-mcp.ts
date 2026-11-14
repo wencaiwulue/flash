@@ -7,8 +7,10 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js'
 import { createConnection } from '@playwright/mcp'
+import { chromium, type Browser, type BrowserContext } from 'playwright'
 import { dirname } from 'path'
 import { fileURLToPath } from 'url'
+import { registerCleanup } from '../utils/cleanupRegistry.js'
 
 export type PermissionMode =
   | 'ask'
@@ -272,14 +274,18 @@ async function createOpenChromeProxyServer(
   let closing = false
   let disconnected = false
   let toolQueue: Promise<unknown> = Promise.resolve()
+  let upstreamClosePromise: Promise<void> | undefined
 
-  const closeUpstream = async (): Promise<void> => {
-    await upstreamClient.close().catch(error => {
-      context.logger.warn('Error closing Chrome CDP MCP client', error)
+  const closeUpstream = (): Promise<void> => {
+    closing = true
+    upstreamClosePromise ??= closeResources([
+      () => upstreamClient.close(),
+      ...(upstreamServer ? [() => upstreamServer.close()] : []),
+    ]).catch(error => {
+      upstreamClosePromise = undefined
+      throw error
     })
-    await upstreamServer?.close().catch(error => {
-      context.logger.warn('Error closing Chrome CDP MCP server', error)
-    })
+    return upstreamClosePromise
   }
 
   upstreamClient.onclose = () => {
@@ -300,7 +306,18 @@ async function createOpenChromeProxyServer(
       backend: 'chrome-cdp',
       status: 'detached',
     })
-    void closeUpstream()
+    void closeUpstream().catch(error => {
+      context.logger.warn('Error detaching Chrome CDP upstream', error)
+    })
+  }
+  const closeProxy = proxy.close.bind(proxy)
+  proxy.close = async () => {
+    closing = true
+    try {
+      await closeProxy()
+    } finally {
+      await closeUpstream()
+    }
   }
 
   proxy.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -388,9 +405,39 @@ export async function createClaudeForChromeMcpServer(
   }
 }
 
+async function closeResources(
+  cleanups: Array<() => Promise<void>>,
+): Promise<void> {
+  const errors: unknown[] = []
+  for (const cleanup of cleanups) {
+    let timer: NodeJS.Timeout | undefined
+    try {
+      await Promise.race([
+        cleanup(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error('Browser resource cleanup timed out')),
+            10_000,
+          )
+          timer.unref()
+        }),
+      ])
+    } catch (error) {
+      errors.push(error)
+    } finally {
+      if (timer) clearTimeout(timer)
+    }
+  }
+  if (errors.length === 1) throw errors[0]
+  if (errors.length > 1) {
+    throw new AggregateError(errors, 'Failed to close browser resources')
+  }
+}
+
 async function connectInMemory(
   server: Server,
   clientName: string,
+  dispose?: () => Promise<void>,
 ): Promise<ManagedConnection> {
   const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair()
   await server.connect(serverTransport)
@@ -398,14 +445,25 @@ async function connectInMemory(
   try {
     await client.connect(clientTransport)
   } catch (error) {
-    await server.close().catch(() => undefined)
+    await closeResources([
+      () => server.close(),
+      ...(dispose ? [dispose] : []),
+    ]).catch(() => undefined)
     throw error
   }
+  let closePromise: Promise<void> | undefined
   return {
     client,
-    async close() {
-      await client.close()
-      await server.close()
+    close: () => {
+      closePromise ??= closeResources([
+        () => client.close(),
+        () => server.close(),
+        ...(dispose ? [dispose] : []),
+      ]).catch(error => {
+        closePromise = undefined
+        throw error
+      })
+      return closePromise
     },
   }
 }
@@ -416,16 +474,141 @@ let isolatedConnection:
   | undefined
 
 export async function getOpenBrowserClient(): Promise<Client> {
+  await closeResources(
+    [...isolatedCloses.keys()].map(
+      pending => () => closeIsolatedConnection(pending),
+    ),
+  )
   if (!isolatedConnection) {
+    registerCleanup(closeOpenBrowserClient)
     const generation = ++isolatedGeneration
     const promise = (async () => {
-      const server = await createConnection(createIsolatedBrowserConfig())
-      const connection = await connectInMemory(server, 'flash-browser')
-      if ((isolatedConnection as { generation: number } | undefined)?.generation !== generation) {
-        await connection.close()
-        throw new Error('Isolated browser connection was superseded')
+      const config = createIsolatedBrowserConfig()
+      const launchArgs = [...(config.browser?.launchOptions?.args ?? [])]
+      if (!launchArgs.some(arg => arg.includes('--disable-blink-features'))) {
+        launchArgs.push('--disable-blink-features=AutomationControlled')
       }
-      return connection
+      const browsers = new Set<Browser>()
+      const idleTimers = new Map<Browser, NodeJS.Timeout>()
+      const idleTimeout = config.timeouts?.idle ?? 60 * 60 * 1000
+      const pendingContexts = new Set<Promise<BrowserContext>>()
+      let closing = false
+      const scheduleIdle = (browser: Browser): void => {
+        const existing = idleTimers.get(browser)
+        if (existing) clearTimeout(existing)
+        if (closing || !idleTimeout) return
+        const timer = setTimeout(() => {
+          void browser.close().catch(() => undefined)
+        }, idleTimeout)
+        timer.unref()
+        idleTimers.set(browser, timer)
+      }
+      const contextGetter = (): Promise<BrowserContext> => {
+        if (closing) {
+          return Promise.reject(new Error('Isolated Chrome connection is closing'))
+        }
+        const context = (async () => {
+          const browser = await chromium.launch({
+            channel: 'chrome',
+            chromiumSandbox: true,
+            ...config.browser?.launchOptions,
+            args: launchArgs,
+            handleSIGINT: false,
+            handleSIGTERM: false,
+          })
+          if (closing) {
+            await browser.close()
+            throw new Error('Isolated Chrome connection is closing')
+          }
+          browsers.add(browser)
+          scheduleIdle(browser)
+          browser.once('disconnected', () => {
+            const timer = idleTimers.get(browser)
+            if (timer) clearTimeout(timer)
+            idleTimers.delete(browser)
+            browsers.delete(browser)
+          })
+          try {
+            return await browser.newContext({
+              ...config.browser?.contextOptions,
+              viewport:
+                config.browser?.contextOptions?.viewport ??
+                (config.browser?.launchOptions?.headless
+                  ? { width: 1280, height: 720 }
+                  : null),
+            })
+          } catch (error) {
+            await browser.close().catch(() => undefined)
+            throw error
+          }
+        })()
+        pendingContexts.add(context)
+        return context.finally(() => pendingContexts.delete(context))
+      }
+      let disposePromise: Promise<void> | undefined
+      const dispose = (): Promise<void> => {
+        disposePromise ??= (async () => {
+          closing = true
+          for (const timer of idleTimers.values()) clearTimeout(timer)
+          idleTimers.clear()
+          const closeBrowsers = async () => {
+            const results = await Promise.allSettled(
+              [...browsers].map(browser => browser.close()),
+            )
+            return results.flatMap(result =>
+              result.status === 'rejected' ? [result.reason] : [],
+            )
+          }
+          const errors = await closeBrowsers()
+          await Promise.allSettled([...pendingContexts])
+          errors.push(...(await closeBrowsers()))
+          if (errors.length === 1) throw errors[0]
+          if (errors.length > 1) {
+            throw new AggregateError(errors, 'Failed to close isolated Chrome')
+          }
+        })().catch(error => {
+          disposePromise = undefined
+          throw error
+        })
+        return disposePromise
+      }
+      try {
+        const server = await createConnection(
+          {
+            ...config,
+            browser: { ...config.browser, isolated: false },
+          },
+          contextGetter,
+        )
+        const connection = await connectInMemory(
+          server,
+          'flash-browser',
+          dispose,
+        )
+        const callTool = connection.client.callTool.bind(connection.client)
+        connection.client.callTool = ((
+          ...args: Parameters<typeof callTool>
+        ) => {
+          for (const browser of browsers) scheduleIdle(browser)
+          return callTool(...args)
+        }) as typeof callTool
+        const connectionPromise = Promise.resolve(connection)
+        connection.client.onclose = () => {
+          if (isolatedConnection?.generation === generation) {
+            isolatedConnection = undefined
+            ++isolatedGeneration
+          }
+          void closeIsolatedConnection(connectionPromise).catch(() => undefined)
+        }
+        if ((isolatedConnection as { generation: number } | undefined)?.generation !== generation) {
+          await connection.close()
+          throw new Error('Isolated browser connection was superseded')
+        }
+        return connection
+      } catch (error) {
+        await dispose().catch(() => undefined)
+        throw error
+      }
     })().catch(error => {
       if (isolatedConnection?.generation === generation) {
         isolatedConnection = undefined
@@ -437,11 +620,78 @@ export async function getOpenBrowserClient(): Promise<Client> {
   return (await isolatedConnection.promise).client
 }
 
-export async function closeOpenBrowserClient(): Promise<void> {
+const isolatedCloses = new Map<
+  Promise<ManagedConnection>,
+  Promise<void>
+>()
+
+async function closeIsolatedConnection(
+  pending: Promise<ManagedConnection>,
+): Promise<void> {
+  while (true) {
+    const existing = isolatedCloses.get(pending)
+    if (existing) {
+      try {
+        await existing
+        return
+      } catch {
+        if (isolatedCloses.get(pending) === existing) {
+          isolatedCloses.delete(pending)
+        }
+        continue
+      }
+    }
+
+    const close = (async () => {
+      const connection = await pending.catch(() => undefined)
+      await connection?.close()
+    })()
+    isolatedCloses.set(pending, close)
+    try {
+      await close
+      if (isolatedCloses.get(pending) === close) {
+        isolatedCloses.delete(pending)
+      }
+      return
+    } catch (error) {
+      // Keep the failed close available so the next caller can retry disposal.
+      throw error
+    }
+  }
+}
+
+export async function closeOpenBrowserClient(
+  expectedClient?: Client,
+): Promise<void> {
   const pending = isolatedConnection
-  isolatedConnection = undefined
-  ++isolatedGeneration
-  if (pending) await (await pending.promise).close()
+  if (pending) {
+    if (expectedClient) {
+      const connection = await pending.promise.catch(() => undefined)
+      if (connection?.client !== expectedClient) return
+    }
+    if (isolatedConnection !== pending) return
+    isolatedConnection = undefined
+    ++isolatedGeneration
+    await closeIsolatedConnection(pending.promise)
+    return
+  }
+
+  if (expectedClient) {
+    for (const [connectionPromise, close] of isolatedCloses) {
+      const connection = await connectionPromise.catch(() => undefined)
+      if (connection?.client === expectedClient) {
+        await close
+        return
+      }
+    }
+    return
+  }
+
+  await closeResources(
+    [...isolatedCloses.keys()].map(
+      pending => () => closeIsolatedConnection(pending),
+    ),
+  )
 }
 
 let chromeGeneration = 0
