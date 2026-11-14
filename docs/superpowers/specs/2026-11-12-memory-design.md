@@ -1096,7 +1096,7 @@ async function rollbackConsolidationLock(priorMtime: number | null): Promise<voi
 | 优先级 | 触发场景与证据 | 建议方向 | 回归风险 | 验收方式 | 工作量 | 置信度 |
 |-------|---------------|---------|---------|--------|-------|-------|
 | P2 | 记忆系统无专门测试文件，当前所有测试都是集成的 | 补充记忆系统单元测试：truncateEntrypointContent 边界情况、team memory 路径验证（含 symlink 遍历攻击）、extractMemories 并发控制、autoDream 门逻辑、secret 扫描 | 低（仅新增测试） | 每个核心模块有对应测试文件，覆盖主要路径和边界情况 | M | 设计推断 |
-| P2 | team memory 路径验证仅在同步时做，文件系统写入权限检查 isTeamMemPath 仅做字符串前缀，不解析 symlink | 在文件系统写入权限检查 isTeamMemPath 中也做完整 symlink 解析验证（类似 validateTeamMemWritePath） | 中（需要修改权限检查逻辑） | symlink 逃出 team 目录的写入被权限检查拒绝 | S | 设计推断 |
+| P1 | team memory 路径验证不一致：读取/权限检查 isTeamMemPath (src/memdir/teamMemPaths.ts:214-220) 仅做字符串前缀检查，不解析 symlink；写入路径验证 validateTeamMemWritePath/validateTeamMemKey (src/memdir/teamMemPaths.ts:228-256, 265-284) 做完整 symlink 解析。读取路径检查用于 memoryFileDetection、sessionFileAccessHooks、teamMemoryOps（写入前检查），写入路径检查用于 teamMemorySync 写入远程内容。不一致可能导致：通过 symlink 读取 team 目录外文件，或 isTeamMemPath 允许写入但 validateTeamMemWritePath 拒绝。 | 统一路径验证：读取/权限检查也使用完整 symlink 解析验证，或明确区分读取/写入边界并在 spec 中记录差异 | 中（需要修改权限检查逻辑，确保读取路径也安全） | 读取和写入路径验证一致，symlink 逃出 team 目录的操作被明确拒绝 | S | 待运行验证 |
 | P2 | extractMemories 与主代理互斥，但主代理可能写入不完整 | 增加 "部分提取" 模式：主代理写入了但仍有新内容时，extractMemories 补充缺失部分 | 中（需要协调两个代理的写入，避免冲突） | 测试主代理写入部分记忆后，extractMemories 补充剩余部分 | M | 设计推断 |
 | P2 | MEMORY.md 截断是简单头截断，不考虑相关性或 freshness | 截断时优先保留近期/相关条目，或按文件名前缀分组，保留每个组的前几个 | 中（需要读取所有条目元数据，排序） | 测试大型 MEMORY.md 截断后仍包含最近修改的条目 | M | 设计推断 |
 | P2 | team memory 冲突时仅本地覆盖服务器，无合并提示 | 冲突时先提示用户，说明哪些文件有冲突，让用户选择拉取/覆盖/合并 | 中（需要 UI 交互） | 冲突时用户收到明确提示，可选择操作 | M | 设计推断 |
