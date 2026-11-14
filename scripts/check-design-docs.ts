@@ -243,6 +243,50 @@ export async function listRepositoryFiles(cwd: string): Promise<string[]> {
     .map(normalizeRepoPath).sort()
 }
 
+const RECOMMENDATION_HEADER =
+  '| 优先级 | 触发场景与证据 | 建议方向 | 回归风险 | 验收方式 | 工作量 | 置信度 |'
+
+function checkRecommendations(
+  entry: SpecEntry,
+  content: string,
+  errors: Diagnostic[],
+): void {
+  const start = content.indexOf('## 9. 改进建议')
+  if (start < 0) return
+  const body = content.slice(start + '## 9. 改进建议'.length)
+  const lines = body.split('\n').map(line => line.trim())
+  const rows = lines.filter(line => /^\| P[0-3] \|/.test(line))
+  if (!lines.includes(RECOMMENDATION_HEADER) || rows.length === 0) {
+    errors.push({
+      code: 'RECOMMENDATIONS_TABLE',
+      message: `${entry.spec} section 9 requires the normalized seven-column table`,
+    })
+  }
+
+  for (const row of rows) {
+    const cells = row.split('|').slice(1, -1).map(cell => cell.trim())
+    if (cells.length !== 7 || !/^[SML]$/.test(cells[5] ?? '')) {
+      errors.push({
+        code: 'RECOMMENDATION_ROW',
+        message: `${entry.spec} has a malformed recommendation row: ${row}`,
+      })
+      continue
+    }
+    const [priority, , , , , , confidence] = cells
+    const unsupported = priority === 'P0'
+      ? !confidence.startsWith('已证实')
+      : priority === 'P1'
+        ? !/^(已证实|待运行验证)/.test(confidence)
+        : false
+    if (unsupported) {
+      errors.push({
+        code: 'RECOMMENDATION_EVIDENCE',
+        message: `${entry.spec} has unsupported ${priority} evidence: ${confidence}`,
+      })
+    }
+  }
+}
+
 function checkMarkdownLinks(
   cwd: string,
   path: string,
@@ -322,6 +366,7 @@ async function checkSpecDocument(
   if (!indexContent.includes(`](${indexLink})`)) {
     errors.push({ code: 'INDEX_SPEC_LINK', message: `${INDEX_PATH} must link ${indexLink}` })
   }
+  checkRecommendations(entry, content, errors)
   checkMarkdownLinks(cwd, entry.spec, content, errors)
 }
 
