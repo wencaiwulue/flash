@@ -1,5 +1,17 @@
 # Release Record
 
+## v1.0.1
+
+### Standalone runtime fix
+
+- Defer Playwright runtime imports until browser features are actually used, so CLI help does not resolve Playwright package metadata during startup.
+- Run direct and extracted-binary version/help smoke checks with `node_modules` temporarily hidden and restored afterward, preventing CI runners from satisfying undeclared standalone runtime dependencies.
+- Update the documented installation example to `v1.0.1`.
+
+### v1.0.0 known issue
+
+The `v1.0.0` standalone archives can fail `--help` outside the CI source tree because Playwright package metadata is resolved from the runner's `node_modules` path. Its tag and assets remain immutable; use `v1.0.1` instead.
+
 ## v1.0.0
 
 ### Release scope

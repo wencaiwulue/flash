@@ -6,8 +6,7 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js'
-import { createConnection } from '@playwright/mcp'
-import { chromium, type Browser, type BrowserContext } from 'playwright'
+import type { Browser, BrowserContext } from 'playwright'
 import { dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { registerCleanup } from '../utils/cleanupRegistry.js'
@@ -47,7 +46,9 @@ export type BrowserToolDescriptor = {
   inputSchema?: Record<string, unknown>
 }
 
-type PlaywrightMcpConfig = NonNullable<Parameters<typeof createConnection>[0]>
+type PlaywrightMcpConfig = NonNullable<
+  Parameters<typeof import('@playwright/mcp').createConnection>[0]
+>
 
 type ManagedConnection = {
   client: Client
@@ -238,6 +239,7 @@ async function connectPlaywrightUpstream(
     }
   }
 
+  const { createConnection } = await import('@playwright/mcp')
   const server = await createConnection(createOpenChromeConfig(context))
   const client = new Client({ name: context.serverName, version: '1.0.0' })
   const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair()
@@ -508,6 +510,7 @@ export async function getOpenBrowserClient(): Promise<Client> {
           return Promise.reject(new Error('Isolated Chrome connection is closing'))
         }
         const context = (async () => {
+          const { chromium } = await import('playwright')
           const browser = await chromium.launch({
             channel: 'chrome',
             chromiumSandbox: true,
@@ -573,6 +576,7 @@ export async function getOpenBrowserClient(): Promise<Client> {
         return disposePromise
       }
       try {
+        const { createConnection } = await import('@playwright/mcp')
         const server = await createConnection(
           {
             ...config,

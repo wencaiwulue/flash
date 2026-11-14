@@ -20,6 +20,7 @@ WebBrowser 工具通过 `@playwright/mcp` 创建隔离 Chromium，但现有 `clo
 - 浏览器启动失败、context 创建失败、重复关闭和 transport 自发关闭都不能绕过回收。
 - 新连接不能被上一代连接的迟到 close 误关；关闭失败必须保留可重试路径。
 - 不能通过 `pkill`、`killall` 或按 Playwright profile 模式终止机器上的既有进程。
+- CLI 的 `--version`/`--help` 不得因顶层加载 Playwright 而读取其 `package.json`；只有实际浏览器连接才允许加载 Playwright 运行时。
 
 ## 2. 设计理由与备选方案
 
@@ -71,6 +72,10 @@ MCP transport 与 browser 是两个生命周期不同的资源。只关闭 trans
 | 永久缓存一个 context Promise | 启动失败会永久中毒，崩溃后也无法重新创建 browser |
 | 关闭全局单例而不记录 in-flight close | 并发 close 和 shutdown 会提前返回，失败清理也无法重试 |
 | 为隔离浏览器直接启用 Playwright 下载通道 | 改变原有系统 Chrome 解析行为，增加干净 CI 环境的不确定性 |
+
+### 2.6 为什么浏览器运行时要延迟到实际使用时加载
+
+`@playwright/mcp` 和 `playwright` 的部分 CommonJS 模块会通过 `__dirname` 动态查找 `package.json`。顶层 import 会让仅请求 CLI 帮助的用户也承担这条依赖路径，并在独立二进制离开源码目录后失败。因此模块顶层只保留 type-only import，`createConnection` 和 `chromium` 分别在真实 CDP、isolated context 创建路径中动态导入。该边界只保证非浏览器命令不加载 Playwright；浏览器功能本身的运行验证仍由对应测试环境负责。
 
 ## 3. 目标与非目标
 
