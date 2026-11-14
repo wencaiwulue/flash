@@ -1021,23 +1021,25 @@ try {
 
 ## 9. 改进建议
 
-1. 实现 socket 传输支持
-2. 支持用户/项目级 LSP 配置
-3. 实现更多 LSP 功能（code actions、rename、formatting 等）
-4. 提供 LSP 服务器安装功能（由插件或用户安装）
-5. 支持远程 LSP 服务器
-6. 增加 LSP 服务器健康监控 UI（显示服务器状态、重启次数、最后错误等）
-7. 实现 LSP 请求取消（AbortController）
-8. 增加 LSP 请求性能监控（延迟、成功率等）
-9. 实现更智能的诊断优先级排序（按严重性、文件位置等）
-10. 支持 LSP 工作区符号搜索（workspace/symbol）
-11. 实现 LSP 代码镜头（code lens）
-12. 支持 LSP 内联提示（inlay hints）
-13. 实现 LSP 调用层次（call hierarchy）
-14. 支持 LSP 类型层次（type hierarchy）
-15. 实现 LSP 文档链接（document links）
-16. 支持 LSP 文档颜色（document colors）
-17. 实现 LSP 折叠范围（folding ranges）
-18. 支持 LSP 选择范围（selection ranges）
-19. 实现 LSP 语义高亮（semantic tokens）
-20. 支持 LSP 草稿缩进（linked editing ranges）
+| 优先级 | 触发场景与证据 | 建议方向 | 回归风险 | 验收方式 | 工作量 | 置信度 |
+| --- | --- | --- | --- | --- | --- | --- |
+| P2 | 类型中已定义 socket 但未实现，无直接测试 | 实现 socket 传输支持 | 低：现有 stdio 传输保持不变 | 增加 socket 传输测试，验证与 stdio 相同功能正常工作 | L | 待运行验证 |
+| P2 | 配置仅来自插件，无用户/项目级配置支持，无直接测试 | 支持用户/项目级 LSP 配置 | 中：需处理配置优先级与合并逻辑 | 增加用户配置、项目配置、插件配置混合场景测试 | L | 待运行验证 |
+| P2 | 仅实现常用 LSP 功能，无直接测试覆盖所有操作 | 实现更多 LSP 功能（code actions、rename、formatting 等） | 中：需保持现有工具接口兼容性 | 增加新功能的工具接口测试，验证与现有操作一致的错误隔离 | L | 待运行验证 |
+| P2 | 无 LSP 服务器安装功能，无直接测试 | 提供 LSP 服务器安装功能（由插件或用户安装） | 中：需处理安装失败、版本兼容性等 | 增加安装成功、安装失败、版本不兼容等场景测试 | M | 待运行验证 |
+| P2 | 仅支持本地 LSP 服务器，无直接测试 | 支持远程 LSP 服务器 | 高：需处理网络延迟、断开重连、认证等 | 增加远程服务器连接、断开重连、认证失败等场景测试 | L | 待运行验证 |
+| P2 | 无 LSP 服务器健康监控 UI，无直接测试 | 增加 LSP 服务器健康监控 UI（显示服务器状态、重启次数、最后错误等） | 低：UI 展示不影响核心功能 | 增加状态展示、重启计数显示、错误信息展示的集成测试 | M | 待运行验证 |
+| P2 | 未实现 LSP 请求取消，无直接测试 | 实现 LSP 请求取消（AbortController） | 中：需正确处理已发送请求的取消语义 | 增加请求取消、取消后重试、取消后状态清理等测试 | M | 待运行验证 |
+| P2 | 无 LSP 请求性能监控，无直接测试 | 增加 LSP 请求性能监控（延迟、成功率等） | 低：监控为可观测性，不影响核心功能 | 增加性能指标收集、记录、导出的测试 | S | 待运行验证 |
+| P2 | 诊断排序逻辑较简单，无直接测试 | 实现更智能的诊断优先级排序（按严重性、文件位置等） | 低：仅影响展示顺序，不影响诊断内容 | 增加诊断排序逻辑的单元测试 | S | 待运行验证 |
+| P2 | workspace/symbol 支持在类型中但未完全验证，无直接测试 | 支持 LSP 工作区符号搜索（workspace/symbol） | 低：现有工具框架已支持，主要是适配 | 增加 workspace/symbol 操作的工具测试，验证 gitignore 过滤正常工作 | S | 待运行验证 |
+| P2 | 未实现 LSP 代码镜头，无直接测试 | 实现 LSP 代码镜头（code lens） | 中：需新增工具接口或扩展现有接口 | 增加 code lens 获取、展示、执行的集成测试 | M | 待运行验证 |
+| P2 | 未实现 LSP 内联提示，无直接测试 | 支持 LSP 内联提示（inlay hints） | 中：需新增工具接口或扩展现有接口 | 增加 inlay hints 获取、展示的集成测试 | M | 待运行验证 |
+| P2 | call hierarchy 部分实现（incomingCalls/outgoingCalls）但未完全验证，无直接测试 | 实现 LSP 调用层次（call hierarchy） | 低：现有框架已支持两步流程，主要是完善 | 增加 call hierarchy 完整流程测试 | S | 待运行验证 |
+| P2 | 未实现 LSP 类型层次，无直接测试 | 支持 LSP 类型层次（type hierarchy） | 中：需新增工具接口或扩展现有接口 | 增加 type hierarchy 获取、展示的集成测试 | M | 待运行验证 |
+| P2 | 未实现 LSP 文档链接，无直接测试 | 实现 LSP 文档链接（document links） | 低：主要是展示，不影响核心功能 | 增加 document links 获取、展示的集成测试 | S | 待运行验证 |
+| P2 | 未实现 LSP 文档颜色，无直接测试 | 支持 LSP 文档颜色（document colors） | 中：需新增工具接口或扩展现有接口 | 增加 document colors 获取、展示的集成测试 | M | 待运行验证 |
+| P2 | 未实现 LSP 折叠范围，无直接测试 | 实现 LSP 折叠范围（folding ranges） | 低：主要是展示，不影响核心功能 | 增加 folding ranges 获取、展示的集成测试 | S | 待运行验证 |
+| P2 | 未实现 LSP 选择范围，无直接测试 | 支持 LSP 选择范围（selection ranges） | 中：需新增工具接口或扩展现有接口 | 增加 selection ranges 获取、展示的集成测试 | M | 待运行验证 |
+| P2 | 未实现 LSP 语义高亮，无直接测试 | 实现 LSP 语义高亮（semantic tokens） | 高：需处理大量数据、增量更新、缓存等 | 增加 semantic tokens 获取、增量更新、缓存的测试 | L | 待运行验证 |
+| P2 | 未实现 LSP 草稿缩进，无直接测试 | 支持 LSP 草稿缩进（linked editing ranges） | 中：需新增工具接口或扩展现有接口 | 增加 linked editing ranges 获取、展示、联动编辑的集成测试 | M | 待运行验证 |
