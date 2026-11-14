@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'bun:test'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import {
   aggregateChecksums,
   assertNativeTarget,
@@ -10,11 +11,174 @@ import {
   getBinaryName,
   getHostTarget,
   getReleaseTarget,
+  RELEASE_DOCUMENTS,
   RELEASE_TARGETS,
   sha256File,
   validateReleaseTag,
   type ReleaseTarget,
 } from '../scripts/build-binary.ts'
+
+const repositoryRoot = fileURLToPath(new URL('../', import.meta.url))
+const englishSelector = '**English** | [简体中文](README.zh-CN.md)'
+const chineseSelector = '[English](README.md) | **简体中文**'
+const sectionHeadings = [
+  ['Overview', '概述'],
+  ['Quick Start', '快速开始'],
+  ['Standalone Binaries', '独立二进制'],
+  ['Agent SDK', 'Agent SDK'],
+  ['Development', '开发'],
+  ['Repository Layout', '仓库结构'],
+  ['Documentation', '文档'],
+] as const
+
+async function readReleaseDocument(
+  document: (typeof RELEASE_DOCUMENTS)[number],
+): Promise<string> {
+  return readFile(join(repositoryRoot, document), 'utf8')
+}
+
+function linesOutsideCodeFences(markdown: string): string[] {
+  const lines: string[] = []
+  let inCodeFence = false
+  for (const line of markdown.split('\n')) {
+    if (line.startsWith('```')) {
+      inCodeFence = !inCodeFence
+    } else if (!inCodeFence) {
+      lines.push(line)
+    }
+  }
+  return lines
+}
+
+function headingLevels(markdown: string): number[] {
+  return linesOutsideCodeFences(markdown)
+    .map(line => /^(#{1,6})\s/.exec(line)?.[1].length)
+    .filter((level): level is number => level !== undefined)
+}
+
+function sectionTitles(markdown: string): string[] {
+  return linesOutsideCodeFences(markdown)
+    .map(line => /^##\s+(.+)$/.exec(line)?.[1])
+    .filter((title): title is string => title !== undefined)
+}
+
+function codeFenceLanguages(markdown: string): string[] {
+  return [...markdown.matchAll(/^```([^\s`]+)\s*$/gm)].map(match => match[1])
+}
+
+function tableShapes(markdown: string): number[][] {
+  const shapes: number[][] = []
+  let rows: string[] = []
+  const finishTable = () => {
+    if (rows.length > 0) {
+      shapes.push(rows.map(row => row.split('|').length - 2))
+      rows = []
+    }
+  }
+
+  for (const line of [...linesOutsideCodeFences(markdown), '']) {
+    if (/^\|.*\|\s*$/.test(line)) {
+      rows.push(line)
+    } else {
+      finishTable()
+    }
+  }
+  return shapes
+}
+
+function linkDestinations(markdown: string): string[] {
+  const prose = linesOutsideCodeFences(markdown).join('\n')
+  return [
+    ...prose.matchAll(
+      /(?<!!)\[[^\]]*\]\(\s*<?([^<>\s)]+)>?(?:\s+[^)]*)?\)/g,
+    ),
+  ].map(match => match[1])
+}
+
+describe('release documentation', () => {
+  test('exports the exact archive document list', () => {
+    expect(RELEASE_DOCUMENTS).toEqual(['README.md', 'README.zh-CN.md'])
+  })
+
+  test('places bidirectional language selectors directly below the title', async () => {
+    const english = await readReleaseDocument('README.md')
+    const chinese = await readReleaseDocument('README.zh-CN.md')
+    expect(english.split('\n').slice(0, 3)).toEqual([
+      '# Claude Code',
+      '',
+      englishSelector,
+    ])
+    expect(chinese.split('\n').slice(0, 3)).toEqual([
+      '# Claude Code',
+      '',
+      chineseSelector,
+    ])
+  })
+
+  test('resolves every relative Markdown file link', async () => {
+    for (const document of RELEASE_DOCUMENTS) {
+      const documentPath = join(repositoryRoot, document)
+      const markdown = await readReleaseDocument(document)
+      const missing: string[] = []
+      for (const destination of linkDestinations(markdown)) {
+        if (/^https?:\/\//.test(destination) || destination.startsWith('#')) {
+          continue
+        }
+        const fileDestination = destination.split('#')[0]
+        if (!fileDestination) {
+          continue
+        }
+        const linkedPath = resolve(
+          dirname(documentPath),
+          decodeURI(fileDestination),
+        )
+        try {
+          await stat(linkedPath)
+        } catch {
+          missing.push(destination)
+        }
+      }
+      expect({ document, missing }).toEqual({ document, missing: [] })
+    }
+  })
+
+  test('keeps document structure and non-language links aligned', async () => {
+    const english = await readReleaseDocument('README.md')
+    const chinese = await readReleaseDocument('README.zh-CN.md')
+    expect(headingLevels(english)).toEqual(headingLevels(chinese))
+    expect(sectionTitles(english)).toEqual(
+      sectionHeadings.map(([englishTitle]) => englishTitle),
+    )
+    expect(sectionTitles(chinese)).toEqual(
+      sectionHeadings.map(([, chineseTitle]) => chineseTitle),
+    )
+    expect(codeFenceLanguages(english)).toEqual(codeFenceLanguages(chinese))
+    expect(tableShapes(english)).toEqual(tableShapes(chinese))
+
+    const withoutLanguageLinks = (markdown: string) =>
+      linkDestinations(markdown).filter(
+        destination =>
+          destination !== 'README.md' && destination !== 'README.zh-CN.md',
+      )
+    const englishLinks = withoutLanguageLinks(english)
+    const chineseLinks = withoutLanguageLinks(chinese)
+    expect(englishLinks).toEqual(chineseLinks)
+    for (const destination of [...englishLinks, ...chineseLinks]) {
+      expect(destination).toMatch(/^https?:\/\//)
+    }
+  })
+
+  test('keeps CJK text out of the English body except its selector', async () => {
+    const english = await readReleaseDocument('README.md')
+    const body = english
+      .split('\n')
+      .filter((_, index) => index !== 2)
+      .join('\n')
+    expect(body).not.toMatch(
+      /[　-〿㐀-䶿一-鿿豈-﫿]/,
+    )
+  })
+})
 
 describe('release version validation', () => {
   test('accepts a matching strict semantic-version tag', () => {
