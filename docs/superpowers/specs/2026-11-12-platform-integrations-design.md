@@ -866,24 +866,18 @@ Claude Desktop 配置：
 
 ## 9. 改进建议
 
-### 9.1 短期改进
-
-- 为 Linux Desktop 集成增加完整的测试覆盖，验证 `isDesktopInstalled()` 在各发行版的行为
-- 增强 WSL 与 Windows Desktop 互操作测试，验证 deep link 从 WSL 打开 Windows Desktop 的完整流程
-- 重构 `DesktopUpsellStartup.tsx`，使用 `useKeybindings` 替代 raw `useInput` 以符合项目约定
-- 为各 Chromium 浏览器的路径检测增加单元测试，验证优先级排序和 fallback 逻辑
-- 增加 socket/pipe 创建失败时的用户可见提示，而非静默降级
-
-### 9.2 中期改进
-
-- 考虑支持非 Chromium 浏览器（Firefox、Safari）的扩展集成，通过统一的抽象层
-- 实现 Desktop 配置的双向同步，允许 CLI 修改 Desktop MCP 服务器配置
-- 增加移动应用的深层链接支持，允许从移动应用反向打开 CLI 会话
-- 为 Slack 集成增加 OAuth 流程支持，允许在 CLI 内完成安装而无需浏览器
-- 实现跨平台统一的协议注册机制，减少各平台代码差异
-
-### 9.3 长期考虑
-
-- 评估使用 gRPC 或其他标准化 IPC 机制替代当前的 deep link + 文件系统共享方案
-- 考虑实现插件化的平台集成架构，允许第三方添加新的平台支持
-- 探索端到端加密的跨设备会话同步机制
+| 优先级 | 触发场景与证据 | 建议方向 | 回归风险 | 验收方式 | 工作量 | 置信度 |
+| --- | --- | --- | --- | --- | --- | --- |
+| P1 | Linux Desktop 集成测试覆盖不足，各发行版行为未验证 | 为 Linux Desktop 集成增加完整的测试覆盖，验证 `isDesktopInstalled()` 在各发行版的行为 | 低：仅增加测试，不修改生产代码 | 在各 Linux 发行版上运行测试并通过 | S | 已证实（基于代码阅读） |
+| P1 | WSL 与 Windows Desktop 互操作测试覆盖不足，deep link 流程未完全验证 | 增强 WSL 与 Windows Desktop 互操作测试，验证 deep link 从 WSL 打开 Windows Desktop 的完整流程 | 低：仅增加测试，不修改生产代码 | 在 WSL 环境中运行测试并通过 | S | 已证实（基于代码阅读） |
+| P1 | `DesktopUpsellStartup.tsx` 使用 raw `useInput`，不符合项目约定 | 重构 `DesktopUpsellStartup.tsx`，使用 `useKeybindings` 替代 raw `useInput` 以符合项目约定 | 低：重构 UI 交互，保持功能不变 | 测试 upsell 提示显示、用户选择、计数逻辑正常 | S | 已证实（基于代码阅读） |
+| P1 | 各 Chromium 浏览器的路径检测无单元测试，优先级排序和 fallback 逻辑未验证 | 为各 Chromium 浏览器的路径检测增加单元测试，验证优先级排序和 fallback 逻辑 | 低：仅增加测试，不修改生产代码 | 测试所有支持的浏览器路径检测和 fallback 正确 | S | 已证实（基于代码阅读） |
+| P1 | socket/pipe 创建失败时静默降级，用户不知道问题原因 | 增加 socket/pipe 创建失败时的用户可见提示，而非静默降级 | 低：仅增加用户提示，不改变核心逻辑 | 测试失败场景用户能看到清晰的错误提示 | S | 已证实（基于代码阅读） |
+| P2 | 当前仅支持 Chromium 浏览器，排除 Firefox、Safari 用户 | 支持非 Chromium 浏览器（Firefox、Safari）的扩展集成，通过统一的抽象层 | 中：需确保现有 Chromium 功能不受影响 | 测试至少一个非 Chromium 浏览器基本功能工作 | M | 待运行验证 |
+| P2 | 当前 Desktop 配置只读，CLI 无法修改 Desktop MCP 服务器配置 | 实现 Desktop 配置的双向同步，允许 CLI 修改 Desktop MCP 服务器配置 | 中：需确保配置同步的安全性和一致性 | 测试配置双向同步，冲突处理正确 | M | 设计推断 |
+| P2 | 当前仅支持 CLI → 移动应用的 deep link，无反向支持 | 增加移动应用的深层链接支持，允许从移动应用反向打开 CLI 会话 | 低：需确保安全边界和权限控制 | 测试从移动应用 deep link 打开 CLI 会话 | M | 设计推断 |
+| P2 | 当前 Slack 集成需要浏览器，CLI 内无法完成安装 | 为 Slack 集成增加 OAuth 流程支持，允许在 CLI 内完成安装而无需浏览器 | 中：需确保 OAuth 流程安全性 | 测试 CLI 内完成 Slack 应用安装流程 | L | 设计推断 |
+| P2 | 当前各平台协议注册代码差异大，维护成本高 | 实现跨平台统一的协议注册机制，减少各平台代码差异 | 低：内部重构，保持外部行为不变 | 测试各平台协议注册和 deep link 打开仍正常 | M | 设计推断 |
+| P3 | 当前 deep link + 文件系统共享方案有局限性，扩展性有限 | 评估使用 gRPC 或其他标准化 IPC 机制替代当前的方案 | 高：涉及架构重构 | 设计阶段验证架构方案 | L | 设计推断 |
+| P3 | 当前平台集成硬编码，无法扩展新平台 | 实现插件化的平台集成架构，允许第三方添加新的平台支持 | 中：需定义清晰的插件接口和安全边界 | 设计阶段验证架构方案 | L | 设计推断 |
+| P3 | 当前无跨设备会话同步机制，用户体验受限 | 探索端到端加密的跨设备会话同步机制 | 高：涉及安全和分布式系统复杂性 | 设计阶段探索技术方案 | XL | 设计推断 |
