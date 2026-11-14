@@ -60,7 +60,7 @@ Install the latest release:
   curl -fsSL https://github.com/wencaiwulue/flash/releases/latest/download/install.sh -o "$installer"
   sh "$installer"
 )
-claude-code --version
+flash --version
 ```
 
 The installer installs the latest release into `~/.local/bin`. It verifies the downloaded archive against the Release's `SHA256SUMS` before installation and does not use `sudo`. Ensure `~/.local/bin` is included in your `PATH`.
@@ -81,35 +81,35 @@ To select a specific version and installation directory:
 
 ### Manual Archives
 
-Full archive names follow `claude-code-vX.Y.Z-<platform>-<arch>.<extension>`. Each archive contains the binary, `README.md`, and `README.zh-CN.md`. The `install.sh` installer is published as a separate Release asset and is not included in the archives.
+Full archive names follow `flash-vX.Y.Z-<platform>-<arch>.<extension>`. Each archive contains the binary, `README.md`, and `README.zh-CN.md`. The `install.sh` installer is published as a separate Release asset and is not included in the archives.
 
 Example for macOS/Linux:
 
 ```bash
-tar -xzf claude-code-vX.Y.Z-darwin-arm64.tar.gz
-./claude-code --version
-./claude-code --help
+tar -xzf flash-vX.Y.Z-darwin-arm64.tar.gz
+./flash --version
+./flash --help
 ```
 
 Windows PowerShell example:
 
 ```powershell
-tar -xf claude-code-vX.Y.Z-win32-x64.zip
-.\claude-code.exe --version
-.\claude-code.exe --help
+tar -xf flash-vX.Y.Z-win32-x64.zip
+.\flash.exe --version
+.\flash.exe --help
 ```
 
 Each Release includes `SHA256SUMS` covering every archive. After downloading your archive and this file, verify only the selected asset:
 
 ```bash
 # macOS
-grep 'claude-code-vX.Y.Z-darwin-arm64.tar.gz$' SHA256SUMS | shasum -a 256 -c -
+grep 'flash-vX.Y.Z-darwin-arm64.tar.gz$' SHA256SUMS | shasum -a 256 -c -
 
 # Linux
-grep 'claude-code-vX.Y.Z-linux-x64.tar.gz$' SHA256SUMS | sha256sum -c -
+grep 'flash-vX.Y.Z-linux-x64.tar.gz$' SHA256SUMS | sha256sum -c -
 
 # Windows PowerShell: compare this output with SHA256SUMS
-(Get-FileHash .\claude-code-vX.Y.Z-win32-x64.zip -Algorithm SHA256).Hash.ToLower()
+(Get-FileHash .\flash-vX.Y.Z-win32-x64.zip -Algorithm SHA256).Hash.ToLower()
 ```
 
 The release gate runs version and help checks on each native platform and repeats them after extraction. This does not validate model connections or every optional native integration; the assets are not signed/notarized, and GitHub Releases-based automatic updates are not provided.

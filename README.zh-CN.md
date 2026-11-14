@@ -60,7 +60,7 @@ bun dist/main.js
   curl -fsSL https://github.com/wencaiwulue/flash/releases/latest/download/install.sh -o "$installer"
   sh "$installer"
 )
-claude-code --version
+flash --version
 ```
 
 安装程序会将最新版本安装到 `~/.local/bin`。安装前会强制使用 Release 提供的 `SHA256SUMS` 校验下载的归档，且安装程序不会使用 `sudo`。请确保 `~/.local/bin` 已包含在 `PATH` 中。
@@ -81,35 +81,35 @@ claude-code --version
 
 ### 手动下载归档
 
-归档完整名称为 `claude-code-vX.Y.Z-<平台>-<架构>.<扩展名>`。每个归档包含二进制、`README.md` 和 `README.zh-CN.md`。`install.sh` 安装脚本作为单独的 Release 资产发布，不包含在归档中。
+归档完整名称为 `flash-vX.Y.Z-<平台>-<架构>.<扩展名>`。每个归档包含二进制、`README.md` 和 `README.zh-CN.md`。`install.sh` 安装脚本作为单独的 Release 资产发布，不包含在归档中。
 
 macOS/Linux 示例：
 
 ```bash
-tar -xzf claude-code-vX.Y.Z-darwin-arm64.tar.gz
-./claude-code --version
-./claude-code --help
+tar -xzf flash-vX.Y.Z-darwin-arm64.tar.gz
+./flash --version
+./flash --help
 ```
 
 Windows PowerShell 示例：
 
 ```powershell
-tar -xf claude-code-vX.Y.Z-win32-x64.zip
-.\claude-code.exe --version
-.\claude-code.exe --help
+tar -xf flash-vX.Y.Z-win32-x64.zip
+.\flash.exe --version
+.\flash.exe --help
 ```
 
 每个 Release 还提供覆盖全部归档的 `SHA256SUMS`。下载对应归档和该文件后，可只校验所选产物：
 
 ```bash
 # macOS
-grep 'claude-code-vX.Y.Z-darwin-arm64.tar.gz$' SHA256SUMS | shasum -a 256 -c -
+grep 'flash-vX.Y.Z-darwin-arm64.tar.gz$' SHA256SUMS | shasum -a 256 -c -
 
 # Linux
-grep 'claude-code-vX.Y.Z-linux-x64.tar.gz$' SHA256SUMS | sha256sum -c -
+grep 'flash-vX.Y.Z-linux-x64.tar.gz$' SHA256SUMS | sha256sum -c -
 
 # Windows PowerShell：将此输出与 SHA256SUMS 对比
-(Get-FileHash .\claude-code-vX.Y.Z-win32-x64.zip -Algorithm SHA256).Hash.ToLower()
+(Get-FileHash .\flash-vX.Y.Z-win32-x64.zip -Algorithm SHA256).Hash.ToLower()
 ```
 
 发布门禁会在每个原生平台执行版本与帮助检查，并在解包后重复检查。这不等于模型连接或所有可选原生集成都已验证；当前产物也不包含签名、公证或从 GitHub Releases 自动更新的承诺。
