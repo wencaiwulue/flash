@@ -337,6 +337,9 @@ bun scripts/check-design-docs.ts [--require-approved]
 | `SPEC_COVERAGE_LINK` | spec 没有正确的 coverage Markdown 回链 | error |
 | `INDEX_SPEC_LINK` | INDEX 没有正确的 spec Markdown 链接 | error |
 | `BROKEN_LINK` | 本地 Markdown 目标不存在 | error |
+| `RECOMMENDATIONS_TABLE` | 第 9 章缺少归一化七列表头或没有推荐行 | error |
+| `RECOMMENDATION_ROW` | 推荐行不是 7 列或工作量不是 S/M/L | error |
+| `RECOMMENDATION_EVIDENCE` | P0 置信度不以“已证实”开头或 P1 置信度不是“已证实”或“待运行验证” | error |
 
 ### 4.10 设计证据的记录格式
 
@@ -394,7 +397,8 @@ bun scripts/check-design-docs.ts [--require-approved]
 
 - 默认中间状态退出 0，结构错误退出 1，未知参数和运行时异常退出 2。
 - 诊断逐条输出最多 20 条，但汇总数量准确。
-- 真实仓库测试要求结构错误为空，并明确断言 `settingsTypes.generated.ts` 仍是未覆盖文件而不是排除项。
+- 真实仓库测试要求结构错误为空，并明确断言手写 `settingsTypes.generated.ts` 由 `sdk-type-generation` 主拥有且未被排除。
+- 第 9 章必须使用统一七列表；模糊工作量、P0 无已证实证据、P1 仅设计推断均为结构错误。
 - 完整交付前 `--require-approved` 必须失败；只有所有文件归属完成且所有 spec approved 后才允许转为通过。
 
 ## 7. 代码与测试证据
@@ -432,11 +436,12 @@ bun scripts/check-design-docs.ts [--require-approved]
 
 ## 9. 改进建议
 
-| 优先级 | 触发场景与证据 | 建议方向 | 回归风险、验收与工作量 |
-|---|---|---|---|
-| P2 | `loadYaml()` 在第一个损坏的 coverage 抛出，其他 spec 无法继续检查；证据：`checkOwnership()` 直接 await `loadCoverage()` | 将单个 coverage 的解析异常转换为带 spec ID 的 Diagnostic，并继续其他独立条目 | 风险是把根本契约错误与集合错误混在一起；验收为一个损坏 coverage 不掩盖其他错误且 CLI 仍退出 1；S；已证实 |
-| P2 | `CoverageGroup.id` 只检查格式，没有检查同文件内重复；证据：`coverageSchema.groups` 无唯一性约束 | 在 ownership 加载后检查同 coverage 内重复 group ID | 风险是旧 coverage 可能已有重复 ID；验收为重复组报清晰错误且不同 spec 可复用相同组 ID；S；已证实 |
-| P2 | Markdown 链接使用正则，带嵌套括号或标题的合法链接可能误判；证据：`checkMarkdownLinks()` 的 `matchAll()` | 在真实 spec 出现这些语法后引入小范围 Markdown tokenizer，而非提前替换全部解析 | 风险是新 parser 改变现有链接接受范围；先用嵌套括号和标题 fixture 驱动；M；设计推断 |
-| P2 | 每个排除都扫描文件系统，排除数量显著增长时会放大 I/O；证据：`checkOwnership()` 在排除循环内调用 `Bun.Glob.scan()` | 先基准测量，再考虑一次文件遍历匹配多个 glob | 风险是 Bun.Glob 与自定义匹配语义不一致；只有基准证明瓶颈后优化；M；待运行验证 |
-| P3 | `Diagnostic` 只有 code/message，调用方难以按文件或 spec 聚合；证据：`Diagnostic` 接口 | 如需 JSON 输出或 IDE 集成，再增加可选 path/specId 字段 | 风险是扩大当前 CLI 契约；只有出现实际消费者时实施；M；设计推断 |
-| P1 | 结构合法的设计正文仍可能虚构接口或动机，自动检查无法识别；证据：checker 只验证路径、章节和链接 | 后续每份领域 spec 必须经过源码符号审查和“设计推断”审查，关键控制流应有测试或源码证据 | 风险是把人工评审变成盖章；验收为抽查每个关键决策能回到具体符号/注释/测试；持续成本；已证实 |
+| 优先级 | 触发场景与证据 | 建议方向 | 回归风险 | 验收方式 | 工作量 | 置信度 |
+|---|---|---|---|---|---|---|
+| P2 | `loadYaml()` 在第一个损坏的 coverage 抛出，其他 spec 无法继续检查；证据：`checkOwnership()` 直接 await `loadCoverage()` | 将单个 coverage 的解析异常转换为带 spec ID 的 Diagnostic，并继续其他独立条目 | 风险是把根本契约错误与集合错误混在一起 | 验收为一个损坏 coverage 不掩盖其他错误且 CLI 仍退出 1 | S | 已证实 |
+| P2 | `CoverageGroup.id` 只检查格式，没有检查同文件内重复；证据：`coverageSchema.groups` 无唯一性约束 | 在 ownership 加载后检查同 coverage 内重复 group ID | 风险是旧 coverage 可能已有重复 ID | 验收为重复组报清晰错误且不同 spec 可复用相同组 ID | S | 已证实 |
+| P2 | Markdown 链接使用正则，带嵌套括号或标题的合法链接可能误判；证据：`checkMarkdownLinks()` 的 `matchAll()` | 在真实 spec 出现这些语法后引入小范围 Markdown tokenizer，而非提前替换全部解析 | 风险是新 parser 改变现有链接接受范围 | 先用嵌套括号和标题 fixture 驱动 | M | 设计推断 |
+| P2 | 每个排除都扫描文件系统，排除数量显著增长时会放大 I/O；证据：`checkOwnership()` 在排除循环内调用 `Bun.Glob.scan()` | 先基准测量，再考虑一次文件遍历匹配多个 glob | 风险是 Bun.Glob 与自定义匹配语义不一致 | 只有基准证明瓶颈后优化 | M | 待运行验证 |
+| P3 | `Diagnostic` 只有 code/message，调用方难以按文件或 spec 聚合；证据：`Diagnostic` 接口 | 如需 JSON 输出或 IDE 集成，再增加可选 path/specId 字段 | 风险是扩大当前 CLI 契约 | 只有出现实际消费者时实施 | M | 设计推断 |
+| P1 | 结构合法的设计正文仍可能虚构接口或动机，自动检查无法识别；证据：checker 只验证路径、章节和链接 | 后续每份领域 spec 必须经过源码符号审查和“设计推断”审查，关键控制流应有测试或源码证据 | 风险是把人工评审变成盖章 | 验收为抽查每个关键决策能回到具体符号/注释/测试 | S | 已证实 |
+| P2 | 自动表检查不能判断技术语义 | 保留人工语义评审 | 低：仅补充而非替代 | 自动检查通过后仍人工评审关键决策 | S | 已证实 |

@@ -1180,3 +1180,4 @@ type DenialTrackingState = {
 | P2 | auto mode 路径过多（acceptEdits、allowlist、classifier），难以追踪和调试 | 增加结构化的决策日志，记录每个路径是否触发及原因 | 低（仅日志） | 开启调试日志后能看到完整决策路径 | S | 已证实 |
 | P2 | 拒绝计数无持久化，重启后连续拒绝重置 | 可选持久化到 local settings | 低（可配置开启） | 配置开启后重启保留计数 | M | 设计推断 |
 | P3 | 危险规则只警告不阻止，用户可能忽略 | 增加 "强制安全模式" 设置，开启时自动剥离危险规则 | 低（可选） | 开启后危险规则被阻止，无法使用 | M | 设计推断 |
+| P2 | 跨层：ReviewArtifact 权限委托边界缺陷（主修复见 review-analysis spec） | - | - | 遵循 review-analysis spec 验收标准，确保与工具输入契约集成正确 | S | 跨层说明 |

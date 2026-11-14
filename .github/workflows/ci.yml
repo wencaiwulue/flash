@@ -25,6 +25,8 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Generate SDK types
         run: bun run generate:sdk-types
+      - name: Check design docs
+        run: bun scripts/check-design-docs.ts
       - name: Typecheck
         run: bun run typecheck
       - name: Build

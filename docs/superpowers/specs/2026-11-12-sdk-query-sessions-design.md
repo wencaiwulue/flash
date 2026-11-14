@@ -1128,26 +1128,14 @@ export function emitTaskTerminatedSdk(taskId, status, opts): void
 
 ## 9. 改进建议
 
-### 短期改进（<1个月）
-
-1. **明确 `interrupt()` 与 `return()` 的组合契约**：当前设计要求调用 `interrupt()` 后仍需调用 `return()` 完成清理，但这容易被误用。建议在 `interrupt()` 内部启动清理但仍允许 `return()` 安全调用。
-
-2. **增加超时机制**：`UserMessageChannel` 和 MCP 连接当前没有超时配置，可能导致查询挂起。建议添加可配置的超时选项。
-
-3. **改进并发 query 限制**：当前仅限制 `persistSession` 不同的并发，建议实现真正的交错持久化支持，或提供更明确的错误恢复路径。
-
-### 中期改进（1-3个月）
-
-1. **Session 分叉时可选复制快照**：为需要完整分叉体验的用户提供 `copySnapshots: boolean` 选项，默认保持当前行为（不复制）。
-
-2. **快照 Promise 持久化**：当前 `#pendingSnapshots` 仅存在于内存中，如果在快照创建完成前进程崩溃，`rewindFiles()` 无法等待。建议将 pending 状态也写入磁盘。
-
-3. **查询上下文快照**：允许用户在任意点保存查询上下文（不仅是用户消息边界），支持更细粒度的回滚。
-
-### 长期探索（>3个月）
-
-1. **分布式 Session 存储**：探索将 session JSONL 存储在数据库或云存储中，支持跨设备会话同步。
-
-2. **增量快照**：当前文件快照是全量的，建议实现增量快照以减少存储空间和 I/O。
-
-3. **SDK 进程隔离**：当前 SDK 在同一进程中运行，建议提供可选的子进程隔离模式，提高稳定性。
+| 优先级 | 触发场景与证据 | 建议方向 | 回归风险 | 验收方式 | 工作量 | 置信度 |
+|---|---|---|---|---|---|---|
+| P2 | 当前设计要求调用 `interrupt()` 后仍需调用 `return()` 完成清理，但这容易被误用。证据：`src/utils/sdkQuery.ts` 中 `interrupt()` 与 `return()` 的分离实现 | 明确 `interrupt()` 与 `return()` 的组合契约；在 `interrupt()` 内部启动清理但仍允许 `return()` 安全调用 | 低 —— 可保持向后兼容 | 测试调用 `interrupt()` 后调用 `return()` 是安全的，且清理只执行一次 | S | 设计推断 |
+| P2 | `UserMessageChannel` 和 MCP 连接当前没有超时配置，可能导致查询挂起。证据：`src/utils/sdkQuery.ts` 中 `UserMessageChannel` 和 MCP 客户端的实现 | 增加可配置的超时机制，对用户输入等待、模型响应、MCP 执行等分别设置超时 | 中 —— 超时可能中断正常的长耗时操作 | 测试超时能正确触发并清理资源 | M | 设计推断 |
+| P2 | 当前仅限制 `persistSession` 不同的并发，建议实现真正的交错持久化支持，或提供更明确的错误恢复路径。证据：`src/utils/sdkQuery.ts` 中 `acquireSessionPersistence()` 的检查 | 改进并发 query 限制：或实现真正的交错持久化支持，或提供更明确的错误恢复路径和冲突避免机制 | 中 —— 需谨慎处理全局状态 | 测试不同 `persistSession` 值的并发 query 有更清晰的错误或支持交错执行 | M | 设计推断 |
+| P2 | 当前 `#pendingSnapshots` 仅存在于内存中，如果在快照创建完成前进程崩溃，`rewindFiles()` 无法等待。证据：`src/utils/fileCheckpointing.ts` 中 `#pendingSnapshots` 的实现 | 将 pending 状态也写入磁盘，使 `rewindFiles()` 能在重启后等待或恢复未完成的快照 | 低 —— 新增功能，不改变现有行为 | 测试进程在快照创建中崩溃后重启，`rewindFiles()` 能正确处理 | M | 设计推断 |
+| P3 | 为需要完整分叉体验的用户提供 `copySnapshots: boolean` 选项，默认保持当前行为（不复制）。证据：`src/utils/sdkSessions.ts` 中 `forkSdkSession()` 的实现 | Session 分叉时可选复制快照，通过 `copySnapshots: boolean` 参数控制 | 低 —— 可选功能，默认保持当前行为 | 测试 `copySnapshots=true` 时分叉复制快照，`false` 时不复制 | S | 设计推断 |
+| P3 | 允许用户在任意点保存查询上下文（不仅是用户消息边界），支持更细粒度的回滚。证据：当前仅在用户消息边界调用 `makeSnapshot()` | 查询上下文快照，在更细粒度的时间点（如工具执行前后、压缩前后）保存状态 | 低 —— 新增可选功能 | 测试能在非用户消息边界创建快照并回滚 | M | 设计推断 |
+| P3 | 探索将 session JSONL 存储在数据库或云存储中，支持跨设备会话同步。证据：当前仅本地文件系统存储 | 分布式 Session 存储，支持云同步和跨设备访问 | 高 —— 架构变更大 | 概念验证或设计文档 | L | 设计推断 |
+| P3 | 当前文件快照是全量的，建议实现增量快照以减少存储空间和 I/O。证据：`fileHistoryMakeSnapshot()` 每次保存全量 | 增量快照，仅保存变更部分 | 中 —— 需兼容现有快照格式 | 测试增量快照正确创建和恢复 | L | 设计推断 |
+| P3 | 当前 SDK 在同一进程中运行，建议提供可选的子进程隔离模式，提高稳定性。证据：SDK 与 CLI 共享同一进程 | SDK 进程隔离，可选在子进程中运行 SDK | 高 —— 架构变更大 | 概念验证或设计文档 | L | 设计推断 |

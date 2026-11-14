@@ -478,7 +478,7 @@ const toolCache = new WeakMap<object, CreateResult>();
 - **tool-system spec**: 工具注册与通用接口
 - **command-system spec**: 命令注册与解析
 - **permissions spec**: TestingPermissionTool 测试权限流程，MonitorTool/BashTool 复用权限逻辑
-- **analytics spec**: tengu_feedback_survey_event 等事件
+- **2026-11-12-telemetry-design.md**: tengu_feedback_survey_event 等事件
 
 ## 5. 失败语义与工程取舍
 
@@ -552,13 +552,13 @@ const toolCache = new WeakMap<object, CreateResult>();
 - **tool-system spec**: 工具注册与通用接口
 - **command-system spec**: 命令注册与解析
 - **permissions spec**: 权限流程测试
-- **analytics spec**: 遥测事件记录
+- **2026-11-12-telemetry-design.md**: 遥测事件记录
 
 ## 9. 改进建议
 
 | 优先级 | 触发场景与证据 | 建议方向 | 回归风险 | 验收方式 | 工作量 | 置信度 |
 |---|---|---|---|---|---|---|
-| P1 | 所有实验功能均无直接测试 | 添加单元测试覆盖各工具的启用条件、输入输出、失败场景 | 低：仅新增测试 | 各工具至少有一个基本测试 | S | 已证实（当前无测试） |
+| P2 | 已证实所有实验功能均无直接测试 | 添加单元测试覆盖各工具的启用条件、输入输出、失败场景 | 低：仅新增测试 | 各工具至少有一个基本测试 | S | 已证实（当前无测试） |
 | P1 | SyntheticOutputTool 仅基于对象引用缓存，schema 内容相同但对象不同时无法复用 | 增加基于 schema 内容哈希的二级缓存（可选，如 LRU） | 中：需管理内存占用 | 测试相同内容不同对象引用时缓存命中 | M | 已证实（WeakMap 限制） |
 | P2 | TestingPermissionTool 仅在 NODE_ENV=test 启用，开发时不方便 | 增加开发环境启用方式（如特定环境变量） | 低：仅增加额外检查 | 测试在开发环境通过环境变量启用 | S | 已证实（当前限制） |
 | P2 | OverflowTestTool 上限硬编码为 2,000,000 | 支持通过输入参数或环境变量配置上限 | 低：仅参数化 | 测试可配置更大或更小的上限 | S | 已证实（硬编码） |

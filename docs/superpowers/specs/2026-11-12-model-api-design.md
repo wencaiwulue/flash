@@ -1316,36 +1316,7 @@ type APIProvider = 'firstParty' | 'bedrock' | 'vertex' | 'foundry'
 
 ## 9. 改进建议
 
-### 9.1 P1：模型能力矩阵
-
-**触发场景与证据**：当前各模型/提供商的 beta 功能（prompt caching、fast mode、effort、thinking、structured outputs 等）可用性分散在各处检查，没有统一的能力矩阵。
-
-**建议方向**：
-1. 定义 `ModelCapabilityMatrix` 类型，明确每个模型在每个提供商的可用功能
-2. 集中化检查函数，替换分散的条件检查
-
-**回归风险**：低 - 可以渐进迁移，保持旧函数作为包装器
-
-**验收方式**：所有模型能力检查统一通过矩阵 API
-
-**工作量**：M-L
-
-**置信度**：已证实（基于代码阅读）
-
----
-
-### 9.2 P2：模型选项生成性能优化
-
-**触发场景与证据**：`getModelOptions()` 在每次调用时都重新计算所有选项，包含多个条件分支和环境变量检查。
-
-**建议方向**：
-1. 在配置不变的情况下缓存 `getModelOptions()` 结果
-2. 使用细粒度失效
-
-**回归风险**：低
-
-**验收方式**：连续两次调用返回相同引用
-
-**工作量**：S
-
-**置信度**：已证实（基于代码阅读）
+| 优先级 | 触发场景与证据 | 建议方向 | 回归风险 | 验收方式 | 工作量 | 置信度 |
+|---|---|---|---|---|---|---|
+| P1 | 当前各模型/提供商的 beta 功能（prompt caching、fast mode、effort、thinking、structured outputs 等）可用性分散在各处检查，没有统一的能力矩阵。证据：分散在 `claude.ts`、`model.ts`、`thinking.ts`、`effort.ts` 等文件中的条件检查 | 定义 `ModelCapabilityMatrix` 类型，明确每个模型在每个提供商的可用功能；集中化检查函数，替换分散的条件检查 | 低 - 可以渐进迁移，保持旧函数作为包装器 | 所有模型能力检查统一通过矩阵 API | L | 已证实 |
+| P2 | `getModelOptions()` 在每次调用时都重新计算所有选项，包含多个条件分支和环境变量检查。证据：`src/utils/model/modelOptions.ts` 中 `getModelOptions()` 的实现 | 在配置不变的情况下缓存 `getModelOptions()` 结果，使用细粒度失效机制 | 低 | 连续两次调用返回相同引用 | S | 已证实 |

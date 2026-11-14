@@ -895,64 +895,14 @@ QueryEngine.submitMessage()
 - `src/utils/sdkQuery.ts` → 见 `sdk-query-sessions` spec
 - `src/utils/sdkSessionConversation.ts` → 见 `sdk-query-sessions` spec
 - `src/utils/sessionChainRecovery.ts` → 见 `sdk-query-sessions` spec
-- `src/services/compact/` → 见 `compact` spec
-- `src/services/contextCollapse/` → 见 `context-collapse` spec
+- `src/services/compact/`、`src/services/contextCollapse/` → 见 [Context Compaction](2026-11-12-context-compaction-design.md)；本文只描述 query 调用边界。
 - `src/utils/permissions/` → 见 `permissions` spec
 
 ## 9. 改进建议
 
-### P1
-
-#### 9.1.1 结构化错误原因与错误码
-
-**触发场景**：当前 `error_during_execution` 的 errors 数组是字符串列表，且开头有一行 `[ede_diagnostic] result_type=...` 的诊断文本；SDK 调用方难以程序化判断具体失败原因（是 prompt_too_long？工具错误？权限？还是其他？）。
-
-**证据位置**：`src/QueryEngine.ts` 中 `errors` 数组的构建。
-
-**建议方向**：定义结构化错误枚举/类型，包含错误码、原因、可能的修复建议；诊断信息作为单独字段，不混入 errors 数组。
-
-**回归风险**：低-中等 —— 可以保持向后兼容，在现有字段旁新增结构化字段，或通过版本化处理。
-
-**验收方式**：编写测试验证每种失败场景都有对应的错误码，且诊断信息可单独获取。
-
-**工作量**：M
-
-**置信度**：已证实（基于代码阅读）
-
----
-
-### P2
-
-#### 9.2.1 Persistence lease 的错误信息可操作性
-
-**触发场景**：当两个 query 尝试使用不同的 `persistSession` 值时，抛出的错误是通用的；调用方难以知道是哪两个 query、各自的设置是什么、谁先创建的。
-
-**证据位置**：`src/utils/sdkQuery.ts` 中 `acquireSessionPersistence()` 的检查。
-
-**建议方向**：在错误信息中包含第一个 query 的创建栈、设置、以及第二个 query 的设置，帮助定位冲突来源。
-
-**回归风险**：低 —— 仅改进错误信息。
-
-**验收方式**：构造冲突场景，验证错误信息包含足够细节。
-
-**工作量**：S
-
-**置信度**：已证实（基于代码阅读）
-
----
-
-#### 9.2.2 历史压缩决策的可观测性
-
-**触发场景**：当前 autocompact/snip/collapse 的决策过程对 SDK 调用方不透明；调试上下文问题时，难以知道为什么触发/没触发、节省了多少 token、是否可以调整阈值等。
-
-**证据位置**：`src/query.ts` 中 compact/snip/collapse 的调用点，缺乏统一的决策轨迹记录。
-
-**建议方向**：在 SDK 消息流中增加可选的系统事件（system subtype='compact_decision'/'snip_decision' 等），包含触发原因、token 变化、阈值等信息；由调用方选择是否接收。
-
-**回归风险**：低 —— 可选功能，默认不发送。
-
-**验收方式**：测试启用决策事件后，各压缩决策都有对应的事件产出，包含预期字段。
-
-**工作量**：M
-
-**置信度**：设计推断
+| 优先级 | 触发场景与证据 | 建议方向 | 回归风险 | 验收方式 | 工作量 | 置信度 |
+|---|---|---|---|---|---|---|
+| P1 | `docs/STATUS.md` 记录真实 query 在 `snipCompactIfNeeded` 前过滤 `snip_marker`，直接数组和 `/force-snip` 测试不能证明模型触发路径 | 让模型产生的 marker 保留到 snip 执行，再按现有投影边界移除；主修复属于 query 执行链 | 高：可能改变压缩顺序、历史投影和工具配对；需要同时复核 `runtime-lifecycle` | 添加真实 query 路径回归，证明模型 marker 能触发 snip，且 UI scrollback、SDK replay 和磁盘历史语义不变 | M | 待运行验证（先用失败回归复现 STATUS 记录） |
+| P1 | 当前 `error_during_execution` 的 errors 数组是字符串列表，且开头有一行 `[ede_diagnostic] result_type=...` 的诊断文本；SDK 调用方难以程序化判断具体失败原因（是 prompt_too_long？工具错误？权限？还是其他？）。证据：`src/QueryEngine.ts` 中 `errors` 数组的构建 | 定义结构化错误枚举/类型，包含错误码、原因、可能的修复建议；诊断信息作为单独字段，不混入 errors 数组 | 低-中等 —— 可以保持向后兼容，在现有字段旁新增结构化字段，或通过版本化处理 | 编写测试验证每种失败场景都有对应的错误码，且诊断信息可单独获取 | M | 已证实 |
+| P2 | 当两个 query 尝试使用不同的 `persistSession` 值时，抛出的错误是通用的；调用方难以知道是哪两个 query、各自的设置是什么、谁先创建的。证据：`src/utils/sdkQuery.ts` 中 `acquireSessionPersistence()` 的检查 | 在错误信息中包含第一个 query 的创建栈、设置、以及第二个 query 的设置，帮助定位冲突来源 | 低 —— 仅改进错误信息 | 构造冲突场景，验证错误信息包含足够细节 | S | 已证实 |
+| P2 | 当前 autocompact/snip/collapse 的决策过程对 SDK 调用方不透明；调试上下文问题时，难以知道为什么触发/没触发、节省了多少 token、是否可以调整阈值等。证据：`src/query.ts` 中 compact/snip/collapse 的调用点，缺乏统一的决策轨迹记录 | 在 SDK 消息流中增加可选的系统事件（system subtype='compact_decision'/'snip_decision' 等），包含触发原因、token 变化、阈值等信息；由调用方选择是否接收 | 低 —— 可选功能，默认不发送 | 测试启用决策事件后，各压缩决策都有对应的事件产出，包含预期字段 | M | 设计推断 |

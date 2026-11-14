@@ -1256,96 +1256,11 @@ git commit 触发 prepare-commit-msg
 
 ## 9. 改进建议
 
-### 9.1 P1：解决字符膨胀问题，支持“净贡献”计算
-
-**触发场景与证据**：当前实现多次编辑同一位置会导致 claudeContribution 不断累加（如把 `a` 改成 `b` 再改回 `a`，贡献 = 1 + 1 = 2，而实际净变化为 0）。
-
-**建议方向**：
-- 保留累加模式用于“活动量”指标，新增“净贡献”模式用于最终百分比
-- 净贡献对比 sessionBaseline vs 最终提交内容，取最大变更区域
-- 在 trailer 中可同时显示（或切换）两种指标
-
-**回归风险**：中，需要修改 calculateCommitAttribution，但可以向后兼容（保留现有字段，新增字段）。
-
-**验收方式**：在同一文件多次编辑后验证净贡献正确。
-
-**工作量**：M。
-
-**置信度**：设计推断。
-
----
-
-### 9.2 P1：文件重命名/复制跟踪
-
-**触发场景与证据**：当前通过 Bash 重命名文件时，归因会按新路径重新开始，丢失旧路径的历史贡献；复制文件会被计为全新创建。
-
-**建议方向**：
-- 在 calculateCommitAttribution 时，通过 Git diff 的 rename/copy 检测关联路径
-- 把旧路径的贡献迁移到新路径
-- 或在跟踪层检测 inode 变化（但跨平台复杂）
-
-**回归风险**：中，需要修改 calculateCommitAttribution 的路径处理逻辑。
-
-**验收方式**：重命名文件后验证贡献被保留。
-
-**工作量**：M。
-
-**置信度**：设计推断。
-
----
-
-### 9.3 P2：Git notes 存储完整归因数据
-
-**触发场景与证据**：当前 AttributionData 只在内存中计算并用于生成 trailers，不持久化；详细的按文件归因无法追溯。
-
-**建议方向**：
-- 在 prepare-commit-msg 时，将完整 AttributionData JSON 写入 Git notes（如 refs/notes/claude-code-attribution）
-- 提供工具查看历史归因
-- 公共 commit message 仍只包含统计 trailers
-
-**回归风险**：低，新增功能，不影响现有行为。
-
-**验收方式**：提交后验证 Git notes 存在且数据正确。
-
-**工作量**：M。
-
-**置信度**：设计推断。
-
----
-
-### 9.4 P2：归因配置精细化
-
-**触发场景与证据**：当前只有全局开关（settings.attribution.commit/pr），无法按文件/目录配置（如某些目录关闭归因，某些目录强制归因）。
-
-**建议方向**：
-- 支持 .claude-attribution-ignore 文件（类似 .gitignore）
-- 支持按路径模式配置是否归因
-- 支持配置贡献计算策略（字符 vs 行，净贡献 vs 累加）
-
-**回归风险**：低，新增配置，默认行为不变。
-
-**验收方式**：验证忽略规则生效。
-
-**工作量**：S。
-
-**置信度**：设计推断。
-
----
-
-### 9.5 P3：归因可视化与调试工具
-
-**触发场景与证据**：当前无用户界面查看详细归因，调试困难；用户无法预览提交前的归因数据。
-
-**建议方向**：
-- 新增 `/attribution` 或 `/status` 命令显示当前会话的归因状态
-- 在 prepare-commit-msg 前可选地显示预览
-- 暴露调试日志开关（当前已有 logForDebugging，但无开关）
-
-**回归风险**：低，新增 UI，不影响核心逻辑。
-
-**验收方式**：验证命令输出正确。
-
-**工作量**：S。
-
-**置信度**：设计推断。
+| 优先级 | 触发场景与证据 | 建议方向 | 回归风险 | 验收方式 | 工作量 | 置信度 |
+| --- | --- | --- | --- | --- | --- | --- |
+| P2 | 当前实现多次编辑同一位置会导致 claudeContribution 不断累加（如把 `a` 改成 `b` 再改回 `a`，贡献 = 1 + 1 = 2，而实际净变化为 0） | 保留累加模式用于”活动量”指标，新增”净贡献”模式用于最终百分比；净贡献对比 sessionBaseline vs 最终提交内容，取最大变更区域；在 trailer 中可同时显示（或切换）两种指标 | 中，需要修改 calculateCommitAttribution，但可以向后兼容（保留现有字段，新增字段） | 在同一文件多次编辑后验证净贡献正确 | M | 设计推断 |
+| P2 | 当前通过 Bash 重命名文件时，归因会按新路径重新开始，丢失旧路径的历史贡献；复制文件会被计为全新创建 | 在 calculateCommitAttribution 时，通过 Git diff 的 rename/copy 检测关联路径；把旧路径的贡献迁移到新路径；或在跟踪层检测 inode 变化（但跨平台复杂） | 中，需要修改 calculateCommitAttribution 的路径处理逻辑 | 重命名文件后验证贡献被保留 | M | 设计推断 |
+| P2 | 当前 AttributionData 只在内存中计算并用于生成 trailers，不持久化；详细的按文件归因无法追溯 | 在 prepare-commit-msg 时，将完整 AttributionData JSON 写入 Git notes（如 refs/notes/claude-code-attribution）；提供工具查看历史归因；公共 commit message 仍只包含统计 trailers | 低，新增功能，不影响现有行为 | 提交后验证 Git notes 存在且数据正确 | M | 设计推断 |
+| P2 | 当前只有全局开关（settings.attribution.commit/pr），无法按文件/目录配置（如某些目录关闭归因，某些目录强制归因） | 支持 .claude-attribution-ignore 文件（类似 .gitignore）；支持按路径模式配置是否归因；支持配置贡献计算策略（字符 vs 行，净贡献 vs 累加） | 低，新增配置，默认行为不变 | 验证忽略规则生效 | S | 设计推断 |
+| P2 | 当前无用户界面查看详细归因，调试困难；用户无法预览提交前的归因数据 | 新增 `/attribution` 或 `/status` 命令显示当前会话的归因状态；在 prepare-commit-msg 前可选地显示预览；暴露调试日志开关（当前已有 logForDebugging，但无开关） | 低，新增 UI，不影响核心逻辑 | 验证命令输出正确 | S | 设计推断 |
 

@@ -60,50 +60,53 @@ function coverage(): Record<string, any> {
 }
 
 function specText(): string {
-  return `---
-id: system
-batch: 0
-title: System
-status: approved
----
-# System
-
-## 1. 问题与约束
-
-问题与约束正文。
-
-## 2. 设计理由与备选方案
-
-设计理由与备选方案正文。
-
-## 3. 目标与非目标
-
-目标与非目标正文。
-
-## 4. 架构、模块与数据流
-
-架构、模块与数据流正文。
-
-## 5. 失败语义与工程取舍
-
-失败语义与工程取舍正文。
-
-## 6. 现状验收标准
-
-现状验收标准正文。
-
-## 7. 代码与测试证据
-
-代码与测试证据正文。
-
-## 8. 文件覆盖与相关子系统
-
-[Coverage](../../architecture/coverage/system.yaml)
-
-## 9. 改进建议
-
-改进建议正文。
-`
+  // The table uses backticks which need to be properly escaped
+  const tableRow = '| P2 | `src/index.ts` 的当前测试边界 | 增加一个边界回归 | 低：仅新增测试 | 新场景通过且原场景不变 | S | 已证实 |'
+  return '---\n' +
+    'id: system\n' +
+    'batch: 0\n' +
+    'title: System\n' +
+    'status: approved\n' +
+    '---\n' +
+    '# System\n' +
+    '\n' +
+    '## 1. 问题与约束\n' +
+    '\n' +
+    '问题与约束正文。\n' +
+    '\n' +
+    '## 2. 设计理由与备选方案\n' +
+    '\n' +
+    '设计理由与备选方案正文。\n' +
+    '\n' +
+    '## 3. 目标与非目标\n' +
+    '\n' +
+    '目标与非目标正文。\n' +
+    '\n' +
+    '## 4. 架构、模块与数据流\n' +
+    '\n' +
+    '架构、模块与数据流正文。\n' +
+    '\n' +
+    '## 5. 失败语义与工程取舍\n' +
+    '\n' +
+    '失败语义与工程取舍正文。\n' +
+    '\n' +
+    '## 6. 现状验收标准\n' +
+    '\n' +
+    '现状验收标准正文。\n' +
+    '\n' +
+    '## 7. 代码与测试证据\n' +
+    '\n' +
+    '代码与测试证据正文。\n' +
+    '\n' +
+    '## 8. 文件覆盖与相关子系统\n' +
+    '\n' +
+    '[Coverage](../../architecture/coverage/system.yaml)\n' +
+    '\n' +
+    '## 9. 改进建议\n' +
+    '\n' +
+    '| 优先级 | 触发场景与证据 | 建议方向 | 回归风险 | 验收方式 | 工作量 | 置信度 |\n' +
+    '|---|---|---|---|---|---|---|\n' +
+    tableRow + '\n'
 }
 
 const files = [
@@ -226,4 +229,34 @@ test('repository documentation registry has no structural errors', async () => {
     code: 'UNCOVERED_FILE',
     message: 'File has no primary spec or exclusion: src/entrypoints/sdk/settingsTypes.generated.ts',
   })
+})
+
+test('rejects a non-normalized recommendation section', async () => {
+  createCompleteFixture()
+  put(
+    'docs/superpowers/specs/system-design.md',
+    specText().replace(
+      '| 优先级 | 触发场景与证据 | 建议方向 | 回归风险 | 验收方式 | 工作量 | 置信度 |',
+      '| Priority | Evidence | Direction | Risk | Acceptance | Effort | Confidence |',
+    ),
+  )
+
+  const result = await checkDesignDocs({ cwd, files })
+  expect(result.errors.map(issue => issue.code)).toContain('RECOMMENDATIONS_TABLE')
+})
+
+test('rejects ambiguous effort and unsupported high-priority evidence', async () => {
+  createCompleteFixture()
+  put(
+    'docs/superpowers/specs/system-design.md',
+    specText().replace(
+      '| P2 | `src/index.ts` 的当前测试边界 | 增加一个边界回归 | 低：仅新增测试 | 新场景通过且原场景不变 | S | 已证实 |',
+      '|  P0  | `src/index.ts` 的假设风险 | 改变核心路径 | 高 | 新场景通过 | S/M | 设计推断 |\n| P1 | `src/index.ts` 的推测性能问题 | 增加缓存 | 中 | 基准更快 | M | 设计推断 |',
+    ),
+  )
+
+  const result = await checkDesignDocs({ cwd, files })
+  const codes = result.errors.map(issue => issue.code)
+  expect(codes).toContain('RECOMMENDATION_ROW')
+  expect(codes.filter(code => code === 'RECOMMENDATION_EVIDENCE')).toHaveLength(2)
 })

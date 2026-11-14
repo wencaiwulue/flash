@@ -300,7 +300,7 @@ status: draft
 ### 依赖边界
 
 - **工具框架**（`src/Tool.ts`）：本 spec 仅描述如何使用 buildTool，不描述 Tool 接口本身
-- **Agent 系统**（`src/tools/AgentTool/`）：ReviewArtifactTool 使用 AgentTool 启动子代理，主设计由 Agent spec 负责
+- **Agent 系统**（`src/tools/AgentTool/`）：ReviewArtifactTool 使用 AgentTool 启动子代理，主设计由 [Agent Swarms](./2026-11-12-agent-swarms-design.md) 负责
 - **查询核心**（`src/services/query/`）：CtxInspectTool 使用 collectContextData，主设计由查询核心 spec 负责
 - **权限系统**（`src/utils/permissions/`）：ReviewArtifactTool 复用 FileReadTool 权限检查，主设计由权限 spec 负责
 - **模型 API**（`src/services/api/`）：insights 使用 queryWithModel 提取 facets，主设计由模型 API spec 负责
@@ -1534,7 +1534,7 @@ type SessionFacets = {
 
 | 依赖 | 用途 | 本 spec 中的使用点 | 负责的 spec |
 |------|------|------------------|------------|
-| AgentTool | 启动独立审查代理 | ReviewArtifactTool.defaultReviewer | Agent spec |
+| AgentTool | 启动独立审查代理 | ReviewArtifactTool.defaultReviewer | [Agent Swarms](./2026-11-12-agent-swarms-design.md) |
 | FileReadTool | 权限检查复用 | ReviewArtifactTool.checkPermissions | File tools spec |
 | collectContextData | 收集上下文数据 | CtxInspectTool.call | Query core spec |
 | queryWithModel | 提取 facets | insights.extractFacetsFromAPI | Model API spec |
@@ -1640,7 +1640,7 @@ type SessionFacets = {
 
 | 分组 | 主拥有职责 | 相关测试或共享证据 | 不拥有的相邻文件 |
 |------|-----------|----------------|----------------|
-| review-artifact-tool | ReviewArtifactTool 实现、独立审查代理、JSON 解析 | `tests/reviewArtifact.test.ts` | AgentTool 本身（由 Agent spec 主拥有） |
+| review-artifact-tool | ReviewArtifactTool 实现、独立审查代理、JSON 解析 | `tests/reviewArtifact.test.ts` | AgentTool 本身（由 [Agent Swarms](./2026-11-12-agent-swarms-design.md) 主拥有） |
 | ctx-inspect-tool | CtxInspectTool 实现、上下文数据格式化 | `tests/internalTools.test.ts:72-103` | collectContextData（由查询核心 spec 主拥有） |
 | insights-command | insights 主流程、报告生成、并行洞察 | 无直接测试 | HTML/CSS/JS 渲染细节 |
 | session-meta | SessionMeta 提取、缓存加载/保存、工具统计 | 无直接测试 | 原始 JSONL 日志格式（由会话持久化 spec 主拥有） |
@@ -1657,13 +1657,14 @@ type SessionFacets = {
 
 | 优先级 | 触发场景与证据 | 建议方向 | 回归风险 | 验收方式 | 工作量 | 置信度 |
 |-------|---------------|---------|---------|---------|-------|-------|
-| P1 | insights 当前无缓存清理机制，长期使用可能积累大量旧文件 | 添加缓存清理策略（如保留最近 30 天或最近 1000 个会话） | 低：仅删除旧文件 | 给定 30 天前的缓存文件，当清理时必须删除；给定最近的缓存必须保留 | M | 已证实（代码中无清理逻辑） |
-| P1 | ReviewArtifactTool 当前无单元测试覆盖代理启动和 JSON 解析的各种边缘情况 | 添加完整测试：无 JSON、JSON 无效、findings 缺少字段、extra 文本等 | 低：仅添加测试 | 测试覆盖各种成功和失败场景 | M | 已证实（测试仅覆盖基本路径） |
-| P2 | facet 提取失败不重试，可能因临时 API 故障导致数据缺失 | 添加有限重试（1-2 次），仅对网络错误重试 | 中：需要区分可重试和不可重试错误 | 给定网络超时，当提取时必须重试；给定无效 JSON，当提取时必须不重试 | M | 设计推断 |
-| P2 | insights 最多分析 200 个会话，用户可能希望调整 | 添加命令行 flag 允许配置会话数量 | 低：仅添加参数 | 给定 --max-sessions=500，当分析时必须处理 500 个会话 | S | 设计推断 |
-| P2 | 审查工具仅报告问题，用户经常需要后续修复 | 添加可选的 "autofix" 模式（仍需要用户确认） | 中：需要清晰的职责边界和权限控制 | 给定审查发现 blocker，当用户确认时必须尝试修复 | L | 设计推断 |
-| P3 | 多 Claude 检测窗口固定 30 分钟，可能不适合所有用户 | 使窗口可配置或自适应 | 低：仅添加参数 | 给定 --overlap-window=60，当检测时必须使用 60 分钟窗口 | S | 设计推断 |
-| P3 | 当前无针对 insights 完整流程的测试 | 添加端到端测试（使用 fixtures 会话日志） | 低：仅添加测试 | 测试可以运行完整 /insights 流程并生成报告 | L | 已证实（代码存在但无测试） |
+| P1 | STATUS 记录 FileRead 自动允许时返回 FileRead 形状的 updatedInput，丢失 ReviewArtifact 的 artifact_path/focus/context；无路径 persistent allow 还可能覆盖无关读取 | 在权限委托边界恢复原始工具输入，并将持久规则绑定到规范化 artifact 路径 | 高：涉及工具输入契约和文件读取授权范围 | 覆盖 allow、ask、persistent allow、工作区外路径；执行器必须收到原始字段，后续无关读取不得复用授权 | M | 待运行验证 |
+| P2 | insights 当前无缓存清理机制，长期使用可能积累大量旧文件 | 添加缓存清理策略（如保留最近 30 天或最近 1000 个会话） | 低：仅删除旧文件 | 给定 30 天前的缓存文件，当清理时必须删除；给定最近的缓存必须保留 | M | 待运行验证 |
+| P2 | ReviewArtifactTool 当前无单元测试覆盖代理启动和 JSON 解析的各种边缘情况 | 添加完整测试：无 JSON、JSON 无效、findings 缺少字段、extra 文本等 | 低：仅添加测试 | 测试覆盖各种成功和失败场景 | M | 待运行验证 |
+| P2 | facet 提取失败不重试，可能因临时 API 故障导致数据缺失 | 添加有限重试（1-2 次），仅对网络错误重试 | 中：需要区分可重试和不可重试错误 | 给定网络超时，当提取时必须重试；给定无效 JSON，当提取时必须不重试 | M | 待运行验证 |
+| P2 | insights 最多分析 200 个会话，用户可能希望调整 | 添加命令行 flag 允许配置会话数量 | 低：仅添加参数 | 给定 --max-sessions=500，当分析时必须处理 500 个会话 | S | 待运行验证 |
+| P2 | 审查工具仅报告问题，用户经常需要后续修复 | 添加可选的 "autofix" 模式（仍需要用户确认） | 中：需要清晰的职责边界和权限控制 | 给定审查发现 blocker，当用户确认时必须尝试修复 | L | 待运行验证 |
+| P3 | 多 Claude 检测窗口固定 30 分钟，可能不适合所有用户 | 使窗口可配置或自适应 | 低：仅添加参数 | 给定 --overlap-window=60，当检测时必须使用 60 分钟窗口 | S | 待运行验证 |
+| P3 | 当前无针对 insights 完整流程的测试 | 添加端到端测试（使用 fixtures 会话日志） | 低：仅添加测试 | 测试可以运行完整 /insights 流程并生成报告 | L | 待运行验证 |
 
 ### 优先级说明
 

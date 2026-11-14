@@ -1360,12 +1360,11 @@ Live 验证边界决策：
 
 ## 9. 改进建议
 
-1. **测试并行化**：当前 `scripts/test.ts` 是串行运行每个文件，未来可以考虑并行化以加快速度，但需要注意资源竞争（例如临时目录、端口）。
-
-2. **Live 验证的重试策略**：当前 live 验证没有重试，网络抖动可能导致 flaky。建议为网络请求添加指数退避重试机制。
-
-3. **测试结果聚合**：当前只有简单的失败文件列表，没有 JUnit XML 或其他结构化报告，不利于 CI 可视化。建议添加 JUnit XML 输出格式支持。
-
-4. **Fixtures 的维护**：`tests/fixtures/` 下的文件与实际源码的同步需要注意，特别是 `verify-enabled-features.ts` 中的构建配置需要与 `scripts/build.ts` 保持一致。建议添加集成测试验证 fixture 与构建配置一致性。
-
-5. **跨领域测试的 spec 边界**：部分测试可能同时涉及多个领域（例如 proactive 与 sleep 工具），需要明确哪个 spec 负责覆盖，避免重复或遗漏。建议在各 spec 中明确标注边界。
+| 优先级 | 触发场景与证据 | 建议方向 | 回归风险 | 验收方式 | 工作量 | 置信度 |
+| --- | --- | --- | --- | --- | --- |
+| P2 | 当前 `scripts/test.ts` 是串行运行每个文件，测试速度较慢 | 测试并行化：未来可以考虑并行化以加快速度，但需要注意资源竞争（例如临时目录、端口） | 中：并行可能引入资源竞争，需要隔离 | 设计阶段验证架构方案 | M | 已证实（基于代码阅读） |
+| P2 | 当前 live 验证没有重试，网络抖动可能导致 flaky | Live 验证的重试策略：为网络请求添加指数退避重试机制 | 低：仅添加重试逻辑，不改变验证语义 | 设计阶段验证方案 | S | 已证实（基于代码阅读） |
+| P3 | 当前只有简单的失败文件列表，没有 JUnit XML 或其他结构化报告，不利于 CI 可视化 | 测试结果聚合：添加 JUnit XML 输出格式支持 | 低：新增输出格式，不改变默认行为 | 设计阶段验证方案 | M | 设计推断 |
+| P2 | `tests/fixtures/` 下的文件与实际源码的同步需要注意，特别是 `verify-enabled-features.ts` 中的构建配置需要与 `scripts/build.ts` 保持一致 | Fixtures 的维护：添加集成测试验证 fixture 与构建配置一致性 | 低：新增测试，不影响现有测试 | 设计阶段验证方案 | M | 设计推断 |
+| P3 | 部分测试可能同时涉及多个领域（例如 proactive 与 sleep 工具），需要明确哪个 spec 负责覆盖，避免重复或遗漏 | 跨领域测试的 spec 边界：在各 spec 中明确标注边界 | 低：仅文档更新，无代码变更 | 设计阶段验证方案 | S | 设计推断 |
+| P1 | `scripts/live-model-validation.ts` 在 `enableConfigs()` 前检查 `process.env.ANTHROPIC_API_KEY/ANTHROPIC_AUTH_TOKEN`；STATUS 与 RELEASE 对 settings 直读的表述需要以实际运行统一 | 明确 standalone 脚本的 settings 初始化契约，并集中处理凭据互斥检查 | 中：改变初始化顺序可能改变真实认证来源；不得打印凭据 | 覆盖无凭据、仅 API key、仅 Bearer、两者同时存在四种分支，并分别记录 caller-injected 与 settings-only 的实际结果 | M | 待运行验证（需要隔离 HOME 的 live/matrix 运行） |

@@ -1380,7 +1380,7 @@ type AppState = {
 
 | 优先级 | 触发场景与证据 | 建议方向 | 回归风险 | 验收方式 | 工作量 | 置信度 |
 |---|---|---|---|---|---|---|
-| P2 | mailbox 无超时机制，worker 可能永久等待（设计推断） | 为 permission request 和 worker 等待添加超时 | 可能中断正在等待用户确认的合法请求 | 注入超时场景，验证 worker 正确退出或重试 | M | 设计推断 |
-| P2 | in-process/tmux/iTerm2 三种后端测试缺口大（证据：第 7 章无测试） | 添加各后端的端到端测试 | 需要稳定的终端环境，CI 可能难以覆盖 | 实现基本的 in-process 测试，tmux/iTerm2 标记为手动验证 | L | 设计推断 |
-| P3 | permissionSync 新旧两套路径并存（pending/resolved 文件 + mailbox），增加复杂度 | 移除旧的文件路径，统一使用 mailbox | 需要确保所有后端都迁移到 mailbox | 检查所有调用点，确认 mailbox 路径覆盖完整 | M | 设计推断 |
-| P3 | worktree 清理依赖 hasWorktreeChanges()，未跟踪未跟踪文件可能导致意外保留（设计推断） | 考虑更保守的清理策略或明确告知用户 | 可能删除用户想保留的未跟踪文件 | 对比 git status 与 hasWorktreeChanges() 的行为 | S | 设计推断 |
+| P2 | mailbox 无超时机制，worker 可能永久等待（设计推断） | 为 permission request 和 worker 等待添加超时 | 可能中断正在等待用户确认的合法请求 | 注入超时场景，验证 worker 正确退出或重试 | M | 待运行验证 |
+| P2 | in-process/tmux/iTerm2 三种后端测试缺口大（证据：第 7 章无测试） | 添加各后端的端到端测试 | 需要稳定的终端环境，CI 可能难以覆盖 | 实现基本的 in-process 测试，tmux/iTerm2 标记为手动验证 | L | 待运行验证 |
+| P3 | permissionSync 新旧两套路径并存（pending/resolved 文件 + mailbox），增加复杂度 | 移除旧的文件路径，统一使用 mailbox | 需要确保所有后端都迁移到 mailbox | 检查所有调用点，确认 mailbox 路径覆盖完整 | M | 待运行验证 |
+| P3 | worktree 清理依赖 hasWorktreeChanges()，未跟踪未跟踪文件可能导致意外保留（设计推断） | 考虑更保守的清理策略或明确告知用户 | 可能删除用户想保留的未跟踪文件 | 对比 git status 与 hasWorktreeChanges() 的行为 | S | 待运行验证 |

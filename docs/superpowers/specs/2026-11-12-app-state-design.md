@@ -492,7 +492,7 @@ onChangeAppState 检测到 settings 变更
 
 | 优先级 | 触发场景与证据 | 建议方向 | 回归风险 | 验收方式 | 工作量 | 置信度 |
 |-------|---------------|---------|---------|--------|-------|-------|
-| P1 | selector 返回新对象导致多余渲染（常见性能问题） | 引入自动 memoized selectors（Reselect 或类似） | 中（改变 selector 行为） | 相同输入返回相同引用 | M | 设计推断 |
+| P2 | selector 返回新对象导致多余渲染（常见性能问题） | 引入自动 memoized selectors（Reselect 或类似） | 中（改变 selector 行为） | 相同输入返回相同引用 | M | 设计推断 |
 | P2 | 手动不可变更新容易出错 | 引入 Immer 或类似库简化不可变更新 | 中（依赖变更） | updater 可直接修改 draft，库处理不可变 | M | 设计推断 |
 | P2 | Bootstrap 与 AppState 两套系统心智负担 | 明确文档和 lint 规则，帮助开发者选择何时用哪套 | 低（仅文档/工具） | 开发者能快速判断 | S | 设计推断 |
 | P3 | onChangeAppState 中意外调用 setState 导致无限循环 | 运行时检测和防护，在 onChangeAppState 中调用 setState 时抛出错误 | 低（仅防护，不改变正确行为） | 错误路径抛出清晰错误 | S | 设计推断 |

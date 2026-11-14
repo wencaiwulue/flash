@@ -32,4 +32,5 @@
 - `docs/architecture/coverage/manifest.yaml` 是 roots、spec 注册与排除规则的唯一来源；coverage YAML 显式列文件，`docs/architecture/INDEX.md` 只负责导航。
 - 生成代码和二进制排除必须有有界 glob、原因与 `source_spec`。不得按文件名或扩展名猜测：`src/entrypoints/sdk/settingsTypes.generated.ts` 是手写 re-export，必须纳入覆盖。
 - 关键行为使用路径与符号佐证。测试存在不等于通过，mock 不等于 live；实际结果只写入 `docs/STATUS.md` 或验证记录。
+- 第 9 章必须使用统一七列表；模糊工作量（如 S/M/L 以外的值）、P0 无已证实证据、P1 仅设计推断均为结构错误。
 - 每批同时运行结构检查和人工语义评审。自动检查通过不证明架构语义正确，也不能替代对“设计推断”和 P0/P1 建议证据的审查。
