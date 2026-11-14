@@ -7,6 +7,8 @@ import {
   aggregateChecksums,
   assertNativeTarget,
   formatChecksumManifest,
+  getArchiveCreationCommand,
+  getArchiveExtractionCommand,
   getArchiveName,
   getBinaryName,
   getHostTarget,
@@ -208,6 +210,70 @@ describe('release target metadata', () => {
     )
     expect(getBinaryName('bun-windows-x64')).toBe('claude-code.exe')
     expect(getBinaryName('bun-linux-x64')).toBe('claude-code')
+  })
+
+  test('forces local archive paths for Windows drive letters', () => {
+    const archivePath = 'C:\\a\\flash\\claude-code-v1.0.0-win32-x64.zip'
+    expect(
+      getArchiveCreationCommand(
+        'bun-windows-x64',
+        archivePath,
+        'claude-code.exe',
+      ),
+    ).toEqual([
+      'tar',
+      '--force-local',
+      '-a',
+      '-cf',
+      archivePath,
+      'claude-code.exe',
+      'README.md',
+      'README.zh-CN.md',
+    ])
+    expect(
+      getArchiveExtractionCommand(
+        'bun-windows-x64',
+        archivePath,
+        'C:\\a\\extract',
+      ),
+    ).toEqual([
+      'tar',
+      '--force-local',
+      '-xf',
+      archivePath,
+      '-C',
+      'C:\\a\\extract',
+    ])
+  })
+
+  test('omits the unsupported local-file option on Unix tar', () => {
+    expect(
+      getArchiveCreationCommand(
+        'bun-darwin-arm64',
+        '/tmp/claude-code.tar.gz',
+        'claude-code',
+      ),
+    ).toEqual([
+      'tar',
+      '-czf',
+      '/tmp/claude-code.tar.gz',
+      'claude-code',
+      'README.md',
+      'README.zh-CN.md',
+    ])
+    expect(
+      getArchiveExtractionCommand(
+        'bun-darwin-arm64',
+        '/tmp/claude-code.tar.gz',
+        '/tmp/extract',
+      ),
+    ).toEqual([
+      'tar',
+      '-xf',
+      '/tmp/claude-code.tar.gz',
+      '-C',
+      '/tmp/extract',
+    ])
   })
 
   test('rejects unsupported and non-native targets', () => {
