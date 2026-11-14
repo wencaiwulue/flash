@@ -16,6 +16,7 @@
 - Close only browsers created by the current isolated generation. Real CDP Chrome must remain alive with its context, tabs and cookies.
 - Do not bulk-kill existing processes or use process-name/profile-pattern matching for cleanup.
 - Declare Playwright at the exact version already installed through MCP; do not upgrade browser dependencies.
+- Keep Playwright imports type-only at module top level and dynamically load runtimes only in actual browser connection paths, so CLI help does not resolve Playwright package metadata.
 - Use exact PID/profile assertions rather than requiring the machine-wide Chrome count to be zero.
 - Do not record historical execution results in the spec or plan.
 
@@ -30,7 +31,7 @@
 
 ## File Structure
 
-- Modify `src/external-stubs/claude-for-chrome-mcp.ts`: isolated browser ownership, close registry, idle/retry semantics and CDP upstream shutdown.
+- Modify `src/external-stubs/claude-for-chrome-mcp.ts`: isolated browser ownership, close registry, idle/retry semantics, CDP upstream shutdown, and lazy Playwright runtime loading for standalone CLI help.
 - Modify `src/tools/WebBrowserTool/WebBrowserTool.ts`: expected-client close and error preservation.
 - Modify `tests/openBackends.test.ts`: process-level regressions, direct client close, CDP preservation and fixture process-tree cleanup.
 - Modify `package.json` and `bun.lock`: direct Playwright dependency at the installed MCP version.

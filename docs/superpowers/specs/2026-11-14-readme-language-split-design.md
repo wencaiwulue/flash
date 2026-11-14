@@ -142,7 +142,7 @@ GitHub/源码根目录或解包目录
 
 ```text
 buildBinary(target)
-  → 编译目标二进制并完成直接 --version/--help smoke
+  → 编译目标二进制，在暂时隐藏并恢复 node_modules 的环境中完成直接 --version/--help smoke
   → 复制 binaryName 到 stageDir
   → 遍历 RELEASE_DOCUMENTS，从仓库根复制到 stageDir
   → archiveMembers = [binaryName, ...RELEASE_DOCUMENTS]
@@ -153,7 +153,7 @@ buildBinary(target)
   → readdir(extractDir) 与 archiveMembers 排序后精确比较
   → 每个解包文档与仓库源文件逐字节比较
   → 非 Windows 检查解包二进制 executable bit
-  → 对解包二进制再次执行 --version/--help
+  → 再次暂时隐藏 node_modules，对解包二进制执行 --version/--help，并在 finally 中恢复依赖目录
   → 为归档写 .sha256 sidecar
 ```
 
@@ -192,7 +192,7 @@ README 只陈述用户可见的“从同一 Release 下载归档和 `SHA256SUMS`
 | 中文措辞范围扩大 | 人工对照 `docs/STATUS.md` 与发布契约 | 评审要求修正，自动测试不宣称发现所有语义错误 | 不把未验证能力写成已验证能力 |
 | 文档复制失败或源文件在构建期间变化 | `copyFile`/解包逐字节比较 | 构建抛错，不以旧文档替代 | 归档不会静默携带空白、截断或不同版本文档 |
 | 归档多出或漏掉成员 | 解包目录精确集合比较 | 构建失败，sidecar 不视为成功产物 | 只接受 binary + 2 docs，不附带安装器或临时文件 |
-| 解包二进制不可执行或 smoke 失败 | 现有 mode/version/help 检查 | 构建失败 | 文档完整不能掩盖二进制失败 |
+| 解包二进制不可执行或 smoke 失败 | 现有 mode/version/help 检查；smoke 期间暂时隐藏 node_modules | 构建失败，finally 恢复依赖目录 | 文档完整或 runner 上的依赖目录不能掩盖独立运行失败 |
 | 翻译与代码存在语义分歧但自动规则未覆盖 | 人工文档评审 | 不以测试存在代替语义审查 | 验收明确保留这一证据边界 |
 
 构建期间没有跨版本文档迁移。回滚文档拆分不会删除用户已安装的二进制，也不改变安装器的运行行为；若安装器功能已先落地，回滚本功能时必须保留其用户可见安装说明和独立 Release 资产逻辑。
@@ -213,7 +213,7 @@ README 只陈述用户可见的“从同一 Release 下载归档和 `SHA256SUMS`
 1. `RELEASE_DOCUMENTS` 恰好导出 `README.md` 和 `README.zh-CN.md`，无重复、绝对路径或目录成分。
 2. 对每个原生 target，staging 只复制目标二进制和这两份文档，tar/zip 命令使用同一显式成员数组；Windows 创建与解包以 `--force-local` 处理盘符归档路径，解包目录通过进程 `cwd` 指定，Unix 不传递不支持的 `--force-local`。
 3. 解包目录必须恰好包含三个成员；两份解包文档与源文件逐字节相同。
-4. 非 Windows 解包二进制保留 executable bit，所有目标继续满足直接和解包后的版本/帮助检查。
+4. 非 Windows 解包二进制保留 executable bit，所有目标在暂时隐藏 `node_modules` 的环境中满足直接和解包后的版本/帮助检查，且无论成功失败都恢复依赖目录。
 5. `SHA256SUMS` 仍只有六个归档条目，Release 文档清单变化不增加归档数量或改变归档名称。
 
 ### 应执行的验证

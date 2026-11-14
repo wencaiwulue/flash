@@ -73,7 +73,7 @@ To select a specific version and installation directory:
   installer="$(mktemp)"
   trap 'rm -f "$installer"' EXIT
   curl -fsSL https://github.com/wencaiwulue/flash/releases/latest/download/install.sh -o "$installer"
-  VERSION=v1.0.0 INSTALL_DIR="$HOME/.local/bin" sh "$installer"
+  VERSION=v1.0.1 INSTALL_DIR="$HOME/.local/bin" sh "$installer"
 )
 ```
 

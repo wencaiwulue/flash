@@ -52,9 +52,9 @@ Review any generated SDK-type diff, then exercise a real standalone binary for t
 bun run build:binary
 ```
 
-该命令会直接执行及解包后执行 `--version`、`--help`，并在 `build/release/` 生成归档和对应的 `.sha256` 文件。若需要显式指定目标，目标必须与当前主机一致：
+该命令会在暂时隐藏并恢复 `node_modules` 的环境中直接执行及解包后执行 `--version`、`--help`，防止 runner 依赖目录掩盖独立运行问题；随后在 `build/release/` 生成归档和对应的 `.sha256` 文件。若需要显式指定目标，目标必须与当前主机一致：
 
-This command runs `--version` and `--help` both directly and after extraction, then writes the archive and its `.sha256` sidecar to `build/release/`. An explicit target must match the current host:
+This command runs `--version` and `--help` directly and after extraction with `node_modules` temporarily hidden and restored, preventing runner dependencies from masking standalone runtime failures. It writes the archive and its `.sha256` sidecar to `build/release/`. An explicit target must match the current host:
 
 ```bash
 bun run build:binary -- --target bun-darwin-arm64

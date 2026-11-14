@@ -260,11 +260,11 @@ Document the default `$HOME/.local/bin` and the strict override form:
   installer="$(mktemp)"
   trap 'rm -f "$installer"' EXIT
   curl -fsSL https://github.com/wencaiwulue/flash/releases/latest/download/install.sh -o "$installer"
-  VERSION=v1.0.0 INSTALL_DIR="$HOME/.local/bin" sh "$installer"
+  VERSION=v1.0.1 INSTALL_DIR="$HOME/.local/bin" sh "$installer"
 )
 ```
 
-Use an actual existing version only when documenting a concrete installed release; `v1.0.0` is the intended first-release example and must not be presented as a published historical fact before publication. Explain that the installer downloads the matching archive and `SHA256SUMS`, verifies the selected archive, and prints PATH guidance when needed. Do not say it signs/notarizes the binary, updates automatically, supports Windows, or works from Releases that predate the installer.
+Use an actual existing version only when documenting a concrete installed release; `v1.0.1` is the standalone-runtime patch example and must not be presented as a published historical fact before publication. Explain that the installer downloads the matching archive and `SHA256SUMS`, verifies the selected archive, and prints PATH guidance when needed. Do not say it signs/notarizes the binary, updates automatically, supports Windows, or works from Releases that predate the installer.
 
 Keep manual downloads for all six targets and retain the scoped statement that release checks do not validate model providers or every optional native integration. Link detailed security behavior to the approved design only in maintainer documentation if needed; user README should remain task-oriented.
 
@@ -406,7 +406,7 @@ bun run typecheck
 bun run build:binary
 ```
 
-Expected: focused tests and typecheck PASS; the native build compiles and smokes the binary, then extracts an archive whose only members are the binary and two byte-identical READMEs. Inspect the actual output with a host-appropriate command, for example on the current macOS/Linux host:
+Expected: focused tests and typecheck PASS; the native build compiles and smokes the binary with `node_modules` temporarily hidden and restored in `finally`, then extracts an archive whose only members are the binary and two byte-identical READMEs and repeats the dependency-isolated smoke. Inspect the actual output with a host-appropriate command, for example on the current macOS/Linux host:
 
 ```bash
 archive=$(bun -e "import { getArchiveName, getHostTarget } from './scripts/build-binary.ts'; process.stdout.write('build/release/' + getArchiveName(getHostTarget()))")

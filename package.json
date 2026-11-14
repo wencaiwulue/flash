@@ -1,6 +1,6 @@
 {
   "name": "claude-code",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Educational/research snapshot of Claude Code: an agentic coding CLI and TypeScript Agent SDK built with Bun, React, and Ink.",
   "type": "module",
   "main": "dist/main.js",

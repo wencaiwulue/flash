@@ -6,6 +6,7 @@ import {
   mkdtemp,
   readFile,
   readdir,
+  rename,
   rm,
   stat,
   writeFile,
@@ -229,6 +230,24 @@ function smokeTestBinary(
   assertCommandSucceeded(help, `${binaryPath} --help`)
 }
 
+let standaloneSmokeSequence = 0
+
+async function smokeTestStandaloneBinary(
+  binaryPath: string,
+  env: NodeJS.ProcessEnv,
+): Promise<void> {
+  const modules = resolve('node_modules')
+  const hiddenModules = resolve(
+    `.node_modules.release-smoke-${process.pid}-${standaloneSmokeSequence++}`,
+  )
+  await rename(modules, hiddenModules)
+  try {
+    smokeTestBinary(binaryPath, env)
+  } finally {
+    await rename(hiddenModules, modules)
+  }
+}
+
 async function buildBinary(
   target: ReleaseTarget,
   outputDirectory: string,
@@ -270,7 +289,7 @@ async function buildBinary(
     CLAUDE_CONFIG_DIR: join(isolatedHome, 'config'),
   }
   try {
-    smokeTestBinary(binaryPath, env)
+    await smokeTestStandaloneBinary(binaryPath, env)
     await copyFile(binaryPath, join(stageDir, binaryName))
     for (const document of RELEASE_DOCUMENTS) {
       await copyFile(document, join(stageDir, document))
@@ -312,7 +331,7 @@ async function buildBinary(
     ) {
       throw new Error('Extracted Unix binary is not executable')
     }
-    smokeTestBinary(extractedBinary, env)
+    await smokeTestStandaloneBinary(extractedBinary, env)
 
     const checksumPath = await writeArchiveChecksum(archivePath)
     console.log(archivePath)
