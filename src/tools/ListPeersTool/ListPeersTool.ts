@@ -28,7 +28,7 @@ export const ListPeersTool = buildTool({
     return null
   },
   async description() {
-    return 'List live local Claude Code sessions registered over UDS'
+    return 'List live local flash sessions registered over UDS'
   },
   async prompt() {
     return 'List live local peer sessions and their UDS addresses. Send a plain-text message with SendMessage(to: "uds:<sessionId>", message: "...") or SendMessage(to: "/absolute/socket/path", ...).'

@@ -110,7 +110,7 @@ export function HelpV2({ onClose, commands }: Props): React.ReactNode {
           title={
             process.env.USER_TYPE === 'ant'
               ? '/help'
-              : `Claude Code v${MACRO.VERSION}`
+              : `flash v${MACRO.VERSION}`
           }
           color="professionalBlue"
           defaultTab="general"

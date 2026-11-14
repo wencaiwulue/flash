@@ -22,7 +22,7 @@ export function connectToDevTools(): void {
       // an actionable remedy while react-devtools-core continues its retry.
       logForDebugging(
         `React DevTools could not connect to ${endpoint}. Start the UI with ` +
-          '`npx react-devtools` and keep its default port (8097), then restart Claude Code.',
+          '`npx react-devtools` and keep its default port (8097), then restart flash.',
         { level: 'warn' },
       )
     })
@@ -34,7 +34,7 @@ export function connectToDevTools(): void {
     logForDebugging(
       `React DevTools initialization failed for ${endpoint}: ${
         error instanceof Error ? error.message : String(error)
-      }. Start the UI with \`npx react-devtools\` and restart Claude Code.`,
+      }. Start the UI with \`npx react-devtools\` and restart flash.`,
       { level: 'warn' },
     )
   }

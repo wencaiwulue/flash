@@ -199,14 +199,14 @@ export interface Query extends AsyncGenerator<SDKMessage, void> {
 export type SDKSessionOptions = {
     /** Model to use */
     model: string;
-    /** Path to Claude Code executable */
+    /** Path to flash executable */
     pathToClaudeCodeExecutable?: string;
     /** Executable to use (node, bun) */
     executable?: 'node' | 'bun';
     /** Arguments to pass to executable */
     executableArgs?: string[];
     /**
-     * Environment variables to pass to the Claude Code process.
+     * Environment variables to pass to the flash process.
      * Defaults to `process.env`.
      */
     env?: {
@@ -295,21 +295,21 @@ export type Options = {
      * Specify the base set of available built-in tools.
      * - `string[]` - Array of specific tool names (e.g., `['Bash', 'Read', 'Edit']`)
      * - `[]` (empty array) - Disable all built-in tools
-     * - `{ type: 'preset'; preset: 'claude_code' }` - Use all default Claude Code tools
+     * - `{ type: 'preset'; preset: 'claude_code' }` - Use all default flash tools
      */
     tools?: string[] | {
         type: 'preset';
         preset: 'claude_code';
     };
     /**
-     * Environment variables to pass to the Claude Code process.
+     * Environment variables to pass to the flash process.
      * Defaults to `process.env`.
      */
     env?: {
         [envVar: string]: string | undefined;
     };
     /**
-     * JavaScript runtime to use for executing Claude Code.
+     * JavaScript runtime to use for executing flash.
      * Auto-detected if not specified.
      */
     executable?: 'bun' | 'deno' | 'node';
@@ -318,7 +318,7 @@ export type Options = {
      */
     executableArgs?: string[];
     /**
-     * Additional CLI arguments to pass to Claude Code.
+     * Additional CLI arguments to pass to flash.
      * Keys are argument names (without --), values are argument values.
      * Use `null` for boolean flags.
      */
@@ -424,7 +424,7 @@ export type Options = {
      */
     outputFormat?: OutputFormat;
     /**
-     * Path to the Claude Code executable. Uses the built-in executable if not specified.
+     * Path to the flash executable. Uses the built-in executable if not specified.
      */
     pathToClaudeCodeExecutable?: string;
     /**
@@ -448,7 +448,7 @@ export type Options = {
     permissionPromptToolName?: string;
     /**
      * Load plugins for this session. Plugins provide custom commands, agents,
-     * skills, and hooks that extend Claude Code's capabilities.
+     * skills, and hooks that extend flash's capabilities.
      *
      * Currently only local plugins are supported via the 'local' type.
      *
@@ -518,7 +518,7 @@ export type Options = {
      */
     settingSources?: SettingSource[];
     /**
-     * Callback for stderr output from the Claude Code process.
+     * Callback for stderr output from the flash process.
      * Useful for debugging and logging.
      */
     stderr?: (data: string) => void;
@@ -530,7 +530,7 @@ export type Options = {
     /**
      * System prompt configuration.
      * - `string` - Use a custom system prompt
-     * - `{ type: 'preset', preset: 'claude_code' }` - Use Claude Code's default system prompt
+     * - `{ type: 'preset', preset: 'claude_code' }` - Use flash's default system prompt
      * - `{ type: 'preset', preset: 'claude_code', append: '...' }` - Use default prompt with appended instructions
      *
      * @example Custom prompt
@@ -553,8 +553,8 @@ export type Options = {
         append?: string;
     };
     /**
-     * Custom function to spawn the Claude Code process.
-     * Use this to run Claude Code in VMs, containers, or remote environments.
+     * Custom function to spawn the flash process.
+     * Use this to run flash in VMs, containers, or remote environments.
      *
      * When provided, this function is called instead of the default local spawn.
      * The default behavior checks if the executable exists before spawning.

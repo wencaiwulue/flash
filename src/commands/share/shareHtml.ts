@@ -91,14 +91,14 @@ export function renderConversationToHtml(
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Claude Code conversation</title>
+<title>flash conversation</title>
 <style>
 body{font-family:ui-sans-serif,system-ui,sans-serif;max-width:960px;margin:2rem auto;padding:0 1rem;background:#f7f7f5;color:#20201e}
 h1{font-size:1.5rem}.message{background:white;border:1px solid #ddd;border-radius:8px;padding:1rem;margin:1rem 0}h2{font-size:.85rem;text-transform:uppercase;color:#666}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-family:ui-monospace,monospace;margin:0}
 </style>
 </head>
 <body>
-<h1>Claude Code conversation</h1>
+<h1>flash conversation</h1>
 ${sections || '<p>No conversation messages.</p>'}
 </body>
 </html>

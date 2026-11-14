@@ -1,6 +1,6 @@
 import type { StdoutMessage } from '../entrypoints/sdk/controlTypes.js';
 /**
- * Transport interface for Claude Code SDK communication
+ * Transport interface for flash SDK communication
  * Abstracts the communication layer to support both process and WebSocket transports
  */
 export interface Transport {

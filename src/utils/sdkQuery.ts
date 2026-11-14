@@ -821,7 +821,7 @@ export function createSdkQuery({
       }
       const handle = await remoteControlFactory({
         dir: options.cwd ?? process.cwd(),
-        name: 'Claude Code SDK',
+        name: 'flash SDK',
         workerType: 'sdk',
         getAccessToken: () => getClaudeAIOAuthTokens()?.accessToken,
         baseUrl: getOauthConfig().BASE_API_URL,

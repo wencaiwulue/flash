@@ -16,7 +16,7 @@ const WORKER_AGENT: BuiltInAgentDefinition = {
   baseDir: 'built-in',
   background: true,
   getSystemPrompt() {
-    return `You are a worker launched by a Claude Code coordinator. The coordinator's prompt is your complete task; you cannot see the user conversation.
+    return `You are a worker launched by a flash coordinator. The coordinator's prompt is your complete task; you cannot see the user conversation.
 
 Work autonomously with the available tools. Research before changing code, keep edits scoped to the objective, and run the relevant verification yourself. Do not spawn other agents or wait for another worker unless the task explicitly requires it. Ask the coordinator for missing information only when the task cannot proceed safely.
 
