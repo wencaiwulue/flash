@@ -231,19 +231,8 @@ describe('release target metadata', () => {
       'README.zh-CN.md',
     ])
     expect(
-      getArchiveExtractionCommand(
-        'bun-windows-x64',
-        archivePath,
-        'C:\\a\\extract',
-      ),
-    ).toEqual([
-      'tar',
-      '--force-local',
-      '-xf',
-      archivePath,
-      '-C',
-      'C:\\a\\extract',
-    ])
+      getArchiveExtractionCommand('bun-windows-x64', archivePath),
+    ).toEqual(['tar', '--force-local', '-xf', archivePath])
   })
 
   test('omits the unsupported local-file option on Unix tar', () => {
@@ -265,15 +254,8 @@ describe('release target metadata', () => {
       getArchiveExtractionCommand(
         'bun-darwin-arm64',
         '/tmp/claude-code.tar.gz',
-        '/tmp/extract',
       ),
-    ).toEqual([
-      'tar',
-      '-xf',
-      '/tmp/claude-code.tar.gz',
-      '-C',
-      '/tmp/extract',
-    ])
+    ).toEqual(['tar', '-xf', '/tmp/claude-code.tar.gz'])
   })
 
   test('rejects unsupported and non-native targets', () => {

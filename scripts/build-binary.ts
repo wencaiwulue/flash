@@ -100,11 +100,10 @@ export function getArchiveCreationCommand(
 export function getArchiveExtractionCommand(
   target: ReleaseTarget,
   archivePath: string,
-  extractDir: string,
 ): string[] {
   const localOption =
     RELEASE_TARGETS[target].platform === 'win32' ? ['--force-local'] : []
-  return ['tar', ...localOption, '-xf', archivePath, '-C', extractDir]
+  return ['tar', ...localOption, '-xf', archivePath]
 }
 
 export function validateReleaseTag(
@@ -285,9 +284,9 @@ async function buildBinary(
     )
     assertCommandSucceeded(archive, `Create ${basename(archivePath)}`)
 
-    const extract = spawn(
-      getArchiveExtractionCommand(target, archivePath, extractDir),
-    )
+    const extract = spawn(getArchiveExtractionCommand(target, archivePath), {
+      cwd: extractDir,
+    })
     assertCommandSucceeded(extract, `Extract ${basename(archivePath)}`)
     const archivedFiles = (await readdir(extractDir)).toSorted()
     const expectedFiles = [binaryName, ...RELEASE_DOCUMENTS].toSorted()
