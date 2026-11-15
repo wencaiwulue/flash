@@ -209,6 +209,7 @@ import {
   CLAUDE_IN_CHROME_SKILL_HINT_WITH_WEBBROWSER,
 } from './utils/claudeInChrome/prompt.js'
 import {
+  chromeWiringBundledAction,
   setupClaudeInChrome,
   shouldAutoEnableClaudeInChrome,
   shouldEnableClaudeInChrome,
@@ -2335,7 +2336,24 @@ async function run(): Promise<CommanderCommand> {
       const chromeOpts = options as { chrome?: boolean }
       // Store the explicit CLI flag so teammates can inherit it
       setChromeFlagOverride(chromeOpts.chrome)
-      const enableClaudeInChrome = shouldEnableClaudeInChrome(chromeOpts.chrome)
+      let enableClaudeInChrome = shouldEnableClaudeInChrome(chromeOpts.chrome)
+      const chromeWiringAction = chromeWiringBundledAction(
+        enableClaudeInChrome,
+        isInBundledMode(),
+        chromeOpts.chrome === true ||
+          isEnvTruthy(process.env.CLAUDE_CODE_ENABLE_CFC),
+      )
+      if (chromeWiringAction === 'warn') {
+        process.stderr.write(
+          'Warning: Open Chrome CDP is not available in standalone builds; ' +
+            'continuing without browser tools. Run from source to use it.\n',
+        )
+      } else if (chromeWiringAction === 'skip') {
+        logForDebugging(
+          '[Claude in Chrome] Skipping chrome wiring: not available in standalone builds',
+        )
+      }
+      if (chromeWiringAction !== 'none') enableClaudeInChrome = false
       const autoEnableClaudeInChrome =
         !enableClaudeInChrome && (await shouldAutoEnableClaudeInChrome())
 
