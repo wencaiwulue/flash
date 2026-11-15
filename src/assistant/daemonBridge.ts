@@ -76,7 +76,7 @@ export async function connectDaemonBridge(
   const params: EnvLessBridgeParams = {
     baseUrl: opts.baseUrl,
     orgUUID: opts.orgUUID,
-    title: opts.name ?? 'Claude Code daemon',
+    title: opts.name ?? 'flash daemon',
     getAccessToken: opts.getAccessToken,
     onAuth401: async () => {
       await (dependencies.refreshOAuth ?? checkAndRefreshOAuthTokenIfNeeded)()

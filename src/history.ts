@@ -32,7 +32,7 @@ type StoredPastedContent = {
 }
 
 /**
- * Claude Code parses history for pasted content references to match back to
+ * flash parses history for pasted content references to match back to
  * pasted content. The references look like:
  *   Text: [Pasted text #1 +10 lines]
  *   Image: [Image #2]

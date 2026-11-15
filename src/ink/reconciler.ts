@@ -39,7 +39,7 @@ if (process.env.NODE_ENV === 'development') {
       const detail = error instanceof Error ? error.message : String(error)
       logForDebugging(
         `Ink could not load React DevTools: ${detail}. Install dependencies ` +
-          'with `bun install`, start the UI with `npx react-devtools`, and restart Claude Code.',
+          'with `bun install`, start the UI with `npx react-devtools`, and restart flash.',
         { level: 'warn' },
       )
     })

@@ -59,7 +59,7 @@ async function main(): Promise<void> {
       await runPrepareCommitMsgAttribution(args[1], args[2])
     } catch {
       // Keep diagnostics path/content-free: Git hook stderr is user-visible.
-      console.error('Claude Code attribution failed; continuing commit.')
+      console.error('flash attribution failed; continuing commit.')
     }
     return
   }
@@ -71,7 +71,7 @@ async function main(): Promise<void> {
   ) {
     // MACRO.VERSION is inlined at build time
     // biome-ignore lint/suspicious/noConsole:: intentional console output
-    console.log(`${MACRO.VERSION} (Claude Code)`)
+    console.log(`${MACRO.VERSION} (flash)`)
     return
   }
 

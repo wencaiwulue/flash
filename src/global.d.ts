@@ -1,5 +1,5 @@
 /**
- * Global type declarations for the Claude Code project.
+ * Global type declarations for the flash project.
  *
  * This file provides ambient type declarations for modules that are
  * resolved at build time by Bun, as well as module declarations for

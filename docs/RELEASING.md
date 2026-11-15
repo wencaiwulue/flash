@@ -1,13 +1,13 @@
 # 发布指南 | Release Guide
 
-本文定义 `claude-code` 独立二进制和 GitHub Release 的发布流程。历史版本说明继续记录在 [RELEASE.md](RELEASE.md)，本文不记录单次发布结果。
+本文定义 `flash` 独立二进制和 GitHub Release 的发布流程。历史版本说明继续记录在 [RELEASE.md](RELEASE.md)，本文不记录单次发布结果。
 
-This guide defines the release process for standalone `claude-code` binaries and GitHub Releases. Version-specific notes remain in [RELEASE.md](RELEASE.md); this guide is not a release-history log.
+This guide defines the release process for standalone `flash` binaries and GitHub Releases. Version-specific notes remain in [RELEASE.md](RELEASE.md); this guide is not a release-history log.
 
 ## 发布契约 | Release Contract
 
 - 版本唯一来源是 `package.json`；标签必须采用严格的 `vX.Y.Z` 格式并与该版本完全一致。/ `package.json` is the single version source. Tags must use strict `vX.Y.Z` semver and match it exactly.
-- 发布产物命名为 `claude-code-vX.Y.Z-<platform>-<arch>.tar.gz`，Windows 使用 `.zip`。/ Assets follow `claude-code-vX.Y.Z-<platform>-<arch>.tar.gz`, with `.zip` on Windows.
+- 发布产物命名为 `flash-vX.Y.Z-<platform>-<arch>.tar.gz`，Windows 使用 `.zip`。/ Assets follow `flash-vX.Y.Z-<platform>-<arch>.tar.gz`, with `.zip` on Windows.
 - Release 恰好包含八个资产：六个平台归档、覆盖六个归档的 `SHA256SUMS`，以及独立的 `install.sh`。安装器强制校验归档，但自身不纳入 `SHA256SUMS`。/ A Release contains exactly eight assets: six platform archives, `SHA256SUMS` covering those archives, and a standalone `install.sh`. The installer always verifies archives but is not itself listed in `SHA256SUMS`.
 - 首发目标为 macOS ARM64/x64、Linux ARM64/x64、Windows ARM64/x64。/ Targets are macOS ARM64/x64, Linux ARM64/x64, and Windows ARM64/x64.
 - 每个目标在对应原生 OS/架构上编译并执行，不能使用未运行验证的交叉产物。/ Every target is compiled and executed on its native OS/architecture; unexecuted cross-compiled assets are not allowed.
@@ -151,13 +151,13 @@ grep '<archive-name>$' SHA256SUMS | shasum -a 256 -c -
 grep '<archive-name>$' SHA256SUMS | sha256sum -c -
 
 tar -xzf <archive-name>
-./claude-code --version
-./claude-code --help
+./flash --version
+./flash --help
 ```
 
-Windows 使用 `tar -xf <archive-name>` 和 `.\claude-code.exe --version`、`.\claude-code.exe --help`，并使用 `Get-FileHash -Algorithm SHA256` 对比 `SHA256SUMS`。
+Windows 使用 `tar -xf <archive-name>` 和 `.\flash.exe --version`、`.\flash.exe --help`，并使用 `Get-FileHash -Algorithm SHA256` 对比 `SHA256SUMS`。
 
-On Windows, extract with `tar -xf <archive-name>`, run `.\claude-code.exe --version` and `.\claude-code.exe --help`, and compare `Get-FileHash -Algorithm SHA256` against `SHA256SUMS`.
+On Windows, extract with `tar -xf <archive-name>`, run `.\flash.exe --version` and `.\flash.exe --help`, and compare `Get-FileHash -Algorithm SHA256` against `SHA256SUMS`.
 
 在 macOS/Linux 上还要用隔离的 `HOME` 和 `TMPDIR` 执行真实安装器，以验证 latest 重定向、安装器资产、归档校验、默认路径安装和清理；只声明实际运行过的平台：
 
@@ -173,8 +173,8 @@ mkdir -p "$install_check/home" "$install_check/tmp"
   curl -fsSL https://github.com/wencaiwulue/flash/releases/latest/download/install.sh -o "$installer"
   HOME="$install_check/home" TMPDIR="$install_check/tmp" sh "$installer"
 )
-"$install_check/home/.local/bin/claude-code" --version
-"$install_check/home/.local/bin/claude-code" --help
+"$install_check/home/.local/bin/flash" --version
+"$install_check/home/.local/bin/flash" --help
 test -z "$(find "$install_check/tmp" -mindepth 1 -print -quit)"
 rm -rf "$install_check"
 ```

@@ -9,7 +9,7 @@ export function parseConnectUrl(input: string): ParsedConnectUrl {
   try {
     url = new URL(input)
   } catch {
-    throw new Error('Invalid Claude Code connect URL')
+    throw new Error('Invalid flash connect URL')
   }
 
   if (url.protocol !== 'cc:' && url.protocol !== 'cc+unix:') {

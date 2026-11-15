@@ -142,11 +142,11 @@ export function MCPRemoteServerMenu({
         onComplete?.(`Authentication successful. Connected to ${server.name}.`)
       } else if (result.client.type === 'needs-auth') {
         onComplete?.(
-          'Authentication successful, but server still requires authentication. You may need to manually restart Claude Code.',
+          'Authentication successful, but server still requires authentication. You may need to manually restart flash.',
         )
       } else {
         onComplete?.(
-          'Authentication successful, but server reconnection failed. You may need to manually restart Claude Code for the changes to take effect.',
+          'Authentication successful, but server reconnection failed. You may need to manually restart flash for the changes to take effect.',
         )
       }
     } catch (err) {
@@ -392,13 +392,13 @@ export function MCPRemoteServerMenu({
           onComplete?.(message)
         } else if (result.client.type === 'needs-auth') {
           onComplete?.(
-            'Authentication successful, but server still requires authentication. You may need to manually restart Claude Code.',
+            'Authentication successful, but server still requires authentication. You may need to manually restart flash.',
           )
         } else {
           // result.client.type === 'failed'
           logMCPDebug(server.name, `Reconnection failed after authentication`)
           onComplete?.(
-            'Authentication successful, but server reconnection failed. You may need to manually restart Claude Code for the changes to take effect.',
+            'Authentication successful, but server reconnection failed. You may need to manually restart flash for the changes to take effect.',
           )
         }
       }

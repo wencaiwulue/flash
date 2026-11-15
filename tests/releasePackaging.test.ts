@@ -106,12 +106,12 @@ describe('release documentation', () => {
     const english = await readReleaseDocument('README.md')
     const chinese = await readReleaseDocument('README.zh-CN.md')
     expect(english.split('\n').slice(0, 3)).toEqual([
-      '# Claude Code',
+      '# flash',
       '',
       englishSelector,
     ])
     expect(chinese.split('\n').slice(0, 3)).toEqual([
-      '# Claude Code',
+      '# flash',
       '',
       chineseSelector,
     ])
@@ -203,22 +203,22 @@ describe('release target metadata', () => {
     const archives = targets.map(target => getArchiveName(target, '1.2.3'))
     expect(new Set(archives).size).toBe(6)
     expect(getArchiveName('bun-darwin-arm64', '1.2.3')).toBe(
-      'claude-code-v1.2.3-darwin-arm64.tar.gz',
+      'flash-v1.2.3-darwin-arm64.tar.gz',
     )
     expect(getArchiveName('bun-windows-arm64', '1.2.3')).toBe(
-      'claude-code-v1.2.3-win32-arm64.zip',
+      'flash-v1.2.3-win32-arm64.zip',
     )
-    expect(getBinaryName('bun-windows-x64')).toBe('claude-code.exe')
-    expect(getBinaryName('bun-linux-x64')).toBe('claude-code')
+    expect(getBinaryName('bun-windows-x64')).toBe('flash.exe')
+    expect(getBinaryName('bun-linux-x64')).toBe('flash')
   })
 
   test('forces local archive paths for Windows drive letters', () => {
-    const archivePath = 'C:\\a\\flash\\claude-code-v1.0.0-win32-x64.zip'
+    const archivePath = 'C:\\a\\flash\\flash-v1.0.0-win32-x64.zip'
     expect(
       getArchiveCreationCommand(
         'bun-windows-x64',
         archivePath,
-        'claude-code.exe',
+        'flash.exe',
       ),
     ).toEqual([
       'tar',
@@ -226,7 +226,7 @@ describe('release target metadata', () => {
       '-a',
       '-cf',
       archivePath,
-      'claude-code.exe',
+      'flash.exe',
       'README.md',
       'README.zh-CN.md',
     ])
@@ -239,23 +239,23 @@ describe('release target metadata', () => {
     expect(
       getArchiveCreationCommand(
         'bun-darwin-arm64',
-        '/tmp/claude-code.tar.gz',
-        'claude-code',
+        '/tmp/flash.tar.gz',
+        'flash',
       ),
     ).toEqual([
       'tar',
       '-czf',
-      '/tmp/claude-code.tar.gz',
-      'claude-code',
+      '/tmp/flash.tar.gz',
+      'flash',
       'README.md',
       'README.zh-CN.md',
     ])
     expect(
       getArchiveExtractionCommand(
         'bun-darwin-arm64',
-        '/tmp/claude-code.tar.gz',
+        '/tmp/flash.tar.gz',
       ),
-    ).toEqual(['tar', '-xf', '/tmp/claude-code.tar.gz'])
+    ).toEqual(['tar', '-xf', '/tmp/flash.tar.gz'])
   })
 
   test('rejects unsupported and non-native targets', () => {

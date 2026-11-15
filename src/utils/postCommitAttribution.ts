@@ -27,7 +27,7 @@ import { gitExe } from './git.js'
 import { lock } from './lockfile.js'
 import { jsonParse, jsonStringify } from './slowOperations.js'
 
-const MANAGED_MARKER = '# Claude Code managed prepare-commit-msg dispatcher v1'
+const MANAGED_MARKER = '# flash managed prepare-commit-msg dispatcher v1'
 const USER_HOOK_SUFFIX = '.claude-user'
 const INTERNAL_FLAG = '--internal-prepare-commit-msg-attribution'
 
@@ -108,7 +108,7 @@ fi
 ${shellQuote(executable)} ${shellQuote(cliPath)} ${INTERNAL_FLAG} ${shellQuote(resolve(worktreePath))} "$1"
 status=$?
 if [ "$status" -ne 0 ]; then
-  printf '%s\n' 'Claude Code attribution was unavailable; continuing commit.' >&2
+  printf '%s\n' 'flash attribution was unavailable; continuing commit.' >&2
 fi
 exit 0
 `

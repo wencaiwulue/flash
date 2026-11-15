@@ -1,8 +1,8 @@
 /**
- * Environment variable type declarations for the Claude Code project.
+ * Environment variable type declarations for the flash project.
  *
  * This file augments the global NodeJS/Bun process.env types with the
- * environment variables used throughout Claude Code.
+ * environment variables used throughout flash.
  */
 
 declare namespace NodeJS {

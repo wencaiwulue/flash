@@ -26,7 +26,7 @@ function listScenarios(): string {
 
 export function formatMockLimitsResult(args: string): string {
   if (!isMockLimitsEnabled()) {
-    return 'Mock limits are disabled. Set CLAUDE_CODE_ENABLE_MOCK_LIMITS=1 before starting Claude Code.'
+    return 'Mock limits are disabled. Set CLAUDE_CODE_ENABLE_MOCK_LIMITS=1 before starting flash.'
   }
 
   const tokens = args.trim().split(/\s+/).filter(Boolean)

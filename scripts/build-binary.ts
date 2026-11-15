@@ -68,8 +68,8 @@ export function assertNativeTarget(
 
 export function getBinaryName(target: ReleaseTarget): string {
   return RELEASE_TARGETS[target].platform === 'win32'
-    ? 'claude-code.exe'
-    : 'claude-code'
+    ? 'flash.exe'
+    : 'flash'
 }
 
 export function getArchiveName(
@@ -78,7 +78,7 @@ export function getArchiveName(
 ): string {
   const { platform, arch } = RELEASE_TARGETS[target]
   const extension = platform === 'win32' ? 'zip' : 'tar.gz'
-  return `claude-code-v${version}-${platform}-${arch}.${extension}`
+  return `flash-v${version}-${platform}-${arch}.${extension}`
 }
 
 export function getArchiveCreationCommand(
@@ -219,7 +219,7 @@ function smokeTestBinary(
 ): void {
   const version = spawn([binaryPath, '--version'], { env })
   assertCommandSucceeded(version, `${binaryPath} --version`)
-  const expectedVersion = `${packageJson.version} (Claude Code)`
+  const expectedVersion = `${packageJson.version} (flash)`
   if (version.stdout.toString().trim() !== expectedVersion) {
     throw new Error(
       `Unexpected binary version: ${version.stdout.toString().trim()}; expected ${expectedVersion}`,
@@ -281,7 +281,7 @@ async function buildBinary(
     await chmod(binaryPath, 0o755)
   }
 
-  const isolatedHome = await mkdtemp(join(tmpdir(), 'claude-code-binary-home-'))
+  const isolatedHome = await mkdtemp(join(tmpdir(), 'flash-binary-home-'))
   const env = {
     ...process.env,
     HOME: isolatedHome,
