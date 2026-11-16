@@ -87,7 +87,10 @@ export class WorkflowExecution {
       for (const step of this.workflow.steps) {
         if (!step.dependsOn.includes(id)) continue
         const dependent = this.state.agents[step.id]
-        if (dependent?.status === 'skipped') {
+        if (
+          dependent?.status === 'skipped' &&
+          dependent.error === 'Skipped because a dependency did not complete'
+        ) {
           this.state.agents[step.id] = { status: 'pending' }
           resetDependents(step.id)
         }
