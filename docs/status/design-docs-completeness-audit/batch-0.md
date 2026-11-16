@@ -144,8 +144,8 @@ N/A（该子系统是本仓库自定义的文档管理工具，无上游对应�
 #### 发现汇总
 | ID | 类别 | 严重度 | 问题 | 证据 |
 |----|------|--------|------|------|
-| P001 | 测试缺口 | P2 | plugins 子系统缺少完整的集成测试来验证端到端加载流程 | coverage 列出了 tests/npmMarketplace.test.ts，但缺少集成测试验证完整 loadAllPlugins 流程 |
-| P002 | 证据不足 | P3 | Spec 7.0 章节有表结构但测试场景说明极少（多数标注"无直接测试"） | 7.0 有设计声明映射，但测试覆盖说明不足 |
+| B0-plugins-01 | 测试缺口 | P2 | plugins 子系统缺少完整的集成测试来验证端到端加载流程 | coverage 列出了 tests/npmMarketplace.test.ts，但缺少集成测试验证完整 loadAllPlugins 流程 |
+| B0-plugins-02 | 证据不足 | P3 | Spec 7.0 章节有表结构但测试场景说明极少（多数标注"无直接测试"） | 7.0 有设计声明映射，但测试覆盖说明不足 |
 
 #### 完成判定
 ✅ **文档完整** | ✅ **实现一致** | ⚠️ **部分上游一致**（核心逻辑一致，live 需验证） | ⚠️ **验证部分充分**（有测试，缺少端到端集成）
@@ -242,7 +242,7 @@ N/A（该子系统是本仓库自定义的文档管理工具，无上游对应�
 #### 发现汇总
 | ID | 类别 | 严重度 | 问题 | 证据 |
 |----|------|--------|------|------|
-| Q001 | 测试缺口 | P2 | query-core 缺少完整的端到端测试验证持久化、恢复、compact 边界等关键流程 | 测试存在但缺少完整端到端集成场景 |
+| B0-query-core-01 | 测试缺口 | P2 | query-core 缺少完整的端到端测试验证持久化、恢复、compact 边界等关键流程 | 测试存在但缺少完整端到端集成场景 |
 
 #### 完成判定
 ✅ **文档完整** | ✅ **实现一致** | ⚠️ **部分上游一致** | ⚠️ **验证部分充分**
@@ -339,7 +339,7 @@ N/A（该子系统是本仓库自定义的文档管理工具，无上游对应�
 #### 发现汇总
 | ID | 类别 | 严重度 | 问题 | 证据 |
 |----|------|--------|------|------|
-| S001 | 测试缺口 | P3 | sdkEventQueue 有完整实现但无测试；sdkHeapDumpMonitor 仅存根且无测试 | coverage 分组包含，sdkEventQueue 有完整实现，sdkHeapDumpMonitor 为占位符 |
+| B0-sdk-query-sessions-01 | 测试缺口 | P3 | sdkEventQueue 有完整实现但无测试；sdkHeapDumpMonitor 仅存根且无测试 | coverage 分组包含，sdkEventQueue 有完整实现，sdkHeapDumpMonitor 为占位符 |
 
 #### 完成判定
 ✅ **文档完整** | ✅ **实现一致** | ⚠️ **部分上游一致** | ✅ **验证充分**（核心模块测试覆盖良好）
@@ -419,7 +419,7 @@ N/A（该子系统是内部工具，无上游对应）
 #### 发现汇总
 | ID | 类别 | 严重度 | 问题 | 证据 |
 |----|------|--------|------|------|
-| T001 | 测试缺口 | P3 | 缺少测试验证生成类型与 Zod schema 的类型兼容性（确保类型同步） | 当前测试仅验证生成文件存在和包含声明，不验证类型与 runtime schema 兼容 |
+| B0-sdk-type-generation-01 | 测试缺口 | P3 | 缺少测试验证生成类型与 Zod schema 的类型兼容性（确保类型同步） | 当前测试仅验证生成文件存在和包含声明，不验证类型与 runtime schema 兼容 |
 
 #### 完成判定
 ✅ **文档完整** | ✅ **实现一致** | N/A **上游一致** | ✅ **验证充分**（核心测试覆盖完整）
@@ -459,11 +459,11 @@ N/A（该子系统是内部工具，无上游对应）
 
 | ID | 主责 | 关联 | 类别 | 严重度 | 问题陈述 | 源码证据 | 上游证据 | 测试证据 | 影响 | 修订建议 | 置信度 | 验证边界 | 状态 |
 |----|------|------|------|--------|----------|----------|----------|----------|------|----------|--------|----------|
-| P001 | plugins | — | 测试缺口 | P2 | plugins 缺少端到端集成测试验证完整 loadAllPlugins 流程 | coverage 列出但无集成测试 | N/A | tests/npmMarketplace.test.ts 存在 | 覆盖完整性 | 添加集成测试覆盖市场源解析、插件加载、依赖解析、错误隔离的完整流程 | 已证实 | 不影响现有功能 | open |
-| P002 | plugins | — | 证据不足 | P3 | 7.0 章节有表结构但测试场景说明极少（多数标注"无直接测试"） | docs/superpowers/specs/2026-11-12-plugins-design.md §7 | N/A | 同 P001 | 可读性与可维护性 | 为每个测试添加"验证的不变量"说明 | 已证实 | 不影响功能 | open |
-| Q001 | query-core | sdk-query-sessions | 测试缺口 | P2 | query-core 缺少端到端测试验证持久化、恢复、compact 边界等关键流程 | coverage 列出但无端到端集成测试 | N/A | 测试存在但缺少端到端场景 | 覆盖完整性 | 添加多轮次、持久化、恢复、compact 边界等集成测试 | 已证实 | 不影响功能 | open |
-| S001 | sdk-query-sessions | — | 测试缺口 | P3 | sdkEventQueue 有完整实现但无测试；sdkHeapDumpMonitor 仅存根且无测试 | src/utils/sdkEventQueue.ts, src/utils/sdkHeapDumpMonitor.ts | N/A | 无测试 | 低（sdkEventQueue 功能受限至非交互模式） | 为 sdkEventQueue 添加测试；完善或移除 sdkHeapDumpMonitor 占位符 | 已证实 | sdkEventQueue 仅在非交互模式运行 | open |
-| T001 | sdk-type-generation | — | 测试缺口 | P3 | 缺少测试验证生成类型与 Zod schema 的兼容性 | tests/sdkTypeGeneration.test.ts 仅验证存在性 | N/A | 测试不验证类型兼容性 | 低（类型错误会在编译期发现） | 添加类型兼容性测试，确保 z.infer 与实际 schema 一致 | 设计推断 | TypeScript 编译已提供一定保证 | open |
+| B0-plugins-01 | plugins | — | 测试缺口 | P2 | plugins 缺少端到端集成测试验证完整 loadAllPlugins 流程 | coverage 列出但无集成测试 | N/A | tests/npmMarketplace.test.ts 存在 | 覆盖完整性 | 添加集成测试覆盖市场源解析、插件加载、依赖解析、错误隔离的完整流程 | 已证实 | 不影响现有功能 | open |
+| B0-plugins-02 | plugins | — | 证据不足 | P3 | 7.0 章节有表结构但测试场景说明极少（多数标注"无直接测试"） | docs/superpowers/specs/2026-11-12-plugins-design.md §7 | N/A | 同 B0-plugins-01 | 可读性与可维护性 | 为每个测试添加"验证的不变量"说明 | 已证实 | 不影响功能 | open |
+| B0-query-core-01 | query-core | sdk-query-sessions | 测试缺口 | P2 | query-core 缺少端到端测试验证持久化、恢复、compact 边界等关键流程 | coverage 列出但无端到端集成测试 | N/A | 测试存在但缺少端到端场景 | 覆盖完整性 | 添加多轮次、持久化、恢复、compact 边界等集成测试 | 已证实 | 不影响功能 | open |
+| B0-sdk-query-sessions-01 | sdk-query-sessions | — | 测试缺口 | P3 | sdkEventQueue 有完整实现但无测试；sdkHeapDumpMonitor 仅存根且无测试 | src/utils/sdkEventQueue.ts, src/utils/sdkHeapDumpMonitor.ts | N/A | 无测试 | 低（sdkEventQueue 功能受限至非交互模式） | 为 sdkEventQueue 添加测试；完善或移除 sdkHeapDumpMonitor 占位符 | 已证实 | sdkEventQueue 仅在非交互模式运行 | open |
+| B0-sdk-type-generation-01 | sdk-type-generation | — | 测试缺口 | P3 | 缺少测试验证生成类型与 Zod schema 的兼容性 | tests/sdkTypeGeneration.test.ts 仅验证存在性 | N/A | 测试不验证类型兼容性 | 低（类型错误会在编译期发现） | 添加类型兼容性测试，确保 z.infer 与实际 schema 一致 | 设计推断 | TypeScript 编译已提供一定保证 | open |
 
 ---
 
@@ -537,8 +537,8 @@ N/A（该子系统是内部工具，无上游对应）
 本文档中所有发现均经过 adversarial review 独立复核：
 - 移除了 D001（documentation-system 7.0 章节问题）：该章节实际包含完整的测试场景说明
 - 移除了 Q002（query-core 7.0 章节问题）：该章节实际包含详细的测试场景与不变量说明
-- 降级了 P002 从 P2 到 P3：plugins 7.0 章节有表结构但测试场景说明较少
-- 修正了 S001：sdkEventQueue 实际有完整实现（非存根），仅 sdkHeapDumpMonitor 是存根；两者均无测试
+- 降级了 B0-plugins-02 从 P2 到 P3：plugins 7.0 章节有表结构但测试场景说明较少
+- 修正了 B0-sdk-query-sessions-01：sdkEventQueue 实际有完整实现（非存根），仅 sdkHeapDumpMonitor 是存根；两者均无测试
 - 所有保留的发现均有可定位的源码/文档证据
 
 ### 审查命令执行记录
