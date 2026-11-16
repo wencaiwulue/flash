@@ -431,15 +431,15 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 - debounce 300ms 合并变更事件，避免频繁重载
 - 文件稳定等待：1000ms 稳定阈值，500ms 轮询 ✅
 
-**发现 B3-skills-01**：条件技能激活后无失效机制，activatedConditionalSkillNames 跨缓存持久但无失效策略，可能长期保留不再相关的技能。严重度：P0（按 spec 分类为高优先级改进），置信度：已证实（src/skills/loadSkillsDir.ts:829）。
+**发现 B3-skills-01**：条件技能激活后无失效机制，activatedConditionalSkillNames 跨缓存持久但无失效策略，可能长期保留不再相关的技能。严重度：P2（功能/体验改进），置信度：已证实（src/skills/loadSkillsDir.ts:829）。
 
-**发现 B3-skills-02**：远程技能缓存无限增长，无清理策略，用户长期使用可能占用大量磁盘空间。严重度：P2（按 spec 分类为中优先级改进），置信度：已证实（src/services/skillSearch/remoteSkillLoader.ts:96）。
+**发现 B3-skills-02**：远程技能缓存无限增长，无清理策略，用户长期使用可能占用大量磁盘空间。严重度：P2（功能/体验改进），置信度：已证实（src/services/skillSearch/remoteSkillLoader.ts:96）。
 
-**发现 B3-skills-03**：条件技能加载/激活失败路径不明确，parseSkillPaths 失败等情况可能无声跳过，缺少可观测性。严重度：P0（按 spec 分类为高优先级改进），置信度：已证实（基于代码审查）。
+**发现 B3-skills-03**：条件技能加载/激活失败路径不明确，parseSkillPaths 失败等情况可能无声跳过，缺少可观测性。严重度：P3（可观测性改进），置信度：已证实（基于代码审查）。
 
-**发现 B3-skills-04**：动态发现的技能目录未启动 chokidar 监听，技能文件变更不会自动重载。严重度：P1（按 spec 分类为中优先级改进），置信度：已证实（src/utils/skills/skillChangeDetector.ts 仅监听启动时已知目录）。
+**发现 B3-skills-04**：动态发现的技能目录未启动 chokidar 监听，技能文件变更不会自动重载。严重度：P2（功能/体验改进），置信度：已证实（src/utils/skills/skillChangeDetector.ts 仅监听启动时已知目录）。
 
-**发现 B3-skills-05**：getSkillDirCommands memoize 仅以 cwd 为键，实际可能有不同 additional dirs/环境变量组合，缓存可能不准确。严重度：P1（按 spec 分类为中优先级改进），置信度：已证实（src/skills/loadSkillsDir.ts:638）。
+**发现 B3-skills-05**：getSkillDirCommands memoize 仅以 cwd 为键，实际可能有不同 additional dirs/环境变量组合，缓存可能不准确。严重度：P3（缓存一致性改进），置信度：已证实（src/skills/loadSkillsDir.ts:638）。
 
 **发现 B3-skills-06**：skills 子系统部分模块无专用测试文件，如 skills-load 核心逻辑无完整测试。严重度：P2（测试缺口），置信度：已证实（tests/ 目录仅有 skillSearch.test.ts 和 remoteSkills.test.ts）。
 
@@ -469,11 +469,11 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 | B3-settings-01 | settings | — | 测试缺口 | P2 | settings 子系统无专用测试文件，14 个 coverage 分组均无对应独立测试 | src/utils/settings/, src/services/remoteManagedSettings/, src/services/policyLimits/, src/services/settingsSync/, src/migrations/ | N/A | ❌ 无测试，仅有 envCommand/envLessPerpetual 间接覆盖 | 中（无回归保护） | 添加 settings 系统完整测试：多来源合并、变更检测、权限规则过滤、远程托管设置安全检查、policy limits 查询 | 已证实 | tests/ 目录扫描确认 | open |
 | B3-settings-02 | settings | — | 灵活性不足 | P3 | internalWrite 窗口是硬编码的 5 秒，无配置选项 | src/utils/settings/changeDetector.ts:46 | N/A | ❌ 无测试 | 低（可配置性不足） | 增加环境变量或设置配置 internalWrite 窗口长度 | 已证实 | 完整源码审查 | open |
 | B3-settings-03 | settings | — | 灵活性不足 | P3 | 删除-重建窗口硬编码 6.5 秒，无配置选项 | src/utils/settings/changeDetector.ts:63-64 | N/A | ❌ 无测试 | 低（可配置性不足） | 增加环境变量或设置配置删除-重建窗口长度 | 已证实 | 完整源码审查 | open |
-| B3-skills-01 | skills | — | 功能缺失 | P0 | 条件技能激活后无失效机制，activatedConditionalSkillNames 跨缓存持久但无失效策略，可能长期保留不再相关的技能 | src/skills/loadSkillsDir.ts:829 | N/A | ❌ 无测试 | 高（技能列表污染） | 增加条件技能失效机制：定期重检 paths 匹配或文件变更时重检，或提供手动清除方式 | 已证实（spec 明确列为高优先级改进） | 完整源码审查 | open |
-| B3-skills-02 | skills | — | 功能缺失 | P2 | 远程技能缓存无限增长，无清理策略，用户长期使用可能占用大量磁盘空间 | src/services/skillSearch/remoteSkillLoader.ts:96 | N/A | ❌ 无测试 | 中（磁盘占用） | 增加缓存大小限制和 LRU 清理，或提供 /skills cache clean 命令 | 已证实（spec 明确列为中优先级改进） | 完整源码审查 | open |
-| B3-skills-03 | skills | — | 可观测性不足 | P0 | 条件技能加载/激活失败路径不明确，parseSkillPaths 失败等情况可能无声跳过，缺少可观测性 | src/skills/loadSkillsDir.ts | N/A | ❌ 无测试 | 高（调试困难） | 增加条件技能加载/激活的可观测性，logForDebugging 详细信息，或提供 /skills status 命令 | 已证实（spec 明确列为高优先级改进） | 完整源码审查 | open |
-| B3-skills-04 | skills | — | 功能缺失 | P1 | 动态发现的技能目录未启动 chokidar 监听，技能文件变更不会自动重载 | src/utils/skills/skillChangeDetector.ts | N/A | ❌ 无测试 | 中（用户体验） | 对动态发现的目录也启动 chokidar 监听，或提供 /skills reload 命令 | 已证实（spec 明确列为中优先级改进） | 完整源码审查 | open |
-| B3-skills-05 | skills | — | 缓存准确性 | P1 | getSkillDirCommands memoize 仅以 cwd 为键，实际可能有不同 additional dirs/环境变量组合，缓存可能不准确 | src/skills/loadSkillsDir.ts:638 | N/A | ❌ 无测试 | 中（缓存一致性） | 更精确的 memoize 键，包含所有影响结果的参数 | 已证实（spec 明确列为中优先级改进） | 完整源码审查 | open |
+| B3-skills-01 | skills | — | 功能缺失 | P2 | 条件技能激活后无失效机制，activatedConditionalSkillNames 跨缓存持久但无失效策略，可能长期保留不再相关的技能 | src/skills/loadSkillsDir.ts:829 | N/A | ❌ 无测试 | 中（技能列表污染） | 增加条件技能失效机制：定期重检 paths 匹配或文件变更时重检，或提供手动清除方式 | 已证实 | 完整源码审查 | open |
+| B3-skills-02 | skills | — | 功能缺失 | P2 | 远程技能缓存无限增长，无清理策略，用户长期使用可能占用大量磁盘空间 | src/services/skillSearch/remoteSkillLoader.ts:96 | N/A | ❌ 无测试 | 中（磁盘占用） | 增加缓存大小限制和 LRU 清理，或提供 /skills cache clean 命令 | 已证实 | 完整源码审查 | open |
+| B3-skills-03 | skills | — | 可观测性不足 | P3 | 条件技能加载/激活失败路径不明确，parseSkillPaths 失败等情况可能无声跳过，缺少可观测性 | src/skills/loadSkillsDir.ts | N/A | ❌ 无测试 | 低（调试困难） | 增加条件技能加载/激活的可观测性，logForDebugging 详细信息，或提供 /skills status 命令 | 已证实 | 完整源码审查 | open |
+| B3-skills-04 | skills | — | 功能缺失 | P2 | 动态发现的技能目录未启动 chokidar 监听，技能文件变更不会自动重载 | src/utils/skills/skillChangeDetector.ts | N/A | ❌ 无测试 | 中（用户体验） | 对动态发现的目录也启动 chokidar 监听，或提供 /skills reload 命令 | 已证实 | 完整源码审查 | open |
+| B3-skills-05 | skills | — | 缓存准确性 | P3 | getSkillDirCommands memoize 仅以 cwd 为键，实际可能有不同 additional dirs/环境变量组合，缓存可能不准确 | src/skills/loadSkillsDir.ts:638 | N/A | ❌ 无测试 | 低（缓存一致性） | 更精确的 memoize 键，包含所有影响结果的参数 | 已证实 | 完整源码审查 | open |
 | B3-skills-06 | skills | — | 测试缺口 | P2 | skills 子系统部分模块无专用测试文件，如 skills-load 核心逻辑无完整测试 | src/skills/, src/tools/SkillTool/, src/utils/skills/ | N/A | ❌ 无完整测试，仅有 skillSearch/remoteSkills 测试 | 中（无回归保护） | 添加 skills 系统完整测试：加载去重、条件激活、动态发现、fork/inline 执行、变更监听 | 已证实 | tests/ 目录扫描确认 | open |
 
 ---
@@ -567,10 +567,10 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 | 完整文档 | 3 |
 | 实现一致 | 3 |
 | 发现总数 | 15 |
-| P0 | 2 |
-| P1 | 2 |
-| P2 | 5 |
-| P3 | 6 |
+| P0 | 0 |
+| P1 | 0 |
+| P2 | 7 |
+| P3 | 8 |
 
 ### 发现分类
 
@@ -579,9 +579,10 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 | 安全边界 | 3 |
 | 测试缺口 | 4 |
 | 契约缺口 | 1 |
-| 功能缺失 | 4 |
+| 功能缺失 | 3 |
 | 可观测性不足 | 1 |
 | 灵活性不足 | 2 |
+| 缓存一致性 | 1 |
 
 ### memory 生命周期证据链确认
 
