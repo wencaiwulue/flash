@@ -7,7 +7,7 @@
 | 基线 commit | 6fbe8f8 | 审查的基础提交 |
 | 上游 CLI | N/A | /opt/homebrew/bin/claude 不存在（仅二进制残片）|
 | 官方文档索引 | N/A | 无实时访问，基于现有 spec/contracts |
-| 审查范围 | attachments、bridge | 仅两个子系统，完整语义审查，非仅结构 |
+| 审查范围 | attachments、bridge、buddy、computer-use | 四个子系统，完整语义审查，非仅结构 |
 
 ### 启动状态 RED ✅
 
@@ -205,6 +205,158 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 
 ---
 
+### buddy
+
+| 项目 | 状态 | 说明 |
+|------|------|------|
+| Spec 存在 | ✅ | `docs/superpowers/specs/2026-11-12-buddy-design.md` |
+| Coverage 存在 | ✅ | `docs/architecture/coverage/buddy.yaml` |
+| Manifest 注册 | ✅ | id: buddy, batch: 2, status: draft |
+| Coverage 覆盖分组 | 3/3 | additional-files, commands, buddy-core |
+
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了精灵外观由 userId 确定性派生、Buddy 是主对话外的观察者、同时最多一个 observer 调用、UI 适应宽窄终端、功能受 BUDDY feature gate 和上线窗口控制等核心问题与约束。
+
+✅ **设计理由与备选方案**：7 项关键决策表格化展示，包含真实证据位置：
+- 数据分离（骨骼重算 + 灵魂持久化）
+- 并发控制（inFlight 单飞标志）
+- 边界划分（气泡单独发言）
+- 预告窗口（本地时间 4/1-7）
+- 布局阈值（100 列切换）
+- 角色分离（明确 "You're not X"）
+- 响应解析（宽松提取 + 长度限制）
+
+证据位置标注准确：`src/buddy/companion.ts`、`src/buddy/companionObserver.ts`、`src/buddy/types.ts`、`src/buddy/useBuddyNotification.tsx` 等。
+
+✅ **目标与非目标**：清晰界定了不把 Buddy 作为 Agent Swarm worker、不在主消息流插入 Buddy 评论、不提供跨设备灵魂同步等非目标。
+
+✅ **架构、模块与数据流**：
+- 6 个模块设计卡：孵化/生命周期、fork/side question、companion_intro/reaction、muted/bubble、UI 双模式与动画、预告期子模块
+- 每个模块包含真实入口签名、关键类型、状态与附件、创建流程、交互与关闭流程、错误与 Feature 门控、设计取舍与备选
+- 工程取舍明确说明骨骼永不持久化的原因
+
+**发现 B2-buddy-01**：spec 完整列出所有模块设计，但多数标注"无直接测试"，仅 `tests/buddyFork.test.ts` 覆盖部分功能。
+
+#### 源码验证
+
+读取并验证了以下文件：
+- `src/buddy/companion.ts:1-134`：骨骼派生、roll 函数确定性、骨骼永不持久化、rollCache 优化等与 spec 一致
+- `src/buddy/companionObserver.ts:1-117`：inFlight 并发控制、宽松 JSON 解析、sideQuestion 调用、软失败、灵魂持久化等与 spec 一致
+- `src/buddy/types.ts`：CompanionBones/CompanionSoul/StoredCompanion 类型分离与 spec 一致
+- `src/buddy/useBuddyNotification.tsx`：预告窗口本地时间 4/1-7、isBuddyLive 等与 spec 一致
+- `src/commands/buddy/index.ts`：mute/unmute/status/pet 命令与 spec 一致
+
+**发现 B2-buddy-02**：源码中 `fireCompanionObserver` 确实实现了 inFlight 单飞标志、软降级仅记录 debug 日志、finally 释放 inFlight 等，但预告通知与完整功能的窗口分离需进一步验证。
+
+#### 外部契约验证
+
+检查相关 external stubs 契约：
+- 无直接针对 buddy 的独立 contract
+- 依赖 `companion_intro` attachment 类型，在 attachments 子系统中定义
+- 无公开 live 环境验证
+
+#### 测试验证
+
+检查 coverage 中提及的测试文件：
+- `tests/buddyFork.test.ts:1-137`：✅ 覆盖 roll() 确定性、parseCompanionObserverResponse() 解析、孵化持久化流程
+- ❌ 无测试覆盖 UI 双模式切换、气泡超时淡出、抚摸动画、预告通知窗口、静音行为
+
+**发现 B2-buddy-03**：buddy 子系统有部分测试覆盖，但 UI 交互、预告窗口、静音行为等关键路径无针对性测试。
+
+#### 证据边界总结
+
+| 类别 | 覆盖 | 缺口 |
+|------|------|------|
+| Spec 完整性 | ✅ 完整，7 项决策，6 个模块设计卡 | ⚠️ 部分测试证据不足 |
+| 源码一致性 | ✅ 核心逻辑与 spec 一致 | ⚠️ 预告通知与完整功能窗口分离需验证 |
+| 测试覆盖 | ⚠️ 部分覆盖（孵化、解析、roll 确定性） | ⚠️ UI 交互、预告窗口、静音行为无测试 |
+| 官方文档 | ❌ 无实时访问 | ⚠️ 基于现有 spec |
+| 上游 CLI | ❌ 不存在 | ⚠️ 无 strings 证据 |
+| 外部契约 | ❌ 无独立 contract | ⚠️ 依赖 attachments 子系统 |
+
+---
+
+### computer-use
+
+| 项目 | 状态 | 说明 |
+|------|------|------|
+| Spec 存在 | ✅ | `docs/superpowers/specs/2026-11-12-computer-use-design.md` |
+| Coverage 存在 | ✅ | `docs/architecture/coverage/computer-use.yaml` |
+| Manifest 注册 | ✅ | id: computer-use, batch: 2, status: draft |
+| Coverage 覆盖分组 | 2/2 | additional-files, default-source, default-test |
+
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了同一主机不能由多个会话并发控制、截图/输入/剪贴板/系统组合键不同隐私边界、Native Adapter vs Zavora MCP 双后端、坐标保留显示器原点、回合结束恢复隐藏应用等核心问题与约束。
+
+✅ **设计理由与备选方案**：5 项关键决策表格化展示，包含真实证据位置：
+- 双后端架构（Native vs Zavora）
+- 文件锁而非内存锁
+- 终端作为 Surrogate Host
+- JSON Lines 协议
+- drainRunLoop 包装
+
+证据位置标注准确：`src/utils/computerUse/computerUseLock.ts`、`src/utils/computerUse/nativeHelper.ts`、`src/utils/computerUse/drainRunLoop.ts`、`src/utils/computerUse/executor.ts`、`src/utils/computerUse/cleanup.ts` 等。
+
+✅ **目标与非目标**：清晰界定了不实现 Swift/Rust 内部算法、不允许多会话同时控制桌面、不将应用白名单等同于截图安全保证等非目标。
+
+✅ **架构、模块与数据流**：
+- 9 个模块设计卡：后端抽象模块、执行器模块、Native Helper 通信模块、drainRunLoop 模块、文件锁模块、ESC 热键模块、应用隐藏与显示解析模块、权限隐私模块、回合清理模块
+- 每个模块包含真实入口签名、关键类型、状态与附件、创建流程、交互与关闭流程、错误与安全、设计取舍与备选
+- 工程取舍明确说明三调用点归一、零 syscall 预检、动态 import、各步骤隔离等
+
+**发现 B2-computer-use-01**：spec 完整列出所有模块设计，但部分标注"需独立桌面环境验收"，真实 TCC 权限、窗口隐藏、ESC 热键等无法仅由 mock 测试证明。
+
+#### 源码验证
+
+读取并验证了以下文件：
+- `src/utils/computerUse/computerUseLock.ts:1-216`：O_EXCL 原子创建、PID 存活探测、零 syscall isLockHeldLocally、stale 锁恢复、注册 shutdown cleanup 等与 spec 一致
+- `src/utils/computerUse/nativeHelper.ts`：JSON Lines 协议、超时与 AbortSignal、stderr 静默消费、事件监听等与 spec 一致
+- `src/utils/computerUse/drainRunLoop.ts`：1ms setInterval、pending 计数器、30s 超时、孤儿 Promise catch 等与 spec 一致
+- `src/utils/computerUse/executor.ts`：坐标转换、Surrogate Host、prepareForAction、unhideComputerUseApps、键修饰器/拖拽释放等与 spec 一致
+- `src/utils/computerUse/cleanup.ts`：三调用点、unhide 5s 超时、各步骤隔离等与 spec 一致
+- `src/utils/computerUse/escHotkey.ts`：CGEventTap 全局消费 ESC、notifyExpectedEscape 豁免窗口等与 spec 一致
+- `src/external-stubs/computer-use-types.ts`：精确 bundleId 匹配、CuGrantFlags、CuSubGates 等与 spec 一致
+
+**发现 B2-computer-use-02**：源码中 `cleanupComputerUseAfterTurn` 确实实现了三调用点归一、unhide 5s 超时、各步骤隔离，但 unhide 超时后 Swift 端是否继续后台运行需进一步验证。
+
+#### 外部契约验证
+
+检查相关 external stubs 契约：
+- `docs/external-stubs/contracts/computer-use-backends.md`：✅ 双后端抽象契约与源码一致
+- `src/external-stubs/computer-use-types.ts`：✅ 类型契约与源码一致
+- `src/external-stubs/computer-use-native.ts`：✅ Native 契约与源码一致
+- `src/external-stubs/computer-use-mcp.ts`：✅ Zavora MCP 契约与源码一致
+- `src/external-stubs/computer-use-sentinel-apps.ts`：✅ Sentinel apps 目录与 spec 一致
+- 无公开 live 环境验证
+
+**发现 B2-computer-use-03**：computer-use 外部 stub 契约完整，与源码对齐，但 Swift/Rust 内部实现不在 TypeScript 层覆盖。
+
+#### 测试验证
+
+检查 coverage 中提及的测试文件：
+- `tests/computerUseBackends.test.ts:1-384`：✅ 覆盖 Native/Zavora 工厂、显示原点、全部 TCC 组合、精确授权、独立剪贴板/组合键门控、截图元数据、Abort 边界、sentinel catalog、targetImageSize 等
+- `tests/computerUseExecutor.test.ts`：✅ 覆盖 holdKey 部分失败、逆序释放、拖拽失败释放、键修饰器清理、并发 capture 等
+- `tests/computerUseNativeHelper.test.ts`：✅ 覆盖 JSON Lines 协议、事件监听、超时与 AbortSignal 等
+- `tests/computerUseWrapper.test.ts`：✅ 覆盖结果转换等
+- ❌ 无真实桌面环境测试：TCC 权限弹窗、窗口隐藏/显示、ESC 热键真实拦截、多显示器坐标、剪贴板恢复等
+
+**发现 B2-computer-use-04**：computer-use 子系统有良好的 mock 测试覆盖，但真实桌面环境验收缺失，关键路径（TCC、窗口隐藏、ESC）无法仅由 mock 测试证明。
+
+#### 证据边界总结
+
+| 类别 | 覆盖 | 缺口 |
+|------|------|------|
+| Spec 完整性 | ✅ 完整，5 项决策，9 个模块设计卡 | ⚠️ 真实桌面环境验收缺失 |
+| 源码一致性 | ✅ 核心逻辑与 spec 一致 | ⚠️ Swift/Rust 内部实现不在 TypeScript 层 |
+| 测试覆盖 | ⚠️ 良好的 mock 覆盖（TCC、授权、坐标、锁、清理） | ⚠️ 真实桌面环境无测试 |
+| 官方文档 | ❌ 无实时访问 | ⚠️ 基于现有 spec/contracts |
+| 上游 CLI | ❌ 不存在 | ⚠️ 无 strings 证据 |
+| 外部契约 | ✅ computer-use-backends.md、stub types 对齐 | ⚠️ Swift/Rust 内部无 contract |
+
+---
+
 ## 发现登记
 
 | ID | 主责 | 关联 | 类别 | 严重度 | 问题陈述 | 源码证据 | 上游证据 | 测试证据 | 影响 | 修订建议 | 置信度 | 验证边界 | 状态 |
@@ -216,6 +368,13 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 | B2-bridge-02 | bridge | — | 验证缺口 | P3 | spec 描述 shutdown 流程中 stopWork“最多重试 3 次”，但源码中该逻辑需进一步验证 | `src/bridge/bridgeMain.ts:2435-2600+` | N/A | 无 | 低（仅细节） | 验证 stopWork retry 次数与 backoff 配置 | 部分证实 | 需进一步阅读源码 shutdown 逻辑 | open |
 | B2-bridge-03 | bridge | — | 契约缺口 | P3 | bridge 仅 inbound-envelope.md 契约与源码对齐，direct-connect-v1.md、open-runner-v1.md 等仅概念相似，无完整对齐验证 | `src/bridge/bridgeApi.ts`、`src/bridge/workSecret.ts` | N/A | 无 | 低（仅协议对齐） | 完成与相关 contracts 的完整对齐验证 | 部分证实 | 检查 contracts 目录 | open |
 | B2-bridge-04 | bridge | — | 测试缺口 | P2 | bridge 子系统有部分测试覆盖，但关键路径（权限回调超时、token refresh 竞态、容量波动、跨 worktree 扫描边缘情况、clean shutdown 强制 kill、v1→v2 迁移）仍无针对性测试 | `src/bridge/bridgeMain.ts`、`src/bridge/sessionRunner.ts`、`src/bridge/jwtUtils.ts`、`src/bridge/bridgePointer.ts`、`src/bridge/replBridge.ts` | N/A | tests/perpetualBridge.test.ts、tests/daemonBridge.test.ts、tests/peerSessions.test.ts、tests/inboundEnvelope.test.ts 存在但覆盖不全 | 中（关键路径可能有未覆盖边缘情况） | 添加 bridge 关键路径测试文件，覆盖所有主要模块设计卡场景 | 已证实 | 检查 tests/ 目录确认测试覆盖范围 | open |
+| B2-buddy-01 | buddy | — | 测试缺口 | P2 | buddy spec 完整列出所有模块设计，但多数标注"无直接测试"，仅 buddyFork.test.ts 覆盖部分功能 | `docs/superpowers/specs/2026-11-12-buddy-design.md:7` | N/A | tests/buddyFork.test.ts 存在但覆盖不全 | 中（UI 交互、预告窗口、静音行为可能有未覆盖边缘情况） | 添加 buddy 关键路径测试：UI 双模式切换、气泡超时淡出、抚摸动画、预告通知窗口、静音行为 | 已证实 | 仅检查 spec 文档声明 | open |
+| B2-buddy-02 | buddy | — | 验证缺口 | P3 | spec 描述预告通知与完整功能窗口分离，但源码中该逻辑需进一步验证与测试 | `src/buddy/useBuddyNotification.tsx:11-22` | N/A | 无 | 低（仅细节，不影响核心功能） | 验证预告通知与完整功能窗口分离逻辑 | 部分证实 | 需进一步阅读源码与测试 | open |
+| B2-buddy-03 | buddy | — | 测试缺口 | P2 | buddy 子系统有部分测试覆盖，但 UI 交互、预告窗口、静音行为等关键路径无针对性测试 | `src/buddy/CompanionSprite.tsx`、`src/buddy/useBuddyNotification.tsx`、`src/commands/buddy/index.ts` | N/A | tests/buddyFork.test.ts 仅覆盖孵化、解析、roll 确定性 | 中（UI 交互可能有未覆盖边缘情况） | 添加 buddy 完整测试文件，覆盖所有 6 个模块设计卡场景 | 已证实 | 检查 tests/ 目录确认测试覆盖范围 | open |
+| B2-computer-use-01 | computer-use | — | 验收缺口 | P1 | computer-use spec 完整列出所有模块设计，但部分标注"需独立桌面环境验收"，真实 TCC 权限、窗口隐藏、ESC 热键等无法仅由 mock 测试证明 | `docs/superpowers/specs/2026-11-12-computer-use-design.md:7` | N/A | 仅 mock 测试覆盖，无真实桌面环境测试 | 高（核心安全与功能无法仅由 mock 证明） | 建立真实桌面环境验收分层：mock 覆盖协议/权限不变量，单独验证 macOS TCC、窗口隐藏、ESC、剪贴板恢复、多显示器 | 已证实 | 仅检查 spec 文档声明与测试文件 | open |
+| B2-computer-use-02 | computer-use | — | 验证缺口 | P3 | spec 描述 unhide 超时后 Swift 端继续后台运行，但源码中该逻辑需进一步验证 | `src/utils/computerUse/cleanup.ts`、`src/utils/computerUse/executor.ts:unhideComputerUseApps` | N/A | 无 | 低（仅细节，不影响核心功能） | 验证 unhide 超时后 Swift 端行为 | 部分证实 | 需进一步阅读源码与测试 | open |
+| B2-computer-use-03 | computer-use | — | 契约缺口 | P3 | computer-use 外部 stub 契约完整，与源码对齐，但 Swift/Rust 内部实现不在 TypeScript 层覆盖 | `src/external-stubs/computer-use-*.ts`、`docs/external-stubs/contracts/computer-use-backends.md` | N/A | 无 | 低（仅内部实现，接口已对齐） | 考虑添加 Swift/Rust 契约或注释说明内部实现边界 | 部分证实 | 检查 external-stubs 目录 | open |
+| B2-computer-use-04 | computer-use | — | 测试缺口 | P1 | computer-use 子系统有良好的 mock 测试覆盖，但真实桌面环境验收缺失，关键路径（TCC、窗口隐藏、ESC）无法仅由 mock 测试证明 | `src/utils/computerUse/computerUseLock.ts`、`src/utils/computerUse/escHotkey.ts`、`src/utils/computerUse/cleanup.ts`、`src/utils/computerUse/executor.ts` | N/A | tests/computerUseBackends.test.ts、tests/computerUseExecutor.test.ts、tests/computerUseNativeHelper.test.ts、tests/computerUseWrapper.test.ts 仅覆盖 mock 场景 | 高（真实桌面环境无测试） | 建立真实桌面环境验收测试，覆盖 TCC 权限、窗口隐藏/显示、ESC 热键、多显示器坐标、剪贴板恢复 | 已证实 | 检查 tests/ 目录确认测试覆盖范围 | open |
 
 ---
 
@@ -227,6 +386,8 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 |--------|------|--------|
 | attachments | spec 文档完整性、核心源码一致性（maybe 包装器、超时、双重去重、图片处理、PDF 引用、日期变更、团队邮箱过滤、图片验证）、coverage manifest 注册 | 官方文档实时访问、上游 CLI strings、attachments 独立测试、遥测采样逻辑细节、真实 live 环境 |
 | bridge | spec 文档完整性、核心源码一致性（bridgeMain、bridgeApi、sessionRunner、workSecret、bridgePointer、jwtUtils、trustedDevice、inboundMessages、replBridge、daemonBridge、capacityWake、flushGate、bridgeEnabled）、coverage manifest 注册、inbound-envelope.md 契约对齐、perpetual/daemon/peer/inbound 测试 | 官方文档实时访问、上游 CLI strings、关键路径测试、shutdown retry 次数细节、其他 contracts 完整对齐、真实 live 环境 |
+| buddy | spec 文档完整性、核心源码一致性（骨骼派生、roll 确定性、inFlight 并发控制、宽松 JSON 解析、sideQuestion 调用、软失败、灵魂持久化、预告窗口、静音命令）、coverage manifest 注册、buddyFork.test.ts 部分覆盖 | 官方文档实时访问、上游 CLI strings、UI 交互测试、预告窗口测试、静音行为测试、真实 live 环境 |
+| computer-use | spec 文档完整性、核心源码一致性（文件锁 O_EXCL、PID 存活探测、零 syscall 预检、JSON Lines 协议、drainRunLoop 包装、坐标转换、Surrogate Host、三调用点归一、unhide 5s 超时、ESC 热键 CGEventTap、精确 bundleId 授权）、coverage manifest 注册、computer-use-backends.md 契约对齐、external-stubs 契约对齐、良好的 mock 测试覆盖 | 官方文档实时访问、上游 CLI strings、真实桌面环境验收（TCC、窗口隐藏、ESC 热键、多显示器、剪贴板恢复）、Swift/Rust 内部实现验证 |
 
 ### 上游证据边界
 
@@ -242,6 +403,8 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 |------|------|------|
 | attachments 测试 | ❌ 无独立测试 | ⚠️ 仅集成测试间接覆盖 |
 | bridge 测试 | ⚠️ 部分覆盖 | ⚠️ 关键路径无测试 |
+| buddy 测试 | ⚠️ 部分覆盖（孵化、解析、roll 确定性） | ⚠️ UI 交互、预告窗口、静音行为无测试 |
+| computer-use 测试 | ✅ 良好的 mock 覆盖（TCC、授权、坐标、锁、清理、JSON Lines、ESC 热键） | ⚠️ 真实桌面环境无测试 |
 
 ---
 
@@ -253,19 +416,21 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 |--------|------------|------------|------------|----------|------|
 | attachments | ✅ 完整 | ✅ 一致 | ⚠️ 不充分（无上游证据） | ⚠️ 部分充分（无独立测试） | ⚠️ 有条件通过（需添加独立测试） |
 | bridge | ✅ 完整 | ✅ 一致 | ⚠️ 不充分（无上游证据） | ⚠️ 部分充分（关键路径无测试） | ⚠️ 有条件通过（需添加关键路径测试） |
+| buddy | ✅ 完整 | ✅ 一致 | ⚠️ 不充分（无上游证据） | ⚠️ 部分充分（UI 交互无测试） | ⚠️ 有条件通过（需添加 UI 交互测试） |
+| computer-use | ✅ 完整 | ✅ 一致 | ⚠️ 不充分（无上游证据） | ⚠️ 部分充分（真实桌面环境无验收） | ⚠️ 有条件通过（需建立真实桌面环境验收） |
 
 ### Batch 2 总体结论
 
-✅ **文档完整性高**：两个子系统的 draft spec 质量优秀，均包含完整章节、决策表、模块设计卡、证据位置标注。
+✅ **文档完整性高**：四个子系统的 draft spec 质量优秀，均包含完整章节、决策表、模块设计卡、证据位置标注。
 
 ✅ **实现一致性强**：代码与 spec 高度对齐，关键机制与文档完全一致。
 
-⚠️ **测试覆盖不均**：attachments 无独立测试，bridge 仅部分覆盖，关键路径（权限回调、容量管理、clean shutdown、token refresh 等）无针对性测试。
+⚠️ **测试覆盖不均**：attachments 无独立测试，bridge 和 buddy 仅部分覆盖，computer-use 仅 mock 覆盖，关键路径和真实桌面环境验收缺失。
 
-⚠️ **上游验证不充分**：无官方文档实时访问，无上上游 CLI strings 证据。
+⚠️ **上游验证不充分**：无官方文档实时访问，无上游 CLI strings 证据。
 
 ### 其他子系统状态
 
-本 batch 仅审计 attachments 和 bridge，其余 10 个子系统（buddy、computer-use、file-tools、lsp、mcp、onboarding-ui、permissions、session-persistence、shell-tools、tool-framework）保持未审计状态，后续 batch 覆盖。
+本 batch 已审计 attachments、bridge、buddy、computer-use，其余 8 个子系统（file-tools、lsp、mcp、onboarding-ui、permissions、session-persistence、shell-tools、tool-framework）保持未审计状态，后续 batch 覆盖。
 
 ---
