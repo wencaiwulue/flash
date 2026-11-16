@@ -1108,19 +1108,167 @@
 
 ---
 
+### webbrowser-bundled-support
+
+| 项目 | 状态 | 说明 |
+|------|------|------|
+| Spec 存在 | ✅ | docs/superpowers/specs/2026-11-16-webbrowser-bundled-support-design.md |
+| Coverage 存在 | ✅ | docs/architecture/coverage/webbrowser-bundled-support.yaml |
+| Manifest 注册 | ✅ | id: webbrowser-bundled-support, batch: 5, status: draft |
+| Coverage 覆盖分组 | 2/2 | build-plugin, tests |
+
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了 v0.0.1 bundled 二进制 WebBrowser 崩溃的根因（playwright-core 动态 require package.json/browsers.json，__dirname 被烘焙为编译机绝对路径），明确了用户决策（实现而非绕过），与上游有意 deviance 的声明。
+
+✅ **设计理由与备选方案**：关键决策表格化展示，包含真实证据位置：
+- 路线 A：进程内 playwright + 构建插件内联数据（选中）
+- 路线 B：node 目标 sidecar bundle 嵌入释放（备选，未选中）
+- 插件不碰 node_modules（仅 onLoad 转换）
+- 插件挂到全部 Bun.build（dist + compile）
+- 升级绊线测试（验证模式匹配）
+- Chrome 缺失沿用现有错误传播
+
+✅ **目标与非目标**：清晰界定了 bundled/dist 形态 WebBrowser 可用、产物脱离编译机路径、升级绊线测试、自动化交互测试门禁、契约文档修订等目标；明确了 chrome-cdp 真实 Chrome 路径、webp_codec.wasm、playwright CLI 等非目标。
+
+✅ **架构、模块与数据流**：
+- 构建插件 `scripts/playwrightInlinePlugin.ts`（匹配 coreBundle/package/serverRegistry.js，正则替换 require 为内联数据）
+- 接入点 `scripts/build.ts` `createBuildOptions()` 增加 plugins
+- 回归测试 `tests/playwrightInlinePlugin.test.ts`（绊线测试 + 插件单元测试 + 未命中透传）
+- 验收验证（人工/pty）
+- release 冒烟 `scripts/build-binary.ts` `smokeTestStandaloneBinary`（隐藏 node_modules，FLASH_SMOKE_TOOL 通道调用 WebBrowser）
+- 交互启动冒烟 `tests/interactiveStartup.test.ts`（pty 启动 dist，验证无崩溃）
+
+✅ **证据链覆盖**：完整的「崩溃复现 → 实验验证 → 实现落地 → 测试门禁」生命周期证据链已验证：
+- 崩溃复现：v0.0.1 ResolveMessage 根因分析
+- 实验验证：/tmp/exp-inbin/ 路线 A 验证通过
+- 实现落地：playwrightInlinePlugin.ts + build.ts + build-binary.ts + main.tsx FLASH_SMOKE_TOOL
+- 测试门禁：绊线测试 + 插件单元测试 + smoke 分类测试 + pty 交互测试
+- 契约修订：docs/external-stubs/contracts/open-chrome.md 新增 bundled 支持章节
+
+#### 源码验证
+
+**build-plugin**（scripts/playwrightInlinePlugin.ts）：
+- `TARGET_FILES` 正则匹配 playwright-core/lib/{coreBundle,package,serverRegistry}.js ✅
+- `IDENT` 正则匹配标识符（支持 .default） ✅
+- `PKG_REQUIRE`/`BRW_REQUIRE` 正则匹配 require(X.join(packageRoot, "*.json")) 模式 ✅
+- `inlinePlaywrightDataReads` 函数替换 require 为 JSON.parse(内联数据) ✅
+- `createPlaywrightInlinePlugin` 创建 Bun 插件，onLoad 读取真实 package.json/browsers.json（browsers.json 缺失时内联 {} 并 warn） ✅
+- 构建时输出 `[playwrightInlinePlugin]` 日志确认内联 ✅
+
+**tests**（tests/playwrightInlinePlugin.test.ts）：
+- 绊线测试：读取真实 node_modules/playwright-core/lib/coreBundle.js，断言包含两个 require 模式（升级失配即失败） ✅
+- 插件单元测试：合成测试文本验证内联正确，Function 执行验证内联数据可用 ✅
+- 未命中透传测试：不含模式的文本原样返回 ✅
+
+**tests**（tests/interactiveStartup.test.ts）：
+- 仅 Unix 平台，仅 dist 存在时运行 ✅
+- pty（script 命令）启动 `bun dist/main.js`，剥离 CI 变量避免非交互路径 ✅
+- 超时 20s，检测输出包含 `flash v*` 版本号且无崩溃标记（ResolveMessage/MODULE_NOT_FOUND/Cannot find module） ✅
+- 清理：kill 整个进程组，删除临时 HOME ✅
+
+**tests**（tests/toolSmokeClassify.test.ts）：
+- 测试 `classifyToolSmokeResult` 所有分类分支 ✅
+- pass：ok:true + smoke-ok ✅
+- fail：崩溃模式优先（即使同时有 browser-missing） ✅
+- fail：ok:false 且非 browser-missing ✅
+- skip：browser-missing 模式（多种变体） ✅
+- skip：MCP -32001 超时（慢 runner 跳过） ✅
+- fail：JSON 解析失败 ✅
+- fail：ok:true 但无 smoke-ok ✅
+
+**scripts/build.ts**：
+- `createBuildOptions()` 增加 `plugins: [createPlaywrightInlinePlugin()]` ✅
+- 所有构建（dist + compile）自动获得插件 ✅
+
+**scripts/build-binary.ts**：
+- `smokeTestStandaloneBinary` 临时重命名 node_modules 强制独立环境 ✅
+- `smokeTestBinary` 调用 `--version`/`--help` 后执行 FLASH_SMOKE_TOOL 冒烟 ✅
+- `FLASH_SMOKE_TOOL=WebBrowser` + `FLASH_SMOKE_INPUT` 调用 browser_navigate 到 data:text/html ✅
+- 超时 120s（Windows 冷启动慢） ✅
+- `classifyToolSmokeResult` 分类：crash → fail，timeout/Chrome-missing → skip，smoke-ok → pass ✅
+
+**src/main.tsx**：
+- `main()` 最早期检查 `FLASH_SMOKE_TOOL` 环境变量 ✅
+- 加载 `getAllBaseTools()`，查找对应工具 ✅
+- `FLASH_SMOKE_INPUT` JSON 解析，调用 `tool.call()` ✅
+- stdout 输出 `{"ok":true,...}` 或 `{"ok":false,"error":...}` ✅
+- `process.exit(0/1)`，不启动 UI/模型 ✅
+
+**docs/external-stubs/contracts/open-chrome.md**：
+- 新增 "bundled 形态支持" 章节 ✅
+- 明确说明 isolated 浏览器路径已支持，实现方式为构建插件内联数据 ✅
+- 列出已知限制：Chrome 需安装，chrome-cdp 不支持，webp_codec.wasm/CLI 不支持 ✅
+- 说明 release 冒烟验证机制 ✅
+
+#### 上游证据
+
+**与上游 deviance**：
+- Spec 明确声明与上游有意 deviance：上游 external 构建编译期裁掉 WebBrowser 工具（v2.1.212 二进制 strings 实证），本仓库选择实现 ✅
+- 契约文档中显式记录该 deviance ✅
+
+**上游 CLI strings**：
+- （未重新提取，依据 spec 记录）
+
+#### 发现清单（14 列格式）
+
+| ID | 子系统 | 分组 | 严重度 | 标题 | 描述 | 根因分析 | 影响评估 | 复现方法 | 修复建议 | 证据位置 | 可观测性 | 是否上游 deviance | spec 状态 |
+|----|--------|------|--------|------|------|----------|----------|----------|----------|----------|----------|------------------|------------|
+| B5-webbrowser-bundled-support-01 | webbrowser-bundled-support | N/A | P2 | toolSmokeClassify.test.ts 未纳入 coverage | tests/toolSmokeClassify.test.ts 存在但未在 docs/architecture/coverage/webbrowser-bundled-support.yaml 或其他 coverage 文件中登记 | 新增测试文件遗漏 coverage 更新 | 测试覆盖追踪不完整，此关键 smoke 分类逻辑无 coverage 归属 | 检查 coverage 文件 grep toolSmokeClassify 无匹配 | 在 webbrowser-bundled-support.yaml 的 tests 分组中新增 "tests/toolSmokeClassify.test.ts" | docs/architecture/coverage/webbrowser-bundled-support.yaml | 否 | draft |
+| B5-webbrowser-bundled-support-02 | webbrowser-bundled-support | build-plugin | P2 | 插件使用正则替换而非 AST 解析，升级脆弱 | playwrightInlinePlugin 使用正则匹配 require 模式，若 playwright 升级改变代码格式（如换行、注释、变量名），插件静默失效，bundled 二进制运行时才崩溃 | 正则表达式对代码格式敏感，升级绊线测试仅验证模式存在，不验证真实内联效果 | playwright 升级可能导致 bundled 崩溃回归，绊线测试可检测模式变化但无法检测所有边缘情况 | 1. 移除插件测试合成文本中的模式，2. 构建并尝试运行 WebBrowser 冒烟 | 考虑使用更健壮的解析方式（如 AST 解析）替代正则，或增加集成测试验证真实构建的内联效果 | scripts/playwrightInlinePlugin.ts, tests/playwrightInlinePlugin.test.ts | 已有绊线测试（P2 降级理由） | 否 | draft |
+
+#### 测试验证
+
+检查 coverage 中提及的测试文件：
+- ✅ `tests/playwrightInlinePlugin.test.ts`：完整覆盖绊线、单元、透传
+- ✅ `tests/interactiveStartup.test.ts`：完整覆盖 pty 交互启动
+- ❌ `tests/toolSmokeClassify.test.ts`：存在但未登记在 coverage（B5-webbrowser-bundled-support-01）
+
+#### 边界与安全验证
+
+**bundled 隔离边界**：
+- 插件挂到全部 Bun.build（dist + compile），两种形态均获得内联 ✅
+- release 冒烟隐藏 node_modules 强制验证隔离性 ✅
+- 编译机路径从产物中消除（验证：内联数据为构建时读取的真实 JSON，而非路径） ✅
+
+**错误分类边界**：
+- 崩溃模式优先级最高（ResolveMessage/MODULE_NOT_FOUND/Cannot find module）→ fail ✅
+- Chrome 缺失模式（Executable doesn't exist/channel not found/No such file）→ skip ✅
+- MCP -32001 超时（慢 runner）→ skip ✅
+- 正确区分「环境不可用」与「实现崩溃」，避免阻塞无 Chrome 的 CI ✅
+
+**上游 deviance 管理**：
+- Spec 显式声明与上游 deviance ✅
+- 契约文档记录该 deviance ✅
+- 有合理理由（教学/研究快照，用户决策实现而非绕过） ✅
+
+### webbrowser-bundled-support 已验证的边界
+
+| 模块 | 已验证 | 未验证 |
+|------|------|------|
+| build-plugin | 正则匹配两种 require 模式、package.json 内联、browsers.json 缺失内联空对象、未命中透传、构建日志输出 | playwright 升级后真实内联效果（需集成测试） |
+| tests/playwrightInlinePlugin | 绊线测试真实 coreBundle.js 包含模式、插件单元测试内联正确、透传测试正确 | 真实构建产物内联验证 |
+| tests/interactiveStartup | pty 启动 dist、剥离 CI 变量、版本号检测、崩溃标记检测、进程组清理、超时保护 | 真实 bundled 二进制启动 |
+| tests/toolSmokeClassify | 所有分类分支（pass/fail/skip 各种变体） | 真实构建中的调用 |
+| build-binary smoke | FLASH_SMOKE_TOOL 通道、node_modules 隐藏、120s 超时、分类判断、跳过日志 | 真实无 Chrome 环境跳过 |
+| main.tsx smoke | 最早期检查、工具加载、JSON 输入、call 调用、stdout 输出、exit code | 真实工具错误路径 |
+| open-chrome contract | bundled 支持章节、已知限制列表、冒烟机制说明 | N/A |
+
+---
+
 ### Batch 5 总体结论
 
-✅ **7 个子系统 spec 质量优秀**：agent-swarms、help-feedback、plan-worktree、review-analysis、scheduling、task-system、workflow 文档完整性高，关键决策表格化，模块设计卡完整，生命周期证据链清晰。
+✅ **8 个子系统 spec 质量优秀**：agent-swarms、help-feedback、plan-worktree、review-analysis、scheduling、task-system、workflow、webbrowser-bundled-support 文档完整性高，关键决策表格化，模块设计卡完整，生命周期证据链清晰。
 
-✅ **7 个子系统实现一致性强**：所有 coverage 分组源码与 spec 高度对齐，关键机制与文档完全一致，安全边界设计周全。
+✅ **8 个子系统实现一致性强**：所有 coverage 分组源码与 spec 高度对齐，关键机制与文档完全一致，安全边界设计周全。
 
-✅ **无上游 deviance**：未发现与上游 CLI 明显不一致的实现，spec 与源码高度匹配。
+✅ **1 项有意 upstream deviance**：webbrowser-bundled-support 明确声明与上游 deviance（上游裁剪 WebBrowser，本仓库实现），有合理理由（教学/研究快照），文档完整记录。
 
-⚠️ **测试覆盖严重不足**：仅 `agentMemorySnapshot.test.ts`（agent-swarms）、`tests/reviewArtifact.test.ts`（review-analysis）、`tests/exitPlanModePrompt.test.ts`/`tests/ultraplanPoll.test.ts`（plan-worktree）、`tests/cronLifecycle.test.ts`/`tests/templateJobs.test.ts`（scheduling）、`tests/workflow.test.ts`（workflow）这 6 个子系统有部分测试，task-system 无任何专用测试，其余子系统核心功能测试缺失。
+⚠️ **测试覆盖严重不足**：仅 `agentMemorySnapshot.test.ts`（agent-swarms）、`tests/reviewArtifact.test.ts`（review-analysis）、`tests/exitPlanModePrompt.test.ts`/`tests/ultraplanPoll.test.ts`（plan-worktree）、`tests/cronLifecycle.test.ts`/`tests/templateJobs.test.ts`（scheduling）、`tests/workflow.test.ts`（workflow）、`tests/playwrightInlinePlugin.test.ts`/`tests/interactiveStartup.test.ts`/`tests/toolSmokeClassify.test.ts`（webbrowser-bundled-support）这 7 个子系统有部分测试，task-system 无任何专用测试，其余子系统核心功能测试缺失。
 
 ⚠️ **有 0 项 P1 潜在问题**：原 P1 问题已修复或降级。
 
-⚠️ **有 2 项 P2 实现改进建议**：TeamFile 原子写入应使用临时文件 rename 保护（B5-agent-swarms-08）；workflow retry 逻辑可改进以支持所有 skipped 步骤（B5-workflow-02）。
+⚠️ **有 4 项 P2 实现改进建议**：TeamFile 原子写入应使用临时文件 rename 保护（B5-agent-swarms-08）；workflow retry 逻辑可改进以支持所有 skipped 步骤（B5-workflow-02）；toolSmokeClassify.test.ts 应纳入 coverage（B5-webbrowser-bundled-support-01）；playwright 插件可考虑更健壮的 AST 解析（B5-webbrowser-bundled-support-02）。
 
 ⚠️ **有 2 项未完成功能**：`useFrustrationDetection()` 仅占位（B5-help-feedback-02）；VerifyPlanExecutionTool 未实现（B5-plan-worktree-02）。
 
@@ -1137,5 +1285,6 @@
 | scheduling | ✅ 已审计 |
 | task-system | ✅ 已审计 |
 | workflow | ✅ 已审计 |
+| webbrowser-bundled-support | ✅ 已审计 |
 
 **当前进度**：7/7 已审计；batch 5 完成。
