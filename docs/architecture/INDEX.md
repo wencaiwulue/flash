@@ -53,6 +53,7 @@
 | `scheduling` | 5 | draft | [Scheduling 定时任务、模板作业与主动唤醒设计](../superpowers/specs/2026-11-12-scheduling-design.md) | [coverage](coverage/scheduling.yaml) |
 | `task-system` | 5 | draft | [Task System 任务状态、后台执行与生命周期设计](../superpowers/specs/2026-11-13-task-system-design.md) | [coverage](coverage/task-system.yaml) |
 | `workflow` | 5 | draft | [Workflow DAG 编排与失败传播设计](../superpowers/specs/2026-11-12-workflow-design.md) | [coverage](coverage/workflow.yaml) |
+| `webbrowser-bundled-support` | 5 | draft | [bundled 构建进程内支持 WebBrowser（playwright-core 数据读取编译期内联）](../superpowers/specs/2026-11-16-webbrowser-bundled-support-design.md) | [coverage](coverage/webbrowser-bundled-support.yaml) |
 | `daemon-background` | 6 | draft | [Daemon & Background 守护进程与后台会话设计](../superpowers/specs/2026-11-12-daemon-background-design.md) | [coverage](coverage/daemon-background.yaml) |
 | `deep-link` | 6 | draft | [Deep Link 协议解析与目标路由设计](../superpowers/specs/2026-11-12-deep-link-design.md) | [coverage](coverage/deep-link.yaml) |
 | `open-runner` | 6 | draft | [Open Runner 环境执行与 Worker 协议设计](../superpowers/specs/2026-11-12-open-runner-design.md) | [coverage](coverage/open-runner.yaml) |

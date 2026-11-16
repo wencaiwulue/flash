@@ -54,12 +54,12 @@ v0.0.1 bundled 二进制中模型调用 WebBrowser 工具即崩溃：
 - playwright `install`/CLI/trace-viewer 等 CLI 向功能（烘焙路径仍存在，CLI 运行时不用）。
 - 发布新版本（合并后用户另行决定）。
 
-## 4. 设计明细
+## 4. 架构、模块与数据流
 
 ### 4.1 构建插件 `scripts/playwrightInlinePlugin.ts`
 
 - 导出 `createPlaywrightInlinePlugin(): BunPlugin`，供 `createBuildOptions()` 与测试共用。
-- `setup()` 中 `onLoad({ filter: /playwright-core[\\/](lib[\\/])?(coreBundle|package|serverRegistry)\.js$/ })`。
+- `setup()` 中注册 `onLoad` 钩子，匹配 `playwright-core` 下的 `coreBundle.js`、`package.js`、`serverRegistry.js` 文件。
 - 构建期从被解析的 playwright-core 真实路径读 `package.json` 与 `lib/browsers.json`（browsers.json 不存在时按空 registry 内联，只发警告）。
 - 文本替换（命中才替换，未命中原文返回）：
   - `require(<X>.join(packageRoot, "package.json"))` → `JSON.parse(<内联字面量>)` 等价形态（直接内联对象字面量）
@@ -121,7 +121,7 @@ v0.0.1 bundled 二进制中模型调用 WebBrowser 工具即崩溃：
 - 前置：需要 `dist/main.js` 存在；缺失时 skip 并提示先 `bun run build`（避免 `bun run test` 强制全量构建）。
  
 
-## 5. 失败语义与风险
+## 5. 失败语义与工程取舍
 
 | 风险 | 场景 | 缓解 |
 |---|---|---|
@@ -151,6 +151,29 @@ v0.0.1 bundled 二进制中模型调用 WebBrowser 工具即崩溃：
 - ws 限制注释：`src/external-stubs/claude-for-chrome-mcp.ts:211-213`。
 - 上游裁剪证据：v2.1.212 二进制 `WEB_BROWSER_TOOL` 0 处、`expected-absent` 分类器（调查报告 2026-11-16）。
 
+### 共享文件归属说明
+- `scripts/build.ts`、`src/main.tsx`、`scripts/build-binary.ts` 的改动归属各自原 spec 登记处（`build-feature-profile`、`query-core`），本 spec 仅通过这些文件接入功能。
+- 本 spec 独有的产物为：`scripts/playwrightInlinePlugin.ts`、`tests/playwrightInlinePlugin.test.ts`、`tests/interactiveStartup.test.ts`。
+
 ### 未覆盖测试
 - bundled 端到端属人工/pty 验收，无法进自动化套件（测试进程非 compile 形态）。
 - webp/trace-viewer 等 CLI 向功能未验证（非目标）。
+
+## 8. 文件覆盖与相关子系统
+
+[Coverage](../../architecture/coverage/webbrowser-bundled-support.yaml)
+
+相关子系统：
+- build-feature-profile: 构建系统，本 spec 通过 `createBuildOptions()` 接入插件
+- query-core: 主入口 `src/main.tsx`，本 spec 添加 `FLASH_SMOKE_TOOL` 通道
+- external-stubs: WebBrowser 工具实现，本 spec 修复其 bundled 支持
+
+## 9. 改进建议
+
+| 优先级 | 触发场景与证据 | 建议方向 | 回归风险 | 验收方式 | 工作量 | 置信度 |
+| --- | --- | --- | --- | --- | --- | --- |
+| P1 | playwright 升级可能改变 `coreBundle.js` 结构，导致插件正则失配 | 实现更健壮的解析方式（如 AST 解析）替代正则 | 中：需验证新解析方式正确性 | 测试升级后的 playwright 仍能正确内联 | M | 已证实（基于代码阅读） |
+| P2 | 当前仅内联 package.json 和 browsers.json，未来可能需要内联更多数据 | 设计通用的内联机制，支持配置化需要内联的文件 | 低：向后兼容，仅新增能力 | 测试至少一种新数据文件能正确内联 | S | 设计推断 |
+| P2 | release 冒烟仅验证 WebBrowser，未来可扩展到更多工具 | 扩展 `FLASH_SMOKE_TOOL` 机制，支持更多工具的冒烟测试 | 低：向后兼容，仅新增能力 | 测试至少一种其他工具能通过冒烟 | S | 设计推断 |
+| P3 | 无 bundle 大小回归监控，playwright 相关代码可能导致大小意外增长 | 增加 bundle 大小预算监控，防止超出阈值 | 低：可实现为可选的 CI 检查 | 测试预算监控能在超出阈值时发出警告 | S | 设计推断 |
+| P3 | 当前仅验证 Chrome 浏览器，未来可考虑支持更多浏览器 | 扩展插件支持 Firefox/Edge 等其他浏览器的 bundled 模式 | 中：需验证各浏览器兼容性 | 测试至少一种其他浏览器能在 bundled 模式下工作 | M | 设计推断 |

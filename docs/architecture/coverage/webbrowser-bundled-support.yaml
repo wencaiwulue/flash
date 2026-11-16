@@ -9,14 +9,6 @@ groups:
     summary: playwright-core 数据读取编译期内联构建插件
     files:
       - scripts/playwrightInlinePlugin.ts
-      - scripts/build.ts
-  - id: smoke-channel
-    kind: source
-    section: 4
-    summary: FLASH_SMOKE_TOOL 测试通道与 release 工具冒烟
-    files:
-      - src/main.tsx
-      - scripts/build-binary.ts
   - id: tests
     kind: test
     section: 4
