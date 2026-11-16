@@ -228,6 +228,44 @@ function smokeTestBinary(
 
   const help = spawn([binaryPath, '--help'], { env })
   assertCommandSucceeded(help, `${binaryPath} --help`)
+
+  // End-to-end tool smoke inside the real standalone binary (node_modules is
+  // hidden by the caller). Catches bundled-runtime regressions like the
+  // playwright-core ResolveMessage crash that `--version` cannot see.
+  const smokeInput = JSON.stringify({
+    action: 'browser_navigate',
+    arguments: { url: 'data:text/html,<title>smoke-ok</title>' },
+  })
+  const smoke = spawn([binaryPath], {
+    env: {
+      ...env,
+      FLASH_SMOKE_TOOL: 'WebBrowser',
+      FLASH_SMOKE_INPUT: smokeInput,
+    },
+  })
+  const smokeStdout = smoke.stdout.toString()
+  const smokeLine = smokeStdout.split('\n').find(line => line.startsWith('{"ok":'))
+  if (!smokeLine) {
+    throw new Error(
+      `Tool smoke produced no result line (exit=${smoke.exitCode}): ${smokeStdout.slice(0, 2000)}`,
+    )
+  }
+  const smokeResult = JSON.parse(smokeLine) as { ok: boolean; error?: string }
+  if (!smokeResult.ok) {
+    const errorText = smokeResult.error ?? ''
+    const browserMissing =
+      /Executable doesn't exist/.test(errorText) ||
+      (/chrome|chromium|channel/i.test(errorText) &&
+        /not found|doesn't exist|No such file/i.test(errorText))
+    if (browserMissing) {
+      console.warn('Smoke skip: Chrome not available on this machine')
+      return
+    }
+    throw new Error(`Tool smoke failed: ${errorText.slice(0, 2000)}`)
+  }
+  if (!smokeStdout.includes('smoke-ok')) {
+    throw new Error('Tool smoke navigated but did not observe the expected page title')
+  }
 }
 
 let standaloneSmokeSequence = 0
