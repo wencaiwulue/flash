@@ -19,11 +19,11 @@ Design docs: 0 errors, 71 warnings
 
 | Spec ID | Batch | Coverage groups | 文档完整性 | 实现一致性 | 上游一致性 | 验证状态 | 发现 | 报告 |
 |---|---:|---:|---|---|---|---|---:|---|
-| documentation-system | 0 | 0/2 | open | open | open | unverified | 0 | 未生成 |
-| plugins | 0 | 0/14 | open | open | open | unverified | 0 | 未生成 |
-| query-core | 0 | 0/3 | open | open | open | unverified | 0 | 未生成 |
-| sdk-query-sessions | 0 | 0/11 | open | open | open | unverified | 0 | 未生成 |
-| sdk-type-generation | 0 | 0/3 | open | open | open | unverified | 0 | 未生成 |
+| documentation-system | 0 | 2/2 | 完整 | 一致 | N/A | 充分 (离线测试) | 1 | [batch-0.md#documentation-system](batch-0.md#documentation-system) |
+| plugins | 0 | 14/14 | 完整 | 一致 | 部分一致 | 部分充分 (有测试，缺集成) | 2 | [batch-0.md#plugins](batch-0.md#plugins) |
+| query-core | 0 | 3/3 | 完整 | 一致 | 部分一致 | 部分充分 (有测试，缺端到端) | 2 | [batch-0.md#query-core](batch-0.md#query-core) |
+| sdk-query-sessions | 0 | 11/11 | 完整 | 一致 | 部分一致 | 充分 (核心模块覆盖) | 1 | [batch-0.md#sdk-query-sessions](batch-0.md#sdk-query-sessions) |
+| sdk-type-generation | 0 | 3/3 | 完整 | 一致 | N/A | 充分 | 1 | [batch-0.md#sdk-type-generation](batch-0.md#sdk-type-generation) |
 | cli-startup | 1 | 0/6 | open | open | open | unverified | 0 | 未生成 |
 | context-compaction | 1 | 0/8 | open | open | open | unverified | 0 | 未生成 |
 | model-api | 1 | 0/12 | open | open | open | unverified | 0 | 未生成 |
@@ -90,8 +90,33 @@ Design docs: 0 errors, 71 warnings
 
 ## 分类统计与整改顺序
 
-各批次尚未完成，当前不统计问题，不生成整改顺序。
+### Batch 0 统计
+
+| 项目 | 数量 |
+|------|------|
+| 审查子系统 | 5 |
+| 完整文档 | 5 |
+| 实现一致 | 5 |
+| 发现总数 | 5 |
+| P0 | 0 |
+| P1 | 0 |
+| P2 | 2 |
+| P3 | 3 |
+
+### 发现分类
+
+| 类别 | 数量 |
+|------|------|
+| 测试缺口 | 4 |
+| 证据不足 | 1 |
+
+### 整改优先级
+
+1. **P2（2项）**：添加 plugins/query-core 集成测试
+2. **P3（3项）**：补齐 plugins 7.0 章节测试场景说明、为 sdkEventQueue 添加测试/完善 sdkHeapDumpMonitor、添加类型兼容性测试
+
+其余批次尚未完成，暂不统计。
 
 ## 完成判定
 
-open：等待 batch 0–7 和横向契约复审。
+batch 0：✅ 已完成审查，报告已生成并链接；其余批次待审查。
