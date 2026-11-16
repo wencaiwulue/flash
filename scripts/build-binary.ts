@@ -190,7 +190,7 @@ export async function aggregateChecksums(
 
 function spawn(
   cmd: string[],
-  options: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
+  options: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number } = {},
 ) {
   return Bun.spawnSync({
     cmd,
@@ -198,7 +198,7 @@ function spawn(
     env: options.env,
     stdout: 'pipe',
     stderr: 'pipe',
-    timeout: 30_000,
+    timeout: options.timeoutMs ?? 30_000,
   })
 }
 
@@ -211,6 +211,37 @@ function assertCommandSucceeded(
       `${description} failed (${result.exitCode ?? result.signalCode}): ${result.stderr.toString().trim()}`,
     )
   }
+}
+
+export const SMOKE_TITLE_MARKER = 'smoke-ok'
+
+// Classification order matters: a crash must never be misread as an
+// environment gap, and browser-missing MCP errors can arrive in-band
+// (ok:true + isError content) instead of as a thrown error.
+const CRASH_PATTERN = /Cannot find module|ResolveMessage|MODULE_NOT_FOUND/
+const BROWSER_MISSING_PATTERN =
+  /Executable doesn't exist|not found|doesn't exist|No such file/i
+const BROWSER_CONTEXT_PATTERN = /chrome|chromium|channel/i
+
+export function classifyToolSmokeResult(
+  smokeLine: string,
+): 'pass' | 'skip' | 'fail' {
+  if (CRASH_PATTERN.test(smokeLine)) return 'fail'
+  if (
+    /Executable doesn't exist/i.test(smokeLine) ||
+    (BROWSER_CONTEXT_PATTERN.test(smokeLine) &&
+      BROWSER_MISSING_PATTERN.test(smokeLine))
+  ) {
+    return 'skip'
+  }
+  let parsed: { ok?: boolean }
+  try {
+    parsed = JSON.parse(smokeLine) as { ok?: boolean }
+  } catch {
+    return 'fail'
+  }
+  if (!parsed.ok) return 'fail'
+  return smokeLine.includes(SMOKE_TITLE_MARKER) ? 'pass' : 'fail'
 }
 
 function smokeTestBinary(
@@ -242,6 +273,9 @@ function smokeTestBinary(
       FLASH_SMOKE_TOOL: 'WebBrowser',
       FLASH_SMOKE_INPUT: smokeInput,
     },
+    // Windows runners cold-launch Chrome (Defender scans, first run) well
+    // beyond the default 30s — give the whole smoke 2 minutes.
+    timeoutMs: 120_000,
   })
   const smokeStdout = smoke.stdout.toString()
   const smokeStderr = smoke.stderr.toString()
@@ -253,34 +287,16 @@ function smokeTestBinary(
         : smokeStdout.slice(0, 2000)
       : smokeStderr.slice(0, 2000)
     throw new Error(
-      `Tool smoke produced no result line (exit=${smoke.exitCode}): ${combinedOutput}`,
+      `Tool smoke produced no result line (exit=${smoke.exitCode ?? smoke.signalCode}): ${combinedOutput}`,
     )
   }
-  const smokeResult = JSON.parse(smokeLine) as { ok: boolean; error?: string }
-  if (!smokeResult.ok) {
-    const errorText = smokeResult.error ?? ''
-
-    // First check for crash patterns that should always block release
-    const isCrashPattern = /Cannot find module|ResolveMessage|MODULE_NOT_FOUND/.test(errorText)
-    if (isCrashPattern) {
-      throw new Error(`Tool smoke failed: ${errorText.slice(0, 2000)}`)
-    }
-
-    // Then check for Chrome missing patterns
-    const browserMissing =
-      /Executable doesn't exist/i.test(errorText) ||
-      (/chrome|chromium|channel/i.test(errorText) &&
-        /not found|doesn't exist|No such file/i.test(errorText))
-    if (browserMissing) {
-      console.warn('Smoke skip: Chrome not available on this machine')
-      return
-    }
-
-    // All other errors also block release
-    throw new Error(`Tool smoke failed: ${errorText.slice(0, 2000)}`)
+  const verdict = classifyToolSmokeResult(smokeLine)
+  if (verdict === 'skip') {
+    console.warn('Smoke skip: Chrome not available on this machine')
+    return
   }
-  if (!smokeStdout.includes('smoke-ok')) {
-    throw new Error('Tool smoke navigated but did not observe the expected page title')
+  if (verdict === 'fail') {
+    throw new Error(`Tool smoke failed: ${smokeLine.slice(0, 2000)}`)
   }
 }
 
