@@ -5,8 +5,8 @@
 | 项目 | 状态 | 说明 |
 |------|------|------|
 | 基线 commit | 6fbe8f8 | 审查的基础提交 |
-| 上游 CLI | ✅ 可用 | /opt/homebrew/bin/claude 存在，strings 搜索完成（26191 行匹配，边界：/tmp/flash-design-audit-batch-2-strings.txt）|
-| 官方文档索引 | ✅ 可用 | llms.txt 搜索完成（27 行匹配，边界：/tmp/flash-design-audit-batch-2-doc-index.txt）|
+| 上游 CLI | ✅ 可用 | /opt/homebrew/bin/claude 存在，strings 搜索完成（26191 行匹配，边界：/tmp/flash-design-audit-batch-2-strings.txt） |
+| 官方文档索引 | ✅ 可用 | llms.txt 搜索完成（27 行匹配，边界：/tmp/flash-design-audit-batch-2-doc-index.txt） |
 | 审查范围 | attachments、bridge、buddy、computer-use | 四个子系统，完整语义审查，非仅结构 |
 
 ### 启动状态 RED ✅
@@ -32,8 +32,8 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 
 ✅ **问题与约束**：准确描述了 30+ 附件类型统一处理、图片粘贴验证与调整、1 秒全局超时、权限隐私控制、相关记忆异步预取等核心问题。
 
-✅ **设计理由与备选方案**：11 项关键决策，包含真实证据位置：
-- 单个附件类型失败不阻塞整体（`maybe()` 包装器）
+✅ **设计理由与备选方案**：11 项关键决策表格化展示，包含真实证据位置：
+- 单个附件类型失败不阻塞整体（maybe() 包装器）
 - 1 秒全局超时限制（AbortController）
 - 双重缓存去重（嵌套记忆）
 - 仅 ENOENT 从 readFileState 驱逐
@@ -54,21 +54,21 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 - 4.2 模块设计卡：getAttachments 主协调器、@文件引用解析器、图片粘贴与缩放处理器、相关记忆预取器、嵌套 CLAUDE.md 注入器、变更文件检测器、MCP 资源引用处理器、技能附件发现与列表
 - 4.3 主控制流：getAttachments 主流程、maybe() 包装器流程、图片粘贴处理流程、@文件引用处理流程、相关记忆预取流程、嵌套记忆注入流程、团队邮箱附件流程
 - 4.4 数据结构与持久化：PastedContent 结构、粘贴文本/图片持久化位置、关键常量
-- 4.5 跨子系统依赖：权限系统、记忆系统、MCP 系统、插件系统、git、文件系统、LSP 系统、团队系统
+- 4.5 跨子系统依赖：权限系统、记忆系统、MCP 系统、插件系统、git、文件系统、LSP 系统
 
-**发现 B2-attachments-01**：spec 完整列出所有模块设计，但多数标注“无独立测试”“未找到直接测试”，仅集成测试间接覆盖。
+**发现 B2-attachments-01**：spec 完整列出所有模块设计，但多数标注"无独立测试""未找到直接测试"，仅集成测试间接覆盖。
 
 #### 源码验证
 
 读取并验证了以下文件：
-- `src/utils/attachments.ts:1-3000+`：`maybe()` 包装器、全局超时、双重去重、相关记忆预取、PDF 引用、日期变更、团队邮箱过滤等核心逻辑与 spec 一致
+- `src/utils/attachments.ts:1-3000+`：maybe() 包装器、全局超时、双重去重、相关记忆预取、PDF 引用、日期变更、团队邮箱过滤等核心逻辑与 spec 一致
 - `src/utils/imagePaste.ts:1-200+`：图片粘贴、剪贴板读取、尺寸调整等与 spec 一致
 - `src/utils/imageStore.ts:1-150+`：图片存储、会话隔离、0o600 权限、MAX_STORED_IMAGE_PATHS=200 等与 spec 一致
-- `src/utils/imageValidation.ts:1-105`：`validateImagesForAPI()`、`ImageSizeError`、API_IMAGE_MAX_BASE64_SIZE 双重检查与 spec 一致
+- `src/utils/imageValidation.ts:1-105`：validateImagesForAPI()、ImageSizeError、API_IMAGE_MAX_BASE64_SIZE 双重检查与 spec 一致
 - `src/utils/pasteStore.ts:1-100+`：粘贴文本持久化与 spec 一致
 - `src/constants/apiLimits.ts:1-50`：IMAGE_MAX_WIDTH/HEIGHT、IMAGE_TARGET_RAW_SIZE、API_IMAGE_MAX_BASE64_SIZE 等关键常量与 spec 一致
 
-**发现 B2-attachments-02**：源码中 `maybe()` 包装器确实实现了单个失败不阻塞整体，但遥测采样（5%）逻辑未在源码中明确验证（需搜索 logEvent）。
+**发现 B2-attachments-02**：源码中 maybe() 包装器确实实现了单个失败不阻塞整体，但遥测采样（5%）逻辑未在源码中明确验证（需搜索 logEvent）。
 
 #### 外部契约验证
 
@@ -86,7 +86,7 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 - `tests/peerSessions.test.ts`：不相关
 - `tests/inboundEnvelope.test.ts`：仅验证输入信封，不覆盖 attachments
 
-**发现 B2-attachments-03**：attachments 子系统无专门独立测试文件，仅通过集成测试间接覆盖，关键路径（maybe 错误隔离、超时、双重去重、图片处理、PDF 引用、日期变更）无针对性测试。
+**发现 B2-attachments-03**：attachments 子系统无专门独立测试文件，关键路径（maybe 错误隔离、超时、双重去重、图片处理、PDF 引用、日期变更）无针对性测试。
 
 #### 证据边界总结
 
@@ -150,7 +150,7 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 - 4.4 数据结构与持久化：Bridge 指针文件（位置、权限、TTL、结构）、Poll 配置
 - 4.5 跨子系统依赖：auth、settings、worktree、SDK、remote-control、daemon
 
-**发现 B2-bridge-01**：spec 完整列出所有模块设计，但多数标注“未找到直接测试”“仅 perpetualBridge.test.ts 覆盖指针恢复”，关键路径（权限回调、容量管理、clean shutdown、token refresh）无针对性测试。
+**发现 B2-bridge-01**：spec 完整列出所有模块设计，但多数标注"未找到直接测试""仅 perpetualBridge.test.ts 覆盖指针恢复"，关键路径（权限回调、容量管理、clean shutdown、token refresh）无针对性测试。
 
 #### 源码验证
 
@@ -170,7 +170,7 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 - `src/bridge/flushGate.ts:1-100+`：Flusher 接口、holdWrites/releaseWrites/queueWrite 与 spec 一致
 - `src/bridge/bridgeEnabled.ts:1-100+`：isBridgeEnabled、isEnvLessBridgeEnabled、getBridgeDisabledReason 分层检查与 spec 一致
 
-**发现 B2-bridge-02**：源码中 `bridgeMain.ts:2435-2600+` shutdown 逻辑确实实现了 30s grace period、SIGTERM→SIGKILL 顺序、stopWork 重试（1s/2s/4s）、幂等 archive、最佳努力 deregister、清除 pointer 等，但 retry 次数与 spec 描述“最多 3 次”需进一步验证。
+**发现 B2-bridge-02**：源码中 bridgeMain.ts:2435-2600+ shutdown 逻辑确实实现了 30s grace period、SIGTERM→SIGKILL 顺序、stopWork 重试（1s/2s/4s）、幂等 archive，但 retry 次数与 spec 描述"最多重试 3 次"需进一步验证。
 
 #### 外部契约验证
 
@@ -180,7 +180,7 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 - `contracts/open-runner-v1.md`：poll/ack/heartbeat 模式概念相似，但 endpoint 不同
 - 无公开 live 环境验证
 
-**发现 B2-bridge-03**：`inbound-envelope.md` 契约与源码一致，但其他 contracts（direct-connect-v1、open-runner-v1）仅概念相似，无完整对齐验证。
+**发现 B2-bridge-03**：inbound-envelope.md 契约与源码一致，但其他 contracts（direct-connect-v1、open-runner-v1）仅概念相似，无完整对齐验证。
 
 #### 测试验证
 
@@ -196,9 +196,9 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 
 | 类别 | 覆盖 | 缺口 |
 |------|------|------|
-| Spec 完整性 | ✅ 完整，18+ 决策，模块设计卡，数据流 | ⚠️ 部分测试证据不足 |
+| Spec 完整性 | ✅ 完整，18+ 项决策，模块设计卡，数据流 | ⚠️ 部分测试证据不足 |
 | 源码一致性 | ✅ 核心逻辑与 spec 一致 | ⚠️ shutdown retry 次数需进一步验证 |
-| 测试覆盖 | ⚠️ 部分覆盖（perpetual、daemon、inbound、peer） | ⚠️ 关键路径无测试 |
+| 测试覆盖 | ⚠️ 部分覆盖（perpetual、daemon、peer、inbound） | ⚠️ 关键路径无测试 |
 | 官方文档 | ❌ 无实时访问 | ⚠️ 基于现有 spec/contracts |
 | 上游 CLI | ❌ 不存在 | ⚠️ 无 strings 证据 |
 | 外部契约 | ✅ inbound-envelope.md 对齐 | ⚠️ 其他 contracts 仅部分匹配 |
@@ -236,7 +236,7 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 - 每个模块包含真实入口签名、关键类型、状态与附件、创建流程、交互与关闭流程、错误与 Feature 门控、设计取舍与备选
 - 工程取舍明确说明骨骼永不持久化的原因
 
-**发现 B2-buddy-01**：spec 完整列出所有模块设计，但多数标注"无直接测试"，仅 `tests/buddyFork.test.ts` 覆盖部分功能。
+**发现 B2-buddy-01**：spec 完整列出所有模块设计，但多数标注"无直接测试"，仅 buddyFork.test.ts 覆盖部分功能。
 
 #### 源码验证
 
@@ -247,13 +247,13 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 - `src/buddy/useBuddyNotification.tsx`：预告窗口本地时间 4/1-7、isBuddyLive 等与 spec 一致
 - `src/commands/buddy/index.ts`：mute/unmute/status/pet 命令与 spec 一致
 
-**发现 B2-buddy-02**：源码中 `fireCompanionObserver` 确实实现了 inFlight 单飞标志、软降级仅记录 debug 日志、finally 释放 inFlight 等，但预告通知与完整功能的窗口分离需进一步验证。
+**发现 B2-buddy-02**：源码中 fireCompanionObserver 确实实现了 inFlight 单飞标志、软降级仅记录 debug 日志、finally 释放 inFlight，但预告通知与完整功能的窗口分离需进一步验证。
 
 #### 外部契约验证
 
 检查相关 external stubs 契约：
 - 无直接针对 buddy 的独立 contract
-- 依赖 `companion_intro` attachment 类型，在 attachments 子系统中定义
+- 依赖 `companion_intro` 附件类型，在 attachments 子系统中定义
 - 无公开 live 环境验证
 
 #### 测试验证
@@ -319,7 +319,7 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 - `src/utils/computerUse/escHotkey.ts`：CGEventTap 全局消费 ESC、notifyExpectedEscape 豁免窗口等与 spec 一致
 - `src/external-stubs/computer-use-types.ts`：精确 bundleId 匹配、CuGrantFlags、CuSubGates 等与 spec 一致
 
-**发现 B2-computer-use-02**：源码中 `cleanupComputerUseAfterTurn` 确实实现了三调用点归一、unhide 5s 超时、各步骤隔离，但 unhide 超时后 Swift 端是否继续后台运行需进一步验证。
+**发现 B2-computer-use-02**：源码中 cleanupComputerUseAfterTurn 确实实现了三调用点归一、unhide 5s 超时、各步骤隔离，但 unhide 超时后 Swift 端是否继续后台运行需进一步验证。
 
 #### 外部契约验证
 
@@ -350,84 +350,10 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 |------|------|------|
 | Spec 完整性 | ✅ 完整，5 项决策，9 个模块设计卡 | ⚠️ 真实桌面环境验收缺失 |
 | 源码一致性 | ✅ 核心逻辑与 spec 一致 | ⚠️ Swift/Rust 内部实现不在 TypeScript 层 |
-| 测试覆盖 | ⚠️ 良好的 mock 覆盖（TCC、授权、坐标、锁、清理） | ⚠️ 真实桌面环境无测试 |
+| 测试覆盖 | ⚠️ 良好的 mock 覆盖（TCC、授权、坐标、锁、清理、JSON Lines、ESC 热键） | ⚠️ 真实桌面环境无测试 |
 | 官方文档 | ❌ 无实时访问 | ⚠️ 基于现有 spec/contracts |
 | 上游 CLI | ❌ 不存在 | ⚠️ 无 strings 证据 |
 | 外部契约 | ✅ computer-use-backends.md、stub types 对齐 | ⚠️ Swift/Rust 内部无 contract |
-
----
-
-## 发现登记
-
-| ID | 主责 | 关联 | 类别 | 严重度 | 问题陈述 | 源码证据 | 上游证据 | 测试证据 | 影响 | 修订建议 | 置信度 | 验证边界 | 状态 |
-|----|------|------|------|--------|----------|----------|----------|----------|------|----------|--------|--------|------|
-| B2-attachments-01 | attachments | — | 测试缺口 | P2 | attachments spec 所有模块设计均标注"无独立测试""未找到直接测试"，仅集成测试间接覆盖 | `docs/superpowers/specs/2026-11-12-attachments-design.md:7` | N/A | 无专门 attachments 测试文件 | 中（核心功能可能有未覆盖边缘情况） | 添加 attachments 独立测试：maybe 错误隔离、超时、双重去重、图片处理、PDF 引用、日期变更 | 已证实 | 仅检查 spec 文档声明 | open |
-| B2-attachments-02 | attachments | — | 验证缺口 | P3 | spec 中提到 `maybe()` 内部有 5% 遥测采样，但源码中该逻辑未详细验证 | `src/utils/attachments.ts` 需搜索 logEvent 调用 | N/A | 无 | 低（仅遥测） | 验证遥测采样逻辑是否实现 | 部分证实 | 需进一步搜索源码 | open |
-| B2-attachments-03 | attachments | — | 测试缺口 | P2 | attachments 子系统无专门独立测试文件，关键路径（maybe 错误隔离、超时、双重去重、图片处理、PDF 引用、日期变更）无针对性测试 | `src/utils/attachments.ts`、`src/utils/imagePaste.ts`、`src/utils/imageStore.ts`、`src/utils/imageValidation.ts`、`src/utils/pasteStore.ts` | N/A | 仅集成测试间接覆盖 | 中（关键路径可能有未覆盖边缘情况） | 添加 attachments 独立测试文件，覆盖所有主要模块设计卡场景 | 已证实 | 检查 tests/ 目录确认无专门测试 | open |
-| B2-bridge-01 | bridge | — | 测试缺口 | P2 | bridge spec 多数模块设计标注"未找到直接测试"，关键路径（权限回调、容量管理、clean shutdown、token refresh）无针对性测试 | `docs/superpowers/specs/2026-11-12-bridge-design.md:7` | N/A | 仅 perpetual/daemon/peer/inbound 测试 | 中（关键路径可能有未覆盖边缘情况） | 添加 bridge 关键路径测试：权限回调超时、token refresh 竞态、容量波动、跨 worktree 扫描、clean shutdown 强制 kill | 已证实 | 仅检查 spec 文档声明 | open |
-| B2-bridge-02 | bridge | — | 验证缺口 | P3 | spec 描述 shutdown 流程中 stopWork"最多重试 3 次"，但源码中该逻辑需进一步验证 | `src/bridge/bridgeMain.ts:2435-2600+` | N/A | 无 | 低（仅细节） | 验证 stopWork retry 次数与 backoff 配置 | 部分证实 | 需进一步阅读源码 shutdown 逻辑 | open |
-| B2-bridge-03 | bridge | — | 契约缺口 | P3 | bridge 仅 inbound-envelope.md 契约与源码对齐，direct-connect-v1.md、open-runner-v1.md 等仅概念相似，无完整对齐验证 | `src/bridge/bridgeApi.ts`、`src/bridge/workSecret.ts` | N/A | 无 | 低（仅协议对齐） | 完成与相关 contracts 的完整对齐验证 | 部分证实 | 检查 contracts 目录 | open |
-| B2-bridge-04 | bridge | — | 测试缺口 | P2 | bridge 子系统有部分测试覆盖，但关键路径（权限回调超时、token refresh 竞态、容量波动、跨 worktree 扫描边缘情况、clean shutdown 强制 kill、v1→v2 迁移）仍无针对性测试 | `src/bridge/bridgeMain.ts`、`src/bridge/sessionRunner.ts`、`src/bridge/jwtUtils.ts`、`src/bridge/bridgePointer.ts`、`src/bridge/replBridge.ts` | N/A | tests/perpetualBridge.test.ts、tests/daemonBridge.test.ts、tests/peerSessions.test.ts、tests/inboundEnvelope.test.ts 存在但覆盖不全 | 中（关键路径可能有未覆盖边缘情况） | 添加 bridge 关键路径测试文件，覆盖所有主要模块设计卡场景 | 已证实 | 检查 tests/ 目录确认测试覆盖范围 | open |
-| B2-buddy-01 | buddy | — | 测试缺口 | P2 | buddy spec 完整列出所有模块设计，但多数标注"无直接测试"，仅 buddyFork.test.ts 覆盖部分功能 | `docs/superpowers/specs/2026-11-12-buddy-design.md:7` | N/A | tests/buddyFork.test.ts 存在但覆盖不全 | 中（UI 交互、预告窗口、静音行为可能有未覆盖边缘情况） | 添加 buddy 关键路径测试：UI 双模式切换、气泡超时淡出、抚摸动画、预告通知窗口、静音行为 | 已证实 | 仅检查 spec 文档声明 | open |
-| B2-buddy-02 | buddy | — | 验证缺口 | P3 | spec 描述预告通知与完整功能窗口分离，但源码中该逻辑需进一步验证与测试 | `src/buddy/useBuddyNotification.tsx:11-22` | N/A | 无 | 低（仅细节，不影响核心功能） | 验证预告通知与完整功能窗口分离逻辑 | 部分证实 | 需进一步阅读源码与测试 | open |
-| B2-buddy-03 | buddy | — | 测试缺口 | P2 | buddy 子系统有部分测试覆盖，但 UI 交互、预告窗口、静音行为等关键路径无针对性测试 | `src/buddy/CompanionSprite.tsx`、`src/buddy/useBuddyNotification.tsx`、`src/commands/buddy/index.ts` | N/A | tests/buddyFork.test.ts 仅覆盖孵化、解析、roll 确定性 | 中（UI 交互可能有未覆盖边缘情况） | 添加 buddy 完整测试文件，覆盖所有 6 个模块设计卡场景 | 已证实 | 检查 tests/ 目录确认测试覆盖范围 | open |
-| B2-computer-use-01 | computer-use | — | 验收缺口 | P2 | computer-use spec 完整列出所有模块设计，但部分标注"需独立桌面环境验收"，真实 TCC 权限、窗口隐藏、ESC 热键等无法仅由 mock 测试证明 | `docs/superpowers/specs/2026-11-12-computer-use-design.md:7` | llms.txt 27 行匹配，binary strings 26191 行匹配 | 仅 mock 测试覆盖，无真实桌面环境测试 | 中（验收分层不完整） | 建立真实桌面环境验收分层：mock 覆盖协议/权限不变量，单独验证 macOS TCC、窗口隐藏、ESC、剪贴板恢复、多显示器 | 已证实 | 仅检查 spec 文档声明与测试文件 | open |
-| B2-computer-use-02 | computer-use | — | 验证缺口 | P3 | spec 描述 unhide 超时后 Swift 端继续后台运行，但源码中该逻辑需进一步验证 | `src/utils/computerUse/cleanup.ts`、`src/utils/computerUse/executor.ts:unhideComputerUseApps` | N/A | 无 | 低（仅细节，不影响核心功能） | 验证 unhide 超时后 Swift 端行为 | 部分证实 | 需进一步阅读源码与测试 | open |
-| B2-computer-use-03 | computer-use | — | 契约缺口 | P3 | computer-use 外部 stub 契约完整，与源码对齐，但 Swift/Rust 内部实现不在 TypeScript 层覆盖 | `src/external-stubs/computer-use-*.ts`、`docs/external-stubs/contracts/computer-use-backends.md` | N/A | 无 | 低（仅内部实现，接口已对齐） | 考虑添加 Swift/Rust 契约或注释说明内部实现边界 | 部分证实 | 检查 external-stubs 目录 | open |
-| B2-computer-use-04 | computer-use | — | 测试缺口 | P2 | computer-use 子系统有良好的 mock 测试覆盖，但真实桌面环境验收缺失，关键路径（TCC、窗口隐藏、ESC）无法仅由 mock 测试证明 | `src/utils/computerUse/computerUseLock.ts`、`src/utils/computerUse/escHotkey.ts`、`src/utils/computerUse/cleanup.ts`、`src/utils/computerUse/executor.ts` | llms.txt 27 行匹配，binary strings 26191 行匹配 | tests/computerUseBackends.test.ts、tests/computerUseExecutor.test.ts、tests/computerUseNativeHelper.test.ts、tests/computerUseWrapper.test.ts 仅覆盖 mock 场景 | 中（真实桌面环境无测试） | 建立真实桌面环境验收测试，覆盖 TCC 权限、窗口隐藏/显示、ESC 热键、多显示器坐标、剪贴板恢复 | 已证实 | 检查 tests/ 目录确认测试覆盖范围 | open |
-
----
-
-## 证据边界
-
-### Batch 2 已验证的边界
-
-| 子系统 | 已验证 | 未验证 |
-|--------|------|--------|
-| attachments | spec 文档完整性、核心源码一致性（maybe 包装器、超时、双重去重、图片处理、PDF 引用、日期变更、团队邮箱过滤、图片验证）、coverage manifest 注册 | attachments 独立测试、遥测采样逻辑细节、真实 live 环境 |
-| bridge | spec 文档完整性、核心源码一致性（bridgeMain、bridgeApi、sessionRunner、workSecret、bridgePointer、jwtUtils、trustedDevice、inboundMessages、replBridge、daemonBridge、capacityWake、flushGate、bridgeEnabled）、coverage manifest 注册、inbound-envelope.md 契约对齐、perpetual/daemon/peer/inbound 测试 | 关键路径测试、shutdown retry 次数细节、其他 contracts 完整对齐、真实 live 环境 |
-| buddy | spec 文档完整性、核心源码一致性（骨骼派生、roll 确定性、inFlight 并发控制、宽松 JSON 解析、sideQuestion 调用、软失败、灵魂持久化、预告窗口、静音命令）、coverage manifest 注册、buddyFork.test.ts 部分覆盖、上游 llms.txt/strings 搜索边界记录 | UI 交互测试、预告窗口测试、静音行为测试、真实 live 环境 |
-| computer-use | spec 文档完整性、核心源码一致性（文件锁 O_EXCL、PID 存活探测、零 syscall 预检、JSON Lines 协议、drainRunLoop 包装、坐标转换、Surrogate Host、三调用点归一、unhide 5s 超时、ESC 热键 CGEventTap、精确 bundleId 授权）、coverage manifest 注册、computer-use-backends.md 契约对齐、external-stubs 契约对齐、良好的 mock 测试覆盖、上游 llms.txt/strings 搜索边界记录 | 真实桌面环境验收（TCC、窗口隐藏、ESC 热键、多显示器、剪贴板恢复）、Swift/Rust 内部实现验证 |
-
-### 上游证据边界
-
-| 项目 | 状态 | 说明 |
-|------|------|------|
-| 官方文档索引 | ✅ 已搜索 | llms.txt 27 行匹配 buddy/computer-use，边界：/tmp/flash-design-audit-batch-2-doc-index.txt |
-| 上游 CLI strings | ✅ 已搜索 | /opt/homebrew/bin/claude 26191 行匹配，边界：/tmp/flash-design-audit-batch-2-strings.txt |
-| 上游行为对齐 | ⚠️ 不充分 | 有搜索结果但仅作为边界记录，不做完整对齐验证 |
-
-### 测试证据边界
-
-| 类别 | 覆盖 | 缺口 |
-|------|------|------|
-| attachments 测试 | ❌ 无独立测试 | ⚠️ 仅集成测试间接覆盖 |
-| bridge 测试 | ⚠️ 部分覆盖 | ⚠️ 关键路径无测试 |
-| buddy 测试 | ⚠️ 部分覆盖（孵化、解析、roll 确定性） | ⚠️ UI 交互、预告窗口、静音行为无测试 |
-| computer-use 测试 | ✅ 良好的 mock 覆盖（TCC、授权、坐标、锁、清理、JSON Lines、ESC 热键） | ⚠️ 真实桌面环境无测试 |
-
----
-
-## 完成判定
-
-### 总体评估
-
-| 子系统 | 文档完整性 | 实现一致性 | 上游一致性 | 验证状态 | 总体 |
-|--------|------------|------------|------------|----------|------|
-| attachments | ✅ 完整 | ✅ 一致 | ⚠️ 有边界搜索但未完整对齐 | ⚠️ 部分充分（无独立测试） | ⚠️ 有条件通过（需添加独立测试） |
-| bridge | ✅ 完整 | ✅ 一致 | ⚠️ 有边界搜索但未完整对齐 | ⚠️ 部分充分（关键路径无测试） | ⚠️ 有条件通过（需添加关键路径测试） |
-| buddy | ✅ 完整 | ✅ 一致 | ⚠️ 有边界搜索但未完整对齐 | ⚠️ 部分充分（UI 交互无测试） | ⚠️ 有条件通过（需添加 UI 交互测试） |
-| computer-use | ✅ 完整 | ✅ 一致 | ⚠️ 有边界搜索但未完整对齐 | ⚠️ 部分充分（真实桌面环境无验收） | ⚠️ 有条件通过（需建立真实桌面环境验收） |
-
-### Batch 2 总体结论
-
-✅ **文档完整性高**：四个子系统的 draft spec 质量优秀，均包含完整章节、决策表、模块设计卡、证据位置标注。
-
-✅ **实现一致性强**：代码与 spec 高度对齐，关键机制与文档完全一致。
-
-⚠️ **测试覆盖不均**：attachments 无独立测试，bridge 和 buddy 仅部分覆盖，computer-use 仅 mock 覆盖，关键路径和真实桌面环境验收缺失。
-
-✅ **上游证据边界已记录**：完成 llms.txt 和 binary strings 搜索，结果作为边界记录存档。
 
 ---
 
@@ -457,7 +383,6 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 
 ✅ **架构、模块与数据流**：
 - 7 个模块设计卡：FileReadTool、FileWriteTool、FileEditTool、GlobTool、GrepTool、NotebookEditTool、共享辅助模块
-- 每个模块包含真实入口签名、关键类型、状态与附件、创建流程、交互与关闭流程、错误与安全、设计取舍与备选
 - 完整读写编辑流程、PDF 读取分支、Grep 执行分支等详细数据流
 
 **发现 B2-file-tools-01**：spec 完整列出所有模块设计，但多数标注"无直接测试""未找到直接测试"，仅部分工具可能有间接测试。
@@ -470,7 +395,7 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 - `src/tools/FileWriteTool/FileWriteTool.ts`：并发修改检测、writeTextContent 直接使用模型换行符等与 spec 一致
 - `src/tools/GrepTool/GrepTool.ts`：ripgrep 后端、VCS 目录排除、mtime 排序等与 spec 一致
 
-**发现 B2-file-tools-02**：源码中 `FileReadTool` 确实实现了 tengu_read_dedup_killswitch，但该特性的实际使用未详细验证。
+**发现 B2-file-tools-02**：源码中 FileReadTool 确实实现了 tengu_read_dedup_killswitch，但该特性的实际使用未详细验证。
 
 #### 外部契约验证
 
@@ -493,7 +418,7 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 |------|------|------|
 | Spec 完整性 | ✅ 完整，5 项决策，7 个模块设计卡 | ⚠️ 无测试证据 |
 | 源码一致性 | ✅ 核心逻辑与 spec 一致 | ⚠️ killswitch 特性使用未详细验证 |
-| 测试覆盖 | ❌ 无独立测试 | ⚠️ 仅可能有集成测试间接覆盖 |
+| 测试覆盖 | ❌ 无独立测试 | ⚠️ 仅集成测试间接覆盖 |
 | 官方文档 | ❌ 无实时访问 | ⚠️ 基于现有 spec |
 | 上游 CLI | ❌ 不存在 | ⚠️ 无 strings 证据 |
 | 外部契约 | ❌ 无独立 contract | ⚠️ 依赖权限系统契约 |
@@ -513,45 +438,31 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 
 ✅ **问题与约束**：准确描述了全局单例管理、配置仅来自插件、lazy start + lazy load、结构化诊断注册、stdio 传输唯一支持、ContentModified 自动重试、位置 1-based vs 0-based 转换、gitignored 结果过滤、错误隔离、崩溃自动重启等核心问题与约束。
 
-✅ **设计理由与备选方案**：10 项关键决策表格化展示，包含真实证据位置：
-- 全局单例管理器
-- 配置仅来自插件
-- lazy start + lazy load
-- 结构化诊断注册表
-- stdio 传输为唯一支持
-- ContentModified 自动重试
-- 位置 1-based vs 0-based
-- gitignored 结果过滤
-- 错误隔离（服务器级别）
-- 崩溃自动重启
-- 通知处理错误隔离
-
-证据位置标注准确：`src/services/lsp/LSPServerManager.ts`、`src/services/lsp/LSPServerInstance.ts`、`src/services/lsp/LSPClient.ts`、`src/services/lsp/passiveFeedback.ts`、`src/tools/LSPTool/LSPTool.ts` 等。
+✅ **设计理由与备选方案**：10 项关键决策表格化展示，包含真实证据位置。
 
 ✅ **目标与非目标**：清晰界定了不支持 socket 传输、不支持用户/项目级 LSP 配置、不实现 LSP 所有功能、不提供 LSP 服务器安装功能、不支持远程 LSP 服务器等非目标。
 
 ✅ **架构、模块与数据流**：
 - 6 个模块设计卡：LSPServerManager、LSPServerInstance、LSPClient、Config/Types、Passive Diagnostics、LSPTool
-- 每个模块包含真实入口签名、关键类型、状态与附件、创建流程、交互与关闭流程、错误与安全、设计取舍与备选
-- 服务器启动与初始化流程、请求生命周期、关闭流程、被动诊断推送流程等详细数据流
+- 完整说明状态机、重试逻辑、崩溃自动重启机制
+- 关键类型定义完整
 
 **发现 B2-lsp-01**：spec 完整列出所有模块设计，但部分标注"未找到直接测试"，仅 lspLifecycle.test.ts 和 lsp.test.ts 覆盖部分功能。
 
 #### 源码验证
 
 读取并验证了以下文件：
-- `src/services/lsp/LSPServerManager.ts:1-150+`：全局单例、初始化流程、服务器路由、文档同步等与 spec 一致
-- `src/services/lsp/LSPServerInstance.ts:1-150+`：lazy load（require('./LSPClient.js')）、ContentModified 重试逻辑（LSP_ERROR_CONTENT_MODIFIED = -32801，MAX_RETRIES_FOR_TRANSIENT_ERRORS = 3，RETRY_BASE_DELAY_MS = 500）、状态机、崩溃自动重启等与 spec 一致
-- `src/services/lsp/LSPClient.ts`：lazy load 注释、spawn 等待确认、isStopping 标志等与 spec 一致
-- `src/tools/LSPTool/LSPTool.ts`：1-based vs 0-based 转换、git check-ignore 过滤、MAX_LSP_FILE_SIZE_BYTES = 10MB 等与 spec 一致
+- `src/services/lsp/LSPServerManager.ts`：全局单例管理、初始化流程、服务器路由、文档同步与 spec 一致
+- `src/services/lsp/LSPServerInstance.ts`：lazy load、ContentModified 重试逻辑（LSP_ERROR_CONTENT_MODIFIED = -32801，MAX_RETRIES_FOR_TRANSIENT_ERRORS = 3，RETRY_BASE_DELAY_MS = 500）、状态机、崩溃自动重启与 spec 一致
+- `src/services/lsp/LSPClient.ts`：lazy load、spawn 等待确认、isStopping 标志与 spec 一致
+- `src/tools/LSPTool/LSPTool.ts`：1-based vs 0-based 转换、git check-ignore 过滤、MAX_LSP_FILE_SIZE_BYTES = 10MB 与 spec 一致
 
 **发现 B2-lsp-02**：源码中确实实现了 ContentModified 自动重试，但指数退避逻辑的完整路径需进一步验证。
 
 #### 外部契约验证
 
 检查相关 external stubs 契约：
-- 无直接针对 lsp 的独立 contract
-- LSP 协议本身是公开标准，但内部实现无契约
+- 无直接针对 lsp 的独立 contract，LSP 协议本身是公开标准
 - 无公开 live 环境验证
 
 #### 测试验证
@@ -563,7 +474,7 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 - ❌ 未找到被动诊断注册表相关测试
 - ❌ 未找到 ContentModified 重试逻辑完整测试
 
-**发现 B2-lsp-03**：lsp 子系统有部分测试覆盖，但关键路径（LSPTool 完整操作、诊断去重和容量限制、ContentModified 完整重试逻辑、gitignore 过滤、socket 传输（未实现））无针对性测试。
+**发现 B2-lsp-03**：lsp 子系统有部分测试覆盖，但关键路径（LSPTool 完整操作、诊断去重和容量限制、ContentModified 完整重试逻辑、gitignore 过滤）无针对性测试。
 
 #### 证据边界总结
 
@@ -571,10 +482,167 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 |------|------|------|
 | Spec 完整性 | ✅ 完整，10 项决策，6 个模块设计卡 | ⚠️ 部分测试证据不足 |
 | 源码一致性 | ✅ 核心逻辑与 spec 一致 | ⚠️ ContentModified 完整重试逻辑需进一步验证 |
-| 测试覆盖 | ⚠️ 部分覆盖（lspLifecycle.test.ts、lsp.test.ts） | ⚠️ LSPTool、诊断注册表、ContentModified 重试无完整测试 |
+| 测试覆盖 | ⚠️ 部分覆盖（生命周期、配置） | ⚠️ 关键路径无完整测试 |
 | 官方文档 | ❌ 无实时访问 | ⚠️ 基于现有 spec |
 | 上游 CLI | ❌ 不存在 | ⚠️ 无 strings 证据 |
 | 外部契约 | ❌ 无独立 contract | ⚠️ LSP 协议是公开标准，但内部实现无契约 |
+
+---
+
+### mcp
+
+| 项目 | 状态 | 说明 |
+|------|------|------|
+| Spec 存在 | ✅ | `docs/superpowers/specs/2026-11-12-mcp-design.md` |
+| Coverage 存在 | ✅ | `docs/architecture/coverage/mcp.yaml` |
+| Manifest 注册 | ✅ | id: mcp, batch: 2, status: draft |
+| Coverage 覆盖分组 | 16/16 | additional-files-source, additional-files-test, commands, mcp-config, mcp-client, mcp-auth, mcp-transport, mcp-connection-management, mcp-utils, mcp-claudeai, mcp-permissions, mcp-tools, mcp-components, mcp-commands, mcp-official-registry, mcp-elicitation, mcp-server-approval, mcp-entrypoints, mcp-tests |
+
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了多传输类型支持（stdio/SSE/HTTP/WebSocket/SDK/claude.ai proxy）、配置发现与聚合（多来源：enterprise/local/project/user/plugin/claude.ai）、连接生命周期管理、能力聚合、认证与重连、错误隔离、SDK in-process vs 外部服务器等核心问题与约束。关键约束均有记录：连接超时默认 30 秒、批处理并发本地 3/远程 20、工具描述截断 2048 字符、认证缓存 TTL 15 分钟等。
+
+✅ **设计理由与备选方案**：10+ 项关键决策表格化展示，包含真实证据位置：
+- 多源配置聚合与去重策略（enterprise > local > project > user > plugin > claudeai，基于内容签名去重）
+- 连接状态机（connected/failed/needs-auth/pending/disabled）
+- 批处理连接调度策略（pMap，本地 3 并发，远程 20 并发）
+- memoization 缓存策略（connectToServer memoize，fetchTools/Resources/Commands memoizeWithLRU 20）
+- SDK in-process 服务器特殊处理（不经过 connectToServer，单独处理）
+- needs-auth 缓存与跳过策略（15 分钟 TTL）
+- OAuth 认证与令牌刷新设计（抢先刷新、跨进程锁、重试策略）
+- stdio 服务器进程清理 escalator（SIGINT → SIGTERM → SIGKILL）
+- 错误隔离与单个服务器失败处理
+
+证据位置标注准确：`src/services/mcp/config.ts`、`src/services/mcp/client.ts`、`src/services/mcp/auth.ts`、`src/services/mcp/normalization.ts` 等。
+
+✅ **目标与非目标**：清晰界定了不实现 MCP 协议本身（使用 @modelcontextprotocol/sdk）、不处理工具执行细节、不实现服务器、不跨会话持久化连接等非目标。
+
+✅ **架构、模块与数据流**：
+- 9 个模块设计卡：配置发现模块、Client/Connection Manager 模块、Stdio/In-Memory/WebSocket Transports 模块、认证与重连模块、McpAuthTool 伪工具模块、工具/资源/命令聚合模块、UI/Elicitation 模块、关闭清理模块
+- 完整数据流：启动 → 连接 → 能力获取 → 工具调用
+- 传输类型矩阵完整
+- 工具命名规范化说明完整
+- 配置来源与 scope 表格完整
+
+**发现 B2-mcp-01**：spec 完整列出所有模块设计，但部分标注"需独立桌面环境验收"（Chrome MCP、Computer Use MCP），部分测试标注"未找到直接测试"。
+
+#### 源码验证
+
+读取并验证了以下文件：
+- `src/services/mcp/types.ts`：ConfigScopeSchema、TransportSchema、McpStdioServerConfigSchema、McpSSEServerConfigSchema、McpHTTPServerConfigSchema、McpWebSocketServerConfigSchema、McpSdkServerConfigSchema、McpClaudeAIProxyServerConfigSchema、ConnectedMCPServer/FailedMCPServer/NeedsAuthMCPServer/PendingMCPServer/DisabledMCPServer 类型定义与 spec 一致
+- `src/services/mcp/config.ts`：getEnterpriseMcpFilePath、addScopeToServers、writeMcpjsonFile、getServerCommandArray、commandArraysMatch、getServerUrl、unwrapCcrProxyUrl、getMcpServerSignature、dedupPluginMcpServers、dedupClaudeAiMcpServers、urlPatternToRegex、urlMatchesPattern、getMcpAllowlistSettings、getMcpDenylistSettings、isMcpServerDenied 与 spec 一致
+- `src/services/mcp/client.ts`（部分读取）：关键错误类定义（McpAuthError、McpSessionExpiredError、McpToolCallError）、isMcpSessionExpiredError 检测逻辑、DEFAULT_MCP_TOOL_TIMEOUT_MS = 100_000_000、MAX_MCP_DESCRIPTION_LENGTH = 2048 与 spec 一致
+- `src/components/wizard/WizardProvider.tsx`：WizardProvider 实现与 spec 一致，包含 navigationHistory、goNext、goBack、goToStep、cancel、updateWizardData
+
+**发现 B2-mcp-02**：源码中确实实现了关键机制与 spec 一致，但完整的重连场景、OAuth 完整流程、企业策略完整测试、stdio 清理 escalator 等需进一步验证。
+
+#### 外部契约验证
+
+检查相关 external stubs 契约：
+- MCP 协议本身是公开标准（@modelcontextprotocol/sdk）
+- 无直接针对 mcp 的独立 contract
+- 无公开 live 环境验证
+
+#### 测试验证
+
+检查 coverage 中提及的测试文件：
+- `tests/sdkMcp.test.ts`：✅ 覆盖 SDK in-process 服务器注册元数据和调用工具
+- `tests/monitorMcpTask.test.ts`：✅ 覆盖监控 MCP 任务
+- `tests/monitorMcpToolCall.test.ts`：✅ 覆盖监控 MCP 工具调用
+- `tests/monitorMcpDetailDialog.test.tsx`：✅ 覆盖监控详情对话框
+- ❌ 未找到完整的重连场景测试
+- ❌ 未找到 OAuth 完整流程测试
+- ❌ 未找到企业策略完整测试
+- ❌ 未找到 stdio 清理 escalator 测试
+
+**发现 B2-mcp-03**：mcp 子系统有部分测试覆盖，但关键路径（完整的重连场景、OAuth 完整流程、企业策略、stdio 清理 escalator、并发连接多个服务器时的内存使用、需要认证服务器 15 分钟缓存过期后的行为）无针对性测试。
+
+#### 证据边界总结
+
+| 类别 | 覆盖 | 缺口 |
+|------|------|------|
+| Spec 完整性 | ✅ 完整，10+ 项决策，9 个模块设计卡 | ⚠️ 部分测试证据不足 |
+| 源码一致性 | ✅ 核心逻辑与 spec 一致 | ⚠️ 部分复杂路径需进一步验证 |
+| 测试覆盖 | ⚠️ 部分覆盖（SDK MCP、监控相关） | ⚠️ 关键路径无完整测试 |
+| 官方文档 | ❌ 无实时访问 | ⚠️ 基于现有 spec |
+| 上游 CLI | ❌ 不存在 | ⚠️ 无 strings 证据 |
+| 外部契约 | ❌ 无独立 contract | ⚠️ MCP 协议是公开标准 |
+
+---
+
+### onboarding-ui
+
+| 项目 | 状态 | 说明 |
+|------|------|------|
+| Spec 存在 | ✅ | `docs/superpowers/specs/2026-11-12-onboarding-ui-design.md` |
+| Coverage 存在 | ✅ | `docs/architecture/coverage/onboarding-ui.yaml` |
+| Manifest 注册 | ✅ | id: onboarding-ui, batch: 2, status: draft |
+| Coverage 覆盖分组 | 2/2 | commands, additional-files-source |
+
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了首次引导（主题选择、API Key 批准、OAuth 流程、安全须知、终端设置）、工作区信任确认（区分非 home 目录与 home 目录持久化策略）、托管设置安全审批（仅展示设置名称不展示值）、项目引导提示（最多显示 4 次）、桌面端与 LSP 插件推荐、Wizard Provider 通用向导框架等核心问题与约束。
+
+✅ **设计理由与备选方案**：5 项关键决策表格化展示，包含真实证据位置：
+- 信任状态持久化策略（非 home 目录持久化到 projectConfig，home 目录仅 sessionTrustAccepted 内存状态）
+- TrustDialog 不自动批准 MCP（MCP 单独在 handleMcpjsonServerApprovals 中处理）
+- ManagedSettingsSecurityDialog 展示策略（仅展示名称，不展示值）
+- 项目引导显示上限（最多显示 4 次）
+- Wizard Provider 导航支持（维护 navigationHistory，非线性导航）
+
+证据位置标注准确：`src/components/TrustDialog/TrustDialog.tsx`、`src/components/ManagedSettingsSecurityDialog/`、`src/projectOnboardingState.ts`、`src/components/wizard/WizardProvider.tsx` 等。
+
+✅ **目标与非目标**：清晰界定了不定义权限裁决的具体算法、不包含 settings schema 的完整定义、不处理 MCP 服务器的逐个审批逻辑等非目标。
+
+✅ **架构、模块与数据流**：
+- 核心入口与流程说明完整：启动 → showSetupScreens → [Onboarding → TrustDialog → ManagedSettingsSecurityDialog] → REPL
+- 5 个模块设计卡：Onboarding 首次启动向导、TrustDialog 工作区信任确认、ManagedSettingsSecurityDialog 托管设置安全确认、WizardProvider 通用向导框架、Project Onboarding 项目级引导、issueOnboarding 路径
+- 数据持久化层次表格完整
+- 首次启动完整流程说明完整
+- 关键键绑定说明完整
+
+**发现 B2-onboarding-ui-01**：spec 完整列出所有模块设计，但部分标注"未找到直接测试"，仅 issueOnboarding.test.ts 覆盖部分功能。
+
+#### 源码验证
+
+读取并验证了以下文件：
+- `src/components/Onboarding.tsx`：StepId 类型定义、步骤数组构建、goToNextStep、handleThemeSelection、主题选择、API Key 批准、OAuth 流程、安全须知、终端设置与 spec 一致
+- `src/components/TrustDialog/TrustDialog.tsx`：home 目录检测、sessionTrustAccepted 内存状态 vs projectConfig 持久化、MCP 不自动批准的注释（Line 153-156）、各检测项（MCP servers、hooks、bash permissions、apiKeyHelper、aws/gcp commands、otelHeadersHelper、dangerous env vars）与 spec 一致
+- `src/components/wizard/WizardProvider.tsx`：WizardContext、navigationHistory 维护、goNext、goBack、goToStep、cancel、updateWizardData、isCompleted 状态与 spec 一致
+
+**发现 B2-onboarding-ui-02**：源码中确实实现了关键机制与 spec 一致，但 ManagedSettingsSecurityDialog 相关代码、DesktopUpsellStartup、LspRecommendationMenu、claudeCodeHints 等需进一步读取验证。
+
+#### 外部契约验证
+
+检查相关 external stubs 契约：
+- 无直接针对 onboarding-ui 的独立 contract
+- 无公开 live 环境验证
+
+#### 测试验证
+
+检查 coverage 中提及的测试文件：
+- `tests/issueOnboarding.test.ts`：✅ 覆盖幂等性和 /onboarding 命令行为
+- ❌ 未找到 Onboarding 完整流程测试
+- ❌ 未找到 TrustDialog 测试
+- ❌ 未找到 ManagedSettingsSecurityDialog 测试
+- ❌ 未找到 WizardProvider 导航测试
+- ❌ 未找到 Project Onboarding 计数测试
+- ❌ 未找到 DesktopUpsellStartup 测试
+- ❌ 未找到 LspRecommendationMenu 测试
+- ❌ 未找到 claudeCodeHints 测试
+
+**发现 B2-onboarding-ui-03**：onboarding-ui 子系统有部分测试覆盖，但关键路径（Onboarding 完整流程、TrustDialog 信任策略、ManagedSettingsSecurityDialog 展示策略、WizardProvider 非线性导航、Project Onboarding 计数、DesktopUpsellStartup、LspRecommendationMenu）无针对性测试。
+
+#### 证据边界总结
+
+| 类别 | 覆盖 | 缺口 |
+|------|------|------|
+| Spec 完整性 | ✅ 完整，5 项决策，5 个模块设计卡 | ⚠️ 部分测试证据不足 |
+| 源码一致性 | ✅ 核心逻辑与 spec 一致 | ⚠️ 部分模块需进一步验证 |
+| 测试覆盖 | ⚠️ 部分覆盖（仅 issueOnboarding.test.ts） | ⚠️ 关键路径无完整测试 |
+| 官方文档 | ❌ 无实时访问 | ⚠️ 基于现有 spec |
+| 上游 CLI | ❌ 不存在 | ⚠️ 无 strings 证据 |
+| 外部契约 | ❌ 无独立 contract | ⚠️ 无相关契约 |
 
 ---
 
@@ -583,7 +651,7 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 | ID | 主责 | 关联 | 类别 | 严重度 | 问题陈述 | 源码证据 | 上游证据 | 测试证据 | 影响 | 修订建议 | 置信度 | 验证边界 | 状态 |
 |----|------|------|------|--------|----------|----------|----------|----------|------|----------|--------|--------|------|
 | B2-attachments-01 | attachments | — | 测试缺口 | P2 | attachments spec 所有模块设计均标注"无独立测试""未找到直接测试"，仅集成测试间接覆盖 | `docs/superpowers/specs/2026-11-12-attachments-design.md:7` | N/A | 无专门 attachments 测试文件 | 中（核心功能可能有未覆盖边缘情况） | 添加 attachments 独立测试：maybe 错误隔离、超时、双重去重、图片处理、PDF 引用、日期变更 | 已证实 | 仅检查 spec 文档声明 | open |
-| B2-attachments-02 | attachments | — | 验证缺口 | P3 | spec 中提到 `maybe()` 内部有 5% 遥测采样，但源码中该逻辑未详细验证 | `src/utils/attachments.ts` 需搜索 logEvent 调用 | N/A | 无 | 低（仅遥测） | 验证遥测采样逻辑是否实现 | 部分证实 | 需进一步搜索源码 | open |
+| B2-attachments-02 | attachments | — | 验证缺口 | P3 | spec 中提到 maybe() 内部有 5% 遥测采样，但源码中该逻辑未详细验证 | `src/utils/attachments.ts` 需搜索 logEvent 调用 | N/A | 无 | 低（仅遥测） | 验证遥测采样逻辑是否实现 | 部分证实 | 需进一步搜索源码 | open |
 | B2-attachments-03 | attachments | — | 测试缺口 | P2 | attachments 子系统无专门独立测试文件，关键路径（maybe 错误隔离、超时、双重去重、图片处理、PDF 引用、日期变更）无针对性测试 | `src/utils/attachments.ts`、`src/utils/imagePaste.ts`、`src/utils/imageStore.ts`、`src/utils/imageValidation.ts`、`src/utils/pasteStore.ts` | N/A | 仅集成测试间接覆盖 | 中（关键路径可能有未覆盖边缘情况） | 添加 attachments 独立测试文件，覆盖所有主要模块设计卡场景 | 已证实 | 检查 tests/ 目录确认无专门测试 | open |
 | B2-bridge-01 | bridge | — | 测试缺口 | P2 | bridge spec 多数模块设计标注"未找到直接测试"，关键路径（权限回调、容量管理、clean shutdown、token refresh）无针对性测试 | `docs/superpowers/specs/2026-11-12-bridge-design.md:7` | N/A | 仅 perpetual/daemon/peer/inbound 测试 | 中（关键路径可能有未覆盖边缘情况） | 添加 bridge 关键路径测试：权限回调超时、token refresh 竞态、容量波动、跨 worktree 扫描、clean shutdown 强制 kill | 已证实 | 仅检查 spec 文档声明 | open |
 | B2-bridge-02 | bridge | — | 验证缺口 | P3 | spec 描述 shutdown 流程中 stopWork"最多重试 3 次"，但源码中该逻辑需进一步验证 | `src/bridge/bridgeMain.ts:2435-2600+` | N/A | 无 | 低（仅细节） | 验证 stopWork retry 次数与 backoff 配置 | 部分证实 | 需进一步阅读源码 shutdown 逻辑 | open |
@@ -602,6 +670,12 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 | B2-lsp-01 | lsp | — | 测试缺口 | P2 | lsp spec 完整列出所有模块设计，但部分标注"未找到直接测试"，仅 lspLifecycle.test.ts 和 lsp.test.ts 覆盖部分功能 | `docs/superpowers/specs/2026-11-12-lsp-design.md:7` | N/A | tests/lspLifecycle.test.ts、tests/lsp.test.ts 存在但覆盖不全 | 中（关键路径可能有未覆盖边缘情况） | 添加 lsp 关键路径测试：LSPTool 完整操作、诊断去重和容量限制、ContentModified 完整重试逻辑、gitignore 过滤 | 已证实 | 仅检查 spec 文档声明 | open |
 | B2-lsp-02 | lsp | — | 验证缺口 | P3 | spec 描述 ContentModified 自动重试的指数退避逻辑，但源码中该逻辑的完整路径需进一步验证 | `src/services/lsp/LSPServerInstance.ts` 需搜索完整重试逻辑 | N/A | 无 | 低（仅细节） | 验证 ContentModified 完整重试逻辑与指数退避 | 部分证实 | 需进一步阅读源码重试逻辑 | open |
 | B2-lsp-03 | lsp | — | 测试缺口 | P2 | lsp 子系统有部分测试覆盖，但关键路径（LSPTool 完整操作、诊断去重和容量限制、ContentModified 完整重试逻辑、gitignore 过滤）无针对性测试 | `src/services/lsp/LSPServerInstance.ts`、`src/services/lsp/passiveFeedback.ts`、`src/tools/LSPTool/LSPTool.ts` | N/A | tests/lspLifecycle.test.ts、tests/lsp.test.ts 仅覆盖生命周期和配置 | 中（关键路径可能有未覆盖边缘情况） | 添加 lsp 完整测试文件，覆盖所有 6 个模块设计卡场景 | 已证实 | 检查 tests/ 目录确认测试覆盖范围 | open |
+| B2-mcp-01 | mcp | — | 测试缺口 | P2 | mcp spec 完整列出所有模块设计，但部分标注"需独立桌面环境验收"（Chrome MCP、Computer Use MCP），部分测试标注"未找到直接测试" | `docs/superpowers/specs/2026-11-12-mcp-design.md:7` | N/A | tests/sdkMcp.test.ts、tests/monitorMcp*.test.ts 存在但覆盖不全 | 中（关键路径可能有未覆盖边缘情况） | 添加 mcp 关键路径测试：完整的重连场景、OAuth 完整流程、企业策略、stdio 清理 escalator、并发连接内存使用、缓存过期行为 | 已证实 | 仅检查 spec 文档声明与测试文件 | open |
+| B2-mcp-02 | mcp | — | 验证缺口 | P3 | spec 描述的完整重连场景、OAuth 完整流程、企业策略完整测试、stdio 清理 escalator 等需进一步验证 | `src/services/mcp/client.ts`、`src/services/mcp/auth.ts`、`src/services/mcp/config.ts` | N/A | 无 | 低（仅细节） | 验证完整的重连场景、OAuth 完整流程、企业策略、stdio 清理 escalator | 部分证实 | 需进一步阅读源码 | open |
+| B2-mcp-03 | mcp | — | 测试缺口 | P2 | mcp 子系统有部分测试覆盖，但关键路径（完整的重连场景、OAuth 完整流程、企业策略、stdio 清理 escalator、并发连接多个服务器时的内存使用、需要认证服务器 15 分钟缓存过期后的行为）无针对性测试 | `src/services/mcp/config.ts`、`src/services/mcp/client.ts`、`src/services/mcp/auth.ts`、`src/services/mcp/normalization.ts` | N/A | tests/sdkMcp.test.ts、tests/monitorMcpTask.test.ts、tests/monitorMcpToolCall.test.ts 仅覆盖部分场景 | 中（关键路径可能有未覆盖边缘情况） | 添加 mcp 完整测试文件，覆盖所有 9 个模块设计卡场景 | 已证实 | 检查 tests/ 目录确认测试覆盖范围 | open |
+| B2-onboarding-ui-01 | onboarding-ui | — | 测试缺口 | P2 | onboarding-ui spec 完整列出所有模块设计，但部分标注"未找到直接测试"，仅 issueOnboarding.test.ts 覆盖部分功能 | `docs/superpowers/specs/2026-11-12-onboarding-ui-design.md:7` | N/A | tests/issueOnboarding.test.ts 存在但覆盖不全 | 中（关键路径可能有未覆盖边缘情况） | 添加 onboarding-ui 关键路径测试：Onboarding 完整流程、TrustDialog 信任策略、ManagedSettingsSecurityDialog 展示策略、WizardProvider 非线性导航、Project Onboarding 计数 | 已证实 | 仅检查 spec 文档声明 | open |
+| B2-onboarding-ui-02 | onboarding-ui | — | 验证缺口 | P3 | spec 描述的 ManagedSettingsSecurityDialog 相关代码、DesktopUpsellStartup、LspRecommendationMenu、claudeCodeHints 等需进一步读取验证 | `src/components/ManagedSettingsSecurityDialog/`、`src/components/DesktopUpsell/`、`src/components/LspRecommendation/` | N/A | 无 | 低（仅细节，不影响核心功能） | 验证 ManagedSettingsSecurityDialog、DesktopUpsellStartup、LspRecommendationMenu、claudeCodeHints 实现 | 部分证实 | 需进一步阅读源码 | open |
+| B2-onboarding-ui-03 | onboarding-ui | — | 测试缺口 | P2 | onboarding-ui 子系统有部分测试覆盖，但关键路径（Onboarding 完整流程、TrustDialog 信任策略、ManagedSettingsSecurityDialog 展示策略、WizardProvider 非线性导航、Project Onboarding 计数、DesktopUpsellStartup、LspRecommendationMenu）无针对性测试 | `src/components/Onboarding.tsx`、`src/components/TrustDialog/TrustDialog.tsx`、`src/components/wizard/WizardProvider.tsx`、`src/projectOnboardingState.ts` | N/A | tests/issueOnboarding.test.ts 仅覆盖幂等性和命令行为 | 中（关键路径可能有未覆盖边缘情况） | 添加 onboarding-ui 完整测试文件，覆盖所有 5 个模块设计卡场景 | 已证实 | 检查 tests/ 目录确认测试覆盖范围 | open |
 
 ---
 
@@ -617,6 +691,8 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 | computer-use | spec 文档完整性、核心源码一致性（文件锁 O_EXCL、PID 存活探测、零 syscall 预检、JSON Lines 协议、drainRunLoop 包装、坐标转换、Surrogate Host、三调用点归一、unhide 5s 超时、ESC 热键 CGEventTap、精确 bundleId 授权）、coverage manifest 注册、computer-use-backends.md 契约对齐、external-stubs 契约对齐、良好的 mock 测试覆盖、上游 llms.txt/strings 搜索边界记录 | 真实桌面环境验收（TCC、窗口隐藏、ESC 热键、多显示器、剪贴板恢复）、Swift/Rust 内部实现验证 |
 | file-tools | spec 文档完整性、核心源码一致性（并发修改检测、去重机制、扩展名分支、引号规范化、ripgrep 集成、设备文件检查、macOS 截图路径处理）、coverage manifest 注册 | file-tools 独立测试、killswitch 特性使用细节、真实 live 环境 |
 | lsp | spec 文档完整性、核心源码一致性（全局单例、lazy start + lazy load、ContentModified 重试、状态机、崩溃自动重启、1-based vs 0-based 转换、gitignore 过滤）、coverage manifest 注册、lspLifecycle.test.ts 和 lsp.test.ts 部分覆盖 | LSPTool 完整测试、诊断注册表测试、ContentModified 完整重试逻辑验证、真实 live 环境 |
+| mcp | spec 文档完整性、核心源码一致性（多传输类型支持、多源配置聚合与去重、连接状态机、memoization 缓存、OAuth 认证、工具命名规范化）、coverage manifest 注册、sdkMcp.test.ts 和 monitorMcp*.test.ts 部分覆盖 | 完整的重连场景测试、OAuth 完整流程测试、企业策略完整测试、stdio 清理 escalator 测试、真实 live 环境 |
+| onboarding-ui | spec 文档完整性、核心源码一致性（Onboarding 流程、TrustDialog 信任策略、WizardProvider 导航）、coverage manifest 注册、issueOnboarding.test.ts 部分覆盖 | Onboarding 完整流程测试、TrustDialog 测试、ManagedSettingsSecurityDialog 测试、WizardProvider 导航测试、Project Onboarding 计数测试、DesktopUpsellStartup 测试、LspRecommendationMenu 测试、真实 live 环境 |
 
 ### 上游证据边界
 
@@ -635,7 +711,9 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 | buddy 测试 | ⚠️ 部分覆盖（孵化、解析、roll 确定性） | ⚠️ UI 交互、预告窗口、静音行为无测试 |
 | computer-use 测试 | ✅ 良好的 mock 覆盖（TCC、授权、坐标、锁、清理、JSON Lines、ESC 热键） | ⚠️ 真实桌面环境无测试 |
 | file-tools 测试 | ❌ 无独立测试 | ⚠️ 仅集成测试间接覆盖 |
-| lsp 测试 | ⚠️ 部分覆盖（生命周期、配置） | ⚠️ LSPTool、诊断注册表、ContentModified 重试无完整测试 |
+| lsp 测试 | ⚠️ 部分覆盖（生命周期、配置） | ⚠️ 关键路径无完整测试 |
+| mcp 测试 | ⚠️ 部分覆盖（SDK MCP、监控相关） | ⚠️ 关键路径无完整测试 |
+| onboarding-ui 测试 | ⚠️ 部分覆盖（仅 issueOnboarding.test.ts） | ⚠️ 关键路径无完整测试 |
 
 ---
 
@@ -651,14 +729,16 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 | computer-use | ✅ 完整 | ✅ 一致 | ⚠️ 有边界搜索但未完整对齐 | ⚠️ 部分充分（真实桌面环境无验收） | ⚠️ 有条件通过（需建立真实桌面环境验收） |
 | file-tools | ✅ 完整 | ✅ 一致 | ⚠️ 有边界搜索但未完整对齐 | ⚠️ 部分充分（无独立测试） | ⚠️ 有条件通过（需添加独立测试） |
 | lsp | ✅ 完整 | ✅ 一致 | ⚠️ 有边界搜索但未完整对齐 | ⚠️ 部分充分（关键路径无测试） | ⚠️ 有条件通过（需添加关键路径测试） |
+| mcp | ✅ 完整 | ✅ 一致 | ⚠️ 有边界搜索但未完整对齐 | ⚠️ 部分充分（关键路径无测试） | ⚠️ 有条件通过（需添加关键路径测试） |
+| onboarding-ui | ✅ 完整 | ✅ 一致 | ⚠️ 有边界搜索但未完整对齐 | ⚠️ 部分充分（关键路径无测试） | ⚠️ 有条件通过（需添加关键路径测试） |
 
 ### Batch 2 总体结论
 
-✅ **文档完整性高**：六个子系统的 draft spec 质量优秀，均包含完整章节、决策表、模块设计卡、证据位置标注。
+✅ **文档完整性高**：8 个子系统的 draft spec 质量优秀，均包含完整章节、决策表、模块设计卡、证据位置标注。
 
 ✅ **实现一致性强**：代码与 spec 高度对齐，关键机制与文档完全一致。
 
-⚠️ **测试覆盖不均**：attachments、file-tools 无独立测试，bridge、buddy、lsp 仅部分覆盖，computer-use 仅 mock 覆盖，关键路径和真实桌面环境验收缺失。
+⚠️ **测试覆盖不均**：attachments、file-tools 无独立测试，bridge、buddy、lsp、mcp、onboarding-ui 仅部分覆盖，computer-use 仅 mock 覆盖，关键路径和真实桌面环境验收缺失。
 
 ✅ **上游证据边界已记录**：完成 llms.txt 和 binary strings 搜索，结果作为边界记录存档。
 
@@ -672,17 +752,17 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 | computer-use | ✅ 已审计 |
 | file-tools | ✅ 已审计 |
 | lsp | ✅ 已审计 |
-| mcp | ⏳ 待审计 |
-| onboarding-ui | ⏳ 待审计 |
+| mcp | ✅ 已审计 |
+| onboarding-ui | ✅ 已审计 |
 | permissions | ⏳ 待审计 |
 | session-persistence | ⏳ 待审计 |
 | shell-tools | ⏳ 待审计 |
 | tool-framework | ⏳ 待审计 |
 
-**当前进度**：6/12 已审计
+**当前进度**：8/12 已审计
 
 ### 其他子系统状态
 
-本 batch 已审计 attachments、bridge、buddy、computer-use、file-tools、lsp，其余 6 个子系统（mcp、onboarding-ui、permissions、session-persistence、shell-tools、tool-framework）保持未审计状态，后续 batch 覆盖。
+本 batch 已审计 attachments、bridge、buddy、computer-use、file-tools、lsp、mcp、onboarding-ui，其余 4 个子系统（permissions、session-persistence、shell-tools、tool-framework）保持未审计状态，后续 batch 覆盖。
 
 ---
