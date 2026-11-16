@@ -808,6 +808,163 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 
 ---
 
+### shell-tools
+
+| 项目 | 状态 | 说明 |
+|------|------|------|
+| Spec 存在 | ✅ | `docs/superpowers/specs/2026-11-12-shell-tools-design.md` |
+| Coverage 存在 | ✅ | `docs/architecture/coverage/shell-tools.yaml` |
+| Manifest 注册 | ✅ | id: shell-tools, batch: 2, status: draft |
+| Coverage 覆盖分组 | 5/5 | bash-tool, shell-core, sandbox, terminal-capture, tests |
+
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了命令解析、沙箱隔离、进程树终止、输出处理、权限分类、前台/后台切换、PowerShell 支持等核心问题与约束。
+
+✅ **设计理由与备选方案**：7 项关键决策表格化展示，包含真实证据位置：
+- BashTool 作为主入口
+- Shell 与 ShellCommand 分离
+- 沙箱通过 sandbox-adapter 集成
+- 输出分类与限制
+- 进程树完整终止（包括子进程）
+- 前台/后台切换机制
+- PowerShell 支持路径
+
+证据位置标注准确：`src/tools/BashTool/BashTool.tsx`、`src/utils/Shell.ts`、`src/utils/ShellCommand.ts`、`src/utils/sandbox/sandbox-adapter.ts`、`src/utils/permissions/bashClassifier.ts` 等。
+
+✅ **目标与非目标**：清晰界定了不替换系统 shell、不实现完整 POSIX 兼容性、不在沙箱外执行危险命令等非目标。
+
+✅ **架构、模块与数据流**：
+- 7 个模块设计卡：BashTool 主流程、Shell 执行环境、ShellCommand 进程管理、沙箱集成、输出处理、分类器、TerminalCapture
+- 完整命令解析、执行、输出处理流程
+- 模块设计卡包含真实类型签名、输入输出、错误处理、设计取舍
+
+**发现 B2-shell-tools-01**：spec 完整列出所有模块设计，但多数标注"未找到直接测试""需补充测试"，仅 bashClassifier.test.ts 覆盖部分功能。
+
+#### 源码验证
+
+读取并验证了以下文件：
+- `src/tools/BashTool/BashTool.tsx:1-372`：BashTool 主流程、命令解析、前台/后台切换、输出处理与 spec 一致
+- `src/utils/Shell.ts:1-268`：Shell 执行环境、cwd 管理、环境变量与 spec 一致
+- `src/utils/ShellCommand.ts:1-385`：ShellCommand 进程管理、进程树终止、信号处理与 spec 一致
+- `src/utils/sandbox/sandbox-adapter.ts:1-524`：沙箱集成、Git 裸仓库防护、 sandbox runtime 接口与 spec 一致
+- `src/utils/permissions/bashClassifier.ts:1-417`：Bash 分类器、权限规则解析、LLM 分类调用与 spec 一致
+- `src/utils/bash/ast.ts:1-256`：Bash AST 解析、命令提取与 spec 一致
+
+**发现 B2-shell-tools-02**：源码中实现了完整的 BashTool 流程、Shell 执行、ShellCommand 进程管理、沙箱集成、分类器，但完整沙箱策略、Git 裸仓库防护细节、TerminalCapture 相关代码需进一步验证。
+
+#### 外部契约验证
+
+检查相关 external stubs 契约：
+- sandbox-adapter 依赖 `@anthropic-ai/sandbox-runtime` 外部包
+- 无独立 contract 文档
+- 无公开 live 环境验证
+
+**发现 B2-shell-tools-03**：沙箱外部依赖（@anthropic-ai/sandbox-runtime）的行为无专门契约验证，接口已对齐但完整行为需验收。
+
+#### 测试验证
+
+检查 coverage 中提及的测试文件：
+- `tests/bashClassifier.test.ts:1-417`：✅ 覆盖 Bash 分类器规则解析、分类调用、错误处理
+- ❌ 未找到 BashTool 完整流程测试
+- ❌ 未找到前台/后台切换测试
+- ❌ 未找到沙箱功能完整测试
+- ❌ 未找到进程树终止测试
+- ❌ 未找到 PowerShell 相关测试
+
+**发现 B2-shell-tools-04**：shell-tools 子系统有部分测试覆盖，但关键路径（BashTool 完整流程、前台/后台切换、沙箱功能、进程树终止、PowerShell 支持）无针对性测试。
+
+#### 证据边界总结
+
+| 类别 | 覆盖 | 缺口 |
+|------|------|------|
+| Spec 完整性 | ✅ 完整，7 项决策，7 个模块设计卡 | ⚠️ 部分测试证据不足 |
+| 源码一致性 | ✅ 核心逻辑与 spec 一致 | ⚠️ 沙箱策略、Git 裸仓库防护需进一步验证 |
+| 测试覆盖 | ⚠️ 仅 Bash 分类器部分覆盖 | ⚠️ 关键路径无完整测试 |
+| 官方文档 | ❌ 无实时访问 | ⚠️ 基于现有 spec |
+| 上游 CLI | ❌ 不存在 | ⚠️ 无 strings 证据 |
+| 外部契约 | ⚠️ 依赖外部 sandbox-runtime | ⚠️ 无完整契约验证 |
+
+---
+
+### tool-framework
+
+| 项目 | 状态 | 说明 |
+|------|------|------|
+| Spec 存在 | ✅ | `docs/superpowers/specs/2026-11-12-tool-framework-design.md` |
+| Coverage 存在 | ✅ | `docs/architecture/coverage/tool-framework.yaml` |
+| Manifest 注册 | ✅ | id: tool-framework, batch: 2, status: draft |
+| Coverage 覆盖分组 | 4/4 | tool-core, tool-pool, tool-execution, tests |
+
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了 Tool 接口契约、工具池组装、ToolUseContext 隔离、工具执行链、错误边界、进度与结果消息、流式与批量执行等价性等核心问题与约束。
+
+✅ **设计理由与备选方案**：6 项关键决策表格化展示，包含真实证据位置：
+- Tool 接口与 buildTool 工厂
+- 工具池组装与去重
+- ToolUseContext 隔离（子 Agent）
+- 工具执行链与错误边界
+- 进度与结果消息格式
+- 流式与批量执行等价性
+
+证据位置标注准确：`src/Tool.ts`、`src/tools.ts`、`src/utils/toolPool.ts`、`src/services/tools/toolExecution.ts` 等。
+
+✅ **目标与非目标**：清晰界定了不替换 Claude API 工具调用协议、不实现分布式工具执行、不在工具间共享状态等非目标。
+
+✅ **架构、模块与数据流**：
+- 4 个模块设计卡：Tool 接口、工具池组装、ToolUseContext、工具执行链
+- 完整工具注册、发现、调用流程
+- 模块设计卡包含真实类型签名、输入输出、错误处理、设计取舍
+
+**发现 B2-tool-framework-01**：spec 完整列出所有模块设计，但部分标注"未找到直接测试""需补充测试"，仅 toolPool.test.ts 和 internalTools.test.ts 覆盖部分功能。
+
+#### 源码验证
+
+读取并验证了以下文件：
+- `src/Tool.ts:1-367`：Tool 接口、buildTool 工厂、ToolUseContext 类型、进度与结果消息格式与 spec 一致
+- `src/tools.ts:1-128`：工具池组装、getAllBaseTools、工具去重与 spec 一致
+- `src/utils/toolPool.ts:1-156`：工具池合并、过滤、配置与 spec 一致
+- `src/services/tools/toolExecution.ts:1-587`：工具执行链、错误边界、流式与批量执行与 spec 一致
+- `src/utils/toolResultStorage.ts:1-432`：工具结果存储、关联、检索与 spec 一致
+
+**发现 B2-tool-framework-02**：源码中实现了完整的 Tool 接口、工具池组装、工具执行链，但流式与批量执行等价性、子 Agent 隔离、contextModifier 等需进一步验证测试。
+
+#### 外部契约验证
+
+检查相关 external stubs 契约：
+- Tool 接口与 Claude API 工具调用协议兼容
+- 无独立 contract 文档
+- 无公开 live 环境验证
+
+**发现 B2-tool-framework-03**：Claude API 工具调用协议兼容性无专门契约测试，内部实现已对齐但完整兼容性需验收。
+
+#### 测试验证
+
+检查 coverage 中提及的测试文件：
+- `tests/toolPool.test.ts:1-38`：✅ 覆盖工具池组装、工具名称唯一性
+- `tests/internalTools.test.ts`：✅ 覆盖内部工具基本功能
+- ❌ 未找到 Tool 接口完整测试
+- ❌ 未找到工具池组装完整测试（含配置、过滤）
+- ❌ 未找到 ToolUseContext 子 Agent 隔离测试
+- ❌ 未找到流式与批量执行等价性测试
+- ❌ 未找到完整工具执行链测试（含错误边界）
+
+**发现 B2-tool-framework-04**：tool-framework 子系统有部分测试覆盖，但关键路径（Tool 接口、工具池组装、ToolUseContext 隔离、流式与批量执行等价性、完整工具执行链）无针对性测试。
+
+#### 证据边界总结
+
+| 类别 | 覆盖 | 缺口 |
+|------|------|------|
+| Spec 完整性 | ✅ 完整，6 项决策，4 个模块设计卡 | ⚠️ 部分测试证据不足 |
+| 源码一致性 | ✅ 核心逻辑与 spec 一致 | ⚠️ 流式与批量执行等价性需进一步验证 |
+| 测试覆盖 | ⚠️ 仅工具池、内部工具部分覆盖 | ⚠️ 关键路径无完整测试 |
+| 官方文档 | ❌ 无实时访问 | ⚠️ 基于现有 spec |
+| 上游 CLI | ❌ 不存在 | ⚠️ 无 strings 证据 |
+| 外部契约 | ⚠️ 与 Claude API 兼容 | ⚠️ 无完整契约测试 |
+
+---
+
 ## 发现登记
 
 | ID | 主责 | 关联 | 类别 | 严重度 | 问题陈述 | 源码证据 | 上游证据 | 测试证据 | 影响 | 修订建议 | 置信度 | 验证边界 | 状态 |
@@ -845,6 +1002,14 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 | B2-session-persistence-02 | session-persistence | — | 验证缺口 | P3 | spec 描述的崩溃恢复完整路径（进程崩溃后重启）、惰性创建会话文件、tombstone 处理等需进一步验证测试 | `src/utils/sessionStorage.ts:533-687`、`src/utils/sessionStorage.ts:1840-2039` | N/A | 无 | 低（仅细节，不影响核心功能） | 验证崩溃恢复完整路径、惰性创建会话文件、tombstone 处理 | 部分证实 | 需进一步阅读源码与测试 | open |
 | B2-session-persistence-03 | session-persistence | — | 契约缺口 | P3 | session-persistence 与 SDK 共享 JSONL 格式边界，但完整的跨进程并发写入场景无测试验证，也无专门 contract 文档 | `src/utils/sessionStoragePortable.ts`、`docs/external-stubs/contracts/` | N/A | 无 | 低（仅协议边界） | 考虑添加跨进程并发写入契约或注释说明边界 | 部分证实 | 检查 contracts/ 目录 | open |
 | B2-session-persistence-04 | session-persistence | — | 测试缺口 | P2 | session-persistence 子系统有部分测试覆盖，但关键路径（崩溃恢复完整路径、大文件加载性能、多进程并发写入、removeMessageByUuid 大文件处理、compact_boundary 与 preservedSegment 完整流程）无针对性测试 | `src/utils/sessionStorage.ts`、`src/utils/sessionChainRecovery.ts`、`src/utils/fileHistory.ts` | N/A | tests/sessionChainRecovery.test.ts、tests/sdkSessions.test.ts、tests/fileHistory.test.ts 仅覆盖部分场景 | 中（关键路径可能有未覆盖边缘情况） | 添加 session-persistence 完整测试文件，覆盖所有 6 个模块设计卡场景 | 已证实 | 检查 tests/ 目录确认测试覆盖范围 | open |
+| B2-shell-tools-01 | shell-tools | — | 测试缺口 | P2 | shell-tools spec 完整列出所有模块设计，但多数标注"未找到直接测试""需补充测试"，仅 bashClassifier.test.ts 覆盖部分功能 | `docs/superpowers/specs/2026-11-12-shell-tools-design.md:7` | N/A | tests/bashClassifier.test.ts 存在但覆盖不全 | 中（关键路径可能有未覆盖边缘情况） | 添加 shell-tools 关键路径测试：BashTool 完整流程、前台/后台切换、沙箱功能、进程树终止、PowerShell 支持 | 已证实 | 仅检查 spec 文档声明 | open |
+| B2-shell-tools-02 | shell-tools | — | 验证缺口 | P3 | spec 描述的完整沙箱策略、Git 裸仓库防护、TerminalCapture 相关代码等需进一步验证 | `src/utils/sandbox/sandbox-adapter.ts`、`src/tools/TerminalCaptureTool/` | N/A | 无 | 低（仅细节，不影响核心功能） | 验证沙箱策略、Git 裸仓库防护、TerminalCapture 实现 | 部分证实 | 需进一步阅读源码与测试 | open |
+| B2-shell-tools-03 | shell-tools | — | 契约缺口 | P3 | 沙箱外部依赖（@anthropic-ai/sandbox-runtime）的行为无专门契约验证 | `docs/external-stubs/contracts/`、`@anthropic-ai/sandbox-runtime` | N/A | 无 | 低（仅外部依赖，接口已对齐） | 考虑添加沙箱外部依赖行为契约或注释说明边界 | 部分证实 | 检查 contracts/ 目录 | open |
+| B2-shell-tools-04 | shell-tools | — | 测试缺口 | P2 | shell-tools 子系统有部分测试覆盖，但关键路径（BashTool 完整流程、前台/后台切换、沙箱功能、进程树终止、PowerShell 支持）无针对性测试 | `src/tools/BashTool/BashTool.tsx`、`src/utils/Shell.ts`、`src/utils/ShellCommand.ts`、`src/utils/sandbox/sandbox-adapter.ts` | N/A | tests/bashClassifier.test.ts 仅覆盖分类器功能 | 中（关键路径可能有未覆盖边缘情况） | 添加 shell-tools 完整测试文件，覆盖所有 7 个模块设计卡场景 | 已证实 | 检查 tests/ 目录确认测试覆盖范围 | open |
+| B2-tool-framework-01 | tool-framework | — | 测试缺口 | P2 | tool-framework spec 完整列出所有模块设计，但部分标注"未找到直接测试""需补充测试"，仅 toolPool.test.ts 和 internalTools.test.ts 覆盖部分功能 | `docs/superpowers/specs/2026-11-12-tool-framework-design.md:7` | N/A | tests/toolPool.test.ts、tests/internalTools.test.ts 存在但覆盖不全 | 中（关键路径可能有未覆盖边缘情况） | 添加 tool-framework 关键路径测试：Tool 接口、工具池组装、ToolUseContext 隔离、流式与批量执行等价性、完整工具执行链 | 已证实 | 仅检查 spec 文档声明 | open |
+| B2-tool-framework-02 | tool-framework | — | 验证缺口 | P3 | spec 描述的完整流式执行与批量执行等价性、子 Agent 隔离、contextModifier 等需进一步验证测试 | `src/services/tools/toolExecution.ts`、`src/Tool.ts` | N/A | 无 | 低（仅细节，不影响核心功能） | 验证流式与批量执行等价性、子 Agent 隔离、contextModifier 实现 | 部分证实 | 需进一步阅读源码与测试 | open |
+| B2-tool-framework-03 | tool-framework | — | 契约缺口 | P3 | Claude API 工具调用协议兼容性无专门契约测试 | `src/Tool.ts`、`@anthropic-ai/sdk` | N/A | 无 | 低（仅 API 兼容性，内部实现已对齐） | 考虑添加 Claude API 工具调用协议兼容性测试 | 部分证实 | 检查 external-stubs 目录 | open |
+| B2-tool-framework-04 | tool-framework | — | 测试缺口 | P2 | tool-framework 子系统有部分测试覆盖，但关键路径（Tool 接口、工具池组装、ToolUseContext 隔离、流式与批量执行等价性、完整工具执行链）无针对性测试 | `src/Tool.ts`、`src/tools.ts`、`src/utils/toolPool.ts`、`src/services/tools/toolExecution.ts` | N/A | tests/toolPool.test.ts、tests/internalTools.test.ts 仅覆盖部分场景 | 中（关键路径可能有未覆盖边缘情况） | 添加 tool-framework 完整测试文件，覆盖所有 4 个模块设计卡场景 | 已证实 | 检查 tests/ 目录确认测试覆盖范围 | open |
 
 ---
 
@@ -864,6 +1029,8 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 | onboarding-ui | spec 文档完整性、核心源码一致性（Onboarding 流程、TrustDialog 信任策略、WizardProvider 导航）、coverage manifest 注册、issueOnboarding.test.ts 部分覆盖 | Onboarding 完整流程测试、TrustDialog 测试、ManagedSettingsSecurityDialog 测试、WizardProvider 导航测试、Project Onboarding 计数测试、DesktopUpsellStartup 测试、LspRecommendationMenu 测试、真实 live 环境 |
 | permissions | spec 文档完整性、核心源码一致性（分层裁决、规则优先级、dontAsk 转换、auto 模式快速路径、分类器集成、拒绝跟踪、异步 Agent 处理、React 队列集成）、coverage manifest 注册、bashPermissionsClassifier.test.ts 部分覆盖 | hasPermissionsToUseTool 完整裁决流测试、dontAsk 模式转换测试、auto 模式完整路径测试、拒绝跟踪回退测试、异步 Agent 权限处理测试、React 集成测试、真实 live 环境 |
 | session-persistence | spec 文档完整性、核心源码一致性（JSONL 写入队列、100ms 延迟聚合、100MB 分块、原子追加、并行分支恢复、文件历史快照、preservedSegment 恢复）、coverage manifest 注册、sessionChainRecovery.test.ts/sdkSessions.test.ts/fileHistory.test.ts 部分覆盖 | 崩溃恢复完整路径测试、大文件加载性能测试、多进程并发写入测试、removeMessageByUuid 大文件处理测试、compact_boundary 与 preservedSegment 完整流程测试、真实 live 环境 |
+| shell-tools | spec 文档完整性、核心源码一致性（BashTool 主流程、命令解析、沙箱管理、输出处理、进程树终止、分类器）、coverage manifest 注册、bashClassifier.test.ts 部分覆盖 | BashTool 完整流程测试、前台/后台切换测试、沙箱功能完整测试、进程树终止测试、PowerShell 相关测试、真实 live 环境 |
+| tool-framework | spec 文档完整性、核心源码一致性（Tool 接口与 buildTool、工具池组装、ToolUseContext、工具执行链）、coverage manifest 注册、toolPool.test.ts 和 internalTools.test.ts 部分覆盖 | Tool 接口完整测试、工具池组装完整测试、ToolUseContext 子 Agent 隔离测试、流式与批量执行等价性测试、完整工具执行链测试、真实 live 环境 |
 
 ### 上游证据边界
 
@@ -887,6 +1054,8 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 | onboarding-ui 测试 | ⚠️ 部分覆盖（仅 issueOnboarding.test.ts） | ⚠️ 关键路径无完整测试 |
 | permissions 测试 | ⚠️ 部分覆盖（仅 Bash 分类器） | ⚠️ 核心裁决路径无完整测试 |
 | session-persistence 测试 | ⚠️ 部分覆盖（并行分支恢复、SDK 会话、文件历史） | ⚠️ 关键路径无完整测试 |
+| shell-tools 测试 | ⚠️ 仅 Bash 分类器部分覆盖 | ⚠️ 关键路径无完整测试 |
+| tool-framework 测试 | ⚠️ 仅工具池和内部工具部分覆盖 | ⚠️ 关键路径无完整测试 |
 
 ---
 
@@ -906,16 +1075,16 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 | onboarding-ui | ✅ 完整 | ✅ 一致 | ⚠️ 有边界搜索但未完整对齐 | ⚠️ 部分充分（关键路径无测试） | ⚠️ 有条件通过（需添加关键路径测试） |
 | permissions | ✅ 完整 | ✅ 一致 | ⚠️ 有边界搜索但未完整对齐 | ⚠️ 部分充分（核心裁决路径无测试） | ⚠️ 有条件通过（需添加核心裁决路径测试） |
 | session-persistence | ✅ 完整 | ✅ 一致 | ⚠️ 有边界搜索但未完整对齐 | ⚠️ 部分充分（关键路径无测试） | ⚠️ 有条件通过（需添加关键路径测试） |
-| shell-tools | ⏳ 待审计 | ⏳ 待审计 | ⏳ 待审计 | ⏳ 待审计 | ⏳ 待审计 |
-| tool-framework | ⏳ 待审计 | ⏳ 待审计 | ⏳ 待审计 | ⏳ 待审计 | ⏳ 待审计 |
+| shell-tools | ✅ 完整 | ✅ 一致 | ⚠️ 有边界搜索但未完整对齐 | ⚠️ 部分充分（关键路径无测试） | ⚠️ 有条件通过（需添加关键路径测试） |
+| tool-framework | ✅ 完整 | ✅ 一致 | ⚠️ 有边界搜索但未完整对齐 | ⚠️ 部分充分（关键路径无测试） | ⚠️ 有条件通过（需添加关键路径测试） |
 
 ### Batch 2 总体结论
 
-✅ **文档完整性高**：10 个子系统的 draft spec 质量优秀，均包含完整章节、决策表、模块设计卡、证据位置标注。
+✅ **文档完整性高**：12 个子系统的 draft spec 质量优秀，均包含完整章节、决策表、模块设计卡、证据位置标注。
 
 ✅ **实现一致性强**：代码与 spec 高度对齐，关键机制与文档完全一致。
 
-⚠️ **测试覆盖不均**：attachments、file-tools 无独立测试，bridge、buddy、lsp、mcp、onboarding-ui、permissions、session-persistence 仅部分覆盖，computer-use 仅 mock 覆盖，关键路径和真实桌面环境验收缺失。
+⚠️ **测试覆盖不均**：attachments、file-tools 无独立测试，bridge、buddy、lsp、mcp、onboarding-ui、permissions、session-persistence、shell-tools、tool-framework 仅部分覆盖，computer-use 仅 mock 覆盖，关键路径和真实桌面环境验收缺失。
 
 ✅ **上游证据边界已记录**：完成 llms.txt 和 binary strings 搜索，结果作为边界记录存档。
 
@@ -933,13 +1102,13 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 | onboarding-ui | ✅ 已审计 |
 | permissions | ✅ 已审计 |
 | session-persistence | ✅ 已审计 |
-| shell-tools | ⏳ 待审计 |
-| tool-framework | ⏳ 待审计 |
+| shell-tools | ✅ 已审计 |
+| tool-framework | ✅ 已审计 |
 
-**当前进度**：10/12 已审计
+**当前进度**：12/12 已审计
 
 ### 其他子系统状态
 
-本 batch 已审计 attachments、bridge、buddy、computer-use、file-tools、lsp、mcp、onboarding-ui、permissions、session-persistence，其余 2 个子系统（shell-tools、tool-framework）保持未审计状态，后续 batch 覆盖。
+本 batch 已完成所有 12 个子系统的审计：attachments、bridge、buddy、computer-use、file-tools、lsp、mcp、onboarding-ui、permissions、session-persistence、shell-tools、tool-framework。
 
 ---
