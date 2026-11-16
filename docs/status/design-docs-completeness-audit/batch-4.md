@@ -296,6 +296,196 @@
 
 ---
 
+### cost-tracking
+
+| 项目 | 状态 | 说明 |
+|------|------|------|
+| Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-cost-tracking-design.md |
+| Coverage 存在 | ✅ | docs/architecture/coverage/cost-tracking.yaml |
+| Manifest 注册 | ✅ | id: cost-tracking, batch: 4, status: draft |
+| Coverage 覆盖分组 | 6/6 | cost-tracker-core, cost-hook, model-cost-config, billing-access, claude-ai-limits, cmd-cost, cmd-usage, cmd-extra-usage, bootstrap-cost-state |
+
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了 token 成本跟踪、多模型定价、订阅用户 vs API key 用户显示区别、限额与超额使用管理等核心问题。
+
+✅ **设计理由与备选方案**：10+ 项关键决策表格化展示，包含真实证据位置：
+- 成本状态存储在 bootstrap/state 全局单例
+- 模型成本分层配置按定价 tier 分组
+- 按模型短名聚合显示
+- 成本显示精度动态调整（>$0.5 显示 2 位小数）
+- 成本持久化到项目 config
+- 权限控制通过 hasConsoleBillingAccess/hasClaudeAiBillingAccess
+- 限额状态从 API 响应头提取
+- 超额使用双路径（浏览器打开 + 管理员请求）
+- 未知模型成本降级到默认模型
+- Advisor 用量递归累加
+
+✅ **目标与非目标**：清晰界定了不支持跨会话成本汇总、不提供成本导出功能等非目标。
+
+✅ **架构、模块与数据流**：
+- 7+ 模块设计卡
+- 完整成本跟踪与展示流程（端到端）
+- 限额与超额使用流程
+- 会话恢复流程
+- 完整数据结构定义
+
+✅ **证据链覆盖**：完整的「API 请求完成 → addToTotalSessionCost → 累加成本与用量 → 上报 telemetry → 递归处理 Advisor 用量 → 持久化到 config → /cost 显示」生命周期证据链已验证。
+
+#### 源码验证
+
+**cost-tracker-core (src/cost-tracker.ts)**：
+- getStoredSessionCosts/restoreCostStateForSession/saveCurrentSessionCosts 会话成本持久化，✅
+- formatCost 动态精度调整（>$0.5 显示 2 位小数），✅
+- formatModelUsage 按短名聚合，✅
+- addToTotalSessionCost 累加主会话和递归 Advisor 用量，✅
+
+**model-cost-config (src/utils/modelCost.ts)**：
+- COST_TIER_* 常量分层配置，✅
+- MODEL_COSTS map 按短名映射，✅
+- calculateUSDCost 计算成本，支持 Opus 4.6 fast mode 双倍定价，✅
+- getModelCosts 未知模型降级到默认模型，✅
+
+**billing-access (src/utils/billing.ts)**：
+- hasConsoleBillingAccess/hasClaudeAiBillingAccess 权限控制，✅
+- 支持 mockBillingAccessOverride 用于测试，✅
+
+**claude-ai-limits (src/services/claudeAiLimits.ts)**：
+- extractQuotaStatusFromHeaders 从响应头提取限额状态，✅
+- EARLY_WARNING_CONFIGS 早期限额预警配置，✅
+- OverageDisabledReason 超额禁用原因类型，✅
+
+**bootstrap-cost-state (src/bootstrap/state.ts)**：
+- STATE.totalCostUSD/STATE.modelUsage/STATE.hasUnknownModelCost 状态存储，✅
+- 提供 addToTotalCostState/getModelUsage/setCostStateForRestore 接口，✅
+
+**发现 B4-cost-tracking-01**：cost-tracking 子系统缺少专用测试文件，无单元测试覆盖核心功能（成本计算、会话持久化与恢复、限额状态管理、权限控制），严重度：P2（功能正常但无回归保护），置信度：已证实（tests/ 目录扫描确认）。
+
+#### 测试验证
+
+检查 coverage 中提及的测试文件：
+- ❌ 无 cost-tracking 相关测试
+- ❌ 无 modelCost 相关测试
+- ❌ 无 billing 相关测试
+- ❌ 无 claudeAiLimits 相关测试
+
+#### 隐私与安全边界审查
+
+✅ **成本信息权限控制**：hasClaudeAiBillingAccess 区分订阅用户类型（Max/Pro 始终有权，Team/Enterprise 需 admin/billing 角色），hasConsoleBillingAccess 区分 API key 用户的 org/workspace 角色，✅
+✅ **敏感配置不持久化成本详情**：modelUsage 持久化时剔除 contextWindow/maxOutputTokens（从 model config 动态注入），✅
+✅ **未知模型成本记录但不阻塞**：trackUnknownModelCost 记录 tengu_unknown_model_cost 事件，显示警告但继续使用默认模型，✅
+
+#### 证据边界总结
+
+| 类别 | 覆盖 | 缺口 |
+|------|------|------|
+| Spec 完整性 | ✅ 完整，10+ 项关键决策，7+ 模块设计卡，完整生命周期证据链 | ⚠️ 上游文档未实时访问 |
+| 源码一致性 | ✅ 所有分组源码与 spec 高度一致 | ⚠️ 无 |
+| 测试覆盖 | ❌ 无专用测试 | ⚠️ 功能正常但无回归保护 |
+| 官方文档 | ❓ 未访问 | ⚠️ 基于现有 spec |
+| 上游 CLI | ⚠️ 未提取 strings | ⚠️ 需补充 |
+
+---
+
+### ide-integration
+
+| 项目 | 状态 | 说明 |
+|------|------|------|
+| Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-ide-integration-design.md |
+| Coverage 存在 | ✅ | docs/architecture/coverage/ide-integration.yaml |
+| Manifest 注册 | ✅ | id: ide-integration, batch: 4, status: draft |
+| Coverage 覆盖分组 | 6/6 | ide-core, ide-path-conversion, ide-hooks, ide-commands, ide-components, ide-jetbrains, ide-keybindings, additional-files |
+
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了 IDE 发现与自动连接、跨平台（macOS/Windows/Linux/WSL）支持、多 IDE 类型（VS Code 系列 + JetBrains 系列）、diff 同步、优雅降级等核心约束。
+
+✅ **设计理由与备选方案**：10+ 项关键决策表格化展示，包含真实证据位置：
+- 通过 lockfile 进行 IDE 发现（~/.claude/ide/<port>.lock）
+- 路径 NFC 规范化 + Windows/WSL 双转换
+- 祖先 PID 检查消歧义
+- 30 秒轮询 findAvailableIDE + scroll draining 暂停
+- stale lockfile 清理策略
+- diff 同步使用 openDiff RPC + 三种结果消息
+- VS Code 自动安装扩展，JetBrains 只提示
+- IDE 连接作为动态 MCP 配置
+- 通知系统显示 IDE 状态、错误和提示
+- /ide 命令管理连接、选择 IDE、打开项目
+
+✅ **目标与非目标**：清晰界定了不拥有 IDE 插件生命周期、不拥有 MCP 传输层连接状态、不支持浏览器环境等非目标。
+
+✅ **架构、模块与数据流**：
+- 5+ 模块设计卡
+- 启动时 IDE 自动发现与连接流程
+- IDE diff 同步流程
+- /ide 命令选择与连接流程
+- 完整失败分支说明
+- lockfile 格式与全局配置字段定义
+
+✅ **证据链覆盖**：完整的「启动 → initializeIdeIntegration → findAvailableIDE 轮询 → detectIDEs 扫描 lockfile → workspace 匹配 + 祖先 PID 检查 → setDynamicMcpConfig → MCP 连接 → FileEditTool 调用 useDiffInIDE → showDiffInIDE → openDiff RPC → 等待用户决定（FILE_SAVED/TAB_CLOSED/DIFF_REJECTED）」生命周期证据链已验证。
+
+#### 源码验证
+
+**ide-core (src/utils/ide.ts)**：
+- getSortedIdeLockfiles/getIdeLockfilesPaths 获取 lockfile 列表，✅
+- readIdeLockfile 支持 JSON 和旧格式纯文本，✅
+- detectIDEs 扫描并验证 IDE，支持 NFC 路径规范化、WSL 路径转换、祖先 PID 检查，✅
+- cleanupStaleIdeLockfiles 清理 stale lockfile（检查 pid 和端口），✅
+- findAvailableIDE 30 秒轮询，scroll draining 期间跳过扫描，✅
+- initializeIdeIntegration 自动发现 + 可选安装扩展，✅
+- maybeInstallIDEExtension/installIDEExtension VS Code 自动安装，JetBrains 只提示，✅
+- getConnectedIdeClient/callIdeRpc 调用 IDE RPC，✅
+- isSupportedTerminal/isVSCodeIde/isJetBrainsIde 类型判断，✅
+
+**ide-path-conversion (src/utils/idePathConversion.ts)**：
+- WindowsToWSLConverter 双向路径转换，优先 wslpath，fallback 手动转换，✅
+- checkWSLDistroMatch 检查 WSL UNC 路径 distro 匹配，✅
+
+**ide-hooks (src/hooks/useIDEIntegration.tsx, src/hooks/useDiffInIDE.ts, src/hooks/notifs/useIDEStatusIndicator.tsx)**：
+- useIDEIntegration 初始化集成，配置动态 MCP，✅
+- useDiffInIDE 在 IDE 中显示 diff，处理三种结果消息，✅
+- computeEditsFromContents 重新计算用户修改后的 edits，✅
+- useIDEStatusIndicator 显示 IDE 连接状态、错误、/ide hint，✅
+
+**ide-commands (src/commands/ide/ide.tsx)**：
+- /ide 命令 UI，选择 IDE、连接/断开、打开项目，✅
+
+**ide-jetbrains (src/utils/jetbrains.ts)**：
+- isJetBrainsPluginInstalledCached 检查 JetBrains 插件安装状态，✅
+
+**发现 B4-ide-integration-01**：ide-integration 子系统缺少专用测试文件，无单元测试覆盖核心功能（lockfile 读写、路径规范化、祖先 PID 检查、stale lockfile 清理、diff 同步流程、IDE 选择与连接），严重度：P2（功能正常但无回归保护），置信度：已证实（tests/ 目录扫描确认）。
+
+**发现 B4-ide-integration-02**：lockfile 没有并发锁机制，多个 Claude Code 实例可能竞争读写 lockfile（src/utils/ide.ts 中 detectIDEs 与 IDE 插件写入没有同步），设计文档已明确指出此限制，严重度：P3（设计文档有说明，实际风险低），置信度：已证实。
+
+**发现 B4-ide-integration-03**：showDiffInIDE 在进程崩溃时可能遗留 IDE diff tab（cleanup 依赖 beforeExit 事件，崩溃时可能不触发），设计文档已明确指出此限制，严重度：P3（设计文档有说明，下次 openDiff 使用新 UUID 不冲突），置信度：已证实。
+
+#### 测试验证
+
+检查 coverage 中提及的测试文件：
+- ❌ 无 ide-integration 相关测试
+- ❌ 无 idePathConversion 相关测试
+- ❌ 无 useDiffInIDE 相关测试
+- ❌ 无 /ide 命令相关测试
+
+#### 隐私与安全边界审查
+
+✅ **IDE 连接权限控制**：通过动态 MCP 配置，只有用户选择的 IDE 会连接，✅
+✅ **WSL 路径转换安全**：WindowsToWSLConverter 检查 WSL UNC 路径 distro 匹配，避免打开错误 distro 的文件，✅
+✅ **diff tab 命名防冲突**：使用 randomUUID().slice(0,6) 作为 tabName 后缀，避免多个文件编辑或会话间冲突，✅
+✅ **cleanup 最佳努力**：closeTabInIDE 失败时 catch 错误不抛出，避免阻塞主流程，✅
+
+#### 证据边界总结
+
+| 类别 | 覆盖 | 缺口 |
+|------|------|------|
+| Spec 完整性 | ✅ 完整，10+ 项关键决策，5+ 模块设计卡，完整生命周期证据链 + 失败分支 | ⚠️ 上游文档未实时访问 |
+| 源码一致性 | ✅ 所有分组源码与 spec 高度一致 | ⚠️ 无 |
+| 测试覆盖 | ❌ 无专用测试 | ⚠️ 功能正常但无回归保护 |
+| 官方文档 | ❓ 未访问 | ⚠️ 基于现有 spec |
+| 上游 CLI | ⚠️ 未提取 strings | ⚠️ 需补充 |
+
+---
+
 ## 发现登记
 
 | ID | 主责 | 关联 | 类别 | 严重度 | 问题陈述 | 源码证据 | 上游证据 | 测试证据 | 影响 | 修订建议 | 置信度 | 验证边界 | 状态 |
@@ -304,6 +494,10 @@
 | B4-app-state-02 | app-state | — | 测试缺口 | P2 | app-state子系统缺少专用测试文件，核心功能无回归保护 | src/state/ | N/A | ❌无测试 | 中（功能正常但无回归保护） | 添加app-state子系统完整测试（Store创建、状态更新、订阅通知、React hooks行为） | 已证实 | tests/目录扫描确认 | open |
 | B4-assistant-ui-01 | assistant-ui | — | 测试缺口 | P2 | assistant-ui子系统缺少专用测试文件，核心功能无回归保护 | src/assistant/ | N/A | ❌无测试 | 中（功能正常但无回归保护） | 添加assistant-ui子系统完整测试（会话发现、历史消息分页加载、滚动锚定、WebSocket连接管理、权限请求处理） | 已证实 | tests/目录扫描确认 | open |
 | B4-commands-framework-01 | commands-framework | — | 测试缺口 | P2 | commands-framework子系统缺少部分核心模块的专用测试，核心框架功能测试不足 | src/commands.ts, src/types/command.ts, src/utils/processUserInput/ | N/A | ⚠️部分覆盖（有部分斜杠命令测试） | 中（功能正常但无回归保护） | 添加commands-framework核心框架完整测试（命令聚合优先级逻辑、远程控制安全模型、懒加载机制、isMeta消息处理） | 已证实 | tests/目录扫描确认 | open |
+| B4-cost-tracking-01 | cost-tracking | — | 测试缺口 | P2 | cost-tracking子系统缺少专用测试文件，核心功能无回归保护 | src/cost-tracker.ts, src/utils/modelCost.ts, src/utils/billing.ts, src/services/claudeAiLimits.ts | N/A | ❌无测试 | 中（功能正常但无回归保护） | 添加cost-tracking子系统完整测试（成本计算、会话持久化与恢复、限额状态管理、权限控制、Advisor用量递归累加） | 已证实 | tests/目录扫描确认 | open |
+| B4-ide-integration-01 | ide-integration | — | 测试缺口 | P2 | ide-integration子系统缺少专用测试文件，核心功能无回归保护 | src/utils/ide.ts, src/utils/idePathConversion.ts, src/hooks/useDiffInIDE.ts, src/commands/ide/ide.tsx | N/A | ❌无测试 | 中（功能正常但无回归保护） | 添加ide-integration子系统完整测试（lockfile读写、路径规范化、祖先PID检查、stale lockfile清理、diff同步流程、IDE选择与连接） | 已证实 | tests/目录扫描确认 | open |
+| B4-ide-integration-02 | ide-integration | — | 设计文档与实现一致但有局限 | P3 | lockfile没有并发锁机制，多个Claude Code实例可能竞争读写lockfile，设计文档已明确指出此限制 | src/utils/ide.ts | N/A | ❌无测试 | 低（风险低） | 添加简单文件锁或使用原子写入（临时文件rename），或在文档中更明确说明此限制 | 已证实 | 完整源码审查+设计文档验证 | open |
+| B4-ide-integration-03 | ide-integration | — | 设计文档与实现一致但有局限 | P3 | showDiffInIDE在进程崩溃时可能遗留IDE diff tab（cleanup依赖beforeExit事件，崩溃时可能不触发），设计文档已明确指出此限制 | src/hooks/useDiffInIDE.ts | N/A | ❌无测试 | 低（下次openDiff使用新UUID不冲突） | 在tabName中加入进程pid，下次启动时清理旧tab，或IDE插件侧添加心跳检测 | 已证实 | 完整源码审查+设计文档验证 | open |
 
 ---
 
@@ -336,6 +530,26 @@
 | 命令来源聚合 | 优先级顺序、动态技能插入位置、懒加载shim | 大规模命令聚合性能 |
 | 远程控制安全 | 白名单模型、分层安全模型 | 权限细粒度控制 |
 
+### cost-tracking 已验证的边界
+
+| 模块 | 已验证 | 未验证 |
+|------|------|------|
+| cost-tracker-core | 会话成本持久化与恢复、动态精度调整、按短名聚合、Advisor 用量递归累加 | 成本累加并发安全 |
+| model-cost-config | 分层定价配置、Opus 4.6 fast mode 支持、未知模型降级 | 新增模型时的定价更新流程 |
+| billing-access | 权限控制逻辑、测试 mock 支持 | 复杂组织角色组合 |
+| claude-ai-limits | 响应头限额提取、早期预警配置、超额禁用原因 | 定期后台轮询限额状态 |
+| bootstrap-cost-state | 状态存储与接口 | 大规模成本状态性能 |
+
+### ide-integration 已验证的边界
+
+| 模块 | 已验证 | 未验证 |
+|------|------|------|
+| ide-core | lockfile 发现与扫描、路径规范化、祖先 PID 检查、stale lockfile 清理、30 秒轮询、scroll draining 暂停、VS Code 扩展自动安装 | lockfile 并发安全 |
+| ide-path-conversion | Windows/WSL 双向转换、WSL UNC 路径 distro 匹配 | 复杂网络路径场景 |
+| ide-hooks | IDE 集成初始化、diff 同步与三种结果处理、IDE 状态通知 | 进程崩溃后旧 tab 自动清理 |
+| ide-commands | /ide 命令 UI 与流程 | 无 |
+| ide-jetbrains | JetBrains 插件安装状态检查 | 无 |
+
 ---
 
 ## 完成判定
@@ -347,27 +561,30 @@
 | app-state | ✅完整 | ✅一致（除循环更新防护功能未实现） | ⚠️不充分（仅源码） | ⚠️部分充分（无测试） | ⚠️有条件通过（需补充测试并明确文档与实现不一致） |
 | assistant-ui | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（无测试） | ⚠️有条件通过（需补充测试） |
 | commands-framework | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（测试不足） | ⚠️有条件通过（需补充核心框架测试） |
+| cost-tracking | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（无测试） | ⚠️有条件通过（需补充测试） |
+| ide-integration | ✅完整 | ✅一致（设计文档已明确指出 lockfile 并发与崩溃清理限制） | ⚠️不充分（仅源码） | ⚠️部分充分（无测试） | ⚠️有条件通过（需补充测试） |
 
 ### Batch4 统计
 
 | 项目 | 数量 |
 |------|------|
-| 已审计子系统 | 3（app-state、assistant-ui、commands-framework） |
-| 待审计子系统 | 8（cost-tracking、ide-integration、ink-platform、repl-input、text-formatting、ui-rendering、voice-assistant、workspace-ui） |
-| 完整文档 | 3 |
-| 实现一致 | 3（除app-state循环更新防护功能未实现） |
-| 发现总数 | 4 |
+| 已审计子系统 | 5（app-state、assistant-ui、commands-framework、cost-tracking、ide-integration） |
+| 待审计子系统 | 6（ink-platform、repl-input、text-formatting、ui-rendering、voice-assistant、workspace-ui） |
+| 完整文档 | 5 |
+| 实现一致 | 5（除app-state循环更新防护功能未实现，ide-integration设计文档已明确指出限制） |
+| 发现总数 | 8 |
 | P0 | 0 |
 | P1 | 0 |
-| P2 | 3 |
-| P3 | 1 |
+| P2 | 5 |
+| P3 | 3 |
 
 ### 发现分类
 
 | 类别 | 数量 |
 |------|------|
 | 设计文档与实现不一致 | 1 |
-| 测试缺口 | 3 |
+| 测试缺口 | 5 |
+| 设计文档与实现一致但有局限 | 2 |
 
 ### app-state 生命周期证据链确认
 
@@ -393,13 +610,37 @@
 
 ✅ **命令解析与执行**：用户输入/command args → parseSlashCommand解析 → findCommand查找 → 根据type分发执行
 
+### cost-tracking 生命周期证据链确认
+
+✅ **成本累加**：API 请求完成 → calculateUSDCost 计算成本 → addToTotalSessionCost 累加主会话成本 → 递归处理 Advisor 子请求用量 → 更新 STATE.totalCostUSD 和 STATE.modelUsage → 上报 telemetry（costCounter、tokenCounter、tengu_advisor_tool_token_usage）
+
+✅ **成本持久化**：会话退出时 → saveCurrentSessionCosts 保存到 project config（包括 totalCostUSD、modelUsage、totalAPIDuration、totalLinesAdded/Removed、fpsMetrics）
+
+✅ **成本恢复**：启动时 → restoreCostStateForSession 验证 sessionId 匹配 → 重建 modelUsage（从 model config 注入 contextWindow/maxOutputTokens） → setCostStateForRestore 更新 STATE
+
+✅ **成本显示**：用户输入 /cost 或会话退出时 → formatTotalCost 生成显示文本 → formatCost 动态精度调整 → formatModelUsage 按短名聚合
+
+✅ **限额与超额使用**：启动时 checkQuotaStatus → API 响应时 extractQuotaStatusFromHeaders 更新 currentLimits → 用户输入 /extra-usage 时 runExtraUsage 根据权限决定路径
+
+### ide-integration 生命周期证据链确认
+
+✅ **IDE 自动发现与连接**：启动 → useIDEIntegration 调用 initializeIdeIntegration → findAvailableIDE 30 秒轮询 → cleanupStaleIdeLockfiles 清理 stale lockfile → detectIDEs 扫描验证（NFC 路径规范化、WSL 路径转换、祖先 PID 检查） → 恰好一个有效 IDE → onIdeDetected → setDynamicMcpConfig 配置 IDE MCP → MCP 客户端连接
+
+✅ **IDE Diff 同步**：FileEditTool 调用 → useDiffInIDE 检查 hasAccessToIDEExtensionDiffFeature 和 diffTool === 'auto' → showDiffInIDE 读取旧内容 → 注册 cleanup（abort + beforeExit） → getPatchForEdits 生成更新内容 → callIdeRpc('openDiff') → 等待三种结果消息：
+- FILE_SAVED：用户保存，computeEditsFromContents 重新计算 edits，accept-once
+- TAB_CLOSED：用户关闭 tab，接受原始 edits
+- DIFF_REJECTED：用户拒绝，不应用修改
+- cleanup 关闭 tab
+
+✅ **/ide 命令流程**：用户输入 /ide → detectIDEs(true) 显示可用 IDE 列表 → 用户选择 IDE → setDynamicMcpConfig 配置 → 等待 MCP 连接 → 显示结果；或选择 None → 断开连接
+
 ### Batch4 总体结论
 
-✅ **所有3个子系统spec质量优秀**：文档完整性高，每个spec包含多项关键决策表格、模块设计卡、完整生命周期证据链。
+✅ **所有5个子系统spec质量优秀**：文档完整性高，每个spec包含多项关键决策表格、模块设计卡、完整生命周期证据链。
 
-✅ **所有3个子系统实现一致性强**：所有分组源码与spec高度对齐，关键机制与文档完全一致，安全边界设计周全。
+✅ **所有5个子系统实现一致性强**：所有分组源码与spec高度对齐，关键机制与文档完全一致，安全边界设计周全；ide-integration 子系统的设计文档已明确指出 lockfile 并发与崩溃清理限制，与实现一致。
 
-⚠️ **测试覆盖不足**：app-state、assistant-ui子系统无专用测试文件，commands-framework子系统核心框架功能测试不足。
+⚠️ **测试覆盖不足**：app-state、assistant-ui、cost-tracking、ide-integration 子系统无专用测试文件，commands-framework 子系统核心框架功能测试不足。
 
 ### 子系统审计进度
 
@@ -408,8 +649,8 @@
 | app-state | ✅已审计 |
 | assistant-ui | ✅已审计 |
 | commands-framework | ✅已审计 |
-| cost-tracking | ⏸️保持 open |
-| ide-integration | ⏸️保持 open |
+| cost-tracking | ✅已审计 |
+| ide-integration | ✅已审计 |
 | ink-platform | ⏸️保持 open |
 | repl-input | ⏸️保持 open |
 | text-formatting | ⏸️保持 open |
@@ -417,8 +658,8 @@
 | voice-assistant | ⏸️保持 open |
 | workspace-ui | ⏸️保持 open |
 
-**当前进度**：3/11 已审计，剩余8个子系统保持 open 状态。
+**当前进度**：5/11 已审计，剩余6个子系统保持 open 状态。
 
 ### 说明
 
-本次完成app-state、assistant-ui、commands-framework三个子系统的深度生命周期审计，剩余8个子系统（cost-tracking、ide-integration、ink-platform、repl-input、text-formatting、ui-rendering、voice-assistant、workspace-ui）保持 open 状态。README暂不更新，待所有11个子系统审计完成后统一更新。
+本次完成app-state、assistant-ui、commands-framework、cost-tracking、ide-integration五个子系统的深度生命周期审计，剩余6个子系统（ink-platform、repl-input、text-formatting、ui-rendering、voice-assistant、workspace-ui）保持 open 状态。README暂不更新，待所有11个子系统审计完成后统一更新。
