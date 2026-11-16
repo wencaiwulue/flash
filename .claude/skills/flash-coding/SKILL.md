@@ -53,13 +53,14 @@ description: 在 flash 仓库（Claude Code 教学快照）写代码、写测试
 - Bun 的 ws 模拟无法完成 Playwright 的 CDP 握手（`src/external-stubs/claude-for-chrome-mcp.ts`
   为此维护 Node sidecar）。
 - macOS `sed -i ''`（BSD sed）。
-- `CLAUDE_CODE_DEBUG_LOGS_DIR` 期望**文件路径**而非目录（传目录会 EISDIR 崩溃）。
+- `CLAUDE_CODE_DEBUG_LOGS_DIR` 期望**文件路径**而非目录（传目录会 EISDIR 崩溃）（`src/utils/debug.ts`）。
 
 ## 3. 架构约束与 external-stubs
 
 - **双运行形态**：`isInBundledMode()`（`src/utils/bundledMode.ts`：`Bun.main` 以 `/$bunfs/`
   开头或有 embeddedFiles）vs 源码 `bun` 运行。两形态行为可能分叉，新代码要考虑
-  （先例：`main.tsx` chrome 接线段的前置分流 `chromeWiringBundledAction`）。
+  （先例：`main.tsx` chrome 接线段对 bundled 的前置分流，见
+  `docs/superpowers/specs/2026-11-15-chrome-bundled-wiring-design.md`）。
 - **external-stubs**：外部构建用 `src/external-stubs/` 替换私有 `@ant/*` 包。改 stub 前
   必读 `docs/external-stubs/contracts/*.md` 契约；不得声称与私有协议（native messaging、
   bridge、扩展配对）兼容。
