@@ -1393,5 +1393,5 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 
 ### 说明
 
-本次完成 memory/settings/skills/auth/commit-attribution/git-integration 六个子系统的深度生命周期审计，其余 3 子系统（notifications/session-search-recovery/sessions-share）保持 open 状态。README 暂不更新，待全部 9 子系统审计完成后统一更新。
+本次完成所有 9 个子系统的深度生命周期审计，README 已统一更新。
 

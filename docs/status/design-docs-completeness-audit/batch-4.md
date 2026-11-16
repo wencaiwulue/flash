@@ -1449,4 +1449,4 @@
 
 ### 说明
 
-本次完成所有11个子系统的深度生命周期审计，包括新增的 voice-assistant 和 workspace-ui。README暂不更新。
+本次完成所有 11 个子系统的深度生命周期审计，包括新增的 voice-assistant 和 workspace-ui。README 已统一更新。
