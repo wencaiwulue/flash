@@ -619,7 +619,7 @@ With explicit verification of:
 | Optimistic locking (412 conflict) | ✅ confirmed | `src/services/teamMemorySync/index.ts:500-550` | `If-Match` + conflict retry with hashes view |
 | Batch sizing (gateway protection) | ✅ confirmed | `src/services/teamMemorySync/index.ts:89,600-650` | MAX_PUT_BODY_BYTES = 200,000 |
 | Secrets scanning (before push) | ✅ confirmed | `src/services/teamMemorySync/index.ts:60,700-750` | `scanForSecrets` skips files with secrets |
-| Secrets pattern coverage | ⚠️ partial | `src/services/teamMemorySync/secretScanner.ts` | Exists but not fully audited for pattern completeness |
+| Secrets pattern coverage | ⚠️ partial | `src/services/teamMemorySync/secretScanner.ts` | Exists but not fully audited for pattern completeness (X-memory-04) |
 | File size cap | ✅ confirmed | `src/services/teamMemorySync/index.ts:73-75,760-765` | MAX_FILE_SIZE_BYTES = 250,000 |
 | Entry count cap learning (server-driven) | ✅ confirmed | `src/services/teamMemorySync/index.ts:76-79,770-780` | Learns serverMaxEntries from 413 extra_details |
 | Path validation on write | ✅ confirmed | `src/services/teamMemorySync/index.ts:800-850` | Uses `validateTeamMemKey` for full symlink check |
@@ -706,7 +706,7 @@ This section focuses on memory-specific recovery. For full session recovery, see
 | X-memory-01 | P2 | Memory path validation inconsistency: read uses string prefix only, write uses full symlink resolution. Low risk because write path protected, but inconsistent defense-in-depth. | `src/memdir/teamMemPaths.ts:214-220` vs `228-284`; `src/memdir/paths.ts:274-278` | memdir |
 | X-memory-02 | P3 | `lastSummarizedMessageId` not persisted to disk: resets on session restart. Could cause redundant extractions after restart, but no data loss. | `src/services/SessionMemory/sessionMemoryUtils.ts:44-69` | SessionMemory |
 | X-memory-03 | P3 | No explicit invalidation tracking for deleted memory files. Cursor doesn't know about deletions, could reference deleted files. | TBD | memdir |
-| X-memory-04 | P4 | Secrets scanner patterns not fully audited for completeness. Scanner exists, but not verified against latest secret pattern best practices. | `src/services/teamMemorySync/secretScanner.ts` | teamMemorySync |
+| X-memory-04 | P3 | Secrets scanner patterns not fully audited for completeness. Scanner exists, but not verified against latest secret pattern best practices. This is a test/validation gap, optional improvement. | `src/services/teamMemorySync/secretScanner.ts` | teamMemorySync |
 
 ---
 
@@ -745,4 +745,4 @@ This audit intentionally covers **only the Memory Lifecycle** portion of Task 10
 | Secondary Focus | Context Lifecycle (previously completed) |
 | Created At | 2026-11-16 |
 | Independent Review | Pending for X-memory-01 (P2) |
-| Findings | 4 total: 1 P2, 2 P3, 1 P4 |
+| Findings | 4 total: 1 P2, 3 P3 |
