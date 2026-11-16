@@ -562,11 +562,197 @@
 
 ### hooks-system
 
-**状态**：待审计 ❌
+| 项目 | 状态 | 说明 |
+|------|------|------|
+| Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-hooks-system-design.md |
+| Coverage 存在 | ✅ | docs/architecture/coverage/hooks-system.yaml |
+| Manifest 注册 | ✅ | id: hooks-system, batch: 7, status: draft |
+| Coverage 覆盖分组 | 4/4 | utils-hooks, hooks-ui, hooks-schemas, uncovered-hooks |
+
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了事件驱动扩展、多种钩子类型（Command/HTTP/Prompt/Agent）、安全边界、失败隔离、同步/异步模式、权限决策、超时控制、事件匹配、输入输出结构化、跨平台兼容、异步唤醒、SSRF防护、环境变量安全等核心问题与约束。
+
+✅ **设计理由与备选方案**：10项关键决策表格化展示，包含真实证据位置：
+- 所有钩子需要工作区信任（包括 SessionEnd）
+- 异步钩子使用首行 JSON 协议 + 注册表
+- 退出码约定（0=success, 1=non-blocking error, 2=blocking error）
+- HTTP 钩子不支持 SessionStart/Setup 事件
+- 同一 source 内相同命令去重
+- asyncRewake 不 spill to disk
+- 组合 abort signal（用户取消 + 超时）
+- HTTP 钩子 Header 仅允许白名单环境变量
+- Prompt 钩子使用小模型（Haiku）
+- SessionEnd 钩子使用短超时（默认 1.5 秒）
+
+✅ **目标与非目标**：清晰界定了多事件点集成（30+事件）、多种钩子类型、事件匹配、同步/异步执行、输入输出结构化、失败隔离、安全优先、超时控制、跨平台兼容、权限决策等目标；明确了不实现钩子市场、不支持热重载、不实现调试器、不支持分布式执行、不实现版本管理、不替代 MCP 等非目标。
+
+✅ **架构、模块与数据流**：
+- 完整的钩子执行主流程
+- 完整的 Command/HTTP/Prompt/Agent 钩子执行流程
+- 完整的异步钩子唤醒流程
+- 核心模块接口清晰（hooks.ts, AsyncHookRegistry.ts, execHttpHook.ts, ssrfGuard.ts 等）
+- 4个模块设计卡（文档发现与跟踪、文档更新执行、提示构造与模板、后台内务集成、缓存与状态管理）
+
+#### 源码验证
+
+**utils-hooks**：
+- `src/utils/hooks.ts`：主入口，钩子匹配、执行、结果聚合 ✅
+- `src/utils/hooks/AsyncHookRegistry.ts`：异步钩子注册、检查、清理 ✅
+- `src/utils/hooks/execHttpHook.ts`：HTTP 钩子执行、SSRF 防护、Header 插值 ✅
+- `src/utils/hooks/execPromptHook.ts`：Prompt 钩子执行 ✅
+- `src/utils/hooks/execAgentHook.ts`：Agent 钩子执行 ✅
+- `src/utils/hooks/ssrfGuard.ts`：SSRF 防护，私有 IP 范围检查 ✅
+- `src/utils/hooks/hookEvents.ts`：事件定义与发射 ✅
+- `src/utils/hooks/hooksConfigManager.ts`：配置管理 ✅
+- `src/utils/hooks/sessionHooks.ts`：会话钩子管理 ✅
+
+**hooks-schemas**：
+- `src/schemas/hooks.ts`：钩子配置类型定义 ✅
+
+**发现 B7-hooks-system-01**：hooks-system 核心功能测试覆盖不足，仅有 headlessHooks.test.ts 覆盖 prompt/agent stop hooks。严重度：P2，置信度：已证实（测试目录扫描确认，缺少 Command/HTTP/Async 钩子、权限决策聚合、if 条件匹配、路径转换、SSRF 防护边界、Header 插值白名单、asyncRewake 唤醒、SessionEnd 钩子超时等测试）。
+
+**发现 B7-hooks-system-02**：uncovered-hooks 分组列出了大量 React hooks（useTeammateShutdownNotification、useAfterFirstRender 等 40+）未被设计文档覆盖。严重度：P3，置信度：已证实（coverage 文档明确标记为 uncovered-hooks）。
+
+#### 测试验证
+
+检查 coverage 中提及的测试文件：
+- ✅ `headlessHooks.test.ts`：存在，覆盖 prompt/agent stop hooks、取消信号传播、非 Stop 事件模型钩子不支持
+- ❌ 缺少 Command hooks 完整测试
+- ❌ 缺少 HTTP hooks 完整测试
+- ❌ 缺少 Async hooks 完整测试
+- ❌ 缺少权限决策聚合测试
+- ❌ 缺少 if 条件匹配测试
+- ❌ 缺少 SSRF 防护边界测试
+- ❌ 缺少 Header 插值白名单测试
+- ❌ 缺少 asyncRewake 唤醒测试
+- ❌ 缺少 SessionEnd 钩子超时测试
+
+#### 隐私与安全边界审查
+
+**安全边界**：
+- 所有钩子需要工作区信任确认 ✅
+- SSRF 防护：HTTP 钩子检查私有 IP 范围，仅允许 localhost/127.0.0.1/::1 ✅
+- HTTP 钩子 URL 白名单支持 ✅
+- Header 插值仅允许白名单环境变量，且 sanitize 移除 CR/LF/NUL ✅
+- 退出码 2 可阻止主流程 ✅
+
+**隐私边界**：
+- 环境变量插值有白名单保护 ✅
+- 非信任工作区跳过所有钩子 ✅
+
+#### 上游证据
+
+上游 CLI strings 已提取，关键匹配：
+- `AsyncHookRegistry`、`registerPendingAsyncHook`、`checkForAsyncHookResponses`：异步钩子管理 ✅
+- `execHttpHook`、`ssrfGuardedLookup`、`isBlockedAddress`：HTTP 钩子与 SSRF 防护 ✅
+- `shouldSkipHookDueToTrust`、`checkHasTrustDialogAccepted`：信任检查 ✅
+- `SESSION_END_HOOK_TIMEOUT_MS_DEFAULT`、`getSessionEndHookTimeoutMs`：SessionEnd 超时 ✅
+- `createCombinedAbortSignal`：组合取消信号 ✅
+- `urlMatchesPattern`、`sanitizeHeaderValue`：URL 匹配与 Header 安全 ✅
+
+官方文档索引搜索已执行：
+- 搜索关键词：hooks、pre-tool-use、post-tool-use、session-start、session-end、http-hook、command-hook、prompt-hook、agent-hook、async-hook
+- 命中：无直接 hooks-system 相关官方文档页面
+
+---
 
 ### magic-docs
 
-**状态**：待审计 ❌
+| 项目 | 状态 | 说明 |
+|------|------|------|
+| Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-magic-docs-design.md |
+| Coverage 存在 | ✅ | docs/architecture/coverage/magic-docs.yaml |
+| Manifest 注册 | ✅ | id: magic-docs, batch: 7, status: draft |
+| Coverage 覆盖分组 | 4/4 | magic-docs-core, magic-docs-prompts, magic-docs-init, magic-docs-caches |
+
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了仅在文件被读取时通过特殊 header 发现文档、不扫描整个仓库或批量生成文档、仅跟踪单个会话中读取过的文档、使用子代理在后台更新单个文档而非系统级文档等核心约束。
+
+✅ **设计理由与备选方案**：6项关键决策表格化展示，包含真实证据位置：
+- 通过 FileReadTool 监听发现文档（而非启动时扫描）
+- 仅在对话空闲时更新（而非每次采样后或固定间隔）
+- 子代理仅允许 Edit 工具且只能编辑目标文档
+- 使用 forkContextMessages 传递对话历史
+- 每次更新前重新读取文件并重新检测 header
+- 不提供更新结果反馈
+- 支持自定义提示模板（~/.claude/magic-docs/prompt.md）
+- 单轮替换变量避免双重替换
+
+✅ **目标与非目标**：清晰界定了提供简单标记机制、对话空闲时自动更新、保持文档 header 和自定义指令不变、允许自定义提示模板、会话清理时清除跟踪状态等目标；明确了不扫描整个仓库、不提供文档初始化或批量创建、不跨会话保留跟踪状态、不提供文档审查或验证、不与 Git 集成或自动提交等非目标。
+
+✅ **架构、模块与数据流**：
+- 完整的文档发现与跟踪流程
+- 完整的文档更新执行流程（空闲检测、缓存克隆、子代理调用）
+- 完整的提示构造流程（模板加载、变量替换）
+- 完整的后台集成流程（backgroundHousekeeping.ts）
+- 完整的缓存与状态管理流程（clearSessionCaches 集成）
+- 5个模块设计卡（文档发现与跟踪、文档更新执行、提示构造与模板、后台内务集成、缓存与状态管理）
+
+#### 源码验证
+
+**magic-docs-core**：
+- `src/services/MagicDocs/magicDocs.ts`：核心实现，文档发现、跟踪、更新执行 ✅
+- `detectMagicDocHeader`：检测 # MAGIC DOC: header 和可选斜体指令 ✅
+- `registerMagicDoc`：注册跟踪 ✅
+- `updateMagicDoc`：单个文档更新 ✅
+- `updateMagicDocs`：批量更新（sequential 包装） ✅
+- `getMagicDocsAgent`：子代理定义（仅 Edit 工具） ✅
+
+**magic-docs-prompts**：
+- `src/services/MagicDocs/prompts.ts`：提示模板与构造 ✅
+- `getUpdatePromptTemplate`：内置提示模板 ✅
+- `loadMagicDocsPrompt`：自定义模板加载 ✅
+- `substituteVariables`：变量替换（单轮避免双重替换） ✅
+- `buildMagicDocsUpdatePrompt`：主入口 ✅
+
+**magic-docs-init**：
+- `src/utils/backgroundHousekeeping.ts`：后台集成，initMagicDocs 调用 ✅
+- `initMagicDocs`：初始化函数，USER_TYPE=ant 时启用 ✅
+- `registerFileReadListener`、`registerPostSamplingHook`：监听器注册 ✅
+
+**magic-docs-caches**：
+- `src/commands/clear/caches.ts`：会话清理集成，clearTrackedMagicDocs 调用 ✅
+- `clearTrackedMagicDocs`：清除跟踪状态 ✅
+
+**发现 B7-magic-docs-01**：magic-docs 功能无专门测试覆盖。严重度：P2，置信度：已证实（测试目录扫描确认，缺少文档发现与跟踪、子代理更新文档、自定义提示模板替换、并发文档更新冲突等测试）。
+
+**发现 B7-magic-docs-02**：文档跟踪不跨会话持久化，会话间重置（设计已知非目标）。严重度：P3，置信度：已证实（spec 明确说明，tracking 仅在内存中）。
+
+**发现 B7-magic-docs-03**：更新在后台执行无状态反馈（设计已知非目标）。严重度：P3，置信度：已证实（spec 明确说明，静默更新）。
+
+**发现 B7-magic-docs-04**：仅在 USER_TYPE=ant 时启用（内部构建）。严重度：P3，置信度：已证实（源码中 initMagicDocs 检查 process.env.USER_TYPE === 'ant'）。
+
+#### 测试验证
+
+检查 coverage 中提及的测试文件：
+- ❌ 无专门的 magic-docs 相关测试文件
+
+#### 隐私与安全边界审查
+
+**安全边界**：
+- 子代理仅允许 Edit 工具且只能编辑目标文档路径 ✅
+- 仅读取显式被 Read 工具读取的文件，不扫描仓库 ✅
+- 通过现有 FileReadTool 权限模型，无额外权限要求 ✅
+
+**隐私边界**：
+- 仅在 USER_TYPE=ant 时启用（内部构建） ✅
+- 跟踪状态仅在内存中，不持久化到磁盘 ✅
+
+#### 上游证据
+
+上游 CLI strings 已提取，关键匹配：
+- `MAGIC_DOC_HEADER_PATTERN`、`detectMagicDocHeader`：文档 header 检测 ✅
+- `trackedMagicDocs`、`registerMagicDoc`、`clearTrackedMagicDocs`：跟踪管理 ✅
+- `updateMagicDoc`、`updateMagicDocs`、`sequential`：更新执行 ✅
+- `getMagicDocsAgent`、`FILE_EDIT_TOOL_NAME`：子代理定义 ✅
+- `buildMagicDocsUpdatePrompt`、`loadMagicDocsPrompt`、`substituteVariables`：提示构造 ✅
+- `initMagicDocs`、`registerFileReadListener`、`registerPostSamplingHook`：初始化集成 ✅
+
+官方文档索引搜索已执行：
+- 搜索关键词：magic docs、magic-doc、auto-update documentation、# MAGIC DOC
+- 命中：无直接 magic-docs 相关官方文档页面
 
 ### messaging-primitives
 
@@ -626,8 +812,14 @@
 | B7-external-stubs-05 | external-stubs | P2 | openBackends.test.ts 中 Zavora 测试仍依赖真实 Zavora 包 | 是（spec 改进建议明确提及） |
 | B7-external-stubs-06 | external-stubs | P3 | 契约文档与实现可能漂移，无自动验证 | 是（spec 改进建议明确提及） |
 | B7-external-stubs-07 | external-stubs | P2 | 缺少 external-stubs 子系统核心模块的专门测试 | 否 |
+| B7-hooks-system-01 | hooks-system | P2 | hooks-system 核心功能测试覆盖不足，仅有 headlessHooks.test.ts 覆盖 prompt/agent stop hooks | 是（spec 改进建议明确提及） |
+| B7-hooks-system-02 | hooks-system | P3 | uncovered-hooks 分组列出了大量 React hooks（40+）未被设计文档覆盖 | 是（coverage 文档明确标记为 uncovered-hooks） |
+| B7-magic-docs-01 | magic-docs | P2 | magic-docs 功能无专门测试覆盖 | 是（spec 改进建议明确提及） |
+| B7-magic-docs-02 | magic-docs | P3 | 文档跟踪不跨会话持久化，会话间重置 | 是（设计已知非目标） |
+| B7-magic-docs-03 | magic-docs | P3 | 更新在后台执行无状态反馈 | 是（设计已知非目标） |
+| B7-magic-docs-04 | magic-docs | P3 | 仅在 USER_TYPE=ant 时启用（内部构建） | 是（源码中明确检查） |
 
-**汇总**：P0 0 个，P1 0 个，P2 10 个，P3 16 个，总计 26 个发现。
+**汇总**：P0 0 个，P1 0 个，P2 13 个，P3 19 个，总计 32 个发现。
 
 ---
 
@@ -667,16 +859,18 @@
 
 | 证据类型 | 收集范围 | 限制 |
 |---------|---------|------|
-| 上游 CLI strings | 已收集 build-feature-profile、data-structures、diagnostics、experimental-features、external-stubs 相关字符串 | 未收集其余 9 个子系统的相关字符串 |
-| 官方文档 | 已搜索构建、feature flag、数据结构、debug、diagnostic、profiler、heapdump、doctor、experimental、beta、overflow、synthetic、good-claude、bughunter、chrome、mcp、computer use、zavora、cdp 相关关键词 | 未搜索其余 9 个子系统的相关文档 |
-| 源码验证 | 已验证 build-feature-profile、data-structures、diagnostics、experimental-features、external-stubs 五个子系统的源码 | 未验证其余 9 个子系统的源码 |
-| 测试验证 | 已检查 build-feature-profile、data-structures、diagnostics、experimental-features、external-stubs 五个子系统的测试 | 未检查其余 9 个子系统的测试 |
+| 上游 CLI strings | 已收集 build-feature-profile、data-structures、diagnostics、experimental-features、external-stubs、hooks-system、magic-docs 相关字符串 | 未收集其余 7 个子系统的相关字符串 |
+| 官方文档 | 已搜索构建、feature flag、数据结构、debug、diagnostic、profiler、heapdump、doctor、experimental、beta、overflow、synthetic、good-claude、bughunter、chrome、mcp、computer use、zavora、cdp、hooks、pre-tool-use、post-tool-use、session-start、session-end、http-hook、command-hook、prompt-hook、agent-hook、async-hook、magic docs、magic-doc、auto-update documentation 相关关键词 | 未搜索其余 7 个子系统的相关文档 |
+| 源码验证 | 已验证 build-feature-profile、data-structures、diagnostics、experimental-features、external-stubs、hooks-system、magic-docs 七个子系统的源码 | 未验证其余 7 个子系统的源码 |
+| 测试验证 | 已检查 build-feature-profile、data-structures、diagnostics、experimental-features、external-stubs、hooks-system、magic-docs 七个子系统的测试 | 未检查其余 7 个子系统的测试 |
 
 **证据完整性说明**：
 - diagnostics：已验证所有 coverage 分组（diagnostics-commands、diagnostics-tests），已读取 spec，已检查现有测试
 - experimental-features：已验证所有 coverage 分组（experimental-tools、betas），已读取 spec，已检查现有测试
 - external-stubs：已验证所有 coverage 分组（chrome-mcp、computer-use-types、computer-use-native、computer-use-mcp、computer-use-stubs），已读取 spec，已检查现有测试
-- 所有 5 个子系统均通过对抗性审查验证 P0/P1 与上游偏差，测试与 live 差距单独标记为 P2
+- hooks-system：已验证所有 coverage 分组（utils-hooks、hooks-ui、hooks-schemas、uncovered-hooks），已读取 spec，已检查现有测试
+- magic-docs：已验证所有 coverage 分组（magic-docs-core、magic-docs-prompts、magic-docs-init、magic-docs-caches），已读取 spec，已检查现有测试
+- 所有 7 个子系统均通过对抗性审查验证 P0/P1 与上游偏差，测试与 live 差距单独标记为 P2
 
 ## 完成判定
 
@@ -687,8 +881,8 @@
 | diagnostics | ✅ 审计完成 |
 | experimental-features | ✅ 审计完成 |
 | external-stubs | ✅ 审计完成 |
-| hooks-system | ❌ 待审计 |
-| magic-docs | ❌ 待审计 |
+| hooks-system | ✅ 审计完成 |
+| magic-docs | ✅ 审计完成 |
 | messaging-primitives | ❌ 待审计 |
 | native-installer | ❌ 待审计 |
 | network-security | ❌ 待审计 |
@@ -697,4 +891,4 @@
 | test-validation | ❌ 待审计 |
 | web-tools | ❌ 待审计 |
 
-**整体状态**：⚠️ 部分完成（5/14 子系统审计完成）
+**整体状态**：⚠️ 部分完成（7/14 子系统审计完成）
