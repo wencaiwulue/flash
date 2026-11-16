@@ -327,7 +327,7 @@ Design docs: 0 errors, 73 warnings
 ## 验证与测试结果
 
 #### `bun scripts/check-design-docs.ts`
-✅ Passed - 0 errors, 73 warnings (expected - all specs are draft)
+✅ Passed - 0 errors, 73 warnings (expected - 69 DRAFT_SPEC + 4 UNCOVERED_FILE)
 
 #### `git diff --check`
 ✅ Passed - no whitespace errors
