@@ -735,9 +735,9 @@ auto/team/session/CLAUDE.md/daily log
 
 | ID | 主责 spec | 关联 spec | 类别 | 严重度 | 陈述 | 源码证据 | 上游证据 | 测试证据 | 影响 | 修复建议 | 置信度 | 验证边界 | 状态 |
 |----|-----------|----------|------|--------|------|----------|----------|----------|------|--------|------|--------|
-| X-context-02 | session-persistence | query-core | 契约验证 | N/A | Compact boundary 必须在 yield 之前刷新到磁盘。契约：`recordTranscript()` 在用户消息时在 yield 之前调用，以及在 yield boundary 消息之前专门针对 compact boundary 调用 | `QueryEngine.ts:698-706,450-462` | N/A | N/A | 无（正确契约） | 无 | 已证实 | 完整实现验证 | confirmed |
-| X-context-03 | query-core | context-compaction | 契约验证 | N/A | 缓存 microcompact 缓存编辑在 API 层消费，非 query 循环。契约：`claude.ts` 中的 `consumePendingCacheEdits()` 应用编辑，`query.ts` 仅传递待处理编辑 | `microCompact.ts:consumePendingCacheEdits()`、`claude.ts:cache edits consumption` | N/A | N/A | 无（正确契约） | 无 | 已证实 | 完整实现验证 | confirmed |
-| X-context-04 | agent-swarms | context-compaction | 文档化警告 | N/A | Forked agent 上的 `maxOutputTokens` 更改思考配置并使 prompt cache 失效。代码中的文档化警告 | `forkedAgent.ts:96-102` | N/A | N/A | 无（文档化警告） | 无 | 已证实 | 文档中明确指出 | confirmed |
+| 确认 X-context-02 | session-persistence | query-core | 契约验证 | N/A | Compact boundary 必须在 yield 之前刷新到磁盘。契约：`recordTranscript()` 在用户消息时在 yield 之前调用，以及在 yield boundary 消息之前专门针对 compact boundary 调用 | `QueryEngine.ts:698-706,450-462` | N/A | N/A | 无（正确契约） | 无 | 已证实 | 完整实现验证 | confirmed |
+| 确认 X-context-03 | query-core | context-compaction | 契约验证 | N/A | 缓存 microcompact 缓存编辑在 API 层消费，非 query 循环。契约：`claude.ts` 中的 `consumePendingCacheEdits()` 应用编辑，`query.ts` 仅传递待处理编辑 | `microCompact.ts:consumePendingCacheEdits()`、`claude.ts:cache edits consumption` | N/A | N/A | 无（正确契约） | 无 | 已证实 | 完整实现验证 | confirmed |
+| 确认 X-context-04 | agent-swarms | context-compaction | 文档化警告 | N/A | Forked agent 上的 `maxOutputTokens` 更改思考配置并使 prompt cache 失效。代码中的文档化警告 | `forkedAgent.ts:96-102` | N/A | N/A | 无（文档化警告） | 无 | 已证实 | 文档中明确指出 | confirmed |
 
 ### 统一发现登记（14列）
 
@@ -757,7 +757,7 @@ auto/team/session/CLAUDE.md/daily log
 
 | 发现 | 审查状态 | 结果 | 说明 |
 |------|----------|------|------|
-| X-context-01（P2） | ✅ Reviewed | 按文档接受 | 不一致验证是低风险，因为写入路径受保护 |
+| 复核 X-context-01（P2） | ✅ Reviewed | 按文档接受 | 不一致验证是低风险，因为写入路径受保护 |
 | 所有 P0/P1 | ✅ Reviewed | 未发现新 P0/P1 | 所有跨子系统发现都是 P2/P3 |
 | 上游偏离 | ✅ Reviewed | 未发现 | 所有契约都符合上游预期 |
 
