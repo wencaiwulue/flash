@@ -18,20 +18,33 @@ describe.skipIf(
 
     try {
       return await new Promise<void>((resolve, reject) => {
-        const proc = spawn('script', ['-q', '/dev/null', process.execPath, distMain], {
+        // script 语法分平台：BSD/macOS 用位置参数，Linux (util-linux) 必须用 -c
+        const innerCommand = `${process.execPath} ${distMain}`
+        const scriptArgs =
+          process.platform === 'darwin'
+            ? ['-q', '/dev/null', process.execPath, distMain]
+            : ['-qec', innerCommand, '/dev/null']
+        const proc = spawn('script', scriptArgs, {
           cwd: join(import.meta.dir, '..'),
           env: { ...process.env, HOME: home, USERPROFILE: home },
           stdio: ['ignore', 'pipe', 'pipe'],
+          // 独立进程组：kill 时把 script + 内层 CLI 一起带走，不留孤儿干扰后续测试文件
+          detached: true,
         })
 
         let output = ''
         // 进程超时 20s，测试超时 25s（留 5s 余量给 kill + 退出等待）
-        const timer = setTimeout(() => {
-          if (!killed) {
-            killed = true
-            proc.kill()
+        const killTree = () => {
+          if (killed || proc.pid === undefined) return
+          killed = true
+          try {
+            // 负 PID 杀整个进程组（script + bun dist/main.js 及其子进程）
+            process.kill(-proc.pid, 'SIGKILL')
+          } catch {
+            proc.kill('SIGKILL')
           }
-        }, 20_000)
+        }
+        const timer = setTimeout(killTree, 20_000)
 
         const decoder = new TextDecoder()
 
@@ -41,10 +54,7 @@ describe.skipIf(
           }
           // pty 输出含 ANSI 转义序列，正则用 [^v]* 容忍颜色/光标控制字符
           if (/flash[^v]*v\d+\.\d+\.\d+/.test(output)) {
-            if (!killed) {
-              killed = true
-              proc.kill()
-            }
+            killTree()
           }
         }
 
