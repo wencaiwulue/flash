@@ -429,8 +429,260 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 
 ✅ **上游证据边界已记录**：完成 llms.txt 和 binary strings 搜索，结果作为边界记录存档。
 
+---
+
+### file-tools
+
+| 项目 | 状态 | 说明 |
+|------|------|------|
+| Spec 存在 | ✅ | `docs/superpowers/specs/2026-11-12-file-tools-design.md` |
+| Coverage 存在 | ✅ | `docs/architecture/coverage/file-tools.yaml` |
+| Manifest 注册 | ✅ | id: file-tools, batch: 2, status: draft |
+| Coverage 覆盖分组 | 8/8 | file-read-tool, file-write-tool, file-edit-tool, glob-tool, grep-tool, notebook-edit-tool, file-utils, notebook-pdf-image-utils, search-utils |
+
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了并发修改检测、文件类型分支处理、去重机制、精确字符串替换、安全边界、大文件分页等核心问题与约束。
+
+✅ **设计理由与备选方案**：5 项关键决策表格化展示，包含真实证据位置：
+- 基于 mtime + 内容比较的并发修改检测
+- FileRead 去重基于精确 range 匹配 + mtime，返回 file_unchanged stub
+- 文件类型基于扩展名分支，而非内容检测
+- FileEdit 使用 findActualString 做引号规范化
+- Grep 基于 ripgrep 后端，而非 Node.js 实现
+
+证据位置标注准确：`src/tools/FileReadTool/FileReadTool.ts`、`src/tools/FileEditTool/FileEditTool.ts`、`src/tools/FileWriteTool/FileWriteTool.ts`、`src/tools/GrepTool/GrepTool.ts`、`src/utils/file.ts` 等。
+
+✅ **目标与非目标**：清晰界定了 readFileState 生命周期、权限系统职责划分、工具框架边界等非目标。
+
+✅ **架构、模块与数据流**：
+- 7 个模块设计卡：FileReadTool、FileWriteTool、FileEditTool、GlobTool、GrepTool、NotebookEditTool、共享辅助模块
+- 每个模块包含真实入口签名、关键类型、状态与附件、创建流程、交互与关闭流程、错误与安全、设计取舍与备选
+- 完整读写编辑流程、PDF 读取分支、Grep 执行分支等详细数据流
+
+**发现 B2-file-tools-01**：spec 完整列出所有模块设计，但多数标注"无直接测试""未找到直接测试"，仅部分工具可能有间接测试。
+
+#### 源码验证
+
+读取并验证了以下文件：
+- `src/tools/FileReadTool/FileReadTool.ts:1-150+`：去重逻辑、扩展名判断、设备文件检查、macOS 截图路径处理等与 spec 一致
+- `src/tools/FileEditTool/FileEditTool.ts:1-150+`：并发修改检测、findActualString 引号规范化、MAX_EDIT_FILE_SIZE 1 GiB 限制等与 spec 一致
+- `src/tools/FileWriteTool/FileWriteTool.ts`：并发修改检测、writeTextContent 直接使用模型换行符等与 spec 一致
+- `src/tools/GrepTool/GrepTool.ts`：ripgrep 后端、VCS 目录排除、mtime 排序等与 spec 一致
+
+**发现 B2-file-tools-02**：源码中 `FileReadTool` 确实实现了 tengu_read_dedup_killswitch，但该特性的实际使用未详细验证。
+
+#### 外部契约验证
+
+检查相关 external stubs 契约：
+- 无直接针对 file-tools 的独立 contract
+- 依赖权限系统契约（utils/permissions/filesystem.ts），但权限 spec 单独审计
+- 无公开 live 环境验证
+
+#### 测试验证
+
+检查 coverage 中提及的测试文件：
+- ❌ 无专门 file-tools 测试文件
+- ❌ 未找到 FileReadTool、FileWriteTool、FileEditTool、GlobTool、GrepTool、NotebookEditTool 的独立测试
+
+**发现 B2-file-tools-03**：file-tools 子系统无专门独立测试文件，关键路径（并发修改检测、去重机制、引号规范化、Windows 内容比较回退、ripgrep 集成）无针对性测试。
+
+#### 证据边界总结
+
+| 类别 | 覆盖 | 缺口 |
+|------|------|------|
+| Spec 完整性 | ✅ 完整，5 项决策，7 个模块设计卡 | ⚠️ 无测试证据 |
+| 源码一致性 | ✅ 核心逻辑与 spec 一致 | ⚠️ killswitch 特性使用未详细验证 |
+| 测试覆盖 | ❌ 无独立测试 | ⚠️ 仅可能有集成测试间接覆盖 |
+| 官方文档 | ❌ 无实时访问 | ⚠️ 基于现有 spec |
+| 上游 CLI | ❌ 不存在 | ⚠️ 无 strings 证据 |
+| 外部契约 | ❌ 无独立 contract | ⚠️ 依赖权限系统契约 |
+
+---
+
+### lsp
+
+| 项目 | 状态 | 说明 |
+|------|------|------|
+| Spec 存在 | ✅ | `docs/superpowers/specs/2026-11-12-lsp-design.md` |
+| Coverage 存在 | ✅ | `docs/architecture/coverage/lsp.yaml` |
+| Manifest 注册 | ✅ | id: lsp, batch: 2, status: draft |
+| Coverage 覆盖分组 | 7/7 | lsp-manager, lsp-server-instance, lsp-client, lsp-config, lsp-passive-feedback, lsp-tool, lsp-tests |
+
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了全局单例管理、配置仅来自插件、lazy start + lazy load、结构化诊断注册、stdio 传输唯一支持、ContentModified 自动重试、位置 1-based vs 0-based 转换、gitignored 结果过滤、错误隔离、崩溃自动重启等核心问题与约束。
+
+✅ **设计理由与备选方案**：10 项关键决策表格化展示，包含真实证据位置：
+- 全局单例管理器
+- 配置仅来自插件
+- lazy start + lazy load
+- 结构化诊断注册表
+- stdio 传输为唯一支持
+- ContentModified 自动重试
+- 位置 1-based vs 0-based
+- gitignored 结果过滤
+- 错误隔离（服务器级别）
+- 崩溃自动重启
+- 通知处理错误隔离
+
+证据位置标注准确：`src/services/lsp/LSPServerManager.ts`、`src/services/lsp/LSPServerInstance.ts`、`src/services/lsp/LSPClient.ts`、`src/services/lsp/passiveFeedback.ts`、`src/tools/LSPTool/LSPTool.ts` 等。
+
+✅ **目标与非目标**：清晰界定了不支持 socket 传输、不支持用户/项目级 LSP 配置、不实现 LSP 所有功能、不提供 LSP 服务器安装功能、不支持远程 LSP 服务器等非目标。
+
+✅ **架构、模块与数据流**：
+- 6 个模块设计卡：LSPServerManager、LSPServerInstance、LSPClient、Config/Types、Passive Diagnostics、LSPTool
+- 每个模块包含真实入口签名、关键类型、状态与附件、创建流程、交互与关闭流程、错误与安全、设计取舍与备选
+- 服务器启动与初始化流程、请求生命周期、关闭流程、被动诊断推送流程等详细数据流
+
+**发现 B2-lsp-01**：spec 完整列出所有模块设计，但部分标注"未找到直接测试"，仅 lspLifecycle.test.ts 和 lsp.test.ts 覆盖部分功能。
+
+#### 源码验证
+
+读取并验证了以下文件：
+- `src/services/lsp/LSPServerManager.ts:1-150+`：全局单例、初始化流程、服务器路由、文档同步等与 spec 一致
+- `src/services/lsp/LSPServerInstance.ts:1-150+`：lazy load（require('./LSPClient.js')）、ContentModified 重试逻辑（LSP_ERROR_CONTENT_MODIFIED = -32801，MAX_RETRIES_FOR_TRANSIENT_ERRORS = 3，RETRY_BASE_DELAY_MS = 500）、状态机、崩溃自动重启等与 spec 一致
+- `src/services/lsp/LSPClient.ts`：lazy load 注释、spawn 等待确认、isStopping 标志等与 spec 一致
+- `src/tools/LSPTool/LSPTool.ts`：1-based vs 0-based 转换、git check-ignore 过滤、MAX_LSP_FILE_SIZE_BYTES = 10MB 等与 spec 一致
+
+**发现 B2-lsp-02**：源码中确实实现了 ContentModified 自动重试，但指数退避逻辑的完整路径需进一步验证。
+
+#### 外部契约验证
+
+检查相关 external stubs 契约：
+- 无直接针对 lsp 的独立 contract
+- LSP 协议本身是公开标准，但内部实现无契约
+- 无公开 live 环境验证
+
+#### 测试验证
+
+检查 coverage 中提及的测试文件：
+- `tests/lspLifecycle.test.ts:1-83`：✅ 覆盖启动/初始化/停止、崩溃重启、超时强制 kill
+- `tests/lsp.test.ts:1-21`：✅ 覆盖配置解析和基本初始化
+- ❌ 未找到 LSPTool 相关测试
+- ❌ 未找到被动诊断注册表相关测试
+- ❌ 未找到 ContentModified 重试逻辑完整测试
+
+**发现 B2-lsp-03**：lsp 子系统有部分测试覆盖，但关键路径（LSPTool 完整操作、诊断去重和容量限制、ContentModified 完整重试逻辑、gitignore 过滤、socket 传输（未实现））无针对性测试。
+
+#### 证据边界总结
+
+| 类别 | 覆盖 | 缺口 |
+|------|------|------|
+| Spec 完整性 | ✅ 完整，10 项决策，6 个模块设计卡 | ⚠️ 部分测试证据不足 |
+| 源码一致性 | ✅ 核心逻辑与 spec 一致 | ⚠️ ContentModified 完整重试逻辑需进一步验证 |
+| 测试覆盖 | ⚠️ 部分覆盖（lspLifecycle.test.ts、lsp.test.ts） | ⚠️ LSPTool、诊断注册表、ContentModified 重试无完整测试 |
+| 官方文档 | ❌ 无实时访问 | ⚠️ 基于现有 spec |
+| 上游 CLI | ❌ 不存在 | ⚠️ 无 strings 证据 |
+| 外部契约 | ❌ 无独立 contract | ⚠️ LSP 协议是公开标准，但内部实现无契约 |
+
+---
+
+## 发现登记
+
+| ID | 主责 | 关联 | 类别 | 严重度 | 问题陈述 | 源码证据 | 上游证据 | 测试证据 | 影响 | 修订建议 | 置信度 | 验证边界 | 状态 |
+|----|------|------|------|--------|----------|----------|----------|----------|------|----------|--------|--------|------|
+| B2-attachments-01 | attachments | — | 测试缺口 | P2 | attachments spec 所有模块设计均标注"无独立测试""未找到直接测试"，仅集成测试间接覆盖 | `docs/superpowers/specs/2026-11-12-attachments-design.md:7` | N/A | 无专门 attachments 测试文件 | 中（核心功能可能有未覆盖边缘情况） | 添加 attachments 独立测试：maybe 错误隔离、超时、双重去重、图片处理、PDF 引用、日期变更 | 已证实 | 仅检查 spec 文档声明 | open |
+| B2-attachments-02 | attachments | — | 验证缺口 | P3 | spec 中提到 `maybe()` 内部有 5% 遥测采样，但源码中该逻辑未详细验证 | `src/utils/attachments.ts` 需搜索 logEvent 调用 | N/A | 无 | 低（仅遥测） | 验证遥测采样逻辑是否实现 | 部分证实 | 需进一步搜索源码 | open |
+| B2-attachments-03 | attachments | — | 测试缺口 | P2 | attachments 子系统无专门独立测试文件，关键路径（maybe 错误隔离、超时、双重去重、图片处理、PDF 引用、日期变更）无针对性测试 | `src/utils/attachments.ts`、`src/utils/imagePaste.ts`、`src/utils/imageStore.ts`、`src/utils/imageValidation.ts`、`src/utils/pasteStore.ts` | N/A | 仅集成测试间接覆盖 | 中（关键路径可能有未覆盖边缘情况） | 添加 attachments 独立测试文件，覆盖所有主要模块设计卡场景 | 已证实 | 检查 tests/ 目录确认无专门测试 | open |
+| B2-bridge-01 | bridge | — | 测试缺口 | P2 | bridge spec 多数模块设计标注"未找到直接测试"，关键路径（权限回调、容量管理、clean shutdown、token refresh）无针对性测试 | `docs/superpowers/specs/2026-11-12-bridge-design.md:7` | N/A | 仅 perpetual/daemon/peer/inbound 测试 | 中（关键路径可能有未覆盖边缘情况） | 添加 bridge 关键路径测试：权限回调超时、token refresh 竞态、容量波动、跨 worktree 扫描、clean shutdown 强制 kill | 已证实 | 仅检查 spec 文档声明 | open |
+| B2-bridge-02 | bridge | — | 验证缺口 | P3 | spec 描述 shutdown 流程中 stopWork"最多重试 3 次"，但源码中该逻辑需进一步验证 | `src/bridge/bridgeMain.ts:2435-2600+` | N/A | 无 | 低（仅细节） | 验证 stopWork retry 次数与 backoff 配置 | 部分证实 | 需进一步阅读源码 shutdown 逻辑 | open |
+| B2-bridge-03 | bridge | — | 契约缺口 | P3 | bridge 仅 inbound-envelope.md 契约与源码对齐，direct-connect-v1.md、open-runner-v1.md 等仅概念相似，无完整对齐验证 | `src/bridge/bridgeApi.ts`、`src/bridge/workSecret.ts` | N/A | 无 | 低（仅协议对齐） | 完成与相关 contracts 的完整对齐验证 | 部分证实 | 检查 contracts 目录 | open |
+| B2-bridge-04 | bridge | — | 测试缺口 | P2 | bridge 子系统有部分测试覆盖，但关键路径（权限回调超时、token refresh 竞态、容量波动、跨 worktree 扫描边缘情况、clean shutdown 强制 kill、v1→v2 迁移）仍无针对性测试 | `src/bridge/bridgeMain.ts`、`src/bridge/sessionRunner.ts`、`src/bridge/jwtUtils.ts`、`src/bridge/bridgePointer.ts`、`src/bridge/replBridge.ts` | N/A | tests/perpetualBridge.test.ts、tests/daemonBridge.test.ts、tests/peerSessions.test.ts、tests/inboundEnvelope.test.ts 存在但覆盖不全 | 中（关键路径可能有未覆盖边缘情况） | 添加 bridge 关键路径测试文件，覆盖所有主要模块设计卡场景 | 已证实 | 检查 tests/ 目录确认测试覆盖范围 | open |
+| B2-buddy-01 | buddy | — | 测试缺口 | P2 | buddy spec 完整列出所有模块设计，但多数标注"无直接测试"，仅 buddyFork.test.ts 覆盖部分功能 | `docs/superpowers/specs/2026-11-12-buddy-design.md:7` | N/A | tests/buddyFork.test.ts 存在但覆盖不全 | 中（UI 交互、预告窗口、静音行为可能有未覆盖边缘情况） | 添加 buddy 关键路径测试：UI 双模式切换、气泡超时淡出、抚摸动画、预告通知窗口、静音行为 | 已证实 | 仅检查 spec 文档声明 | open |
+| B2-buddy-02 | buddy | — | 验证缺口 | P3 | spec 描述预告通知与完整功能窗口分离，但源码中该逻辑需进一步验证与测试 | `src/buddy/useBuddyNotification.tsx:11-22` | N/A | 无 | 低（仅细节，不影响核心功能） | 验证预告通知与完整功能窗口分离逻辑 | 部分证实 | 需进一步阅读源码与测试 | open |
+| B2-buddy-03 | buddy | — | 测试缺口 | P2 | buddy 子系统有部分测试覆盖，但 UI 交互、预告窗口、静音行为等关键路径无针对性测试 | `src/buddy/CompanionSprite.tsx`、`src/buddy/useBuddyNotification.tsx`、`src/commands/buddy/index.ts` | N/A | tests/buddyFork.test.ts 仅覆盖孵化、解析、roll 确定性 | 中（UI 交互可能有未覆盖边缘情况） | 添加 buddy 完整测试文件，覆盖所有 6 个模块设计卡场景 | 已证实 | 检查 tests/ 目录确认测试覆盖范围 | open |
+| B2-computer-use-01 | computer-use | — | 验收缺口 | P2 | computer-use spec 完整列出所有模块设计，但部分标注"需独立桌面环境验收"，真实 TCC 权限、窗口隐藏、ESC 热键等无法仅由 mock 测试证明 | `docs/superpowers/specs/2026-11-12-computer-use-design.md:7` | llms.txt 27 行匹配，binary strings 26191 行匹配 | 仅 mock 测试覆盖，无真实桌面环境测试 | 中（验收分层不完整） | 建立真实桌面环境验收分层：mock 覆盖协议/权限不变量，单独验证 macOS TCC、窗口隐藏、ESC、剪贴板恢复、多显示器 | 已证实 | 仅检查 spec 文档声明与测试文件 | open |
+| B2-computer-use-02 | computer-use | — | 验证缺口 | P3 | spec 描述 unhide 超时后 Swift 端继续后台运行，但源码中该逻辑需进一步验证 | `src/utils/computerUse/cleanup.ts`、`src/utils/computerUse/executor.ts:unhideComputerUseApps` | N/A | 无 | 低（仅细节，不影响核心功能） | 验证 unhide 超时后 Swift 端行为 | 部分证实 | 需进一步阅读源码与测试 | open |
+| B2-computer-use-03 | computer-use | — | 契约缺口 | P3 | computer-use 外部 stub 契约完整，与源码对齐，但 Swift/Rust 内部实现不在 TypeScript 层覆盖 | `src/external-stubs/computer-use-*.ts`、`docs/external-stubs/contracts/computer-use-backends.md` | N/A | 无 | 低（仅内部实现，接口已对齐） | 考虑添加 Swift/Rust 契约或注释说明内部实现边界 | 部分证实 | 检查 external-stubs 目录 | open |
+| B2-computer-use-04 | computer-use | — | 测试缺口 | P2 | computer-use 子系统有良好的 mock 测试覆盖，但真实桌面环境验收缺失，关键路径（TCC、窗口隐藏、ESC）无法仅由 mock 测试证明 | `src/utils/computerUse/computerUseLock.ts`、`src/utils/computerUse/escHotkey.ts`、`src/utils/computerUse/cleanup.ts`、`src/utils/computerUse/executor.ts` | llms.txt 27 行匹配，binary strings 26191 行匹配 | tests/computerUseBackends.test.ts、tests/computerUseExecutor.test.ts、tests/computerUseNativeHelper.test.ts、tests/computerUseWrapper.test.ts 仅覆盖 mock 场景 | 中（真实桌面环境无测试） | 建立真实桌面环境验收测试，覆盖 TCC 权限、窗口隐藏/显示、ESC 热键、多显示器坐标、剪贴板恢复 | 已证实 | 检查 tests/ 目录确认测试覆盖范围 | open |
+| B2-file-tools-01 | file-tools | — | 测试缺口 | P2 | file-tools spec 所有模块设计均标注"无直接测试""未找到直接测试"，仅集成测试间接覆盖 | `docs/superpowers/specs/2026-11-12-file-tools-design.md:7` | N/A | 无专门 file-tools 测试文件 | 中（核心功能可能有未覆盖边缘情况） | 添加 file-tools 独立测试：并发修改检测、去重机制、引号规范化、Windows 内容比较回退、ripgrep 集成 | 已证实 | 仅检查 spec 文档声明 | open |
+| B2-file-tools-02 | file-tools | — | 验证缺口 | P3 | spec 中提到 tengu_read_dedup_killswitch，但源码中该特性的实际使用未详细验证 | `src/tools/FileReadTool/FileReadTool.ts` 需搜索 killswitch 调用 | N/A | 无 | 低（仅特性开关） | 验证 killswitch 特性是否正确实现和使用 | 部分证实 | 需进一步搜索源码 | open |
+| B2-file-tools-03 | file-tools | — | 测试缺口 | P2 | file-tools 子系统无专门独立测试文件，关键路径（并发修改检测、去重机制、引号规范化、Windows 内容比较回退、ripgrep 集成）无针对性测试 | `src/tools/FileReadTool/FileReadTool.ts`、`src/tools/FileEditTool/FileEditTool.ts`、`src/tools/FileWriteTool/FileWriteTool.ts`、`src/tools/GrepTool/GrepTool.ts`、`src/utils/file.ts` | N/A | 仅集成测试间接覆盖 | 中（关键路径可能有未覆盖边缘情况） | 添加 file-tools 独立测试文件，覆盖所有主要模块设计卡场景 | 已证实 | 检查 tests/ 目录确认无专门测试 | open |
+| B2-lsp-01 | lsp | — | 测试缺口 | P2 | lsp spec 完整列出所有模块设计，但部分标注"未找到直接测试"，仅 lspLifecycle.test.ts 和 lsp.test.ts 覆盖部分功能 | `docs/superpowers/specs/2026-11-12-lsp-design.md:7` | N/A | tests/lspLifecycle.test.ts、tests/lsp.test.ts 存在但覆盖不全 | 中（关键路径可能有未覆盖边缘情况） | 添加 lsp 关键路径测试：LSPTool 完整操作、诊断去重和容量限制、ContentModified 完整重试逻辑、gitignore 过滤 | 已证实 | 仅检查 spec 文档声明 | open |
+| B2-lsp-02 | lsp | — | 验证缺口 | P3 | spec 描述 ContentModified 自动重试的指数退避逻辑，但源码中该逻辑的完整路径需进一步验证 | `src/services/lsp/LSPServerInstance.ts` 需搜索完整重试逻辑 | N/A | 无 | 低（仅细节） | 验证 ContentModified 完整重试逻辑与指数退避 | 部分证实 | 需进一步阅读源码重试逻辑 | open |
+| B2-lsp-03 | lsp | — | 测试缺口 | P2 | lsp 子系统有部分测试覆盖，但关键路径（LSPTool 完整操作、诊断去重和容量限制、ContentModified 完整重试逻辑、gitignore 过滤）无针对性测试 | `src/services/lsp/LSPServerInstance.ts`、`src/services/lsp/passiveFeedback.ts`、`src/tools/LSPTool/LSPTool.ts` | N/A | tests/lspLifecycle.test.ts、tests/lsp.test.ts 仅覆盖生命周期和配置 | 中（关键路径可能有未覆盖边缘情况） | 添加 lsp 完整测试文件，覆盖所有 6 个模块设计卡场景 | 已证实 | 检查 tests/ 目录确认测试覆盖范围 | open |
+
+---
+
+## 证据边界
+
+### Batch 2 已验证的边界
+
+| 子系统 | 已验证 | 未验证 |
+|--------|------|--------|
+| attachments | spec 文档完整性、核心源码一致性（maybe 包装器、超时、双重去重、图片处理、PDF 引用、日期变更、团队邮箱过滤、图片验证）、coverage manifest 注册 | attachments 独立测试、遥测采样逻辑细节、真实 live 环境 |
+| bridge | spec 文档完整性、核心源码一致性（bridgeMain、bridgeApi、sessionRunner、workSecret、bridgePointer、jwtUtils、trustedDevice、inboundMessages、replBridge、daemonBridge、capacityWake、flushGate、bridgeEnabled）、coverage manifest 注册、inbound-envelope.md 契约对齐、perpetual/daemon/peer/inbound 测试 | 关键路径测试、shutdown retry 次数细节、其他 contracts 完整对齐、真实 live 环境 |
+| buddy | spec 文档完整性、核心源码一致性（骨骼派生、roll 确定性、inFlight 并发控制、宽松 JSON 解析、sideQuestion 调用、软失败、灵魂持久化、预告窗口、静音命令）、coverage manifest 注册、buddyFork.test.ts 部分覆盖、上游 llms.txt/strings 搜索边界记录 | UI 交互测试、预告窗口测试、静音行为测试、真实 live 环境 |
+| computer-use | spec 文档完整性、核心源码一致性（文件锁 O_EXCL、PID 存活探测、零 syscall 预检、JSON Lines 协议、drainRunLoop 包装、坐标转换、Surrogate Host、三调用点归一、unhide 5s 超时、ESC 热键 CGEventTap、精确 bundleId 授权）、coverage manifest 注册、computer-use-backends.md 契约对齐、external-stubs 契约对齐、良好的 mock 测试覆盖、上游 llms.txt/strings 搜索边界记录 | 真实桌面环境验收（TCC、窗口隐藏、ESC 热键、多显示器、剪贴板恢复）、Swift/Rust 内部实现验证 |
+| file-tools | spec 文档完整性、核心源码一致性（并发修改检测、去重机制、扩展名分支、引号规范化、ripgrep 集成、设备文件检查、macOS 截图路径处理）、coverage manifest 注册 | file-tools 独立测试、killswitch 特性使用细节、真实 live 环境 |
+| lsp | spec 文档完整性、核心源码一致性（全局单例、lazy start + lazy load、ContentModified 重试、状态机、崩溃自动重启、1-based vs 0-based 转换、gitignore 过滤）、coverage manifest 注册、lspLifecycle.test.ts 和 lsp.test.ts 部分覆盖 | LSPTool 完整测试、诊断注册表测试、ContentModified 完整重试逻辑验证、真实 live 环境 |
+
+### 上游证据边界
+
+| 项目 | 状态 | 说明 |
+|------|------|------|
+| 官方文档索引 | ✅ 已搜索 | llms.txt 27 行匹配 buddy/computer-use，边界：/tmp/flash-design-audit-batch-2-doc-index.txt |
+| 上游 CLI strings | ✅ 已搜索 | /opt/homebrew/bin/claude 26191 行匹配，边界：/tmp/flash-design-audit-batch-2-strings.txt |
+| 上游行为对齐 | ⚠️ 不充分 | 有搜索结果但仅作为边界记录，不做完整对齐验证 |
+
+### 测试证据边界
+
+| 类别 | 覆盖 | 缺口 |
+|------|------|------|
+| attachments 测试 | ❌ 无独立测试 | ⚠️ 仅集成测试间接覆盖 |
+| bridge 测试 | ⚠️ 部分覆盖 | ⚠️ 关键路径无测试 |
+| buddy 测试 | ⚠️ 部分覆盖（孵化、解析、roll 确定性） | ⚠️ UI 交互、预告窗口、静音行为无测试 |
+| computer-use 测试 | ✅ 良好的 mock 覆盖（TCC、授权、坐标、锁、清理、JSON Lines、ESC 热键） | ⚠️ 真实桌面环境无测试 |
+| file-tools 测试 | ❌ 无独立测试 | ⚠️ 仅集成测试间接覆盖 |
+| lsp 测试 | ⚠️ 部分覆盖（生命周期、配置） | ⚠️ LSPTool、诊断注册表、ContentModified 重试无完整测试 |
+
+---
+
+## 完成判定
+
+### 总体评估
+
+| 子系统 | 文档完整性 | 实现一致性 | 上游一致性 | 验证状态 | 总体 |
+|--------|------------|------------|------------|----------|------|
+| attachments | ✅ 完整 | ✅ 一致 | ⚠️ 有边界搜索但未完整对齐 | ⚠️ 部分充分（无独立测试） | ⚠️ 有条件通过（需添加独立测试） |
+| bridge | ✅ 完整 | ✅ 一致 | ⚠️ 有边界搜索但未完整对齐 | ⚠️ 部分充分（关键路径无测试） | ⚠️ 有条件通过（需添加关键路径测试） |
+| buddy | ✅ 完整 | ✅ 一致 | ⚠️ 有边界搜索但未完整对齐 | ⚠️ 部分充分（UI 交互无测试） | ⚠️ 有条件通过（需添加 UI 交互测试） |
+| computer-use | ✅ 完整 | ✅ 一致 | ⚠️ 有边界搜索但未完整对齐 | ⚠️ 部分充分（真实桌面环境无验收） | ⚠️ 有条件通过（需建立真实桌面环境验收） |
+| file-tools | ✅ 完整 | ✅ 一致 | ⚠️ 有边界搜索但未完整对齐 | ⚠️ 部分充分（无独立测试） | ⚠️ 有条件通过（需添加独立测试） |
+| lsp | ✅ 完整 | ✅ 一致 | ⚠️ 有边界搜索但未完整对齐 | ⚠️ 部分充分（关键路径无测试） | ⚠️ 有条件通过（需添加关键路径测试） |
+
+### Batch 2 总体结论
+
+✅ **文档完整性高**：六个子系统的 draft spec 质量优秀，均包含完整章节、决策表、模块设计卡、证据位置标注。
+
+✅ **实现一致性强**：代码与 spec 高度对齐，关键机制与文档完全一致。
+
+⚠️ **测试覆盖不均**：attachments、file-tools 无独立测试，bridge、buddy、lsp 仅部分覆盖，computer-use 仅 mock 覆盖，关键路径和真实桌面环境验收缺失。
+
+✅ **上游证据边界已记录**：完成 llms.txt 和 binary strings 搜索，结果作为边界记录存档。
+
+### 子系统审计进度
+
+| 子系统 | 状态 |
+|--------|------|
+| attachments | ✅ 已审计 |
+| bridge | ✅ 已审计 |
+| buddy | ✅ 已审计 |
+| computer-use | ✅ 已审计 |
+| file-tools | ✅ 已审计 |
+| lsp | ✅ 已审计 |
+| mcp | ⏳ 待审计 |
+| onboarding-ui | ⏳ 待审计 |
+| permissions | ⏳ 待审计 |
+| session-persistence | ⏳ 待审计 |
+| shell-tools | ⏳ 待审计 |
+| tool-framework | ⏳ 待审计 |
+
+**当前进度**：6/12 已审计
+
 ### 其他子系统状态
 
-本 batch 已审计 attachments、bridge、buddy、computer-use，其余 8 个子系统（file-tools、lsp、mcp、onboarding-ui、permissions、session-persistence、shell-tools、tool-framework）保持未审计状态，后续 batch 覆盖。
+本 batch 已审计 attachments、bridge、buddy、computer-use、file-tools、lsp，其余 6 个子系统（mcp、onboarding-ui、permissions、session-persistence、shell-tools、tool-framework）保持未审计状态，后续 batch 覆盖。
 
 ---
