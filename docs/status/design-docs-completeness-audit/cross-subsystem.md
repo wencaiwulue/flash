@@ -492,7 +492,7 @@ auto/team/session/CLAUDE.md/daily log
 | Time gate 检查（仅 stat） | ✅ confirmed | `src/services/autoDream/autoDream.ts:132-148` | 读取 lastConsolidatedAt mtime |
 | Session scan 节流 | ✅ confirmed | `src/services/autoDream/autoDream.ts:55-57,144-151` | SESSION_SCAN_INTERVAL_MS = 10 分钟 |
 | Session count gate | ✅ confirmed | `src/services/autoDream/autoDream.ts:154-171` | 计数自上次合并以来接触的会话 |
-| Lock 获取（基于 mtime） | ✅ confirmed | `src/services/autoDream/consolidationLock.ts` | 原子？TBD 但使用 mtime 进行乐观锁定 |
+| Lock 获取（基于 mtime） | ✅ confirmed | `src/services/autoDream/consolidationLock.ts:46-84` | 使用 mtime 进行乐观锁定；PID 写入后验证所有权；文件系统级原子性未验证 |
 | 失败时 Lock 回滚 | ✅ confirmed | `src/services/autoDream/autoDream.ts:269-271` | `rollbackConsolidationLock` 回滚 mtime |
 | Abort 支持（用户取消） | ✅ confirmed | `src/services/autoDream/autoDream.ts:203-204,262-265` | AbortController 信号传递给 forked agent |
 | 工具权限（与 extractMemories 相同） | ✅ confirmed | `src/services/autoDream/autoDream.ts:226-228` | 使用 `createAutoMemCanUseTool` |
