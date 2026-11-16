@@ -756,11 +756,259 @@
 
 ### messaging-primitives
 
-**状态**：待审计 ❌
+| 项目 | 状态 | 说明 |
+|------|------|------|
+| Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-messaging-primitives-design.md |
+| Coverage 存在 | ✅ | docs/architecture/coverage/messaging-primitives.yaml |
+| Manifest 注册 | ✅ | id: messaging-primitives, batch: 7, status: draft |
+| Coverage 覆盖分组 | 10/10 | mailbox, message-queue-manager, peer-address, direct-member-message, control-message-compat, message-predicates, messages-mappers, messages-system-init, uds-messaging-test, constants-messages, uncovered-message-types |
+
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了多地址格式支持、向后兼容、有序性保证、响应式更新、错误隔离、跨版本兼容、优先级支持、可编辑性等核心问题与约束。
+
+✅ **设计理由与备选方案**：8项关键决策表格化展示，包含真实证据位置：
+- 地址解析使用 URI 风格前缀 + 旧式路径兼容（证据：src/utils/peerAddress.ts）
+- 使用单一命令队列而非多专用队列（证据：src/utils/messageQueueManager.ts）
+- 优先级实现为三级排序 + FIFO 保证（证据：src/utils/messageQueueManager.ts）
+- Mailbox 先匹配等待者再入队（证据：src/utils/mailbox.ts）
+- 控制消息键名标准化在接收端处理（证据：src/utils/controlMessageCompat.ts）
+- 队列快照不可变以支持 React useSyncExternalStore（证据：src/utils/messageQueueManager.ts）
+
+✅ **目标与非目标**：清晰界定了消息寻址、地址兼容、队列管理、优先级、排序保证、Mailbox、控制消息兼容、响应式、React 集成、错误处理等目标；明确了不实现分布式消息队列、不支持消息持久化、不实现优先级老化机制、不支持队列大小限制、不实现消息确认和重试、不支持分布式事务、不自动验证地址有效性等非目标。
+
+✅ **架构、模块与数据流**：
+- 完整的地址解析流程（前缀检测 → 旧式路径兼容 → 其他）
+- 完整的命令队列流程（入队 → 排序 → 通知 → 出队 → 处理）
+- 完整的 Mailbox 消息流程（发送 → 等待者匹配 → 入队 → 通知）
+- 完整的控制消息兼容流程（接收 → 标准化 → 递归处理）
+- 6个模块设计卡（mailbox, message-queue-manager, peer-address, direct-member-message, control-message-compat, messages-mappers, messages-system-init）
+
+#### 源码验证
+
+**mailbox**（src/utils/mailbox.ts）：
+- Mailbox 类实现消息存储、等待者匹配、同步 poll/异步 receive、变更通知 ✅
+- `send()` 先匹配等待者再入队，符合设计 ✅
+- `receive()` 返回 Promise，支持 predicate 过滤 ✅
+- `revision` 计数器用于检测变更 ✅
+
+**message-queue-manager**（src/utils/messageQueueManager.ts）：
+- 单一模块级队列，支持三级优先级（now > next > later）✅
+- 同一优先级内 FIFO 保证 ✅
+- React useSyncExternalStore 兼容接口（subscribeToCommandQueue, getCommandQueueSnapshot）✅
+- 快照每次重新创建，不可变 ✅
+- `popAllEditable()` 支持可编辑命令拉回编辑 ✅
+- 向后兼容别名（subscribeToPendingNotifications 等）✅
+
+**peer-address**（src/utils/peerAddress.ts）：
+- `parseAddress()` 解析 `uds:`/`bridge:` 前缀，/ 开头路径识别为 uds ✅
+- 独立模块避免不必要依赖 ✅
+
+**direct-member-message**（src/utils/directMemberMessage.ts）：
+- `parseDirectMemberMessage()` 解析 `@agent message` 语法 ✅
+- `sendDirectMemberMessage()` 团队成员消息发送 ✅
+
+**control-message-compat**（src/utils/controlMessageCompat.ts）：
+- `normalizeControlMessageKeys()` 将 requestId → request_id，递归处理嵌套 response ✅
+- 蛇形键优先，原地修改 ✅
+
+**messages-mappers**（src/utils/messages/mappers.ts）：
+- `toInternalMessages()` SDK 消息转内部格式 ✅
+- `toSDKMessages()` 内部格式转 SDK 消息 ✅
+- `localCommandOutputToSDKAssistantMessage()` 本地命令输出兼容处理 ✅
+
+**messages-system-init**（src/utils/messages/systemInit.ts）：
+- `buildSystemInitMessage()` 构建系统初始化消息 ✅
+- `sdkCompatToolName()` 工具名向后兼容（Agent → Task）✅
+
+**发现 B7-messaging-primitives-01**：消息原语核心模块无专门测试覆盖。严重度：P2，置信度：已证实（spec 改进建议明确提及，tests/ 目录扫描确认仅有 messageRenderers.test.ts，无 mailbox/test/queue manager/control message compat 等测试）
+
+**发现 B7-messaging-primitives-02**：Mailbox `receive()` 无超时机制，Promise 可能永久挂起。严重度：P3，置信度：已证实（src/utils/mailbox.ts 中 receive() 无超时参数，spec 已知非目标）
+
+**发现 B7-messaging-primitives-03**：later 优先级消息可能被无限期饿死，无优先级老化机制。严重度：P3，置信度：已证实（spec 已知限制，messageQueueManager.ts 无老化实现）
+
+#### 测试验证
+
+检查 coverage 中提及的测试文件：
+- ✅ `messageRenderers.test.ts`：存在，测试 GitHub webhook、cross-session、fork boilerplate 消息渲染
+- ❌ 无 `mailbox.test.ts`
+- ❌ 无 `messageQueueManager.test.ts`
+- ❌ 无 `peerAddress.test.ts`
+- ❌ 无 `controlMessageCompat.test.ts`
+- ❌ 无 `messagesMappers.test.ts`
+- ❌ 无 `messagesSystemInit.test.ts`
+
+#### 隐私与安全边界审查
+
+**地址解析安全边界**：
+- 不验证目标有效性，延迟到发送时检查，避免信息泄露 ✅
+- 解析器纯函数，无副作用 ✅
+
+**队列安全边界**：
+- 队列仅存储在内存，不持久化 ✅
+- 快照不可变，避免竞态 ✅
+
+**Mailbox 安全边界**：
+- 消息仅在内存中，不持久化 ✅
+- 等待者匹配使用 predicate 函数，可自定义安全逻辑 ✅
+
+#### 上游证据
+
+上游 CLI strings 已提取，关键匹配：
+- `Mailbox`、`send()`、`receive()`、`poll()`、`revision`：邮箱类和方法匹配 ✅
+- `subscribeToCommandQueue`、`getCommandQueueSnapshot`、`enqueue`、`dequeue`、`popAllEditable`：队列管理方法匹配 ✅
+- `parseAddress`、`normalizeControlMessageKeys`：解析和兼容方法匹配 ✅
+- `PRIORITY_ORDER`、`now`/`next`/`later`：优先级常量匹配 ✅
+
+官方文档索引搜索已执行：
+- 搜索关键词：message addressing、queue、mailbox、control message、requestId、request_id
+- 命中：无直接 messaging-primitives 相关官方文档页面
+
+---
 
 ### native-installer
 
-**状态**：待审计 ❌
+| 项目 | 状态 | 说明 |
+|------|------|------|
+| Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-native-installer-design.md |
+| Coverage 存在 | ✅ | docs/architecture/coverage/native-installer.yaml |
+| Manifest 注册 | ✅ | id: native-installer, batch: 7, status: draft |
+| Coverage 覆盖分组 | 7/7 | native-installer-core, native-installer-download, native-installer-pid-lock, native-installer-package-managers, native-installer-index, native-installer-cli-update, native-installer-shared-autoupdater |
+
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了原生二进制安装、多版本共存、并发安全、失败回滚、与包管理器边界处理等核心问题与约束。
+
+✅ **设计理由与备选方案**：10+ 项关键决策表格化展示，包含真实证据位置：
+- 版本目录结构：~/.local/share/claude/versions/{version}（证据：src/utils/nativeInstaller/installer.ts）
+- Staging 目录：~/.cache/claude/staging/{version}（证据：src/utils/nativeInstaller/installer.ts）
+- 双重锁机制：PID 锁优先 + mtime 锁 fallback（证据：src/utils/nativeInstaller/pidLock.ts）
+- 进程生命周期锁：启动时锁定当前版本（证据：src/utils/nativeInstaller/installer.ts）
+- 原子更新 symlink：~/.local/bin/claude → 版本文件（证据：src/utils/nativeInstaller/installer.ts）
+- Windows 上不用 symlink，直接复制可执行文件（证据：src/utils/nativeInstaller/installer.ts）
+- 版本保留策略：保留最近两个未锁定版本（证据：src/utils/nativeInstaller/installer.ts）
+- 包管理器检测：不更新由包管理器安装的版本（证据：src/utils/nativeInstaller/packageManagers.ts）
+- 下载完整性校验：GCS 下载校验 sha256，Artifactory 下载校验 npm integrity（证据：src/utils/nativeInstaller/download.ts）
+- 下载去重：同进程内 inFlightInstall Promise 共享（证据：src/utils/nativeInstaller/installer.ts）
+- 下载 stall 检测：60 秒无数据则重试，最多 3 次（证据：src/utils/nativeInstaller/download.ts）
+- 版本来源路由：ant 用户用 Artifactory npm 包，外部用户用 GCS 二进制（证据：src/utils/nativeInstaller/download.ts）
+- npm 安装与原生安装边界：自动检测并禁用 legacy auto-updater（证据：src/utils/nativeInstaller/installer.ts）
+- 旧 npm 安装清理：提供 cleanupNpmInstallations()（证据：src/utils/nativeInstaller/installer.ts）
+- 锁文件位置：~/.local/state/claude/locks/{version}.lock（证据：src/utils/nativeInstaller/installer.ts）
+- 过期 staging/tmp 文件清理：超过 1 小时的自动删除（证据：src/utils/nativeInstaller/installer.ts）
+- 最大版本限制：服务器端可设置 maxVersion 阻止更新到有问题的版本（证据：src/utils/nativeInstaller/installer.ts）
+
+✅ **目标与非目标**：清晰界定了 installLatest()、lockCurrentVersion()、cleanupOldVersions()、checkInstall()、getPackageManager()、SetupMessage 类型、VersionLockContent 类型、getPlatform()、macOS/Linux/Windows 支持、ant/外部用户不同下载源、lockless 模式、失败开放等目标；明确了不提供跨大版本破坏性迁移、不提供从原生安装回滚到 npm 安装自动化、不支持离线安装等非目标。
+
+✅ **架构、模块与数据流**：
+- 完整的原生安装与更新流（用户运行 → 包管理器检测 → installLatest → getLatestVersion → maxVersion 检查 → 锁 → performVersionUpdate → 下载 → installVersion → 原子移动 → symlink 更新 → 验证 → 后台清理 → 保存 config）
+- 完整的版本锁获取流（tryWithVersionLock → PID 锁优先 → mtime 锁 fallback → 重试）
+- 完整的 PID 锁获取流（检查活跃锁 → 原子写入 → 验证 → 返回释放函数）
+- 6个模块设计卡（version-detection, download-and-verify, install-atomicity, pid-lock, package-managers-detect, rollback-cleanup）
+- 数据结构与持久化说明（SetupMessage、VersionLockContent、PackageManager 类型；版本目录、staging、锁目录、symlink 位置）
+- 跨子系统依赖说明（autoUpdater、config、doctorDiagnostic、packageManagers、lockfile、analytics）
+
+#### 源码验证
+
+**native-installer-core**（src/utils/nativeInstaller/installer.ts）：
+- `installLatest()`：安装最新版本，inFlightInstall 去重，后台清理旧版本 ✅
+- `updateLatest()`：更新逻辑，maxVersion 检查 ✅
+- `performVersionUpdate()`：原子版本更新，staging → installPath ✅
+- `checkInstall()`：安装状态检查 ✅
+- `lockCurrentVersion()`：锁定当前运行版本，进程退出时释放 ✅
+- `cleanupOldVersions()`：清理旧版本，保留最近两个，跳过锁定版本 ✅
+- `cleanupNpmInstallations()`：清理旧 npm 安装，保留 node_modules ✅
+- `tryWithVersionLock()`：尝试获取版本锁，支持重试 ✅
+- `atomicMoveToInstallPath()`：原子移动到安装路径 ✅
+- `updateSymlink()`：更新 symlink（Windows 复制）✅
+- `getBaseDirectories()`：XDG 标准目录结构 ✅
+- `VERSION_RETENTION_COUNT = 2`：保留最近两个版本 ✅
+
+**native-installer-download**（src/utils/nativeInstaller/download.ts）：
+- `getLatestVersion()`：获取最新版本，ant/外部用户路由 ✅
+- `getLatestVersionFromArtifactory()`：npm 包版本获取 ✅
+- `getLatestVersionFromBinaryRepo()`：GCS 二进制版本获取 ✅
+- `downloadVersion()`：下载版本，路由到对应源 ✅
+- `downloadAndVerifyBinary()`：下载并校验 sha256，stall 检测 60s，重试 3 次 ✅
+- `StallTimeoutError`、`MAX_DOWNLOAD_RETRIES = 3`、`STALL_TIMEOUT_MS = 60000`：常量定义 ✅
+
+**native-installer-pid-lock**（src/utils/nativeInstaller/pidLock.ts）：
+- `isPidBasedLockingEnabled()`：PID 锁开关，环境变量 + GrowthBook ✅
+- `isLockActive()`：锁活跃检测，PID 运行 + Claude 进程验证 ✅
+- `readLockContent()`：读取锁文件内容 ✅
+- `tryAcquireLock()`：尝试获取锁，原子写入，验证防止竞态 ✅
+- `withLock()`：持有锁执行回调 ✅
+- `acquireProcessLifetimeLock()`：进程生命周期锁 ✅
+- `getAllLockInfo()`：获取所有锁信息用于诊断 ✅
+- `cleanupStaleLocks()`：清理 stale 锁 ✅
+- `VersionLockContent` 类型：pid/version/execPath/acquiredAt ✅
+- `FALLBACK_STALE_MS = 2 hours`：fallback stale 超时 ✅
+
+**native-installer-package-managers**（src/utils/nativeInstaller/packageManagers.ts）：
+- `getPackageManager()`：获取包管理器类型 ✅
+- `detectHomebrew()`/`detectWinget()`/`detectMise()`/`detectAsdf()`/`detectPacman()`/`detectDeb()`/`detectRpm()`/`detectApk()`：各包管理器检测 ✅
+- Linux 发行版检测通过 /etc/os-release ✅
+
+**native-installer-cli-update**（src/cli/update.ts）：
+- `/update` 命令实现，根据安装类型路由到原生或 npm 更新 ✅
+
+**native-installer-shared-autoupdater**（src/utils/autoUpdater.ts）：
+- `getMaxVersion()`/`shouldSkipVersion()`/`assertMinVersion()`：共享自动更新逻辑 ✅
+
+**发现 B7-native-installer-01**：原生安装器核心模块无专门测试覆盖。严重度：P2，置信度：已证实（spec 改进建议明确提及，tests/ 目录扫描确认无 installer/download/pidLock/packageManagers 测试）
+
+**发现 B7-native-installer-02**：Windows 上更新后旧文件可能残留较长时间（直到下次启动）。严重度：P3，置信度：已证实（spec 改进建议明确提及）
+
+**发现 B7-native-installer-03**：PID 锁虽然验证了进程命令，但 PID 复用仍有理论风险。严重度：P3，置信度：设计推断（spec 改进建议提及可添加启动时间戳）
+
+**发现 B7-native-installer-04**：当前 cleanupOldVersions() 按 mtime 排序版本，但 mtime 可能被用户或其他工具修改。严重度：P3，置信度：设计推断（spec 改进建议提及可解析版本号并用 semver 排序）
+
+#### 测试验证
+
+检查 coverage 中提及的测试文件：
+- ❌ 无专门的 native-installer 测试文件
+- ❌ 无 `installer.test.ts`
+- ❌ 无 `download.test.ts`
+- ❌ 无 `pidLock.test.ts`
+- ❌ 无 `packageManagers.test.ts`
+
+#### 隐私与安全边界审查
+
+**锁安全边界**：
+- PID 锁验证进程命令是 Claude，防止 PID 复用误用 ✅
+- 锁文件单独存放，版本清理时不误删 ✅
+- 失败开放：锁获取失败不阻止使用 ✅
+
+**原子操作安全边界**：
+- 下载到 staging，验证后原子移动，防止半安装状态 ✅
+- Symlink 更新先创建临时 symlink 再原子重命名 ✅
+- Windows 复制前重命名旧文件，防止占用 ✅
+
+**包管理器边界**：
+- 尊重包管理器安装，不自更新，防止双重更新混乱 ✅
+
+**清理安全边界**：
+- 清理旧版本时获取锁，防止清理正在运行版本 ✅
+- 保留最近两个版本，支持快速回滚 ✅
+- 清理 npm 安装时保留 node_modules 作为安全网 ✅
+
+**完整性校验边界**：
+- GCS 下载校验 sha256，Artifactory 下载校验 npm integrity ✅
+- 防止损坏或篡改的二进制运行 ✅
+
+#### 上游证据
+
+上游 CLI strings 已提取，关键匹配：
+- `installLatest`、`updateLatest`、`performVersionUpdate`、`checkInstall`、`lockCurrentVersion`、`cleanupOldVersions`：核心安装更新方法匹配 ✅
+- `getLatestVersion`、`downloadVersion`、`downloadAndVerifyBinary`、`stallTimeout`、`MAX_DOWNLOAD_RETRIES`：下载相关方法和常量匹配 ✅
+- `tryAcquireLock`、`withLock`、`isLockActive`、`acquireProcessLifetimeLock`、`cleanupStaleLocks`：锁管理方法匹配 ✅
+- `getPackageManager`、`detectHomebrew`、`detectWinget`、`detectPacman`：包管理器检测方法匹配 ✅
+- `VERSION_RETENTION_COUNT`、`LOCK_STALE_MS`：常量匹配 ✅
+- `getPlatform`、`getBinaryName`、`getBaseDirectories`：平台和目录方法匹配 ✅
+
+官方文档索引搜索已执行：
+- 搜索关键词：native installer、update、install、version lock、package manager、staging、symlink、GCS、Artifactory、sha256、checksum
+- 命中：无直接 native-installer 相关官方文档页面
 
 ### network-security
 
@@ -818,8 +1066,15 @@
 | B7-magic-docs-02 | magic-docs | P3 | 文档跟踪不跨会话持久化，会话间重置 | 是（设计已知非目标） |
 | B7-magic-docs-03 | magic-docs | P3 | 更新在后台执行无状态反馈 | 是（设计已知非目标） |
 | B7-magic-docs-04 | magic-docs | P3 | 仅在 USER_TYPE=ant 时启用（内部构建） | 是（源码中明确检查） |
+| B7-messaging-primitives-01 | messaging-primitives | P2 | 消息原语核心模块无专门测试覆盖 | 是（spec 改进建议明确提及） |
+| B7-messaging-primitives-02 | messaging-primitives | P3 | Mailbox receive() 无超时机制，Promise 可能永久挂起 | 是（spec 已知非目标） |
+| B7-messaging-primitives-03 | messaging-primitives | P3 | later 优先级消息可能被无限期饿死，无优先级老化机制 | 是（spec 已知限制） |
+| B7-native-installer-01 | native-installer | P2 | 原生安装器核心模块无专门测试覆盖 | 是（spec 改进建议明确提及） |
+| B7-native-installer-02 | native-installer | P3 | Windows 上更新后旧文件可能残留较长时间（直到下次启动） | 是（spec 改进建议明确提及） |
+| B7-native-installer-03 | native-installer | P3 | PID 锁虽然验证了进程命令，但 PID 复用仍有理论风险 | 否（设计推断） |
+| B7-native-installer-04 | native-installer | P3 | 当前 cleanupOldVersions() 按 mtime 排序版本，但 mtime 可能被用户或其他工具修改 | 否（设计推断） |
 
-**汇总**：P0 0 个，P1 0 个，P2 13 个，P3 19 个，总计 32 个发现。
+**汇总**：P0 0 个，P1 0 个，P2 16 个，P3 23 个，总计 39 个发现。
 
 ---
 
@@ -883,12 +1138,12 @@
 | external-stubs | ✅ 审计完成 |
 | hooks-system | ✅ 审计完成 |
 | magic-docs | ✅ 审计完成 |
-| messaging-primitives | ❌ 待审计 |
-| native-installer | ❌ 待审计 |
+| messaging-primitives | ✅ 审计完成 |
+| native-installer | ✅ 审计完成 |
 | network-security | ❌ 待审计 |
 | runtime-lifecycle | ❌ 待审计 |
 | telemetry | ❌ 待审计 |
 | test-validation | ❌ 待审计 |
 | web-tools | ❌ 待审计 |
 
-**整体状态**：⚠️ 部分完成（7/14 子系统审计完成）
+**整体状态**：⚠️ 部分完成（9/14 子系统审计完成）
