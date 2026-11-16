@@ -204,6 +204,22 @@ Design docs: 0 errors, 71 warnings
 1. **P2（2项）**：添加 plugins/query-core 集成测试
 2. **P3（3项）**：补齐 plugins 7.0 章节测试场景说明、为 sdkEventQueue 添加测试/完善 sdkHeapDumpMonitor、添加类型兼容性测试
 
+### 跨域发现统计
+
+| 类别 | 数量 |
+|------|------|
+| X-context | 6 |
+| X-memory | 4 |
+| X-state | 1 |
+| X-recovery | 1 |
+| X-boundary | 1 |
+| **去重后总计** | **9** |
+
+### 跨域发现优先级
+
+1. **P2（2项）**：X-context-01/X-memory-01（内存路径验证不一致）、X-context-02（紧凑边界持久化契约）、X-context-03（缓存编辑 API 层消费）、X-context-04（maxOutputTokens 使缓存失效）
+2. **P3（7项）**：X-context-05（上下文折叠阈值硬编码）、X-context-06（进度消息桥接机制）、X-memory-02（lastSummarizedMessageId 未持久化）、X-memory-03（无删除失效跟踪）、X-memory-04（密钥扫描模式未审计）、X-state-01（模块级可变状态）、X-recovery-01（会话元数据未验证）、X-boundary-01（功能门未集中文档）
+
 ## 完成判定
 
 batch 0：✅ 已完成审查，报告已生成并链接；其余批次待审查。
@@ -214,3 +230,4 @@ batch 4：✅ 已完成审查，报告已生成并链接；官方文档与 strin
 batch 5：✅ 已完成审查，报告已生成并链接；官方文档与 strings 已收集，真实模型/API 行为尚未验证。
 batch 6：✅ 已完成审查，报告已生成并链接；官方文档与 strings 已收集，真实模型/API 行为尚未验证。
 batch 7：✅ 已完成审查，报告已生成并链接；官方文档与 strings 已收集，真实模型/API 行为尚未验证。
+cross-subsystem：✅ 已完成审查，报告已生成并链接；Context/Memory/共享状态/持久化/构建边界完整矩阵已建立，所有 P0/P1/上游偏差已独立复核。完整报告请参考：[cross-subsystem.md](cross-subsystem.md)

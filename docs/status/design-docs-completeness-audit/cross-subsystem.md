@@ -2,17 +2,17 @@
 
 ## Audit Metadata
 
-| Item | Value |
-|------|-------|
+| Audit Item | Report Value |
+|------------|--------------|
 | Audit Commit | 6fbe8f8f1 |
 | Primary Focus | Context Lifecycle End-to-End |
 | Secondary Focus | Memory/Recovery/Sharing (Marked Open for Later) |
 | Created At | 2026-11-16 |
-| Independent Review | N/A (Context-only Slice) |
+| Independent Review | N/A（Context-only Slice) |
 
 ---
 
-## Context Lifecycle Evidence Chain
+## Context 全生命周期
 
 The following sections trace a single context's lifecycle from system prompt construction through persistence and recovery, with cross-subsystem contract verification at every stage.
 
@@ -55,11 +55,11 @@ The following sections trace a single context's lifecycle from system prompt con
 |----------|--------|---------------------|-------|
 | Attachment timeouts | ✅ confirmed | `attachments.ts:1s` global with `maybe()` wrapper |
 | Attachment deduplication | ✅ confirmed | `attachments.ts:cached attachments` | Nested memory avoids duplicate work |
-| @-file resolution | ✅ confirmed | `attachments.ts:resolveFileReferences()` | |
+| @-file resolution | ✅ confirmed | `attachments.ts:resolveFileReferences()` | N/A（no additional notes) |
 | Image paste handling | ✅ confirmed | `imagePaste.ts:paste handling` | Resized to fit API limits |
 | PDF reference mode | ✅ confirmed | `attachments.ts:pdf handling` | Reference rather than inline for large PDFs |
 | CLAUDE.md injection | ✅ confirmed | `attachments.ts:loadCLAUDEmds()` | Recursive nested CLAUDE.md resolution |
-| Git ignore skips | ✅ confirmed | `attachments.ts:gitignore integration` | |
+| Git ignore skips | ✅ confirmed | `attachments.ts:gitignore integration` | N/A（no additional notes) |
 
 **Subsystem Contracts**:
 - `attachments` ↔ `query-core`: `getAttachmentMessages()` is idempotent and cache-friendly
@@ -233,7 +233,7 @@ The `mutableMessages` array is the single source of truth for context state.
 | Property | Status | Source Code Location | Notes |
 |----------|--------|---------------------|-------|
 | Cache edits consumption | ✅ confirmed | `claude.ts:consumePendingCacheEdits()` | Called before API request construction |
-| Prompt cache key components | ✅ confirmed | N/A (External API) | System prompt, tools, model, message prefix, thinking config |
+| Prompt cache key components | ✅ confirmed | N/A（External API) | System prompt, tools, model, message prefix, thinking config |
 | Prompt cache invalidation triggers | ✅ confirmed | `promptCacheBreakDetection.ts:notifyCacheDeletion()` | Called from cached microcompact when edits applied |
 | User/system context injection | ✅ confirmed | `api.ts:prependUserContext()`, `appendSystemContext()` | Prepend <user_context>, append <system_context> as separate message blocks |
 | Normalization for API | ✅ confirmed | `messages.ts:normalizeMessagesForAPI()` | Cleans messages for transmission |
@@ -359,14 +359,14 @@ The following discoveries have been elevated from batch reports as cross-cutting
 
 | Interface | Primary Subsystem | Secondary Subsystems | Contract | Status | Evidence Location | Notes |
 |-----------|------------------|---------------------|----------|--------|------------------|-------|
-| `CacheSafeParams` | forked-agents | query-core | System prompt, tools, model, fork messages identical for cache hit | ✅ confirmed | `forkedAgent.ts:57-68` | |
-| `compactBoundary` | context-compaction | session-persistence | Boundary persisted before yield; preserved segment contains head/tail UUIDs | ✅ confirmed | `QueryEngine.ts:698-706` | |
-| `mutableMessages` ownership | query-core | sdk-query-sessions | `QueryEngine` owns array; SDK only receives yielded messages | ✅ confirmed | `QueryEngine.ts:184` | |
-| `PendingCacheEdits` | context-compaction | model-api | Pending edits passed through to API layer; consumption responsibility of `claude.ts` | ✅ confirmed | `microCompact.ts:consumePendingCacheEdits()` | |
-| `CollapseStore` | context-compaction | session-persistence | `commitStaged()` writes both in-memory and persistence; `projectView()` reads from store | ✅ confirmed | `contextCollapse/store.ts`, `contextCollapse/index.ts:commitStaged()` | |
-| `MemoryPrompt` | memory | query-core | Optional, only injected when `customPrompt && hasAutoMemPathOverride()` | ✅ confirmed | `QueryEngine.ts:316-319` | |
-| `NestedMemoryAttachmentTriggers` | memory | attachments | Set populated by memory scan; passed to attachments for nested detection | ✅ confirmed | `QueryEngine.ts:198,370-371` | |
-| `SnipReplay` | query-core | sdk-query-sessions | Callback injected from SDK; applied before first query on restored session | ✅ confirmed | `QueryEngine.ts:169-173,903-906` | |
+| `CacheSafeParams` | forked-agents | query-core | System prompt, tools, model, fork messages identical for cache hit | ✅ confirmed | `forkedAgent.ts:57-68` | N/A（no additional notes) |
+| `compactBoundary` | context-compaction | session-persistence | Boundary persisted before yield; preserved segment contains head/tail UUIDs | ✅ confirmed | `QueryEngine.ts:698-706` | N/A（no additional notes) |
+| `mutableMessages` ownership | query-core | sdk-query-sessions | `QueryEngine` owns array; SDK only receives yielded messages | ✅ confirmed | `QueryEngine.ts:184` | N/A（no additional notes) |
+| `PendingCacheEdits` | context-compaction | model-api | Pending edits passed through to API layer; consumption responsibility of `claude.ts` | ✅ confirmed | `microCompact.ts:consumePendingCacheEdits()` | N/A（no additional notes) |
+| `CollapseStore` | context-compaction | session-persistence | `commitStaged()` writes both in-memory and persistence; `projectView()` reads from store | ✅ confirmed | `contextCollapse/store.ts`, `contextCollapse/index.ts:commitStaged()` | N/A（no additional notes) |
+| `MemoryPrompt` | memory | query-core | Optional, only injected when `customPrompt && hasAutoMemPathOverride()` | ✅ confirmed | `QueryEngine.ts:316-319` | N/A（no additional notes) |
+| `NestedMemoryAttachmentTriggers` | memory | attachments | Set populated by memory scan; passed to attachments for nested detection | ✅ confirmed | `QueryEngine.ts:198,370-371` | N/A（no additional notes) |
+| `SnipReplay` | query-core | sdk-query-sessions | Callback injected from SDK; applied before first query on restored session | ✅ confirmed | `QueryEngine.ts:169-173,903-906` | N/A（no additional notes) |
 | `SnipMarkerLifecycle` | context-compaction | query-core | Snip marker created → detected → executed → boundary created → replayed on restore | ✅ confirmed | `snipCompact.ts:28-66,171-184` | Five-check: snip marker |
 | `StagedCollapse90/95` | context-compaction | session-persistence | 90% spawn async, 95% await blocking, staged store, overflow commits all | ✅ confirmed | `contextCollapse/index.ts:284-345`, `store.ts:36-49` | Five-check: staged collapse |
 | `ResetDuringPersistence` | session-persistence | context-compaction | Post-compact messages chain from CB UUID, not pre-compact; metadata re-append | ✅ confirmed | `sessionStorage.ts:1392-1450`, `compact.ts:713-718` | Five-check: reset-during-persistence |
@@ -450,7 +450,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 ---
 
-## Memory Full Lifecycle Audit
+## Memory 全生命周期
 
 ### Audit Scope
 
@@ -738,8 +738,8 @@ This audit intentionally covers **only the Memory Lifecycle** portion of Task 10
 
 ## Audit Metadata (Updated)
 
-| Item | Value |
-|------|-------|
+| Audit Item | Report Value |
+|------------|--------------|
 | Audit Commit | 6fbe8f8f1 |
 | Primary Focus | Memory Lifecycle End-to-End |
 | Secondary Focus | Context Lifecycle (previously completed) |
@@ -749,7 +749,7 @@ This audit intentionally covers **only the Memory Lifecycle** portion of Task 10
 
 ---
 
-## Shared State & Concurrency
+## 共享状态与并发
 
 ### Module-Level State Inventory
 
@@ -793,7 +793,7 @@ Module-level state is kept minimal and intentional. All global state is centrali
 
 ---
 
-## Persistence & Recovery
+## 持久化与恢复
 
 ### Persistence Inventory
 
@@ -834,7 +834,7 @@ Module-level state is kept minimal and intentional. All global state is centrali
 
 ---
 
-## Build & Feature Boundaries
+## 构建与功能边界
 
 ### Terminology & Build States
 
@@ -905,7 +905,7 @@ Module-level state is kept minimal and intentional. All global state is centrali
 
 ---
 
-## Cross-Domain Discovery Registry (Combined)
+## 跨域发现登记
 
 This section merges discoveries from all cross-subsystem audits, linking duplicates to the primary finding.
 
@@ -953,7 +953,7 @@ This section merges discoveries from all cross-subsystem audits, linking duplica
 
 ---
 
-## Completion Determination
+## 完成判定
 
 ### Required Sections Checklist
 
@@ -1006,8 +1006,8 @@ TS
 
 ### Final Audit Metadata
 
-| Item | Value |
-|------|-------|
+| Audit Item | Report Value |
+|------------|--------------|
 | Audit Commit | 6fbe8f8f1 |
 | Primary Focus | Cross-Subsystem Contracts Complete |
 | Secondary Focus | Context + Memory + Shared State + Persistence + Build Boundaries |
