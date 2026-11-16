@@ -646,6 +646,168 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 
 ---
 
+### permissions
+
+| 项目 | 状态 | 说明 |
+|------|------|------|
+| Spec 存在 | ✅ | `docs/superpowers/specs/2026-11-12-permissions-design.md` |
+| Coverage 存在 | ✅ | `docs/architecture/coverage/permissions.yaml` |
+| Manifest 注册 | ✅ | id: permissions, batch: 2, status: draft |
+| Coverage 覆盖分组 | 12/12 | permissions-types, permissions-core, permissions-setup, permissions-mode, permissions-update, permissions-classifier, permissions-explainer, permissions-filesystem, permissions-bypass-killswitch, permissions-hooks, permissions-components, commands, additional-files |
+
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了权限模式（default/plan/acceptEdits/bypassPermissions/dontAsk/auto）、规则优先级（cliArg > command > session > localSettings > projectSettings > userSettings > flagSettings > policySettings）、工具 checkPermissions 安全底线、分类器决策、异步 Agent 权限处理等核心问题。
+
+✅ **设计理由与备选方案**：11 项关键决策表格化展示，包含真实证据位置：
+- 分层裁决流（规则 → 工具检查 → 模式转换）
+- PermissionMode 作为最后转换层，不影响 allow 规则
+- 规则来源明确优先级
+- dontAsk 模式仅在 ask 时转为 deny
+- auto 模式快速路径（acceptEdits → 安全工具列表 → 分类器）
+- safetyCheck 控制 auto-approve 可用性
+- 拒绝跟踪（连续 3 次/总 20 次回退到用户提示）
+- PowerShell 在 auto 模式默认不使用分类器
+- sandbox 覆盖决策
+- 危险规则检测
+- 异步 Agent 权限处理（hooks 优先，否则 deny）
+- 用户确认 React 状态队列
+- PermissionResult 支持 passthrough 行为
+
+证据位置标注准确：`src/utils/permissions/permissions.ts`、`src/utils/permissions/denialTracking.ts`、`src/utils/permissions/PermissionMode.ts`、`src/utils/permissions/PermissionUpdate.ts`、`src/hooks/useCanUseTool.tsx` 等。
+
+✅ **目标与非目标**：清晰界定了不处理文件检查点、不支持 Web 权限模型、不保证跨版本 PermissionUpdate 兼容性等非目标。
+
+✅ **架构、模块与数据流**：
+- 12 个模块设计卡：PermissionMode 权限模式枚举、规则匹配与优先级、hasPermissionsToUseTool 核心裁决、PermissionUpdate 权限更新与持久化、用户确认与 UI 集成、拒绝跟踪与回退、Auto Classifier 自动分类器、Plan & Bypass 计划与绕过、等
+- 完整裁决流程、数据流、React 集成路径
+- 模块设计卡包含真实类型签名、输入输出、失败安全、设计取舍
+
+**发现 B2-permissions-01**：spec 完整列出所有模块设计，但多数标注"未找到直接测试"，仅 bashPermissionsClassifier.test.ts 覆盖部分 Bash 分类器功能。
+
+#### 源码验证
+
+读取并验证了以下文件：
+- `src/utils/permissions/permissions.ts:473-1320+`：hasPermissionsToUseTool 核心裁决、分层裁决流、auto 模式快速路径、分类器集成与 spec 一致
+- `src/utils/permissions/denialTracking.ts:1-45`：DenialTrackingState、连续 3 次/总 20 次拒绝回退逻辑与 spec 一致
+- `src/hooks/useCanUseTool.tsx:55-363`：React hook 集成、ToolUseConfirm 队列、异步处理器与 spec 一致
+- `src/utils/permissions/PermissionMode.ts:1-142`：PermissionMode 枚举、标题/符号、外部模式转换与 spec 一致
+- `src/utils/permissions/PermissionUpdate.ts:55-354`：权限更新应用与持久化与 spec 一致
+
+**发现 B2-permissions-02**：源码中实现了完整的权限裁决逻辑，但完整的端到端测试覆盖不足，auto 模式分类器完整路径需进一步验证测试。
+
+#### 外部契约验证
+
+检查相关 external stubs 契约：
+- 无直接针对 permissions 的独立 contract
+- 与 shell-tools spec 共享 sandbox 覆盖边界
+- 无公开 live 环境验证
+
+#### 测试验证
+
+检查 coverage 中提及的测试文件：
+- `tests/bashPermissionsClassifier.test.ts:1-417`：✅ 覆盖 Bash 分类器缓存、异步允许审批、deny/ask 分类器权限链
+- ❌ 无专门 permissions 核心测试
+- ❌ 未找到 hasPermissionsToUseTool 完整裁决流测试
+- ❌ 未找到 dontAsk 模式转换测试
+- ❌ 未找到 auto 模式完整路径测试（acceptEdits → 安全工具列表 → 分类器）
+- ❌ 未找到拒绝跟踪回退测试
+
+**发现 B2-permissions-03**：permissions 子系统仅有部分分类器测试覆盖，但核心裁决路径（分层裁决、dontAsk 转换、auto 模式完整路径、拒绝跟踪回退、异步 Agent 权限处理、React 集成）无针对性测试。
+
+#### 证据边界总结
+
+| 类别 | 覆盖 | 缺口 |
+|------|------|------|
+| Spec 完整性 | ✅ 完整，11 项决策，12 个模块设计卡 | ⚠️ 部分测试证据不足 |
+| 源码一致性 | ✅ 核心逻辑与 spec 一致 | ⚠️ 分类器完整路径需进一步验证 |
+| 测试覆盖 | ⚠️ 仅 Bash 分类器部分覆盖 | ⚠️ 核心裁决路径无完整测试 |
+| 官方文档 | ❌ 无实时访问 | ⚠️ 基于现有 spec |
+| 上游 CLI | ❌ 不存在 | ⚠️ 无 strings 证据 |
+| 外部契约 | ❌ 无独立 contract | ⚠️ 与 shell-tools 共享 sandbox 边界 |
+
+---
+
+### session-persistence
+
+| 项目 | 状态 | 说明 |
+|------|------|------|
+| Spec 存在 | ✅ | `docs/superpowers/specs/2026-11-12-session-persistence-design.md` |
+| Coverage 存在 | ✅ | `docs/architecture/coverage/session-persistence.yaml` |
+| Manifest 注册 | ✅ | id: session-persistence, batch: 2, status: draft |
+| Coverage 覆盖分组 | 6/6 | session-storage-core, session-storage-portable, file-history, session-storage-tests, additional-files-source, additional-files-test, commands |
+
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了 JSONL 追加写入、大文件高效读写、DAG 结构保持、崩溃恢复、惰性创建、compact_boundary、文件历史快照等核心问题与约束。
+
+✅ **设计理由与备选方案**：9 项关键决策表格化展示，包含真实证据位置：
+- JSONL 追加写入，无原地改写（除末尾 tombstone）
+- 大文件启动时仅读头尾 64KB
+- 元数据与消息共存在同一 JSONL，追加不覆盖
+- 并行工具调用通过 recoverOrphanedParallelToolResults 恢复
+- 会话文件惰性创建（第一条 user/assistant 消息时）
+- compact_boundary 截断历史，但保留 preservedSegment
+- removeMessageByUuid 对不在末尾消息，仅 ≤50MB 才重写
+- 文件历史快照按 messageId 关联，不是按 UUID
+- progress bridge 兼容旧会话
+
+证据位置标注准确：`src/utils/sessionStorage.ts`、`src/utils/sessionStoragePortable.ts`、`src/utils/sessionChainRecovery.ts`、`src/utils/fileHistory.ts` 等。
+
+✅ **目标与非目标**：清晰界定了不改变文件检查点现有实现、不实现分布式会话同步、不支持实时多进程协作等非目标。
+
+✅ **架构、模块与数据流**：
+- 6 个模块设计卡：JSONL 写入队列、recordTranscript/flush、加载与恢复、文件历史快照/rewind、progress bridge、SDK API 与底层存储边界
+- 完整写入队列与 flush 流程、加载与 DAG 恢复流程、文件历史快照与 rewind 流程
+- 模块设计卡包含真实类型签名、输入输出、失败安全、设计取舍
+
+**发现 B2-session-persistence-01**：spec 完整列出所有模块设计，但部分标注"未找到直接测试"，仅 sessionChainRecovery.test.ts 和 sdkSessions.test.ts 覆盖部分功能。
+
+#### 源码验证
+
+读取并验证了以下文件：
+- `src/utils/sessionStorage.ts:533-687`：Project 类、写入队列、100ms 延迟聚合、100MB 分块、原子追加与 spec 一致
+- `src/utils/sessionStorage.ts:1840-2039`：applyPreservedSegmentRelinks、applySnipRemovals 与 spec 一致
+- `src/utils/sessionChainRecovery.ts:38-116`：recoverOrphanedParallelToolResults 并行分支恢复算法与 spec 一致
+- `src/utils/fileHistory.ts:1-1118`：文件历史快照、rewind、最多 100 个快照、按 messageId 关联与 spec 一致
+
+**发现 B2-session-persistence-02**：源码中实现了完整的 JSONL 写入队列、并行分支恢复、文件历史快照等核心逻辑，但崩溃恢复的完整路径（进程崩溃后重启）无专门测试验证。
+
+#### 外部契约验证
+
+检查相关 external stubs 契约：
+- 与 sdk-query-sessions spec 共享 JSONL 格式
+- sessionStoragePortable.ts 为共享层
+- 无公开 live 环境验证
+
+**发现 B2-session-persistence-03**：SDK API 与底层存储边界清晰，sessionStoragePortable 为共享层，但完整的跨进程并发写入场景无测试验证。
+
+#### 测试验证
+
+检查 coverage 中提及的测试文件：
+- `tests/sessionChainRecovery.test.ts:1-51`：✅ 覆盖并行分支恢复、稳定顺序、无关联组排除
+- `tests/sdkSessions.test.ts:1-10366`：✅ 覆盖 SDK 会话集成（部分）
+- `tests/fileHistory.test.ts`：✅ 覆盖文件历史快照/rewind 基本功能
+- ❌ 未找到崩溃恢复完整测试（进程崩溃后重启）
+- ❌ 未找到大文件（>1GB）加载性能测试
+- ❌ 未找到多进程并发写入同一会话测试
+- ❌ 未找到 removeMessageByUuid 对大文件非末尾消息处理测试
+
+**发现 B2-session-persistence-04**：session-persistence 子系统有部分测试覆盖，但关键路径（崩溃恢复完整路径、大文件加载性能、多进程并发写入、removeMessageByUuid 大文件处理、compact_boundary 与 preservedSegment 完整流程）无针对性测试。
+
+#### 证据边界总结
+
+| 类别 | 覆盖 | 缺口 |
+|------|------|------|
+| Spec 完整性 | ✅ 完整，9 项决策，6 个模块设计卡 | ⚠️ 部分测试证据不足 |
+| 源码一致性 | ✅ 核心逻辑与 spec 一致 | ⚠️ 崩溃恢复完整路径需进一步验证 |
+| 测试覆盖 | ⚠️ 部分覆盖（并行分支恢复、SDK 会话集成、文件历史） | ⚠️ 关键路径无完整测试 |
+| 官方文档 | ❌ 无实时访问 | ⚠️ 基于现有 spec |
+| 上游 CLI | ❌ 不存在 | ⚠️ 无 strings 证据 |
+| 外部契约 | ⚠️ 与 SDK 共享格式边界 | ⚠️ 无完整跨进程契约验证 |
+
+---
+
 ## 发现登记
 
 | ID | 主责 | 关联 | 类别 | 严重度 | 问题陈述 | 源码证据 | 上游证据 | 测试证据 | 影响 | 修订建议 | 置信度 | 验证边界 | 状态 |
@@ -676,6 +838,13 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 | B2-onboarding-ui-01 | onboarding-ui | — | 测试缺口 | P2 | onboarding-ui spec 完整列出所有模块设计，但部分标注"未找到直接测试"，仅 issueOnboarding.test.ts 覆盖部分功能 | `docs/superpowers/specs/2026-11-12-onboarding-ui-design.md:7` | N/A | tests/issueOnboarding.test.ts 存在但覆盖不全 | 中（关键路径可能有未覆盖边缘情况） | 添加 onboarding-ui 关键路径测试：Onboarding 完整流程、TrustDialog 信任策略、ManagedSettingsSecurityDialog 展示策略、WizardProvider 非线性导航、Project Onboarding 计数 | 已证实 | 仅检查 spec 文档声明 | open |
 | B2-onboarding-ui-02 | onboarding-ui | — | 验证缺口 | P3 | spec 描述的 ManagedSettingsSecurityDialog 相关代码、DesktopUpsellStartup、LspRecommendationMenu、claudeCodeHints 等需进一步读取验证 | `src/components/ManagedSettingsSecurityDialog/`、`src/components/DesktopUpsell/`、`src/components/LspRecommendation/` | N/A | 无 | 低（仅细节，不影响核心功能） | 验证 ManagedSettingsSecurityDialog、DesktopUpsellStartup、LspRecommendationMenu、claudeCodeHints 实现 | 部分证实 | 需进一步阅读源码 | open |
 | B2-onboarding-ui-03 | onboarding-ui | — | 测试缺口 | P2 | onboarding-ui 子系统有部分测试覆盖，但关键路径（Onboarding 完整流程、TrustDialog 信任策略、ManagedSettingsSecurityDialog 展示策略、WizardProvider 非线性导航、Project Onboarding 计数、DesktopUpsellStartup、LspRecommendationMenu）无针对性测试 | `src/components/Onboarding.tsx`、`src/components/TrustDialog/TrustDialog.tsx`、`src/components/wizard/WizardProvider.tsx`、`src/projectOnboardingState.ts` | N/A | tests/issueOnboarding.test.ts 仅覆盖幂等性和命令行为 | 中（关键路径可能有未覆盖边缘情况） | 添加 onboarding-ui 完整测试文件，覆盖所有 5 个模块设计卡场景 | 已证实 | 检查 tests/ 目录确认测试覆盖范围 | open |
+| B2-permissions-01 | permissions | — | 测试缺口 | P2 | permissions spec 完整列出所有模块设计，但多数标注"未找到直接测试"，仅 bashPermissionsClassifier.test.ts 覆盖部分 Bash 分类器功能 | `docs/superpowers/specs/2026-11-12-permissions-design.md:7` | N/A | tests/bashPermissionsClassifier.test.ts 存在但覆盖不全 | 中（关键路径可能有未覆盖边缘情况） | 添加 permissions 关键路径测试：hasPermissionsToUseTool 完整裁决流、dontAsk 模式转换、auto 模式完整路径、拒绝跟踪回退、异步 Agent 权限处理、React 集成 | 已证实 | 仅检查 spec 文档声明 | open |
+| B2-permissions-02 | permissions | — | 验证缺口 | P3 | spec 中 auto 模式分类器完整路径、拒绝跟踪回退与实际用户交互的集成等需进一步验证测试 | `src/utils/permissions/permissions.ts:593-927` | N/A | 无 | 低（仅细节，不影响核心功能） | 验证 auto 模式完整路径（acceptEdits → 安全工具列表 → 分类器）与用户交互集成 | 部分证实 | 需进一步阅读源码与测试 | open |
+| B2-permissions-03 | permissions | — | 测试缺口 | P2 | permissions 子系统仅有部分分类器测试覆盖，但核心裁决路径（分层裁决、dontAsk 转换、auto 模式完整路径、拒绝跟踪回退、异步 Agent 权限处理、React 集成）无针对性测试 | `src/utils/permissions/permissions.ts`、`src/utils/permissions/denialTracking.ts`、`src/utils/permissions/PermissionMode.ts`、`src/utils/permissions/PermissionUpdate.ts`、`src/hooks/useCanUseTool.tsx` | N/A | tests/bashPermissionsClassifier.test.ts 仅覆盖 Bash 分类器 | 中（关键路径可能有未覆盖边缘情况） | 添加 permissions 完整测试文件，覆盖所有 12 个模块设计卡场景 | 已证实 | 检查 tests/ 目录确认测试覆盖范围 | open |
+| B2-session-persistence-01 | session-persistence | — | 测试缺口 | P2 | session-persistence spec 完整列出所有模块设计，但部分标注"未找到直接测试"，仅 sessionChainRecovery.test.ts 和 sdkSessions.test.ts 覆盖部分功能 | `docs/superpowers/specs/2026-11-12-session-persistence-design.md:7` | N/A | tests/sessionChainRecovery.test.ts、tests/sdkSessions.test.ts、tests/fileHistory.test.ts 存在但覆盖不全 | 中（关键路径可能有未覆盖边缘情况） | 添加 session-persistence 关键路径测试：崩溃恢复完整路径、大文件加载性能、多进程并发写入、removeMessageByUuid 大文件处理、compact_boundary 与 preservedSegment 完整流程 | 已证实 | 仅检查 spec 文档声明与测试文件 | open |
+| B2-session-persistence-02 | session-persistence | — | 验证缺口 | P3 | spec 描述的崩溃恢复完整路径（进程崩溃后重启）、惰性创建会话文件、tombstone 处理等需进一步验证测试 | `src/utils/sessionStorage.ts:533-687`、`src/utils/sessionStorage.ts:1840-2039` | N/A | 无 | 低（仅细节，不影响核心功能） | 验证崩溃恢复完整路径、惰性创建会话文件、tombstone 处理 | 部分证实 | 需进一步阅读源码与测试 | open |
+| B2-session-persistence-03 | session-persistence | — | 契约缺口 | P3 | session-persistence 与 SDK 共享 JSONL 格式边界，但完整的跨进程并发写入场景无测试验证，也无专门 contract 文档 | `src/utils/sessionStoragePortable.ts`、`docs/external-stubs/contracts/` | N/A | 无 | 低（仅协议边界） | 考虑添加跨进程并发写入契约或注释说明边界 | 部分证实 | 检查 contracts/ 目录 | open |
+| B2-session-persistence-04 | session-persistence | — | 测试缺口 | P2 | session-persistence 子系统有部分测试覆盖，但关键路径（崩溃恢复完整路径、大文件加载性能、多进程并发写入、removeMessageByUuid 大文件处理、compact_boundary 与 preservedSegment 完整流程）无针对性测试 | `src/utils/sessionStorage.ts`、`src/utils/sessionChainRecovery.ts`、`src/utils/fileHistory.ts` | N/A | tests/sessionChainRecovery.test.ts、tests/sdkSessions.test.ts、tests/fileHistory.test.ts 仅覆盖部分场景 | 中（关键路径可能有未覆盖边缘情况） | 添加 session-persistence 完整测试文件，覆盖所有 6 个模块设计卡场景 | 已证实 | 检查 tests/ 目录确认测试覆盖范围 | open |
 
 ---
 
@@ -693,6 +862,8 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 | lsp | spec 文档完整性、核心源码一致性（全局单例、lazy start + lazy load、ContentModified 重试、状态机、崩溃自动重启、1-based vs 0-based 转换、gitignore 过滤）、coverage manifest 注册、lspLifecycle.test.ts 和 lsp.test.ts 部分覆盖 | LSPTool 完整测试、诊断注册表测试、ContentModified 完整重试逻辑验证、真实 live 环境 |
 | mcp | spec 文档完整性、核心源码一致性（多传输类型支持、多源配置聚合与去重、连接状态机、memoization 缓存、OAuth 认证、工具命名规范化）、coverage manifest 注册、sdkMcp.test.ts 和 monitorMcp*.test.ts 部分覆盖 | 完整的重连场景测试、OAuth 完整流程测试、企业策略完整测试、stdio 清理 escalator 测试、真实 live 环境 |
 | onboarding-ui | spec 文档完整性、核心源码一致性（Onboarding 流程、TrustDialog 信任策略、WizardProvider 导航）、coverage manifest 注册、issueOnboarding.test.ts 部分覆盖 | Onboarding 完整流程测试、TrustDialog 测试、ManagedSettingsSecurityDialog 测试、WizardProvider 导航测试、Project Onboarding 计数测试、DesktopUpsellStartup 测试、LspRecommendationMenu 测试、真实 live 环境 |
+| permissions | spec 文档完整性、核心源码一致性（分层裁决、规则优先级、dontAsk 转换、auto 模式快速路径、分类器集成、拒绝跟踪、异步 Agent 处理、React 队列集成）、coverage manifest 注册、bashPermissionsClassifier.test.ts 部分覆盖 | hasPermissionsToUseTool 完整裁决流测试、dontAsk 模式转换测试、auto 模式完整路径测试、拒绝跟踪回退测试、异步 Agent 权限处理测试、React 集成测试、真实 live 环境 |
+| session-persistence | spec 文档完整性、核心源码一致性（JSONL 写入队列、100ms 延迟聚合、100MB 分块、原子追加、并行分支恢复、文件历史快照、preservedSegment 恢复）、coverage manifest 注册、sessionChainRecovery.test.ts/sdkSessions.test.ts/fileHistory.test.ts 部分覆盖 | 崩溃恢复完整路径测试、大文件加载性能测试、多进程并发写入测试、removeMessageByUuid 大文件处理测试、compact_boundary 与 preservedSegment 完整流程测试、真实 live 环境 |
 
 ### 上游证据边界
 
@@ -714,6 +885,8 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 | lsp 测试 | ⚠️ 部分覆盖（生命周期、配置） | ⚠️ 关键路径无完整测试 |
 | mcp 测试 | ⚠️ 部分覆盖（SDK MCP、监控相关） | ⚠️ 关键路径无完整测试 |
 | onboarding-ui 测试 | ⚠️ 部分覆盖（仅 issueOnboarding.test.ts） | ⚠️ 关键路径无完整测试 |
+| permissions 测试 | ⚠️ 部分覆盖（仅 Bash 分类器） | ⚠️ 核心裁决路径无完整测试 |
+| session-persistence 测试 | ⚠️ 部分覆盖（并行分支恢复、SDK 会话、文件历史） | ⚠️ 关键路径无完整测试 |
 
 ---
 
@@ -731,14 +904,18 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 | lsp | ✅ 完整 | ✅ 一致 | ⚠️ 有边界搜索但未完整对齐 | ⚠️ 部分充分（关键路径无测试） | ⚠️ 有条件通过（需添加关键路径测试） |
 | mcp | ✅ 完整 | ✅ 一致 | ⚠️ 有边界搜索但未完整对齐 | ⚠️ 部分充分（关键路径无测试） | ⚠️ 有条件通过（需添加关键路径测试） |
 | onboarding-ui | ✅ 完整 | ✅ 一致 | ⚠️ 有边界搜索但未完整对齐 | ⚠️ 部分充分（关键路径无测试） | ⚠️ 有条件通过（需添加关键路径测试） |
+| permissions | ✅ 完整 | ✅ 一致 | ⚠️ 有边界搜索但未完整对齐 | ⚠️ 部分充分（核心裁决路径无测试） | ⚠️ 有条件通过（需添加核心裁决路径测试） |
+| session-persistence | ✅ 完整 | ✅ 一致 | ⚠️ 有边界搜索但未完整对齐 | ⚠️ 部分充分（关键路径无测试） | ⚠️ 有条件通过（需添加关键路径测试） |
+| shell-tools | ⏳ 待审计 | ⏳ 待审计 | ⏳ 待审计 | ⏳ 待审计 | ⏳ 待审计 |
+| tool-framework | ⏳ 待审计 | ⏳ 待审计 | ⏳ 待审计 | ⏳ 待审计 | ⏳ 待审计 |
 
 ### Batch 2 总体结论
 
-✅ **文档完整性高**：8 个子系统的 draft spec 质量优秀，均包含完整章节、决策表、模块设计卡、证据位置标注。
+✅ **文档完整性高**：10 个子系统的 draft spec 质量优秀，均包含完整章节、决策表、模块设计卡、证据位置标注。
 
 ✅ **实现一致性强**：代码与 spec 高度对齐，关键机制与文档完全一致。
 
-⚠️ **测试覆盖不均**：attachments、file-tools 无独立测试，bridge、buddy、lsp、mcp、onboarding-ui 仅部分覆盖，computer-use 仅 mock 覆盖，关键路径和真实桌面环境验收缺失。
+⚠️ **测试覆盖不均**：attachments、file-tools 无独立测试，bridge、buddy、lsp、mcp、onboarding-ui、permissions、session-persistence 仅部分覆盖，computer-use 仅 mock 覆盖，关键路径和真实桌面环境验收缺失。
 
 ✅ **上游证据边界已记录**：完成 llms.txt 和 binary strings 搜索，结果作为边界记录存档。
 
@@ -754,15 +931,15 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if
 | lsp | ✅ 已审计 |
 | mcp | ✅ 已审计 |
 | onboarding-ui | ✅ 已审计 |
-| permissions | ⏳ 待审计 |
-| session-persistence | ⏳ 待审计 |
+| permissions | ✅ 已审计 |
+| session-persistence | ✅ 已审计 |
 | shell-tools | ⏳ 待审计 |
 | tool-framework | ⏳ 待审计 |
 
-**当前进度**：8/12 已审计
+**当前进度**：10/12 已审计
 
 ### 其他子系统状态
 
-本 batch 已审计 attachments、bridge、buddy、computer-use、file-tools、lsp、mcp、onboarding-ui，其余 4 个子系统（permissions、session-persistence、shell-tools、tool-framework）保持未审计状态，后续 batch 覆盖。
+本 batch 已审计 attachments、bridge、buddy、computer-use、file-tools、lsp、mcp、onboarding-ui、permissions、session-persistence，其余 2 个子系统（shell-tools、tool-framework）保持未审计状态，后续 batch 覆盖。
 
 ---
