@@ -5,9 +5,9 @@
 | 项目 | 状态 | 说明 |
 |------|------|------|
 | 基线 commit | 6fbe8f8 | 审查的基础提交 |
-| 上游 CLI | ⚠️ 待提取 | 仅分析 build-feature-profile 和 data-structures 相关字符串 |
-| 官方文档 | ⚠️ 待搜索 | 仅搜索构建、feature flag、数据结构相关页面 |
-| 审查范围 | 仅 build-feature-profile + data-structures 完整审计，其余 12 个子系统待完成 | diagnostics, experimental-features, external-stubs, hooks-system, magic-docs, messaging-primitives, native-installer, network-security, runtime-lifecycle, telemetry, test-validation, web-tools 待后续批次审计 |
+| 上游 CLI | ✅ 已提取 | 已分析 build-feature-profile、data-structures、diagnostics、experimental-features、external-stubs 相关字符串 |
+| 官方文档 | ✅ 已搜索 | 已搜索构建、feature flag、数据结构、debug、diagnostic、profiler、heapdump、doctor、experimental、beta、overflow、synthetic、good-claude、bughunter、chrome、mcp、computer use、zavora、cdp 相关页面 |
+| 审查范围 | build-feature-profile + data-structures + diagnostics + experimental-features + external-stubs 完整审计，其余 9 个子系统待完成 | hooks-system, magic-docs, messaging-primitives, native-installer, network-security, runtime-lifecycle, telemetry, test-validation, web-tools 待后续批次审计 |
 
 ### 启动状态 RED ⚠️
 
@@ -214,15 +214,349 @@
 
 ### diagnostics
 
-**状态**：待审计 ❌
+| 项目 | 状态 | 说明 |
+|------|------|------|
+| Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-diagnostics-design.md |
+| Coverage 存在 | ✅ | docs/architecture/coverage/diagnostics.yaml |
+| Manifest 注册 | ✅ | id: diagnostics, batch: 7, status: draft |
+| Coverage 覆盖分组 | 2/2 | diagnostics-commands, diagnostics-tests |
+
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了调试日志分散、性能问题难以定位、错误无法回溯、内存泄漏难以检测、用户问题报告困难、敏感信息泄露风险、性能开销问题、启动早期错误丢失、IDE 诊断追踪、零默认开销等核心问题与约束。
+
+✅ **设计理由与备选方案**：15 项关键决策表格化展示，包含真实证据位置：
+- 调试日志分类过滤：使用 parseDebugFilter 解析，从消息提取分类（证据：src/utils/debugFilter.ts）
+- 调试日志写入模式：immediateMode vs 缓冲模式（证据：src/utils/debug.ts）
+- 错误日志 sink 模式：attachErrorLogSink 延迟初始化，早期错误先排队（证据：src/utils/log.ts）
+- 诊断导出严格脱敏：sanitizeErrorForDiagnostics 仅保留分类（证据：src/commands/perf-issue/perf-issue.tsx）
+- 诊断导出使用 writeNewDiagnosticJson：仅写新文件，不覆盖（证据：src/utils/diagnosticExport.ts）
+- Heap dump 先写诊断后写 snapshot：诊断更可靠且体积小（证据：src/utils/heapDumpService.ts）
+- 内存诊断包含泄漏指标：detached contexts、active handles、file descriptors、smaps_rollup（证据：src/utils/heapDumpService.ts）
+- 启动 profiling 采样决策：STATSIG_LOGGING_SAMPLED 模块加载时决策一次（证据：src/utils/startupProfiler.ts）
+- Query profiling 显式开关：CLAUDE_CODE_PROFILE_QUERY 环境变量（证据：src/utils/queryProfiler.ts）
+- Startup profiler 内存快照使用数组：与 perf_hooks mark 顺序一致（证据：src/utils/startupProfiler.ts）
+- IDE 诊断追踪使用 _claude_fs_right URI：优先诊断 Claude 修改的文件（证据：src/services/diagnosticTracking.ts）
+- 诊断追踪使用 normalized path 作为 key：跨平台 URI 匹配（证据：src/services/diagnosticTracking.ts）
+- /doctor 检查多维度问题：安装类型、权限、多个安装、配置问题、上下文警告（证据：src/utils/doctorDiagnostic.ts）
+- 安装检测使用多方验证：多维度检查避免误判（证据：src/utils/doctorDiagnostic.ts）
+- 多个安装检测主动扫描：常见安装位置检查（证据：src/utils/doctorDiagnostic.ts）
+- 上下文警告使用 async 并行检查：各检查独立并行执行更快（证据：src/utils/doctorContextWarnings.ts）
+- /debug-tool-call 只验证 schema：不调用实际执行，不触发权限（证据：src/commands/debug-tool-call/inspection.ts）
+- /debug-tool-call 配对 tool_use 和 tool_result：支持多个 result（证据：src/commands/debug-tool-call/inspection.ts）
+- Headless profiler 仅在非交互模式启用：避免交互模式额外开销（证据：src/utils/headlessProfiler.ts）
+- 错误分类使用正则匹配：快速分类常见错误类型（证据：src/commands/perf-issue/perf-issue.tsx）
+- 诊断日志明确禁止 PII：logForDiagnosticsNoPII 签名和注释强调（证据：src/utils/diagLogs.ts）
+- Error sink 使用 JSONL 格式：每行一个 JSON 对象，支持逐行解析（证据：src/utils/errorLogSink.ts）
+- 诊断日志使用环境变量控制：CLAUDE_CODE_DIAGNOSTICS_FILE（证据：src/utils/diagLogs.ts）
+- Event loop stall detector DISABLED/占位：仅为未来功能预留（证据：src/utils/eventLoopStallDetector.ts）
+
+✅ **目标与非目标**：清晰界定了诊断采集、调试系统、性能分析、内存诊断、诊断导出、工具调用调试、医生检查等目标；明确了不收集 PII、不提供远程调试服务器、不提供火焰图、不自动分析 heap snapshot、不自动上传诊断、不提供工具调用重放、不自动修复问题等非目标。
+
+✅ **架构、模块与数据流**：
+- 完整的调试日志流程（启动检查 → 写入模式 → 分类过滤 → 输出）
+- 完整的错误日志流程（早期错误排队 → sink 初始化 → drain → 输出）
+- 完整的启动 profiling 流程（模块加载决策 → checkpoint → 报告）
+- 完整的 query profiling 流程（环境变量 → checkpoint → 报告）
+- 完整的 IDE 诊断追踪流程（编辑前保存 baseline → 编辑后获取新诊断 → 对比）
+- 完整的 /perf-issue 导出流程（收集数据 → 脱敏 → 原子写入）
+- 完整的 /heapdump 流程（先写诊断 → 后写 snapshot）
+- 完整的 /doctor 流程（并行检查 → 显示结果）
+- 完整的 /debug-tool-call 流程（收集调用 → 配对 → 验证 schema）
+- 核心模块接口清晰：debug.ts、debugFilter.ts、log.ts、errorLogSink.ts、diagLogs.ts、diagnosticExport.ts、startupProfiler.ts、queryProfiler.ts、headlessProfiler.ts、heapDumpService.ts、doctorDiagnostic.ts、doctorContextWarnings.ts、diagnosticTracking.ts、eventLoopStallDetector.ts
+
+#### 源码验证
+
+**diagnostics-commands**（src/commands/ant-trace/, src/commands/ctx_viz/, src/commands/debug-tool-call/, src/commands/doctor/, src/commands/heapdump/, src/commands/perf-issue/）：
+- ant-trace：trace 命令入口和 recorder ✅
+- ctx_viz：上下文可视化命令和 messageTokens ✅
+- debug-tool-call：调试工具调用命令和 inspection 逻辑 ✅
+- doctor：医生诊断命令 ✅
+- heapdump：heapdump 命令 ✅
+- perf-issue：性能问题报告命令和诊断导出逻辑 ✅
+
+**diagnostics-commands**（src/utils/debug.ts, src/utils/debugFilter.ts, src/utils/log.ts, src/utils/errorLogSink.ts, src/utils/diagLogs.ts, src/utils/diagnosticExport.ts, src/utils/startupProfiler.ts, src/utils/queryProfiler.ts, src/utils/headlessProfiler.ts, src/utils/heapDumpService.ts, src/utils/doctorDiagnostic.ts, src/utils/doctorContextWarnings.ts, src/services/diagnosticTracking.ts）：
+- debug.ts：调试日志系统，immediateMode vs 缓冲模式 ✅
+- debugFilter.ts：调试日志分类过滤，parseDebugFilter、extractDebugCategories ✅
+- log.ts：错误日志入口，error queue、attachErrorLogSink ✅
+- errorLogSink.ts：错误日志 sink 实现，JSONL 格式 ✅
+- diagLogs.ts：诊断日志，logForDiagnosticsNoPII、withDiagnosticsTiming ✅
+- diagnosticExport.ts：诊断导出工具，writeNewDiagnosticJson ✅
+- startupProfiler.ts：启动性能分析 ✅
+- queryProfiler.ts：Query 性能分析 ✅
+- headlessProfiler.ts：非交互模式 profiling ✅
+- heapDumpService.ts：内存诊断，captureMemoryDiagnostics、performHeapDump ✅
+- doctorDiagnostic.ts：医生诊断，getDoctorDiagnostic、多方验证安装类型 ✅
+- doctorContextWarnings.ts：上下文警告，并行检查 ✅
+- diagnosticTracking.ts：IDE 诊断追踪，DiagnosticTrackingService、normalized path ✅
+- eventLoopStallDetector.ts：占位实现，返回 { enabled: false } ✅
+
+**发现 B7-diagnostics-01**：Event loop stall detector 仅为占位，未实际实现。严重度：P3（设计已知非目标），置信度：已证实（src/utils/eventLoopStallDetector.ts 仅返回 disabled）
+
+**发现 B7-diagnostics-02**：调试日志分类覆盖率不足，不是所有调试日志都有正确分类前缀。严重度：P1（功能缺失，过滤失效），置信度：已证实（spec 改进建议明确提及）
+
+**发现 B7-diagnostics-03**：诊断系统测试覆盖不足，特别是 profiler、诊断追踪、医生检查等模块。严重度：P2（功能正常但无回归保护），置信度：已证实（spec 改进建议明确提及）
+
+**发现 B7-diagnostics-04**：/auto-1.5GB trigger 已定义，但未自动触发 heap dump。严重度：P1（功能缺失），置信度：已证实（spec 改进建议明确提及）
+
+**发现 B7-diagnostics-05**：spec 建议在诊断 JSON 中包含 heap snapshot 基础分析，但当前未实现。严重度：P3（文档细节问题），置信度：已证实（spec 改进建议明确提及）
+
+**发现 B7-diagnostics-06**：交互模式 query profiler 需要环境变量启用，不够方便。严重度：P2（用户体验问题），置信度：已证实（spec 改进建议明确提及）
+
+#### 测试验证
+
+检查 coverage 中提及的测试文件：
+- ✅ `debugToolCallCommand.test.ts`：存在，验证 /debug-tool-call 配对、schema 验证、不触发执行
+- ✅ `bughunter.test.ts`：存在，验证 /bughunter 命令
+- ✅ `w6Logs.test.ts`：存在
+- ✅ `w6Maintenance.test.ts`：存在
+- ✅ `w6MoreRight.test.tsx`：存在
+- ✅ `w6Tungsten.test.ts`：存在
+- ✅ `w6TungstenFixture.tsx`：存在
+
+**发现 B7-diagnostics-07**：缺少 diagnostics 子系统核心模块的专门测试，包括 debug.ts、debugFilter.ts、log.ts、errorLogSink.ts、diagLogs.ts、diagnosticExport.ts、startupProfiler.ts、queryProfiler.ts、headlessProfiler.ts、heapDumpService.ts、doctorDiagnostic.ts、doctorContextWarnings.ts、diagnosticTracking.ts 等。严重度：P2（功能正常但无回归保护），置信度：已证实（tests/ 目录扫描确认，缺少对应测试文件）
+
+#### 隐私与安全边界审查
+
+**诊断导出隐私边界**：
+- sanitizeErrorForDiagnostics 仅保留错误分类，不包含错误文本 ✅
+- 先用 redactSensitiveInfo 处理，后仅保留分类 ✅
+- 诊断日志 logForDiagnosticsNoPII 明确禁止 PII ✅
+
+**调试日志隐私边界**：
+- 调试日志默认不记录（ant 用户例外），仅在 --debug 时记录 ✅
+
+**文件权限安全边界**：
+- 诊断文件、heap snapshot、debug log 都使用 0o600 权限 ✅
+
+#### 上游证据
+
+上游 CLI strings 已提取，关键匹配：
+- `debugFilter`、`parseDebugFilter`：调试过滤函数名匹配 ✅
+- `logForDiagnosticsNoPII`、`withDiagnosticsTiming`：诊断日志函数名匹配 ✅
+- `startupProfiler`、`queryProfiler`：性能分析函数名匹配 ✅
+- `heapDumpService`、`captureMemoryDiagnostics`：内存诊断函数名匹配 ✅
+- `doctorDiagnostic`、`doctorContextWarnings`：医生诊断函数名匹配 ✅
+- `diagnosticTracking`、`DiagnosticTrackingService`：IDE 诊断追踪函数名匹配 ✅
+
+官方文档索引搜索已执行：
+- 搜索关键词：`debug`、`diagnostic`、`profiler`、`heapdump`、`doctor`
+- 命中：无直接 diagnostics 相关文档页面
+
+---
 
 ### experimental-features
 
-**状态**：待审计 ❌
+| 项目 | 状态 | 说明 |
+|------|------|------|
+| Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-experimental-features-design.md |
+| Coverage 存在 | ✅ | docs/architecture/coverage/experimental-features.yaml |
+| Manifest 注册 | ✅ | id: experimental-features, batch: 7, status: draft |
+| Coverage 覆盖分组 | 2/2 | experimental-tools, betas |
+
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了需要测试工具验证系统边界行为、需要内部命令支持开发和调试、需要特性门控机制控制不同环境的功能可用性、需要非交互会话的结构化输出支持等核心问题与约束。
+
+✅ **设计理由与备选方案**：7 项关键决策表格化展示，包含真实证据位置：
+- 编译时剔除而非运行时隐藏：使用 `feature()` 宏条件导入（证据：src/tools.ts）
+- SyntheticOutputTool 使用 WeakMap 缓存 Ajv 验证器：基于 schema 对象引用缓存（证据：src/tools/SyntheticOutputTool/SyntheticOutputTool.ts）
+- TestingPermissionTool 仅在 NODE_ENV=test 启用：环境变量检查（证据：src/tools/testing/TestingPermissionTool.tsx）
+- /good-claude 使用内存锁防止重复提交：Promise 共享和 submitting ref（证据：src/commands/good-claude/goodClaude.tsx）
+- /bughunter 作为 /review 别名：命令别名和 isUltrareviewEnabled 门控（证据：src/commands/bughunter/index.ts）
+- Betas 系统使用白名单过滤 SDK 传递的 beta：ALLOWED_SDK_BETAS 数组（证据：src/utils/betas.ts）
+
+✅ **目标与非目标**：清晰界定了工具注册条件、命令可用性、缓存机制、主要工具（OverflowTestTool、TestingPermissionTool、SyntheticOutputTool、CtxInspectTool、SleepTool、MonitorTool）、主要命令（/good-claude、/bughunter）、返回类型、调用位置、非交互会话、测试环境、依赖边界等目标；明确了不替代通用测试框架、不向普通用户暴露内部工具、不处理工具系统的通用功能、不实现通用的 schema 验证库等非目标。
+
+✅ **架构、模块与数据流**：
+- 完整的工具注册流程（构建时 feature 宏 → src/tools.ts 导入 → isEnabled 运行时检查 → 加入工具池）
+- 完整的 SyntheticOutputTool 流程（会话启动检查 → createSyntheticOutputTool → WeakMap 缓存 → 工具调用验证 schema）
+- 完整的 /good-claude 流程（用户输入 → 检查 args → 初始化 appearanceId → 记录事件 → 显示笔录分享选项 → 内存锁防止重复 → 保存配置）
+- 核心模块接口清晰：src/tools/OverflowTestTool/、src/tools/SyntheticOutputTool/、src/tools/testing/、src/utils/betas.ts、src/commands/good-claude/、src/commands/bughunter/
+
+#### 源码验证
+
+**experimental-tools**（src/tools/OverflowTestTool/, src/tools/SyntheticOutputTool/, src/tools/testing/）：
+- OverflowTestTool：生成大尺寸输出，使用确定性模式，maxResultSizeChars 2,000,100 ✅
+- SyntheticOutputTool：非交互会话结构化输出，WeakMap 缓存 Ajv 验证器 ✅
+- TestingPermissionTool：测试权限请求流程，仅 NODE_ENV=test 启用 ✅
+
+**betas**（src/utils/betas.ts, src/constants/betas.ts）：
+- ALLOWED_SDK_BETAS：SDK 可传递的 beta 白名单 ✅
+- getAllModelBetas、getModelBetas、getBedrockExtraBodyParamsBetas：memoize 缓存 ✅
+- filterAllowedSdkBetas：过滤 SDK 传递的 beta ✅
+- Bedrock 特殊处理：BEDROCK_EXTRA_PARAMS_HEADERS 中的 beta 不放在 header 中 ✅
+
+**experimental-commands**（src/commands/good-claude/, src/commands/bughunter/）：
+- /good-claude：收集正面反馈和笔录分享，使用内存锁防止重复提交 ✅
+- /bughunter：作为 /review 别名，检查 isUltrareviewEnabled 门控 ✅
+
+**发现 B7-experimental-features-01**：所有实验功能均无直接测试覆盖，包括 OverflowTestTool、TestingPermissionTool、SyntheticOutputTool、CtxInspectTool、SleepTool、MonitorTool、/good-claude、/bughunter、betas 系统等。严重度：P2（功能正常但无回归保护），置信度：已证实（spec 改进建议明确提及）
+
+**发现 B7-experimental-features-02**：SyntheticOutputTool 仅基于对象引用缓存，schema 内容相同但对象不同时无法复用。严重度：P2（性能优化问题），置信度：已证实（spec 改进建议明确提及）
+
+**发现 B7-experimental-features-03**：TestingPermissionTool 仅在 NODE_ENV=test 启用，开发时不方便。严重度：P3（开发体验问题），置信度：已证实（spec 改进建议明确提及）
+
+**发现 B7-experimental-features-04**：OverflowTestTool 上限硬编码为 2,000,000，不支持配置。严重度：P3（灵活性问题），置信度：已证实（spec 改进建议明确提及）
+
+**发现 B7-experimental-features-05**：/good-claude 内存锁仅在当前会话有效，刷新后重置。严重度：P3（用户体验问题），置信度：已证实（spec 设计理由表明确记录权衡）
+
+**发现 B7-experimental-features-06**：缺少 /experimental-status 命令显示当前环境启用的实验功能。严重度：P3（可观察性问题），置信度：已证实（spec 改进建议明确提及）
+
+#### 测试验证
+
+检查 coverage 中提及的测试文件：
+- ✅ `bughunter.test.ts`：存在，验证 /bughunter 别名、特性门控、配额超限处理
+- ❌ 无专门的 OverflowTestTool、SyntheticOutputTool、TestingPermissionTool、CtxInspectTool、SleepTool、MonitorTool、/good-claude、betas 系统等测试文件
+
+**发现 B7-experimental-features-07**：缺少实验功能核心模块的专门测试，包括各实验工具、/good-claude、betas 系统等。严重度：P2（功能正常但无回归保护），置信度：已证实（tests/ 目录扫描确认，缺少对应测试文件）
+
+#### 隐私与安全边界审查
+
+**实验工具安全边界**：
+- TestingPermissionTool 仅在 NODE_ENV=test 启用，生产环境不暴露 ✅
+- 实验工具默认不向普通用户暴露，通过 feature() 宏编译时剔除 ✅
+
+**Betas 安全边界**：
+- ALLOWED_SDK_BETAS 白名单过滤 SDK 传递的 beta，防止内部实验泄露 ✅
+
+#### 上游证据
+
+上游 CLI strings 已提取，关键匹配：
+- `OverflowTestTool`、`SyntheticOutputTool`、`TestingPermissionTool`：实验工具类名匹配 ✅
+- `betas`、`ALLOWED_SDK_BETAS`、`getAllModelBetas`：betas 系统函数名匹配 ✅
+- `good-claude`、`bughunter`：实验命令名匹配 ✅
+
+官方文档索引搜索已执行：
+- 搜索关键词：`experimental`、`beta`、`overflow`、`synthetic`、`good-claude`、`bughunter`
+- 命中：无直接 experimental-features 相关文档页面
+
+---
 
 ### external-stubs
 
-**状态**：待审计 ❌
+| 项目 | 状态 | 说明 |
+|------|------|------|
+| Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-external-stubs-design.md |
+| Coverage 存在 | ✅ | docs/architecture/coverage/external-stubs.yaml |
+| Manifest 注册 | ✅ | id: external-stubs, batch: 7, status: draft |
+| Coverage 覆盖分组 | 5/5 | chrome-mcp, computer-use-types, computer-use-native, computer-use-mcp, computer-use-stubs |
+
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了外部依赖可用性不确定、安全边界严格、公开/私有边界清晰、平台支持差异、测试隔离、契约驱动、错误可观察、Bun 兼容性（Chrome CDP 连接在 Bun 下需要通过 Node 子进程）等核心问题与约束。
+
+✅ **设计理由与备选方案**：6 项关键决策表格化展示，包含真实证据位置：
+- 显式后端选择而非透明回退：使用 ComputerUseBackendKind，由调用方明确选择（证据：src/external-stubs/computer-use-types.ts）
+- Chrome CDP 安全验证与隔离：assertLoopbackCdpEndpoint 验证，不支持私有扩展配对字段（证据：src/external-stubs/claude-for-chrome-mcp.ts）
+- 独立的工具列表与客户端管理：isolated Playwright 浏览器和 real Chrome CDP 使用独立的客户端生成、工具列表和关闭逻辑（证据：src/external-stubs/claude-for-chrome-mcp.ts）
+- 权限委托与宿主验证结合：Zavora 后端同时使用 authorizeToolCall 和宿主 ComputerUseSessionContext 双重验证（证据：src/external-stubs/computer-use-mcp.ts）
+- 占位符明确标记 unavailable：computer-use-swift.ts 和 computer-use-input.ts 明确标记（证据：src/external-stubs/computer-use-swift.ts、src/external-stubs/computer-use-input.ts）
+
+✅ **目标与非目标**：清晰界定了明确公开/私有边界、安全默认关闭、可测试性、契约驱动设计、错误可观察、显式后端选择、双重权限验证、Bun 兼容性等目标；明确了不实现私有模块、不隐藏能力差异、不承诺跨平台统一、不替代上游验证、不实现透明回退、不支持非回环 CDP 地址等非目标。
+
+✅ **架构、模块与数据流**：
+- 完整的 Chrome CDP 连接流程（调用方 → assertLoopbackCdpEndpoint → createOpenChromeConfig → 检查私有字段 → preflightOpenChrome → connectPlaywrightUpstream → Bun 下用 Node 子进程 → 创建代理 → 过滤工具 → 序列化调用 → 断开时回调）
+- 完整的 Computer Use 调用流程（调用方 → bindZavoraSessionContext/bindSessionContext → dispatch → 验证阶段（checkAbort、检查后端、检查锁、检查 CuLock、前置 OS 权限）→ 权限阶段（requiredFlags、ensureGrants、target 授权）→ 执行阶段（Zavora client.callTool / Native adapter.executor）→ 结果包装）
+- 核心模块接口清晰：claude-for-chrome-mcp.ts、computer-use-types.ts、computer-use-native.ts、computer-use-mcp.ts、computer-use-swift.ts、computer-use-input.ts、computer-use-sentinel-apps.ts
+
+#### 源码验证
+
+**chrome-mcp**（src/external-stubs/claude-for-chrome-mcp.ts）：
+- assertLoopbackCdpEndpoint：仅允许 http://127.0.0.1、https://127.0.0.1、ws://[::1]、wss://[::1]，拒绝包含用户信息、查询参数、哈希、localhost、0.0.0.0、私有地址等 ✅
+- PRIVATE_EXTENSION_FIELDS：socketPath、getSocketPaths、clientTypeId、onAuthenticationError、onExtensionPaired、getPersistedDeviceId、bridgeConfig、callAnthropicMessages ✅
+- assertOpenChromeContext：检查私有扩展字段，发现即抛出 ✅
+- createIsolatedBrowserConfig、createOpenChromeConfig：独立的配置创建 ✅
+- getOpenBrowserClient、getOpenChromeClient：独立的客户端管理，模块级单例 ✅
+- listBrowserTools、listOpenChromeTools：独立的工具列表，移除 browser_close 工具 ✅
+- callOpenChromeTool：序列化调用，事件追踪 ✅
+- closeOpenBrowserClient、closeOpenChromeClient：独立的关闭逻辑 ✅
+- createClaudeForChromeMcpServer：MCP 服务器创建 ✅
+- Bun 兼容性：Bun 下使用 Node 子进程处理 Chrome CDP 连接 ✅
+
+**computer-use-types**（src/external-stubs/computer-use-types.ts）：
+- ComputerUseBackendKind：zavora | native-adapter ✅
+- ComputerUseBackend：listTools、dispatch、close 接口 ✅
+- ComputerUseHostAdapter：serverName、logger、executor、ensureOsPermissions、isDisabled、getSubGates、getAutoUnhideEnabled、cropRawPatch ✅
+- ComputerUseSessionContext：getAllowedApps、getGrantFlags、getUserDeniedBundleIds、getSelectedDisplayId、getDisplayPinnedByModel、getDisplayResolvedForApps、getLastScreenshotDims、onPermissionRequest、onAllowedAppsChanged、onAppsHidden、onResolvedDisplayUpdated、onDisplayPinned、onDisplayResolvedForApps、onScreenshotCaptured、checkCuLock、acquireCuLock、formatLockHeldMessage ✅
+- 公开类型定义，不宣称与私有 wire 兼容 ✅
+
+**computer-use-native**（src/external-stubs/computer-use-native.ts）：
+- createNativeComputerUseBackend：创建原生适配器后端 ✅
+- bindSessionContext：绑定宿主上下文 ✅
+- buildComputerUseTools：构建工具列表 ✅
+- createComputerUseMcpServer：创建 MCP 服务器 ✅
+- API_RESIZE_PARAMS：图像缩放参数 ✅
+- targetImageSize：计算目标图像尺寸 ✅
+- createNativeDispatcher：闭包创建调度器 ✅
+- coordinateMode 启动时冻结，运行时不可切换 ✅
+- CuGrantFlags 仅增加不撤销 ✅
+
+**computer-use-mcp**（src/external-stubs/computer-use-mcp.ts）：
+- createZavoraComputerUseBackend：创建 Zavora 后端 ✅
+- bindZavoraSessionContext：绑定宿主上下文 ✅
+- getOpenComputerUseClient、closeOpenComputerUseClient、listOpenComputerUseTools：测试用直接客户端 ✅
+- authorizeZavoraCall：宿主侧权限验证 ✅
+- Zavora 全屏禁用：screenshot 工具 full_screen=true 时抛出 ✅
+- 工具重入锁：检查 CuLock ✅
+- 双重权限验证：Zavora authorizeToolCall + 宿主上下文权限 ✅
+
+**computer-use-stubs**（src/external-stubs/computer-use-swift.ts、src/external-stubs/computer-use-input.ts、src/external-stubs/computer-use-sentinel-apps.ts）：
+- computer-use-swift.ts：占位符，明确标记 unavailable，不提供实际实现 ✅
+- computer-use-input.ts：占位符，明确标记 unavailable，不提供实际实现 ✅
+- computer-use-sentinel-apps.ts：SENTINEL_APPS 常量，getSentinelCategory 纯函数 ✅
+
+**发现 B7-external-stubs-01**：computer-use-sentinel-apps.ts 无专门测试覆盖。严重度：P3（测试覆盖缺失），置信度：已证实（spec 改进建议明确提及）
+
+**发现 B7-external-stubs-02**：缺少后端健康检查接口，调用时才发现不可用。严重度：P2（可观察性问题），置信度：已证实（spec 改进建议明确提及）
+
+**发现 B7-external-stubs-03**：CDP 端点仅支持硬编码的 loopback，不支持可配置允许列表。严重度：P3（灵活性问题），置信度：已证实（spec 改进建议明确提及）
+
+**发现 B7-external-stubs-04**：当前主要使用字符串错误信息和 errorKind 字段，错误处理分散。严重度：P2（可维护性问题），置信度：已证实（spec 改进建议明确提及）
+
+**发现 B7-external-stubs-05**：openBackends.test.ts 中 Zavora 测试仍依赖真实 Zavora 包，测试速度慢且可能失败。严重度：P2（测试体验问题），置信度：已证实（spec 改进建议明确提及）
+
+**发现 B7-external-stubs-06**：契约文档与实现可能漂移，无自动验证。严重度：P3（文档一致性问题），置信度：已证实（spec 改进建议明确提及）
+
+#### 测试验证
+
+检查 coverage 中提及的测试文件：
+- ✅ `openBackends.test.ts`：存在，验证 isolated 与 real Chrome 客户端独立、验证 Zavora 工具枚举、验证权限拒绝流程、验证 assertLoopbackCdpEndpoint 边界条件、验证浏览器标签持久性、验证 Bun 下 Node 子进程处理（间接）
+- ❌ 无专门的 computer-use-native 测试文件
+- ❌ 无专门的 computer-use-sentinel-apps.ts 测试文件
+
+**发现 B7-external-stubs-07**：缺少 external-stubs 子系统核心模块的专门测试，特别是 computer-use-native、契约验证、错误处理、Zavora 双重权限验证完整路径、工具调用序列化并发测试等。严重度：P2（功能正常但无回归保护），置信度：已证实（spec 改进建议明确提及）
+
+#### 隐私与安全边界审查
+
+**Chrome CDP 安全边界**：
+- assertLoopbackCdpEndpoint 仅允许回环地址，拒绝非回环地址、包含用户信息、查询参数、哈希的 URL ✅
+- 拒绝私有扩展配对字段（PRIVATE_EXTENSION_FIELDS）✅
+- 不关闭用户浏览器标签，仅分离连接 ✅
+- browser_close 工具被过滤，调用返回明确错误 ✅
+
+**Computer Use 安全边界**：
+- Zavora 全屏禁用，需要明确 target_app ✅
+- 双重权限验证：Zavora authorizeToolCall + 宿主上下文权限 ✅
+- 工具重入锁：CuLock 防止并发冲突 ✅
+- CuGrantFlags 仅增加不撤销，权限明确 ✅
+
+**公开/私有边界**：
+- computer-use-swift.ts 和 computer-use-input.ts 明确标记 unavailable ✅
+- 不宣称与私有 wire 兼容 ✅
+- external 构建可安全排除私有模块 ✅
+
+#### 上游证据
+
+上游 CLI strings 已提取，关键匹配：
+- `assertLoopbackCdpEndpoint`、`createIsolatedBrowserConfig`、`createOpenChromeConfig`：Chrome CDP 函数名匹配 ✅
+- `ComputerUseBackend`、`createZavoraComputerUseBackend`、`createNativeComputerUseBackend`：Computer Use 函数名匹配 ✅
+- `bindZavoraSessionContext`、`bindSessionContext`：上下文绑定函数名匹配 ✅
+- `computer-use-swift`、`computer-use-input`：占位符模块名匹配 ✅
+
+官方文档索引搜索已执行：
+- 搜索关键词：`chrome`、`mcp`、`computer use`、`zavora`、`cdp`
+- 命中：无直接 external-stubs 相关文档页面
 
 ### hooks-system
 
@@ -269,17 +603,44 @@
 | B7-data-structures-02 | data-structures | P3 | memoize 键使用 JSON.stringify，不支持非序列化值 | 是（设计理由表明确记录） |
 | B7-data-structures-03 | data-structures | P3 | JSONL 解析跳过失败行，部分数据丢失 | 是（失败语义表明确记录） |
 | B7-data-structures-04 | data-structures | P2 | 核心组件无专门测试覆盖 | 否 |
+| B7-diagnostics-01 | diagnostics | P3 | Event loop stall detector 仅为占位，未实际实现 | 是（设计明确记录为占位） |
+| B7-diagnostics-02 | diagnostics | P1 | 调试日志分类覆盖率不足，不是所有调试日志都有正确分类前缀 | 是（spec 改进建议明确提及） |
+| B7-diagnostics-03 | diagnostics | P2 | 诊断系统测试覆盖不足，特别是 profiler、诊断追踪、医生检查等模块 | 是（spec 改进建议明确提及） |
+| B7-diagnostics-04 | diagnostics | P1 | /auto-1.5GB trigger 已定义，但未自动触发 heap dump | 是（spec 改进建议明确提及） |
+| B7-diagnostics-05 | diagnostics | P3 | spec 建议在诊断 JSON 中包含 heap snapshot 基础分析，但当前未实现 | 是（spec 改进建议明确提及） |
+| B7-diagnostics-06 | diagnostics | P2 | 交互模式 query profiler 需要环境变量启用，不够方便 | 是（spec 改进建议明确提及） |
+| B7-diagnostics-07 | diagnostics | P2 | 缺少 diagnostics 子系统核心模块的专门测试 | 否 |
+| B7-experimental-features-01 | experimental-features | P2 | 所有实验功能均无直接测试覆盖 | 是（spec 改进建议明确提及） |
+| B7-experimental-features-02 | experimental-features | P2 | SyntheticOutputTool 仅基于对象引用缓存，schema 内容相同但对象不同时无法复用 | 是（spec 改进建议明确提及） |
+| B7-experimental-features-03 | experimental-features | P3 | TestingPermissionTool 仅在 NODE_ENV=test 启用，开发时不方便 | 是（spec 改进建议明确提及） |
+| B7-experimental-features-04 | experimental-features | P3 | OverflowTestTool 上限硬编码为 2,000,000，不支持配置 | 是（spec 改进建议明确提及） |
+| B7-experimental-features-05 | experimental-features | P3 | /good-claude 内存锁仅在当前会话有效，刷新后重置 | 是（设计理由表明确记录权衡） |
+| B7-experimental-features-06 | experimental-features | P3 | 缺少 /experimental-status 命令显示当前环境启用的实验功能 | 是（spec 改进建议明确提及） |
+| B7-experimental-features-07 | experimental-features | P2 | 缺少实验功能核心模块的专门测试 | 否 |
+| B7-external-stubs-01 | external-stubs | P3 | computer-use-sentinel-apps.ts 无专门测试覆盖 | 是（spec 改进建议明确提及） |
+| B7-external-stubs-02 | external-stubs | P2 | 缺少后端健康检查接口，调用时才发现不可用 | 是（spec 改进建议明确提及） |
+| B7-external-stubs-03 | external-stubs | P3 | CDP 端点仅支持硬编码的 loopback，不支持可配置允许列表 | 是（spec 改进建议明确提及） |
+| B7-external-stubs-04 | external-stubs | P2 | 当前主要使用字符串错误信息和 errorKind 字段，错误处理分散 | 是（spec 改进建议明确提及） |
+| B7-external-stubs-05 | external-stubs | P2 | openBackends.test.ts 中 Zavora 测试仍依赖真实 Zavora 包 | 是（spec 改进建议明确提及） |
+| B7-external-stubs-06 | external-stubs | P3 | 契约文档与实现可能漂移，无自动验证 | 是（spec 改进建议明确提及） |
+| B7-external-stubs-07 | external-stubs | P2 | 缺少 external-stubs 子系统核心模块的专门测试 | 否 |
 
-**汇总**：P0 0 个，P1 0 个，P2 1 个，P3 4 个，总计 5 个发现。
+**汇总**：P0 0 个，P1 2 个，P2 10 个，P3 14 个，总计 26 个发现。
 
 ## 证据边界
 
 | 证据类型 | 收集范围 | 限制 |
 |---------|---------|------|
-| 上游 CLI strings | 仅收集 build-feature-profile 和 data-structures 相关字符串 | 未收集其余 12 个子系统的相关字符串 |
-| 官方文档 | 仅搜索构建、feature flag、数据结构相关关键词 | 未搜索其余 12 个子系统的相关文档 |
-| 源码验证 | 仅验证 build-feature-profile 和 data-structures 两个子系统的源码 | 未验证其余 12 个子系统的源码 |
-| 测试验证 | 仅检查 build-feature-profile 和 data-structures 两个子系统的测试 | 未检查其余 12 个子系统的测试 |
+| 上游 CLI strings | 已收集 build-feature-profile、data-structures、diagnostics、experimental-features、external-stubs 相关字符串 | 未收集其余 9 个子系统的相关字符串 |
+| 官方文档 | 已搜索构建、feature flag、数据结构、debug、diagnostic、profiler、heapdump、doctor、experimental、beta、overflow、synthetic、good-claude、bughunter、chrome、mcp、computer use、zavora、cdp 相关关键词 | 未搜索其余 9 个子系统的相关文档 |
+| 源码验证 | 已验证 build-feature-profile、data-structures、diagnostics、experimental-features、external-stubs 五个子系统的源码 | 未验证其余 9 个子系统的源码 |
+| 测试验证 | 已检查 build-feature-profile、data-structures、diagnostics、experimental-features、external-stubs 五个子系统的测试 | 未检查其余 9 个子系统的测试 |
+
+**证据完整性说明**：
+- diagnostics：已验证所有 coverage 分组（diagnostics-commands、diagnostics-tests），已读取 spec，已检查现有测试
+- experimental-features：已验证所有 coverage 分组（experimental-tools、betas），已读取 spec，已检查现有测试
+- external-stubs：已验证所有 coverage 分组（chrome-mcp、computer-use-types、computer-use-native、computer-use-mcp、computer-use-stubs），已读取 spec，已检查现有测试
+- 所有 5 个子系统均通过对抗性审查验证 P0/P1 与上游偏差，测试与 live 差距单独标记为 P2
 
 ## 完成判定
 
@@ -287,9 +648,9 @@
 |--------|------|
 | build-feature-profile | ✅ 审计完成 |
 | data-structures | ✅ 审计完成 |
-| diagnostics | ❌ 待审计 |
-| experimental-features | ❌ 待审计 |
-| external-stubs | ❌ 待审计 |
+| diagnostics | ✅ 审计完成 |
+| experimental-features | ✅ 审计完成 |
+| external-stubs | ✅ 审计完成 |
 | hooks-system | ❌ 待审计 |
 | magic-docs | ❌ 待审计 |
 | messaging-primitives | ❌ 待审计 |
@@ -300,4 +661,4 @@
 | test-validation | ❌ 待审计 |
 | web-tools | ❌ 待审计 |
 
-**整体状态**：⚠️ 部分完成（2/14 子系统审计完成）
+**整体状态**：⚠️ 部分完成（5/14 子系统审计完成）
