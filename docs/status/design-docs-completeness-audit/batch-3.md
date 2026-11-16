@@ -593,6 +593,48 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 
 ---
 
+## Adversarial-Review Verdict: B3-auth-01
+
+### Verdict: **UPHELD as P1** - Direct source evidence confirms the 30-second cross-process staleness impact.
+
+### Evidence Examined
+
+1. **macOsKeychainHelpers.ts:69** - `KEYCHAIN_CACHE_TTL_MS = 30_000` explicitly sets 30-second TTL.
+
+2. **macOsKeychainHelpers.ts:53-63** - Comment confirms the design intent and tradeoff:
+   - "TTL bounds staleness for cross-process scenarios (another CC instance refreshing/invalidating tokens) without forcing a blocking spawnSync on every read."
+   - "30s of cross-process staleness is fine: OAuth tokens expire in hours, and the only cross-process writer is another CC instance's /login or refresh."
+
+3. **auth.ts:1321-1337** - `invalidateOAuthCacheIfDiskChanged()` only checks `.credentials.json` mtime, NOT Keychain changes:
+   - For macOS Keychain path (no `.credentials.json` file), it only clears the memoize cache, not the Keychain cache itself.
+   - The Keychain cache is still bounded by its 30-second TTL.
+
+4. **auth.ts:1378-1389** - `handleOAuth401Error()` does clear cache on 401, but this is reactive, not proactive.
+
+### Impact Analysis
+
+**Staleness Scenario**:
+- Process A refreshes token at T0, writes to Keychain, calls `clearKeychainCache()` (process A only)
+- Process B has cached token from T-5s, continues using stale token until T+25s (30s total)
+- Process B will use stale token for up to 30s, potentially hitting 401s
+- On 401, `handleOAuth401Error()` clears cache and recovers
+
+**Mitigations Present**:
+- OAuth tokens have long lifetimes (hours), so 30s staleness is unlikely to cause actual expiration
+- 401 recovery path exists with token comparison
+- Refresh path has multiple cache-clear points
+
+**P1 Justification Maintained**:
+- While mitigations reduce risk, this is still a cross-process consistency issue with a clear time-bound impact
+- The spec itself identifies this as a P1 improvement opportunity
+- No security boundary violation, but functional consistency issue in multi-process scenarios
+
+### Recommendation
+
+**Maintain as P1**, implement the suggested improvement: Check Keychain item modification time or add a generation counter in a shared location to invalidate cache proactively across processes.
+
+---
+
 ## 证据边界
 
 ### memory 已验证的边界
