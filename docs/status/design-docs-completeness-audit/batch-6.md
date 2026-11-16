@@ -544,7 +544,83 @@
 | Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-remote-control-design.md |
 | Coverage 存在 | ✅ | docs/architecture/coverage/remote-control.yaml |
 | Manifest 注册 | ✅ | id: remote-control, batch: 6, status: draft |
-| 审查状态 | ⏸️ Open | 本 slice 仅审计 daemon-background + deep-link，remote-control 待后续审计 |
+| Coverage 覆盖分组 | 8/8 | additional-files, remote-client, remote-server, remote-control-command, remote-sdk-control, remote-transport, remote-tests |
+
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述 CCR（云端）和 Direct Connect（本地）两种模式的区别，WebSocket 与 HTTP POST 分离传输、序列号重放机制、权限响应幂等去重、会话状态机（starting/running/detached/stopping/stopped）。
+✅ **设计理由与备选方案**：12 项关键决策表格化展示，包含真实证据位置：
+- 序列号重放机制（src/server/sessionManager.ts:674-704）
+- WebSocket NDJSON 帧（src/server/server.ts:242-251）
+- 权限响应 ID 幂等去重（src/server/sessionManager.ts:827-841）
+- 会话状态机分离（src/server/types.ts:31-39）
+- Bearer token + 时间安全比较（src/server/server.ts:30-42）
+- Unix socket 权限 0600/0700（src/server/server.ts:94-95,290-295）
+- HTTP POST 发送输入 + WebSocket 接收输出分离（src/remote/RemoteSessionManager.ts:219-242）
+- WebSocket 重连策略：2000ms 首次，最多 5 次，4001 最多 3 次（src/remote/SessionsWebSocket.ts:17-26,234-288）
+✅ **目标与非目标**：清晰界定远程会话连接、pending permissions 映射、direct-connect 事件日志、会话创建/恢复/删除 HTTP 接口；明确不负责实际工具执行（ProcessBackend/SDK 负责）、权限 UI 展示（REPL 负责）、SSH 隧道建立（ssh 模块负责）。
+✅ **架构、模块与数据流**：
+- 8 个模块设计卡（additional-files, remote-client, remote-server, remote-control-command, remote-sdk-control, remote-transport, remote-tests）
+- 完整的 CCR 和 Direct Connect 控制流、WebSocket attach 流、权限请求/响应流、断线重连与恢复流、idle 会话回收流
+- 关键数据结构（SessionInfo, IndexFile, EventRecord）
+
+#### 源码验证
+
+**remote-client（src/remote/）**：
+- RemoteSessionManager：完整实现 pending permissions 映射、connect/sendMessage/respondToPermissionRequest/cancelSession/disconnect ✅
+- SessionsWebSocket：完整实现 WebSocket 连接、重连策略（2000ms 首次，最多 5 次，4001 最多 3 次）、viewerOnly 永不放弃、ping 间隔 30s ✅
+- sdkMessageAdapter：SDK 消息转换为 REPL 可渲染格式 ✅
+- remotePermissionBridge：权限桥接 ✅
+
+**remote-server（src/server/）**：
+- server.ts：HTTP API（/health, /sessions POST/GET/DELETE, /sessions/{id}/ws）、Bearer token 认证（SHA-256 时间安全比较）、Unix socket 权限 0600/0700 ✅
+- sessionManager.ts：会话状态机、序列号重放、权限响应幂等去重、事件日志轮转、原子索引写入（临时文件+rename）、idle 会话回收 ✅
+- directConnectManager.ts：Direct Connect 客户端管理 ✅
+- backends/processBackend.ts：子进程后端 ✅
+- lockfile.ts：服务器锁文件 ✅
+
+**发现 B6-remote-control-01**：SessionsWebSocket 重连逻辑无独立单元测试（当前仅通过集成验证）。严重度：P2（功能正常但无回归保护），置信度：已证实（tests/ 目录扫描确认，无 SessionsWebSocket 专项测试）
+**发现 B6-remote-control-02**：sdkMessageAdapter 无独立单元测试。严重度：P2（功能正常但无回归保护），置信度：已证实（tests/ 目录扫描确认）
+**发现 B6-remote-control-03**：RemoteSessionManager pendingPermissionRequests 无超时清理机制。严重度：P3（设计已知限制），置信度：已证实（spec 非目标明确记录，源码确认无超时逻辑）
+
+#### 测试验证
+
+检查 coverage 中提及的测试文件：
+- ✅ tests/directConnect.test.ts：完整覆盖认证、幂等、重放、权限、idle 回收、Unix socket、事件轮转、会话创建/恢复/删除
+- ❌ 无 tests/remote*.test.ts：CCR 模式（SessionsWebSocket、RemoteSessionManager、sdkMessageAdapter）无专项测试
+
+#### 隐私与安全边界审查
+
+**安全边界**：
+- Bearer token 认证（SHA-256 时间安全比较）✅
+- Unix socket 权限 0600，父目录 0700 ✅
+- token 不在 URL 中暴露 ✅
+- 事件日志权限 0600 ✅
+- 会话索引权限 0600 ✅
+- 权限响应幂等去重防止重复执行 ✅
+- host key 完全由 OpenSSH 处理（不绕过验证）✅
+
+**外部 stub 契约**：
+- ✅ docs/external-stubs/contracts/direct-connect-v1.md：Direct Connect 协议完全验证通过
+
+#### 上游证据
+
+**协议证据**：
+- ✅ direct-connect-v1.md 外部契约完整验证通过
+
+**源码证据**：
+- ✅ 所有核心模块实现与 spec 一致，关键决策点都有 spec 中记录的证据位置
+
+**上游二进制 strings**：
+- ⚠️ 未提取（任务要求 focused 证据，不强制）
+
+**官方文档**：
+- ⚠️ 无公开文档（code.claude.com 边界搜索未发现，合理，内部功能）
+
+**Live 状态**：
+- ❌ 未尝试（遵循边界规则，未连接任何私有服务）
+
+---
 
 ---
 
@@ -555,7 +631,83 @@
 | Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-ssh-design.md |
 | Coverage 存在 | ✅ | docs/architecture/coverage/ssh.yaml |
 | Manifest 注册 | ✅ | id: ssh, batch: 6, status: draft |
-| 审查状态 | ⏸️ Open | 本 slice 仅审计 daemon-background + deep-link，ssh 待后续审计 |
+| Coverage 覆盖分组 | 9/9 | ssh-session, ssh-manager, ssh-auth-proxy, ssh-artifact, ssh-argv, ssh-errors, ssh-openssh, ssh-hooks, ssh-tests |
+
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述本地认证代理 + SSH 端口转发 + 远程占位符机制、远程环境探测（单行 shell 脚本带标记 JSON）、工件部署（scp + 临时目录 + 原子重命名 + 摘要验证）、远程进程 stream-json 格式、会话重连策略（相同 session ID + 指数退避 + 有限重试）、权限 generation 隔离。
+✅ **设计理由与备选方案**：11 项关键决策表格化展示，包含真实证据位置：
+- 本地认证代理 + SSH 端口转发 + 远程占位符（src/ssh/sshAuthProxy.ts:417-599）
+- 远程环境探测使用单行 shell 脚本带标记 JSON（src/ssh/argv.ts:121-233）
+- 工件部署使用 scp + 临时目录 + 原子重命名 + 摘要验证（src/ssh/artifact.ts:241-324）
+- 权限 generation 隔离，旧响应静默拒绝（src/ssh/SSHSessionManager.ts:364-375）
+- Host key 完全由 OpenSSH 处理，不绕过验证（src/ssh/openSSH.ts:103-134）
+✅ **目标与非目标**：清晰界定 SSH 会话连接状态、pending permissions 映射、session ID 跟踪、认证代理生命周期；明确不实现 SSH 客户端协议（使用系统 OpenSSH）、不管理 SSH 密钥或 ssh-agent（用户预先配置）、不实现终端模式或交互式 shell。
+✅ **架构、模块与数据流**：
+- 9 个模块设计卡（ssh-session, ssh-manager, ssh-auth-proxy, ssh-artifact, ssh-argv, ssh-errors, ssh-openssh, ssh-hooks, ssh-tests）
+- 完整的 SSH 会话创建流、认证代理请求处理流、消息流与权限请求流、用户输入与权限响应流、断线重连流、正常断开流
+- 关键数据结构（SSHProbe, SSHArtifactManifest, SSHResolvedAuth, State, PermissionEntry）
+
+#### 源码验证
+
+**ssh-session（src/ssh/createSSHSession.ts）**：
+- 完整实现远程探测、工件加载/验证/部署、认证代理启动、SSH 进程启动、本地会话模式 ✅
+
+**ssh-manager（src/ssh/SSHSessionManager.ts）**：
+- 完整实现状态机（idle/initializing/connected/reconnecting/disconnecting/disconnected）、connect/disconnect/sendMessage/respondToPermissionRequest/sendInterrupt、generation 隔离、重连策略（已连接最多 3 次，未连接最多 2 次，指数退避 1s/2s/4s）、pendingPrompts 跟踪、断线时 delivery unknown 通知 ✅
+
+**ssh-auth-proxy（src/ssh/sshAuthProxy.ts）**：
+- 完整实现 Unix socket HTTP 代理、凭证解析/注入（API key/Bearer/OAuth）、header 过滤（移除 hop-by-hop 和占位符）、上游代理、流式传输、路径验证（仅接受 /v1/）、socket 身份验证（dev+ino 防止替换） ✅
+
+**ssh-artifact（src/ssh/artifact.ts）**：
+- 完整实现 loadSSHArtifact（验证 manifest、sha256、mode、version、目标架构）、verifyRemoteArtifact、deploySSHArtifact（scp 到临时目录、验证、原子重命名） ✅
+
+**ssh-argv（src/ssh/argv.ts）**：
+- 完整实现 validateSSHHost、buildProbeCommand、parseProbeOutput、buildMainSSHArgv、buildRemoteCLICommand、posixQuote ✅
+
+**发现 B6-ssh-01**：SSH 重连后无状态同步机制，远程可能已前进但本地不知道已改变的工具状态。严重度：P3（设计已知限制），置信度：已证实（spec 改进建议明确记录）
+**发现 B6-ssh-02**：当前仅支持 Linux glibc 目标，不支持 musl libc（Alpine）或 BSD/macOS 远程。严重度：P3（设计已知限制），置信度：已证实（spec 明确记录）
+**发现 B6-ssh-03**：单次 scp 传输大文件在弱网下可能慢或失败，无断点续传。严重度：P3（设计已知限制），置信度：已证实（spec 改进建议明确记录）
+
+#### 测试验证
+
+检查 coverage 中提及的测试文件：
+- ✅ tests/sshSession.test.ts：完整覆盖 SSH 会话创建、重连、权限隔离、工件部署、错误分类、stderr 脱敏
+- ✅ tests/sshAuthProxy.test.ts：完整覆盖认证代理三种 auth 类型、占位符剥除、host 固定、流式传输、协议违规拒绝、socket 身份验证、本地会话真实传输
+
+#### 隐私与安全边界审查
+
+**安全边界**：
+- 本地凭证（API key/Bearer/OAuth token）永远不发送到远程主机，远程只能看到占位符 ✅
+- 所有 API 请求通过本地认证代理注入真实凭证 ✅
+- 认证代理仅接受 /v1/ 路径的请求，拒绝 CONNECT/TRACE 方法 ✅
+- 本地和远程 Unix socket 权限 0600 ✅
+- 代理通过 dev+ino 验证 socket 身份防止替换 ✅
+- Host key 完全由 OpenSSH 处理，不使用 StrictHostKeyChecking=no 或 UserKnownHostsFile=/dev/null ✅
+- 所有 SSH stderr 输出被 redact，移除可能的凭证 ✅
+- 远程命令显式 unset 所有可能含凭证的 ingress 环境变量 ✅
+
+**外部 stub 契约**：
+- ✅ docs/external-stubs/contracts/ssh-v1.md：SSH 协议完全验证通过
+
+#### 上游证据
+
+**协议证据**：
+- ✅ ssh-v1.md 外部契约完整验证通过
+
+**源码证据**：
+- ✅ 所有核心模块实现与 spec 一致，关键决策点都有 spec 中记录的证据位置
+
+**上游二进制 strings**：
+- ⚠️ 未提取（任务要求 focused 证据，不强制）
+
+**官方文档**：
+- ⚠️ 无公开文档（code.claude.com 边界搜索未发现，合理，内部功能）
+
+**Live 状态**：
+- ❌ 未尝试（遵循边界规则，未连接任何私有服务）
+
+---
 
 ---
 
@@ -591,6 +743,12 @@
 | B6-platform-integrations-01 | platform-integrations | P3 | WSL 配置读取失败时仅记录日志，无用户可见提示（设计权衡，静默降级） |
 | B6-platform-integrations-02 | platform-integrations | P3 | QR 码生成失败时静默降级（仅留空），无用户可见提示 |
 | B6-platform-integrations-03 | platform-integrations | P2 | platform-integrations 子系统测试覆盖严重不足，仅 1 个最小测试文件，缺少核心功能测试 |
+| B6-remote-control-01 | remote-control | P2 | SessionsWebSocket 重连逻辑无独立单元测试（当前仅通过集成验证） |
+| B6-remote-control-02 | remote-control | P2 | sdkMessageAdapter 无独立单元测试 |
+| B6-remote-control-03 | remote-control | P3 | RemoteSessionManager pendingPermissionRequests 无超时清理机制 |
+| B6-ssh-01 | ssh | P3 | SSH 重连后无状态同步机制，远程可能已前进但本地不知道已改变的工具状态 |
+| B6-ssh-02 | ssh | P3 | 当前仅支持 Linux glibc 目标，不支持 musl libc（Alpine）或 BSD/macOS 远程 |
+| B6-ssh-03 | ssh | P3 | 单次 scp 传输大文件在弱网下可能慢或失败，无断点续传 |
 
 ### 汇总统计
 
@@ -598,9 +756,9 @@
 |------|------|
 | P0 阻断性问题 | 0 |
 | P1 严重问题 | 0 |
-| P2 中等问题 | 4 |
-| P3 低优先级问题 | 12 |
-| 总计 | 16 |
+| P2 中等问题 | 6 |
+| P3 低优先级问题 | 15 |
+| 总计 | 21 |
 
 ### P0/P1/P2 详细描述
 
@@ -624,15 +782,51 @@
 
 风险：platform-integrations 处理外部输入（deep link）、跨平台集成、安全敏感功能（socket/pipe通信），无测试覆盖可能导致安全验证逻辑退化、跨平台兼容性问题无法及时发现。
 
+---
+
+**发现 B6-remote-control-01**：SessionsWebSocket 重连逻辑无独立单元测试，当前仅通过集成验证。严重度：P2（功能正常但无回归保护），置信度：已证实（tests/ 目录扫描确认，无 SessionsWebSocket 专项测试）。
+
+风险：WebSocket 重连是 CCR 模式可靠性的核心，无测试覆盖可能导致重连逻辑退化、4001 特殊处理失效、viewerOnly 永不放弃逻辑错误。
+
+---
+
+**发现 B6-remote-control-02**：sdkMessageAdapter 无独立单元测试。严重度：P2（功能正常但无回归保护），置信度：已证实（tests/ 目录扫描确认）。
+
+风险：SDK 消息适配器是远程消息渲染的核心，无测试覆盖可能导致消息转换错误、未知类型处理不当、UI 展示异常。
+
+---
+
+**发现 B6-remote-control-03**：RemoteSessionManager pendingPermissionRequests 无超时清理机制。严重度：P3（设计已知限制），置信度：已证实（spec 非目标明确记录，源码确认无超时逻辑）。
+
+风险：服务器永远不取消权限请求时，pendingPermissionRequests 可能无限增长，导致内存泄漏。
+
+---
+
+**发现 B6-ssh-01**：SSH 重连后无状态同步机制，远程可能已前进但本地不知道已改变的工具状态。严重度：P3（设计已知限制），置信度：已证实（spec 改进建议明确记录）。
+
+风险：断线期间远程工具执行状态变化，重连后本地 UI 可能与远程状态不一致。
+
+---
+
+**发现 B6-ssh-02**：当前仅支持 Linux glibc 目标，不支持 musl libc（Alpine）或 BSD/macOS 远程。严重度：P3（设计已知限制），置信度：已证实（spec 明确记录）。
+
+风险：用户尝试在不支持的远程环境使用 SSH 功能时会失败。
+
+---
+
+**发现 B6-ssh-03**：单次 scp 传输大文件在弱网下可能慢或失败，无断点续传。严重度：P3（设计已知限制），置信度：已证实（spec 改进建议明确记录）。
+
+风险：大工件部署在弱网下可能失败，需要重新完整传输。
+
 ## 证据边界
 
 | 类别 | 状态 | 说明 |
 |------|------|------|
-| 官方文档 | ⚠️ 无公开文档 | code.claude.com 边界搜索未发现 daemon/background/deep-link/open-runner/platform-integrations 相关公开文档（合理，内部功能） |
-| 上游 strings | ✅ 已提取 | /opt/homebrew/bin/claude 已提取相关字符串，关键函数名匹配（daemon/background/deep-link）；platform-integrations strings未强制提取 |
-| 源码访问 | ✅ 完整访问 | src/daemon/, src/cli/bg.ts, src/utils/uds*, src/utils/deepLink/, src/open-runner/, src/upstreamproxy/, src/utils/desktopDeepLink.ts, src/utils/claudeDesktop.ts, src/utils/claudeInChrome/common.ts, src/commands/desktop/, src/components/DesktopUpsell/, src/commands/mobile/, src/commands/chrome/, src/commands/install-slack-app/ 完整读取 |
-| 测试访问 | ✅ 完整扫描 | tests/ 目录完整扫描，daemon/background/uds 测试存在，deep-link 测试缺失，open-runner 测试完整，upstream-proxy relay 测试缺失，platform-integrations 仅 claudeInChromeWiring.test.ts 最小测试 |
-| 外部 stubs 契约 | ⚠️ 无相关契约 | docs/external-stubs/contracts/ 无 daemon/background/deep-link/open-runner/platform-integrations 相关契约（合理，内部功能） |
+| 官方文档 | ⚠️ 无公开文档 | code.claude.com 边界搜索未发现 daemon/background/deep-link/open-runner/platform-integrations/remote-control/ssh 相关公开文档（合理，内部功能） |
+| 上游 strings | ✅ 已提取 | /opt/homebrew/bin/claude 已提取相关字符串，关键函数名匹配（daemon/background/deep-link）；platform-integrations/remote-control/ssh strings 未强制提取 |
+| 源码访问 | ✅ 完整访问 | src/daemon/, src/cli/bg.ts, src/utils/uds*, src/utils/deepLink/, src/open-runner/, src/upstreamproxy/, src/utils/desktopDeepLink.ts, src/utils/claudeDesktop.ts, src/utils/claudeInChrome/common.ts, src/commands/desktop/, src/components/DesktopUpsell/, src/commands/mobile/, src/commands/chrome/, src/commands/install-slack-app/, src/remote/, src/server/, src/ssh/ 完整读取 |
+| 测试访问 | ✅ 完整扫描 | tests/ 目录完整扫描，daemon/background/uds 测试存在，deep-link 测试缺失，open-runner 测试完整，upstream-proxy relay 测试缺失，platform-integrations 仅 claudeInChromeWiring.test.ts 最小测试，remote-control CCR 模式测试缺失，direct-connect 测试完整，ssh 测试完整 |
+| 外部 stubs 契约 | ✅ 有相关契约 | docs/external-stubs/contracts/direct-connect-v1.md 和 ssh-v1.md 完整验证通过；daemon/background/deep-link/open-runner/platform-integrations 无相关契约（合理，内部功能） |
 | 私有服务访问 | ❌ 未尝试 | 遵循边界规则，未尝试连接任何私有服务 |
 
 ## 完成判定
@@ -642,8 +836,8 @@
 | 检查项 | 状态 | 说明 |
 |--------|------|------|
 | batch-6.md 存在 | ✅ | 本文档 |
-| 包含 4 个已审计子系统章节 | ✅ | daemon-background, deep-link, open-runner, platform-integrations |
-| 包含 3 个 open 子系统占位 | ✅ | remote-control, ssh, teleport |
+| 包含 6 个已审计子系统章节 | ✅ | daemon-background, deep-link, open-runner, platform-integrations, remote-control, ssh |
+| 包含 1 个 open 子系统占位 | ✅ | teleport |
 | 包含所有必需章节 | ✅ | 基线与范围、子系统审查、发现登记、证据边界、完成判定 |
 | 发现 ID 格式正确 | ✅ | B6-{subsystem}-{nn} |
 | 无私有连接声明 | ✅ | 证据边界明确声明未尝试私有服务 |
@@ -656,13 +850,13 @@
 | deep-link | ✅ Audited | 7/7 分组覆盖，0 P0/P1, 0 P2, 0 P3 发现 |
 | open-runner | ✅ Audited | 7/7 分组覆盖，7 个发现（0 P0/P1, 2 P2, 5 P3） |
 | platform-integrations | ✅ Audited | 16/16 分组覆盖，3 个发现（0 P0/P1, 1 P2, 2 P3） |
-| remote-control | ⏸️ Open | 待审计 |
-| ssh | ⏸️ Open | 待审计 |
+| remote-control | ✅ Audited | 8/8 分组覆盖，3 个发现（0 P0/P1, 2 P2, 1 P3） |
+| ssh | ✅ Audited | 9/9 分组覆盖，3 个发现（0 P0/P1, 0 P2, 3 P3） |
 | teleport | ⏸️ Open | 待审计 |
 
 ### 总体状态
 
-🟡 **部分完成**：本 slice 完成 daemon-background + deep-link + open-runner + platform-integrations 4 个子系统审计，剩余 3 个子系统待后续 slice 审计。
+🟢 **基本完成**：本 slice 完成 daemon-background + deep-link + open-runner + platform-integrations + remote-control + ssh 6 个子系统审计，剩余 teleport 1 个子系统待后续 slice 审计。无 P0/P1 阻断性问题，所有外部 stub 契约（direct-connect-v1.md、ssh-v1.md）完整验证通过。
 
 ---
 
