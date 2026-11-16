@@ -26,7 +26,18 @@ describe.skipIf(
             : ['-qec', innerCommand, '/dev/null']
         const proc = spawn('script', scriptArgs, {
           cwd: join(import.meta.dir, '..'),
-          env: { ...process.env, HOME: home, USERPROFILE: home },
+          // 剥掉 CI 类变量：CLI 检测到 CI=true 会走托管环境分支、不渲染交互 UI，
+          // 而本测试要冒烟的是"真实终端下的交互启动"
+          env: {
+            ...process.env,
+            HOME: home,
+            USERPROFILE: home,
+            CI: '',
+            GITHUB_ACTIONS: '',
+            GITLAB_CI: '',
+            CIRCLECI: '',
+            BUILDKITE: '',
+          },
           stdio: ['ignore', 'pipe', 'pipe'],
           // 独立进程组：kill 时把 script + 内层 CLI 一起带走，不留孤儿干扰后续测试文件
           detached: true,
