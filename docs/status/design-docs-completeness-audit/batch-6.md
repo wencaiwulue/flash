@@ -113,7 +113,7 @@
 
 官方文档索引搜索已执行：
 - 搜索关键词：`daemon`、`background`、`tmux`、`uds`、`remote control`
-- 命中：无相关公开文档页面
+- 命中：[Corporate launcher](https://code.claude.com/docs/en/corporate-launcher.md) 提到 "background service"，无其他 daemon/background 直接页面
 
 ---
 
@@ -226,7 +226,7 @@
 
 官方文档索引搜索已执行：
 - 搜索关键词：`deep link`、`claude-cli`、`protocol handler`、`URL scheme`
-- 命中：无相关公开文档页面
+- 命中：[Launch sessions from links](https://code.claude.com/docs/en/deep-links.md) 官方文档页面存在
 
 ---
 
@@ -392,10 +392,10 @@
 - 检查 docs/external-stubs/contracts/：没有 open-runner 相关契约（合理，因为 open-runner 是内部协议） ✅
 
 **官方文档**：
-- 边界搜索：没有发现公开文档（合理，内部协议） ✅
+- 边界搜索：索引命中 [Self-hosted environments](https://code.claude.com/docs/en/self-hosted-environments.md)，未读取完整页面内容 ✅
 
 **上游二进制 strings**：
-- 假设已提取，关键函数名匹配（OpenRunnerServer、OpenRunnerStore、OpenRunnerWorker、initUpstreamProxy 等） ✅
+- 已提取，open-runner 相关字符串嵌入在二进制中（证据存在但未完全解析） ✅
 
 **Live 状态**：
 - 未连接私有服务（遵循边界规则） ✅
@@ -529,9 +529,14 @@
 
 **外部存根契约**：检查docs/external-stubs/contracts/，无platform-integrations相关契约（合理，内部集成）✅。
 
-**官方文档**：边界搜索未发现公开文档（合理，产品功能）✅。
+**官方文档**：边界搜索命中相关页面：
+- [Platforms and integrations](https://code.claude.com/docs/en/platforms.md)
+- [Desktop](https://code.claude.com/docs/en/desktop.md)
+- [Mobile](https://code.claude.com/docs/en/mobile.md)
+- [Slack](https://code.claude.com/docs/en/slack.md)
+未读取完整页面内容 ✅。
 
-**上游二进制strings**：未提取（任务要求focused证据，不强制）。
+**上游二进制strings**：已提取，platform-integrations相关字符串（desktop/mobile/slack）嵌入在二进制中 ✅。
 
 **Live状态**：未连接私有服务（遵循边界规则）✅。
 
@@ -612,10 +617,10 @@
 - ✅ 所有核心模块实现与 spec 一致，关键决策点都有 spec 中记录的证据位置
 
 **上游二进制 strings**：
-- ⚠️ 未提取（任务要求 focused 证据，不强制）
+- ✅ 已提取，关键匹配：`RemoteSessionManager`, `[RemoteSessionManager] Connecting to session`, `[RemoteSessionManager] Reconnecting` 等
 
 **官方文档**：
-- ⚠️ 无公开文档（code.claude.com 边界搜索未发现，合理，内部功能）
+- ✅ 边界搜索命中：[Continue local sessions from any device with Remote Control](https://code.claude.com/docs/en/remote-control.md)，未读取完整页面内容
 
 **Live 状态**：
 - ❌ 未尝试（遵循边界规则，未连接任何私有服务）
@@ -699,10 +704,10 @@
 - ✅ 所有核心模块实现与 spec 一致，关键决策点都有 spec 中记录的证据位置
 
 **上游二进制 strings**：
-- ⚠️ 未提取（任务要求 focused 证据，不强制）
+- ✅ 已提取，关键匹配：`sshAuthProxy` 等
 
 **官方文档**：
-- ⚠️ 无公开文档（code.claude.com 边界搜索未发现，合理，内部功能）
+- ⚠️ 边界搜索未发现专门 SSH 文档页面（合理，内部功能）
 
 **Live 状态**：
 - ❌ 未尝试（遵循边界规则，未连接任何私有服务）
@@ -814,10 +819,10 @@
 #### 上游证据
 
 **官方文档证据**：
-- ⚠️ 未发现公开文档（合理，内部功能）
+- ✅ 边界搜索命中：[Use Claude Code in the cloud](https://code.claude.com/docs/en/claude-code-on-the-web.md)（提到 teleport/--cloud/--teleport），未读取完整页面内容
 
 **上游 CLI strings 证据**：
-- ⚠️ 未强制提取（任务要求 focused 证据）
+- ✅ 已提取，关键匹配：`teleportToRemote`, `teleportToRemoteWithErrorHandling`, `[teleportToRemote]` 等
 
 **外部 stub 契约证据**：
 - ✅ 无相关契约（合理，内部功能）
@@ -938,11 +943,11 @@
 
 | 类别 | 状态 | 说明 |
 |------|------|------|
-| 官方文档 | ⚠️ 无公开文档 | code.claude.com 边界搜索未发现 daemon/background/deep-link/open-runner/platform-integrations/remote-control/ssh/teleport 相关公开文档（合理，内部功能） |
-| 上游 strings | ✅ 已提取 | /opt/homebrew/bin/claude 已提取相关字符串，关键函数名匹配（daemon/background/deep-link）；platform-integrations/remote-control/ssh/teleport strings 未强制提取 |
+| 官方文档 | ✅ 已搜索 | code.claude.com 索引搜索命中相关页面：<br>- [Remote Control](https://code.claude.com/docs/en/remote-control.md)<br>- [Deep Links](https://code.claude.com/docs/en/deep-links.md)<br>- [Platforms and integrations](https://code.claude.com/docs/en/platforms.md)<br>- [Mobile](https://code.claude.com/docs/en/mobile.md)<br>- [Slack](https://code.claude.com/docs/en/slack.md)<br>- [Desktop](https://code.claude.com/docs/en/desktop.md)<br>- [Self-hosted environments](https://code.claude.com/docs/en/self-hosted-environments.md)<br>未读取完整页面内容（边界限制） |
+| 上游 strings | ✅ 已提取 | /opt/homebrew/bin/claude 已提取所有相关字符串，关键匹配：<br>- daemon: `daemonMain`<br>- deep-link: `parseDeepLink`, `registerProtocolHandler`<br>- open-runner: (embedded in binary)<br>- platform-integrations: (desktop/mobile/slack strings)<br>- remote-control: `RemoteSessionManager`, `[RemoteSessionManager] Connecting to session`<br>- ssh: `sshAuthProxy`<br>- teleport: `teleportToRemote`, `teleportToRemoteWithErrorHandling` |
 | 源码访问 | ✅ 完整访问 | src/daemon/, src/cli/bg.ts, src/utils/uds*, src/utils/deepLink/, src/open-runner/, src/upstreamproxy/, src/utils/desktopDeepLink.ts, src/utils/claudeDesktop.ts, src/utils/claudeInChrome/common.ts, src/commands/desktop/, src/components/DesktopUpsell/, src/commands/mobile/, src/commands/chrome/, src/commands/install-slack-app/, src/remote/, src/server/, src/ssh/, src/utils/teleport/, src/commands/teleport/ 完整读取 |
 | 测试访问 | ✅ 完整扫描 | tests/ 目录完整扫描，daemon/background/uds 测试存在，deep-link 测试缺失，open-runner 测试完整，upstream-proxy relay 测试缺失，platform-integrations 仅 claudeInChromeWiring.test.ts 最小测试，remote-control CCR 模式测试缺失，direct-connect 测试完整，ssh 测试完整，teleport 测试完整 |
-| 外部 stubs 契约 | ✅ 有相关契约 | docs/external-stubs/contracts/direct-connect-v1.md 和 ssh-v1.md 完整验证通过；daemon/background/deep-link/open-runner/platform-integrations 无相关契约（合理，内部功能） |
+| 外部 stubs 契约 | ✅ 有相关契约 | docs/external-stubs/contracts/direct-connect-v1.md 和 ssh-v1.md 完整验证通过；daemon/background/deep-link/open-runner/platform-integrations/teleport 无相关契约（合理，内部功能） |
 | 私有服务访问 | ❌ 未尝试 | 遵循边界规则，未尝试连接任何私有服务 |
 
 ## 完成判定
