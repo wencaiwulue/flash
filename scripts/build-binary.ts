@@ -228,6 +228,60 @@ function smokeTestBinary(
 
   const help = spawn([binaryPath, '--help'], { env })
   assertCommandSucceeded(help, `${binaryPath} --help`)
+
+  // End-to-end tool smoke inside the real standalone binary (node_modules is
+  // hidden by the caller). Catches bundled-runtime regressions like the
+  // playwright-core ResolveMessage crash that `--version` cannot see.
+  const smokeInput = JSON.stringify({
+    action: 'browser_navigate',
+    arguments: { url: 'data:text/html,<title>smoke-ok</title>' },
+  })
+  const smoke = spawn([binaryPath], {
+    env: {
+      ...env,
+      FLASH_SMOKE_TOOL: 'WebBrowser',
+      FLASH_SMOKE_INPUT: smokeInput,
+    },
+  })
+  const smokeStdout = smoke.stdout.toString()
+  const smokeStderr = smoke.stderr.toString()
+  const smokeLine = smokeStdout.split('\n').find(line => line.startsWith('{"ok":'))
+  if (!smokeLine) {
+    const combinedOutput = smokeStdout
+      ? smokeStderr
+        ? `${smokeStdout.slice(0, 1000)}\n\nstderr:\n${smokeStderr.slice(0, 1000)}`
+        : smokeStdout.slice(0, 2000)
+      : smokeStderr.slice(0, 2000)
+    throw new Error(
+      `Tool smoke produced no result line (exit=${smoke.exitCode}): ${combinedOutput}`,
+    )
+  }
+  const smokeResult = JSON.parse(smokeLine) as { ok: boolean; error?: string }
+  if (!smokeResult.ok) {
+    const errorText = smokeResult.error ?? ''
+
+    // First check for crash patterns that should always block release
+    const isCrashPattern = /Cannot find module|ResolveMessage|MODULE_NOT_FOUND/.test(errorText)
+    if (isCrashPattern) {
+      throw new Error(`Tool smoke failed: ${errorText.slice(0, 2000)}`)
+    }
+
+    // Then check for Chrome missing patterns
+    const browserMissing =
+      /Executable doesn't exist/i.test(errorText) ||
+      (/chrome|chromium|channel/i.test(errorText) &&
+        /not found|doesn't exist|No such file/i.test(errorText))
+    if (browserMissing) {
+      console.warn('Smoke skip: Chrome not available on this machine')
+      return
+    }
+
+    // All other errors also block release
+    throw new Error(`Tool smoke failed: ${errorText.slice(0, 2000)}`)
+  }
+  if (!smokeStdout.includes('smoke-ok')) {
+    throw new Error('Tool smoke navigated but did not observe the expected page title')
+  }
 }
 
 let standaloneSmokeSequence = 0

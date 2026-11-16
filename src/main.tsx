@@ -874,6 +874,58 @@ const _pendingSSH: PendingSSH | undefined = feature('SSH_REMOTE')
 export async function main() {
   profileCheckpoint('main_function_start')
 
+  // Test-only smoke channel: run a tool end-to-end inside the real binary
+  // without model/UI. Activated exclusively by FLASH_SMOKE_TOOL; used by the
+  // release smoke in scripts/build-binary.ts to catch bundled-runtime
+  // regressions (e.g. playwright ResolveMessage) as build failures.
+  const smokeToolName = process.env.FLASH_SMOKE_TOOL
+  if (smokeToolName) {
+    const { getAllBaseTools } = await import('./tools.js')
+    const { runCleanupFunctions } = await import('./utils/cleanupRegistry.js')
+    const tools = await getAllBaseTools()
+    const tool = tools.find(candidate => candidate?.name === smokeToolName)
+    if (!tool) {
+      process.stdout.write(
+        `${JSON.stringify({ ok: false, error: `tool not found: ${smokeToolName}` })}\n`,
+      )
+      process.exit(1)
+    }
+    let smokeError: string | undefined
+    let smokeResult: unknown
+    try {
+      const smokeInput = JSON.parse(process.env.FLASH_SMOKE_INPUT ?? '{}') as never
+      smokeResult = await tool.call(
+        smokeInput,
+        {} as never,
+        async () => ({ behavior: 'allow' as const, updatedInput: smokeInput }),
+        {} as never,
+      )
+    } catch (error) {
+      smokeError = error instanceof Error ? error.message : String(error)
+    }
+
+    // Run cleanup before exit to prevent browser process leaks
+    let cleanupError: string | undefined
+    try {
+      await runCleanupFunctions()
+    } catch (error) {
+      cleanupError = error instanceof Error ? error.message : String(error)
+    }
+
+    // Combine errors if both occurred
+    const finalError = smokeError && cleanupError
+      ? `${smokeError}; cleanup failed: ${cleanupError}`
+      : smokeError || cleanupError
+
+    if (finalError) {
+      process.stdout.write(`${JSON.stringify({ ok: false, error: finalError })}\n`)
+      process.exit(1)
+    } else {
+      process.stdout.write(`${JSON.stringify({ ok: true, result: smokeResult })}\n`)
+      process.exit(0)
+    }
+  }
+
   // SECURITY: Prevent Windows from executing commands from current directory
   // This must be set before ANY command execution to prevent PATH hijacking attacks
   // See: https://docs.microsoft.com/en-us/windows/win32/api/processenv/nf-processenv-searchpathw
