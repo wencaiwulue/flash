@@ -27,18 +27,18 @@ Design docs: 0 errors, 71 warnings
 | cli-startup | 1 | 6/6 | 完整 | 一致 | 一致 | 部分充分 (无直接测试, spec 截断) | 1 | [batch-1.md#cli-startup](batch-1.md#cli-startup) |
 | context-compaction | 1 | 8/8 | 完整 | 一致 | 一致 | 部分充分 (核心有测试, 其他模块缺) | 3 | [batch-1.md#context-compaction](batch-1.md#context-compaction) |
 | model-api | 1 | 12/12 | 完整 | 一致 | 一致 | 部分充分 (测试覆盖有限) | 1 | [batch-1.md#model-api](batch-1.md#model-api) |
-| attachments | 2 | 0/6 | open | open | open | unverified | 0 | 未生成 |
-| bridge | 2 | 0/22 | open | open | open | unverified | 0 | 未生成 |
-| buddy | 2 | 0/3 | open | open | open | unverified | 0 | 未生成 |
-| computer-use | 2 | 0/3 | open | open | open | unverified | 0 | 未生成 |
-| file-tools | 2 | 0/10 | open | open | open | unverified | 0 | 未生成 |
-| lsp | 2 | 0/8 | open | open | open | unverified | 0 | 未生成 |
-| mcp | 2 | 0/20 | open | open | open | unverified | 0 | 未生成 |
-| onboarding-ui | 2 | 0/1 | open | open | open | unverified | 0 | 未生成 |
-| permissions | 2 | 0/14 | open | open | open | unverified | 0 | 未生成 |
-| session-persistence | 2 | 0/7 | open | open | open | unverified | 0 | 未生成 |
-| shell-tools | 2 | 0/13 | open | open | open | unverified | 0 | 未生成 |
-| tool-framework | 2 | 0/7 | open | open | open | unverified | 0 | 未生成 |
+| attachments | 2 | 6/6 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（无独立测试） | 3 | [batch-2.md#attachments](batch-2.md#attachments) |
+| bridge | 2 | 22/22 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（关键路径无测试） | 4 | [batch-2.md#bridge](batch-2.md#bridge) |
+| buddy | 2 | 3/3 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（UI交互无测试） | 3 | [batch-2.md#buddy](batch-2.md#buddy) |
+| computer-use | 2 | 3/3 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（真实桌面环境无验收） | 4 | [batch-2.md#computer-use](batch-2.md#computer-use) |
+| file-tools | 2 | 10/10 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（无独立测试） | 3 | [batch-2.md#file-tools](batch-2.md#file-tools) |
+| lsp | 2 | 8/8 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（关键路径无测试） | 3 | [batch-2.md#lsp](batch-2.md#lsp) |
+| mcp | 2 | 20/20 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（关键路径无测试） | 3 | [batch-2.md#mcp](batch-2.md#mcp) |
+| onboarding-ui | 2 | 1/1 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（关键路径无测试） | 3 | [batch-2.md#onboarding-ui](batch-2.md#onboarding-ui) |
+| permissions | 2 | 14/14 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（核心裁决路径无测试） | 3 | [batch-2.md#permissions](batch-2.md#permissions) |
+| session-persistence | 2 | 7/7 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（关键路径无测试） | 4 | [batch-2.md#session-persistence](batch-2.md#session-persistence) |
+| shell-tools | 2 | 13/13 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（关键路径无测试） | 4 | [batch-2.md#shell-tools](batch-2.md#shell-tools) |
+| tool-framework | 2 | 7/7 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（关键路径无测试） | 4 | [batch-2.md#tool-framework](batch-2.md#tool-framework) |
 | auth | 3 | 0/20 | open | open | open | unverified | 0 | 未生成 |
 | commit-attribution | 3 | 0/6 | open | open | open | unverified | 0 | 未生成 |
 | git-integration | 3 | 0/9 | open | open | open | unverified | 0 | 未生成 |
@@ -124,6 +124,29 @@ Design docs: 0 errors, 71 warnings
 | 测试缺口 | 4 |
 | 证据不足 | 1 |
 
+### Batch 2 统计
+
+| 项目 | 数量 |
+|------|------|
+| 审查子系统 | 12 |
+| 完整文档 | 12 |
+| 实现一致 | 12 |
+| 发现总数 | 41 |
+| P0 | 0 |
+| P1 | 0 |
+| P2 | 24 |
+| P3 | 17 |
+
+### 发现分类（含 Batch 2）
+
+| 类别 | 数量 |
+|------|------|
+| 测试缺口 | 27 |
+| 验证缺口 | 12 |
+| 契约缺口 | 5 |
+| 验收缺口 | 1 |
+| 证据不足 | 1 |
+
 ### 整改优先级
 
 1. **P2（2项）**：添加 plugins/query-core 集成测试
@@ -135,3 +158,4 @@ Design docs: 0 errors, 71 warnings
 
 batch 0：✅ 已完成审查，报告已生成并链接；其余批次待审查。
 batch 1：✅ 已完成审查，报告已生成并链接；官方文档与 strings 已收集，真实模型/API 行为尚未验证。
+batch 2：✅ 已完成审查，报告已生成并链接；官方文档与 strings 已收集，真实模型/API 行为尚未验证。
