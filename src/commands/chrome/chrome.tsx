@@ -14,6 +14,7 @@ import {
 } from '../../utils/claudeInChrome/setup.js'
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
 import { env } from '../../utils/env.js'
+import { isInBundledMode } from '../../utils/bundledMode.js'
 
 type MenuAction = 'reconnect' | 'toggle-default'
 
@@ -28,6 +29,7 @@ function ClaudeInChromeMenu({
   configEnabled,
   isWSL,
 }: Props): React.ReactNode {
+  const isBundled = isInBundledMode()
   const mcpClients = useAppState(s => s.mcp.clients)
   const [enabledByDefault, setEnabledByDefault] = useState(
     configEnabled ?? false,
@@ -93,6 +95,11 @@ function ClaudeInChromeMenu({
         {isWSL && (
           <Text color="error">Open Chrome CDP is not supported in WSL.</Text>
         )}
+        {isBundled && (
+          <Text color="error">
+            Open Chrome CDP is not available in standalone builds.
+          </Text>
+        )}
         <Text>
           Status:{' '}
           {chromeClient?.type === 'connected' ? (
@@ -121,7 +128,7 @@ function ClaudeInChromeMenu({
           Claude never kills Chrome. browser_close is disabled; disconnect MCP
           or explicitly close an individual tab instead.
         </Text>
-        {!isWSL && (
+        {!isWSL && !isBundled && (
           <Select
             options={options}
             onChange={action => void handleAction(action)}

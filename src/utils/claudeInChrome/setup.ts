@@ -109,3 +109,20 @@ export async function setupClaudeInChrome(): Promise<{
     systemPrompt: getChromeSystemPrompt(),
   }
 }
+
+export type ChromeWiringAction = 'warn' | 'skip' | 'none'
+
+/**
+ * Pre-flight gating for the chrome wiring section in main.tsx, mirroring
+ * upstream's skip-before-setup tiers: known-doomed environments must never
+ * reach the setup try/catch, whose hard exit is reserved for unexpected
+ * failures. Explicit requests warn; default-config enables skip silently.
+ */
+export function chromeWiringBundledAction(
+  enable: boolean,
+  bundled: boolean,
+  explicit: boolean,
+): ChromeWiringAction {
+  if (!enable || !bundled) return 'none'
+  return explicit ? 'warn' : 'skip'
+}
