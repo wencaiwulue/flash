@@ -293,11 +293,13 @@
 
 **发现 B7-diagnostics-01**：Event loop stall detector 仅为占位，未实际实现。严重度：P3（设计已知非目标），置信度：已证实（src/utils/eventLoopStallDetector.ts 仅返回 disabled）
 
-**发现 B7-diagnostics-02**：调试日志分类覆盖率不足，不是所有调试日志都有正确分类前缀。严重度：P1（功能缺失，过滤失效），置信度：已证实（spec 改进建议明确提及）
+**发现 B7-diagnostics-02**：调试日志分类覆盖率不足，不是所有调试日志都有正确分类前缀。严重度：P2（测试覆盖/文档问题），置信度：已证实（直接证据：src/history.ts:133、src/commands.ts:367 等 logForDebugging 调用无分类前缀；extractDebugCategories 需要 "category: " 或 "[CATEGORY]" 前缀）
+**对抗性审查结论**：降级为 P2。原因：(1) 默认无过滤时功能正常；(2) 过滤是可选功能；(3) 无分类的消息被跳过是文档化行为（shouldShowDebugCategories 第 126-129 行）；(4) 不是生产阻塞问题。
 
 **发现 B7-diagnostics-03**：诊断系统测试覆盖不足，特别是 profiler、诊断追踪、医生检查等模块。严重度：P2（功能正常但无回归保护），置信度：已证实（spec 改进建议明确提及）
 
-**发现 B7-diagnostics-04**：/auto-1.5GB trigger 已定义，但未自动触发 heap dump。严重度：P1（功能缺失），置信度：已证实（spec 改进建议明确提及）
+**发现 B7-diagnostics-04**：auto-1.5GB trigger 仅作为类型定义存在，未实现自动触发逻辑。严重度：P3（设计已知非目标），置信度：已证实（直接证据：src/utils/sdkHeapDumpMonitor.ts 仅返回 { enabled: false }；全代码库无内存监控定时器或 performHeapDump('auto-1.5GB') 调用）
+**对抗性审查结论**：降级为 P3。原因：(1) 该功能从未实现，不是回归；(2) 手动 /heapdump 命令正常工作；(3) 无用户承诺的功能缺失；(4) sdkHeapDumpMonitor 明确占位。
 
 **发现 B7-diagnostics-05**：spec 建议在诊断 JSON 中包含 heap snapshot 基础分析，但当前未实现。严重度：P3（文档细节问题），置信度：已证实（spec 改进建议明确提及）
 
@@ -604,9 +606,9 @@
 | B7-data-structures-03 | data-structures | P3 | JSONL 解析跳过失败行，部分数据丢失 | 是（失败语义表明确记录） |
 | B7-data-structures-04 | data-structures | P2 | 核心组件无专门测试覆盖 | 否 |
 | B7-diagnostics-01 | diagnostics | P3 | Event loop stall detector 仅为占位，未实际实现 | 是（设计明确记录为占位） |
-| B7-diagnostics-02 | diagnostics | P1 | 调试日志分类覆盖率不足，不是所有调试日志都有正确分类前缀 | 是（spec 改进建议明确提及） |
+| B7-diagnostics-02 | diagnostics | P2 | 调试日志分类覆盖率不足，不是所有调试日志都有正确分类前缀 | 是（spec 改进建议明确提及） |
 | B7-diagnostics-03 | diagnostics | P2 | 诊断系统测试覆盖不足，特别是 profiler、诊断追踪、医生检查等模块 | 是（spec 改进建议明确提及） |
-| B7-diagnostics-04 | diagnostics | P1 | /auto-1.5GB trigger 已定义，但未自动触发 heap dump | 是（spec 改进建议明确提及） |
+| B7-diagnostics-04 | diagnostics | P3 | auto-1.5GB trigger 仅作为类型定义存在，未实现自动触发逻辑 | 是（设计明确记录为占位） |
 | B7-diagnostics-05 | diagnostics | P3 | spec 建议在诊断 JSON 中包含 heap snapshot 基础分析，但当前未实现 | 是（spec 改进建议明确提及） |
 | B7-diagnostics-06 | diagnostics | P2 | 交互模式 query profiler 需要环境变量启用，不够方便 | 是（spec 改进建议明确提及） |
 | B7-diagnostics-07 | diagnostics | P2 | 缺少 diagnostics 子系统核心模块的专门测试 | 否 |
@@ -625,7 +627,41 @@
 | B7-external-stubs-06 | external-stubs | P3 | 契约文档与实现可能漂移，无自动验证 | 是（spec 改进建议明确提及） |
 | B7-external-stubs-07 | external-stubs | P2 | 缺少 external-stubs 子系统核心模块的专门测试 | 否 |
 
-**汇总**：P0 0 个，P1 2 个，P2 10 个，P3 14 个，总计 26 个发现。
+**汇总**：P0 0 个，P1 0 个，P2 10 个，P3 16 个，总计 26 个发现。
+
+---
+
+## 独立对抗性审查结论
+
+### B7-diagnostics-02 审查
+**原始严重度**：P1 → **降级为 P2**
+**直接证据**：
+- src/history.ts:133: `logForDebugging(`Failed to parse history line: ${error}`)` — 无分类前缀
+- src/commands.ts:367: `logForDebugging(`Skill directory commands failed to load, continuing without them`)` — 无分类前缀
+- src/utils/debugFilter.ts:65-107: `extractDebugCategories` 要求 "category: " 或 "[CATEGORY]" 前缀
+- src/utils/debugFilter.ts:126-129: 无分类的消息在过滤模式下被跳过是文档化行为
+
+**降级理由**：
+1. 默认无过滤时功能完全正常
+2. 过滤是可选高级功能，非核心功能
+3. 行为已在代码中明确文档化
+4. 不影响生产环境使用（默认不启用调试日志）
+5. 非阻塞问题，可改进但不紧急
+
+### B7-diagnostics-04 审查
+**原始严重度**：P1 → **降级为 P3**
+**直接证据**：
+- src/utils/sdkHeapDumpMonitor.ts:1-6: `startSdkMemoryMonitor()` 仅返回 `{ enabled: false }`
+- 全代码库无 `setInterval/setTimeout` 监控内存使用
+- 全代码库无 `performHeapDump('auto-1.5GB')` 调用
+- 仅类型定义中存在 'auto-1.5GB' trigger（heapDumpService.ts:39,89,222）
+
+**降级理由**：
+1. 该功能从未实现，不是回归问题
+2. 手动 /heapdump 命令完全正常工作
+3. 无公开文档或用户承诺此功能存在
+4. sdkHeapDumpMonitor 明确占位，设计已知
+5. 影响范围极小（仅 SDK 调试场景）
 
 ## 证据边界
 
