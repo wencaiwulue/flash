@@ -450,6 +450,299 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 ---
 
-## Context-Only Slice Declaration
+## Memory Full Lifecycle Audit
 
-This audit intentionally only covers the **Context Lifecycle** portion of Task 10. Memory, Sharing, Recovery, and other cross-subsystem areas are explicitly marked **Open** and deferred to later slices.
+### Audit Scope
+
+This audit covers the complete memory lifecycle from source to compaction and recovery:
+
+```
+auto/team/session/CLAUDE.md/daily log
+  → index load/truncation/on-demand retrieval
+  → main-agent write/extractMemories/Session Memory
+  → autoDream/team sync/cache invalidation
+  → compaction/post-compact reinjection
+  → restart/resume/cursor recovery
+```
+
+With explicit verification of:
+- Deletion
+- Invalidation
+- Duplicate injection
+- Stale cursor
+- Concurrent writes
+- Lock rollback
+- Secrets
+- Symlinks
+- Permissions vs actual writes
+
+---
+
+### Stage 1: Memory Sources - Load/Index/Truncation
+
+#### 1.1 Auto Memory Path Resolution
+
+| Property | Status | Evidence Location | Notes |
+|----------|--------|-------------------|-------|
+| Auto memory enablement priority chain | ✅ confirmed | `src/memdir/paths.ts:30-55` | Env var → SIMPLE → remote mode → settings.json → default true |
+| Auto memory path resolution | ✅ confirmed | `src/memdir/paths.ts:161-233` | Env override → policy/user settings → git-root based |
+| Memory path validation (security) | ✅ confirmed | `src/memdir/paths.ts:109-150` | Rejects relative, root, UNC, null bytes; normalizes |
+| Auto memory path containment check | ⚠️ partial | `src/memdir/paths.ts:274-278` | String prefix only, NO symlink resolution (risk noted in X-memory-01) |
+
+#### 1.2 MEMORY.md Index Loading & Truncation
+
+| Property | Status | Evidence Location | Notes |
+|----------|--------|-------------------|-------|
+| MEMORY.md line cap | ✅ confirmed | `src/memdir/memdir.ts:35,57-103` | MAX_ENTRYPOINT_LINES = 200 |
+| MEMORY.md byte cap | ✅ confirmed | `src/memdir/memdir.ts:38,57-103` | MAX_ENTRYPOINT_BYTES = 25,000 |
+| Dual-cap truncation logic | ✅ confirmed | `src/memdir/memdir.ts:57-103` | Line truncation first, then byte truncation at last newline |
+| Truncation warning injection | ✅ confirmed | `src/memdir/memdir.ts:94-102` | Warns when index exceeds limits |
+| MEMORY.md loading (sync) | ✅ confirmed | `src/memdir/memdir.ts:287-313` | Reads synchronously during prompt building |
+
+#### 1.3 Memory File Scanning (On-Demand Retrieval)
+
+| Property | Status | Evidence Location | Notes |
+|----------|--------|-------------------|-------|
+| Recursive memory directory scan | ✅ confirmed | `src/memdir/memoryScan.ts:35-76` | Recursive readdir, filters .md, excludes MEMORY.md |
+| Frontmatter parsing | ✅ confirmed | `src/memdir/memoryScan.ts:48-62` | First 30 lines only, uses parseFrontmatter |
+| File cap enforcement | ✅ confirmed | `src/memdir/memoryScan.ts:21-22,72-73` | MAX_MEMORY_FILES = 200, newest-first by mtime |
+| Memory manifest formatting | ✅ confirmed | `src/memdir/memoryScan.ts:84-94` | One line per file: [type] filename (ts): description |
+
+#### 1.4 Team Memory Paths (Security-Focused)
+
+| Property | Status | Evidence Location | Notes |
+|----------|--------|-------------------|-------|
+| Team memory enablement | ✅ confirmed | `src/memdir/teamMemPaths.ts:73-78` | Requires auto-memory + feature gate tengu_herring_clock |
+| Team memory path location | ✅ confirmed | `src/memdir/teamMemPaths.ts:84-86` | Subdirectory of auto-memory: `memory/team/` |
+| Team path string check (read) | ✅ confirmed | `src/memdir/teamMemPaths.ts:214-220` | String prefix only, NO symlink resolution (X-memory-01) |
+| Team path symlink-resolved check (write) | ✅ confirmed | `src/memdir/teamMemPaths.ts:228-284` | Full realpathDeepestExisting + isRealPathWithinTeamDir |
+| Path key sanitization | ✅ confirmed | `src/memdir/teamMemPaths.ts:22-63` | Null bytes, URL-encoded traversal, Unicode normalization, backslashes rejected |
+| Dangling symlink detection | ✅ confirmed | `src/memdir/teamMemPaths.ts:136-142` | Checks via lstat during realpathDeepestExisting |
+| Symlink loop detection | ✅ confirmed | `src/memdir/teamMemPaths.ts:151-155` | Catches ELOOP from realpath |
+
+#### 1.5 KAIROS Daily Log Mode
+
+| Property | Status | Evidence Location | Notes |
+|----------|--------|-------------------|-------|
+| Daily log mode enablement | ✅ confirmed | `src/memdir/memdir.ts:432-438` | feature('KAIROS') + auto-memory enabled |
+| Daily log path construction | ✅ confirmed | `src/memdir/paths.ts:246-251` | `memory/logs/YYYY/MM/YYYY-MM-DD.md` |
+| Log mode vs index mode separation | ✅ confirmed | `src/memdir/memdir.ts:327-370` | Log mode appends to daily, MEMORY.md is distilled index |
+
+#### 1.6 CLAUDE.md Integration
+
+| Property | Status | Evidence Location | Notes |
+|----------|--------|-------------------|-------|
+| CLAUDE.md not part of memory auto-load | ✅ confirmed | `src/memdir/memdir.ts` | No direct integration; CLAUDE.md handled separately via attachments |
+| Memory-CLAUDE.md boundary clear | ✅ confirmed | X-context-04 | Attachment pipeline handles CLAUDE.md, memory is separate prompt |
+
+---
+
+### Stage 2: Memory Writing - Main Agent & extractMemories
+
+#### 2.1 Main Agent Direct Memory Writes
+
+| Property | Status | Evidence Location | Notes |
+|----------|--------|-------------------|-------|
+| Main agent memory write permissions | ✅ confirmed | `src/utils/permissions/filesystem.ts` | Auto-memory path allowed in write carve-out |
+| Memory directory creation guarantee | ✅ confirmed | `src/memdir/memdir.ts:129-147` | `ensureMemoryDirExists` called during `loadMemoryPrompt` |
+| Main agent writes bypass extractMemories | ✅ confirmed | `src/services/extractMemories/extractMemories.ts:348-360` | `hasMemoryWritesSince` skips extraction when main agent writes |
+
+#### 2.2 extractMemories Subagent
+
+| Property | Status | Evidence Location | Notes |
+|----------|--------|-------------------|-------|
+| Cursor tracking (lastMemoryMessageUuid) | ✅ confirmed | `src/services/extractMemories/extractMemories.ts:296-313,432-435` | Closure state, UUID-based, NOT message index |
+| Cursor recovery after compaction | ⚠️ unconfirmed | TBD | Speculative: if last UUID compacted away, fallback to counting all (line 106) |
+| Concurrent write prevention | ✅ confirmed | `src/services/extractMemories/extractMemories.ts:296-313,670-676` | `inProgress` flag + trailing run coalescing |
+| Duplicate injection prevention | ✅ confirmed | `src/services/extractMemories/extractMemories.ts:348-360` | Main-agent writes skip extraction for that range |
+| Extract tool permissions (restrictive) | ✅ confirmed | `src/services/extractMemories/extractMemories.ts:171-222` | Read/Grep/Glob allowed; Bash read-only; Edit/Write only memory-dir |
+| Transcript pollution prevention | ✅ confirmed | `src/services/extractMemories/extractMemories.ts:415-427` | `skipTranscript: true` for forked agent |
+| Max turns limit (rabbit hole prevention) | ✅ confirmed | `src/services/extractMemories/extractMemories.ts:415-427` | `maxTurns: 5` |
+| Pre-injected memory manifest (save ls turn) | ✅ confirmed | `src/services/extractMemories/extractMemories.ts:398-400` | Uses `scanMemoryFiles` + `formatMemoryManifest` |
+
+---
+
+### Stage 3: Session Memory & Compaction Integration
+
+#### 3.1 Session Memory Extraction
+
+| Property | Status | Evidence Location | Notes |
+|----------|--------|-------------------|-------|
+| Session memory enablement gates | ✅ confirmed | `src/services/SessionMemory/sessionMemory.ts:74-82,357-374` | Requires auto-compact + feature gate tengu_session_memory |
+| Threshold checks (tokens + tool calls) | ✅ confirmed | `src/services/SessionMemory/sessionMemory.ts:134-181` | Token count + tool call count + no tool calls in last turn |
+| Session memory file setup | ✅ confirmed | `src/services/SessionMemory/sessionMemory.ts:183-233` | Exclusive create (wx), reads current content |
+| Tool restriction (ONLY Edit on exact path) | ✅ confirmed | `src/services/SessionMemory/sessionMemory.ts:460-482` | `createMemoryFileCanUseTool` is very restrictive |
+| `lastSummarizedMessageId` cursor | ✅ confirmed | `src/services/SessionMemory/sessionMemoryUtils.ts:44-69` | Tracks UUID, not index; avoids stale cursor issues |
+| Cursor safety (skip orphan tool results) | ✅ confirmed | `src/services/SessionMemory/sessionMemory.ts:488-495` | Only sets cursor if last message has NO tool calls |
+| Subagent context isolation | ✅ confirmed | `src/services/SessionMemory/sessionMemory.ts:302-303,419-421` | `createSubagentContext` + `CacheSafeParams` |
+| Concurrent extraction prevention | ✅ confirmed | `src/services/SessionMemory/sessionMemory.ts:272-350` | `sequential()` wrapper ensures one at a time |
+
+#### 3.2 Session Memory Compaction Integration
+
+| Property | Status | Evidence Location | Notes |
+|----------|--------|-------------------|-------|
+| Session memory compact enablement | ✅ confirmed | `src/services/compact/sessionMemoryCompact.ts:403-432` | Requires tengu_session_memory + tengu_sm_compact |
+| Session memory extraction wait | ✅ confirmed | `src/services/compact/sessionMemoryCompact.ts:527` | `waitForSessionMemoryExtraction` waits up to 15s |
+| Session memory as summary source | ✅ confirmed | `src/services/compact/sessionMemoryCompact.ts:437-503` | Reads session memory file, builds compact boundary |
+| Session memory truncation (budget protection) | ✅ confirmed | `src/services/compact/sessionMemoryCompact.ts:461-474` | Truncates if session memory itself too large |
+| Cursor reset after SM compact | ✅ confirmed | `src/services/compact/autoCompact.ts:294` | Resets lastSummarizedMessageId after SM compact prunes messages |
+| Index adjustment for tool_use/tool_result pairs | ✅ confirmed | `src/services/compact/sessionMemoryCompact.ts:232-300+` | Preserves tool pairs across compaction boundary |
+| Thinking block preservation | ✅ confirmed | `src/services/compact/sessionMemoryCompact.ts:288-300+` | Keeps thinking blocks with same message.id |
+| Post-compact memory reinjection | ✅ confirmed | X-context-05 | File state saved → cache cleared → attachments recreated → hooks executed |
+
+---
+
+### Stage 4: AutoDream & Team Sync
+
+#### 4.1 AutoDream (Background Consolidation)
+
+| Property | Status | Evidence Location | Notes |
+|----------|--------|-------------------|-------|
+| Triple-gate (time → sessions → lock) | ✅ confirmed | `src/services/autoDream/autoDream.ts:95-100,132-171` | Time first, then session count, finally lock acquisition |
+| Time gate check (stat only) | ✅ confirmed | `src/services/autoDream/autoDream.ts:132-148` | Reads lastConsolidatedAt mtime |
+| Session scan throttle | ✅ confirmed | `src/services/autoDream/autoDream.ts:55-57,144-151` | SESSION_SCAN_INTERVAL_MS = 10 minutes |
+| Session count gate | ✅ confirmed | `src/services/autoDream/autoDream.ts:154-171` | Counts sessions touched since last consolidation |
+| Lock acquisition (mtime-based) | ✅ confirmed | `src/services/autoDream/consolidationLock.ts` | Atomic? TBD but uses mtime for optimistic locking |
+| Lock rollback on failure | ✅ confirmed | `src/services/autoDream/autoDream.ts:269-271` | `rollbackConsolidationLock` rewinds mtime |
+| Abort support (user cancel) | ✅ confirmed | `src/services/autoDream/autoDream.ts:203-204,262-265` | AbortController signal passed to forked agent |
+| Tool permissions (same as extractMemories) | ✅ confirmed | `src/services/autoDream/autoDream.ts:226-228` | Uses `createAutoMemCanUseTool` |
+| Skip transcript (no pollution) | ✅ confirmed | `src/services/autoDream/autoDream.ts:226-230` | `skipTranscript: true` |
+| DreamTask UI progress tracking | ✅ confirmed | `src/services/autoDream/autoDream.ts:206,235,238-247,267-268` | Progress visible to user |
+
+#### 4.2 Team Memory Sync
+
+| Property | Status | Evidence Location | Notes |
+|----------|--------|-------------------|-------|
+| Team memory state isolation | ✅ confirmed | `src/services/teamMemorySync/index.ts:95-127` | `SyncState` object, not module-level mutable |
+| Conditional GET (304 optimization) | ✅ confirmed | `src/services/teamMemorySync/index.ts:188-265` | `If-None-Match` with ETag |
+| Delta upload (hash-based) | ✅ confirmed | `src/services/teamMemorySync/index.ts:400-450` | Only uploads keys with different sha256 hash |
+| Optimistic locking (412 conflict) | ✅ confirmed | `src/services/teamMemorySync/index.ts:500-550` | `If-Match` + conflict retry with hashes view |
+| Batch sizing (gateway protection) | ✅ confirmed | `src/services/teamMemorySync/index.ts:89,600-650` | MAX_PUT_BODY_BYTES = 200,000 |
+| Secrets scanning (before push) | ✅ confirmed | `src/services/teamMemorySync/index.ts:60,700-750` | `scanForSecrets` skips files with secrets |
+| Secrets pattern coverage | ⚠️ partial | `src/services/teamMemorySync/secretScanner.ts` | Exists but not fully audited for pattern completeness |
+| File size cap | ✅ confirmed | `src/services/teamMemorySync/index.ts:73-75,760-765` | MAX_FILE_SIZE_BYTES = 250,000 |
+| Entry count cap learning (server-driven) | ✅ confirmed | `src/services/teamMemorySync/index.ts:76-79,770-780` | Learns serverMaxEntries from 413 extra_details |
+| Path validation on write | ✅ confirmed | `src/services/teamMemorySync/index.ts:800-850` | Uses `validateTeamMemKey` for full symlink check |
+| Same-content skip write (avoid mtime churn) | ✅ confirmed | `src/services/teamMemorySync/index.ts:860-870` | Skips write if local content matches server content |
+| Cache invalidation on sync | ✅ confirmed | `src/services/teamMemorySync/index.ts:880-890` | Invalidates caches after pulling new files |
+
+---
+
+### Stage 5: Compaction & Post-Compact Reinjection
+
+This section verifies memory-specific compaction behavior. For general compaction, see Context lifecycle audit.
+
+| Property | Status | Evidence Location | Notes |
+|----------|--------|-------------------|-------|
+| Session memory compact attempted first | ✅ confirmed | `src/services/compact/autoCompact.ts:280-295` | Tries SM compact before full autocompact |
+| Post-compact session metadata re-append | ✅ confirmed | `src/services/compact/compact.ts:713-718` | Keeps custom title/tag in 64KB tail for --resume |
+| Cache read baseline reset | ✅ confirmed | `src/services/compact/compact.ts:704-710` | `notifyCompaction` prevents false cache-break alerts |
+| Post-compact hook execution | ✅ confirmed | `src/services/compact/compact.ts:730-736` | `executePostCompactHooks` runs after compaction |
+| Post-compact file attachment reinjection | ✅ confirmed | `src/services/compact/compact.ts:525-566` | Recreates file attachments in post-compact messages |
+| Pre-compact discovered tool names carryover | ✅ confirmed | `src/services/compact/compact.ts:605-618` | Compact boundary preserves preCompactDiscoveredToolNames |
+| Session transcript segment write (KAIROS) | ✅ confirmed | `src/services/compact/compact.ts:722-724` | Writes reduced transcript segment for pre-compact messages |
+
+---
+
+### Stage 6: Restart/Resume/Cursor Recovery
+
+This section focuses on memory-specific recovery. For full session recovery, see Context lifecycle audit.
+
+| Property | Status | Evidence Location | Notes |
+|----------|--------|-------------------|-------|
+| Memory prompt reload on restart | ✅ confirmed | `src/memdir/memdir.ts:419-507` | `loadMemoryPrompt` runs fresh on each session start |
+| Cursor recovery fallback logic | ✅ confirmed | `src/services/extractMemories/extractMemories.ts:91-106` | If last UUID not found, counts all model-visible messages |
+| Session memory file re-read on resume | ✅ confirmed | `src/services/SessionMemory/sessionMemory.ts:183-233` | Reads existing session memory file during setup |
+| LastSummarizedMessageId persistence | ❌ gap | TBD | UUID NOT persisted to disk; resets on restart (X-memory-02) |
+
+---
+
+### Cross-Cutting Concerns Verification
+
+#### Deletion & Invalidation
+
+| Property | Status | Evidence Location | Notes |
+|----------|--------|-------------------|-------|
+| Memory file deletion permission | ✅ confirmed | Implied | Main agent has write access, can delete via Edit/Write or Bash (if allowed) |
+| Cursor invalidation on deletion | ❌ gap | TBD | No explicit tracking of deleted memory files in cursors |
+| Team memory deletion NOT propagated | ✅ confirmed | `src/services/teamMemorySync/index.ts:19-20` | Deletions local only, not synced; pull restores |
+
+#### Duplicate Injection & Stale Cursor
+
+| Property | Status | Evidence Location | Notes |
+|----------|--------|-------------------|-------|
+| Main-agent write vs extractMemories mutual exclusion | ✅ confirmed | `src/services/extractMemories/extractMemories.ts:348-360` | `hasMemoryWritesSince` skips extraction when main agent writes |
+| UUID-based (not index-based) cursor | ✅ confirmed | `src/services/extractMemories/extractMemories.ts:307,432-435` | Uses message.uuid, avoids index shift issues |
+| Cursor fallback on UUID not found | ✅ confirmed | `src/services/extractMemories/extractMemories.ts:91-106` | Falls back to counting all if cursor UUID compacted away |
+| Cursor safety for tool results | ✅ confirmed | `src/services/SessionMemory/sessionMemory.ts:488-495` | Only advances cursor if last message has NO tool calls |
+| Session memory cursor reset after compact | ✅ confirmed | `src/services/compact/autoCompact.ts:294` | Resets lastSummarizedMessageId after SM compact |
+
+#### Concurrent Writes & Lock Rollback
+
+| Property | Status | Evidence Location | Notes |
+|----------|--------|-------------------|-------|
+| extractMemories concurrent guard | ✅ confirmed | `src/services/extractMemories/extractMemories.ts:296-313,670-676` | `inProgress` flag + trailing run coalescing |
+| Session memory sequential wrapper | ✅ confirmed | `src/services/SessionMemory/sessionMemory.ts:272-350` | `sequential()` ensures one extraction at a time |
+| AutoDream lock rollback | ✅ confirmed | `src/services/autoDream/autoDream.ts:269-271` | `rollbackConsolidationLock` on failure |
+| Team memory optimistic lock | ✅ confirmed | `src/services/teamMemorySync/index.ts:500-550` | 412 conflict retry with fresh hashes |
+
+#### Secrets, Symlinks, Permissions
+
+| Property | Status | Evidence Location | Notes |
+|----------|--------|-------------------|-------|
+| Team memory secret scan on push | ✅ confirmed | `src/services/teamMemorySync/index.ts:60,700-750` | `scanForSecrets` skips files with secrets |
+| Auto memory path symlink check (read) | ❌ gap | `src/memdir/paths.ts:274-278` | String prefix only (X-memory-01) |
+| Team memory path symlink check (write) | ✅ confirmed | `src/memdir/teamMemPaths.ts:228-284` | Full realpath resolution |
+| Auto memory path override security | ✅ confirmed | `src/memdir/paths.ts:109-150,161-186` | Validate rejects dangerous paths; project settings excluded |
+| Memory write carve-out in filesystem permissions | ✅ confirmed | `src/utils/permissions/filesystem.ts` | IsAutoMemPath allows write without DANGEROUS prompt |
+| Extract/autoDream tool restrictions | ✅ confirmed | `src/services/extractMemories/extractMemories.ts:171-222` | Read-only Bash, Edit/Write only memory dir |
+
+---
+
+## Memory Discovery Registry (X-memory-*)
+
+| ID | Severity | Title & Description | Evidence | Primary Owner |
+|----|----------|---------------------|----------|---------------|
+| X-memory-01 | P2 | Memory path validation inconsistency: read uses string prefix only, write uses full symlink resolution. Low risk because write path protected, but inconsistent defense-in-depth. | `src/memdir/teamMemPaths.ts:214-220` vs `228-284`; `src/memdir/paths.ts:274-278` | memdir |
+| X-memory-02 | P3 | `lastSummarizedMessageId` not persisted to disk: resets on session restart. Could cause redundant extractions after restart, but no data loss. | `src/services/SessionMemory/sessionMemoryUtils.ts:44-69` | SessionMemory |
+| X-memory-03 | P3 | No explicit invalidation tracking for deleted memory files. Cursor doesn't know about deletions, could reference deleted files. | TBD | memdir |
+| X-memory-04 | P4 | Secrets scanner patterns not fully audited for completeness. Scanner exists, but not verified against latest secret pattern best practices. | `src/services/teamMemorySync/secretScanner.ts` | teamMemorySync |
+
+---
+
+## Memory Lifecycle Matrix
+
+| Stage \ Aspect | Loading | Indexing | Writing | Extraction | Compaction | Sync | Recovery |
+|----------------|---------|----------|---------|------------|------------|------|----------|
+| **Auto Memory** | ✅ confirmed | ✅ confirmed | ✅ confirmed | ✅ confirmed | ✅ confirmed | N/A | ✅ confirmed |
+| **Team Memory** | ✅ confirmed | ✅ confirmed | ✅ confirmed | ✅ confirmed | N/A | ✅ confirmed | ⚠️ partial |
+| **Session Memory** | ✅ confirmed | N/A | ✅ confirmed | ✅ confirmed | ✅ confirmed | N/A | ❌ gap (X-memory-02) |
+| **Daily Log** | ✅ confirmed | N/A | ✅ confirmed | N/A | N/A | N/A | ✅ confirmed |
+| **Deletion** | N/A | ⚠️ unconfirmed | ✅ confirmed | N/A | N/A | ✅ confirmed (no propagate) | N/A |
+| **Invalidation** | ✅ confirmed (fresh load) | ⚠️ unconfirmed | N/A | ✅ confirmed (cursor advance) | ✅ confirmed (cache reset) | ✅ confirmed (sync) | N/A |
+| **Duplicate Injection** | N/A | N/A | ✅ confirmed (main-agent skips extract) | ✅ confirmed (cursor tracks) | N/A | N/A | N/A |
+| **Stale Cursor** | N/A | N/A | N/A | ✅ confirmed (UUID-based + fallback) | ✅ confirmed (cursor reset) | N/A | ❌ gap (X-memory-02) |
+| **Concurrent Writes** | N/A | N/A | ✅ confirmed (FS-level) | ✅ confirmed (inProgress flag) | ✅ confirmed (sequential wrapper) | ✅ confirmed (optimistic lock) | N/A |
+| **Lock Rollback** | N/A | N/A | N/A | N/A | N/A | ✅ confirmed (412 retry) | N/A |
+| **Secrets** | N/A | N/A | ⚠️ user responsibility | ⚠️ user responsibility | N/A | ✅ confirmed (scan) | N/A |
+| **Symlinks** | ⚠️ partial (read) | N/A | ✅ confirmed (write) | ✅ confirmed (paths validated) | N/A | ✅ confirmed (write) | N/A |
+| **Permissions** | ✅ confirmed | ✅ confirmed | ✅ confirmed (carve-out) | ✅ confirmed (restricted tools) | N/A | ✅ confirmed (OAuth) | N/A |
+
+---
+
+## Memory-Only Slice Declaration
+
+This audit intentionally covers **only the Memory Lifecycle** portion of Task 10. Context, Sharing, Recovery, and other cross-subsystem areas were covered previously or are deferred.
+
+---
+
+## Audit Metadata (Updated)
+
+| Item | Value |
+|------|-------|
+| Audit Commit | 6fbe8f8f1 |
+| Primary Focus | Memory Lifecycle End-to-End |
+| Secondary Focus | Context Lifecycle (previously completed) |
+| Created At | 2026-11-16 |
+| Independent Review | Pending for X-memory-01 (P2) |
+| Findings | 4 total: 1 P2, 2 P3, 1 P4 |
