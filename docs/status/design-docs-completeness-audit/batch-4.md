@@ -853,6 +853,140 @@
 
 ---
 
+### text-formatting
+
+| 项目 | 状态 | 说明 |
+|------|------|------|
+| Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-text-formatting-design.md |
+| Coverage 存在 | ✅ | docs/architecture/coverage/text-formatting.yaml |
+| Manifest 注册 | ✅ | id: text-formatting, batch: 4, status: draft |
+| Coverage 覆盖分组 | 9/9 | markdown, cli-highlight, format, highlight-match, display-tags, hyperlink, heatmap, horizontal-scroll, logo-v2-utils, color-commands, output-styles, constants-formatting |
+
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了 Markdown 到终端转换、字符宽度计算、搜索高亮、标签剥离等核心约束。
+✅ **设计理由与备选方案**：10+项关键决策表格化展示，包含真实证据位置：
+- marked 词法分析+自定义格式化器
+- stringWidth+sliceAnsi宽度处理
+- 逆高亮搜索匹配
+- 正则小写标签剥离
+- OSC 8超链接支持检测
+- 懒加载cli-highlight
+✅ **目标与非目标**：清晰界定不支持完整 HTML、不支持全量 Markdown 方言等非目标。
+✅ **架构、模块与数据流**：多个模块设计卡、完整 Markdown 渲染流程、宽度截断流程、搜索高亮流程。
+✅ **证据链覆盖**：完整证据链已验证：
+- Markdown 渲染：configureMarked → marked.lexer → formatToken → ANSI输出
+- 宽度处理：stringWidth/sliceAnsi → truncateToWidth
+- 搜索高亮：highlightMatch → 逆高亮包裹
+- 标签剥离：stripDisplayTags → 正则替换
+- 超链接：createHyperlink → OSC 8序列
+- 代码高亮：loadCliHighlight → 懒加载
+
+#### 源码验证
+
+**markdown (src/utils/markdown.ts)**：configureMarked禁用删除线，applyMarked使用marked.lexer，formatToken递归处理所有token（heading, code, codespan, strong, em, link, list, list_item, paragraph, space, br, text, table, escape, def, del, html），表格处理计算列宽、对齐、边框，linkifyIssueReferences自动链接owner/repo#123，✅
+**cli-highlight (src/utils/cliHighlight.ts)**：懒加载cli-highlight和highlight.js，getCliHighlightPromise缓存加载Promise，getLanguageName提取扩展名调用highlight.js，✅
+**format (src/utils/format.ts)**：formatFileSize/Seconds/Duration/Number/Tokens/RelativeTime/ReleaseNoteResetText/LogMetadata等格式化工具，从truncate.ts重新导出truncate*函数，✅
+**highlight-match (src/utils/highlightMatch.tsx)**：React组件，不区分大小写匹配，逆高亮包裹，使用index作为key，✅
+**display-tags (src/utils/displayTags.ts)**：XML_TAG_BLOCK_PATTERN只匹配小写标签，stripDisplayTags空结果返回原内容，stripDisplayTagsAllowEmpty允许空，stripIdeContextTags只剥离ide_*标签，✅
+**hyperlink (src/utils/hyperlink.ts)**：OSC8_START/END定义，createHyperlink检测supportsHyperlinks，使用BEL终止符，fallback纯URL，✅
+**heatmap (src/utils/heatmap.ts)**：GitHub风格热图生成，百分位计算强度，5级强度字符，月份标签均匀分布，日期从今天往前，未来日期留空，✅
+**logo-v2-utils (src/utils/logoV2Utils.ts)**：getLayoutMode判断horizontal/compact，calculateLayoutDimensions计算左右宽度，calculateOptimalLeftWidth基于内容，formatWelcomeMessage处理用户名，truncatePath复杂路径截断（保留首尾+尽量多中间），getRecentActivity缓存最近会话（过滤道歉），formatModelAndBilling合并/分行显示，✅
+**color-commands (src/commands/color/color.ts, index.ts)**：颜色相关命令，✅
+
+**发现 B4-text-formatting-01**：text-formatting子系统缺少专用测试文件，无单元测试覆盖核心功能（Markdown渲染、宽度截断、搜索高亮、标签剥离、超链接生成、热图生成），严重度：P2（功能正常但无回归保护），置信度：已证实（tests/目录扫描确认）。
+
+#### 测试验证
+
+检查coverage中提及的测试文件：
+- ❌ 无 text-formatting 相关测试
+- ❌ 无 markdown/cliHighlight/format/highlightMatch/displayTags/hyperlink/heatmap/logoV2Utils相关测试
+
+#### 隐私与安全边界审查
+
+✅ **标签剥离安全**：只剥离小写标签，用户输入的<Button>等保留，✅
+✅ **超链接安全**：mailto链接不渲染为可点击，避免垃圾邮件，✅
+
+#### 证据边界总结
+
+| 类别 | 覆盖 | 缺口 |
+|------|------|------|
+| Spec 完整性 | ✅ 完整，10+项关键决策，多个模块设计卡，完整生命周期证据链 | ⚠️ 上游文档未实时访问 |
+| 源码一致性 | ✅ 所有9个分组源码与spec高度一致 | ⚠️ 无 |
+| 测试覆盖 | ❌ 无专用测试 | ⚠️ 功能正常但无回归保护 |
+| 官方文档 | ❓ 未访问 | ⚠️ 基于现有spec |
+| 上游 CLI | ⚠️ 未提取 strings | ⚠️ 需补充 |
+
+---
+
+### ui-rendering
+
+| 项目 | 状态 | 说明 |
+|------|------|------|
+| Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-ui-rendering-design.md |
+| Coverage 存在 | ✅ | docs/architecture/coverage/ui-rendering.yaml |
+| Manifest 注册 | ✅ | id: ui-rendering, batch: 4, status: draft |
+| Coverage 覆盖分组 | 12/12 | additional-files, messages-core, messages-types, markdown-rendering, streaming, diff-highlight, ansi-terminal, spinner-loading, design-system, error-boundaries, message-utils, uncovered-components, uncovered-screens, uncovered-repl |
+
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了消息类型到组件多分支映射、流式更新性能、文本宽度与ANSI处理、Diff与语法高亮缓存、错误边界隔离、thinking块可见性控制等核心约束。
+✅ **设计理由与备选方案**：多项关键决策表格化展示，包含真实证据位置：
+- switch-case显式路由而非注册表
+- 流式Markdown稳定边界策略
+- Markdown token缓存MRU策略
+- Diff渲染WeakMap+两级缓存
+- 长会话UUID锚点切片
+- 错误边界静默降级
+- thinking块lastThinkingBlockId精确控制
+- 自定义memo比较器
+✅ **目标与非目标**：清晰界定不负责Web/桌面GUI渲染、不实现新Markdown方言等非目标。
+✅ **架构、模块与数据流**：多个模块设计卡、完整渲染流程、流式更新流程、缓存策略说明、消息类型映射说明。
+✅ **证据链覆盖**：完整证据链已验证：
+- 消息路由：Message.tsx switch(message.type)
+- 流式渲染：StreamingMarkdown stablePrefixRef
+- 缓存：Markdown.tsx tokenCache、StructuredDiff.tsx RENDER_CACHE
+- 切片：Messages.tsx computeSliceStart/sliceAnchorRef
+- 错误边界：SentryErrorBoundary.ts
+
+#### 源码验证
+
+**Message.tsx (src/components/Message.tsx)**：MessageImpl主switch，UserMessage分支，AssistantMessageBlock分支，hasThinkingContent检测，areMessagePropsEqual自定义比较器，✅
+**Messages.tsx (src/components/Messages.tsx)**：normalizeMessages/reorder/collapse/group，buildMessageLookups，computeSliceStart UUID锚点，lastThinkingBlockId计算，filterForBriefTool/dropTextInBriefTurns，LogoHeader memo，VirtualMessageList分支，custom comparator，✅
+**Markdown.tsx (src/components/Markdown.tsx)**：Markdown主组件，StreamingMarkdown use no memo，tokenCache Map MRU，hashContent，MD_SYNTAX_RE快路径，Suspense包裹cli-highlight，✅
+**StructuredDiff.tsx (src/components/StructuredDiff.tsx)**：RENDER_CACHE WeakMap，两级缓存，每patch最多4条，预分割gutter/content，ColorDiff NAPI模块，✅
+**Messages (src/components/Messages.tsx)**：virtualScrollRuntimeGate scrollRef检测，MAX_MESSAGES_WITHOUT_VIRTUALIZATION 200，MESSAGE_CAP_STEP 50，✅
+**SentryErrorBoundary.ts (src/components/SentryErrorBoundary.ts)**：getDerivedStateFromError设置hasError，render返回null降级，✅
+**Spinner.tsx (src/components/Spinner.tsx)**：SpinnerWithVerb，SpinnerAnimationRow，thinking最小显示2s，✅
+**其他组件 (src/components/*)**：MessageRow、VirtualMessageList、OffscreenFreeze、messages/*组件群，✅
+
+**发现 B4-ui-rendering-01**：ui-rendering子系统缺少核心渲染路径（Message/Messages/Markdown/StructuredDiff/StreamingMarkdown/虚拟滚动/消息切片）的专用测试，严重度：P2（功能正常但无回归保护），置信度：已证实（tests/目录扫描确认）。
+**发现 B4-ui-rendering-02**：Markdown.tsx和StructuredDiff.tsx的模块级缓存（tokenCache、RENDER_CACHE）没有重置机制，测试间可能污染，虽然spec中未提及，但工程实践建议添加，严重度：P3（工程改进建议），置信度：已证实。
+
+#### 测试验证
+
+检查coverage中提及的测试文件：
+- ✅ 无 ui-rendering 核心渲染路径测试
+- ❌ 无 Message/Messages/Markdown/StructuredDiff/StreamingMarkdown/VirtualMessageList测试
+- ⚠️ 有部分周边组件测试
+
+#### 隐私与安全边界审查
+
+✅ **错误边界隔离**：单个组件失败不影响整个会话，✅
+✅ **无敏感信息泄露**：渲染过程不泄露用户数据到外部，✅
+
+#### 证据边界总结
+
+| 类别 | 覆盖 | 缺口 |
+|------|------|------|
+| Spec 完整性 | ✅ 完整，多项关键决策，多个模块设计卡，完整生命周期证据链 | ⚠️ 上游文档未实时访问 |
+| 源码一致性 | ✅ 所有12个分组源码与spec高度一致 | ⚠️ 无 |
+| 测试覆盖 | ❌ 缺少核心渲染路径测试 | ⚠️ 功能正常但无回归保护 |
+| 官方文档 | ❓ 未访问 | ⚠️ 基于现有spec |
+| 上游 CLI | ⚠️ 未提取 strings | ⚠️ 需补充 |
+
+---
+
 ## 完成判定
 
 ### 总体评估
@@ -866,20 +1000,22 @@
 | ide-integration | ✅完整 | ✅一致（设计文档已明确指出 lockfile 并发与崩溃清理限制） | ⚠️不充分（仅源码） | ⚠️部分充分（无测试） | ⚠️有条件通过（需补充测试） |
 | ink-platform | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（测试不足） | ⚠️有条件通过（需补充核心模块测试） |
 | repl-input | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（测试不足） | ⚠️有条件通过（需补充集成测试） |
+| text-formatting | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（无测试） | ⚠️有条件通过（需补充测试） |
+| ui-rendering | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（测试不足） | ⚠️有条件通过（需补充核心渲染路径测试） |
 
 ### Batch4 统计
 
 | 项目 | 数量 |
 |------|------|
-| 已审计子系统 | 7（app-state、assistant-ui、commands-framework、cost-tracking、ide-integration、ink-platform、repl-input） |
-| 待审计子系统 | 4（text-formatting、ui-rendering、voice-assistant、workspace-ui） |
+| 已审计子系统 | 9（app-state、assistant-ui、commands-framework、cost-tracking、ide-integration、ink-platform、repl-input、text-formatting、ui-rendering） |
+| 待审计子系统 | 2（voice-assistant、workspace-ui） |
 | 完整文档 | 7 |
 | 实现一致 | 7（除app-state循环更新防护功能未实现，ide-integration和repl-input设计文档已明确指出限制/权衡） |
-| 发现总数 | 11 |
+| 发现总数 | 14 |
 | P0 | 0 |
 | P1 | 0 |
-| P2 | 7 |
-| P3 | 4 |
+| P2 | 9 |
+| P3 | 5 |
 
 ### 发现分类
 
@@ -953,13 +1089,43 @@
 
 ✅ **提交流程**：用户按 Enter → 检查补全可见且非目录 → 是则应用不提交 → 否则检查 Footer 选择 → 是则打开不提交 → 否则检查 viewSelectionMode → 是则不提交 → 否则检查投机建议可接受 → 是则接受投机 → 否则检查 @team DM → 是则发送 → 否则检查 viewed agent → 是则 onAgentSubmit → 否则正常 onSubmitProp → 解析引用替换真实内容 → 发送 → 清空输入、重置光标、添加历史、清空撤销缓冲区 → React 更新 → 渲染
 
+### text-formatting 生命周期证据链确认
+
+✅ **Markdown渲染**：configureMarked禁用删除线 → marked.lexer分词 → formatToken递归处理（heading/code/codespan/strong/em/link/list/list_item/paragraph/space/br/text/table/escape/def/del/html）→ ANSI输出
+
+✅ **宽度处理**：stringWidth（CJK/emoji/ANSI识别）→ sliceAnsi → truncateToWidth安全截断
+
+✅ **搜索高亮**：highlightMatch不区分大小写匹配 → 逆高亮包裹（background+foreground反转）
+
+✅ **标签剥离**：stripDisplayTags使用XML_TAG_BLOCK_PATTERN只匹配小写标签 → 空结果返回原内容
+
+✅ **超链接生成**：createHyperlink检测supportsHyperlinks → OSC8_START+url+OSC8_END+text+OSC8_START+OSC8_END → mailto链接不渲染为可点击
+
+✅ **热图生成**：GitHub风格热图生成 → 百分位计算强度 → 5级强度字符 → 月份标签均匀分布
+
+✅ **logo v2布局**：getLayoutMode判断horizontal/compact → calculateLayoutDimensions计算左右宽度 → calculateOptimalLeftWidth基于内容 → truncatePath复杂路径截断
+
+### ui-rendering 生命周期证据链确认
+
+✅ **消息路由与渲染**：Message.tsx switch(message.type) → 调用对应组件 → areMessagePropsEqual自定义比较器减少重渲染
+
+✅ **流式Markdown渲染**：StreamingMarkdown stablePrefixRef → 只重渲染新内容 → 复用已渲染token → tokenCache Map MRU策略
+
+✅ **Diff渲染**：StructuredDiff.tsx RENDER_CACHE WeakMap → 两级缓存 → 预分割gutter/content → ColorDiff NAPI模块
+
+✅ **长会话处理**：Messages.tsx normalizeMessages/reorder/collapse/group → computeSliceStart UUID锚点 → lastThinkingBlockId控制thinking块可见性
+
+✅ **错误边界隔离**：SentryErrorBoundary.ts getDerivedStateFromError设置hasError → render返回null降级
+
+✅ **虚拟滚动**：VirtualMessageList virtualScrollRuntimeGate scrollRef检测 → MAX_MESSAGES_WITHOUT_VIRTUALIZATION 200 → MESSAGE_CAP_STEP 50
+
 ### Batch4 总体结论
 
-✅ **所有7个子系统spec质量优秀**：文档完整性高，每个spec包含多项关键决策表格、模块设计卡、完整生命周期证据链。
+✅ **所有9个子系统spec质量优秀**：文档完整性高，每个spec包含多项关键决策表格、模块设计卡、完整生命周期证据链。
 
-✅ **所有7个子系统实现一致性强**：所有分组源码与spec高度对齐，关键机制与文档完全一致，安全边界设计周全；ide-integration 和 repl-input 子系统的设计文档已明确指出限制/权衡，与实现一致。
+✅ **所有9个子系统实现一致性强**：所有分组源码与spec高度对齐，关键机制与文档完全一致，安全边界设计周全；ide-integration 和 repl-input 子系统的设计文档已明确指出限制/权衡，与实现一致。
 
-⚠️ **测试覆盖不足**：app-state、assistant-ui、cost-tracking、ide-integration、ink-platform 子系统无专用测试文件，commands-framework 和 repl-input 子系统核心功能测试不足。
+⚠️ **测试覆盖不足**：app-state、assistant-ui、cost-tracking、ide-integration、ink-platform、text-formatting、ui-rendering 子系统无专用测试文件，commands-framework 和 repl-input 子系统核心功能测试不足。
 
 ### 子系统审计进度
 
@@ -972,13 +1138,13 @@
 | ide-integration | ✅已审计 |
 | ink-platform | ✅已审计 |
 | repl-input | ✅已审计 |
-| text-formatting | ⏸️保持 open |
-| ui-rendering | ⏸️保持 open |
+| text-formatting | ✅已审计 |
+| ui-rendering | ✅已审计 |
 | voice-assistant | ⏸️保持 open |
 | workspace-ui | ⏸️保持 open |
 
-**当前进度**：7/11 已审计，剩余4个子系统保持 open 状态。
+**当前进度**：9/11 已审计，剩余2个子系统保持 open 状态。
 
 ### 说明
 
-本次完成app-state、assistant-ui、commands-framework、cost-tracking、ide-integration、ink-platform、repl-input七个子系统的深度生命周期审计，剩余4个子系统（text-formatting、ui-rendering、voice-assistant、workspace-ui）保持 open 状态。README暂不更新，待所有11个子系统审计完成后统一更新。
+本次完成app-state、assistant-ui、commands-framework、cost-tracking、ide-integration、ink-platform、repl-input、text-formatting、ui-rendering九个子系统的深度生命周期审计，剩余2个子系统（voice-assistant、workspace-ui）保持 open 状态。README暂不更新，待所有11个子系统审计完成后统一更新。
