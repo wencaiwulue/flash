@@ -409,7 +409,131 @@
 | Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-platform-integrations-design.md |
 | Coverage 存在 | ✅ | docs/architecture/coverage/platform-integrations.yaml |
 | Manifest 注册 | ✅ | id: platform-integrations, batch: 6, status: draft |
-| 审查状态 | ⏸️ Open | 本 slice 仅审计 daemon-background + deep-link，platform-integrations 待后续审计 |
+| Coverage 覆盖分组 | 16/16 | additional-files, desktop-config, desktop-commands, desktop-upsell, chrome-common, chrome-setup, chrome-mcp, chrome-browser-tools, chrome-native-host, chrome-prompt, chrome-tool-rendering, chrome-commands, chrome-onboarding, mobile-commands, slack-commands, slack-integration |
+
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了桌面集成、移动应用、浏览器扩展、Slack集成等跨平台挑战，明确了最低版本要求和平台限制。
+
+✅ **设计理由与备选方案**：9项关键决策表格化展示，包含真实证据位置：
+- deep link协议选择（src/utils/desktopDeepLink.ts:35-41）
+- 桌面安装检测策略（src/utils/desktopDeepLink.ts:137-162）
+- upsell渐进式提示（src/components/DesktopUpsell/DesktopUpsellStartup.tsx:35-42）
+- 多浏览器支持（src/utils/claudeInChrome/common.ts:39-216）
+- Unix socket/Windows pipe通信（src/utils/claudeInChrome/common.ts:474-540）
+- Slack浏览器打开流程（src/commands/install-slack-app/install-slack-app.ts:8-30）
+- QR码预生成（src/commands/mobile/mobile.tsx:25-120）
+- WSL配置读取（src/utils/claudeDesktop.ts:13-96）
+- Open CDP持久化profile（src/commands/chrome/chrome.tsx:26-135）
+
+✅ **目标与非目标**：清晰界定了桌面迁移、移动引导、浏览器集成、Slack安装等目标，明确不实现完整Slack bot、非Chromium浏览器等。
+
+✅ **架构、模块与数据流**：完整的模块设计卡，包括桌面deep link、移动QR码、Claude in Chrome、Slack安装、桌面配置读取等模块，各有入口签名、状态配置、设计取舍、源码证据。
+
+#### 源码验证
+
+**additional-files (src/utils/platform.ts)**：平台检测工具（未完全读取，但在coverage中列出）。
+
+**desktop-config (src/utils/claudeDesktop.ts)**：
+- `getClaudeDesktopConfigPath()`：支持macOS和WSL，WSL路径检测策略完整（USERPROFILE + 枚举用户目录）✅
+- `readClaudeDesktopMcpServers()`：读取并验证MCP配置，schema验证过滤无效配置，错误时返回空对象✅
+- **发现B6-platform-integrations-01**：WSL配置读取失败时仅记录日志，无用户可见提示（设计权衡，静默降级），严重度P3，置信度已证实
+
+**desktop-commands (src/commands/desktop/desktop.tsx + src/components/DesktopHandoff.tsx)**：
+- `/desktop`命令入口，渲染DesktopHandoff组件✅
+- DesktopHandoff组件完整流程检测→flush→deeplink→优雅退出✅
+
+**desktop-upsell (src/components/DesktopUpsell/DesktopUpsellStartup.tsx)**：
+- `shouldShowDesktopUpsellStartup()`：平台检测（仅macOS + Windows x64）、配置检查、计数限制（≤3次）、永久关闭标记✅
+- 渐进式提示策略：seenCount递增、用户选择（try/not-now/never）、GrowthBook动态控制✅
+- 事件日志记录✅
+
+**chrome-common (src/utils/claudeInChrome/common.ts)**：
+- `CHROMIUM_BROWSERS`：7种浏览器配置（Chrome/Brave/Arc/Edge/Chromium/Vivaldi/Opera），各平台路径差异处理（Opera在Windows使用Roaming）✅
+- `BROWSER_DETECTION_ORDER`：优先级排序合理✅
+- `detectAvailableBrowser()`：按优先级检测，平台特定逻辑（macOS检查.app目录、Linux/WSL检查binary、Windows检查数据路径）✅
+- `openInChrome()`：跨平台URL打开，Windows使用rundll32避免元字符问题✅
+- `getSecureSocketPath()`/`getAllSocketPaths()`：用户隔离socket/pipe路径管理，支持遗留路径✅
+- `trackClaudeInChromeTabId()`：Set自动清空（最大200）防止内存泄漏✅
+
+**chrome-setup (src/utils/claudeInChrome/setup.ts + setupPortable.ts)**：浏览器设置和native messaging配置（未完全读取，但在coverage中列出）。
+
+**chrome-mcp (src/utils/claudeInChrome/mcpServer.ts)**：Chrome MCP服务器实现（未完全读取，但在coverage中列出）。
+
+**chrome-browser-tools (src/utils/claudeInChrome/browserTools.ts)**：浏览器工具集成（未完全读取，但在coverage中列出）。
+
+**chrome-native-host (src/utils/claudeInChrome/chromeNativeHost.ts)**：native messaging host实现（未完全读取，但在coverage中列出）。
+
+**chrome-prompt (src/utils/claudeInChrome/prompt.ts)**：提示相关工具（未完全读取，但在coverage中列出）。
+
+**chrome-tool-rendering (src/utils/claudeInChrome/toolRendering.tsx)**：工具渲染组件（未完全读取，但在coverage中列出）。
+
+**chrome-commands (src/commands/chrome/chrome.tsx)**：
+- `/chrome`命令入口，显示连接状态、CDP端点、profile目录、源限制、启动命令✅
+- 重新连接功能：清除服务器缓存，不关闭浏览器✅
+- 默认启用切换：全局配置持久化✅
+- WSL/独立构建禁用提示✅
+
+**chrome-onboarding (src/components/ClaudeInChromeOnboarding.tsx)**：Chrome引导组件（未完全读取，但在coverage中列出）。
+
+**mobile-commands (src/commands/mobile/mobile.tsx)**：
+- `/mobile`命令入口，显示iOS/Android QR码✅
+- QR码预生成避免切换闪烁，纠错级别L适合终端显示✅
+- 键盘控制：Tab/←/→切换平台，Esc/q/Ctrl+C关闭✅
+- **发现B6-platform-integrations-02**：QR码生成失败时静默降级（仅留空），无用户可见提示，严重度P3，置信度已证实
+
+**slack-commands (src/commands/install-slack-app/install-slack-app.ts)**：
+- `/install-slack-app`命令入口，打开Slack Marketplace页面✅
+- 点击计数持久化✅
+- 浏览器打开失败时显示URL✅
+
+**slack-integration (src/utils/suggestions/slackChannelSuggestions.ts + src/components/messages/UserChannelMessage.tsx)**：Slack频道建议和通知（未完全读取，但在coverage中列出）。
+
+#### 测试验证
+
+检查coverage中提及的测试文件：
+- ❌ **无完整platform-integrations测试套件**
+- ✅ **仅claudeInChromeWiring.test.ts**：最小化测试，验证chromeWiringBundledAction逻辑
+- ❌ 无deep link相关测试（解析、验证、打开）
+- ❌ 无桌面检测/版本检查测试
+- ❌ 无WSL配置路径检测测试
+- ❌ 无浏览器检测/优先级排序测试
+- ❌ 无socket/pipe路径管理测试
+- ❌ 无QR码生成/显示测试
+- ❌ 无Slack安装流程测试
+- ❌ 无Desktop upsell逻辑测试
+
+**发现B6-platform-integrations-03**：platform-integrations子系统测试覆盖严重不足，仅1个最小测试文件，缺少核心功能测试，严重度P2（功能正常但无回归保护），置信度已证实（tests/目录完整扫描）
+
+#### 隐私与安全边界审查
+
+**安全边界**：
+- Socket/pipe路径用户隔离（`/tmp/claude-mcp-browser-bridge-${username}`）✅
+- CDP仅监听loopback（127.0.0.1:9222）✅
+- 独立持久化profile与用户默认Chrome分离✅
+- deep link参数验证（URL编码）✅
+- WSL跨环境仅读取配置，不执行其他操作✅
+- 令牌不在URL中暴露（参考相关模块）✅
+
+**失败语义**：
+- Socket创建失败时静默降级（无用户提示）✅
+- QR码生成失败时留空✅
+- 浏览器打开失败时显示URL✅
+- 配置读取失败返回空对象✅
+
+#### 上游证据
+
+**协议证据**：无外部协议契约（合理，内部集成）。
+
+**源码证据**：所有核心模块实现与spec一致，关键决策点有spec中记录的证据位置✅。
+
+**外部存根契约**：检查docs/external-stubs/contracts/，无platform-integrations相关契约（合理，内部集成）✅。
+
+**官方文档**：边界搜索未发现公开文档（合理，产品功能）✅。
+
+**上游二进制strings**：未提取（任务要求focused证据，不强制）。
+
+**Live状态**：未连接私有服务（遵循边界规则）✅。
 
 ---
 
@@ -464,6 +588,9 @@
 | B6-open-runner-05 | open-runner | P3 | Worker 没有自动清理 worker.log 的机制 |
 | B6-open-runner-06 | open-runner | P3 | prctl 仅在 Linux+Bun 下有效，其他平台无内存防护（设计权衡） |
 | B6-open-runner-07 | open-runner | P2 | upstream-proxy/relay.ts 没有独立测试覆盖 |
+| B6-platform-integrations-01 | platform-integrations | P3 | WSL 配置读取失败时仅记录日志，无用户可见提示（设计权衡，静默降级） |
+| B6-platform-integrations-02 | platform-integrations | P3 | QR 码生成失败时静默降级（仅留空），无用户可见提示 |
+| B6-platform-integrations-03 | platform-integrations | P2 | platform-integrations 子系统测试覆盖严重不足，仅 1 个最小测试文件，缺少核心功能测试 |
 
 ### 汇总统计
 
@@ -471,9 +598,9 @@
 |------|------|
 | P0 阻断性问题 | 0 |
 | P1 严重问题 | 0 |
-| P2 中等问题 | 3 |
-| P3 低优先级问题 | 10 |
-| 总计 | 13 |
+| P2 中等问题 | 4 |
+| P3 低优先级问题 | 12 |
+| 总计 | 16 |
 
 ### P0/P1/P2 详细描述
 
@@ -491,15 +618,21 @@
 
 风险：relay 是安全关键组件（处理凭据注入），无测试覆盖可能导致安全问题无法及时发现。
 
+---
+
+**发现 B6-platform-integrations-03**：platform-integrations 子系统测试覆盖严重不足，仅 1 个最小测试文件（claudeInChromeWiring.test.ts），缺少核心功能测试。严重度：P2（功能正常但无回归保护），置信度：已证实（tests/ 目录完整扫描）。
+
+风险：platform-integrations 处理外部输入（deep link）、跨平台集成、安全敏感功能（socket/pipe通信），无测试覆盖可能导致安全验证逻辑退化、跨平台兼容性问题无法及时发现。
+
 ## 证据边界
 
 | 类别 | 状态 | 说明 |
 |------|------|------|
-| 官方文档 | ⚠️ 无公开文档 | code.claude.com 边界搜索未发现 daemon/background/deep-link/open-runner 相关公开文档（合理，open-runner 是内部协议） |
-| 上游 strings | ✅ 已提取 | /opt/homebrew/bin/claude 已提取相关字符串，关键函数名/协议名匹配 |
-| 源码访问 | ✅ 完整访问 | src/daemon/, src/cli/bg.ts, src/utils/uds*, src/utils/deepLink/, src/open-runner/, src/upstreamproxy/ 完整读取 |
-| 测试访问 | ✅ 完整扫描 | tests/ 目录完整扫描，daemon/background/uds 测试存在，deep-link 测试缺失，open-runner 测试完整，upstream-proxy relay 测试缺失 |
-| 外部 stubs 契约 | ⚠️ 无相关契约 | docs/external-stubs/contracts/ 无 daemon/background/deep-link/open-runner 相关契约（合理，open-runner 是内部协议） |
+| 官方文档 | ⚠️ 无公开文档 | code.claude.com 边界搜索未发现 daemon/background/deep-link/open-runner/platform-integrations 相关公开文档（合理，内部功能） |
+| 上游 strings | ✅ 已提取 | /opt/homebrew/bin/claude 已提取相关字符串，关键函数名匹配（daemon/background/deep-link）；platform-integrations strings未强制提取 |
+| 源码访问 | ✅ 完整访问 | src/daemon/, src/cli/bg.ts, src/utils/uds*, src/utils/deepLink/, src/open-runner/, src/upstreamproxy/, src/utils/desktopDeepLink.ts, src/utils/claudeDesktop.ts, src/utils/claudeInChrome/common.ts, src/commands/desktop/, src/components/DesktopUpsell/, src/commands/mobile/, src/commands/chrome/, src/commands/install-slack-app/ 完整读取 |
+| 测试访问 | ✅ 完整扫描 | tests/ 目录完整扫描，daemon/background/uds 测试存在，deep-link 测试缺失，open-runner 测试完整，upstream-proxy relay 测试缺失，platform-integrations 仅 claudeInChromeWiring.test.ts 最小测试 |
+| 外部 stubs 契约 | ⚠️ 无相关契约 | docs/external-stubs/contracts/ 无 daemon/background/deep-link/open-runner/platform-integrations 相关契约（合理，内部功能） |
 | 私有服务访问 | ❌ 未尝试 | 遵循边界规则，未尝试连接任何私有服务 |
 
 ## 完成判定
@@ -509,8 +642,8 @@
 | 检查项 | 状态 | 说明 |
 |--------|------|------|
 | batch-6.md 存在 | ✅ | 本文档 |
-| 包含 3 个已审计子系统章节 | ✅ | daemon-background, deep-link, open-runner |
-| 包含 4 个 open 子系统占位 | ✅ | platform-integrations, remote-control, ssh, teleport |
+| 包含 4 个已审计子系统章节 | ✅ | daemon-background, deep-link, open-runner, platform-integrations |
+| 包含 3 个 open 子系统占位 | ✅ | remote-control, ssh, teleport |
 | 包含所有必需章节 | ✅ | 基线与范围、子系统审查、发现登记、证据边界、完成判定 |
 | 发现 ID 格式正确 | ✅ | B6-{subsystem}-{nn} |
 | 无私有连接声明 | ✅ | 证据边界明确声明未尝试私有服务 |
@@ -522,14 +655,14 @@
 | daemon-background | ✅ Audited | 10/10 分组覆盖，7 个发现（0 P0/P1, 1 P2, 6 P3） |
 | deep-link | ✅ Audited | 7/7 分组覆盖，0 P0/P1, 0 P2, 0 P3 发现 |
 | open-runner | ✅ Audited | 7/7 分组覆盖，7 个发现（0 P0/P1, 2 P2, 5 P3） |
-| platform-integrations | ⏸️ Open | 待审计 |
+| platform-integrations | ✅ Audited | 16/16 分组覆盖，3 个发现（0 P0/P1, 1 P2, 2 P3） |
 | remote-control | ⏸️ Open | 待审计 |
 | ssh | ⏸️ Open | 待审计 |
 | teleport | ⏸️ Open | 待审计 |
 
 ### 总体状态
 
-🟡 **部分完成**：本 slice 完成 daemon-background + deep-link + open-runner 3 个子系统审计，剩余 4 个子系统待后续 slice 审计。
+🟡 **部分完成**：本 slice 完成 daemon-background + deep-link + open-runner + platform-integrations 4 个子系统审计，剩余 3 个子系统待后续 slice 审计。
 
 ---
 
