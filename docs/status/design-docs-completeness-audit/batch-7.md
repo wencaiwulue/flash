@@ -5,9 +5,9 @@
 | 项目 | 状态 | 说明 |
 |------|------|------|
 | 基线 commit | 6fbe8f8 | 审查的基础提交 |
-| 上游 CLI | ✅ 已提取 | 已分析 build-feature-profile、data-structures、diagnostics、experimental-features、external-stubs、hooks-system、magic-docs、messaging-primitives、native-installer、network-security、runtime-lifecycle、telemetry、test-validation 相关字符串 |
-| 官方文档 | ✅ 已搜索 | 已搜索构建、feature flag、数据结构、debug、diagnostic、profiler、heapdump、doctor、experimental、beta、overflow、synthetic、good-claude、bughunter、chrome、mcp、computer use、zavora、cdp、hooks、pre-tool-use、post-tool-use、session-start、session-end、http-hook、command-hook、prompt-hook、agent-hook、async-hook、magic docs、magic-doc、auto-update documentation、proxy、mtls、ca certificate、NO_PROXY、CCR、upstreamproxy、abort controller、graceful shutdown、process identity、orphan process、activity manager、telemetry、analytics、opentelemetry、otlp、datadog、test、testing、live validation、smoke test、ci 相关页面 |
-| 审查范围 | build-feature-profile + data-structures + diagnostics + experimental-features + external-stubs + hooks-system + magic-docs + messaging-primitives + native-installer + network-security + runtime-lifecycle + telemetry + test-validation 完整审计，其余 1 个子系统待完成 | web-tools 待后续批次审计 |
+| 上游 CLI | ✅ 已提取 | 已分析 build-feature-profile、data-structures、diagnostics、experimental-features、external-stubs、hooks-system、magic-docs、messaging-primitives、native-installer、network-security、runtime-lifecycle、telemetry、test-validation、web-tools 相关字符串 |
+| 官方文档 | ✅ 已搜索 | 已搜索构建、feature flag、数据结构、debug、diagnostic、profiler、heapdump、doctor、experimental、beta、overflow、synthetic、good-claude、bughunter、chrome、mcp、computer use、zavora、cdp、hooks、pre-tool-use、post-tool-use、session-start、session-end、http-hook、command-hook、prompt-hook、agent-hook、async-hook、magic docs、magic-doc、auto-update documentation、proxy、mtls、ca certificate、NO_PROXY、CCR、upstreamproxy、abort controller、graceful shutdown、process identity、orphan process、activity manager、telemetry、analytics、opentelemetry、otlp、datadog、test、testing、live validation、smoke test、ci、web search、web fetch、web tools、content processing、budget、caching、redirects、preapproved domains 相关页面 |
+| 审查范围 | build-feature-profile + data-structures + diagnostics + experimental-features + external-stubs + hooks-system + magic-docs + messaging-primitives + native-installer + network-security + runtime-lifecycle + telemetry + test-validation + web-tools 完整审计，所有子系统已完成 | 所有子系统审计完成 |
 
 ### 启动状态 RED ⚠️
 
@@ -1485,7 +1485,142 @@
 
 ### web-tools
 
-**状态**：待审计 ❌
+| 项目 | 状态 | 说明 |
+|------|------|------|
+| Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-web-tools-design.md |
+| Coverage 存在 | ✅ | docs/architecture/coverage/web-tools.yaml |
+| Manifest 注册 | ✅ | id: web-tools, batch: 7, status: draft |
+| Coverage 覆盖分组 | 9/9 | web-search-tool, web-fetch-tool, web-fetch-utils, web-fetch-preapproved, web-fetch-ui, web-search-ui, web-search-prompt, web-fetch-prompt, brief-tool |
+
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了搜索查询与结果格式、来源引用要求、安全 URL 抓取、重定向处理、域名黑名单、HTML 到 Markdown 转换、内容长度限制、Haiku 模型摘要、预批准域名与普通域名区分、内容缓存、二进制内容处理、数据泄露防护（URL 长度限制、禁止用户名密码）等核心问题与约束。
+
+✅ **设计理由与备选方案**：9 项关键决策表格化展示，包含真实证据位置：
+- WebSearch 通过 server_tool_use 委托给 Anthropic API（证据：src/tools/WebSearchTool/WebSearchTool.ts 中 extraToolSchemas 和流式处理）
+- WebFetch 仅自动跟随同主机（或仅 www 差异）重定向，跨主机重定向返回提示让模型重新调用（证据：src/tools/WebFetchTool/utils.ts 中 isPermittedRedirect 和 getWithPermittedRedirects）
+- 预批准域名列表与沙箱网络隔离分离（证据：src/tools/WebFetchTool/preapproved.ts 中 PREAPPROVED_HOSTS，有测试验证分离）
+- 内容缓存按原始 URL 键，域名检查缓存按主机名键，TTL 不同（证据：src/tools/WebFetchTool/utils.ts 中 URL_CACHE 和 DOMAIN_CHECK_CACHE）
+- 非预批准域名强制 Haiku 摘要并限制引用长度，预批准域名允许完整返回且更宽松的引用（证据：src/tools/WebFetchTool/WebFetchTool.ts 中分支逻辑，prompt.ts 中不同指南）
+- 二进制内容同时保存到磁盘并尝试文本摘要，两者都返回给模型（证据：src/tools/WebFetchTool/utils.ts 中 mcpOutputStorage 持久化）
+- URL 最大长度从 250 增加到 2000，保留其他安全检查（证据：src/tools/WebFetchTool/utils.ts 中 MAX_URL_LENGTH 注释和 validateURL）
+- WebSearch 要求模型必须在响应末尾包含 Sources 部分，列出所有相关 URL（证据：src/tools/WebSearchTool/prompt.ts 中指南，WebSearchTool.ts 中 mapToolResultToToolResultBlockParam）
+- 使用 Turndown 懒加载单例转换 HTML→Markdown，避免重复初始化（证据：src/tools/WebFetchTool/utils.ts 中 getTurndownService）
+
+✅ **目标与非目标**：清晰界定了 URL_CACHE 15 分钟 TTL、50MB 限制、LRU 自动驱逐、DOMAIN_CHECK_CACHE 5 分钟 TTL、128 条目限制、Turndown 单例懒加载、所有工具输入输出有 Zod Schema 验证、权限检查、超时控制、同主机重定向最多 10 跳等目标；明确了不持久化 URL_CACHE 到磁盘、不提供缓存失效 API、不处理网页交互、不执行 JavaScript、不处理认证页面等非目标。
+
+✅ **架构、模块与数据流**：
+- 完整的 WebSearch 工具流程（validateInput→checkPermissions→call 使用 queryModelWithStreaming 流式调用→mapToolResultToToolResultBlockParam）
+- 完整的 WebFetch 工具流程（validateInput→checkPermissions→call 调用 getURLMarkdownContent→结果处理）
+- 完整的内容处理流程（URL 验证→缓存检查→http→https 升级→域名黑名单检查→允许重定向处理→二进制内容检测→HTML→Markdown 转换→摘要处理）
+- 核心模块接口清晰（WebSearchTool, WebFetchTool, utils, preapproved, prompts, UI）
+
+#### 源码验证
+
+**web-search-tool**（src/tools/WebSearchTool/WebSearchTool.ts）：
+- validateInput 检查 query 非空，allowed_domains 与 blocked_domains 不同时使用 ✅
+- isEnabled 检查 provider（firstParty 总是启用，Vertex Claude 4+ 启用，Foundry 启用）✅
+- call 使用 queryModelWithStreaming 流式调用，解析 content_block_start、content_block_delta、content_block_stop 事件 ✅
+- max_uses: 8 硬编码限制单次工具调用中的搜索次数 ✅
+- mapToolResultToToolResultBlockParam 要求模型必须包含 Sources 部分 ✅
+
+**web-fetch-tool**（src/tools/WebFetchTool/WebFetchTool.ts）：
+- checkPermissions 首先检查 isPreapprovedHost，是则直接允许 ✅
+- call 调用 getURLMarkdownContent，处理 RedirectInfo 返回提示让模型重新调用 ✅
+- 预批准域名且内容是 Markdown 且长度 < 100,000 直接返回，否则 applyPromptToMarkdown ✅
+- 二进制内容附加持久化路径信息 ✅
+
+**web-fetch-utils**（src/tools/WebFetchTool/utils.ts）：
+- validateURL 检查长度 ≤ 2000、无用户名密码、主机名至少两段 ✅
+- checkDomainBlocklist 调用 api.anthropic.com，仅缓存允许的域名 ✅
+- isPermittedRedirect 检查协议相同、端口相同、无用户名密码、strip www 后主机相同 ✅
+- getWithPermittedRedirects 递归跟随，max 10 跳 ✅
+- getURLMarkdownContent http→https 自动升级 ✅
+- URL_CACHE: LRUCache<string, CacheEntry>, TTL 15 分钟，最大 50MB ✅
+- DOMAIN_CHECK_CACHE: LRUCache<string, true>, TTL 5 分钟，最大 128 条目 ✅
+- getTurndownService 懒加载单例，动态 import('turndown') ✅
+- applyPromptToMarkdown 使用 queryHaiku 摘要，截断到 100,000 字符 ✅
+- 二进制内容检测：isBinaryContentType，持久化：persistBinaryContent ✅
+- EgressBlockedError 检测：403 + x-proxy-error: blocked-by-allowlist ✅
+
+**web-fetch-preapproved**（src/tools/WebFetchTool/preapproved.ts）：
+- PREAPPROVED_HOSTS 包含大量技术文档域名 ✅
+- HOSTNAME_ONLY 和 PATH_PREFIXES 模块加载时拆分一次 ✅
+- isPreapprovedHost 路径前缀匹配时强制段边界 ✅
+- 注释明确：仅用于 WebFetch，沙箱不继承 ✅
+
+**web-fetch-ui**（src/tools/WebFetchTool/UI.tsx）、**web-search-ui**（src/tools/WebSearchTool/UI.tsx）：
+- getToolUseSummary、renderToolResultMessage、renderToolUseMessage、renderToolUseProgressMessage 实现 ✅
+
+**web-search-prompt**（src/tools/WebSearchTool/prompt.ts）、**web-fetch-prompt**（src/tools/WebFetchTool/prompt.ts）：
+- getWebSearchPrompt 要求必须包含 Sources 部分 ✅
+- makeSecondaryModelPrompt 根据 isPreapprovedDomain 提供不同指南 ✅
+
+**brief-tool**（src/tools/BriefTool/）：
+- 简要提及，非核心，有 spec 说明 ✅
+
+**发现 B7-web-tools-01**：web-tools 核心功能无专门测试覆盖，包括 WebSearchTool 流式事件处理、WebFetchTool 重定向逻辑、缓存机制、域名检查、HTML→Markdown 转换、预批准域名逻辑、摘要处理等。严重度：P2（功能正常但无回归保护），置信度：已证实（tests/ 目录扫描确认无专门测试，spec 改进建议明确提及）
+
+**发现 B7-web-tools-02**：applyPromptToMarkdown 当前对非预批准域名总是截断到 100,000 字符再摘要，可能丢失重要信息。严重度：P2（体验问题），置信度：已证实（spec 改进建议明确提及支持分块摘要）
+
+**发现 B7-web-tools-03**：URL_CACHE 无法手动失效（除了 clearWebFetchCache 清空所有），缺少按 URL 或域名失效的功能。严重度：P3（灵活性问题），置信度：设计推断（spec 改进建议明确提及）
+
+**发现 B7-web-tools-04**：预批准域名列表需要手动更新，缺少定期从远程更新的机制。严重度：P3（维护性问题），置信度：设计推断（spec 改进建议明确提及）
+
+#### 测试验证
+
+检查 coverage 中提及的测试文件：
+- ❌ 无专门的 web-search-tool 测试
+- ❌ 无专门的 web-fetch-tool 测试
+- ❌ 无专门的 web-fetch-utils 测试
+- ❌ 无专门的 web-fetch-preapproved 测试
+- ❌ 无专门的 brief-tool 测试
+- ✅ test/utils/sandbox/webfetch-preapproved-separated.test.ts（验证预批准与沙箱分离）存在，但非专门针对 web-tools 核心逻辑
+
+**发现 B7-web-tools-05**：缺少 web-tools 核心模块的专门测试，仅有一个验证预批准与沙箱分离的测试。严重度：P2（功能正常但无回归保护），置信度：已证实（tests/ 目录扫描确认，spec 改进建议明确提及）
+
+#### 隐私与安全边界审查
+
+**URL 安全边界**：
+- 长度限制 ≤ 2000 字符，防止数据泄露 ✅
+- 禁止包含用户名密码的 URL ✅
+- 禁止单段主机名（防止内网访问）✅
+
+**域名安全边界**：
+- 域名黑名单检查：api.anthropic.com/api/web/domain_info ✅
+- DOMAIN_CHECK_CACHE 仅缓存允许的域名，blocked/check_failed 不缓存，下次重试 ✅
+- 预批准域名自动允许，但沙箱网络不继承，职责分离 ✅
+
+**重定向安全边界**：
+- 仅自动跟随同主机（或仅 www 差异）重定向 ✅
+- 跨主机重定向返回提示，模型需要重新调用，重新权限检查 ✅
+- 最多 10 跳，防止循环 ✅
+
+**内容安全边界**：
+- 非预批准域名强制 Haiku 摘要，引用限制 125 字符 ✅
+- 预批准域名宽松，直接返回 Markdown ✅
+- HTTP→HTTPS 自动升级 ✅
+
+**缓存安全边界**：
+- URL_CACHE 仅内存，不持久化到磁盘 ✅
+- TTL 自动过期 ✅
+
+**二进制内容安全边界**：
+- 持久化到 mcpOutputStorage 管理的临时目录 ✅
+- 同时尝试文本摘要，模型可选择查看原始文件 ✅
+
+#### 上游证据
+
+上游 CLI strings 已提取，关键匹配：
+- `WebSearchTool`、`WebFetchTool`、`preapproved`、`PREAPPROVED_HOSTS`、`isPreapprovedHost`：web 工具核心类/函数/常量匹配 ✅
+- `getURLMarkdownContent`、`getWithPermittedRedirects`、`isPermittedRedirect`、`checkDomainBlocklist`、`validateURL`：web 工具核心函数匹配 ✅
+- `URL_CACHE`、`DOMAIN_CHECK_CACHE`、`MAX_URL_LENGTH`、`MAX_REDIRECTS`、`MAX_MARKDOWN_LENGTH`：常量匹配 ✅
+- `queryModelWithStreaming`、`queryHaiku`、`getSmallFastModel`：依赖函数匹配 ✅
+- `mcpOutputStorage`、`persistBinaryContent`、`isBinaryContentType`：二进制内容处理匹配 ✅
+
+官方文档索引搜索已执行：
+- 搜索关键词：`web search`、`web fetch`、`web tools`、`content processing`、`budget`、`caching`、`redirects`、`preapproved domains`、`turndown`、`html to markdown`
+- 命中：无直接 web-tools 相关官方文档页面
 
 ## 发现登记
 
@@ -1552,8 +1687,13 @@
 | B7-test-validation-04 | test-validation | P3 | tests/fixtures/ 与实际源码同步需要注意，缺少集成测试验证 fixture 与构建配置一致性 | 是（设计推断） |
 | B7-test-validation-05 | test-validation | P3 | 跨领域测试的 spec 边界需要明确，避免重复或遗漏 | 是（设计推断） |
 | B7-test-validation-06 | test-validation | P1 | `scripts/live-model-validation.ts` 在 `enableConfigs()` 前检查凭据，standalone 脚本的 settings 初始化契约需要明确，凭据互斥检查需要集中处理 | 是（spec 改进建议明确提及） |
+| B7-web-tools-01 | web-tools | P2 | web-tools 核心功能无专门测试覆盖，包括 WebSearchTool 流式事件处理、WebFetchTool 重定向逻辑、缓存机制、域名检查、HTML→Markdown 转换、预批准域名逻辑、摘要处理等 | 是（spec 改进建议明确提及） |
+| B7-web-tools-02 | web-tools | P2 | applyPromptToMarkdown 当前对非预批准域名总是截断到 100,000 字符再摘要，可能丢失重要信息 | 是（spec 改进建议明确提及） |
+| B7-web-tools-03 | web-tools | P3 | URL_CACHE 无法手动失效（除了 clearWebFetchCache 清空所有），缺少按 URL 或域名失效的功能 | 是（spec 改进建议明确提及） |
+| B7-web-tools-04 | web-tools | P3 | 预批准域名列表需要手动更新，缺少定期从远程更新的机制 | 是（spec 改进建议明确提及） |
+| B7-web-tools-05 | web-tools | P2 | 缺少 web-tools 核心模块的专门测试，仅有一个验证预批准与沙箱分离的测试 | 是（spec 改进建议明确提及） |
 
-**汇总**：P0 0 个，P1 1 个，P2 24 个，P3 36 个，总计 61 个发现。
+**汇总**：P0 0 个，P1 1 个，P2 27 个，P3 38 个，总计 66 个发现。
 
 ---
 
@@ -1608,10 +1748,10 @@
 
 | 证据类型 | 收集范围 | 限制 |
 |---------|---------|------|
-| 上游 CLI strings | 已收集 build-feature-profile、data-structures、diagnostics、experimental-features、external-stubs、hooks-system、magic-docs、messaging-primitives、native-installer、network-security、runtime-lifecycle、telemetry、test-validation 相关字符串 | 未收集 web-tools 子系统的相关字符串 |
-| 官方文档 | 已搜索构建、feature flag、数据结构、debug、diagnostic、profiler、heapdump、doctor、experimental、beta、overflow、synthetic、good-claude、bughunter、chrome、mcp、computer use、zavora、cdp、hooks、pre-tool-use、post-tool-use、session-start、session-end、http-hook、command-hook、prompt-hook、agent-hook、async-hook、magic docs、magic-doc、auto-update documentation、proxy、mtls、ca certificate、NO_PROXY、CCR、upstreamproxy、abort controller、graceful shutdown、process identity、orphan process、activity manager、telemetry、analytics、opentelemetry、otlp、datadog、test、testing、live validation、smoke test、ci 相关关键词 | 未搜索 web-tools 相关文档 |
-| 源码验证 | 已验证 build-feature-profile、data-structures、diagnostics、experimental-features、external-stubs、hooks-system、magic-docs、messaging-primitives、native-installer、network-security、runtime-lifecycle、telemetry、test-validation 十三子系统的源码 | 未验证 web-tools 的源码 |
-| 测试验证 | 已检查 build-feature-profile、data-structures、diagnostics、experimental-features、external-stubs、hooks-system、magic-docs、messaging-primitives、native-installer、network-security、runtime-lifecycle、telemetry、test-validation 十三子系统的测试 | 未检查 web-tools 的测试 |
+| 上游 CLI strings | 已收集 build-feature-profile、data-structures、diagnostics、experimental-features、external-stubs、hooks-system、magic-docs、messaging-primitives、native-installer、network-security、runtime-lifecycle、telemetry、test-validation、web-tools 相关字符串 | 所有 14 个子系统字符串均已收集 |
+| 官方文档 | 已搜索构建、feature flag、数据结构、debug、diagnostic、profiler、heapdump、doctor、experimental、beta、overflow、synthetic、good-claude、bughunter、chrome、mcp、computer use、zavora、cdp、hooks、pre-tool-use、post-tool-use、session-start、session-end、http-hook、command-hook、prompt-hook、agent-hook、async-hook、magic docs、magic-doc、auto-update documentation、proxy、mtls、ca certificate、NO_PROXY、CCR、upstreamproxy、abort controller、graceful shutdown、process identity、orphan process、activity manager、telemetry、analytics、opentelemetry、otlp、datadog、test、testing、live validation、smoke test、ci、web search、web fetch、web tools、content processing、budget、caching、redirects、preapproved domains 相关关键词 | 所有 14 个子系统文档均已搜索 |
+| 源码验证 | 已验证 build-feature-profile、data-structures、diagnostics、experimental-features、external-stubs、hooks-system、magic-docs、messaging-primitives、native-installer、network-security、runtime-lifecycle、telemetry、test-validation、web-tools 十四子系统的源码 | 所有 14 个子系统源码均已验证 |
+| 测试验证 | 已检查 build-feature-profile、data-structures、diagnostics、experimental-features、external-stubs、hooks-system、magic-docs、messaging-primitives、native-installer、network-security、runtime-lifecycle、telemetry、test-validation、web-tools 十四子系统的测试 | 所有 14 个子系统测试均已检查 |
 
 **证据完整性说明**：
 - diagnostics：已验证所有 coverage 分组（diagnostics-commands、diagnostics-tests），已读取 spec，已检查现有测试
@@ -1623,7 +1763,8 @@
 - runtime-lifecycle：已验证所有 coverage 分组（abort-controller、combined-abort-signal、cleanup-registry、cleanup-old-files、graceful-shutdown、idle-timeout、activity-manager、event-loop-stall-detector、process-identity、generic-process-utils），已读取 spec，已检查现有测试
 - telemetry：已验证所有 coverage 分组（telemetry-core），已读取 spec，已检查现有测试（antTraceCommand.test.ts 间接验证）
 - test-validation：已验证所有 coverage 分组（test-runner、live-cloud-validation、live-desktop-validation、live-model-validation、live-skillhub-validation、smoke-tests、cross-cutting-acceptance、test-fixtures、uncovered-tests），已读取 spec，已检查现有测试
-- 所有 13 个子系统均通过对抗性审查验证 P0/P1 与上游偏差，测试与 live 差距单独标记为 P2
+- web-tools：已验证所有 coverage 分组（web-search-tool、web-fetch-tool、web-fetch-utils、web-fetch-preapproved、web-fetch-ui、web-search-ui、web-search-prompt、web-fetch-prompt、brief-tool），已读取 spec，已检查现有测试
+- 所有 14 个子系统均通过对抗性审查验证 P0/P1 与上游偏差，测试与 live 差距单独标记为 P2
 
 ## 完成判定
 
@@ -1642,6 +1783,6 @@
 | runtime-lifecycle | ✅ 审计完成 |
 | telemetry | ✅ 审计完成 |
 | test-validation | ✅ 审计完成 |
-| web-tools | ❌ 待审计 |
+| web-tools | ✅ 审计完成 |
 
-**整体状态**：⚠️ 部分完成（13/14 子系统审计完成）
+**整体状态**：✅ 全部完成（14/14 子系统审计完成）
