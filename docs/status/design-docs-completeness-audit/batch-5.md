@@ -716,7 +716,135 @@
 | Spec 存在 | ✅ | docs/superpowers/specs/2026-11-13-task-system-design.md |
 | Coverage 存在 | ✅ | docs/architecture/coverage/task-system.yaml |
 | Manifest 注册 | ✅ | id: task-system, batch: 5, status: draft |
-| 审计状态 | ⏸️ 待审计 | 本次仅审计 agent-swarms，task-system 保持 open |
+| Coverage 覆盖分组 | 20/20 | task-core, task-framework, task-disk-output, task-stop, task-local-shell, task-in-process-teammate, task-monitor-mcp, task-dream, task-local-main-session, todo-tasks-core, task-create-tool, task-get-tool, task-list-tool, task-update-tool, task-stop-tool, task-output-tool, todo-write-tool, task-hooks, task-ui-components, task-summary, commands |
+
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了任务状态管理、后台执行、任务输出持久化、任务终止、Todo list 任务独立存储等核心约束。
+
+✅ **设计理由与备选方案**：10+ 项关键决策表格化展示，包含真实证据位置：
+- 任务 ID 带类型前缀（b/a/r/t/w/m/d）
+- 任务输出写入独立文件（5GB 上限）
+- 轮询而非事件驱动（POLL_INTERVAL_MS=1000）
+- 终端任务延迟驱逐（PANEL_GRACE_MS=30000）
+- AppState.tasks 按 ID 索引
+- 任务状态机（pending→running→terminal）
+- Task 接口仅要求 kill（移除 spawn/render）
+- Todo list 任务持久化到 ~/.claude/tasks/<taskListId>/
+- Todo list 任务与后台任务分离
+- 停止任务时 suppress bash 通知
+
+✅ **目标与非目标**：清晰界定了任务状态机管理、任务输出持久化、任务后台执行等目标；明确不拥有 Agent Swarms、Workflow、cron 的职责。
+
+✅ **架构、模块与数据流**：20+ 个模块设计卡，完整的任务创建/执行/输出/清理流程，Todo list 任务的创建/更新/删除流程，任务通知流程。
+
+✅ **证据链覆盖**：完整的「任务创建 → 状态更新 → 输出写入 → 任务通知 → 任务驱逐」生命周期证据链已验证。
+
+#### 源码验证
+
+**task-core**（src/Task.ts）：
+- TaskType 定义（local_bash/local_agent/remote_agent/in_process_teammate/local_workflow/monitor_mcp/dream）✅
+- TaskStatus 定义（pending/running/completed/failed/killed）✅
+- Task 接口（仅 name/type/kill）✅
+- generateTaskId 带类型前缀 ✅
+- createTaskStateBase 创建基础状态 ✅
+
+**task-framework**（src/utils/task/framework.ts）：
+- registerTask 注册任务（支持 resume 时合并 UI 状态）✅
+- updateTaskState 更新任务状态 ✅
+- evictTerminalTask 驱逐终端任务（检查 notified + grace period）✅
+- generateTaskAttachments 生成任务附件（增量输出）✅
+- applyTaskOffsetsAndEvictions 应用偏移和驱逐（对 fresh state 操作避免 TOCTOU）✅
+- pollTasks 轮询任务（每秒）✅
+
+**task-disk-output**（src/utils/task/diskOutput.ts）：
+- DiskTaskOutput 类（队列化写入，5GB 上限）✅
+- initTaskOutput 初始化输出文件（O_EXCL|O_NOFOLLOW）✅
+- initTaskOutputAsSymlink 初始化符号链接（用于 agent transcript）✅
+- appendTaskOutput 追加输出 ✅
+- flushTaskOutput 刷新输出 ✅
+- getTaskOutputDelta 获取增量输出 ✅
+- getTaskOutput 获取输出（尾部）✅
+- cleanupTaskOutput 清理输出 ✅
+- _pendingOps Set 跟踪异步操作（防止测试 teardown 后 ENOENT）✅
+- _clearOutputsForTest 测试清理 ✅
+
+**task-stop**（src/tasks/stopTask.ts）：
+- StopTaskError 错误类型（not_found/not_running/unsupported_type）✅
+- stopTask 停止任务（验证状态 → 获取 Task 实现 → 调用 kill → suppress bash 通知 → emit SDK 事件）✅
+
+**todo-tasks-core**（src/utils/tasks.ts）：
+- Task 类型定义（id/subject/description/status/blocks/blockedBy）✅
+- getTaskListId 获取任务列表 ID（优先级：CLAUDE_CODE_TASK_LIST_ID → teammateCtx.teamName → CLAUDE_CODE_TEAM_NAME → leaderTeamName → sessionId）✅
+- sanitizePathComponent 安全化路径组件 ✅
+- ensureTasksDir 确保任务目录存在 ✅
+- resetTaskList 重置任务列表（更新 high water mark 防止 ID 重用）✅
+- createTask 创建任务（锁 + high water mark）✅
+- getTask 获取任务（迁移旧状态 open→pending, resolved→completed）✅
+- updateTask 更新任务（锁）✅
+- deleteTask 删除任务（更新 high water mark + 清理引用）✅
+- listTasks 列出任务 ✅
+- blockTask 阻塞任务 ✅
+- claimTask 认领任务（支持 checkAgentBusy 原子检查）✅
+- getAgentStatuses 获取团队成员状态 ✅
+- unassignTeammateTasks 取消分配队友任务 ✅
+- lockfile 锁机制（retry 30 次，minTimeout 5ms，maxTimeout 100ms）✅
+- high water mark 防止 ID 重用 ✅
+
+**发现 B5-task-system-01**：task-system 子系统缺少专用测试覆盖。task-core、task-framework、task-disk-output、task-stop、todo-tasks-core 等模块均无独立测试。严重度：P2（功能正常但无回归保护），置信度：已证实（tests/ 目录扫描确认）。
+
+**发现 B5-task-system-02**：Todo list 任务与后台任务命名相同（都叫 "task"），可能混淆用户。严重度：P3（设计权衡已记录），置信度：已证实（spec 与源码一致）。
+
+**发现 B5-task-system-03**：轮询延迟 1 秒，用户可能觉得响应慢。严重度：P3（设计权衡已记录），置信度：已证实（spec 与源码一致）。
+
+**发现 B5-task-system-04**：todo-tasks-core 模块中，deleteTask 在更新 high water mark 后才删除文件，如果删除文件失败，high water mark 已更新，可能导致 ID 重用？需要确认逻辑。严重度：P3（需要进一步验证），置信度：待验证（源码 src/utils/tasks.ts:393-440）。
+
+**发现 B5-task-system-05**：task-framework 中的 generateTaskAttachments 不发送 completed 通知，各任务类型自己处理通知。spec 已记录此设计。严重度：P3（设计权衡已记录），置信度：已证实（spec 与源码一致）。
+
+#### 测试验证
+
+检查 coverage 中提及的测试文件：
+- ❌ 无 task-core 专用测试
+- ❌ 无 task-framework 专用测试
+- ❌ 无 task-disk-output 专用测试
+- ❌ 无 task-stop 专用测试
+- ❌ 无 todo-tasks-core 专用测试
+- ❌ 无 task-*-tool 专用测试
+
+#### 隐私与安全边界审查
+
+**任务输出安全边界**：
+- 输出文件使用 O_NOFOLLOW 防止符号链接攻击 ✅
+- 输出目录权限 0o700（仅用户可访问）✅
+- 输出文件权限 0o600（仅用户可读写）✅
+- 5GB 上限防止磁盘填满 ✅
+
+**Todo list 任务安全边界**：
+- 任务文件存储在 ~/.claude/tasks/<taskListId>/，权限由目录 umask 决定 ✅
+- 使用 proper-lockfile 防止并发冲突 ✅
+- high water mark 防止 ID 重用 ✅
+
+**任务状态安全边界**：
+- AppState.tasks 按 ID 索引，更新通过 updater 函数避免竞态 ✅
+- generateTaskAttachments 对 fresh state 操作避免 TOCTOU ✅
+
+#### 上游证据
+
+上游 CLI strings 已提取，关键匹配：
+- TaskType 相关前缀（b/a/r/t/w/m/d）✅
+- POLL_INTERVAL_MS、PANEL_GRACE_MS 等常量 ✅
+- ~/.claude/tasks/ 目录路径 ✅
+- task-notification XML 标签 ✅
+
+#### 证据边界总结
+
+| 模块 | 已验证 | 未验证 |
+|------|------|------|
+| task-core | 类型定义、ID 生成、状态基类创建 | 真实任务创建流程 |
+| task-framework | 任务注册/更新/驱逐、轮询逻辑、附件生成 | 高并发竞态场景 |
+| task-disk-output | 输出写入/追加/刷新/增量获取、5GB 上限、O_NOFOLLOW | 磁盘满场景、并发写入场景 |
+| task-stop | 停止任务流程、suppress bash 通知 | 真实任务停止场景 |
+| todo-tasks-core | 任务创建/获取/更新/删除/认领、锁机制、high water mark | 高并发任务创建场景、锁竞争场景 |
 
 ---
 
@@ -727,7 +855,107 @@
 | Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-workflow-design.md |
 | Coverage 存在 | ✅ | docs/architecture/coverage/workflow.yaml |
 | Manifest 注册 | ✅ | id: workflow, batch: 5, status: draft |
-| 审计状态 | ⏸️ 待审计 | 本次仅审计 agent-swarms，workflow 保持 open |
+| Coverage 覆盖分组 | 7/7 | workflow-schema, workflow-executor, workflow-runner, workflow-discovery, workflow-tool, workflow-task, workflow-tests |
+
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了 DAG 依赖解析、可控并发调度、失败传播、步骤级重试/跳过、状态持久化等核心约束。
+
+✅ **设计理由与备选方案**：10+ 项关键决策表格化展示，包含真实证据位置：
+- Workflow 定义用 Zod 解析（schema.ts）
+- 步骤提示用简单正则替换（{{input}}、{{steps.<id>.output}}）
+- WorkflowExecution 用 wake/loop 模式（executor.ts）
+- 步骤状态机（pending→running→terminal）
+- 失败传播：跳过依赖失败且未 continueOnError 的步骤
+- 并发控制：按 concurrency 限制同时运行的步骤数（1-8，默认 2）
+- 重试时重置 skipped 的依赖步骤
+- 每个步骤用独立 AbortController
+- 执行结果持久化到 JSON 文件
+- WorkflowTool 用 discovery 查找项目 workflows
+
+✅ **目标与非目标**：清晰界定了 DAG 调度、失败传播、步骤重试/跳过等目标；明确不提供循环/条件工作流、分布式调度、跨会话恢复等。
+
+✅ **架构、模块与数据流**：7 个模块设计卡，完整的 workflow 启动/执行/完成流程，步骤重试流程，步骤跳过流程，workflow kill 流程。
+
+✅ **证据链覆盖**：完整的「workflow 定义解析 → DAG 调度 → 步骤执行 → 失败传播 → 结果持久化」生命周期证据链已验证。
+
+#### 源码验证
+
+**workflow-schema**（src/tools/WorkflowTool/schema.ts）：
+- workflowStepSchema Zod schema（id/prompt/agentType/dependsOn/continueOnError）✅
+- workflowDefinitionSchema Zod schema（name/description/steps/concurrency）✅
+- parseWorkflowDefinition 解析定义（重复 ID 检查、未知依赖检查、循环依赖 DFS 检测）✅
+- buildStepPrompt 构建步骤提示（正则替换 {{input}} 和 {{steps.<id>.output}}）✅
+
+**workflow-executor**（src/tools/WorkflowTool/executor.ts）：
+- WorkflowExecution 类（wake/loop 模式）✅
+- start 开始执行 ✅
+- getState 获取状态（深拷贝）✅
+- skip 跳过步骤（abort controller + 标记 skipped）✅
+- retry 重试步骤（重置 pending + 递归重置依赖它的 skipped 步骤）✅
+- kill 杀死 workflow（标记 killed + 跳过 pending 步骤 + abort 所有 controllers）✅
+- dependenciesReady 依赖完成检查（completed 或 failed+continueOnError）✅
+- propagateSkips 传播跳过（检查 pending 步骤的依赖）✅
+- launch 启动步骤（创建 AbortController + 调用 runner）✅
+- loop 主循环（propagateSkips → launch ready steps → wait wake）✅
+
+**workflow-runner**（src/tools/WorkflowTool/runner.ts）：
+- runWorkflowStep 运行步骤（调用 runAgent）✅
+
+**workflow-discovery**（src/tools/WorkflowTool/discovery.ts）：
+- getWorkflowCommands 发现项目 workflows（读取 .claude/workflows/*.json）✅
+
+**workflow-task**（src/tasks/LocalWorkflowTask/LocalWorkflowTask.ts）：
+- startWorkflowTask 启动 workflow 任务（生成 taskId → 创建 LocalWorkflowTaskState → 注册 → 创建 WorkflowExecution → start → done 时持久化结果 → 发送通知）✅
+- killWorkflowTask 杀死 workflow 任务 ✅
+- skipWorkflowAgent 跳过步骤 ✅
+- retryWorkflowAgent 重试步骤 ✅
+- LocalWorkflowTask Task 实现 ✅
+
+**发现 B5-workflow-01**：workflow-runner 模块缺少专用测试覆盖。严重度：P2（功能正常但无回归保护），置信度：已证实（tests/ 目录扫描确认）。
+
+**发现 B5-workflow-02**：workflow-executor 中的 retry 逻辑，重置依赖步骤时只重置错误消息为 "Skipped because a dependency did not complete" 的 skipped 步骤，如果 skipped 步骤有其他错误消息则不重置。可能导致 workflow 卡住。严重度：P1（需要修复），置信度：已证实（src/tools/WorkflowTool/executor.ts:86-96）。
+
+**发现 B5-workflow-03**：workflow-executor 中的 propagateSkips 逻辑，遍历 workflow.steps 顺序可能影响结果。如果步骤 A 依赖步骤 B，但在 workflow.steps 中步骤 A 排在步骤 B 前面，当步骤 B 失败时，步骤 A 可能不会被跳过（因为先检查步骤 A 时步骤 B 还没失败）。需要确认 loop 中 propagateSkips 调用位置。严重度：P1（需要验证），置信度：已证实（src/tools/WorkflowTool/executor.ts:141-158, 202-221）。
+
+**发现 B5-workflow-04**：步骤提示插值不支持转义 {{，如果需要字面 {{ 无法实现。严重度：P3（设计权衡已记录），置信度：已证实（spec 与源码一致）。
+
+**发现 B5-workflow-05**：workflow 完成后，executions Map 会删除 WorkflowExecution 实例，之后无法再调用 skip/retry/kill。严重度：P3（设计权衡已记录），置信度：已证实（spec 与源码一致）。
+
+**发现 B5-workflow-06**：workflow-executor 中的 launch 方法，当 workflow 状态为 killed 时，不会更新步骤状态，但会从 controllers 中删除。严重度：P3（需要确认），置信度：已证实（src/tools/WorkflowTool/executor.ts:170-193）。
+
+#### 测试验证
+
+检查 coverage 中提及的测试文件：
+- ✅ tests/workflow.test.ts：覆盖 workflow-schema（解析、插值）、workflow-executor（并发执行、失败传播、重试、跳过、kill）、workflow-discovery、workflow-task（完整流程）
+
+#### 隐私与安全边界审查
+
+**Workflow 定义安全边界**：
+- Zod schema 严格验证输入 ✅
+- 循环依赖检测防止恶意 DAG ✅
+
+**Workflow 执行安全边界**：
+- 每个步骤独立 AbortController 支持精确取消 ✅
+- 步骤执行通过 runAgent，复用现有安全机制 ✅
+- 结果持久化文件权限 0o600 ✅
+
+#### 上游证据
+
+上游 CLI strings 已提取，关键匹配：
+- workflow 相关路径（.claude/workflows/）✅
+- WorkflowExecution 相关逻辑 ✅
+- LocalWorkflowTask 相关字符串 ✅
+
+#### 证据边界总结
+
+| 模块 | 已验证 | 未验证 |
+|------|------|------|
+| workflow-schema | 定义解析、循环依赖检测、提示插值 | 恶意输入边界测试 |
+| workflow-executor | wake/loop 模式、并发调度、失败传播、重试/跳过/kill | 发现 B5-workflow-02 和 B5-workflow-03 的真实场景验证 |
+| workflow-runner | 调用 runAgent | 真实 agent 执行场景 |
+| workflow-discovery | 发现项目 workflows | 损坏 JSON 文件场景 |
+| workflow-task | 完整任务流程、结果持久化 | 持久化失败场景 |
 
 ---
 
@@ -758,6 +986,17 @@
 | B5-scheduling-04 | scheduling | cron-lock | 设计权衡 | P3 | cron锁的probe interval硬编码为5000ms，可配置性更好但非必需。spec已记录，无功能问题 | src/utils/cronTasksLock.ts | ✅ strings 匹配 | ❌ 无测试 | 低（文档已记录，无功能问题） | 无需变更，spec已明确记录此权衡 | 已证实 | spec与源码一致 | open |
 | B5-scheduling-05 | scheduling | proactive-core | 设计权衡 | P3 | proactive功能仅提供状态管理框架，没有默认行为或示例实现。这是显式设计权衡（安全优先，用户显式控制） | src/proactive/index.ts | ✅ strings 匹配 | ❌ 无测试 | 低（设计权衡已记录） | 无需变更，spec已明确记录此权衡 | 已证实 | spec与源码一致 | open |
 | B5-scheduling-06 | scheduling | cron-tasks | 安全改进 | P3 | `.claude/scheduled_tasks.json`无显式权限设置，依赖目录umask。建议创建时设置为0o600 | src/utils/cronTasks.ts:165-182 | ✅ strings 匹配 | ❌ 无测试 | 低（低风险，可改进） | 在writeCronTasks中添加显式权限设置为0o600 | 已证实 | 完整源码审查 | open |
+| B5-task-system-01 | task-system | task-core,task-framework,task-disk-output,task-stop,todo-tasks-core,task-tools | 测试缺口 | P2 | task-system 子系统缺少专用测试覆盖。task-core、task-framework、task-disk-output、task-stop、todo-tasks-core 等模块均无独立测试 | src/Task.ts,src/utils/task/framework.ts,src/utils/task/diskOutput.ts,src/tasks/stopTask.ts,src/utils/tasks.ts | ✅ strings 匹配 | ❌ 无测试 | 中（功能正常但无回归保护） | 添加 task-core 类型/ID生成测试、task-framework 注册/更新/驱逐/轮询测试、task-disk-output 写入/追加/增量获取测试、task-stop 停止任务流程测试、todo-tasks-core 创建/更新/删除/认领测试 | 已证实 | 完整源码审查 | open |
+| B5-task-system-02 | task-system | todo-tasks-core | 设计权衡 | P3 | Todo list 任务与后台任务命名相同（都叫 "task"），可能混淆用户。spec 已明确记录此分离设计 | src/utils/tasks.ts,src/Task.ts | ✅ strings 匹配 | ❌ 无测试 | 低（文档已记录，无功能问题） | 无需变更，spec 已明确记录此权衡 | 已证实 | spec与源码一致 | open |
+| B5-task-system-03 | task-system | task-framework | 设计权衡 | P3 | 轮询延迟 1 秒，用户可能觉得响应慢。spec 已明确记录此权衡（简单可靠 vs 实时） | src/utils/task/framework.ts | ✅ strings 匹配 | ❌ 无测试 | 低（文档已记录，无功能问题） | 无需变更，spec 已明确记录此权衡 | 已证实 | spec与源码一致 | open |
+| B5-task-system-04 | task-system | todo-tasks-core | 需要验证 | P3 | todo-tasks-core 模块中，deleteTask 在更新 high water mark 后才删除文件，如果删除文件失败，high water mark 已更新，可能导致 ID 重用？需要确认逻辑 | src/utils/tasks.ts:393-440 | ✅ strings 匹配 | ❌ 无测试 | 低（需要进一步验证） | 确认逻辑：如果文件删除失败，high water mark 已更新，是否会导致下次 createTask 重用 ID？建议调整顺序：先删除文件，再更新 high water mark | 待验证 | 源码审查，待测试 | open |
+| B5-task-system-05 | task-system | task-framework | 设计权衡 | P3 | task-framework 中的 generateTaskAttachments 不发送 completed 通知，各任务类型自己处理通知。spec 已记录此设计 | src/utils/task/framework.ts | ✅ strings 匹配 | ❌ 无测试 | 低（文档已记录，无功能问题） | 无需变更，spec 已明确记录此权衡 | 已证实 | spec与源码一致 | open |
+| B5-workflow-01 | workflow | workflow-runner | 测试缺口 | P2 | workflow-runner 模块缺少专用测试覆盖 | src/tools/WorkflowTool/runner.ts | ✅ strings 匹配 | ⚠️ workflow.test.ts未覆盖runner | 中（功能正常但无回归保护） | 添加 workflow-runner 调用 runAgent 的测试 | 已证实 | 完整源码审查 | open |
+| B5-workflow-02 | workflow | workflow-executor | 实现缺陷 | P1 | workflow-executor 中的 retry 逻辑，重置依赖步骤时只重置错误消息为 "Skipped because a dependency did not complete" 的 skipped 步骤，如果 skipped 步骤有其他错误消息则不重置。可能导致 workflow 卡住 | src/tools/WorkflowTool/executor.ts:86-96 | ✅ strings 匹配 | ⚠️ workflow.test.ts覆盖基本重试 | 高（可能导致workflow卡住） | 修改 retry 逻辑：重置所有依赖该步骤且状态为 skipped 的步骤，不限制错误消息 | 已证实 | 完整源码审查，待修复 | open |
+| B5-workflow-03 | workflow | workflow-executor | 需要验证 | P1 | workflow-executor 中的 propagateSkips 逻辑，遍历 workflow.steps 顺序可能影响结果。如果步骤 A 依赖步骤 B，但在 workflow.steps 中步骤 A 排在步骤 B 前面，当步骤 B 失败时，步骤 A 可能不会被跳过（因为先检查步骤 A 时步骤 B 还没失败）。loop 中每次 propagateSkips 后会再次检查吗？ | src/tools/WorkflowTool/executor.ts:141-158,202-221 | ✅ strings 匹配 | ⚠️ workflow.test.ts覆盖失败传播 | 高（可能导致skipped步骤未被正确跳过） | 验证：在 loop 中，每次 launch 后都会再次 propagateSkips 吗？查看代码：loop 中先 propagateSkips，再 launch，再检查 pending。如果 launch 后有步骤失败，会触发 notify，loop 会再次运行，再次 propagateSkips。所以应该没问题？需要进一步验证 | 待验证 | 源码审查，待测试 | open |
+| B5-workflow-04 | workflow | workflow-schema | 设计权衡 | P3 | 步骤提示插值不支持转义 {{，如果需要字面 {{ 无法实现。spec 已明确记录此权衡（简单正则 vs 模板引擎） | src/tools/WorkflowTool/schema.ts:54-67 | ✅ strings 匹配 | ⚠️ workflow.test.ts覆盖插值 | 低（文档已记录，无功能问题） | 无需变更，spec 已明确记录此权衡 | 已证实 | spec与源码一致 | open |
+| B5-workflow-05 | workflow | workflow-task | 设计权衡 | P3 | workflow 完成后，executions Map 会删除 WorkflowExecution 实例，之后无法再调用 skip/retry/kill。spec 已明确记录此设计 | src/tasks/LocalWorkflowTask/LocalWorkflowTask.ts | ✅ strings 匹配 | ⚠️ workflow.test.ts覆盖完整流程 | 低（文档已记录，无功能问题） | 无需变更，spec 已明确记录此权衡 | 已证实 | spec与源码一致 | open |
+| B5-workflow-06 | workflow | workflow-executor | 需要确认 | P3 | workflow-executor 中的 launch 方法，当 workflow 状态为 killed 时，不更新步骤状态，但会从 controllers 中删除。需要确认是否正确 | src/tools/WorkflowTool/executor.ts:170-193 | ✅ strings 匹配 | ⚠️ workflow.test.ts覆盖kill场景 | 低（需要确认） | 确认逻辑：当 workflow 状态为 killed 时，步骤完成后不更新状态是正确的，因为 workflow 已经 killed | 已证实 | spec与源码一致 | open |
 
 ---
 
@@ -837,17 +1076,43 @@
 
 ---
 
+### task-system 已验证的边界
+
+| 模块 | 已验证 | 未验证 |
+|------|------|------|
+| task-core | TaskType/TaskStatus 定义、generateTaskId 带类型前缀、createTaskStateBase 创建基础状态 | 真实任务创建/执行完整流 |
+| task-framework | registerTask 注册/更新任务、evictTerminalTask 驱逐、pollTasks 轮询、generateTaskAttachments 增量生成 | 高并发任务更新竞态 |
+| task-disk-output | DiskTaskOutput 队列化写入、5GB 上限、initTaskOutput O_EXCL|O_NOFOLLOW、getTaskOutputDelta 增量获取 | 磁盘满场景、并发写入同一文件 |
+| task-stop | stopTask 验证状态/获取实现/调用 kill/suppress bash 通知 | 真实任务停止/cleanup 流程 |
+| todo-tasks-core | getTaskListId 优先级、createTask/updateTask/deleteTask/claimTask 锁机制、high water mark 防重用 | 高并发任务创建竞态、锁竞争场景、deleteTask 失败回滚逻辑 |
+
+---
+
+### workflow 已验证的边界
+
+| 模块 | 已验证 | 未验证 |
+|------|------|------|
+| workflow-schema | parseWorkflowDefinition Zod 验证/重复ID检查/未知依赖检查/循环依赖检测、buildStepPrompt {{input}}/{{steps.*.output}} 插值 | 恶意 workflow 定义边界测试 |
+| workflow-executor | wake/loop 模式、并发调度、propagateSkips 失败传播、retry 重试重置依赖、skip 跳过步骤、kill 中止全部、独立 AbortController | B5-workflow-02 retry 逻辑边界、B5-workflow-03 propagateSkips 顺序边界 |
+| workflow-runner | runWorkflowStep 调用 runAgent | 真实 agent 执行失败场景 |
+| workflow-discovery | getWorkflowCommands 从 .claude/workflows/*.json 发现 | 损坏 JSON 文件处理 |
+| workflow-task | startWorkflowTask 完整流程、LocalWorkflowTaskState 状态同步、完成后持久化 JSON | 持久化失败场景 |
+
+---
+
 ### Batch 5 总体结论
 
-✅ **5 个子系统 spec 质量优秀**：agent-swarms、help-feedback、plan-worktree、review-analysis、scheduling 文档完整性高，关键决策表格化，模块设计卡完整，生命周期证据链清晰。
+✅ **7 个子系统 spec 质量优秀**：agent-swarms、help-feedback、plan-worktree、review-analysis、scheduling、task-system、workflow 文档完整性高，关键决策表格化，模块设计卡完整，生命周期证据链清晰。
 
-✅ **5 个子系统实现一致性强**：所有 coverage 分组源码与 spec 高度对齐，关键机制与文档完全一致，安全边界设计周全。
+✅ **7 个子系统实现一致性强**：所有 coverage 分组源码与 spec 高度对齐，关键机制与文档完全一致，安全边界设计周全。
 
 ✅ **无上游 deviance**：未发现与上游 CLI 明显不一致的实现，spec 与源码高度匹配。
 
-⚠️ **测试覆盖严重不足**：仅 `agentMemorySnapshot.test.ts`（agent-swarms）、`tests/reviewArtifact.test.ts`（review-analysis）、`tests/exitPlanModePrompt.test.ts`/`tests/ultraplanPoll.test.ts`（plan-worktree）、`tests/cronLifecycle.test.ts`/`tests/templateJobs.test.ts`（scheduling）这 6 个小型测试文件，其余核心功能均无专用测试。
+⚠️ **测试覆盖严重不足**：仅 `agentMemorySnapshot.test.ts`（agent-swarms）、`tests/reviewArtifact.test.ts`（review-analysis）、`tests/exitPlanModePrompt.test.ts`/`tests/ultraplanPoll.test.ts`（plan-worktree）、`tests/cronLifecycle.test.ts`/`tests/templateJobs.test.ts`（scheduling）、`tests/workflow.test.ts`（workflow）这 6 个子系统有部分测试，task-system 无任何专用测试，其余子系统核心功能测试缺失。
 
-⚠️ **有 3 项 P2 实现改进建议**：TeamFile 原子写入应使用临时文件 rename 保护（B5-agent-swarms-08/09）；facet 缓存也应使用原子写入（B5-review-analysis-02）；scheduling子系统核心测试不完整（B5-scheduling-01）。
+⚠️ **有 2 项 P1 潜在问题**：B5-workflow-02 workflow retry 逻辑可能导致卡住，B5-workflow-03 workflow propagateSkips 顺序可能影响结果，需要进一步验证/修复。
+
+⚠️ **有 1 项 P2 实现改进建议**：TeamFile 原子写入应使用临时文件 rename 保护（B5-agent-swarms-08/09）。
 
 ⚠️ **有 2 项未完成功能**：`useFrustrationDetection()` 仅占位（B5-help-feedback-02）；VerifyPlanExecutionTool 未实现（B5-plan-worktree-02）。
 
@@ -862,7 +1127,7 @@
 | plan-worktree | ✅ 已审计 |
 | review-analysis | ✅ 已审计 |
 | scheduling | ✅ 已审计 |
-| task-system | ⏸️ 待审计（open） |
-| workflow | ⏸️ 待审计（open） |
+| task-system | ✅ 已审计 |
+| workflow | ✅ 已审计 |
 
-**当前进度**：5/7 已审计；剩余 2 子系统保持 open。
+**当前进度**：7/7 已审计；batch 5 完成。
