@@ -58,7 +58,7 @@ Design docs: 0 errors, 71 warnings
 | text-formatting | 4 | 12/12 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ❌无测试 | 1 | batch-4.md#text-formatting |
 | ui-rendering | 4 | 14/14 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ❌无测试 | 2 | batch-4.md#ui-rendering |
 | voice-assistant | 4 | 10/10 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ❌无测试 | 1 | batch-4.md#voice-assistant |
-| workspace-ui | 4 | 13/13 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ❌无测试 | 2 | batch-4.md#workspace-ui |
+| workspace-ui | 4 | 13/13 | ✅完整 | ✅一致（设计文档已明确指出沙箱刷新竞态权衡） | ⚠️不充分（仅源码） | ❌无测试 | 2 | batch-4.md#workspace-ui |
 | agent-swarms | 5 | 0/20 | open | open | open | unverified | 0 | 未生成 |
 | help-feedback | 5 | 0/2 | open | open | open | unverified | 0 | 未生成 |
 | plan-worktree | 5 | 0/10 | open | open | open | unverified | 0 | 未生成 |
