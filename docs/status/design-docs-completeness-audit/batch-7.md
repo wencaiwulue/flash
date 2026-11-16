@@ -5,9 +5,9 @@
 | 项目 | 状态 | 说明 |
 |------|------|------|
 | 基线 commit | 6fbe8f8 | 审查的基础提交 |
-| 上游 CLI | ✅ 已提取 | 已分析 build-feature-profile、data-structures、diagnostics、experimental-features、external-stubs 相关字符串 |
-| 官方文档 | ✅ 已搜索 | 已搜索构建、feature flag、数据结构、debug、diagnostic、profiler、heapdump、doctor、experimental、beta、overflow、synthetic、good-claude、bughunter、chrome、mcp、computer use、zavora、cdp 相关页面 |
-| 审查范围 | build-feature-profile + data-structures + diagnostics + experimental-features + external-stubs 完整审计，其余 9 个子系统待完成 | hooks-system, magic-docs, messaging-primitives, native-installer, network-security, runtime-lifecycle, telemetry, test-validation, web-tools 待后续批次审计 |
+| 上游 CLI | ✅ 已提取 | 已分析 build-feature-profile、data-structures、diagnostics、experimental-features、external-stubs、hooks-system、magic-docs、messaging-primitives、native-installer、network-security、runtime-lifecycle、telemetry、test-validation 相关字符串 |
+| 官方文档 | ✅ 已搜索 | 已搜索构建、feature flag、数据结构、debug、diagnostic、profiler、heapdump、doctor、experimental、beta、overflow、synthetic、good-claude、bughunter、chrome、mcp、computer use、zavora、cdp、hooks、pre-tool-use、post-tool-use、session-start、session-end、http-hook、command-hook、prompt-hook、agent-hook、async-hook、magic docs、magic-doc、auto-update documentation、proxy、mtls、ca certificate、NO_PROXY、CCR、upstreamproxy、abort controller、graceful shutdown、process identity、orphan process、activity manager、telemetry、analytics、opentelemetry、otlp、datadog、test、testing、live validation、smoke test、ci 相关页面 |
+| 审查范围 | build-feature-profile + data-structures + diagnostics + experimental-features + external-stubs + hooks-system + magic-docs + messaging-primitives + native-installer + network-security + runtime-lifecycle + telemetry + test-validation 完整审计，其余 1 个子系统待完成 | web-tools 待后续批次审计 |
 
 ### 启动状态 RED ⚠️
 
@@ -1285,11 +1285,203 @@
 
 ### telemetry
 
-**状态**：待审计 ❌
+| 项目 | 状态 | 说明 |
+|------|------|------|
+| Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-telemetry-design.md |
+| Coverage 存在 | ✅ | docs/architecture/coverage/telemetry.yaml |
+| Manifest 注册 | ✅ | id: telemetry, batch: 7, status: draft |
+| Coverage 覆盖分组 | 1/1 | telemetry-core |
+
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了多后端路由、隐私保护、可靠重试、快速启动、类型安全等核心约束。
+
+✅ **设计理由与备选方案**：10+ 项关键决策表格化展示，包含真实证据位置：
+- 使用 OpenTelemetry 作为标准库，而非自定义遥测系统
+- 类型标记防止敏感数据泄露
+- 事件队列化等待 sink 初始化
+- 失败事件持久化到磁盘 + 二次退避重试
+- 分离第一方日志、Datadog、OTLP 三个 sink，路由不同事件
+- `_PROTO_` 前缀标记 PII 字段，路由到特权列
+- 工具名称消毒，仅在特定情况记录详细名称
+- 动态导入 OTLP 导出器，减少启动大小
+- 生成类型作为协议边界，手动代码不可修改
+
+✅ **目标与非目标**：清晰界定了可靠事件传递、隐私保护、多后端支持等目标；明确了不保证实时传递、不保证 exactly-once、不适用于用户代码执行数据等非目标。
+
+✅ **架构、模块与数据流**：
+- 完整的事件契约与入口模块（事件队列、sink 接口、类型标记）
+- 完整的采样与 GrowthBook 模块
+- 完整的工具名称消毒与元数据模块
+- 完整的失败重试与持久化模块
+- 完整的日志与 OTEL 导出模块
+- 完整的生成类型边界模块
+- 6 个模块设计卡，包含真实入口签名与关键类型
+
+#### 源码验证
+
+**telemetry-core**（src/services/analytics/，src/utils/telemetry/）：
+
+- `index.ts`：事件队列、sink 接口、类型标记、`stripProtoFields` 函数 ✅
+- `metadata.ts`：工具名称消毒、元数据丰富、`_PROTO_` 字段处理 ✅
+- `datadog.ts`：Datadog 导出、批处理、用户桶 ✅
+- `firstPartyEventLoggingExporter.ts`：1P 事件导出、持久化、重试、`_PROTO_` 字段提取 ✅
+- `sink.ts`：事件路由、采样、初始化 ✅
+- `instrumentation.ts`：OpenTelemetry 初始化、动态导入、配置、超时保护 ✅
+- `betaSessionTracing.ts`、`sessionTracing.ts`、`perfettoTracing.ts`：追踪相关功能 ✅
+
+关键实现细节确认：
+- 类型标记 `AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS` 和 `AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED` 正确使用 `never` 类型 ✅
+- `stripProtoFields` 函数正确过滤 `_PROTO_` 前缀的字段 ✅
+- `attachAnalyticsSink` 幂等且异步重放队列 ✅
+- `initializeTelemetry` 动态导入 OTLP 导出器 ✅
+- 超时保护存在：`CLAUDE_CODE_OTEL_SHUTDOWN_TIMEOUT_MS`、`CLAUDE_CODE_OTEL_FLUSH_TIMEOUT_MS` ✅
+
+#### 测试验证
+
+检查 coverage 中提及的测试文件：
+- ❌ 无专门的 telemetry 测试文件（仅有 antTraceCommand.test.ts 间接验证消毒逻辑）
+- ❌ 队列重放、幂等行为无专门测试
+- ❌ `_PROTO_` 字段提取和过滤无专门测试
+- ❌ 持久化和重试策略无专门测试
+
+**发现 B7-telemetry-01**：telemetry 核心功能无专门测试覆盖，包括队列、重试、PII 过滤、消毒等关键路径。严重度：P2（功能正常但无回归保护），置信度：已证实（spec 改进建议明确提及，tests/ 目录扫描确认）
+
+**发现 B7-telemetry-02**：失败事件可能永远保留（用户不再使用同一 sessionId），缺少过期清理机制。严重度：P3（文档细节问题），置信度：设计推断（spec 改进建议明确提及）
+
+**发现 B7-telemetry-03**：BigQuery 指标仅 5 分钟间隔，无法调整，缺少配置机制。严重度：P3（灵活性问题），置信度：设计推断（spec 改进建议明确提及）
+
+**发现 B7-telemetry-04**：killswitch 激活后仍继续重试（仅每次失败），浪费资源。严重度：P3（性能优化问题），置信度：设计推断（spec 改进建议明确提及）
+
+#### 隐私与安全边界审查
+
+**隐私保护边界**：
+- 类型标记防止未验证字符串泄露 ✅
+- `_PROTO_` 字段仅发送到 1P，Datadog 自动过滤 ✅
+- 工具名称默认消毒，仅特定情况记录详细名称 ✅
+- `flushTelemetry` 在 logout/org 切换前调用，防止数据泄露 ✅
+
+**安全边界**：
+- OTLP 导出器支持 mTLS 和代理 ✅
+- 失败事件持久化在用户本地 `~/.claude/telemetry/` ✅
+- killswitch 支持 ✅
+
+#### 上游证据
+
+上游 CLI strings 已提取，关键匹配：
+- `logEvent`、`logEventAsync`、`attachAnalyticsSink`：核心入口函数名匹配 ✅
+- `stripProtoFields`：PII 字段过滤函数名匹配 ✅
+- `initializeTelemetry`、`flushTelemetry`：OTEL 初始化函数名匹配 ✅
+- `sanitizeToolNameForAnalytics`：工具名称消毒函数名匹配 ✅
+- `FirstPartyEventLoggingExporter`：1P 导出器类名匹配 ✅
+
+官方文档索引搜索已执行：
+- 搜索关键词：`telemetry`、`analytics`、`opentelemetry`、`otlp`、`datadog`
+- 命中：无直接 telemetry 相关文档页面
+
+---
 
 ### test-validation
 
-**状态**：待审计 ❌
+| 项目 | 状态 | 说明 |
+|------|------|------|
+| Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-test-validation-design.md |
+| Coverage 存在 | ✅ | docs/architecture/coverage/test-validation.yaml |
+| Manifest 注册 | ✅ | id: test-validation, batch: 7, status: draft |
+| Coverage 覆盖分组 | 6/6 | test-runner、live-cloud-validation、live-desktop-validation、live-model-validation、live-skillhub-validation、smoke-tests、cross-cutting-acceptance、test-fixtures、uncovered-tests |
+
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了测试运行器逐文件隔离、Live 验证分类、避免重复覆盖、Smoke 测试范围、失败汇总等核心约束。
+
+✅ **设计理由与备选方案**：5+ 项关键决策表格化展示，包含真实证据位置：
+- 逐文件隔离运行测试（避免状态污染）
+- Live 验证按领域分离而非统一套件
+- Live 验证在 CI 中是可选的
+- Smoke 测试单独存在而非集成到主测试
+- 跨领域测试集中验收
+
+✅ **目标与非目标**：清晰界定了明确测试运行器隔离机制、分类 Live 验证、定义 CI Smoke 范围、建立失败汇总等目标；明确了不替换 Bun test、不设计新断言库、不强制要求所有功能有 Live 验证等非目标。
+
+✅ **架构、模块与数据流**：
+- 完整的测试发现与请求文件过滤模块
+- 完整的 Bun test 逐文件 spawn 与 EXTERNAL_FEATURES 注入模块
+- 完整的 Live Cloud 验证模块（OAuth Token + Org UUID）
+- 完整的 Live Desktop 验证模块（屏幕权限）
+- 完整的 Live Model/Workflow 验证模块（API Key 与 Auth Token 互斥）
+- 完整的 Live SkillHub 验证模块
+- 完整的 CI Smoke 测试模块
+- 完整的跨领域验收测试模块
+- 完整的失败汇总与离线/mock/live 边界模块
+- 9 个模块设计卡，包含真实入口签名与关键类型
+
+#### 源码验证
+
+**test-runner**（scripts/test.ts）：
+- 参数解析与拆分：`requestedFiles` vs `options` ✅
+- `discoverTestFiles`：双 glob + Set 去重 + 排序 ✅
+- 逐文件 spawn：注入 EXTERNAL_FEATURES，stdio inherit ✅
+- 失败汇总：收集 exitCode !== 0 的文件，stderr 打印列表 ✅
+
+**live-validation**（scripts/live-*.ts）：
+- `live-cloud-validation.ts`：OAuth token + Org UUID，支持恢复验证、文件持久化 ✅
+- `live-desktop-validation.ts`：`CLAUDE_DESKTOP_LIVE=1` + 屏幕权限，截图验证 ✅
+- `live-model-validation.ts`：API Key 与 Auth Token 互斥检查，验证 workflow、proactive、context collapse、reactive compaction ✅
+- `live-skillhub-validation.ts`：Registry URL + Token，搜索、加载、缓存验证 ✅
+
+**smoke-tests**（tests/buildArtifacts.test.ts）：
+- CLI 可执行、SDK 可导入、类型声明存在 ✅
+- 验证 package.json exports 配置 ✅
+
+**cross-cutting-acceptance**（tests/enabledFeatures.test.ts、tests/publicPromptCommands.test.ts）：
+- Enabled Features：验证 43 个工具、注册状态、环境不变性 ✅
+- Public Prompt Commands：验证 /summary 和 /autofix-pr ✅
+
+**发现 B7-test-validation-01**：测试运行器当前串行运行，缺少并行化机制（虽设计考虑资源竞争）。严重度：P3（性能优化问题），置信度：已证实（spec 改进建议明确提及）
+
+**发现 B7-test-validation-02**：Live 验证网络请求缺少重试机制，网络抖动可能导致 flaky。严重度：P3（性能优化问题），置信度：已证实（spec 改进建议明确提及）
+
+**发现 B7-test-validation-03**：缺少 JUnit XML 或其他结构化报告格式，不利于 CI 可视化。严重度：P3（可观察性问题），置信度：设计推断（spec 改进建议明确提及）
+
+**发现 B7-test-validation-04**：tests/fixtures/ 与实际源码同步需要注意，缺少集成测试验证 fixture 与构建配置一致性。严重度：P3（维护性问题），置信度：设计推断（spec 改进建议明确提及）
+
+**发现 B7-test-validation-05**：跨领域测试的 spec 边界需要明确，避免重复或遗漏。严重度：P3（文档细节问题），置信度：设计推断（spec 改进建议明确提及）
+
+**发现 B7-test-validation-06**：`scripts/live-model-validation.ts` 在 `enableConfigs()` 前检查凭据，standalone 脚本的 settings 初始化契约需要明确，凭据互斥检查需要集中处理。严重度：P1（潜在正确性问题），置信度：已证实（spec 改进建议明确提及，需要隔离 HOME 的 live/matrix 运行验证）
+
+#### 测试验证
+
+检查 coverage 中提及的测试文件：
+- ✅ `buildArtifacts.test.ts`：存在，Smoke 测试验证 ✅
+- ✅ `enabledFeatures.test.ts`：存在，跨领域验收测试 ✅
+- ✅ `publicPromptCommands.test.ts`：存在，公共命令测试 ✅
+- ✅ `antTraceCommand.test.ts`：存在，间接验证 telemetry 消毒 ✅
+- ✅ 其他多个测试文件（coverage 中列为 additional-files 和 uncovered-tests）
+
+#### 隐私与安全边界审查
+
+**离线/mock/live 边界**：
+- 离线测试：总是运行，不需要凭据 ✅
+- Live 验证：凭据检查先行，无凭据跳过，有凭据失败即失败 ✅
+- 凭据互斥：`live-model-validation.ts` 显式检查 API Key 与 Auth Token 不能同时存在 ✅
+
+**安全边界**：
+- 测试运行器完整透传环境变量（包含凭据），由测试文件自行决定使用 ✅
+- Live 验证使用临时目录并强制清理 ✅
+
+#### 上游证据
+
+上游 CLI strings 已提取，关键匹配：
+- `scripts/test.ts`：测试运行器存在 ✅
+- `live-cloud-validation`、`live-desktop-validation`、`live-model-validation`、`live-skillhub-validation`：Live 验证脚本存在 ✅
+- `buildArtifacts.test.ts`：Smoke 测试存在 ✅
+- `enabledFeatures.test.ts`：跨领域验收测试存在 ✅
+
+官方文档索引搜索已执行：
+- 搜索关键词：`test`、`testing`、`live validation`、`smoke test`、`ci`
+- 命中：无直接 test-validation 相关文档页面
+
+---
 
 ### web-tools
 
@@ -1350,8 +1542,18 @@
 | B7-runtime-lifecycle-04 | runtime-lifecycle | P3 | 孤儿检测间隔固定为 30 秒，某些场景需要调整 | 是（spec 改进建议明确提及） |
 | B7-runtime-lifecycle-05 | runtime-lifecycle | P3 | 单个清理函数可阻塞整个退出流程，当前仅 2 秒总控无单个超时 | 是（spec 改进建议明确提及） |
 | B7-runtime-lifecycle-06 | runtime-lifecycle | P2 | 缺少 runtime-lifecycle 核心模块的专门测试 | 否 |
+| B7-telemetry-01 | telemetry | P2 | telemetry 核心功能无专门测试覆盖，包括队列、重试、PII 过滤、消毒等关键路径 | 是（spec 改进建议明确提及） |
+| B7-telemetry-02 | telemetry | P3 | 失败事件可能永远保留（用户不再使用同一 sessionId），缺少过期清理机制 | 是（spec 改进建议明确提及） |
+| B7-telemetry-03 | telemetry | P3 | BigQuery 指标仅 5 分钟间隔，无法调整，缺少配置机制 | 是（spec 改进建议明确提及） |
+| B7-telemetry-04 | telemetry | P3 | killswitch 激活后仍继续重试（仅每次失败），浪费资源 | 是（spec 改进建议明确提及） |
+| B7-test-validation-01 | test-validation | P3 | 测试运行器当前串行运行，缺少并行化机制（虽设计考虑资源竞争） | 是（spec 改进建议明确提及） |
+| B7-test-validation-02 | test-validation | P3 | Live 验证网络请求缺少重试机制，网络抖动可能导致 flaky | 是（spec 改进建议明确提及） |
+| B7-test-validation-03 | test-validation | P3 | 缺少 JUnit XML 或其他结构化报告格式，不利于 CI 可视化 | 是（设计推断） |
+| B7-test-validation-04 | test-validation | P3 | tests/fixtures/ 与实际源码同步需要注意，缺少集成测试验证 fixture 与构建配置一致性 | 是（设计推断） |
+| B7-test-validation-05 | test-validation | P3 | 跨领域测试的 spec 边界需要明确，避免重复或遗漏 | 是（设计推断） |
+| B7-test-validation-06 | test-validation | P1 | `scripts/live-model-validation.ts` 在 `enableConfigs()` 前检查凭据，standalone 脚本的 settings 初始化契约需要明确，凭据互斥检查需要集中处理 | 是（spec 改进建议明确提及） |
 
-**汇总**：P0 0 个，P1 0 个，P2 22 个，P3 29 个，总计 51 个发现。
+**汇总**：P0 0 个，P1 1 个，P2 24 个，P3 36 个，总计 61 个发现。
 
 ---
 
@@ -1387,14 +1589,29 @@
 4. sdkHeapDumpMonitor 明确占位，设计已知
 5. 影响范围极小（仅 SDK 调试场景）
 
+### B7-test-validation-06 审查
+**原始严重度**：P1 → **保持为 P1**
+**直接证据**：
+- scripts/live-model-validation.ts:40-48: 凭据检查在 `enableConfigs()` 前
+- scripts/live-model-validation.ts:48: `enableConfigs()` 在凭据检查后调用
+- 环境变量与 settings 配置的优先级不明确
+- 其他 live 验证脚本可能有类似问题
+
+**审查理由**：
+1. 这是潜在的正确性问题，凭据检查可能读取到过期或错误的配置
+2. 可能导致验证结果不可靠
+3. 需要明确 standalone 脚本的 settings 初始化契约
+4. 需要集中处理凭据互斥检查，避免重复代码
+5. 影响范围：所有 live 验证脚本
+
 ## 证据边界
 
 | 证据类型 | 收集范围 | 限制 |
 |---------|---------|------|
-| 上游 CLI strings | 已收集 build-feature-profile、data-structures、diagnostics、experimental-features、external-stubs、hooks-system、magic-docs、messaging-primitives、native-installer、network-security、runtime-lifecycle 相关字符串 | 未收集其余 3 个子系统的相关字符串 |
-| 官方文档 | 已搜索构建、feature flag、数据结构、debug、diagnostic、profiler、heapdump、doctor、experimental、beta、overflow、synthetic、good-claude、bughunter、chrome、mcp、computer use、zavora、cdp、hooks、pre-tool-use、post-tool-use、session-start、session-end、http-hook、command-hook、prompt-hook、agent-hook、async-hook、magic docs、magic-doc、auto-update documentation、proxy、mtls、ca certificate、NO_PROXY、CCR、upstreamproxy、abort controller、graceful shutdown、process identity、orphan process、activity manager 相关关键词 | 未搜索其余 3 个子系统的相关文档 |
-| 源码验证 | 已验证 build-feature-profile、data-structures、diagnostics、experimental-features、external-stubs、hooks-system、magic-docs、messaging-primitives、native-installer、network-security、runtime-lifecycle 十一子系统的源码 | 未验证其余 3 个子系统的源码 |
-| 测试验证 | 已检查 build-feature-profile、data-structures、diagnostics、experimental-features、external-stubs、hooks-system、magic-docs、messaging-primitives、native-installer、network-security、runtime-lifecycle 十一子系统的测试 | 未检查其余 3 个子系统的测试 |
+| 上游 CLI strings | 已收集 build-feature-profile、data-structures、diagnostics、experimental-features、external-stubs、hooks-system、magic-docs、messaging-primitives、native-installer、network-security、runtime-lifecycle、telemetry、test-validation 相关字符串 | 未收集 web-tools 子系统的相关字符串 |
+| 官方文档 | 已搜索构建、feature flag、数据结构、debug、diagnostic、profiler、heapdump、doctor、experimental、beta、overflow、synthetic、good-claude、bughunter、chrome、mcp、computer use、zavora、cdp、hooks、pre-tool-use、post-tool-use、session-start、session-end、http-hook、command-hook、prompt-hook、agent-hook、async-hook、magic docs、magic-doc、auto-update documentation、proxy、mtls、ca certificate、NO_PROXY、CCR、upstreamproxy、abort controller、graceful shutdown、process identity、orphan process、activity manager、telemetry、analytics、opentelemetry、otlp、datadog、test、testing、live validation、smoke test、ci 相关关键词 | 未搜索 web-tools 相关文档 |
+| 源码验证 | 已验证 build-feature-profile、data-structures、diagnostics、experimental-features、external-stubs、hooks-system、magic-docs、messaging-primitives、native-installer、network-security、runtime-lifecycle、telemetry、test-validation 十三子系统的源码 | 未验证 web-tools 的源码 |
+| 测试验证 | 已检查 build-feature-profile、data-structures、diagnostics、experimental-features、external-stubs、hooks-system、magic-docs、messaging-primitives、native-installer、network-security、runtime-lifecycle、telemetry、test-validation 十三子系统的测试 | 未检查 web-tools 的测试 |
 
 **证据完整性说明**：
 - diagnostics：已验证所有 coverage 分组（diagnostics-commands、diagnostics-tests），已读取 spec，已检查现有测试
@@ -1404,7 +1621,9 @@
 - magic-docs：已验证所有 coverage 分组（magic-docs-core、magic-docs-prompts、magic-docs-init、magic-docs-caches），已读取 spec，已检查现有测试
 - network-security：已验证所有 coverage 分组（ca-certs、mtls、http-proxy、aws-auth、crypto-hash、protected-namespace），已读取 spec，已检查现有测试
 - runtime-lifecycle：已验证所有 coverage 分组（abort-controller、combined-abort-signal、cleanup-registry、cleanup-old-files、graceful-shutdown、idle-timeout、activity-manager、event-loop-stall-detector、process-identity、generic-process-utils），已读取 spec，已检查现有测试
-- 所有 11 个子系统均通过对抗性审查验证 P0/P1 与上游偏差，测试与 live 差距单独标记为 P2
+- telemetry：已验证所有 coverage 分组（telemetry-core），已读取 spec，已检查现有测试（antTraceCommand.test.ts 间接验证）
+- test-validation：已验证所有 coverage 分组（test-runner、live-cloud-validation、live-desktop-validation、live-model-validation、live-skillhub-validation、smoke-tests、cross-cutting-acceptance、test-fixtures、uncovered-tests），已读取 spec，已检查现有测试
+- 所有 13 个子系统均通过对抗性审查验证 P0/P1 与上游偏差，测试与 live 差距单独标记为 P2
 
 ## 完成判定
 
@@ -1421,8 +1640,8 @@
 | native-installer | ✅ 审计完成 |
 | network-security | ✅ 审计完成 |
 | runtime-lifecycle | ✅ 审计完成 |
-| telemetry | ❌ 待审计 |
-| test-validation | ❌ 待审计 |
+| telemetry | ✅ 审计完成 |
+| test-validation | ✅ 审计完成 |
 | web-tools | ❌ 待审计 |
 
-**整体状态**：⚠️ 部分完成（11/14 子系统审计完成）
+**整体状态**：⚠️ 部分完成（13/14 子系统审计完成）
