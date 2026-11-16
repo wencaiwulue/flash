@@ -206,19 +206,21 @@ Design docs: 0 errors, 71 warnings
 
 ### 跨域发现统计
 
-| 类别 | 数量 |
-|------|------|
-| X-context | 6 |
-| X-memory | 4 |
-| X-state | 1 |
-| X-recovery | 1 |
-| X-boundary | 1 |
-| **去重后总计** | **9** |
+| 类别 | 数量 | 说明 |
+|------|------|------|
+| X-context | 3 | X-context-01/X-context-05/X-context-06（X-context-02/X-context-03/X-context-04 为已验证契约） |
+| X-memory | 3 | X-memory-02/X-memory-03/X-memory-04（X-memory-01 为 X-context-01 重复） |
+| X-state | 1 | X-state-01 |
+| X-recovery | 1 | X-recovery-01 |
+| X-boundary | 1 | X-boundary-01 |
+| **去重后总计** | **9** | 1 P2、8 P3 |
 
 ### 跨域发现优先级
 
-1. **P2（2项）**：X-context-01/X-memory-01（内存路径验证不一致）、X-context-02（紧凑边界持久化契约）、X-context-03（缓存编辑 API 层消费）、X-context-04（maxOutputTokens 使缓存失效）
-2. **P3（7项）**：X-context-05（上下文折叠阈值硬编码）、X-context-06（进度消息桥接机制）、X-memory-02（lastSummarizedMessageId 未持久化）、X-memory-03（无删除失效跟踪）、X-memory-04（密钥扫描模式未审计）、X-state-01（模块级可变状态）、X-recovery-01（会话元数据未验证）、X-boundary-01（功能门未集中文档）
+1. **P2（1项）**：X-context-01（内存路径验证不一致 - 读取仅字符串前缀，写入完整 symlink 解析）
+2. **P3（8项）**：X-context-05（上下文折叠阈值硬编码）、X-context-06（进度消息桥接机制）、X-memory-02（lastSummarizedMessageId 未持久化）、X-memory-03（无删除失效跟踪）、X-memory-04（密钥扫描模式未审计）、X-state-01（模块级可变状态）、X-recovery-01（会话元数据未验证）、X-boundary-01（功能门未集中文档）
+
+注：X-context-02/X-context-03/X-context-04 已移至"契约验证确认"部分，为已验证正确契约而非缺陷；X-memory-01 为 X-context-01 重复，不计入独立发现。
 
 ## 完成判定
 
