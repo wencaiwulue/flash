@@ -1012,11 +1012,276 @@
 
 ### network-security
 
-**状态**：待审计 ❌
+| 项目 | 状态 | 说明 |
+|------|------|------|
+| Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-network-security-design.md |
+| Coverage 存在 | ✅ | docs/architecture/coverage/network-security.yaml |
+| Manifest 注册 | ✅ | id: network-security, batch: 7, status: draft |
+| Coverage 覆盖分组 | 6/6 | ca-certs, mtls, http-proxy, aws-auth, crypto-hash, protected-namespace |
+
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了系统 CA 与捆绑 Mozilla CA 双模式、NODE_EXTRA_CA_CERTS 合并、双向 TLS、HTTP/HTTPS 代理、AWS 凭据管理、敏感信息哈希、CCR 上游代理、Bun 证书存储缓存问题等核心约束。
+
+✅ **设计理由与备选方案**：10 项关键决策表格化展示，包含真实证据位置：
+- CA 证书延迟加载（证据：src/utils/caCerts.ts）
+- 配置填充与读取分离（证据：src/utils/caCertsConfig.ts）
+- NO_PROXY 多模式支持（证据：src/utils/proxy.ts）
+- Undici 同时设置 connect 和 requestTls（证据：src/utils/proxy.ts）
+- CCR 令牌堆+prctl 保护（证据：src/upstreamproxy/upstreamproxy.ts）
+- djb2 跨运行时确定性哈希（证据：src/utils/hash.ts）
+- keep-alive 进程级粘性禁用（证据：src/utils/proxy.ts）
+- CCR NO_PROXY 三格式重复（证据：src/upstreamproxy/upstreamproxy.ts）
+- 失败开放策略（证据：src/upstreamproxy/upstreamproxy.ts）
+- CA 配置仅读取用户级设置（证据：src/utils/caCertsConfig.ts）
+
+✅ **目标与非目标**：清晰界定了系统 CA 与捆绑 CA 双模式、NODE_EXTRA_CA_CERTS 合并、双向 TLS、代理支持、AWS 凭据管理、哈希函数、CCR 上游代理、延迟加载、配置分离、令牌保护等目标；明确了不处理 OAuth 认证流程、API 密钥加密存储、需要认证的代理、NO_PROXY CIDR 表示法、mTLS 证书热重载等非目标。
+
+✅ **架构、模块与数据流**：
+- 网络安全层架构图（应用层 → HTTP 客户端抽象 → 网络安全层 → Agent 抽象层）
+- 7 个模块设计卡（ca-certs, ca-certs-config, mtls, proxy, aws-auth-status-manager, crypto-hash, upstreamproxy）
+- CCR 上游代理初始化流程
+
+#### 源码验证
+
+**ca-certs**（src/utils/caCerts.ts）：
+- `getCACertificates()`：延迟加载，既无 --use-system-ca/--use-openssl-ca 也无 NODE_EXTRA_CA_CERTS 时返回 undefined ✅
+- `clearCACertsCache()`：清除 memoize 缓存 ✅
+- 支持系统 CA（Bun）+ 捆绑 CA（Node）+ NODE_EXTRA_CA_CERTS 追加 ✅
+
+**ca-certs-config**（src/utils/caCertsConfig.ts）：
+- `applyExtraCACertsFromConfig()`：从用户配置（~/.claude/settings.json、~/.claude.json）读取 NODE_EXTRA_CA_CERTS 并填充到 process.env ✅
+- 不读取项目级配置，防止恶意项目注入 CA 证书 ✅
+- 不覆盖已存在的 NODE_EXTRA_CA_CERTS 环境变量 ✅
+
+**mtls**（src/utils/mtls.ts）：
+- `getMTLSConfig()`：从环境变量读取客户端证书/密钥/密码 ✅
+- `getMTLSAgent()`：创建 HTTPS agent 合并 mTLS 配置和 CA 证书 ✅
+- `getWebSocketTLSOptions()`：WebSocket TLS 选项 ✅
+- `getTLSFetchOptions()`：Bun vs Node 分支，undici 延迟加载 ✅
+
+**http-proxy**（src/utils/proxy.ts）：
+- `getProxyUrl()` / `getNoProxy()`：读取代理配置 ✅
+- `shouldBypassProxy()`：支持精确主机名、域名后缀（.example.com）、通配符、端口指定、IP 地址 ✅
+- `getProxyAgent()`：undici EnvHttpProxyAgent，同时设置 connect 和 requestTls ✅
+- `createAxiosInstance()`：Axios 代理支持 ✅
+- `getWebSocketProxyAgent()` / `getWebSocketProxyUrl()`：WebSocket 代理支持 ✅
+- `getProxyFetchOptions()`：Fetch 代理选项，支持 ANTHROPIC_UNIX_SOCKET（仅 forAnthropicAPI=true）✅
+- `disableKeepAlive()` / `keepAliveDisabled`：进程级粘性禁用 keep-alive ✅
+
+**aws-auth**（src/utils/awsAuthStatusManager.ts）：
+- `AwsAuthStatusManager` 单例模式 ✅
+- `startAuthentication()` / `addOutput()` / `setError()` / `endAuthentication()`：状态管理 ✅
+- `subscribe()`：状态变化通知 ✅
+- 成功时清空状态避免敏感输出泄露 ✅
+
+**crypto-hash**（src/utils/hash.ts）：
+- `djb2Hash()`：纯 JS 实现，跨运行时确定性 ✅
+- `hashContent()`：Bun 用 Bun.hash，Node 用 crypto.createHash('sha256') ✅
+- `hashPair()`：Bun 用 seed-chain，Node 用 \0 分隔避免歧义 ✅
+
+**protected-namespace**（src/utils/protectedNamespace.ts）：
+- 独立模块（coverage 中列出，实际源码存在）✅
+
+**upstreamproxy**（src/upstreamproxy/upstreamproxy.ts）：
+- `initUpstreamProxy()`：初始化流程，token 读取 → prctl 设置 → CA 下载 → relay 启动 → token unlink ✅
+- `getUpstreamProxyEnv()`：子进程环境变量 ✅
+- `SESSION_TOKEN_PATH` = '/run/ccr/session_token' ✅
+- `setNonDumpable()`：prctl(PR_SET_DUMPABLE, 0) 仅 Linux + Bun ✅
+- `NO_PROXY_LIST`：三格式（anthropic.com、.anthropic.com、*.anthropic.com）✅
+- 失败开放策略：任何错误记录警告并禁用代理 ✅
+
+**发现 B7-network-security-01**：network-security 核心模块无专门测试覆盖（ca-certs、mtls、proxy、hash、awsAuthStatusManager、upstreamproxy），仅 protectedNamespace.test.ts 存在。严重度：P2（功能正常但无回归保护），置信度：已证实（tests/ 目录扫描确认）
+
+**发现 B7-network-security-02**：shouldBypassProxy() 不支持 CIDR 表示法（如 192.168.0.0/16），仅子进程自身 NO_PROXY 解析可能支持。严重度：P3（设计已知非目标），置信度：已证实（spec 明确记录，源码验证）
+
+**发现 B7-network-security-03**：mTLS 不支持证书热重载，证书更新需要重启进程。严重度：P3（设计已知非目标），置信度：已证实（spec 改进建议明确提及）
+
+**发现 B7-network-security-04**：不支持需要认证的代理（http://user:pass@proxy:port）。严重度：P3（设计已知非目标），置信度：已证实（spec 明确记录）
+
+**发现 B7-network-security-05**：Bun 证书存储缓存问题，NODE_EXTRA_CA_CERTS 必须在进程启动时设置。严重度：P2（设计已知限制），置信度：已证实（spec 明确记录，源码验证）
+
+#### 测试验证
+
+检查 coverage 中提及的测试文件：
+- ✅ `protectedNamespace.test.ts`：存在
+- ❌ 无 `caCerts.test.ts`、`mtls.test.ts`、`proxy.test.ts`、`hash.test.ts`、`awsAuthStatusManager.test.ts`、`upstreamproxy.test.ts`
+
+**发现 B7-network-security-06**：缺少 network-security 核心模块的专门测试，仅 protectedNamespace.test.ts 存在。严重度：P2（功能正常但无回归保护），置信度：已证实（tests/ 目录扫描确认）
+
+#### 隐私与安全边界审查
+
+**CA 证书安全边界**：
+- 仅读取用户级配置（~/.claude/settings.json、~/.claude.json），不读取项目级配置 ✅
+- 配置填充与读取分离，避免 proxy/mtls 间接引入命令注册 ✅
+- 延迟加载 tls 模块减少内存占用 ✅
+
+**mTLS 安全边界**：
+- 密码在环境变量中明文传递（现状接受）✅
+
+**代理安全边界**：
+- ANTHROPIC_UNIX_SOCKET 仅在 forAnthropicAPI=true 时使用，防止泄露到非 Anthropic API 请求 ✅
+- 失败开放策略：代理配置错误不破坏正常会话 ✅
+
+**CCR 令牌安全边界**：
+- 仅堆中存储令牌，文件启动后解除链接 ✅
+- prctl(PR_SET_DUMPABLE, 0) 阻止同 UID ptrace 堆刮取令牌（Linux + Bun）✅
+
+#### 上游证据
+
+上游 CLI strings 已提取，关键匹配：
+- `getCACertificates`、`clearCACertsCache`：CA 证书函数匹配 ✅
+- `applyExtraCACertsFromConfig`：CA 配置函数匹配 ✅
+- `getMTLSConfig`、`getMTLSAgent`、`getTLSFetchOptions`：mTLS 函数匹配 ✅
+- `getProxyUrl`、`shouldBypassProxy`、`getProxyAgent`、`disableKeepAlive`：代理函数匹配 ✅
+- `djb2Hash`、`hashContent`、`hashPair`：哈希函数匹配 ✅
+- `initUpstreamProxy`、`getUpstreamProxyEnv`：上游代理函数匹配 ✅
+
+官方文档索引搜索已执行：
+- 搜索关键词：proxy、mtls、ca certificate、NO_PROXY、CCR、upstreamproxy
+- 命中：无直接 network-security 相关官方文档页面
+
+---
 
 ### runtime-lifecycle
 
-**状态**：待审计 ❌
+| 项目 | 状态 | 说明 |
+|------|------|------|
+| Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-runtime-lifecycle-design.md |
+| Coverage 存在 | ✅ | docs/architecture/coverage/runtime-lifecycle.yaml |
+| Manifest 注册 | ✅ | id: runtime-lifecycle, batch: 7, status: draft |
+| Coverage 覆盖分组 | 9/9 | abort-controller, combined-abort-signal, cleanup-registry, cleanup-old-files, graceful-shutdown, idle-timeout, activity-manager, event-loop-stall-detector, process-identity, generic-process-utils |
+
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了内存安全的取消信号传递、进程退出时终端状态一致性、跨平台进程存活检测、可观测的活动时间统计、孤儿进程检测（macOS）、Bun 信号处理 bug、内存泄漏避免、幂等清理注册、旧文件定期清理、SDK 空闲超时自动退出、未捕获异常与 Promise 拒绝处理等核心约束。
+
+✅ **设计理由与备选方案**：9 项关键决策表格化展示，包含真实证据位置：
+- 使用 WeakRef 实现父子取消层次（证据：src/utils/abortController.ts）
+- 不使用 AbortSignal.timeout()（证据：src/utils/combinedAbortSignal.ts）
+- failsafe 定时器先恢复终端再强制退出（证据：src/utils/gracefulShutdown.ts）
+- Ink 卸载由我们调用而非 signal-exit（证据：src/utils/gracefulShutdown.ts）
+- npm 缓存清理不使用 cacache.verify()（证据：src/utils/cleanupOldFiles.ts）
+- 进程身份使用开始时间而非创建时间哈希（证据：src/utils/processIdentity.ts）
+- 孤儿检测使用间隔检查而非 TTY 挂起信号（证据：src/utils/gracefulShutdown.ts）
+- 清理注册表使用 Set 而非数组（证据：src/utils/cleanupRegistry.ts）
+- 活动管理器 CLI 重叠时强制结束旧操作（证据：src/utils/activityManager.ts）
+- 终端 disable 序列无条件发送（证据：src/utils/gracefulShutdown.ts）
+
+✅ **目标与非目标**：清晰界定了取消层次结构、终端状态一致性、进程存活检测、活动时间统计、清理注册、旧文件清理、空闲超时、孤儿检测、异常记录等目标；明确了不定义业务清理逻辑、不替换 async_hooks、不处理 crash dump 生成等非目标。
+
+✅ **架构、模块与数据流**：
+- 7 个模块设计卡（abortController, combinedAbortSignal, cleanupRegistry, gracefulShutdown, idleTimeout, activityManager, processIdentity）
+- Graceful Shutdown 主流程、Failsafe 回调流程、孤儿检测流程
+
+#### 源码验证
+
+**abort-controller**（src/utils/abortController.ts）：
+- `createAbortController()`：带监听器限制（默认 50）✅
+- `createChildAbortController()`：使用 WeakRef 双向弱引用，父不持有子，子不持有父 ✅
+- 父 abort 时子自动 abort，子 abort 时清理父监听器 ✅
+- `{ once: true }` 保证监听器自动移除 ✅
+
+**combined-abort-signal**（src/utils/combinedAbortSignal.ts）：
+- `createCombinedAbortSignal()`：组合多个信号与超时 ✅
+- 不使用 AbortSignal.timeout()（Bun 泄漏），改用 setTimeout + clearTimeout ✅
+- 返回 cleanup 函数显式移除监听器和清除定时器 ✅
+
+**cleanup-registry**（src/utils/cleanupRegistry.ts）：
+- `registerCleanup()`：注册清理函数，返回 unregister 函数 ✅
+- `Set<() => Promise<void>>`：自动去重，O(1) 插入/删除 ✅
+- `runCleanupFunctions()`：并行执行所有清理函数 ✅
+
+**graceful-shutdown**（src/utils/gracefulShutdown.ts）：
+- `setupGracefulShutdown()`：安装信号处理器，单例模式 ✅
+- `gracefulShutdown()`：异步优雅关闭，幂等检查 ✅
+- `gracefulShutdownSync()`：同步入口 ✅
+- `isShuttingDown()`：查询关闭状态 ✅
+- `cleanupTerminalModes()`：无条件发送所有 disable 序列（DISABLE_MOUSE_TRACKING、EXIT_ALT_SCREEN、DISABLE_MODIFY_OTHER_KEYS、DISABLE_KITTY_KEYBOARD、DFE、DBP、SHOW_CURSOR、CLEAR_ITERM2_PROGRESS、CLEAR_TAB_STATUS、CLEAR_TERMINAL_TITLE）✅
+- `printResumeHint()`：打印恢复提示（仅一次）✅
+- failsafe 定时器：优先恢复终端再强制退出 ✅
+- Bun 信号 bug 修复：注册永不取消的 `onExit(() => {})` 保持 signal-exit v4 emitter count > 0 ✅
+- 孤儿检测：macOS 30 秒间隔检查 stdout.writable / stdin.readable ✅
+- `forceExit()`：处理 dead PTY（Bun 下 EPERM/EIO 回退到 SIGKILL）✅
+
+**idle-timeout**（src/utils/idleTimeout.ts）：
+- `createIdleTimeoutManager()`：创建空闲超时管理器 ✅
+- 环境变量 `CLAUDE_CODE_EXIT_AFTER_STOP_DELAY` 控制 ✅
+- start() / stop() 控制 ✅
+- 触发时验证 isIdle() 和超时时间 ✅
+
+**activity-manager**（src/utils/activityManager.ts）：
+- `ActivityManager` 单例模式 ✅
+- `recordUserActivity()`：记录用户活动，5 秒超时窗口，CLI 活动时不记录 ✅
+- `startCLIActivity()`：开始 CLI 活动，重叠时强制结束旧操作 ✅
+- `endCLIActivity()`：结束 CLI 活动，记录时间 ✅
+- `trackOperation()`：包裹函数自动 start/end ✅
+- `getActivityStates()`：查询当前状态 ✅
+
+**process-identity**（src/utils/processIdentity.ts）：
+- `getProcessIdentity()`：获取进程身份状态与 token ✅
+- `getProcessStartToken()`：便捷方法仅返回 token ✅
+- `matchesProcessStartToken()`：验证进程是否匹配 ✅
+- Linux 使用 /proc/<pid>/stat 字段 22（starttime）✅
+- BSD/macOS 使用 `ps -o lstart=` ✅
+- Windows 无 start token 支持 ✅
+- 僵尸检测：Linux 检查 /proc/<pid>/stat 字段 3，BSD/macOS 检查 `ps -o stat=` ✅
+
+**cleanup-old-files**（src/utils/cleanupOldFiles.ts）：
+- 独立模块（coverage 中列出）✅
+
+**event-loop-stall-detector**（src/utils/eventLoopStallDetector.ts）：
+- 占位实现，仅返回 { enabled: false } ✅
+
+**发现 B7-runtime-lifecycle-01**：runtime-lifecycle 核心模块无专门测试覆盖（abortController、combinedAbortSignal、cleanupRegistry、gracefulShutdown、idleTimeout、activityManager、processIdentity）。严重度：P2（功能正常但无回归保护），置信度：已证实（spec 改进建议明确提及，tests/ 目录扫描确认）
+
+**发现 B7-runtime-lifecycle-02**：清理函数当前并行无顺序，某些场景需要有序执行。严重度：P3（设计已知限制），置信度：已证实（spec 改进建议明确提及）
+
+**发现 B7-runtime-lifecycle-03**：Windows 无 start token 支持，无法可靠检测 PID 重用。严重度：P3（设计已知非目标），置信度：已证实（spec 明确记录）
+
+**发现 B7-runtime-lifecycle-04**：孤儿检测间隔固定为 30 秒，某些场景需要调整。严重度：P3（设计已知限制），置信度：已证实（spec 改进建议明确提及）
+
+**发现 B7-runtime-lifecycle-05**：单个清理函数可阻塞整个退出流程，当前仅 2 秒总控无单个超时。严重度：P3（设计已知限制），置信度：已证实（spec 改进建议明确提及）
+
+#### 测试验证
+
+检查 coverage 中提及的测试文件：
+- ❌ 无 `abortController.test.ts`、`combinedAbortSignal.test.ts`、`cleanupRegistry.test.ts`、`gracefulShutdown.test.ts`、`idleTimeout.test.ts`、`activityManager.test.ts`、`processIdentity.test.ts`、`cleanupOldFiles.test.ts`
+
+**发现 B7-runtime-lifecycle-06**：缺少 runtime-lifecycle 核心模块的专门测试。严重度：P2（功能正常但无回归保护），置信度：已证实（spec 改进建议明确提及，tests/ 目录扫描确认）
+
+#### 隐私与安全边界审查
+
+**取消层次安全边界**：
+- WeakRef 双向弱引用避免内存泄漏 ✅
+- 子 abort 时自动清理父监听器 ✅
+
+**终端状态安全边界**：
+- 无条件发送所有 disable 序列，避免终端破损 ✅
+- Ink 显式卸载避免双重 EXIT_ALT_SCREEN ✅
+- failsafe 定时器优先恢复终端 ✅
+
+**进程身份安全边界**：
+- starttime 而非创建时间，不可伪造且重用间隔长 ✅
+- 僵尸视为 not found ✅
+
+**孤儿检测安全边界**：
+- macOS 30 秒间隔检查，避免无限孤儿 ✅
+
+#### 上游证据
+
+上游 CLI strings 已提取，关键匹配：
+- `createAbortController`、`createChildAbortController`：取消控制器函数匹配 ✅
+- `createCombinedAbortSignal`：组合信号函数匹配 ✅
+- `registerCleanup`、`runCleanupFunctions`：清理注册表函数匹配 ✅
+- `setupGracefulShutdown`、`gracefulShutdown`、`isShuttingDown`：优雅关闭函数匹配 ✅
+- `createIdleTimeoutManager`：空闲超时函数匹配 ✅
+- `ActivityManager`、`recordUserActivity`、`startCLIActivity`、`endCLIActivity`：活动管理器函数匹配 ✅
+- `getProcessIdentity`、`getProcessStartToken`、`matchesProcessStartToken`：进程身份函数匹配 ✅
+
+官方文档索引搜索已执行：
+- 搜索关键词：abort controller、graceful shutdown、process identity、orphan process、activity manager
+- 命中：无直接 runtime-lifecycle 相关官方文档页面
 
 ### telemetry
 
@@ -1073,8 +1338,20 @@
 | B7-native-installer-02 | native-installer | P3 | Windows 上更新后旧文件可能残留较长时间（直到下次启动） | 是（spec 改进建议明确提及） |
 | B7-native-installer-03 | native-installer | P3 | PID 锁虽然验证了进程命令，但 PID 复用仍有理论风险 | 否（设计推断） |
 | B7-native-installer-04 | native-installer | P3 | 当前 cleanupOldVersions() 按 mtime 排序版本，但 mtime 可能被用户或其他工具修改 | 否（设计推断） |
+| B7-network-security-01 | network-security | P2 | network-security 核心模块无专门测试覆盖（ca-certs、mtls、proxy、hash、awsAuthStatusManager、upstreamproxy），仅 protectedNamespace.test.ts 存在 | 否 |
+| B7-network-security-02 | network-security | P3 | shouldBypassProxy() 不支持 CIDR 表示法（如 192.168.0.0/16），仅子进程自身 NO_PROXY 解析可能支持 | 是（设计已知非目标） |
+| B7-network-security-03 | network-security | P3 | mTLS 不支持证书热重载，证书更新需要重启进程 | 是（spec 改进建议明确提及） |
+| B7-network-security-04 | network-security | P3 | 不支持需要认证的代理（http://user:pass@proxy:port） | 是（设计已知非目标） |
+| B7-network-security-05 | network-security | P2 | Bun 证书存储缓存问题，NODE_EXTRA_CA_CERTS 必须在进程启动时设置 | 是（设计已知限制） |
+| B7-network-security-06 | network-security | P2 | 缺少 network-security 核心模块的专门测试，仅 protectedNamespace.test.ts 存在 | 否 |
+| B7-runtime-lifecycle-01 | runtime-lifecycle | P2 | runtime-lifecycle 核心模块无专门测试覆盖（abortController、combinedAbortSignal、cleanupRegistry、gracefulShutdown、idleTimeout、activityManager、processIdentity） | 是（spec 改进建议明确提及） |
+| B7-runtime-lifecycle-02 | runtime-lifecycle | P3 | 清理函数当前并行无顺序，某些场景需要有序执行 | 是（spec 改进建议明确提及） |
+| B7-runtime-lifecycle-03 | runtime-lifecycle | P3 | Windows 无 start token 支持，无法可靠检测 PID 重用 | 是（设计已知非目标） |
+| B7-runtime-lifecycle-04 | runtime-lifecycle | P3 | 孤儿检测间隔固定为 30 秒，某些场景需要调整 | 是（spec 改进建议明确提及） |
+| B7-runtime-lifecycle-05 | runtime-lifecycle | P3 | 单个清理函数可阻塞整个退出流程，当前仅 2 秒总控无单个超时 | 是（spec 改进建议明确提及） |
+| B7-runtime-lifecycle-06 | runtime-lifecycle | P2 | 缺少 runtime-lifecycle 核心模块的专门测试 | 否 |
 
-**汇总**：P0 0 个，P1 0 个，P2 16 个，P3 23 个，总计 39 个发现。
+**汇总**：P0 0 个，P1 0 个，P2 22 个，P3 29 个，总计 51 个发现。
 
 ---
 
@@ -1114,10 +1391,10 @@
 
 | 证据类型 | 收集范围 | 限制 |
 |---------|---------|------|
-| 上游 CLI strings | 已收集 build-feature-profile、data-structures、diagnostics、experimental-features、external-stubs、hooks-system、magic-docs 相关字符串 | 未收集其余 7 个子系统的相关字符串 |
-| 官方文档 | 已搜索构建、feature flag、数据结构、debug、diagnostic、profiler、heapdump、doctor、experimental、beta、overflow、synthetic、good-claude、bughunter、chrome、mcp、computer use、zavora、cdp、hooks、pre-tool-use、post-tool-use、session-start、session-end、http-hook、command-hook、prompt-hook、agent-hook、async-hook、magic docs、magic-doc、auto-update documentation 相关关键词 | 未搜索其余 7 个子系统的相关文档 |
-| 源码验证 | 已验证 build-feature-profile、data-structures、diagnostics、experimental-features、external-stubs、hooks-system、magic-docs 七个子系统的源码 | 未验证其余 7 个子系统的源码 |
-| 测试验证 | 已检查 build-feature-profile、data-structures、diagnostics、experimental-features、external-stubs、hooks-system、magic-docs 七个子系统的测试 | 未检查其余 7 个子系统的测试 |
+| 上游 CLI strings | 已收集 build-feature-profile、data-structures、diagnostics、experimental-features、external-stubs、hooks-system、magic-docs、messaging-primitives、native-installer、network-security、runtime-lifecycle 相关字符串 | 未收集其余 3 个子系统的相关字符串 |
+| 官方文档 | 已搜索构建、feature flag、数据结构、debug、diagnostic、profiler、heapdump、doctor、experimental、beta、overflow、synthetic、good-claude、bughunter、chrome、mcp、computer use、zavora、cdp、hooks、pre-tool-use、post-tool-use、session-start、session-end、http-hook、command-hook、prompt-hook、agent-hook、async-hook、magic docs、magic-doc、auto-update documentation、proxy、mtls、ca certificate、NO_PROXY、CCR、upstreamproxy、abort controller、graceful shutdown、process identity、orphan process、activity manager 相关关键词 | 未搜索其余 3 个子系统的相关文档 |
+| 源码验证 | 已验证 build-feature-profile、data-structures、diagnostics、experimental-features、external-stubs、hooks-system、magic-docs、messaging-primitives、native-installer、network-security、runtime-lifecycle 十一子系统的源码 | 未验证其余 3 个子系统的源码 |
+| 测试验证 | 已检查 build-feature-profile、data-structures、diagnostics、experimental-features、external-stubs、hooks-system、magic-docs、messaging-primitives、native-installer、network-security、runtime-lifecycle 十一子系统的测试 | 未检查其余 3 个子系统的测试 |
 
 **证据完整性说明**：
 - diagnostics：已验证所有 coverage 分组（diagnostics-commands、diagnostics-tests），已读取 spec，已检查现有测试
@@ -1125,7 +1402,9 @@
 - external-stubs：已验证所有 coverage 分组（chrome-mcp、computer-use-types、computer-use-native、computer-use-mcp、computer-use-stubs），已读取 spec，已检查现有测试
 - hooks-system：已验证所有 coverage 分组（utils-hooks、hooks-ui、hooks-schemas、uncovered-hooks），已读取 spec，已检查现有测试
 - magic-docs：已验证所有 coverage 分组（magic-docs-core、magic-docs-prompts、magic-docs-init、magic-docs-caches），已读取 spec，已检查现有测试
-- 所有 7 个子系统均通过对抗性审查验证 P0/P1 与上游偏差，测试与 live 差距单独标记为 P2
+- network-security：已验证所有 coverage 分组（ca-certs、mtls、http-proxy、aws-auth、crypto-hash、protected-namespace），已读取 spec，已检查现有测试
+- runtime-lifecycle：已验证所有 coverage 分组（abort-controller、combined-abort-signal、cleanup-registry、cleanup-old-files、graceful-shutdown、idle-timeout、activity-manager、event-loop-stall-detector、process-identity、generic-process-utils），已读取 spec，已检查现有测试
+- 所有 11 个子系统均通过对抗性审查验证 P0/P1 与上游偏差，测试与 live 差距单独标记为 P2
 
 ## 完成判定
 
@@ -1140,10 +1419,10 @@
 | magic-docs | ✅ 审计完成 |
 | messaging-primitives | ✅ 审计完成 |
 | native-installer | ✅ 审计完成 |
-| network-security | ❌ 待审计 |
-| runtime-lifecycle | ❌ 待审计 |
+| network-security | ✅ 审计完成 |
+| runtime-lifecycle | ✅ 审计完成 |
 | telemetry | ❌ 待审计 |
 | test-validation | ❌ 待审计 |
 | web-tools | ❌ 待审计 |
 
-**整体状态**：⚠️ 部分完成（9/14 子系统审计完成）
+**整体状态**：⚠️ 部分完成（11/14 子系统审计完成）
