@@ -840,3 +840,23 @@ Normalize cross-domain findings
 
 Co-Authored-By: Claude <noreply@anthropic.com>
 ```
+
+---
+
+## 最新 main 增量审查（基线 c546cf2 → 3e615fd）
+
+**本次增量仅涉及受影响现有 spec 的结论验证，未新增跨域发现。**
+
+| 变更范围 | 主责 batch | 状态 | 说明 |
+|----------|------------|------|------|
+| query-core (src/main.tsx 新增 smoke 模式) | batch-0 | ✅ 验证完成 | 无新增发现，仅 spec 需要补充说明测试入口 |
+| open-runner (tests/openBackends.test.ts 新增 retry) | batch-6 | ✅ 验证完成 | 无新增发现，仅测试层改进 |
+| build-feature-profile (build.ts/build-binary.ts/package.json) | batch-7 | ✅ 验证完成 | 无新增发现，仅 spec 需要补充说明 Playwright 内联插件和 smoke 测试框架 |
+| webbrowser-bundled-support (新 spec/coverage/实现) | batch-5 | ✅ 已完成 | 已在 batch-5.md 单独审计 |
+
+**构建/功能边界矩阵更新**：
+- 新增 "Playwright inline plugin" 作为构建时转换步骤
+- 新增 "FLASH_SMOKE_TOOL" 作为验收测试入口点
+- 边界明确：bundled 模式下 WebBrowser 支持，但 chrome-cdp 仍需 Node sidecar（见 open-chrome.md 契约）
+
+**无新增跨域发现**，所有变更均在各自子系统边界内，无跨子系统契约冲突。

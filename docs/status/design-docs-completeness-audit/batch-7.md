@@ -102,6 +102,59 @@
 
 ---
 
+#### 最新 main 增量审查（基线 c546cf2 → 3e615fd）
+
+| 变更项 | 状态 | 证据 |
+|--------|------|------|
+| `scripts/build.ts` 新增 Playwright 内联插件 | ✅ 分析完成 | `git diff c546cf2...3e615fd -- scripts/build.ts` |
+| `scripts/build-binary.ts` 新增 smoke 测试框架 | ✅ 分析完成 | `git diff c546cf2...3e615fd -- scripts/build-binary.ts` |
+| `package.json` version bump (0.0.1 → 0.0.2) | ✅ 分析完成 | `git diff c546cf2...3e615fd -- package.json` |
+
+**变更摘要**：
+
+1. **scripts/build.ts**：
+   - `createBuildOptions()` 现在返回包含 `plugins` 的配置
+   - 新增 `createPlaywrightInlinePlugin()` 导入和使用
+   - 插件用于在构建时内联 playwright-core 的 package.json/browsers.json 读取（解决 bundled 模式下 `__dirname` 问题）
+
+2. **scripts/build-binary.ts**：
+   - `spawn()` 函数新增可选 `timeoutMs` 参数，默认仍为 30s
+   - 新增 `SMOKE_TITLE_MARKER = 'smoke-ok'` 常量
+   - 新增 `classifyToolSmokeResult()` 函数，智能分类测试结果：
+     - 崩溃模式（MODULE_NOT_FOUND/ResolveMessage）→ fail
+     - 性能超时模式（MCP error -32001/Request timed out/cleanup timed out）→ skip
+     - Chrome 缺失模式（Executable doesn't exist + browser context）→ skip
+     - 其他错误 → fail
+     - 成功且包含 marker → pass
+   - `smokeTestBinary()` 新增完整的 end-to-end 工具 smoke 测试：
+     - 设置 `FLASH_SMOKE_TOOL=WebBrowser` 和 `FLASH_SMOKE_INPUT`（导航到 data:text/html 页面）
+     - 超时设置为 120s（适应 Windows CI 冷启动）
+     - 执行后调用 `classifyToolSmokeResult()` 判决
+     - skip 时仅 warn 不阻断发布，fail 时阻断
+
+3. **package.json**：
+   - 版本从 0.0.1 升级到 0.0.2（例行变更）
+
+**与现有 spec 一致性**：
+- ✅ 符合 "验收真实 bundle" 目标（新增了更严格的验收测试）
+- ✅ 符合 "固定离线环境" 约束（smoke 测试使用 data URL，不依赖网络）
+- ⚠️ 新增的 Playwright 内联插件机制未在现有 spec 中记录
+- ⚠️ 新增的 smoke 测试框架未在现有 spec 中记录
+
+**证据边界**：
+- 仅静态源码和 git diff 分析
+- 未执行真实构建验证插件工作
+- 未验证上游 CLI 是否有类似 smoke 测试机制
+
+**发现汇总**：
+| ID | 类别 | 严重度 | 问题 | 证据 |
+|----|------|--------|------|------|
+| (复用 B5-webbrowser-bundled-support-01/02) | - | - | - | （已在 batch-5.md 记录） |
+
+**增量判定**：✅ **无兼容性问题** | ⚠️ **spec 需要补充说明 Playwright 内联插件和 smoke 测试框架**
+
+---
+
 ### data-structures
 
 | 项目 | 状态 | 说明 |

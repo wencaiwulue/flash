@@ -402,6 +402,35 @@
 
 ---
 
+#### 最新 main 增量审查（基线 c546cf2 → 3e615fd）
+
+| 变更项 | 状态 | 证据 |
+|--------|------|------|
+| `tests/openBackends.test.ts` 新增 test retry | ✅ 分析完成 | `git diff c546cf2...3e615fd -- tests/openBackends.test.ts` |
+
+**变更摘要**：
+- 为 "navigates a real isolated browser to a local page" 测试添加 `retry: 2` 配置
+- 理由明确记录："Real-browser e2e is sensitive to CI runner VM contention"
+- 这是测试健壮性改进，不影响 open-runner 核心功能
+
+**与现有 spec 一致性**：
+- ✅ 不涉及 open-runner 源码变更
+- ✅ 仅测试层改进，与现有 spec 无冲突
+- ✅ 符合 "测试覆盖完整" 目标
+
+**证据边界**：
+- 仅静态 git diff 分析
+- 未执行测试验证 retry 有效性
+
+**发现汇总**：
+| ID | 类别 | 严重度 | 问题 | 证据 |
+|----|------|--------|------|------|
+| (无新增发现) | - | - | - | - |
+
+**增量判定**：✅ **无兼容性问题** | ✅ **spec 保持准确**
+
+---
+
 ### platform-integrations
 
 | 项目 | 状态 | 说明 |
