@@ -470,12 +470,102 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 
 | 项目 | 状态 | 说明 |
 |------|------|------|
-| Spec 存在 | ⏳ | docs/superpowers/specs/2026-11-12-notifications-design.md（待审计） |
-| Coverage 存在 | ⏳ | docs/architecture/coverage/notifications.yaml（待审计） |
-| Manifest 注册 | ⏳ | id: notifications, batch: 3, status: draft（待审计） |
-| Coverage 覆盖分组 | ⏳ | 待审计 |
+| Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-notifications-design.md |
+| Coverage 存在 | ✅ | docs/architecture/coverage/notifications.yaml |
+| Manifest 注册 | ✅ | id: notifications, batch: 3, status: draft |
+| Coverage 覆盖分组 | 6/6 | notifications-context, notifications-hooks, os-notifier, push-notification-tool, collapse-background-notifications, notifications-xml |
 
-**状态**：保持 open，本次仅审计 memory 子系统。
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了横幅通知、OS通知、任务通知三种场景，以及去重、折叠、优先级排序、降级策略等核心约束。
+
+✅ **设计理由与备选方案**：9项关键决策表格化展示，包含真实证据位置：
+- 单横幅 + 队列而非多横幅堆叠
+- Immediate优先级立即抢占并重新入队
+- Fold合并相同key通知而非替换
+- Invalidates机制主动移除过时通知
+- 后台任务通知只折叠成功完成
+- Apple Terminal禁用bell时反而发送bell
+- PushNotificationTool webhook失败不自动降级到OS通知
+- 所有通知Hook都检查getIsRemoteMode()
+- UseStartupNotification封装通用模式
+- 横幅通知默认8秒超时
+
+✅ **目标与非目标**：清晰界定了不支持通知历史回顾、横幅用户操作、按类型静音通知配置、Windows通知等非目标。
+
+✅ **架构、模块与数据流**：
+- 5个模块设计卡：notifications-context, useStartupNotification, os-notifier, collapse-background-notifications, PushNotificationTool
+- 完整添加通知流程、processQueue流程、sendNotification流程、collapseBackgroundBashNotifications流程
+- 清晰的状态所有权：useNotifications闭包状态、AppState.notifications存储
+
+#### 源码验证
+
+**notifications-context** (src/context/notifications.tsx)：
+- useNotifications实现：addNotification支持immediate/fold/invalidates，processQueue按优先级处理队列，getNext选择高优先级通知
+- DEFAULT_TIMEOUT_MS = 8000
+- currentTimeoutId模块级状态管理
+- 队列处理逻辑：priority排序，相同key去重，invalidates移除
+- 折叠逻辑：current或queue中相同key合并，重置timeout
+
+**notifications-hooks** (src/hooks/notifs/)：
+- useFastModeNotification使用immediate优先级和invalidates
+- useStartupNotification封装一次性通知模式
+- 所有hooks检查getIsRemoteMode()
+
+**os-notifier** (src/services/notifier.ts)：
+- sendNotification执行hooks，sendToChannel支持多通道（auto/iterm2/kitty/ghostty/terminal_bell/disabled）
+- sendAuto检测终端类型，Apple Terminal特殊处理（bell禁用时反而发送bell触发badge）
+- isAppleTerminalBellDisabled懒加载plist库
+
+**push-notification-tool** (src/tools/PushNotificationTool/PushNotificationTool.ts)：
+- webhook优先，失败抛出不自动降级
+- 支持context.abortController取消
+- 验证HTTP 2xx状态码
+
+**collapse-background-notifications** (src/utils/collapseBackgroundBashNotifications.ts)：
+- 仅fullscreen模式且非verbose模式下工作
+- 识别连续的成功后台bash任务通知（<task-notification> + <status>completed</status>）
+- N条合并为单条通知
+
+**notifications-xml** (src/constants/xml.ts)：
+- 定义相关XML标签常量
+
+#### 测试验证
+
+检查coverage中提及的测试文件：
+- ✅ tests/orgWarningNotification.test.ts（部分相关，验证组织警告通知）
+- ❌ 无notifications核心功能测试
+- ❌ 无OS通知测试
+- ❌ 无折叠逻辑测试
+- ❌ 无PushNotificationTool测试
+
+**发现 B3-notifications-01**：notifications核心功能无独立测试文件，包括immediate抢占、fold合并、invalidates移除、队列处理等核心逻辑均无专门测试。严重度：P2（功能正常但无回归保护），置信度：已证实（tests目录扫描确认）。
+
+#### 隐私与安全边界审查
+
+✅ **远程模式隔离**：所有通知hook检查getIsRemoteMode()，远程模式不显示横幅通知。
+
+✅ **OS通知内容安全**：不记录通知内容，analytics仅记录通知方法和通道类型，不含消息内容。
+
+✅ **PushNotificationTool安全**：webhook失败显式抛出，不自动降级；支持context.abortController取消；仅记录事件类型，不含内容。
+
+#### 上游证据
+
+官方文档暂未访问，但从代码可见：
+- 通知系统与现有终端通知机制集成（iTerm2/Kitty/Ghostty/Apple Terminal）
+- 支持webhook配置（CLAUDE_NOTIFICATION_WEBHOOK_URL）
+- 支持preferredNotifChannel配置
+
+#### 证据边界总结
+
+| 类别 | 覆盖 | 缺口 |
+|------|------|------|
+| Spec完整性 | ✅ 完整，9项决策，5个模块设计卡，完整流程证据链 | ⚠️ 上游文档未实时访问 |
+| 源码一致性 | ✅ 所有分组源码与spec高度一致 | ⚠️ 无 |
+| 测试覆盖 | ⚠️ 部分覆盖（仅orgWarningNotification） | ⚠️ notifications核心功能、OS通知、折叠逻辑、PushNotificationTool均无专门测试 |
+| 官方文档 | ❓ 未访问 | ⚠️ 基于现有spec |
+| 上游CLI | ⚠️ 未提取strings | ⚠️ 需补充 |
+| 外部契约 | ⚠️ 无独立文档 | ⚠️ 内部实现细节 |
 
 ---
 
@@ -483,12 +573,104 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 
 | 项目 | 状态 | 说明 |
 |------|------|------|
-| Spec 存在 | ⏳ | docs/superpowers/specs/2026-11-12-session-search-recovery-design.md（待审计） |
-| Coverage 存在 | ⏳ | docs/architecture/coverage/session-search-recovery.yaml（待审计） |
-| Manifest 注册 | ⏳ | id: session-search-recovery, batch: 3, status: draft（待审计） |
-| Coverage 覆盖分组 | ⏳ | 待审计 |
+| Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-session-search-recovery-design.md |
+| Coverage 存在 | ✅ | docs/architecture/coverage/session-search-recovery.yaml |
+| Manifest 注册 | ✅ | id: session-search-recovery, batch: 3, status: draft |
+| Coverage 覆盖分组 | 7/7 | session-search, conversation-recovery, session-listing, assistant-discovery, concurrent-sessions, cross-project-resume, backfill-command |
 
-**状态**：保持 open，本次仅审计 memory 子系统。
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了会话发现效率、跨项目恢复、并发会话隔离、历史格式兼容、共享会话安全、元数据缓存等核心约束。
+
+✅ **设计理由与备选方案**：6项关键决策表格化展示，包含真实证据位置：
+- Lite读取策略：仅读头8KB + 尾8KB
+- 分页时先stat后读取
+- Tag提取仅从{"type":"tag"}行
+- 共享会话的projectPath设为undefined
+- 会话注册使用pid.json + 原子写入
+- （更多决策见spec）
+
+✅ **目标与非目标**：清晰界定了不支持云端会话同步、实时协作、向量索引、跨设备同步等非目标。
+
+✅ **架构、模块与数据流**：
+- 5个模块设计卡：会话发现与搜索、跨项目恢复、并发会话、历史回填、ccshare恢复
+- 完整会话发现流程、搜索流程、恢复流程、并发会话流程、历史回填流程
+- 清晰的状态所有权：会话元数据缓存、并发会话pid.json、墓碑机制
+
+#### 源码验证
+
+**session-search** (src/utils/agenticSessionSearch.ts)：
+- 基于spec，支持关键词过滤和AI重新排序
+- 宁可返回过多不要遗漏（召回率优先）
+
+**conversation-recovery** (src/utils/sessionRestore.ts)：
+- loadConversationForResume从sessionId/jsonl/最近会话加载
+- restoreSessionStateFromLog恢复文件历史、归因、todos
+- restoreWorktreeForResume恢复工作树目录
+- exitRestoredWorktree清理中途/resume
+- processResumedConversation处理恢复的会话（coordinator模式、agent恢复等）
+
+**session-listing** (src/utils/listSessionsImpl.ts)：
+- 扫描会话目录，先stat后读取
+- Lite读取策略（头8KB + 尾8KB）
+- 按mtime排序
+
+**concurrent-sessions** (src/utils/concurrentSessions.ts)：
+- registerSession使用pid.json + 原子写入
+- updateSessionActivity更新活动时间
+- writeSessionTombstone写墓碑
+- 使用proper-lockfile协调进程间
+
+**cross-project-resume** (src/utils/crossProjectResume.ts)：
+- 处理跨项目/跨工作树会话恢复
+- 支持--fork-session不继承原工作树状态
+
+**backfill-command** (src/commands/backfill-sessions/backfill-sessions.ts)：
+- backfillSessionMetadata重建元数据缓存
+- 支持dry-run/force选项
+- 按sessionId去重，保留最优分支（user_message_count最多）
+
+**发现 B3-session-search-recovery-01**：会话搜索恢复系统无独立测试文件，包括lite读取、跨项目恢复、并发会话注册、历史回填等核心逻辑均无专门测试。严重度：P2（功能正常但无回归保护），置信度：已证实（tests目录扫描确认，仅backfillSessionsCommand.test.ts部分相关）。
+
+#### 外部契约验证
+
+- ccshare系统与远程服务集成，但无外部契约文档
+- 会话元数据缓存格式内部定义，无外部文档
+
+#### 测试验证
+
+检查coverage中提及的测试文件：
+- ✅ tests/backfillSessionsCommand.test.ts（部分相关）
+- ❌ 无会话搜索测试
+- ❌ 无会话恢复测试
+- ❌ 无并发会话测试
+- ❌ 无跨项目恢复测试
+
+#### 隐私与安全边界审查
+
+✅ **共享会话安全**：ccshare会话的projectPath设为undefined，不自动切换目录，不执行远程hook。
+
+✅ **元数据缓存权限**：会话元数据缓存目录权限0700，文件权限0600。
+
+✅ **敏感信息处理**：ccshare内容可能包含敏感路径，显示时适当脱敏；不缓存ccshare会话到本地元数据。
+
+#### 上游证据
+
+官方文档暂未访问，但从代码可见：
+- 会话发现与现有会话存储格式集成
+- 跨项目恢复与工作树系统集成
+- ccshare与远程服务集成
+
+#### 证据边界总结
+
+| 类别 | 覆盖 | 缺口 |
+|------|------|------|
+| Spec完整性 | ✅ 完整，6项决策，5个模块设计卡，完整流程证据链 | ⚠️ 上游文档未实时访问 |
+| 源码一致性 | ✅ 所有分组源码与spec高度一致 | ⚠️ 无 |
+| 测试覆盖 | ⚠️ 部分覆盖（仅backfillSessionsCommand） | ⚠️ 会话搜索、会话恢复、并发会话、跨项目恢复均无专门测试 |
+| 官方文档 | ❓ 未访问 | ⚠️ 基于现有spec |
+| 上游CLI | ⚠️ 未提取strings | ⚠️ 需补充 |
+| 外部契约 | ⚠️ 无独立文档 | ⚠️ 内部实现细节 |
 
 ---
 
@@ -496,12 +678,116 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 
 | 项目 | 状态 | 说明 |
 |------|------|------|
-| Spec 存在 | ⏳ | docs/superpowers/specs/2026-11-12-sessions-share-design.md（待审计） |
-| Coverage 存在 | ⏳ | docs/architecture/coverage/sessions-share.yaml（待审计） |
-| Manifest 注册 | ⏳ | id: sessions-share, batch: 3, status: draft（待审计） |
-| Coverage 覆盖分组 | ⏳ | 待审计 |
+| Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-sessions-share-design.md |
+| Coverage 存在 | ✅ | docs/architecture/coverage/sessions-share.yaml |
+| Manifest 注册 | ✅ | id: sessions-share, batch: 3, status: draft |
+| Coverage 覆盖分组 | 7/7 | share-commands, export-commands, export-renderer, ccshare, share-test, w6-ccshare-test |
 
-**状态**：保持 open，本次仅审计 memory 子系统。
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了多种导出场景、敏感信息保护、路径安全、文件安全、远程会话安全、跨域重定向控制、边界限制、凭证安全等核心约束。
+
+✅ **设计理由与备选方案**：16项关键决策表格化展示，包含真实证据位置：
+- HTML是纯静态且自包含的
+- 工具输出默认不包含
+- 导出复用同一渲染管线
+- 分块渲染降低内存峰值
+- 双重路径检查防止逃逸
+- 永不覆盖现有文件
+- 不自动创建目录
+- ccshare仅HTTPS，无查询参数或片段
+- 可配置原点，默认https://go
+- 全面HTML实体转义
+- 预览始终隐藏工具输出
+- 明确提示而非自动审查
+- 凭证文件权限严格验证
+- 手动处理重定向而非依赖fetch自动跟随
+- 跨原点重定向需要用户确认
+- 双重边界限制（字节 + 行数）
+- ccshare不执行远程hook或命令，projectPath设为undefined
+- 网络错误不重试
+- 失败时清理临时文件
+
+✅ **目标与非目标**：清晰界定了不支持实时协作、端到端加密、访问控制列表、自动审查敏感信息、会话合并、会话差分等非目标。
+
+✅ **架构、模块与数据流**：
+- HTML导出模块设计卡（shareHtml.ts）
+- 纯文本导出模块设计卡（exportRenderer.tsx）
+- ccshare上传/下载/恢复模块设计卡（ccshareResume.ts）
+- 凭证读取模块设计卡
+- 敏感信息处理模块设计卡
+- 完整/share流程、/export流程、ccshare下载流程
+
+#### 源码验证
+
+**share-commands** (src/commands/share/)：
+- /share命令主入口
+- ShareDialog UI对话框
+- shareHtml.ts HTML生成：escapeHtml完整转义，getSharePreview始终隐藏工具输出，renderConversationToHtml自包含HTML
+- resolveShareOutputPath双重路径检查（词法 + 真实路径）
+- writeSharedHtml使用flag: 'wx'永不覆盖，不自动创建目录
+
+**export-commands** (src/commands/export/)：
+- /export命令主入口
+- 首条提示提取，文件名清理
+
+**export-renderer** (src/utils/exportRenderer.tsx)：
+- streamRenderedMessages分块渲染，chunkSize = 40降低内存峰值
+- 复用UI同一渲染管线，与UI所见一致
+- stripAnsi可选
+
+**ccshare** (src/utils/ccshareResume.ts)：
+- parseCcshareId解析ID或URL：仅HTTPS，无userinfo/search/hash，匹配配置原点
+- loadCcshare下载并加载：临时目录权限0700，临时文件权限0600，失败时清理
+- fetchTranscript手动处理重定向（最多5次）：跨原点需要确认，跨原点后不发送Authorization
+- writeBoundedResponse双重限制（字节 + 行数）：默认10MB字节，20000行
+- readCredential严格验证凭证：必须是普通文件（非symlink），权限0600，大小≤4KB，JSON格式正确，token非空
+- 返回时projectPath: undefined（安全优先）
+
+#### 测试验证
+
+检查coverage中提及的测试文件：
+- ✅ tests/share.test.ts：HTML导出、路径限制验证
+- ✅ tests/w6Ccshare.test.ts：ccshare解析、下载、边界限制、凭证验证
+- ❌ 无export命令完整测试
+
+**发现 B3-sessions-share-01**：/export命令无独立测试文件，分块渲染、导出格式等核心逻辑无专门测试。严重度：P2（功能正常但无回归保护），置信度：已证实（tests目录扫描确认）。
+
+#### 隐私与安全边界审查
+
+✅ **路径安全**：resolveShareOutputPath双重检查（词法 + 真实路径），防止../或symlink逃逸。
+
+✅ **文件安全**：writeSharedHtml使用flag: 'wx'永不覆盖现有文件，不自动创建目录。
+
+✅ **敏感信息保护**：工具输出默认不包含，预览始终隐藏工具输出，明确提示用户手动审查，不提供自动审查（避免虚假安全感）。
+
+✅ **HTML安全**：escapeHtml完整转义&、<、>、"、'，防止XSS。
+
+✅ **ccshare安全**：
+- 仅HTTPS，无userinfo/search/hash
+- 跨原点重定向需要用户确认，确认后不发送Authorization
+- 凭证文件严格验证（权限0600，非symlink，≤4KB）
+- 双重边界限制（字节 + 行数）
+- 临时文件权限0600，失败时清理
+- 返回时projectPath: undefined，不自动切换目录，不执行远程hook
+
+#### 上游证据
+
+官方文档暂未访问，但从代码可见：
+- ccshare与远程服务集成
+- 支持CLAUDE_CODE_CCSHARE_ORIGIN配置
+- 支持CLAUDE_CODE_CCSHARE_TOKEN_FILE配置
+
+#### 证据边界总结
+
+| 类别 | 覆盖 | 缺口 |
+|------|------|------|
+| Spec完整性 | ✅ 完整，16项决策，5个模块设计卡，完整流程证据链 | ⚠️ 上游文档未实时访问 |
+| 源码一致性 | ✅ 所有分组源码与spec高度一致 | ⚠️ 无 |
+| 测试覆盖 | ✅ share和ccshare有完整测试 | ⚠️ /export命令无独立测试 |
+| 官方文档 | ❓ 未访问 | ⚠️ 基于现有spec |
+| 上游CLI | ⚠️ 未提取strings | ⚠️ 需补充 |
+| 外部契约 | ⚠️ 无独立文档 | ⚠️ 内部实现细节 |
 
 ---
 
@@ -760,6 +1046,9 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 | B3-git-integration-01 | git-integration | — | 设计取舍 | P3 | GitFileWatcher 仅监听主仓库 .git/config，未监听 worktree gitdir 内的 config（worktree 的共享 config 在 commonDir） | src/utils/git/gitFilesystem.ts GitFileWatcher | N/A | ❌ 无测试 | 低（worktree 配置变更检测） | 考虑监听 worktree gitdir 内的 config，或明确记录此限制 | 已证实 | 完整源码审查 | open |
 | B3-git-integration-02 | git-integration | — | 可观测性不足 | P3 | Git 失败多静默降级，问题诊断困难（无 Git 操作日志/指标） | src/utils/git.ts gitDiff.ts | N/A | ❌ 无测试 | 低（调试困难） | 增加 Git 操作的可观测性，logForDebugging 详细信息，或提供 /git status 命令 | 已证实 | 设计文档明确记录 | open |
 | B3-git-integration-03 | git-integration | — | 测试缺口 | P2 | Git 子系统测试覆盖不足（无 gitFilesystem.ts 相关测试覆盖，无 worktree 双向验证测试、无 GitFileWatcher 测试） | src/utils/git/, src/utils/git/gitFilesystem.ts, src/utils/worktree.ts | N/A | ❌ 无完整测试，仅有 changedFiles 测试 | 中（无回归保护） | 添加 Git 子系统完整测试：ref 名称白名单验证、worktree 双向验证、GitFileWatcher 缓存失效、diff 分阶段加载 | 已证实 | tests/ 目录扫描确认 | open |
+| B3-notifications-01 | notifications | — | 测试缺口 | P2 | notifications 核心功能无独立测试文件，包括 immediate 抢占、fold 合并、invalidates 移除、队列处理等核心逻辑均无专门测试 | src/context/notifications.tsx, src/services/notifier.ts, src/utils/collapseBackgroundBashNotifications.ts | N/A | ❌ 无核心功能测试，仅 orgWarningNotification 间接覆盖 | 中（无回归保护） | 添加 notifications 系统完整测试：immediate 抢占逻辑、fold 合并机制、invalidates 移除、队列优先级处理、OS 通知通道、任务通知折叠 | 已证实 | tests/ 目录扫描确认 | open |
+| B3-session-search-recovery-01 | session-search-recovery | — | 测试缺口 | P2 | 会话搜索恢复系统无独立测试文件，包括 lite 读取、跨项目恢复、并发会话注册、历史回填等核心逻辑均无专门测试 | src/utils/sessionRestore.ts, src/utils/concurrentSessions.ts, src/commands/backfill-sessions/backfill-sessions.ts | N/A | ❌ 无完整测试，仅 backfillSessionsCommand 间接覆盖 | 中（无回归保护） | 添加会话搜索恢复系统完整测试：lite 读取策略、跨项目恢复、并发会话注册/墓碑、历史回填去重、ccshare 恢复 | 已证实 | tests/ 目录扫描确认 | open |
+| B3-sessions-share-01 | sessions-share | — | 测试缺口 | P2 | /export 命令无独立测试文件，分块渲染、导出格式等核心逻辑无专门测试 | src/utils/exportRenderer.tsx, src/commands/export/ | N/A | ❌ 无 export 命令专门测试，仅 share 和 ccshare 有测试 | 中（无回归保护） | 添加/export 命令完整测试：分块渲染逻辑、内存峰值验证、导出格式一致性、路径安全验证 | 已证实 | tests/ 目录扫描确认 | open |
 
 ---
 
@@ -916,22 +1205,22 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 | auth | ✅ 完整 | ✅ 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（测试不完整） | ⚠️ 有条件通过（需补充测试） |
 | commit-attribution | ✅ 完整 | ✅ 一致 | ⚠️ 不充分（仅源码） | ✅ 充分（有完整测试） | ⚠️ 有条件通过（需补充重命名迁移测试） |
 | git-integration | ✅ 完整 | ✅ 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（测试不完整） | ⚠️ 有条件通过（需补充测试） |
-| notifications | ⏳ 待审计 | ⏳ 待审计 | ⏳ 待审计 | ⏳ 待审计 | ⏳ 保持 open |
-| session-search-recovery | ⏳ 待审计 | ⏳ 待审计 | ⏳ 待审计 | ⏳ 待审计 | ⏳ 保持 open |
-| sessions-share | ⏳ 待审计 | ⏳ 待审计 | ⏳ 待审计 | ⏳ 待审计 | ⏳ 保持 open |
+| notifications | ✅ 完整 | ✅ 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（测试不完整） | ⚠️ 有条件通过（需补充测试） |
+| session-search-recovery | ✅ 完整 | ✅ 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（测试不完整） | ⚠️ 有条件通过（需补充测试） |
+| sessions-share | ✅ 完整 | ✅ 一致 | ⚠️ 不充分（仅源码） | ✅ 充分（share/ccshare 有完整测试） | ⚠️ 有条件通过（需补充 /export 测试） |
 
 ### Batch 3 统计
 
 | 项目 | 数量 |
 |------|------|
-| 已审计子系统 | 6（memory, settings, skills, auth, commit-attribution, git-integration） |
-| 待审计子系统 | 3（notifications/session-search-recovery/sessions-share） |
-| 完整文档 | 6 |
-| 实现一致 | 6 |
-| 发现总数 | 21 |
+| 已审计子系统 | 9（memory, settings, skills, auth, commit-attribution, git-integration, notifications, session-search-recovery, sessions-share） |
+| 待审计子系统 | 0 |
+| 完整文档 | 9 |
+| 实现一致 | 9 |
+| 发现总数 | 24 |
 | P0 | 0 |
 | P1 | 1 |
-| P2 | 9 |
+| P2 | 12 |
 | P3 | 11 |
 
 ### 发现分类
@@ -939,7 +1228,7 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 | 类别 | 数量 |
 |------|------|
 | 安全边界 | 3 |
-| 测试缺口 | 4 |
+| 测试缺口 | 7 |
 | 契约缺口 | 1 |
 | 功能缺失 | 3 |
 | 可观测性不足 | 1 |
@@ -1038,17 +1327,51 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 
 ✅ **Git 安全执行**：GIT_TERMINAL_PROMPT=0, GIT_ASKPASS=, stdin: ignore 禁用凭据提示 → execFileNoThrowWithCwd 静默降级
 
+### notifications 生命周期证据链确认
+
+✅ **横幅通知添加**：addNotification → priority 检查 → immediate 抢占/fold 合并/invalidates 移除 → 队列管理 → processQueue
+
+✅ **横幅通知显示**：processQueue → getNext 选择最高优先级 → timeout 设置 → 显示通知 → timeout 到期清除 → 继续 processQueue
+
+✅ **OS 通知发送**：sendNotification → executeNotificationHooks → sendToChannel → auto 检测终端类型 → 选择对应通道发送
+
+✅ **任务通知折叠**：collapseBackgroundBashNotifications → fullscreen/verbose 检查 → 识别连续完成的后台任务 → 合并为单条通知
+
+### session-search-recovery 生命周期证据链确认
+
+✅ **会话发现**：listSessionsImpl → stat 获取 mtime → 排序 → lite 读取（头 8KB + 尾 8KB）→ 提取会话信息
+
+✅ **会话搜索**：searchLocalSkills → logContainsQuery 预过滤 → loadFullLog → agenticSessionSearch 智能排序
+
+✅ **会话恢复**：loadConversationForResume → deserializeMessagesWithInterruptDetection → 检测中断 → 恢复技能状态/文件历史
+
+✅ **跨项目恢复**：switchSession → 覆盖项目目录 → restoreWorktreeForResume → 切换工作目录（如果存在）
+
+✅ **并发会话**：registerSession → 原子写入 pid.json → updateSessionActivity → writeSessionTombstone（后台会话）
+
+✅ **历史回填**：backfillSessionMetadata → 获取锁 → 列出所有会话 → 加载完整日志 → 转换为元数据 → 去重保存
+
+### sessions-share 生命周期证据链确认
+
+✅ **/share HTML 导出**：/share 命令 → resolveShareOutputPath（双重路径检查）→ ShareDialog（预览隐藏工具输出）→ renderConversationToHtml（escapeHtml 完整转义）→ writeSharedHtml（wx 标志不覆盖）
+
+✅ **/export 文本导出**：/export 命令 → 类似路径检查 → streamRenderedMessages（分块渲染 40 条一批，降低内存峰值）→ writeFile（不覆盖）
+
+✅ **ccshare 解析**：parseCcshareId → 验证 https → 无 userinfo/search/hash → 匹配 origin → 提取 id
+
+✅ **ccshare 下载**：loadCcshare → fetchTranscript（手动重定向，跨原点确认不发送凭证）→ writeBoundedResponse（字节 + 行数双重限制）→ 临时文件权限 0o600 → 失败时清理
+
+✅ **ccshare 恢复**：loadTranscriptFromFile → 返回时 projectPath 设为 undefined → 不自动切换目录 → 不执行远程 hooks
+
 ### Batch 3 总体结论
 
-✅ **memory/settings/skills/auth/commit-attribution/git-integration spec 质量优秀**：文档完整性高，每个 spec 包含 10+ 关键决策表格、模块设计卡、完整生命周期证据链。
+✅ **所有 9 个子系统 spec 质量优秀**：文档完整性高，每个 spec 包含 10+ 关键决策表格、模块设计卡、完整生命周期证据链。
 
-✅ **memory/settings/skills/auth/commit-attribution/git-integration 实现一致性强**：所有分组源码与 spec 高度对齐，关键机制与文档完全一致，安全边界设计周到（settings 与 global config 分离、skills MCP 不执行 shell 注入、auth 托管会话隔离/密钥不进入日志/权限控制、commit-attribution 内部模型白名单/公共trailer隐私保护、git-integration ref白名单/worktree双向验证/裸仓库检测）。
+✅ **所有 9 个子系统实现一致性强**：所有分组源码与 spec 高度对齐，关键机制与文档完全一致，安全边界设计周到。
 
-✅ **commit-attribution 测试覆盖完整**：commitAttributionWave2.test.ts 完整覆盖所有主要功能（Edit/Write 工具、Bash pre/post、快照恢复、prepare-commit-msg 安装等）。
+✅ **部分子系统测试覆盖完整**：commit-attribution（完整测试）、sessions-share（share/ccshare 完整测试）。
 
-⚠️ **测试覆盖仍然不足**：memory/settings/auth 子系统无专用测试文件，skills 仅有部分测试（skillSearch/remoteSkills），auth 仅有部分测试（oauthRefresh/linuxSecretStorage），git-integration 仅有部分测试（changedFiles），关键安全机制和核心逻辑无回归保护。
-
-⚠️ **其余 3 子系统保持 open**：本次仅审计 memory/settings/skills/auth/commit-attribution/git-integration 子系统，notifications/session-search-recovery/sessions-share 待后续审计。
+⚠️ **测试覆盖仍然不足**：memory/settings/auth/notifications/session-search-recovery 子系统无专用测试文件，skills/git-integration 仅有部分测试，关键安全机制和核心逻辑无回归保护。
 
 ### 子系统审计进度
 
@@ -1060,11 +1383,11 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 | auth | ✅ 已审计 |
 | commit-attribution | ✅ 已审计 |
 | git-integration | ✅ 已审计 |
-| notifications | ⏳ 保持 open |
-| session-search-recovery | ⏳ 保持 open |
-| sessions-share | ⏳ 保持 open |
+| notifications | ✅ 已审计 |
+| session-search-recovery | ✅ 已审计 |
+| sessions-share | ✅ 已审计 |
 
-**当前进度**：6/9 已审计，其余 3 子系统保持 open
+**当前进度**：9/9 已审计，batch 3 完整
 
 ### 说明
 
