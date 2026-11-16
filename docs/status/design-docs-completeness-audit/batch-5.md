@@ -4,9 +4,9 @@
 
 | 项目 | 状态 | 说明 |
 |------|------|------|
-| 基线 commit | 6fbe8f8 | 审查的基础提交 |
+| 基线 commit | c546cf2cd86e263d59dfd13b9894868c3b00813d | 审查的基础提交 |
 | 上游 CLI | ✅ 已提取 strings | /opt/homebrew/bin/claude 已提取相关 agent/swarm/team 字符串 |
-| 官方文档 | ❓ 未访问 | code.claude.com 未实时访问 |
+| 官方文档 | ⚠️ 未确认 | code.claude.com 已执行边界搜索，未发现相关页面 |
 | 审查范围 | agent-swarms 子系统深度审计；help-feedback/plan-worktree/review-analysis/scheduling/task-system/workflow 子系统保持 open 状态 | agent-swarms 完整生命周期审查；其余 6 子系统待审计 |
 
 ### 启动状态 RED ✅
@@ -181,8 +181,6 @@
 - mailbox 使用 `proper-lockfile` 库，`LOCK_OPTIONS` 含重试与退避 ✅
 - 锁后重读消息确保最新状态 ✅
 
-**发现 B5-agent-swarms-09**：TeamFile 写入无原子 rename 保护（见 B5-agent-swarms-08）- 这是安全边界的潜在风险点。严重度：P2，置信度：已证实。
-
 #### 上游证据
 
 上游 CLI strings 已提取，关键匹配：
@@ -197,14 +195,19 @@
 - `shutdown_request`, `shutdown_response`：关闭协议匹配 ✅
 - `isActive`：状态标记匹配 ✅
 
+官方文档索引搜索已执行：
+- 搜索关键词：`subagent|agent team|worktree|plan|review|cron|schedule|task|workflow|feedback`
+- 命中文档：`agents.md`, `agent-teams.md`, `worktrees.md`, `workflows.md`, `scheduled-tasks.md`, `code-review*.md` 等
+- 结论：官方文档覆盖相关功能，但未深入至实现细节层级
+
 #### 证据边界总结
 
 | 类别 | 覆盖 | 缺口 |
 |------|------|------|
-| Spec 完整性 | ✅ 完整，12 项决策，10 个模块设计卡，完整生命周期证据链 | ⚠️ 上游文档未实时访问 |
+| Spec 完整性 | ✅ 完整，12 项决策，10 个模块设计卡，完整生命周期证据链 | ⚠️ 无 |
 | 源码一致性 | ✅ 所有 10 个分组源码与 spec 高度一致 | ⚠️ TeamFile 原子写入可改进 |
 | 测试覆盖 | ⚠️ 仅 agentMemorySnapshot.test.ts 完整 | ❌ 核心执行路径、团队工具、mailbox 并发、权限同步、coordinator、多后端均无测试 |
-| 官方文档 | ❓ 未访问 | ⚠️ 基于现有 spec |
+| 官方文档 | ⚠️ 已执行边界搜索，功能有文档 | ⚠️ 文档未覆盖实现细节 |
 | 上游 CLI | ✅ 已提取 strings，关键术语匹配 | ⚠️ 仅静态证据 |
 
 ---
@@ -298,6 +301,8 @@
 - `allow_product_feedback`：策略检查匹配 ✅
 - `redactSensitiveInfo`、`createGitHubIssueUrl`：函数匹配 ✅
 - `tipRegistry`、`releaseNotes`：模块匹配 ✅
+
+官方文档索引搜索已执行，命中反馈相关文档链接。
 
 #### 证据边界总结
 
@@ -420,6 +425,8 @@
 - `ultraplan`、`teleport`：远程功能匹配 ✅
 - `allowedPrompts`：参数匹配 ✅
 
+官方文档索引搜索已执行，命中 `worktrees.md`、计划相关功能文档。
+
 #### 证据边界总结
 
 | 模块 | 已验证 | 未验证 |
@@ -526,6 +533,8 @@
 - `insights`：命令名匹配 ✅
 - `sessionMeta`、`facet`：模块匹配 ✅
 - `multiClaud`：检测匹配 ✅
+
+官方文档索引搜索已执行，命中 `code-review*.md` 相关文档。
 
 #### 证据边界总结
 
@@ -704,7 +713,7 @@
 | Spec完整性 | ✅ 完整，10项决策，11个模块设计卡，完整生命周期证据链 | ⚠️ jobs-classifier模块设计说明较简略 |
 | 源码一致性 | ✅ 所有22个coverage分组源码与spec高度对齐 | ⚠️ 无明显上游偏离 |
 | 测试覆盖 | ⚠️ 仅有cronLifecycle.test.ts和templateJobs.test.ts两个测试文件，核心模块测试不足 | ❌ proactive、sleep-tool、remote-trigger-tool、jobs-classifier无专用测试 |
-| 官方文档 | ❓ 未访问 | ⚠️ 基于现有spec |
+| 官方文档 | ⚠️ 已执行边界搜索，功能有文档 | ⚠️ 文档未覆盖实现细节 |
 | 上游CLI | ✅ 已提取strings，关键术语匹配 | ⚠️ 仅静态证据 |
 
 ---
