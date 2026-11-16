@@ -250,12 +250,23 @@ Design docs: 0 errors, 71 warnings
 | P3 | 136 |
 | **总计** | **233** |
 
+### 发现分类统计
+
+| 类别 | 数量 |
+|------|------|
+| 文档缺口 | 10 |
+| 已证实实现问题 | 8 |
+| 上游偏离 | 0 |
+| 验证缺口 | 185 |
+| 可选改进 | 30 |
+| **总计** | **233** |
+
 ### P1 发现详情
 
-| ID | 主责 | 说明 |来源 |
-|----|------|------|-----|
-| B3-memory-xx | memory | 待确认 | [batch-3.md](batch-3.md) |
-| B7-xx | TBD | 待确认 | [batch-7.md](batch-7.md) |
+| ID | 主责 | 说明 | 证据 | 依赖 | 验收条件 | 来源 |
+|----|------|------|------|------|----------|------|
+| B3-auth-01 | auth | Keychain 缓存 30 秒，跨进程刷新后另一个进程最多 30 秒才看到新 token | `src/utils/secureStorage/macOsKeychainHelpers.ts:69-91` | None | 每次读取 tokens 时检查磁盘 mtime 或 Keychain 自身修改时间，变更则立即清缓存 | [batch-3.md](batch-3.md) |
+| B7-test-validation-06 | test-validation | `scripts/live-model-validation.ts` 在 `enableConfigs()` 前检查凭据，standalone 脚本的 settings 初始化契约需要明确，凭据互斥检查需要集中处理 | `scripts/live-model-validation.ts:40-48` | None | 明确 standalone 脚本的 settings 初始化契约，集中处理凭据互斥检查 | [batch-7.md](batch-7.md) |
 
 ---
 
@@ -291,7 +302,7 @@ Design docs: 0 errors, 71 warnings
    - 模块级状态清理
    - 路径验证统一
 
-### P3 问题（137 项，可选改进）
+### P3 问题（136 项，可选改进）
 
 - 硬编码阈值配置化
 - 额外验证机制
@@ -310,22 +321,6 @@ Design docs: 0 errors, 71 warnings
 
 ## 验证与测试结果
 
-### 本地链接检查
-✅ PASS：所有本地链接均可解析
-
-### 占位符扫描
-✅ 无待完成占位符（除故意保留的分类项）
-
-### `bun scripts/check-design-docs.ts`
-✅ PASS：0 errors
-
-### `git diff --check`
-✅ PASS：无空白错误
-
----
-
-### 验证结果
-
 #### `bun scripts/check-design-docs.ts`
 ✅ Passed - 0 errors, 71 warnings (expected - all specs are draft)
 
@@ -334,14 +329,14 @@ Design docs: 0 errors, 71 warnings
 
 ### 测试结果
 
-#### `bun run test`
-⏭️ Skipped for audit (command takes too long)
-
 #### `bun run typecheck`
-✅ Passed - no output (tsc --noEmit passed)
+✅ Exit code: 0 - Passed
+
+#### `bun run test`
+⏭️ Exit code: N/A - Not run (test suite takes > 5 minutes)
 
 #### `bun run build`
-⏭️ Skipped for audit (command takes too long)
+⏭️ Exit code: N/A - Not run (build takes > 5 minutes)
 
 ---
 
