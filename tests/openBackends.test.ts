@@ -756,6 +756,11 @@ describe('open Computer Use and Browser backends', () => {
     expect(JSON.stringify(result.content)).toContain('permission denied')
   }, 30_000)
 
+  // Real-browser e2e is sensitive to CI runner VM contention: on noisy
+  // neighbors every Chrome step slows 2-7x and the MCP-internal 30s snapshot
+  // timeout overflows (evidence: same code 452ms pass vs 30s timeout across
+  // same-day runs). retry=2 absorbs the slow-VM case without masking real
+  // regressions — a genuine failure fails all attempts.
   test('navigates a real isolated browser to a local page', async () => {
     await startFixture()
     const rootsBefore = await snapshotIsolatedBrowserRoots()
@@ -783,7 +788,7 @@ describe('open Computer Use and Browser backends', () => {
     )
     expect(closed.data.isError).not.toBe(true)
     await expectIsolatedBrowserRootExited(isolatedRoot)
-  }, 60_000)
+  }, { timeout: 60_000, retry: 2 })
 })
 
 // Opt-in only: this attaches to an already-running, user-approved dedicated

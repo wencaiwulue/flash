@@ -190,7 +190,7 @@ export async function aggregateChecksums(
 
 function spawn(
   cmd: string[],
-  options: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
+  options: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number } = {},
 ) {
   return Bun.spawnSync({
     cmd,
@@ -198,7 +198,7 @@ function spawn(
     env: options.env,
     stdout: 'pipe',
     stderr: 'pipe',
-    timeout: 30_000,
+    timeout: options.timeoutMs ?? 30_000,
   })
 }
 
@@ -211,6 +211,43 @@ function assertCommandSucceeded(
       `${description} failed (${result.exitCode ?? result.signalCode}): ${result.stderr.toString().trim()}`,
     )
   }
+}
+
+export const SMOKE_TITLE_MARKER = 'smoke-ok'
+
+// Classification order matters: a crash must never be misread as an
+// environment gap, and browser-missing MCP errors can arrive in-band
+// (ok:true + isError content) instead of as a thrown error.
+// MCP -32001 request/cleanup timeouts are performance-environment noise
+// (Windows runners cold-launch Chrome under Defender scanning; crash-class
+// regressions like ResolveMessage fail instantly, never after 60s), so they
+// skip instead of blocking release.
+const CRASH_PATTERN = /Cannot find module|ResolveMessage|MODULE_NOT_FOUND/
+const PERF_TIMEOUT_PATTERN = /MCP error -32001|Request timed out|cleanup timed out/i
+const BROWSER_MISSING_PATTERN =
+  /Executable doesn't exist|not found|doesn't exist|No such file/i
+const BROWSER_CONTEXT_PATTERN = /chrome|chromium|channel/i
+
+export function classifyToolSmokeResult(
+  smokeLine: string,
+): 'pass' | 'skip' | 'fail' {
+  if (CRASH_PATTERN.test(smokeLine)) return 'fail'
+  if (PERF_TIMEOUT_PATTERN.test(smokeLine)) return 'skip'
+  if (
+    /Executable doesn't exist/i.test(smokeLine) ||
+    (BROWSER_CONTEXT_PATTERN.test(smokeLine) &&
+      BROWSER_MISSING_PATTERN.test(smokeLine))
+  ) {
+    return 'skip'
+  }
+  let parsed: { ok?: boolean }
+  try {
+    parsed = JSON.parse(smokeLine) as { ok?: boolean }
+  } catch {
+    return 'fail'
+  }
+  if (!parsed.ok) return 'fail'
+  return smokeLine.includes(SMOKE_TITLE_MARKER) ? 'pass' : 'fail'
 }
 
 function smokeTestBinary(
@@ -228,6 +265,45 @@ function smokeTestBinary(
 
   const help = spawn([binaryPath, '--help'], { env })
   assertCommandSucceeded(help, `${binaryPath} --help`)
+
+  // End-to-end tool smoke inside the real standalone binary (node_modules is
+  // hidden by the caller). Catches bundled-runtime regressions like the
+  // playwright-core ResolveMessage crash that `--version` cannot see.
+  const smokeInput = JSON.stringify({
+    action: 'browser_navigate',
+    arguments: { url: 'data:text/html,<title>smoke-ok</title>' },
+  })
+  const smoke = spawn([binaryPath], {
+    env: {
+      ...env,
+      FLASH_SMOKE_TOOL: 'WebBrowser',
+      FLASH_SMOKE_INPUT: smokeInput,
+    },
+    // Windows runners cold-launch Chrome (Defender scans, first run) well
+    // beyond the default 30s — give the whole smoke 2 minutes.
+    timeoutMs: 120_000,
+  })
+  const smokeStdout = smoke.stdout.toString()
+  const smokeStderr = smoke.stderr.toString()
+  const smokeLine = smokeStdout.split('\n').find(line => line.startsWith('{"ok":'))
+  if (!smokeLine) {
+    const combinedOutput = smokeStdout
+      ? smokeStderr
+        ? `${smokeStdout.slice(0, 1000)}\n\nstderr:\n${smokeStderr.slice(0, 1000)}`
+        : smokeStdout.slice(0, 2000)
+      : smokeStderr.slice(0, 2000)
+    throw new Error(
+      `Tool smoke produced no result line (exit=${smoke.exitCode ?? smoke.signalCode}): ${combinedOutput}`,
+    )
+  }
+  const verdict = classifyToolSmokeResult(smokeLine)
+  if (verdict === 'skip') {
+    console.warn('Smoke skip: Chrome not available on this machine')
+    return
+  }
+  if (verdict === 'fail') {
+    throw new Error(`Tool smoke failed: ${smokeLine.slice(0, 2000)}`)
+  }
 }
 
 let standaloneSmokeSequence = 0

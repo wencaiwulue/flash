@@ -160,3 +160,15 @@ isolated WebBrowser 有独立状态 `unstarted → launching → ready → close
 4. 在该 tab 完成一次低风险导航/表单/截图，断开 MCP 后确认 Chrome、tabs、cookie 仍在；重新 attach 后恢复到同一 tab/context。关闭 dist 进程也不能清空 profile。
 5. 验证未启动 CDP、错误端口、非 loopback endpoint 均明确失败且没有 isolated 成功假象；验证 `/chrome` 不再要求私有扩展配对。
 6. 本验收只标记 `Open CDP / real Chrome verified`。未安装/运行私有扩展时不得声称其协议兼容；未执行真实 Chrome 时 live 必须标记 skipped。
+
+## 9. bundled 形态支持（2026-11-16）
+
+bundled/独立二进制下 isolated 浏览器路径（WebBrowser 工具）已支持，实现方式为构建插件 `scripts/playwrightInlinePlugin.ts` 在编译期内联 playwright-core 的 package.json/browsers.json 运行时读取（Bun 编译会把 `__dirname` 烘焙为构建机绝对路径，不内联则必崩 ResolveMessage）。
+
+已知限制：
+- 需要用户机器安装 Google Chrome（`channel: 'chrome'`）；未安装时工具调用报错，属预期行为。
+- chrome-cdp 真实 Chrome 路径仍走 Node sidecar（Bun ws 握手限制，见上文），bundled 下不可用，由 `chromeWiringBundledAction` 前置分流（warn/skip）。
+- `webp_codec.wasm`（截图 diff/图像比对）与 playwright CLI（install/trace-viewer）不在支持范围。
+- playwright 升级需确认 `tests/playwrightInlinePlugin.test.ts` 绊线仍通过。
+
+release 构建通过 `FLASH_SMOKE_TOOL` 冒烟在真实二进制内端到端验证该路径（崩溃类错误会挡发布；Chrome 缺失仅警告跳过）。

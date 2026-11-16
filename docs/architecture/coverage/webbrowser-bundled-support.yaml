@@ -1,0 +1,18 @@
+schema_version: 1
+spec_id: webbrowser-bundled-support
+spec: ../../superpowers/specs/2026-11-16-webbrowser-bundled-support-design.md
+status: draft
+groups:
+  - id: build-plugin
+    kind: script
+    section: 4
+    summary: playwright-core 数据读取编译期内联构建插件
+    files:
+      - scripts/playwrightInlinePlugin.ts
+  - id: tests
+    kind: test
+    section: 4
+    summary: 插件绊线/单元测试与 pty 交互启动冒烟
+    files:
+      - tests/playwrightInlinePlugin.test.ts
+      - tests/interactiveStartup.test.ts

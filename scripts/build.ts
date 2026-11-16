@@ -2,10 +2,11 @@ import { chmod } from 'node:fs/promises'
 import packageJson from '../package.json'
 import { generateSdkTypes } from './generate-sdk-types.ts'
 import { EXTERNAL_FEATURES } from './externalFeatureProfile.ts'
+import { createPlaywrightInlinePlugin } from './playwrightInlinePlugin.ts'
 
 export function createBuildOptions(
   buildTime = new Date().toISOString(),
-): Pick<Bun.BuildConfig, 'target' | 'format' | 'features' | 'define' | 'loader'> {
+): Pick<Bun.BuildConfig, 'target' | 'format' | 'features' | 'define' | 'loader' | 'plugins'> {
   const packageUrl = `https://www.npmjs.com/package/${packageJson.name}`
   return {
     target: 'bun',
@@ -26,6 +27,7 @@ export function createBuildOptions(
       '.md': 'text',
       '.txt': 'text',
     },
+    plugins: [createPlaywrightInlinePlugin()],
   }
 }
 
