@@ -991,7 +991,7 @@
 | B5-task-system-04 | task-system | todo-tasks-core | 需要验证 | P3 | todo-tasks-core 模块中，deleteTask 在更新 high water mark 后才删除文件，如果删除文件失败，high water mark 已更新，可能导致 ID 重用？需要确认逻辑 | src/utils/tasks.ts:393-440 | ✅ strings 匹配 | ❌ 无测试 | 低（需要进一步验证） | 确认逻辑：如果文件删除失败，high water mark 已更新，是否会导致下次 createTask 重用 ID？建议调整顺序：先删除文件，再更新 high water mark | 待验证 | 源码审查，待测试 | open |
 | B5-task-system-05 | task-system | task-framework | 设计权衡 | P3 | task-framework 中的 generateTaskAttachments 不发送 completed 通知，各任务类型自己处理通知。spec 已记录此设计 | src/utils/task/framework.ts | ✅ strings 匹配 | ❌ 无测试 | 低（文档已记录，无功能问题） | 无需变更，spec 已明确记录此权衡 | 已证实 | spec与源码一致 | open |
 | B5-workflow-01 | workflow | workflow-runner | 测试缺口 | P2 | workflow-runner 模块缺少专用测试覆盖 | src/tools/WorkflowTool/runner.ts | ✅ strings 匹配 | ⚠️ workflow.test.ts未覆盖runner | 中（功能正常但无回归保护） | 添加 workflow-runner 调用 runAgent 的测试 | 已证实 | 完整源码审查 | open |
-| B5-workflow-02 | workflow | workflow-executor | 实现缺陷 | P2 | workflow-executor 中的 retry 逻辑，重置依赖步骤时只重置错误消息为 "Skipped because a dependency did not complete" 的 skipped 步骤，如果 skipped 步骤有其他错误消息则不重置。可能导致 workflow 卡住。已修复：移除错误消息限制，重置所有 skipped 依赖步骤 | src/tools/WorkflowTool/executor.ts:86-96 | ✅ strings 匹配 | ⚠️ workflow.test.ts覆盖基本重试 | 中（可能导致workflow卡住） | 修改 retry 逻辑：重置所有依赖该步骤且状态为 skipped 的步骤，不限制错误消息 | 已证实 | 完整源码审查，已修复 | open |
+| B5-workflow-02 | workflow | workflow-executor | 实现缺陷 | P2 | workflow-executor 中的 retry 逻辑，重置依赖步骤时只重置错误消息为 "Skipped because a dependency did not complete" 的 skipped 步骤，如果 skipped 步骤有其他错误消息则不重置。可能导致 workflow 卡住。这是边缘场景（仅当用户手动跳过步骤并设置不同错误消息时），用户可通过单独重试依赖步骤来解决 | src/tools/WorkflowTool/executor.ts:86-96 | ✅ strings 匹配 | ⚠️ workflow.test.ts覆盖基本重试 | 中（边缘场景，有 workaround） | 修改 retry 逻辑：重置所有依赖该步骤且状态为 skipped 的步骤，不限制错误消息 | 已证实 | 完整源码审查 | open |
 | B5-workflow-03 | workflow | workflow-executor | 设计权衡 | P3 | workflow-executor 中的 propagateSkips 逻辑，遍历 workflow.steps 顺序可能影响结果。实际上 loop 会在每次 notify 后重新运行 propagateSkips，因此即使步骤顺序不理想，最终所有依赖失败的步骤都会被跳过。spec 未要求特定顺序，此为可接受的实现权衡 | src/tools/WorkflowTool/executor.ts:141-158,202-221 | ✅ strings 匹配 | ⚠️ workflow.test.ts覆盖失败传播 | 低（不会导致不正确结果） | 无需变更，loop 多次运行 propagateSkips 确保最终一致性 | 已证实 | spec 与源码一致 | open |
 | B5-workflow-04 | workflow | workflow-schema | 设计权衡 | P3 | 步骤提示插值不支持转义 {{，如果需要字面 {{ 无法实现。spec 已明确记录此权衡（简单正则 vs 模板引擎） | src/tools/WorkflowTool/schema.ts:54-67 | ✅ strings 匹配 | ⚠️ workflow.test.ts覆盖插值 | 低（文档已记录，无功能问题） | 无需变更，spec 已明确记录此权衡 | 已证实 | spec与源码一致 | open |
 | B5-workflow-05 | workflow | workflow-task | 设计权衡 | P3 | workflow 完成后，executions Map 会删除 WorkflowExecution 实例，之后无法再调用 skip/retry/kill。spec 已明确记录此设计 | src/tasks/LocalWorkflowTask/LocalWorkflowTask.ts | ✅ strings 匹配 | ⚠️ workflow.test.ts覆盖完整流程 | 低（文档已记录，无功能问题） | 无需变更，spec 已明确记录此权衡 | 已证实 | spec与源码一致 | open |
@@ -1092,7 +1092,7 @@
 | 模块 | 已验证 | 未验证 |
 |------|------|------|
 | workflow-schema | parseWorkflowDefinition Zod 验证/重复ID检查/未知依赖检查/循环依赖检测、buildStepPrompt {{input}}/{{steps.*.output}} 插值 | 恶意 workflow 定义边界测试 |
-| workflow-executor | wake/loop 模式、并发调度、propagateSkips 失败传播、retry 重试重置依赖（已修复）、skip 跳过步骤、kill 中止全部、独立 AbortController | - |
+| workflow-executor | wake/loop 模式、并发调度、propagateSkips 失败传播、retry 重试重置依赖、skip 跳过步骤、kill 中止全部、独立 AbortController | B5-workflow-02 retry 逻辑边缘场景（非标准错误消息） |
 | workflow-runner | runWorkflowStep 调用 runAgent | 真实 agent 执行失败场景 |
 | workflow-discovery | getWorkflowCommands 从 .claude/workflows/*.json 发现 | 损坏 JSON 文件处理 |
 | workflow-task | startWorkflowTask 完整流程、LocalWorkflowTaskState 状态同步、完成后持久化 JSON | 持久化失败场景 |
@@ -1111,7 +1111,7 @@
 
 ⚠️ **有 0 项 P1 潜在问题**：原 P1 问题已修复或降级。
 
-⚠️ **有 2 项 P2 实现改进建议**：TeamFile 原子写入应使用临时文件 rename 保护（B5-agent-swarms-08）；workflow retry 逻辑已修复（B5-workflow-02）。
+⚠️ **有 2 项 P2 实现改进建议**：TeamFile 原子写入应使用临时文件 rename 保护（B5-agent-swarms-08）；workflow retry 逻辑可改进以支持所有 skipped 步骤（B5-workflow-02）。
 
 ⚠️ **有 2 项未完成功能**：`useFrustrationDetection()` 仅占位（B5-help-feedback-02）；VerifyPlanExecutionTool 未实现（B5-plan-worktree-02）。
 

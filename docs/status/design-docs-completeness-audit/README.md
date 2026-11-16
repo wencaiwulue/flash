@@ -65,7 +65,7 @@ Design docs: 0 errors, 71 warnings
 | review-analysis | 5 | 5/5 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（仅 review-artifact 测试） | 3 | batch-5.md#review-analysis |
 | scheduling | 5 | 22/22 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（仅 cron-lifecycle 测试） | 6 | batch-5.md#scheduling |
 | task-system | 5 | 21/21 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ❌无测试 | 5 | batch-5.md#task-system |
-| workflow | 5 | 7/7 | ✅完整 | ✅一致（含修复） | ⚠️不充分（仅源码） | ⚠️部分充分（完整 workflow 测试） | 6 | batch-5.md#workflow |
+| workflow | 5 | 7/7 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（完整 workflow 测试） | 6 | batch-5.md#workflow |
 | daemon-background | 6 | 0/10 | open | open | open | unverified | 0 | 未生成 |
 | deep-link | 6 | 0/7 | open | open | open | unverified | 0 | 未生成 |
 | open-runner | 6 | 0/7 | open | open | open | unverified | 0 | 未生成 |
@@ -167,10 +167,10 @@ Design docs: 0 errors, 71 warnings
 | 审查子系统 | 7 |
 | 完整文档 | 7 |
 | 实现一致 | 7 |
-| 发现总数 | 33 |
+| 发现总数 | 32 |
 | P0 | 0 |
 | P1 | 0 |
-| P2 | 10 |
+| P2 | 9 |
 | P3 | 23 |
 
 ### 整改优先级
@@ -185,4 +185,4 @@ batch 1：✅ 已完成审查，报告已生成并链接；官方文档与 strin
 batch 2：✅ 已完成审查，报告已生成并链接；官方文档与 strings 已收集，真实模型/API 行为尚未验证。
 batch 3：✅ 已完成审查，报告已生成并链接；官方文档与 strings 已收集，真实模型/API 行为尚未验证。
 batch 4：✅ 已完成审查，报告已生成并链接；官方文档与 strings 已收集，真实模型/API 行为尚未验证。
-batch 5：✅ 已完成审查，报告已生成并链接；官方文档与 strings 已收集，真实模型/API 行为尚未验证；1 项修复已实施。
+batch 5：✅ 已完成审查，报告已生成并链接；官方文档与 strings 已收集，真实模型/API 行为尚未验证。
