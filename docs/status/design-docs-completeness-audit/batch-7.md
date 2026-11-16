@@ -1624,76 +1624,236 @@
 
 ## 发现登记
 
-| ID | 子系统 | 严重度 | 描述 | 是否已在 spec 中注明 |
-|----|--------|--------|------|---------------------|
-| B7-build-feature-profile-01 | build-feature-profile | P3 | spec 中提到 43 个工具但未明确验证位置和机制 | 否 |
-| B7-data-structures-01 | data-structures | P3 | CircularBuffer capacity 0/负未验证，未定义行为 | 是（失败语义表明确记录） |
-| B7-data-structures-02 | data-structures | P3 | memoize 键使用 JSON.stringify，不支持非序列化值 | 是（设计理由表明确记录） |
-| B7-data-structures-03 | data-structures | P3 | JSONL 解析跳过失败行，部分数据丢失 | 是（失败语义表明确记录） |
-| B7-data-structures-04 | data-structures | P2 | 核心组件无专门测试覆盖 | 否 |
-| B7-diagnostics-01 | diagnostics | P3 | Event loop stall detector 仅为占位，未实际实现 | 是（设计明确记录为占位） |
-| B7-diagnostics-02 | diagnostics | P2 | 调试日志分类覆盖率不足，不是所有调试日志都有正确分类前缀 | 是（spec 改进建议明确提及） |
-| B7-diagnostics-03 | diagnostics | P2 | 诊断系统测试覆盖不足，特别是 profiler、诊断追踪、医生检查等模块 | 是（spec 改进建议明确提及） |
-| B7-diagnostics-04 | diagnostics | P3 | auto-1.5GB trigger 仅作为类型定义存在，未实现自动触发逻辑 | 是（设计明确记录为占位） |
-| B7-diagnostics-05 | diagnostics | P3 | spec 建议在诊断 JSON 中包含 heap snapshot 基础分析，但当前未实现 | 是（spec 改进建议明确提及） |
-| B7-diagnostics-06 | diagnostics | P2 | 交互模式 query profiler 需要环境变量启用，不够方便 | 是（spec 改进建议明确提及） |
-| B7-diagnostics-07 | diagnostics | P2 | 缺少 diagnostics 子系统核心模块的专门测试 | 否 |
-| B7-experimental-features-01 | experimental-features | P2 | 所有实验功能均无直接测试覆盖 | 是（spec 改进建议明确提及） |
-| B7-experimental-features-02 | experimental-features | P2 | SyntheticOutputTool 仅基于对象引用缓存，schema 内容相同但对象不同时无法复用 | 是（spec 改进建议明确提及） |
-| B7-experimental-features-03 | experimental-features | P3 | TestingPermissionTool 仅在 NODE_ENV=test 启用，开发时不方便 | 是（spec 改进建议明确提及） |
-| B7-experimental-features-04 | experimental-features | P3 | OverflowTestTool 上限硬编码为 2,000,000，不支持配置 | 是（spec 改进建议明确提及） |
-| B7-experimental-features-05 | experimental-features | P3 | /good-claude 内存锁仅在当前会话有效，刷新后重置 | 是（设计理由表明确记录权衡） |
-| B7-experimental-features-06 | experimental-features | P3 | 缺少 /experimental-status 命令显示当前环境启用的实验功能 | 是（spec 改进建议明确提及） |
-| B7-experimental-features-07 | experimental-features | P2 | 缺少实验功能核心模块的专门测试 | 否 |
-| B7-external-stubs-01 | external-stubs | P3 | computer-use-sentinel-apps.ts 无专门测试覆盖 | 是（spec 改进建议明确提及） |
-| B7-external-stubs-02 | external-stubs | P2 | 缺少后端健康检查接口，调用时才发现不可用 | 是（spec 改进建议明确提及） |
-| B7-external-stubs-03 | external-stubs | P3 | CDP 端点仅支持硬编码的 loopback，不支持可配置允许列表 | 是（spec 改进建议明确提及） |
-| B7-external-stubs-04 | external-stubs | P2 | 当前主要使用字符串错误信息和 errorKind 字段，错误处理分散 | 是（spec 改进建议明确提及） |
-| B7-external-stubs-05 | external-stubs | P2 | openBackends.test.ts 中 Zavora 测试仍依赖真实 Zavora 包 | 是（spec 改进建议明确提及） |
-| B7-external-stubs-06 | external-stubs | P3 | 契约文档与实现可能漂移，无自动验证 | 是（spec 改进建议明确提及） |
-| B7-external-stubs-07 | external-stubs | P2 | 缺少 external-stubs 子系统核心模块的专门测试 | 否 |
-| B7-hooks-system-01 | hooks-system | P2 | hooks-system 核心功能测试覆盖不足，仅有 headlessHooks.test.ts 覆盖 prompt/agent stop hooks | 是（spec 改进建议明确提及） |
-| B7-hooks-system-02 | hooks-system | P3 | uncovered-hooks 分组列出了大量 React hooks（40+）未被设计文档覆盖 | 是（coverage 文档明确标记为 uncovered-hooks） |
-| B7-magic-docs-01 | magic-docs | P2 | magic-docs 功能无专门测试覆盖 | 是（spec 改进建议明确提及） |
-| B7-magic-docs-02 | magic-docs | P3 | 文档跟踪不跨会话持久化，会话间重置 | 是（设计已知非目标） |
-| B7-magic-docs-03 | magic-docs | P3 | 更新在后台执行无状态反馈 | 是（设计已知非目标） |
-| B7-magic-docs-04 | magic-docs | P3 | 仅在 USER_TYPE=ant 时启用（内部构建） | 是（源码中明确检查） |
-| B7-messaging-primitives-01 | messaging-primitives | P2 | 消息原语核心模块无专门测试覆盖 | 是（spec 改进建议明确提及） |
-| B7-messaging-primitives-02 | messaging-primitives | P3 | Mailbox receive() 无超时机制，Promise 可能永久挂起 | 是（spec 已知非目标） |
-| B7-messaging-primitives-03 | messaging-primitives | P3 | later 优先级消息可能被无限期饿死，无优先级老化机制 | 是（spec 已知限制） |
-| B7-native-installer-01 | native-installer | P2 | 原生安装器核心模块无专门测试覆盖 | 是（spec 改进建议明确提及） |
-| B7-native-installer-02 | native-installer | P3 | Windows 上更新后旧文件可能残留较长时间（直到下次启动） | 是（spec 改进建议明确提及） |
-| B7-native-installer-03 | native-installer | P3 | PID 锁虽然验证了进程命令，但 PID 复用仍有理论风险 | 否（设计推断） |
-| B7-native-installer-04 | native-installer | P3 | 当前 cleanupOldVersions() 按 mtime 排序版本，但 mtime 可能被用户或其他工具修改 | 否（设计推断） |
-| B7-network-security-01 | network-security | P2 | network-security 核心模块无专门测试覆盖（ca-certs、mtls、proxy、hash、awsAuthStatusManager、upstreamproxy），仅 protectedNamespace.test.ts 存在 | 否 |
-| B7-network-security-02 | network-security | P3 | shouldBypassProxy() 不支持 CIDR 表示法（如 192.168.0.0/16），仅子进程自身 NO_PROXY 解析可能支持 | 是（设计已知非目标） |
-| B7-network-security-03 | network-security | P3 | mTLS 不支持证书热重载，证书更新需要重启进程 | 是（spec 改进建议明确提及） |
-| B7-network-security-04 | network-security | P3 | 不支持需要认证的代理（http://user:pass@proxy:port） | 是（设计已知非目标） |
-| B7-network-security-05 | network-security | P2 | Bun 证书存储缓存问题，NODE_EXTRA_CA_CERTS 必须在进程启动时设置 | 是（设计已知限制） |
-| B7-network-security-06 | network-security | P2 | 缺少 network-security 核心模块的专门测试，仅 protectedNamespace.test.ts 存在 | 否 |
-| B7-runtime-lifecycle-01 | runtime-lifecycle | P2 | runtime-lifecycle 核心模块无专门测试覆盖（abortController、combinedAbortSignal、cleanupRegistry、gracefulShutdown、idleTimeout、activityManager、processIdentity） | 是（spec 改进建议明确提及） |
-| B7-runtime-lifecycle-02 | runtime-lifecycle | P3 | 清理函数当前并行无顺序，某些场景需要有序执行 | 是（spec 改进建议明确提及） |
-| B7-runtime-lifecycle-03 | runtime-lifecycle | P3 | Windows 无 start token 支持，无法可靠检测 PID 重用 | 是（设计已知非目标） |
-| B7-runtime-lifecycle-04 | runtime-lifecycle | P3 | 孤儿检测间隔固定为 30 秒，某些场景需要调整 | 是（spec 改进建议明确提及） |
-| B7-runtime-lifecycle-05 | runtime-lifecycle | P3 | 单个清理函数可阻塞整个退出流程，当前仅 2 秒总控无单个超时 | 是（spec 改进建议明确提及） |
-| B7-runtime-lifecycle-06 | runtime-lifecycle | P2 | 缺少 runtime-lifecycle 核心模块的专门测试 | 否 |
-| B7-telemetry-01 | telemetry | P2 | telemetry 核心功能无专门测试覆盖，包括队列、重试、PII 过滤、消毒等关键路径 | 是（spec 改进建议明确提及） |
-| B7-telemetry-02 | telemetry | P3 | 失败事件可能永远保留（用户不再使用同一 sessionId），缺少过期清理机制 | 是（spec 改进建议明确提及） |
-| B7-telemetry-03 | telemetry | P3 | BigQuery 指标仅 5 分钟间隔，无法调整，缺少配置机制 | 是（spec 改进建议明确提及） |
-| B7-telemetry-04 | telemetry | P3 | killswitch 激活后仍继续重试（仅每次失败），浪费资源 | 是（spec 改进建议明确提及） |
-| B7-test-validation-01 | test-validation | P3 | 测试运行器当前串行运行，缺少并行化机制（虽设计考虑资源竞争） | 是（spec 改进建议明确提及） |
-| B7-test-validation-02 | test-validation | P3 | Live 验证网络请求缺少重试机制，网络抖动可能导致 flaky | 是（spec 改进建议明确提及） |
-| B7-test-validation-03 | test-validation | P3 | 缺少 JUnit XML 或其他结构化报告格式，不利于 CI 可视化 | 是（设计推断） |
-| B7-test-validation-04 | test-validation | P3 | tests/fixtures/ 与实际源码同步需要注意，缺少集成测试验证 fixture 与构建配置一致性 | 是（设计推断） |
-| B7-test-validation-05 | test-validation | P3 | 跨领域测试的 spec 边界需要明确，避免重复或遗漏 | 是（设计推断） |
-| B7-test-validation-06 | test-validation | P1 | `scripts/live-model-validation.ts` 在 `enableConfigs()` 前检查凭据，standalone 脚本的 settings 初始化契约需要明确，凭据互斥检查需要集中处理 | 是（spec 改进建议明确提及） |
-| B7-web-tools-01 | web-tools | P2 | web-tools 核心功能无专门测试覆盖，包括 WebSearchTool 流式事件处理、WebFetchTool 重定向逻辑、缓存机制、域名检查、HTML→Markdown 转换、预批准域名逻辑、摘要处理等 | 是（spec 改进建议明确提及） |
-| B7-web-tools-02 | web-tools | P2 | applyPromptToMarkdown 当前对非预批准域名总是截断到 100,000 字符再摘要，可能丢失重要信息 | 是（spec 改进建议明确提及） |
-| B7-web-tools-03 | web-tools | P3 | URL_CACHE 无法手动失效（除了 clearWebFetchCache 清空所有），缺少按 URL 或域名失效的功能 | 是（spec 改进建议明确提及） |
-| B7-web-tools-04 | web-tools | P3 | 预批准域名列表需要手动更新，缺少定期从远程更新的机制 | 是（spec 改进建议明确提及） |
-| B7-web-tools-05 | web-tools | P2 | 缺少 web-tools 核心模块的专门测试，仅有一个验证预批准与沙箱分离的测试 | 是（spec 改进建议明确提及） |
+### 完整登记（14列schema）
 
-**汇总**：P0 0 个，P1 1 个，P2 27 个，P3 38 个，总计 66 个发现。
+| ID | 主责 | 关联 | 类别 | 严重度 | 问题陈述 | 源码证据 | 上游证据 | 测试证据 | 影响 | 修订建议 | 置信度 | 验证边界 | 状态 |
+|----|------|------|------|--------|----------|----------|----------|----------|------|----------|--------|----------|------|
+| B7-build-feature-profile-01 | build-feature-profile | — | 文档细节 | P3 | spec 中提到 43 个工具但未明确验证位置和机制 | spec 提及 43 个工具但无证据链接 | 上游 CLI strings 匹配 build 相关函数 | tests/enabledFeatures.test.ts 存在但不验证 43 个工具计数机制 | 低（仅文档细节） | 补充 43 个工具验证位置说明到 spec | 已证实 | spec 明确提及但无证据链接 | open |
+| B7-data-structures-01 | data-structures | — | 设计已知限制 | P3 | CircularBuffer capacity 0/负未验证，未定义行为 | src/utils/CircularBuffer.ts 无 capacity 验证，spec 失败语义表明确记录 | 上游 CLI strings 匹配 data-structures 相关函数 | 无 data-structures 相关测试 | 低（设计已知限制，spec 明确记录） | 按 spec 保持现状（设计已知限制） | 已证实 | spec 失败语义表明确记录 | open |
+| B7-data-structures-02 | data-structures | — | 设计已知权衡 | P3 | memoize 键使用 JSON.stringify，不支持非序列化值 | src/utils/memoize.ts，spec 设计理由表明确记录 | 上游 CLI strings 匹配 data-structures 相关函数 | 无 data-structures 相关测试 | 低（设计已知权衡，spec 明确记录） | 按 spec 保持现状（设计已知权衡） | 已证实 | spec 设计理由表明确记录 | open |
+| B7-data-structures-03 | data-structures | — | 设计已知权衡 | P3 | JSONL 解析跳过失败行，部分数据丢失 | src/utils/json.ts，spec 失败语义表明确记录 | 上游 CLI strings 匹配 data-structures 相关函数 | 无 data-structures 相关测试 | 低（设计已知权衡，spec 明确记录） | 按 spec 保持现状（设计已知权衡） | 已证实 | spec 失败语义表明确记录 | open |
+| B7-data-structures-04 | data-structures | — | 测试缺口 | P2 | 核心组件无专门测试覆盖，包括 array 工具、CircularBuffer、memoize、JSON 工具、frontmatter 解析等 | tests/ 目录扫描确认无 data-structures 相关测试 | 上游 CLI strings 匹配 data-structures 相关函数 | 无 data-structures 相关测试 | 中等（核心数据结构无回归保护） | 补充 data-structures 完整测试覆盖 | 已证实 | tests/ 目录完整扫描确认缺失 | open |
+| B7-diagnostics-01 | diagnostics | — | 设计已知非目标 | P3 | Event loop stall detector 仅为占位，未实际实现 | src/utils/eventLoopStallDetector.ts 仅返回 { enabled: false }，spec 设计明确记录为占位 | 上游 CLI strings 匹配 diagnostics 相关函数 | tests/debugToolCallCommand.test.ts 存在但不覆盖此占位 | 低（占位实现，设计已知非目标） | 按 spec 保持现状（设计已知非目标） | 已证实 | spec 明确记录为占位 | open |
+| B7-diagnostics-02 | diagnostics | — | 测试缺口/文档 | P2 | 调试日志分类覆盖率不足，不是所有调试日志都有正确分类前缀 | src/history.ts:133、src/commands.ts:367 等 logForDebugging 调用无分类前缀，src/utils/debugFilter.ts 要求分类前缀，spec 改进建议明确记录 | 上游 CLI strings 匹配 diagnostics 相关函数 | tests/debugToolCallCommand.test.ts 存在但不覆盖分类覆盖率 | 中等（过滤是可选高级功能，无分类消息被跳过是文档化行为） | 补充调试日志分类覆盖率测试，评估是否需要为现有日志添加分类 | 已证实 | 源码验证与 spec 改进建议明确记录 | open |
+| B7-diagnostics-03 | diagnostics | — | 测试缺口 | P2 | 诊断系统测试覆盖不足，特别是 profiler、诊断追踪、医生检查等模块 | spec 改进建议明确记录 | 上游 CLI strings 匹配 diagnostics 相关函数 | tests/debugToolCallCommand.test.ts 存在但覆盖极小 | 中等（核心诊断功能无回归保护） | 补充 diagnostics 完整测试覆盖 | 已证实 | spec 改进建议明确记录 | open |
+| B7-diagnostics-04 | diagnostics | — | 设计已知非目标 | P3 | auto-1.5GB trigger 仅作为类型定义存在，未实现自动触发逻辑 | src/utils/sdkHeapDumpMonitor.ts 仅返回 { enabled: false }，全代码库无内存监控定时器或 performHeapDump('auto-1.5GB') 调用，spec 设计明确记录为占位 | 上游 CLI strings 匹配 diagnostics 相关函数 | tests/debugToolCallCommand.test.ts 存在但不覆盖此占位 | 低（占位实现，设计已知非目标） | 按 spec 保持现状（设计已知非目标） | 已证实 | spec 明确记录为占位 | open |
+| B7-diagnostics-05 | diagnostics | — | 文档细节/改进建议 | P3 | spec 建议在诊断 JSON 中包含 heap snapshot 基础分析，但当前未实现 | spec 改进建议明确记录 | 上游 CLI strings 匹配 diagnostics 相关函数 | tests/debugToolCallCommand.test.ts 存在但不覆盖此建议 | 低（仅文档建议） | 按 spec 改进建议评估是否实现 heap snapshot 基础分析 | 已证实 | spec 改进建议明确记录 | open |
+| B7-diagnostics-06 | diagnostics | — | 用户体验/改进建议 | P2 | 交互模式 query profiler 需要环境变量启用，不够方便 | spec 改进建议明确记录 | 上游 CLI strings 匹配 diagnostics 相关函数 | tests/debugToolCallCommand.test.ts 存在但不覆盖此体验问题 | 中等（用户体验问题） | 按 spec 改进建议评估是否添加交互模式 profiler 开关 | 已证实 | spec 改进建议明确记录 | open |
+| B7-diagnostics-07 | diagnostics | — | 测试缺口 | P2 | 缺少 diagnostics 子系统核心模块的专门测试（debug.ts、debugFilter.ts、log.ts、errorLogSink.ts、diagLogs.ts、diagnosticExport.ts、startupProfiler.ts、queryProfiler.ts、headlessProfiler.ts、heapDumpService.ts、doctorDiagnostic.ts、doctorContextWarnings.ts、diagnosticTracking.ts） | tests/ 目录扫描确认缺少对应测试文件 | 上游 CLI strings 匹配 diagnostics 相关函数 | tests/debugToolCallCommand.test.ts 存在但覆盖极小 | 中等（核心诊断功能无回归保护） | 补充 diagnostics 核心模块完整测试覆盖 | 已证实 | tests/ 目录完整扫描确认缺失 | open |
+| B7-experimental-features-01 | experimental-features | — | 测试缺口 | P2 | 所有实验功能均无直接测试覆盖，包括 OverflowTestTool、TestingPermissionTool、SyntheticOutputTool、CtxInspectTool、SleepTool、MonitorTool、/good-claude、/bughunter、betas 系统等 | spec 改进建议明确记录 | 上游 CLI strings 匹配 experimental-features 相关函数 | tests/bughunter.test.ts 存在但仅验证 /bughunter 别名 | 中等（实验功能无回归保护） | 补充 experimental-features 完整测试覆盖 | 已证实 | spec 改进建议明确记录 | open |
+| B7-experimental-features-02 | experimental-features | — | 性能优化/改进建议 | P2 | SyntheticOutputTool 仅基于对象引用缓存，schema 内容相同但对象不同时无法复用 | spec 改进建议明确记录 | 上游 CLI strings 匹配 experimental-features 相关函数 | tests/bughunter.test.ts 存在但不覆盖此缓存逻辑 | 中等（性能优化问题） | 按 spec 改进建议评估是否实现 schema 内容哈希缓存 | 已证实 | spec 改进建议明确记录 | open |
+| B7-experimental-features-03 | experimental-features | — | 开发体验/改进建议 | P3 | TestingPermissionTool 仅在 NODE_ENV=test 启用，开发时不方便 | spec 改进建议明确记录 | 上游 CLI strings 匹配 experimental-features 相关函数 | tests/bughunter.test.ts 存在但不覆盖此体验问题 | 低（仅开发体验） | 按 spec 改进建议评估是否添加开发模式开关 | 已证实 | spec 改进建议明确记录 | open |
+| B7-experimental-features-04 | experimental-features | — | 灵活性/改进建议 | P3 | OverflowTestTool 上限硬编码为 2,000,000，不支持配置 | spec 改进建议明确记录 | 上游 CLI strings 匹配 experimental-features 相关函数 | tests/bughunter.test.ts 存在但不覆盖此配置问题 | 低（仅灵活性） | 按 spec 改进建议评估是否添加配置选项 | 已证实 | spec 改进建议明确记录 | open |
+| B7-experimental-features-05 | experimental-features | — | 设计已知权衡 | P3 | /good-claude 内存锁仅在当前会话有效，刷新后重置 | spec 设计理由表明确记录权衡 | 上游 CLI strings 匹配 experimental-features 相关函数 | tests/bughunter.test.ts 存在但不覆盖此权衡 | 低（设计已知权衡） | 按 spec 保持现状（设计已知权衡） | 已证实 | spec 设计理由表明确记录权衡 | open |
+| B7-experimental-features-06 | experimental-features | — | 可观察性/改进建议 | P3 | 缺少 /experimental-status 命令显示当前环境启用的实验功能 | spec 改进建议明确记录 | 上游 CLI strings 匹配 experimental-features 相关函数 | tests/bughunter.test.ts 存在但不覆盖此建议 | 低（仅可观察性） | 按 spec 改进建议评估是否实现 /experimental-status 命令 | 已证实 | spec 改进建议明确记录 | open |
+| B7-experimental-features-07 | experimental-features | — | 测试缺口 | P2 | 缺少实验功能核心模块的专门测试 | tests/ 目录扫描确认无专门测试 | 上游 CLI strings 匹配 experimental-features 相关函数 | tests/bughunter.test.ts 存在但仅验证 /bughunter 别名 | 中等（实验功能无回归保护） | 补充实验功能核心模块专门测试 | 已证实 | tests/ 目录完整扫描确认缺失 | open |
+| B7-external-stubs-01 | external-stubs | — | 测试缺口 | P3 | computer-use-sentinel-apps.ts 无专门测试覆盖 | spec 改进建议明确记录 | 上游 CLI strings 匹配 external-stubs 相关函数 | tests/openBackends.test.ts 存在但不覆盖此文件 | 低（仅测试缺口） | 补充 computer-use-sentinel-apps.ts 专门测试 | 已证实 | spec 改进建议明确记录 | open |
+| B7-external-stubs-02 | external-stubs | — | 可观察性/改进建议 | P2 | 缺少后端健康检查接口，调用时才发现不可用 | spec 改进建议明确记录 | 上游 CLI strings 匹配 external-stubs 相关函数 | tests/openBackends.test.ts 存在但不覆盖此建议 | 中等（可观察性问题） | 按 spec 改进建议评估是否实现后端健康检查接口 | 已证实 | spec 改进建议明确记录 | open |
+| B7-external-stubs-03 | external-stubs | — | 灵活性/改进建议 | P3 | CDP 端点仅支持硬编码的 loopback，不支持可配置允许列表 | spec 改进建议明确记录 | 上游 CLI strings 匹配 external-stubs 相关函数 | tests/openBackends.test.ts 存在但不覆盖此配置问题 | 低（仅灵活性） | 按 spec 改进建议评估是否添加可配置允许列表 | 已证实 | spec 改进建议明确记录 | open |
+| B7-external-stubs-04 | external-stubs | — | 可维护性/改进建议 | P2 | 当前主要使用字符串错误信息和 errorKind 字段，错误处理分散 | spec 改进建议明确记录 | 上游 CLI strings 匹配 external-stubs 相关函数 | tests/openBackends.test.ts 存在但不覆盖此可维护性问题 | 中等（可维护性问题） | 按 spec 改进建议评估是否统一错误处理 | 已证实 | spec 改进建议明确记录 | open |
+| B7-external-stubs-05 | external-stubs | — | 测试体验/改进建议 | P2 | openBackends.test.ts 中 Zavora 测试仍依赖真实 Zavora 包，测试速度慢且可能失败 | spec 改进建议明确记录 | 上游 CLI strings 匹配 external-stubs 相关函数 | tests/openBackends.test.ts 存在且有 Zavora 测试 | 中等（测试体验问题） | 按 spec 改进建议评估是否 mock Zavora 依赖 | 已证实 | spec 改进建议明确记录 | open |
+| B7-external-stubs-06 | external-stubs | — | 文档一致性/改进建议 | P3 | 契约文档与实现可能漂移，无自动验证 | spec 改进建议明确记录 | 上游 CLI strings 匹配 external-stubs 相关函数 | tests/openBackends.test.ts 存在但不覆盖契约验证 | 低（仅文档一致性） | 按 spec 改进建议评估是否实现契约自动验证 | 已证实 | spec 改进建议明确记录 | open |
+| B7-external-stubs-07 | external-stubs | — | 测试缺口 | P2 | 缺少 external-stubs 子系统核心模块的专门测试，特别是 computer-use-native、契约验证、错误处理、Zavora 双重权限验证完整路径、工具调用序列化并发测试等 | tests/ 目录扫描确认缺少对应测试文件 | 上游 CLI strings 匹配 external-stubs 相关函数 | tests/openBackends.test.ts 存在但不覆盖核心模块 | 中等（核心外部接口无回归保护） | 补充 external-stubs 核心模块完整测试覆盖 | 已证实 | tests/ 目录完整扫描确认缺失 | open |
+| B7-hooks-system-01 | hooks-system | — | 测试缺口 | P2 | hooks-system 核心功能测试覆盖不足，仅有 headlessHooks.test.ts 覆盖 prompt/agent stop hooks，缺少 Command/HTTP/Async 钩子、权限决策聚合、if 条件匹配、路径转换、SSRF 防护边界、Header 插值白名单、asyncRewake 唤醒、SessionEnd 钩子超时等测试 | spec 改进建议明确记录 | 上游 CLI strings 匹配 hooks-system 相关函数 | tests/headlessHooks.test.ts 存在但覆盖极小 | 中等（钩子系统无回归保护） | 补充 hooks-system 完整测试覆盖 | 已证实 | spec 改进建议明确记录 | open |
+| B7-hooks-system-02 | hooks-system | — | 设计已知范围 | P3 | uncovered-hooks 分组列出了大量 React hooks（40+）未被设计文档覆盖 | coverage 文档明确标记为 uncovered-hooks | 上游 CLI strings 匹配 hooks-system 相关函数 | tests/headlessHooks.test.ts 存在但不覆盖这些 React hooks | 低（设计已知范围） | 按 coverage 文档保持现状（明确标记为 uncovered） | 已证实 | coverage 文档明确标记为 uncovered-hooks | open |
+| B7-magic-docs-01 | magic-docs | — | 测试缺口 | P2 | magic-docs 功能无专门测试覆盖，缺少文档发现与跟踪、子代理更新文档、自定义提示模板替换、并发文档更新冲突等测试 | spec 改进建议明确记录 | 上游 CLI strings 匹配 magic-docs 相关函数 | 无 magic-docs 相关测试 | 中等（magic-docs 无回归保护） | 补充 magic-docs 完整测试覆盖 | 已证实 | spec 改进建议明确记录 | open |
+| B7-magic-docs-02 | magic-docs | — | 设计已知非目标 | P3 | 文档跟踪不跨会话持久化，会话间重置 | spec 设计已知非目标 | 上游 CLI strings 匹配 magic-docs 相关函数 | 无 magic-docs 相关测试 | 低（设计已知非目标） | 按 spec 保持现状（设计已知非目标） | 已证实 | spec 明确记录为非目标 | open |
+| B7-magic-docs-03 | magic-docs | — | 设计已知非目标 | P3 | 更新在后台执行无状态反馈 | spec 设计已知非目标 | 上游 CLI strings 匹配 magic-docs 相关函数 | 无 magic-docs 相关测试 | 低（设计已知非目标） | 按 spec 保持现状（设计已知非目标） | 已证实 | spec 明确记录为非目标 | open |
+| B7-magic-docs-04 | magic-docs | — | 设计已知限制 | P3 | 仅在 USER_TYPE=ant 时启用（内部构建） | 源码中 initMagicDocs 明确检查 process.env.USER_TYPE === 'ant' | 上游 CLI strings 匹配 magic-docs 相关函数 | 无 magic-docs 相关测试 | 低（设计已知限制） | 按现状保持（仅内部构建启用） | 已证实 | 源码明确检查 | open |
+| B7-messaging-primitives-01 | messaging-primitives | — | 测试缺口 | P2 | 消息原语核心模块无专门测试覆盖，仅有 messageRenderers.test.ts，无 mailbox/test/queue manager/control message compat 等测试 | spec 改进建议明确记录 | 上游 CLI strings 匹配 messaging-primitives 相关函数 | tests/messageRenderers.test.ts 存在但覆盖极小 | 中等（核心消息原语无回归保护） | 补充 messaging-primitives 完整测试覆盖 | 已证实 | spec 改进建议明确记录 | open |
+| B7-messaging-primitives-02 | messaging-primitives | — | 设计已知非目标 | P3 | Mailbox receive() 无超时机制，Promise 可能永久挂起 | spec 已知非目标 | 上游 CLI strings 匹配 messaging-primitives 相关函数 | tests/messageRenderers.test.ts 存在但不覆盖此非目标 | 低（设计已知非目标） | 按 spec 保持现状（设计已知非目标） | 已证实 | spec 已知非目标 | open |
+| B7-messaging-primitives-03 | messaging-primitives | — | 设计已知限制 | P3 | later 优先级消息可能被无限期饿死，无优先级老化机制 | spec 已知限制 | 上游 CLI strings 匹配 messaging-primitives 相关函数 | tests/messageRenderers.test.ts 存在但不覆盖此限制 | 低（设计已知限制） | 按 spec 保持现状（设计已知限制） | 已证实 | spec 已知限制 | open |
+| B7-native-installer-01 | native-installer | — | 测试缺口 | P2 | 原生安装器核心模块无专门测试覆盖，缺少 installer/download/pidLock/packageManagers 测试 | spec 改进建议明确记录 | 上游 CLI strings 匹配 native-installer 相关函数 | 无 native-installer 相关测试 | 中等（原生安装器无回归保护） | 补充 native-installer 完整测试覆盖 | 已证实 | spec 改进建议明确记录 | open |
+| B7-native-installer-02 | native-installer | — | 设计已知权衡 | P3 | Windows 上更新后旧文件可能残留较长时间（直到下次启动） | spec 改进建议明确记录 | 上游 CLI strings 匹配 native-installer 相关函数 | 无 native-installer 相关测试 | 低（设计已知权衡） | 按 spec 改进建议评估是否优化清理时机 | 已证实 | spec 改进建议明确记录 | open |
+| B7-native-installer-03 | native-installer | — | 设计推断 | P3 | PID 锁虽然验证了进程命令，但 PID 复用仍有理论风险 | 设计推断，spec 改进建议提及可添加启动时间戳 | 上游 CLI strings 匹配 native-installer 相关函数 | 无 native-installer 相关测试 | 低（仅理论风险） | 按 spec 改进建议评估是否添加启动时间戳验证 | 设计推断 | spec 改进建议提及可能的改进 | open |
+| B7-native-installer-04 | native-installer | — | 设计推断 | P3 | 当前 cleanupOldVersions() 按 mtime 排序版本，但 mtime 可能被用户或其他工具修改 | 设计推断，spec 改进建议提及可解析版本号并用 semver 排序 | 上游 CLI strings 匹配 native-installer 相关函数 | 无 native-installer 相关测试 | 低（仅理论风险） | 按 spec 改进建议评估是否改用 semver 排序 | 设计推断 | spec 改进建议提及可能的改进 | open |
+| B7-network-security-01 | network-security | — | 测试缺口 | P2 | network-security 核心模块无专门测试覆盖（ca-certs、mtls、proxy、hash、awsAuthStatusManager、upstreamproxy），仅 protectedNamespace.test.ts 存在 | tests/ 目录扫描确认无对应测试文件 | 上游 CLI strings 匹配 network-security 相关函数 | tests/protectedNamespace.test.ts 存在但覆盖极小 | 中等（核心网络安全无回归保护） | 补充 network-security 核心模块完整测试覆盖 | 已证实 | tests/ 目录完整扫描确认缺失 | open |
+| B7-network-security-02 | network-security | — | 设计已知非目标 | P3 | shouldBypassProxy() 不支持 CIDR 表示法（如 192.168.0.0/16），仅子进程自身 NO_PROXY 解析可能支持 | spec 设计已知非目标 | 上游 CLI strings 匹配 network-security 相关函数 | tests/protectedNamespace.test.ts 存在但不覆盖此非目标 | 低（设计已知非目标） | 按 spec 保持现状（设计已知非目标） | 已证实 | spec 明确记录为非目标 | open |
+| B7-network-security-03 | network-security | — | 改进建议 | P3 | mTLS 不支持证书热重载，证书更新需要重启进程 | spec 改进建议明确记录 | 上游 CLI strings 匹配 network-security 相关函数 | tests/protectedNamespace.test.ts 存在但不覆盖此建议 | 低（仅改进建议） | 按 spec 改进建议评估是否实现证书热重载 | 已证实 | spec 改进建议明确记录 | open |
+| B7-network-security-04 | network-security | — | 设计已知非目标 | P3 | 不支持需要认证的代理（http://user:pass@proxy:port） | spec 设计已知非目标 | 上游 CLI strings 匹配 network-security 相关函数 | tests/protectedNamespace.test.ts 存在但不覆盖此非目标 | 低（设计已知非目标） | 按 spec 保持现状（设计已知非目标） | 已证实 | spec 明确记录为非目标 | open |
+| B7-network-security-05 | network-security | — | 设计已知限制 | P2 | Bun 证书存储缓存问题，NODE_EXTRA_CA_CERTS 必须在进程启动时设置 | spec 设计已知限制 | 上游 CLI strings 匹配 network-security 相关函数 | tests/protectedNamespace.test.ts 存在但不覆盖此限制 | 中等（设计已知限制） | 按 spec 保持现状（设计已知限制） | 已证实 | spec 明确记录为限制 | open |
+| B7-network-security-06 | network-security | — | 测试缺口 | P2 | 缺少 network-security 核心模块的专门测试，仅 protectedNamespace.test.ts 存在 | tests/ 目录扫描确认无对应测试文件 | 上游 CLI strings 匹配 network-security 相关函数 | tests/protectedNamespace.test.ts 存在但覆盖极小 | 中等（核心网络安全无回归保护） | 补充 network-security 核心模块完整测试覆盖 | 已证实 | tests/ 目录完整扫描确认缺失 | open |
+| B7-runtime-lifecycle-01 | runtime-lifecycle | — | 测试缺口 | P2 | runtime-lifecycle 核心模块无专门测试覆盖（abortController、combinedAbortSignal、cleanupRegistry、gracefulShutdown、idleTimeout、activityManager、processIdentity） | spec 改进建议明确记录 | 上游 CLI strings 匹配 runtime-lifecycle 相关函数 | 无 runtime-lifecycle 相关测试 | 中等（核心运行时生命周期无回归保护） | 补充 runtime-lifecycle 完整测试覆盖 | 已证实 | spec 改进建议明确记录 | open |
+| B7-runtime-lifecycle-02 | runtime-lifecycle | — | 改进建议 | P3 | 清理函数当前并行无顺序，某些场景需要有序执行 | spec 改进建议明确记录 | 上游 CLI strings 匹配 runtime-lifecycle 相关函数 | 无 runtime-lifecycle 相关测试 | 低（仅改进建议） | 按 spec 改进建议评估是否实现有序清理 | 已证实 | spec 改进建议明确记录 | open |
+| B7-runtime-lifecycle-03 | runtime-lifecycle | — | 设计已知非目标 | P3 | Windows 无 start token 支持，无法可靠检测 PID 重用 | spec 设计已知非目标 | 上游 CLI strings 匹配 runtime-lifecycle 相关函数 | 无 runtime-lifecycle 相关测试 | 低（设计已知非目标） | 按 spec 保持现状（设计已知非目标） | 已证实 | spec 明确记录为非目标 | open |
+| B7-runtime-lifecycle-04 | runtime-lifecycle | — | 改进建议 | P3 | 孤儿检测间隔固定为 30 秒，某些场景需要调整 | spec 改进建议明确记录 | 上游 CLI strings 匹配 runtime-lifecycle 相关函数 | 无 runtime-lifecycle 相关测试 | 低（仅改进建议） | 按 spec 改进建议评估是否添加配置选项 | 已证实 | spec 改进建议明确记录 | open |
+| B7-runtime-lifecycle-05 | runtime-lifecycle | — | 改进建议 | P3 | 单个清理函数可阻塞整个退出流程，当前仅 2 秒总控无单个超时 | spec 改进建议明确记录 | 上游 CLI strings 匹配 runtime-lifecycle 相关函数 | 无 runtime-lifecycle 相关测试 | 低（仅改进建议） | 按 spec 改进建议评估是否添加单个清理函数超时 | 已证实 | spec 改进建议明确记录 | open |
+| B7-runtime-lifecycle-06 | runtime-lifecycle | — | 测试缺口 | P2 | 缺少 runtime-lifecycle 核心模块的专门测试 | tests/ 目录扫描确认无对应测试文件 | 上游 CLI strings 匹配 runtime-lifecycle 相关函数 | 无 runtime-lifecycle 相关测试 | 中等（核心运行时生命周期无回归保护） | 补充 runtime-lifecycle 核心模块完整测试覆盖 | 已证实 | tests/ 目录完整扫描确认缺失 | open |
+| B7-telemetry-01 | telemetry | — | 测试缺口 | P2 | telemetry 核心功能无专门测试覆盖，包括队列、重试、PII 过滤、消毒等关键路径 | spec 改进建议明确记录 | 上游 CLI strings 匹配 telemetry 相关函数 | tests/antTraceCommand.test.ts 存在但仅间接验证消毒逻辑 | 中等（核心遥测无回归保护） | 补充 telemetry 完整测试覆盖 | 已证实 | spec 改进建议明确记录 | open |
+| B7-telemetry-02 | telemetry | — | 改进建议 | P3 | 失败事件可能永远保留（用户不再使用同一 sessionId），缺少过期清理机制 | spec 改进建议明确记录 | 上游 CLI strings 匹配 telemetry 相关函数 | tests/antTraceCommand.test.ts 存在但不覆盖此建议 | 低（仅改进建议） | 按 spec 改进建议评估是否实现过期清理机制 | 已证实 | spec 改进建议明确记录 | open |
+| B7-telemetry-03 | telemetry | — | 改进建议 | P3 | BigQuery 指标仅 5 分钟间隔，无法调整，缺少配置机制 | spec 改进建议明确记录 | 上游 CLI strings 匹配 telemetry 相关函数 | tests/antTraceCommand.test.ts 存在但不覆盖此建议 | 低（仅改进建议） | 按 spec 改进建议评估是否添加配置机制 | 已证实 | spec 改进建议明确记录 | open |
+| B7-telemetry-04 | telemetry | — | 性能优化/改进建议 | P3 | killswitch 激活后仍继续重试（仅每次失败），浪费资源 | spec 改进建议明确记录 | 上游 CLI strings 匹配 telemetry 相关函数 | tests/antTraceCommand.test.ts 存在但不覆盖此优化问题 | 低（仅性能优化） | 按 spec 改进建议评估是否优化 killswitch 重试逻辑 | 已证实 | spec 改进建议明确记录 | open |
+| B7-test-validation-01 | test-validation | — | 性能优化/改进建议 | P3 | 测试运行器当前串行运行，缺少并行化机制（虽设计考虑资源竞争） | spec 改进建议明确记录 | 上游 CLI strings 匹配 test-validation 相关函数 | tests/buildArtifacts.test.ts、tests/enabledFeatures.test.ts 存在 | 低（仅性能优化） | 按 spec 改进建议评估是否实现并行化机制 | 已证实 | spec 改进建议明确记录 | open |
+| B7-test-validation-02 | test-validation | — | 性能优化/改进建议 | P3 | Live 验证网络请求缺少重试机制，网络抖动可能导致 flaky | spec 改进建议明确记录 | 上游 CLI strings 匹配 test-validation 相关函数 | tests/buildArtifacts.test.ts、tests/enabledFeatures.test.ts 存在 | 低（仅性能优化） | 按 spec 改进建议评估是否添加重试机制 | 已证实 | spec 改进建议明确记录 | open |
+| B7-test-validation-03 | test-validation | — | 可观察性/设计推断 | P3 | 缺少 JUnit XML 或其他结构化报告格式，不利于 CI 可视化 | 设计推断 | 上游 CLI strings 匹配 test-validation 相关函数 | tests/buildArtifacts.test.ts、tests/enabledFeatures.test.ts 存在 | 低（仅可观察性） | 评估是否实现 JUnit XML 或其他结构化报告格式 | 设计推断 | 基于设计理解 | open |
+| B7-test-validation-04 | test-validation | — | 维护性/设计推断 | P3 | tests/fixtures/ 与实际源码同步需要注意，缺少集成测试验证 fixture 与构建配置一致性 | 设计推断 | 上游 CLI strings 匹配 test-validation 相关函数 | tests/buildArtifacts.test.ts、tests/enabledFeatures.test.ts 存在 | 低（仅维护性） | 评估是否添加 fixture 与构建配置一致性测试 | 设计推断 | 基于设计理解 | open |
+| B7-test-validation-05 | test-validation | — | 文档细节/设计推断 | P3 | 跨领域测试的 spec 边界需要明确，避免重复或遗漏 | 设计推断 | 上游 CLI strings 匹配 test-validation 相关函数 | tests/buildArtifacts.test.ts、tests/enabledFeatures.test.ts 存在 | 低（仅文档细节） | 明确跨领域测试的 spec 边界 | 设计推断 | 基于设计理解 | open |
+| B7-test-validation-06 | test-validation | — | 潜在正确性问题 | P1 | `scripts/live-model-validation.ts` 在 `enableConfigs()` 前检查凭据，standalone 脚本的 settings 初始化契约需要明确，凭据互斥检查需要集中处理 | scripts/live-model-validation.ts:40-48，spec 改进建议明确记录，对抗性审查保持为 P1 | 上游 CLI strings 匹配 test-validation 相关函数 | tests/buildArtifacts.test.ts、tests/enabledFeatures.test.ts 存在但不覆盖 Live 验证 | 高（潜在正确性问题，凭据检查可能读取过期或错误配置） | 明确 standalone 脚本的 settings 初始化契约，集中处理凭据互斥检查 | 已证实 | spec 改进建议明确记录，对抗性审查保持为 P1 | open |
+| B7-web-tools-01 | web-tools | — | 测试缺口 | P2 | web-tools 核心功能无专门测试覆盖，包括 WebSearchTool 流式事件处理、WebFetchTool 重定向逻辑、缓存机制、域名检查、HTML→Markdown 转换、预批准域名逻辑、摘要处理等 | spec 改进建议明确记录 | 上游 CLI strings 匹配 web-tools 相关函数 | test/utils/sandbox/webfetch-preapproved-separated.test.ts 存在但仅验证预批准与沙箱分离 | 中等（核心 web 工具无回归保护） | 补充 web-tools 完整测试覆盖 | 已证实 | spec 改进建议明确记录 | open |
+| B7-web-tools-02 | web-tools | — | 用户体验/改进建议 | P2 | applyPromptToMarkdown 当前对非预批准域名总是截断到 100,000 字符再摘要，可能丢失重要信息 | spec 改进建议明确记录 | 上游 CLI strings 匹配 web-tools 相关函数 | test/utils/sandbox/webfetch-preapproved-separated.test.ts 存在但不覆盖此体验问题 | 中等（用户体验问题） | 按 spec 改进建议评估是否实现分块摘要 | 已证实 | spec 改进建议明确记录 | open |
+| B7-web-tools-03 | web-tools | — | 灵活性/改进建议 | P3 | URL_CACHE 无法手动失效（除了 clearWebFetchCache 清空所有），缺少按 URL 或域名失效的功能 | spec 改进建议明确记录 | 上游 CLI strings 匹配 web-tools 相关函数 | test/utils/sandbox/webfetch-preapproved-separated.test.ts 存在但不覆盖此灵活性问题 | 低（仅灵活性） | 按 spec 改进建议评估是否添加按 URL 或域名失效功能 | 已证实 | spec 改进建议明确记录 | open |
+| B7-web-tools-04 | web-tools | — | 维护性/改进建议 | P3 | 预批准域名列表需要手动更新，缺少定期从远程更新的机制 | spec 改进建议明确记录 | 上游 CLI strings 匹配 web-tools 相关函数 | test/utils/sandbox/webfetch-preapproved-separated.test.ts 存在但不覆盖此维护性问题 | 低（仅维护性） | 按 spec 改进建议评估是否实现定期从远程更新机制 | 已证实 | spec 改进建议明确记录 | open |
+| B7-web-tools-05 | web-tools | — | 测试缺口 | P2 | 缺少 web-tools 核心模块的专门测试，仅有一个验证预批准与沙箱分离的测试 | spec 改进建议明确记录 | 上游 CLI strings 匹配 web-tools 相关函数 | test/utils/sandbox/webfetch-preapproved-separated.test.ts 存在但覆盖极小 | 中等（核心 web 工具无回归保护） | 补充 web-tools 核心模块完整测试覆盖 | 已证实 | spec 改进建议明确记录 | open |
+
+### 汇总统计
+
+| 类别 | 数量 |
+|------|------|
+| P0 阻断性问题 | 0 |
+| P1 严重问题 | 1 |
+| P2 中等问题 | 25 |
+| P3 低优先级问题 | 40 |
+| 总计 | 66 |
+
+### P0/P1/P2 详细描述
+
+**发现 B7-test-validation-06**：`scripts/live-model-validation.ts` 在 `enableConfigs()` 前检查凭据，standalone 脚本的 settings 初始化契约需要明确，凭据互斥检查需要集中处理。严重度：P1（潜在正确性问题），置信度：已证实（spec 改进建议明确记录，对抗性审查保持为 P1）。
+
+风险：凭据检查可能读取到过期或错误的配置，导致验证结果不可靠。
+
+---
+
+**发现 B7-data-structures-04**：data-structures 子系统核心组件无专门测试覆盖，包括 array 工具、CircularBuffer、memoize、JSON 工具、frontmatter 解析等。严重度：P2（功能正常但无回归保护），置信度：已证实（tests/ 目录扫描确认）。
+
+风险：核心数据结构无测试覆盖可能导致回归问题无法及时发现。
+
+---
+
+**发现 B7-diagnostics-02**：调试日志分类覆盖率不足，不是所有调试日志都有正确分类前缀。严重度：P2（测试覆盖/文档问题），置信度：已证实（源码验证与 spec 改进建议明确记录）。
+
+风险：过滤模式下无分类前缀的消息会被跳过，但这是文档化行为。
+
+---
+
+**发现 B7-diagnostics-03**：诊断系统测试覆盖不足，特别是 profiler、诊断追踪、医生检查等模块。严重度：P2（功能正常但无回归保护），置信度：已证实（spec 改进建议明确记录）。
+
+风险：核心诊断功能无测试覆盖可能导致回归问题无法及时发现。
+
+---
+
+**发现 B7-diagnostics-07**：缺少 diagnostics 子系统核心模块的专门测试。严重度：P2（功能正常但无回归保护），置信度：已证实（tests/ 目录扫描确认）。
+
+风险：核心诊断功能无测试覆盖可能导致回归问题无法及时发现。
+
+---
+
+**发现 B7-experimental-features-01**：所有实验功能均无直接测试覆盖。严重度：P2（功能正常但无回归保护），置信度：已证实（spec 改进建议明确记录）。
+
+风险：实验功能无测试覆盖可能导致回归问题无法及时发现。
+
+---
+
+**发现 B7-experimental-features-02**：SyntheticOutputTool 仅基于对象引用缓存，schema 内容相同但对象不同时无法复用。严重度：P2（性能优化问题），置信度：已证实（spec 改进建议明确记录）。
+
+风险：缓存效率低下。
+
+---
+
+**发现 B7-experimental-features-07**：缺少实验功能核心模块的专门测试。严重度：P2（功能正常但无回归保护），置信度：已证实（tests/ 目录扫描确认）。
+
+风险：实验功能无测试覆盖可能导致回归问题无法及时发现。
+
+---
+
+**发现 B7-external-stubs-02**：缺少后端健康检查接口，调用时才发现不可用。严重度：P2（可观察性问题），置信度：已证实（spec 改进建议明确记录）。
+
+风险：用户体验差，问题发现延迟。
+
+---
+
+**发现 B7-external-stubs-04**：当前主要使用字符串错误信息和 errorKind 字段，错误处理分散。严重度：P2（可维护性问题），置信度：已证实（spec 改进建议明确记录）。
+
+风险：代码可维护性差，错误处理不一致。
+
+---
+
+**发现 B7-external-stubs-05**：openBackends.test.ts 中 Zavora 测试仍依赖真实 Zavora 包，测试速度慢且可能失败。严重度：P2（测试体验问题），置信度：已证实（spec 改进建议明确记录）。
+
+风险：测试速度慢且不稳定。
+
+---
+
+**发现 B7-external-stubs-07**：缺少 external-stubs 子系统核心模块的专门测试。严重度：P2（功能正常但无回归保护），置信度：已证实（tests/ 目录扫描确认）。
+
+风险：核心外部接口无测试覆盖可能导致回归问题无法及时发现。
+
+---
+
+**发现 B7-hooks-system-01**：hooks-system 核心功能测试覆盖不足，仅有 headlessHooks.test.ts 覆盖 prompt/agent stop hooks。严重度：P2（功能正常但无回归保护），置信度：已证实（spec 改进建议明确记录）。
+
+风险：钩子系统无测试覆盖可能导致回归问题无法及时发现。
+
+---
+
+**发现 B7-magic-docs-01**：magic-docs 功能无专门测试覆盖。严重度：P2（功能正常但无回归保护），置信度：已证实（spec 改进建议明确记录）。
+
+风险：magic-docs 无测试覆盖可能导致回归问题无法及时发现。
+
+---
+
+**发现 B7-messaging-primitives-01**：消息原语核心模块无专门测试覆盖。严重度：P2（功能正常但无回归保护），置信度：已证实（spec 改进建议明确记录）。
+
+风险：核心消息原语无测试覆盖可能导致回归问题无法及时发现。
+
+---
+
+**发现 B7-native-installer-01**：原生安装器核心模块无专门测试覆盖。严重度：P2（功能正常但无回归保护），置信度：已证实（spec 改进建议明确记录）。
+
+风险：原生安装器无测试覆盖可能导致回归问题无法及时发现。
+
+---
+
+**发现 B7-network-security-01**：network-security 核心模块无专门测试覆盖（ca-certs、mtls、proxy、hash、awsAuthStatusManager、upstreamproxy），仅 protectedNamespace.test.ts 存在。严重度：P2（功能正常但无回归保护），置信度：已证实（tests/ 目录扫描确认）。
+
+风险：核心网络安全无测试覆盖可能导致回归问题无法及时发现。
+
+---
+
+**发现 B7-network-security-05**：Bun 证书存储缓存问题，NODE_EXTRA_CA_CERTS 必须在进程启动时设置。严重度：P2（设计已知限制），置信度：已证实（spec 明确记录）。
+
+风险：证书配置变更需要重启进程才能生效。
+
+---
+
+**发现 B7-network-security-06**：缺少 network-security 核心模块的专门测试，仅 protectedNamespace.test.ts 存在。严重度：P2（功能正常但无回归保护），置信度：已证实（tests/ 目录扫描确认）。
+
+风险：核心网络安全无测试覆盖可能导致回归问题无法及时发现。
+
+---
+
+**发现 B7-runtime-lifecycle-01**：runtime-lifecycle 核心模块无专门测试覆盖（abortController、combinedAbortSignal、cleanupRegistry、gracefulShutdown、idleTimeout、activityManager、processIdentity）。严重度：P2（功能正常但无回归保护），置信度：已证实（spec 改进建议明确记录）。
+
+风险：核心运行时生命周期无测试覆盖可能导致回归问题无法及时发现。
+
+---
+
+**发现 B7-runtime-lifecycle-06**：缺少 runtime-lifecycle 核心模块的专门测试。严重度：P2（功能正常但无回归保护），置信度：已证实（tests/ 目录扫描确认）。
+
+风险：核心运行时生命周期无测试覆盖可能导致回归问题无法及时发现。
+
+---
+
+**发现 B7-telemetry-01**：telemetry 核心功能无专门测试覆盖，包括队列、重试、PII 过滤、消毒等关键路径。严重度：P2（功能正常但无回归保护），置信度：已证实（spec 改进建议明确记录）。
+
+风险：核心遥测无测试覆盖可能导致回归问题无法及时发现，PII 过滤逻辑退化。
+
+---
+
+**发现 B7-web-tools-01**：web-tools 核心功能无专门测试覆盖，包括 WebSearchTool 流式事件处理、WebFetchTool 重定向逻辑、缓存机制、域名检查、HTML→Markdown 转换、预批准域名逻辑、摘要处理等。严重度：P2（功能正常但无回归保护），置信度：已证实（spec 改进建议明确记录）。
+
+风险：核心 web 工具无测试覆盖可能导致回归问题无法及时发现。
+
+---
+
+**发现 B7-web-tools-02**：applyPromptToMarkdown 当前对非预批准域名总是截断到 100,000 字符再摘要，可能丢失重要信息。严重度：P2（用户体验问题），置信度：已证实（spec 改进建议明确记录）。
+
+风险：重要信息丢失，用户体验差。
+
+---
+
+**发现 B7-web-tools-05**：缺少 web-tools 核心模块的专门测试，仅有一个验证预批准与沙箱分离的测试。严重度：P2（功能正常但无回归保护），置信度：已证实（spec 改进建议明确记录）。
+
+风险：核心 web 工具无测试覆盖可能导致回归问题无法及时发现。
 
 ---
 
