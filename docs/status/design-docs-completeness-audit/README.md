@@ -48,17 +48,17 @@ Design docs: 0 errors, 71 warnings
 | sessions-share | 3 | 6/6 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ✅ 充分（share/ccshare 有完整测试） | 1 | [batch-3.md#sessions-share](batch-3.md#sessions-share) |
 | settings | 3 | 21/21 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（无测试） | 3 | [batch-3.md#settings](batch-3.md#settings) |
 | skills | 3 | 17/17 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（测试不完整） | 6 | [batch-3.md#skills](batch-3.md#skills) |
-| app-state | 4 | 0/10 | open | open | open | unverified | 0 | 未生成 |
-| assistant-ui | 4 | 0/2 | open | open | open | unverified | 0 | 未生成 |
-| commands-framework | 4 | 0/3 | open | open | open | unverified | 0 | 未生成 |
-| cost-tracking | 4 | 0/10 | open | open | open | unverified | 0 | 未生成 |
-| ide-integration | 4 | 0/8 | open | open | open | unverified | 0 | 未生成 |
-| ink-platform | 4 | 0/20 | open | open | open | unverified | 0 | 未生成 |
-| repl-input | 4 | 0/9 | open | open | open | unverified | 0 | 未生成 |
-| text-formatting | 4 | 0/12 | open | open | open | unverified | 0 | 未生成 |
-| ui-rendering | 4 | 0/14 | open | open | open | unverified | 0 | 未生成 |
-| voice-assistant | 4 | 0/10 | open | open | open | unverified | 0 | 未生成 |
-| workspace-ui | 4 | 0/13 | open | open | open | unverified | 0 | 未生成 |
+| app-state | 4 | 10/10 | ✅完整 | ✅一致（除循环更新防护功能未实现） | ⚠️不充分（仅源码） | ⚠️部分充分（无测试） | 2 | batch-4.md#app-state |
+| assistant-ui | 4 | 2/2 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（无测试） | 1 | batch-4.md#assistant-ui |
+| commands-framework | 4 | 3/3 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（测试不足） | 1 | batch-4.md#commands-framework |
+| cost-tracking | 4 | 10/10 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（无测试） | 1 | batch-4.md#cost-tracking |
+| ide-integration | 4 | 8/8 | ✅完整 | ✅一致（设计文档已明确指出 lockfile 并发与崩溃清理限制） | ⚠️不充分（仅源码） | ⚠️部分充分（无测试） | 3 | batch-4.md#ide-integration |
+| ink-platform | 4 | 20/20 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（测试不足） | 1 | batch-4.md#ink-platform |
+| repl-input | 4 | 9/9 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（测试不足） | 2 | batch-4.md#repl-input |
+| text-formatting | 4 | 12/12 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ❌无测试 | 1 | batch-4.md#text-formatting |
+| ui-rendering | 4 | 14/14 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ❌无测试 | 2 | batch-4.md#ui-rendering |
+| voice-assistant | 4 | 10/10 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ❌无测试 | 1 | batch-4.md#voice-assistant |
+| workspace-ui | 4 | 13/13 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ❌无测试 | 2 | batch-4.md#workspace-ui |
 | agent-swarms | 5 | 0/20 | open | open | open | unverified | 0 | 未生成 |
 | help-feedback | 5 | 0/2 | open | open | open | unverified | 0 | 未生成 |
 | plan-worktree | 5 | 0/10 | open | open | open | unverified | 0 | 未生成 |

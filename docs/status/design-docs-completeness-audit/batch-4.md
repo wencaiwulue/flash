@@ -25,7 +25,7 @@
 | Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-app-state-design.md |
 | Coverage 存在 | ✅ | docs/architecture/coverage/app-state.yaml |
 | Manifest 注册 | ✅ | id: app-state, batch: 4, status: draft |
-| Coverage 覆盖分组 | 7/7 | app-state-store、app-state-store-impl、app-state-react、app-state-on-change、app-state-selectors、app-state-teammate-view-helpers、bootstrap-state、context-state、history-state、project-onboarding-state |
+| Coverage 覆盖分组 | 10/10 | app-state-store、app-state-store-impl、app-state-react、app-state-on-change、app-state-selectors、app-state-teammate-view-helpers、bootstrap-state、context-state、history-state、project-onboarding-state |
 
 #### 文档完整性审查
 
@@ -303,7 +303,7 @@
 | Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-cost-tracking-design.md |
 | Coverage 存在 | ✅ | docs/architecture/coverage/cost-tracking.yaml |
 | Manifest 注册 | ✅ | id: cost-tracking, batch: 4, status: draft |
-| Coverage 覆盖分组 | 6/6 | cost-tracker-core, cost-hook, model-cost-config, billing-access, claude-ai-limits, cmd-cost, cmd-usage, cmd-extra-usage, bootstrap-cost-state |
+| Coverage 覆盖分组 | 10/10 | cost-tracker-core, cost-hook, model-cost-config, billing-access, claude-ai-limits, cmd-cost, cmd-usage, cmd-extra-usage, bootstrap-cost-state, extra-usage-util, usage-api |
 
 #### 文档完整性审查
 
@@ -394,7 +394,7 @@
 | Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-ide-integration-design.md |
 | Coverage 存在 | ✅ | docs/architecture/coverage/ide-integration.yaml |
 | Manifest 注册 | ✅ | id: ide-integration, batch: 4, status: draft |
-| Coverage 覆盖分组 | 6/6 | ide-core, ide-path-conversion, ide-hooks, ide-commands, ide-components, ide-jetbrains, ide-keybindings, additional-files |
+| Coverage 覆盖分组 | 8/8 | ide-core, ide-path-conversion, ide-hooks, ide-commands, ide-components, ide-jetbrains, ide-keybindings, additional-files |
 
 #### 文档完整性审查
 
@@ -767,6 +767,9 @@
 | B4-ink-platform-01 | ink-platform | — | 测试缺口 | P2 | ink-platform子系统缺少大部分核心模块的完整测试覆盖，仅包含 inkDevtools.test.ts，核心渲染、布局、输入解析、终端交互等功能无回归保护 | src/ink/ | N/A | ⚠️部分覆盖（仅 DevTools 测试） | 中（功能正常但无回归保护） | 添加ink-platform子系统完整测试（reconciler、dom、layout、screen、log-update、terminal、parse-keypress 等核心模块） | 已证实 | tests/目录扫描确认 | open |
 | B4-repl-input-01 | repl-input | — | 测试缺口 | P2 | repl-input 子系统缺少部分模块的完整集成测试，虽然有单元测试，但 PromptInput 主组件、粘贴处理、投机建议交互、Footer 导航与 Vim 模式交互等无回归保护 | src/components/PromptInput/, src/hooks/ | N/A | ⚠️部分覆盖（有单元测试但缺少集成测试） | 中（功能正常但无完整回归保护） | 添加repl-input子系统完整集成测试（PromptInput主组件、粘贴处理、投机建议交互、Footer导航与Vim模式交互） | 已证实 | tests/目录扫描确认 | open |
 | B4-repl-input-02 | repl-input | — | 设计文档与实现一致但有 UX 权衡 | P3 | repl-input 子系统的 undo/redo 防抖合并功能（debounceMs: 1000）可能导致用户期望每次按键都能单独撤销但实际是合并撤销，设计文档明确说明此行为，属于可接受的 UX 权衡 | src/hooks/useInputBuffer.ts | N/A | ✅有测试 | 低（无功能问题，UX 权衡） | 无需变更，设计文档已明确说明此行为 | 已证实 | spec与源码一致 | open |
+| B4-text-formatting-01 | text-formatting | — | 测试缺口 | P2 | text-formatting子系统缺少专用测试文件，无单元测试覆盖核心功能（Markdown渲染、宽度截断、搜索高亮、标签剥离、超链接生成、热图生成） | src/utils/markdown.ts, src/utils/cliHighlight.ts, src/utils/format.ts, src/utils/highlightMatch.tsx, src/utils/displayTags.ts, src/utils/hyperlink.ts, src/utils/heatmap.ts | N/A | ❌无测试 | 中（功能正常但无回归保护） | 添加text-formatting子系统完整测试（Markdown渲染、宽度截断、搜索高亮、标签剥离、超链接生成、热图生成） | 已证实 | tests/目录扫描确认 | open |
+| B4-ui-rendering-01 | ui-rendering | — | 测试缺口 | P2 | ui-rendering子系统缺少核心渲染路径（Message/Messages/Markdown/StructuredDiff/StreamingMarkdown/虚拟滚动/消息切片）的专用测试 | src/components/Message.tsx, src/components/Messages.tsx, src/components/Markdown.tsx, src/components/StructuredDiff.tsx | N/A | ❌无测试 | 中（功能正常但无回归保护） | 添加ui-rendering子系统核心渲染路径测试（Message/Messages/Markdown/StructuredDiff/StreamingMarkdown/虚拟滚动/消息切片） | 已证实 | tests/目录扫描确认 | open |
+| B4-ui-rendering-02 | ui-rendering | — | 工程改进建议 | P3 | Markdown.tsx和StructuredDiff.tsx的模块级缓存（tokenCache、RENDER_CACHE）没有重置机制，测试间可能污染，虽然spec中未提及，但工程实践建议添加 | src/components/Markdown.tsx, src/components/StructuredDiff.tsx | N/A | ❌无测试 | 低（工程改进） | 添加缓存重置机制供测试使用 | 已证实 | 完整源码审查 | open |
 | B4-voice-assistant-01 | voice-assistant | — | 测试缺口 | P2 | voice-assistant子系统缺少专用测试文件，核心功能无回归保护 | src/voice/, src/services/voice*, src/hooks/useVoice* | N/A | ❌无测试 | 中（功能正常但无回归保护） | 添加voice-assistant子系统完整测试（hold-to-talk、focus模式、静默drop重放、早期错误重试、键释放检测、stripTrailing） | 已证实 | tests/目录扫描确认 | open |
 | B4-workspace-ui-01 | workspace-ui | — | 测试缺口 | P2 | workspace-ui子系统缺少核心功能专用测试，无回归保护 | src/commands/add-dir/, src/commands/diff/, src/commands/sandbox-toggle/, src/components/diff/, src/components/sandbox/, src/components/FullscreenLayout.tsx, src/components/CustomSelect/, src/context/overlayContext.tsx | N/A | ❌无测试 | 中（功能正常但无回归保护） | 添加workspace-ui子系统完整测试（/add-dir、/diff、/sandbox-toggle、DiffDialog、FullscreenLayout、CustomSelect、useUnseenDivider、useRegisterOverlay） | 已证实 | tests/目录扫描确认 | open |
 | B4-workspace-ui-02 | workspace-ui | — | 竞态窗口 | P3 | add-dir命令中SandboxManager.refreshConfig()是async但不等待，存在理论竞态窗口，设计文档已明确指出此权衡 | src/commands/add-dir/add-dir.tsx | N/A | ❌无测试 | 低（风险低，实际影响小） | 无需变更，设计文档已明确指出此权衡 | 已证实 | spec与源码一致 | open |
@@ -863,7 +866,7 @@
 | Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-text-formatting-design.md |
 | Coverage 存在 | ✅ | docs/architecture/coverage/text-formatting.yaml |
 | Manifest 注册 | ✅ | id: text-formatting, batch: 4, status: draft |
-| Coverage 覆盖分组 | 9/9 | markdown, cli-highlight, format, highlight-match, display-tags, hyperlink, heatmap, horizontal-scroll, logo-v2-utils, color-commands, output-styles, constants-formatting |
+| Coverage 覆盖分组 | 12/12 | markdown, cli-highlight, format-utils, highlight-match, display-tags, hyperlink, heatmap, horizontal-scroll, logo-v2-utils, color-commands, output-styles, constants-formatting |
 
 #### 文档完整性审查
 
@@ -929,7 +932,7 @@
 | Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-ui-rendering-design.md |
 | Coverage 存在 | ✅ | docs/architecture/coverage/ui-rendering.yaml |
 | Manifest 注册 | ✅ | id: ui-rendering, batch: 4, status: draft |
-| Coverage 覆盖分组 | 12/12 | additional-files, messages-core, messages-types, markdown-rendering, streaming, diff-highlight, ansi-terminal, spinner-loading, design-system, error-boundaries, message-utils, uncovered-components, uncovered-screens, uncovered-repl |
+| Coverage 覆盖分组 | 14/14 | additional-files, messages-core, messages-types, markdown-rendering, streaming, diff-highlight, ansi-terminal, spinner-loading, design-system, error-boundaries, message-utils, uncovered-components, uncovered-screens, uncovered-repl |
 
 #### 文档完整性审查
 
@@ -997,7 +1000,7 @@
 | Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-voice-assistant-design.md |
 | Coverage 存在 | ✅ | docs/architecture/coverage/voice-assistant.yaml |
 | Manifest 注册 | ✅ | id: voice-assistant, batch: 4, status: draft |
-| Coverage 覆盖分组 | 8/8 | commands, voice-mode-enabled, voice-service, voice-keyterms, voice-stream-stt, voice-context, use-voice, use-voice-enabled, use-voice-integration, cmd-voice |
+| Coverage 覆盖分组 | 10/10 | commands, voice-mode-enabled, voice-service, voice-keyterms, voice-stream-stt, voice-context, use-voice, use-voice-enabled, use-voice-integration, cmd-voice |
 
 #### 文档完整性审查
 
@@ -1120,7 +1123,7 @@
 | Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-workspace-ui-design.md |
 | Coverage 存在 | ✅ | docs/architecture/coverage/workspace-ui.yaml |
 | Manifest 注册 | ✅ | id: workspace-ui, batch: 4, status: draft |
-| Coverage 覆盖分组 | 12/12 | add-dir-command, diff-command, sandbox-toggle-command, diff-components, structured-diff, add-workspace-directory, fullscreen-layout, custom-select, sandbox-components, ui-components, shell-components, file-edit-tool-diff, quick-open-dialog, overlay-context |
+| Coverage 覆盖分组 | 13/13 | add-dir-command, diff-command, sandbox-toggle-command, diff-components, structured-diff, add-workspace-directory, fullscreen-layout, custom-select, sandbox-components, ui-components, shell-components, file-edit-tool-diff, quick-open-dialog |
 
 #### 文档完整性审查
 
@@ -1276,19 +1279,19 @@
 | 待审计子系统 | 0 |
 | 完整文档 | 11 |
 | 实现一致 | 10（除app-state循环更新防护功能未实现，ide-integration、repl-input、workspace-ui设计文档已明确指出限制/权衡） |
-| 发现总数 | 17 |
+| 发现总数 | 15 |
 | P0 | 0 |
 | P1 | 0 |
 | P2 | 11 |
-| P3 | 6 |
+| P3 | 4 |
 
 ### 发现分类
 
 | 类别 | 数量 |
 |------|------|
 | 设计文档与实现不一致 | 1 |
-| 测试缺口 | 9 |
-| 设计文档与实现一致但有局限/权衡 | 4 |
+| 测试缺口 | 11 |
+| 设计文档与实现一致但有局限/权衡 | 3 |
 
 ### app-state 生命周期证据链确认
 
