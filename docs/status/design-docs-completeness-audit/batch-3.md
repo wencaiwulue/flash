@@ -681,7 +681,7 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 | Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-sessions-share-design.md |
 | Coverage 存在 | ✅ | docs/architecture/coverage/sessions-share.yaml |
 | Manifest 注册 | ✅ | id: sessions-share, batch: 3, status: draft |
-| Coverage 覆盖分组 | 7/7 | share-commands, export-commands, export-renderer, ccshare, share-test, w6-ccshare-test |
+| Coverage 覆盖分组 | 6/6 | share-commands, export-commands, export-renderer, ccshare, share-test, w6-ccshare-test |
 
 #### 文档完整性审查
 
