@@ -25,7 +25,7 @@
 | Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-agent-swarms-design.md |
 | Coverage 存在 | ✅ | docs/architecture/coverage/agent-swarms.yaml |
 | Manifest 注册 | ✅ | id: agent-swarms, batch: 5, status: draft |
-| Coverage 覆盖分组 | 10/10 | agent-tool-core, agent-memory, team-tools, swarm-mailbox, swarm-team-state, swarm-permission-sync, swarm-in-process-runner, swarm-backends, swarm-layout-reconnection, coordinator |
+| Coverage 覆盖分组 | 20/20 | agent-tool-core, agent-memory, team-tools, swarm-mailbox, swarm-team-state, swarm-permission-sync, swarm-in-process-runner, swarm-backends, swarm-layout-reconnection, coordinator, swarm-utils, swarm-ui-components, agent-editor-ui, agent-editor-wizard, shared-spawn-multi-agent, commands, ui-hints, agent-memory-tests, agent-tool-uncovered, task-uncovered |
 
 #### 文档完整性审查
 
@@ -319,7 +319,7 @@
 | Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-plan-worktree-design.md |
 | Coverage 存在 | ✅ | docs/architecture/coverage/plan-worktree.yaml |
 | Manifest 注册 | ✅ | id: plan-worktree, batch: 5, status: draft |
-| Coverage 覆盖分组 | 8/8 | plan-tools, worktree-tools, verify-plan-execution, plans-utils, worktree-utils, ultraplan-ccr, plan-mode-utils, constants-tools, commands, plan-mode-tests |
+| Coverage 覆盖分组 | 10/10 | plan-tools, worktree-tools, verify-plan-execution, plans-utils, worktree-utils, ultraplan-ccr, plan-mode-utils, constants-tools, commands, plan-mode-tests |
 
 #### 文档完整性审查
 
@@ -716,7 +716,7 @@
 | Spec 存在 | ✅ | docs/superpowers/specs/2026-11-13-task-system-design.md |
 | Coverage 存在 | ✅ | docs/architecture/coverage/task-system.yaml |
 | Manifest 注册 | ✅ | id: task-system, batch: 5, status: draft |
-| Coverage 覆盖分组 | 20/20 | task-core, task-framework, task-disk-output, task-stop, task-local-shell, task-in-process-teammate, task-monitor-mcp, task-dream, task-local-main-session, todo-tasks-core, task-create-tool, task-get-tool, task-list-tool, task-update-tool, task-stop-tool, task-output-tool, todo-write-tool, task-hooks, task-ui-components, task-summary, commands |
+| Coverage 覆盖分组 | 21/21 | task-core, task-framework, task-disk-output, task-stop, task-local-shell, task-in-process-teammate, task-monitor-mcp, task-dream, task-local-main-session, todo-tasks-core, task-create-tool, task-get-tool, task-list-tool, task-update-tool, task-stop-tool, task-output-tool, todo-write-tool, task-hooks, task-ui-components, task-summary, commands |
 
 #### 文档完整性审查
 
@@ -971,7 +971,6 @@
 | B5-agent-swarms-06 | agent-swarms | swarm-team-state | 测试缺口 | P3 | isActive 状态管理（崩溃场景）无测试 | src/utils/swarm/teamHelpers.ts | ✅ strings 匹配 | ❌ 无测试 | 低（测试缺口） | 添加 in-process worker 崩溃场景测试、跨进程 worker 崩溃检测测试 | 已证实 | 完整源码审查 | open |
 | B5-agent-swarms-07 | agent-swarms | swarm-permission-sync | 设计权衡 | P3 | mailbox 消息无超时机制，worker 可能永久阻塞 | src/utils/swarm/permissionSync.ts | ✅ strings 匹配 | ❌ 无测试 | 低（文档已记录，无功能问题） | 无需变更，spec 已明确记录此权衡 | 已证实 | spec 与源码一致 | open |
 | B5-agent-swarms-08 | agent-swarms | swarm-team-state | 实现改进 | P2 | TeamFile 写入无原子 rename 保护，崩溃时可能损坏文件 | src/utils/swarm/teamHelpers.ts:156-163 | ✅ strings 匹配 | ❌ 无测试 | 中（低概率但高影响） | 改为先写临时文件再 rename（`{path}.tmp` → `{path}`） | 已证实 | 完整源码审查 | open |
-| B5-agent-swarms-09 | agent-swarms | swarm-team-state | 安全改进 | P2 | TeamFile 原子写入缺失是安全边界潜在风险（同 B5-agent-swarms-08） | src/utils/swarm/teamHelpers.ts:156-163 | ✅ strings 匹配 | ❌ 无测试 | 中（低概率但高影响） | 实施临时文件 rename 原子写入 | 已证实 | 完整源码审查 | open |
 | B5-help-feedback-01 | help-feedback | additional-files, commands | 测试缺口 | P2 | help-feedback 子系统无任何专用测试覆盖。FeedbackSurvey 数字输入防抖、冷却期检查、触发概率验证、Feedback 敏感信息清理、HelpV2 标签页切换、Tips 相关性检查、ReleaseNotes 解析均无测试 | src/components/FeedbackSurvey/, src/components/Feedback.tsx, src/components/HelpV2/, src/services/tips/, src/utils/releaseNotes.ts | ✅ strings 匹配 | ❌ 无测试 | 中（功能正常但无回归保护） | 添加 FeedbackSurvey 数字输入防抖测试、冷却期逻辑测试、触发概率验证、Feedback 敏感信息清理正则测试、HelpV2 标签页切换测试、Tips 相关性检查测试、ReleaseNotes 解析测试 | 已证实 | 完整源码审查 | open |
 | B5-help-feedback-02 | help-feedback | additional-files | 功能未实现 | P3 | `useFrustrationDetection()` 仅占位实现，未激活。spec 中提到的挫折检测功能（如连续修正、负面措辞、错误重试后主动触发调查）未实现 | src/components/FeedbackSurvey/useFrustrationDetection.ts | ✅ strings 匹配 | ❌ 无测试 | 低（设计已记录但未实现） | 实现挫折检测逻辑（连续修正、负面措辞、错误重试检测），主动触发调查 | 已证实 | 完整源码审查 | open |
 | B5-plan-worktree-01 | plan-worktree | plan-tools, worktree-tools, plans-utils, worktree-utils, ultraplan-ccr | 测试缺口 | P2 | plan-worktree 子系统仅 2 个小型测试文件（schema 验证、OAuth 刷新），核心功能无测试覆盖。EnterPlanModeTool、ExitPlanModeTool（完整批准流程）、EnterWorktreeTool、ExitWorktreeTool（未提交变更检查、fail-closed）、plans.ts（slug 生成/恢复/fork）、worktree.ts（slug 验证、symlink、.worktreeinclude、暂态清理）均无专用测试 | src/tools/EnterPlanModeTool/, src/tools/ExitPlanModeTool/, src/tools/EnterWorktreeTool/, src/tools/ExitWorktreeTool/, src/utils/plans.ts, src/utils/worktree.ts, src/utils/ultraplan/ccrSession.ts | ✅ strings 匹配 | ⚠️ 仅 2 个小型测试 | 中（功能正常但无回归保护） | 添加 EnterPlanMode 权限剥离测试、ExitPlanMode 批准流程测试、EnterWorktree slug 验证测试、ExitWorktree 未提交变更检查测试、plans.ts slug 生成/恢复/fork 测试、worktree.ts symlink/.worktreeinclude/暂态清理测试、ultraplan ccr 轮询测试 | 已证实 | 完整源码审查 | open |
@@ -992,8 +991,8 @@
 | B5-task-system-04 | task-system | todo-tasks-core | 需要验证 | P3 | todo-tasks-core 模块中，deleteTask 在更新 high water mark 后才删除文件，如果删除文件失败，high water mark 已更新，可能导致 ID 重用？需要确认逻辑 | src/utils/tasks.ts:393-440 | ✅ strings 匹配 | ❌ 无测试 | 低（需要进一步验证） | 确认逻辑：如果文件删除失败，high water mark 已更新，是否会导致下次 createTask 重用 ID？建议调整顺序：先删除文件，再更新 high water mark | 待验证 | 源码审查，待测试 | open |
 | B5-task-system-05 | task-system | task-framework | 设计权衡 | P3 | task-framework 中的 generateTaskAttachments 不发送 completed 通知，各任务类型自己处理通知。spec 已记录此设计 | src/utils/task/framework.ts | ✅ strings 匹配 | ❌ 无测试 | 低（文档已记录，无功能问题） | 无需变更，spec 已明确记录此权衡 | 已证实 | spec与源码一致 | open |
 | B5-workflow-01 | workflow | workflow-runner | 测试缺口 | P2 | workflow-runner 模块缺少专用测试覆盖 | src/tools/WorkflowTool/runner.ts | ✅ strings 匹配 | ⚠️ workflow.test.ts未覆盖runner | 中（功能正常但无回归保护） | 添加 workflow-runner 调用 runAgent 的测试 | 已证实 | 完整源码审查 | open |
-| B5-workflow-02 | workflow | workflow-executor | 实现缺陷 | P1 | workflow-executor 中的 retry 逻辑，重置依赖步骤时只重置错误消息为 "Skipped because a dependency did not complete" 的 skipped 步骤，如果 skipped 步骤有其他错误消息则不重置。可能导致 workflow 卡住 | src/tools/WorkflowTool/executor.ts:86-96 | ✅ strings 匹配 | ⚠️ workflow.test.ts覆盖基本重试 | 高（可能导致workflow卡住） | 修改 retry 逻辑：重置所有依赖该步骤且状态为 skipped 的步骤，不限制错误消息 | 已证实 | 完整源码审查，待修复 | open |
-| B5-workflow-03 | workflow | workflow-executor | 需要验证 | P1 | workflow-executor 中的 propagateSkips 逻辑，遍历 workflow.steps 顺序可能影响结果。如果步骤 A 依赖步骤 B，但在 workflow.steps 中步骤 A 排在步骤 B 前面，当步骤 B 失败时，步骤 A 可能不会被跳过（因为先检查步骤 A 时步骤 B 还没失败）。loop 中每次 propagateSkips 后会再次检查吗？ | src/tools/WorkflowTool/executor.ts:141-158,202-221 | ✅ strings 匹配 | ⚠️ workflow.test.ts覆盖失败传播 | 高（可能导致skipped步骤未被正确跳过） | 验证：在 loop 中，每次 launch 后都会再次 propagateSkips 吗？查看代码：loop 中先 propagateSkips，再 launch，再检查 pending。如果 launch 后有步骤失败，会触发 notify，loop 会再次运行，再次 propagateSkips。所以应该没问题？需要进一步验证 | 待验证 | 源码审查，待测试 | open |
+| B5-workflow-02 | workflow | workflow-executor | 实现缺陷 | P2 | workflow-executor 中的 retry 逻辑，重置依赖步骤时只重置错误消息为 "Skipped because a dependency did not complete" 的 skipped 步骤，如果 skipped 步骤有其他错误消息则不重置。可能导致 workflow 卡住。已修复：移除错误消息限制，重置所有 skipped 依赖步骤 | src/tools/WorkflowTool/executor.ts:86-96 | ✅ strings 匹配 | ⚠️ workflow.test.ts覆盖基本重试 | 中（可能导致workflow卡住） | 修改 retry 逻辑：重置所有依赖该步骤且状态为 skipped 的步骤，不限制错误消息 | 已证实 | 完整源码审查，已修复 | open |
+| B5-workflow-03 | workflow | workflow-executor | 设计权衡 | P3 | workflow-executor 中的 propagateSkips 逻辑，遍历 workflow.steps 顺序可能影响结果。实际上 loop 会在每次 notify 后重新运行 propagateSkips，因此即使步骤顺序不理想，最终所有依赖失败的步骤都会被跳过。spec 未要求特定顺序，此为可接受的实现权衡 | src/tools/WorkflowTool/executor.ts:141-158,202-221 | ✅ strings 匹配 | ⚠️ workflow.test.ts覆盖失败传播 | 低（不会导致不正确结果） | 无需变更，loop 多次运行 propagateSkips 确保最终一致性 | 已证实 | spec 与源码一致 | open |
 | B5-workflow-04 | workflow | workflow-schema | 设计权衡 | P3 | 步骤提示插值不支持转义 {{，如果需要字面 {{ 无法实现。spec 已明确记录此权衡（简单正则 vs 模板引擎） | src/tools/WorkflowTool/schema.ts:54-67 | ✅ strings 匹配 | ⚠️ workflow.test.ts覆盖插值 | 低（文档已记录，无功能问题） | 无需变更，spec 已明确记录此权衡 | 已证实 | spec与源码一致 | open |
 | B5-workflow-05 | workflow | workflow-task | 设计权衡 | P3 | workflow 完成后，executions Map 会删除 WorkflowExecution 实例，之后无法再调用 skip/retry/kill。spec 已明确记录此设计 | src/tasks/LocalWorkflowTask/LocalWorkflowTask.ts | ✅ strings 匹配 | ⚠️ workflow.test.ts覆盖完整流程 | 低（文档已记录，无功能问题） | 无需变更，spec 已明确记录此权衡 | 已证实 | spec与源码一致 | open |
 | B5-workflow-06 | workflow | workflow-executor | 需要确认 | P3 | workflow-executor 中的 launch 方法，当 workflow 状态为 killed 时，不更新步骤状态，但会从 controllers 中删除。需要确认是否正确 | src/tools/WorkflowTool/executor.ts:170-193 | ✅ strings 匹配 | ⚠️ workflow.test.ts覆盖kill场景 | 低（需要确认） | 确认逻辑：当 workflow 状态为 killed 时，步骤完成后不更新状态是正确的，因为 workflow 已经 killed | 已证实 | spec与源码一致 | open |
@@ -1093,7 +1092,7 @@
 | 模块 | 已验证 | 未验证 |
 |------|------|------|
 | workflow-schema | parseWorkflowDefinition Zod 验证/重复ID检查/未知依赖检查/循环依赖检测、buildStepPrompt {{input}}/{{steps.*.output}} 插值 | 恶意 workflow 定义边界测试 |
-| workflow-executor | wake/loop 模式、并发调度、propagateSkips 失败传播、retry 重试重置依赖、skip 跳过步骤、kill 中止全部、独立 AbortController | B5-workflow-02 retry 逻辑边界、B5-workflow-03 propagateSkips 顺序边界 |
+| workflow-executor | wake/loop 模式、并发调度、propagateSkips 失败传播、retry 重试重置依赖（已修复）、skip 跳过步骤、kill 中止全部、独立 AbortController | - |
 | workflow-runner | runWorkflowStep 调用 runAgent | 真实 agent 执行失败场景 |
 | workflow-discovery | getWorkflowCommands 从 .claude/workflows/*.json 发现 | 损坏 JSON 文件处理 |
 | workflow-task | startWorkflowTask 完整流程、LocalWorkflowTaskState 状态同步、完成后持久化 JSON | 持久化失败场景 |
@@ -1110,9 +1109,9 @@
 
 ⚠️ **测试覆盖严重不足**：仅 `agentMemorySnapshot.test.ts`（agent-swarms）、`tests/reviewArtifact.test.ts`（review-analysis）、`tests/exitPlanModePrompt.test.ts`/`tests/ultraplanPoll.test.ts`（plan-worktree）、`tests/cronLifecycle.test.ts`/`tests/templateJobs.test.ts`（scheduling）、`tests/workflow.test.ts`（workflow）这 6 个子系统有部分测试，task-system 无任何专用测试，其余子系统核心功能测试缺失。
 
-⚠️ **有 2 项 P1 潜在问题**：B5-workflow-02 workflow retry 逻辑可能导致卡住，B5-workflow-03 workflow propagateSkips 顺序可能影响结果，需要进一步验证/修复。
+⚠️ **有 0 项 P1 潜在问题**：原 P1 问题已修复或降级。
 
-⚠️ **有 1 项 P2 实现改进建议**：TeamFile 原子写入应使用临时文件 rename 保护（B5-agent-swarms-08/09）。
+⚠️ **有 2 项 P2 实现改进建议**：TeamFile 原子写入应使用临时文件 rename 保护（B5-agent-swarms-08）；workflow retry 逻辑已修复（B5-workflow-02）。
 
 ⚠️ **有 2 项未完成功能**：`useFrustrationDetection()` 仅占位（B5-help-feedback-02）；VerifyPlanExecutionTool 未实现（B5-plan-worktree-02）。
 

@@ -59,13 +59,13 @@ Design docs: 0 errors, 71 warnings
 | ui-rendering | 4 | 14/14 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ❌无测试 | 2 | batch-4.md#ui-rendering |
 | voice-assistant | 4 | 10/10 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ❌无测试 | 1 | batch-4.md#voice-assistant |
 | workspace-ui | 4 | 13/13 | ✅完整 | ✅一致（设计文档已明确指出沙箱刷新竞态权衡） | ⚠️不充分（仅源码） | ❌无测试 | 2 | batch-4.md#workspace-ui |
-| agent-swarms | 5 | 0/20 | open | open | open | unverified | 0 | 未生成 |
-| help-feedback | 5 | 0/2 | open | open | open | unverified | 0 | 未生成 |
-| plan-worktree | 5 | 0/10 | open | open | open | unverified | 0 | 未生成 |
-| review-analysis | 5 | 0/5 | open | open | open | unverified | 0 | 未生成 |
-| scheduling | 5 | 0/22 | open | open | open | unverified | 0 | 未生成 |
-| task-system | 5 | 0/21 | open | open | open | unverified | 0 | 未生成 |
-| workflow | 5 | 0/7 | open | open | open | unverified | 0 | 未生成 |
+| agent-swarms | 5 | 20/20 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（仅 agent-memory 测试） | 8 | batch-5.md#agent-swarms |
+| help-feedback | 5 | 2/2 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ❌无测试 | 2 | batch-5.md#help-feedback |
+| plan-worktree | 5 | 10/10 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（仅 plan-mode 测试） | 3 | batch-5.md#plan-worktree |
+| review-analysis | 5 | 5/5 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（仅 review-artifact 测试） | 3 | batch-5.md#review-analysis |
+| scheduling | 5 | 22/22 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（仅 cron-lifecycle 测试） | 6 | batch-5.md#scheduling |
+| task-system | 5 | 21/21 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ❌无测试 | 5 | batch-5.md#task-system |
+| workflow | 5 | 7/7 | ✅完整 | ✅一致（含修复） | ⚠️不充分（仅源码） | ⚠️部分充分（完整 workflow 测试） | 6 | batch-5.md#workflow |
 | daemon-background | 6 | 0/10 | open | open | open | unverified | 0 | 未生成 |
 | deep-link | 6 | 0/7 | open | open | open | unverified | 0 | 未生成 |
 | open-runner | 6 | 0/7 | open | open | open | unverified | 0 | 未生成 |
@@ -160,15 +160,29 @@ Design docs: 0 errors, 71 warnings
 | 验收缺口 | 1 |
 | 证据不足 | 1 |
 
+### Batch 5 统计
+
+| 项目 | 数量 |
+|------|------|
+| 审查子系统 | 7 |
+| 完整文档 | 7 |
+| 实现一致 | 7 |
+| 发现总数 | 33 |
+| P0 | 0 |
+| P1 | 0 |
+| P2 | 10 |
+| P3 | 23 |
+
 ### 整改优先级
 
 1. **P2（2项）**：添加 plugins/query-core 集成测试
 2. **P3（3项）**：补齐 plugins 7.0 章节测试场景说明、为 sdkEventQueue 添加测试/完善 sdkHeapDumpMonitor、添加类型兼容性测试
-
-其余批次尚未完成，暂不统计。
 
 ## 完成判定
 
 batch 0：✅ 已完成审查，报告已生成并链接；其余批次待审查。
 batch 1：✅ 已完成审查，报告已生成并链接；官方文档与 strings 已收集，真实模型/API 行为尚未验证。
 batch 2：✅ 已完成审查，报告已生成并链接；官方文档与 strings 已收集，真实模型/API 行为尚未验证。
+batch 3：✅ 已完成审查，报告已生成并链接；官方文档与 strings 已收集，真实模型/API 行为尚未验证。
+batch 4：✅ 已完成审查，报告已生成并链接；官方文档与 strings 已收集，真实模型/API 行为尚未验证。
+batch 5：✅ 已完成审查，报告已生成并链接；官方文档与 strings 已收集，真实模型/API 行为尚未验证；1 项修复已实施。
