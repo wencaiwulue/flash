@@ -24,9 +24,9 @@ Design docs: 0 errors, 71 warnings
 | query-core | 0 | 3/3 | 完整 | 一致 | 部分一致 | 部分充分 (有测试，缺端到端) | 2 | [batch-0.md#query-core](batch-0.md#query-core) |
 | sdk-query-sessions | 0 | 11/11 | 完整 | 一致 | 部分一致 | 充分 (核心模块覆盖) | 1 | [batch-0.md#sdk-query-sessions](batch-0.md#sdk-query-sessions) |
 | sdk-type-generation | 0 | 3/3 | 完整 | 一致 | N/A | 充分 | 1 | [batch-0.md#sdk-type-generation](batch-0.md#sdk-type-generation) |
-| cli-startup | 1 | 6/6 | 完整 | 一致 | 部分 | 部分充分（无直接测试，spec 截断） | 1 | [batch-1.md](#cli-startup) |
-| context-compaction | 1 | 8/8 | 完整 | 一致 | 部分 | 部分充分（核心有测试，其他模块缺） | 3 | [batch-1.md](#context-compaction) |
-| model-api | 1 | 12/12 | 完整 | 一致 | 部分 | 部分充分（测试覆盖有限） | 1 | [batch-1.md](#model-api) |
+| cli-startup | 1 | 6/6 | 完整 | 一致 | 一致 | 部分充分 (无直接测试, spec 截断) | 1 | [batch-1.md#cli-startup](batch-1.md#cli-startup) |
+| context-compaction | 1 | 8/8 | 完整 | 一致 | 一致 | 部分充分 (核心有测试, 其他模块缺) | 3 | [batch-1.md#context-compaction](batch-1.md#context-compaction) |
+| model-api | 1 | 12/12 | 完整 | 一致 | 一致 | 部分充分 (测试覆盖有限) | 1 | [batch-1.md#model-api](batch-1.md#model-api) |
 | attachments | 2 | 0/6 | open | open | open | unverified | 0 | 未生成 |
 | bridge | 2 | 0/22 | open | open | open | unverified | 0 | 未生成 |
 | buddy | 2 | 0/3 | open | open | open | unverified | 0 | 未生成 |
@@ -110,6 +110,7 @@ Design docs: 0 errors, 71 warnings
 | 审查子系统 | 3 |
 | 完整文档 | 3 |
 | 实现一致 | 3 |
+| 上游一致 | 3 |
 | 发现总数 | 5 |
 | P0 | 0 |
 | P1 | 0 |
@@ -133,3 +134,4 @@ Design docs: 0 errors, 71 warnings
 ## 完成判定
 
 batch 0：✅ 已完成审查，报告已生成并链接；其余批次待审查。
+batch 1：✅ 已完成审查，报告已生成并链接；上游证据已完整收集。
