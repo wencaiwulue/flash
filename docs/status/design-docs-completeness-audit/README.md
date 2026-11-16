@@ -2,17 +2,17 @@
 
 ## 基线
 
-- 仓库 commit：c546cf2cd86e263d59dfd13b9894868c3b00813d
+- 仓库 commit：c546cf2cd86e263d59dfd13b9894868c3b00813d → **3e615fd** (增量)
 - 上游 CLI：2.1.212 (Claude Code)
 - 官方文档索引：https://code.claude.com/docs/llms.txt
 - 矩阵生成时间：2026-11-16T06:23:54.850Z
-- 范围：68 个注册子系统、全部 coverage groups、顶层文档、未注册工程 spec 与横向契约。
+- 范围：69 个注册子系统、全部 coverage groups、顶层文档、未注册工程 spec 与横向契约。
 - 当前状态：矩阵已建立，子系统审查尚未完成；open 不表示无问题。
 
 ## 基线检查结果
 
 ```
-Design docs: 0 errors, 71 warnings
+Design docs: 0 errors, 73 warnings
 ```
 
 ## 总矩阵
@@ -66,6 +66,7 @@ Design docs: 0 errors, 71 warnings
 | scheduling | 5 | 22/22 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（仅 cron-lifecycle 测试） | 6 | batch-5.md#scheduling |
 | task-system | 5 | 21/21 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ❌无测试 | 5 | batch-5.md#task-system |
 | workflow | 5 | 7/7 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（完整 workflow 测试） | 6 | batch-5.md#workflow |
+| webbrowser-bundled-support | 5 | 2/2 | ✅完整 | ✅一致 | 有边界搜索但未完整对齐 | ⚠️部分充分（有测试，缺集成） | 2 | [batch-5.md#webbrowser-bundled-support](batch-5.md#webbrowser-bundled-support) |
 | daemon-background | 6 | 10/10 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（有测试） | 3 | [batch-6.md#daemon-background](batch-6.md#daemon-background) |
 | deep-link | 6 | 7/7 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（无测试） | 4 | [batch-6.md#deep-link](batch-6.md#deep-link) |
 | open-runner | 6 | 7/7 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ✅ 充分（有完整测试） | 7 | [batch-6.md#open-runner](batch-6.md#open-runner) |
@@ -177,13 +178,13 @@ Design docs: 0 errors, 71 warnings
 
 | 项目 | 数量 |
 |------|------|
-| 审查子系统 | 7 |
-| 完整文档 | 7 |
-| 实现一致 | 7 |
-| 发现总数 | 33 |
+| 审查子系统 | 8 |
+| 完整文档 | 8 |
+| 实现一致 | 8 |
+| 发现总数 | 35 |
 | P0 | 0 |
 | P1 | 0 |
-| P2 | 11 |
+| P2 | 13 |
 | P3 | 22 |
 
 ### Batch 6 统计
@@ -234,11 +235,11 @@ Design docs: 0 errors, 71 warnings
 | Batch 2 | 41 |
 | Batch 3 | 26 |
 | Batch 4 | 17 |
-| Batch 5 | 33 |
+| Batch 5 | 35 |
 | Batch 6 | 31 |
 | Batch 7 | 66 |
 | 跨域 | 9 |
-| **总计** | **233** |
+| **总计** | **235** |
 
 ### 按严重度分类
 
@@ -246,20 +247,20 @@ Design docs: 0 errors, 71 warnings
 |--------|------|
 | P0 | 0 |
 | P1 | 2 |
-| P2 | 95 |
+| P2 | 97 |
 | P3 | 136 |
-| **总计** | **233** |
+| **总计** | **235** |
 
 ### 发现分类统计
 
 | 类别 | 数量 |
 |------|------|
 | 文档缺口 | 10 |
-| 已证实实现问题 | 8 |
+| 已证实实现问题 | 10 |
 | 上游偏离 | 0 |
 | 验证缺口 | 185 |
 | 可选改进 | 30 |
-| **总计** | **233** |
+| **总计** | **235** |
 
 ### P1 发现详情
 
@@ -288,7 +289,7 @@ Design docs: 0 errors, 71 warnings
    - 验收：明确 standalone 脚本的 settings 初始化契约，集中处理凭据互斥检查
    - 来源：[batch-7.md](batch-7.md)
 
-### P2 问题（95 项，优先级排序）
+### P2 问题（97 项，优先级排序）
 
 1. **测试缺口类**：优先添加关键路径测试
    - plugins/query-core 集成测试
@@ -326,7 +327,7 @@ Design docs: 0 errors, 71 warnings
 ## 验证与测试结果
 
 #### `bun scripts/check-design-docs.ts`
-✅ Passed - 0 errors, 71 warnings (expected - all specs are draft)
+✅ Passed - 0 errors, 73 warnings (expected - all specs are draft)
 
 #### `git diff --check`
 ✅ Passed - no whitespace errors
@@ -353,9 +354,9 @@ Design docs: 0 errors, 71 warnings
 | batch 2 | ✅ 已完成 | 工具与会话审查，41 项发现 |
 | batch 3 | ✅ 已完成 | Memory 审查，26 项发现（含 1 P1） |
 | batch 4 | ✅ 已完成 | UI 子系统审查，17 项发现 |
-| batch 5 | ✅ 已完成 | Agent 子系统审查，33 项发现 |
+| batch 5 | ✅ 已完成 | Agent 子系统审查，35 项发现 |
 | batch 6 | ✅ 已完成 | 远程连接审查，31 项发现 |
 | batch 7 | ✅ 已完成 | 工程模块审查，66 项发现（含 1 P1） |
 | cross-subsystem | ✅ 已完成 | 横向契约审查，9 项发现 |
 
-**总体状态**：✅ **审计完成** - 所有 68 个子系统已覆盖，发现已登记，无 P0 问题，2 项 P1 问题待修复。完整报告请参考各 batch 文件及 [cross-subsystem.md](cross-subsystem.md)。
+**总体状态**：✅ **审计完成** - 所有 69 个子系统已覆盖（含新增 webbrowser-bundled-support），发现已登记，无 P0 问题，2 项 P1 问题待修复。完整报告请参考各 batch 文件及 [cross-subsystem.md](cross-subsystem.md)。
