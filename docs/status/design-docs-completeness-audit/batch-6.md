@@ -7,7 +7,7 @@
 | 基线 commit | 6fbe8f8 | 审查的基础提交 |
 | 上游 CLI | ✅ 已提取 strings | /opt/homebrew/bin/claude 已提取相关 daemon/background/deep-link 字符串 |
 | 官方文档 | ⚠️ 未确认 | code.claude.com 已执行边界搜索，未发现相关页面 |
-| 审查范围 | daemon-background + deep-link 子系统深度审计；open-runner/platform-integrations/remote-control/ssh/teleport 子系统保持 open 状态 | daemon/background 完整生命周期 + deep-link 解析/路由审查；其余 5 子系统待审计 |
+| 审查范围 | daemon-background + deep-link + open-runner + platform-integrations + remote-control + ssh + teleport 子系统完整审计 | 7 个子系统完整审计 |
 
 ### 启动状态 RED ✅
 
@@ -718,7 +718,115 @@
 | Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-teleport-design.md |
 | Coverage 存在 | ✅ | docs/architecture/coverage/teleport.yaml |
 | Manifest 注册 | ✅ | id: teleport, batch: 6, status: draft |
-| 审查状态 | ⏸️ Open | 本 slice 仅审计 daemon-background + deep-link，teleport 待后续审计 |
+| Coverage 覆盖分组 | 2/2 | additional-files-source, additional-files-test |
+
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了本地与云端会话迁移（teleportToRemote/teleportResumeCodeSession）、OAuth 认证要求、GitHub App 预检查、Git Bundle 降级策略等约束条件。
+
+✅ **设计理由与备选方案**：8 项关键决策表格化展示，包含真实证据位置：
+- 脏工作区阻断而非自动 stash（证据：tests/teleport.test.ts）
+- GitHub 预检查 + Bundle 自动降级（证据：spec 中注释）
+- Session ID 引用而非完整状态序列化（证据：teleportFromSessionsAPI）
+- 分支检出失败不阻断会话恢复（证据：processMessagesForTeleportResume）
+- 环境选择优先级 anthropic_cloud > byoc（证据：teleportToRemote）
+- 权限模式通过初始事件传递而非 API 字段（证据：spec 中注释）
+- Archive 而非 delete 停止远程会话（证据：archiveRemoteSession）
+
+✅ **目标与非目标**：清晰界定了本地上云、云端恢复、Git Bundle 降级、OAuth 认证等目标；明确了不支持 API Key 认证、不自动 stash 脏工作区、不跨设备实时同步等非目标。
+
+✅ **架构、模块与数据流**：
+- 2 个模块设计卡（gitBundle, environmentSelection）
+- 完整的本地上云与云端恢复数据流
+- Git Bundle 创建与降级策略（all → HEAD → squash）
+- 关键数据结构（BundleUploadResult, EnvironmentSelectionInfo）
+
+#### 源码验证
+
+**additional-files-source (src/utils/teleport.tsx)**：
+- teleportToRemote：上云入口，OAuth 检查、环境选择、GitHub 预检查、Bundle 降级 ✅
+- teleportResumeCodeSession：恢复入口，仓库验证、日志获取、分支检出 ✅
+- validateGitState：Git 状态检查，脏工作区阻断 ✅
+- checkOutTeleportedSessionBranch：分支检出，失败不阻断，返回错误 ✅
+- validateSessionRepository：仓库验证，比较 owner/repo（忽略大小写）和 host（去除端口）✅
+- processMessagesForTeleportResume：消息处理，添加系统提示分支错误 ✅
+- archiveRemoteSession：Archive 远程会话而非 delete ✅
+- **发现 B6-teleport-01**：Git Bundle 上传无进度显示，大仓库上传时用户体验差。严重度：P3（设计改进建议已在 spec 中记录），置信度：已证实（spec 第 9 节）
+- **发现 B6-teleport-02**：Git Bundle 上传无断点续传，大文件失败需重新上传。严重度：P3（设计改进建议已在 spec 中记录），置信度：已证实（spec 第 9 节）
+
+**additional-files-source (src/utils/teleport/api.ts)**：
+- fetchSession：获取会话信息，15s 超时 ✅
+- fetchCodeSessionsFromSessionsAPI：获取会话列表 ✅
+- getBranchFromSession：从会话中提取分支名称 ✅
+- sendEventToRemoteSession：发送事件到远程会话，30s 超时 ✅
+- updateSessionTitle：更新会话标题 ✅
+- axiosGetWithRetry：指数退避重试（2s/4s/8s/16s），仅重试网络错误和 5xx ✅
+- **发现 B6-teleport-03**：API 重试逻辑无用户反馈，重试期间用户不知道进度。严重度：P3，置信度：已证实（基于代码理解）
+
+**additional-files-source (src/utils/teleport/environmentSelection.ts)**：
+- getEnvironmentSelectionInfo：环境选择，优先级 defaultEnvironmentId > anthropic_cloud > byoc > bridge ✅
+
+**additional-files-source (src/utils/teleport/environments.ts)**：
+- fetchEnvironments：获取可用环境列表 ✅
+- createDefaultCloudEnvironment：创建默认云环境 ✅
+
+**additional-files-source (src/utils/teleport/gitBundle.ts)**：
+- createAndUploadGitBundle：Git Bundle 创建与上传，三级降级（all → HEAD → squash）✅
+- DEFAULT_BUNDLE_MAX_BYTES：100MB 默认限制 ✅
+- BundleScope：all/head/squash 三种范围 ✅
+- WIP 捕获：git stash create + refs/seed/stash ✅
+- **发现 B6-teleport-04**：未跟踪文件不包含在 Bundle 中，可能导致远程环境缺少必要文件。严重度：P3（设计权衡，明确记录），置信度：已证实（spec 中明确说明）
+
+**commands (src/commands/teleport/teleport.tsx)**：
+- `/teleport` 命令入口，交互式会话选择与恢复 UI ✅
+
+#### 测试验证
+
+检查 coverage 中提及的测试文件：
+- ✅ **tests/teleport.test.ts**：完整覆盖 teleport 核心功能，包括：
+  - 无 sessionId 时使用选择器
+  - 直接 sessionId 拉取和验证
+  - 网络/无效会话失败不修改工作区
+  - 仓库不匹配需要已知 checkout，不降级到清理
+  - 脏工作区取消阻塞 checkout 和替换转录
+  - 成功恢复复用 checkout 和消息处理
+- **发现 B6-teleport-05**：缺少大仓库 Bundle 创建性能测试。严重度：P3（改进建议已在 spec 中记录），置信度：已证实（spec 第 9 节）
+- **发现 B6-teleport-06**：缺少网络中断恢复测试。严重度：P3（改进建议已在 spec 中记录），置信度：已证实（spec 第 9 节）
+- **发现 B6-teleport-07**：缺少 GHE 仓库验证测试。严重度：P3（改进建议已在 spec 中记录），置信度：已证实（spec 第 9 节）
+- **发现 B6-teleport-08**：缺少并发 Teleport 操作测试。严重度：P3（改进建议已在 spec 中记录），置信度：已证实（spec 第 9 节）
+
+#### 隐私与安全边界审查
+
+**安全边界**：
+- OAuth token 仅在显式 environmentId 场景注入，服务端日志自动 scrub ✅
+- Git Bundle 不包含 .git/config、.git/credentials、未跟踪文件（除非在 stash 中）✅
+- 会话日志过滤：仅保留 transcript message，排除 sidechain ✅
+- 仓库验证比较 owner/repo（忽略大小写）和 host（去除端口）✅
+- 分支检出失败不阻断会话恢复，确保会话恢复是主要目标 ✅
+- Archive 而非 delete 停止远程会话，避免意外丢失会话 ✅
+
+**失败语义**：
+- 脏工作区阻断而非自动 stash，安全性优先 ✅
+- GitHub 预检查失败自动降级到 Bundle，最大化成功率 ✅
+- 分支检出失败继续恢复会话，可用性优先 ✅
+- API 调用指数退避重试，仅重试网络错误和 5xx ✅
+
+#### 上游证据
+
+**官方文档证据**：
+- ⚠️ 未发现公开文档（合理，内部功能）
+
+**上游 CLI strings 证据**：
+- ⚠️ 未强制提取（任务要求 focused 证据）
+
+**外部 stub 契约证据**：
+- ✅ 无相关契约（合理，内部功能）
+
+**源码证据**：
+- ✅ 所有核心模块实现与 spec 一致，关键决策点都有 spec 中记录的证据位置
+
+**Live 证据**：
+- ❌ 未尝试连接私有服务（遵循边界规则）
 
 ## 发现登记
 
@@ -749,6 +857,14 @@
 | B6-ssh-01 | ssh | P3 | SSH 重连后无状态同步机制，远程可能已前进但本地不知道已改变的工具状态 |
 | B6-ssh-02 | ssh | P3 | 当前仅支持 Linux glibc 目标，不支持 musl libc（Alpine）或 BSD/macOS 远程 |
 | B6-ssh-03 | ssh | P3 | 单次 scp 传输大文件在弱网下可能慢或失败，无断点续传 |
+| B6-teleport-01 | teleport | P3 | Git Bundle 上传无进度显示，大仓库上传时用户体验差 |
+| B6-teleport-02 | teleport | P3 | Git Bundle 上传无断点续传，大文件失败需重新上传 |
+| B6-teleport-03 | teleport | P3 | API 重试逻辑无用户反馈，重试期间用户不知道进度 |
+| B6-teleport-04 | teleport | P3 | 未跟踪文件不包含在 Bundle 中，可能导致远程环境缺少必要文件 |
+| B6-teleport-05 | teleport | P3 | 缺少大仓库 Bundle 创建性能测试 |
+| B6-teleport-06 | teleport | P3 | 缺少网络中断恢复测试 |
+| B6-teleport-07 | teleport | P3 | 缺少 GHE 仓库验证测试 |
+| B6-teleport-08 | teleport | P3 | 缺少并发 Teleport 操作测试 |
 
 ### 汇总统计
 
@@ -757,8 +873,8 @@
 | P0 阻断性问题 | 0 |
 | P1 严重问题 | 0 |
 | P2 中等问题 | 6 |
-| P3 低优先级问题 | 15 |
-| 总计 | 21 |
+| P3 低优先级问题 | 23 |
+| 总计 | 29 |
 
 ### P0/P1/P2 详细描述
 
@@ -822,10 +938,10 @@
 
 | 类别 | 状态 | 说明 |
 |------|------|------|
-| 官方文档 | ⚠️ 无公开文档 | code.claude.com 边界搜索未发现 daemon/background/deep-link/open-runner/platform-integrations/remote-control/ssh 相关公开文档（合理，内部功能） |
-| 上游 strings | ✅ 已提取 | /opt/homebrew/bin/claude 已提取相关字符串，关键函数名匹配（daemon/background/deep-link）；platform-integrations/remote-control/ssh strings 未强制提取 |
-| 源码访问 | ✅ 完整访问 | src/daemon/, src/cli/bg.ts, src/utils/uds*, src/utils/deepLink/, src/open-runner/, src/upstreamproxy/, src/utils/desktopDeepLink.ts, src/utils/claudeDesktop.ts, src/utils/claudeInChrome/common.ts, src/commands/desktop/, src/components/DesktopUpsell/, src/commands/mobile/, src/commands/chrome/, src/commands/install-slack-app/, src/remote/, src/server/, src/ssh/ 完整读取 |
-| 测试访问 | ✅ 完整扫描 | tests/ 目录完整扫描，daemon/background/uds 测试存在，deep-link 测试缺失，open-runner 测试完整，upstream-proxy relay 测试缺失，platform-integrations 仅 claudeInChromeWiring.test.ts 最小测试，remote-control CCR 模式测试缺失，direct-connect 测试完整，ssh 测试完整 |
+| 官方文档 | ⚠️ 无公开文档 | code.claude.com 边界搜索未发现 daemon/background/deep-link/open-runner/platform-integrations/remote-control/ssh/teleport 相关公开文档（合理，内部功能） |
+| 上游 strings | ✅ 已提取 | /opt/homebrew/bin/claude 已提取相关字符串，关键函数名匹配（daemon/background/deep-link）；platform-integrations/remote-control/ssh/teleport strings 未强制提取 |
+| 源码访问 | ✅ 完整访问 | src/daemon/, src/cli/bg.ts, src/utils/uds*, src/utils/deepLink/, src/open-runner/, src/upstreamproxy/, src/utils/desktopDeepLink.ts, src/utils/claudeDesktop.ts, src/utils/claudeInChrome/common.ts, src/commands/desktop/, src/components/DesktopUpsell/, src/commands/mobile/, src/commands/chrome/, src/commands/install-slack-app/, src/remote/, src/server/, src/ssh/, src/utils/teleport/, src/commands/teleport/ 完整读取 |
+| 测试访问 | ✅ 完整扫描 | tests/ 目录完整扫描，daemon/background/uds 测试存在，deep-link 测试缺失，open-runner 测试完整，upstream-proxy relay 测试缺失，platform-integrations 仅 claudeInChromeWiring.test.ts 最小测试，remote-control CCR 模式测试缺失，direct-connect 测试完整，ssh 测试完整，teleport 测试完整 |
 | 外部 stubs 契约 | ✅ 有相关契约 | docs/external-stubs/contracts/direct-connect-v1.md 和 ssh-v1.md 完整验证通过；daemon/background/deep-link/open-runner/platform-integrations 无相关契约（合理，内部功能） |
 | 私有服务访问 | ❌ 未尝试 | 遵循边界规则，未尝试连接任何私有服务 |
 
@@ -836,8 +952,8 @@
 | 检查项 | 状态 | 说明 |
 |--------|------|------|
 | batch-6.md 存在 | ✅ | 本文档 |
-| 包含 6 个已审计子系统章节 | ✅ | daemon-background, deep-link, open-runner, platform-integrations, remote-control, ssh |
-| 包含 1 个 open 子系统占位 | ✅ | teleport |
+| 包含 7 个已审计子系统章节 | ✅ | daemon-background, deep-link, open-runner, platform-integrations, remote-control, ssh, teleport |
+| 包含 0 个 open 子系统占位 | ✅ | 无 open 子系统 |
 | 包含所有必需章节 | ✅ | 基线与范围、子系统审查、发现登记、证据边界、完成判定 |
 | 发现 ID 格式正确 | ✅ | B6-{subsystem}-{nn} |
 | 无私有连接声明 | ✅ | 证据边界明确声明未尝试私有服务 |
@@ -852,11 +968,11 @@
 | platform-integrations | ✅ Audited | 16/16 分组覆盖，3 个发现（0 P0/P1, 1 P2, 2 P3） |
 | remote-control | ✅ Audited | 8/8 分组覆盖，3 个发现（0 P0/P1, 2 P2, 1 P3） |
 | ssh | ✅ Audited | 9/9 分组覆盖，3 个发现（0 P0/P1, 0 P2, 3 P3） |
-| teleport | ⏸️ Open | 待审计 |
+| teleport | ✅ Audited | 2/2 分组覆盖，8 个发现（0 P0/P1, 0 P2, 8 P3） |
 
 ### 总体状态
 
-🟢 **基本完成**：本 slice 完成 daemon-background + deep-link + open-runner + platform-integrations + remote-control + ssh 6 个子系统审计，剩余 teleport 1 个子系统待后续 slice 审计。无 P0/P1 阻断性问题，所有外部 stub 契约（direct-connect-v1.md、ssh-v1.md）完整验证通过。
+🟢 **完成**：本 slice 完成 daemon-background + deep-link + open-runner + platform-integrations + remote-control + ssh + teleport 7 个子系统完整审计。无 P0/P1 阻断性问题，所有外部 stub 契约（direct-connect-v1.md、ssh-v1.md）完整验证通过。
 
 ---
 
