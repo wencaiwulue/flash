@@ -544,7 +544,7 @@
 | Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-remote-control-design.md |
 | Coverage 存在 | ✅ | docs/architecture/coverage/remote-control.yaml |
 | Manifest 注册 | ✅ | id: remote-control, batch: 6, status: draft |
-| Coverage 覆盖分组 | 8/8 | additional-files, remote-client, remote-server, remote-control-command, remote-sdk-control, remote-transport, remote-tests |
+| Coverage 覆盖分组 | 7/7 | additional-files, remote-client, remote-server, remote-control-command, remote-sdk-control, remote-transport, remote-tests |
 
 #### 文档完整性审查
 
@@ -718,7 +718,7 @@
 | Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-teleport-design.md |
 | Coverage 存在 | ✅ | docs/architecture/coverage/teleport.yaml |
 | Manifest 注册 | ✅ | id: teleport, batch: 6, status: draft |
-| Coverage 覆盖分组 | 2/2 | additional-files-source, additional-files-test |
+| Coverage 覆盖分组 | 3/3 | additional-files-source, additional-files-test, commands |
 
 #### 文档完整性审查
 
@@ -873,8 +873,8 @@
 | P0 阻断性问题 | 0 |
 | P1 严重问题 | 0 |
 | P2 中等问题 | 6 |
-| P3 低优先级问题 | 23 |
-| 总计 | 29 |
+| P3 低优先级问题 | 25 |
+| 总计 | 31 |
 
 ### P0/P1/P2 详细描述
 
@@ -962,13 +962,13 @@
 
 | 子系统 | 状态 | 完成度 |
 |--------|------|--------|
-| daemon-background | ✅ Audited | 10/10 分组覆盖，7 个发现（0 P0/P1, 1 P2, 6 P3） |
-| deep-link | ✅ Audited | 7/7 分组覆盖，0 P0/P1, 0 P2, 0 P3 发现 |
+| daemon-background | ✅ Audited | 10/10 分组覆盖，3 个发现（0 P0/P1, 0 P2, 3 P3） |
+| deep-link | ✅ Audited | 7/7 分组覆盖，4 个发现（0 P0/P1, 1 P2, 3 P3） |
 | open-runner | ✅ Audited | 7/7 分组覆盖，7 个发现（0 P0/P1, 2 P2, 5 P3） |
 | platform-integrations | ✅ Audited | 16/16 分组覆盖，3 个发现（0 P0/P1, 1 P2, 2 P3） |
-| remote-control | ✅ Audited | 8/8 分组覆盖，3 个发现（0 P0/P1, 2 P2, 1 P3） |
+| remote-control | ✅ Audited | 7/7 分组覆盖，3 个发现（0 P0/P1, 2 P2, 1 P3） |
 | ssh | ✅ Audited | 9/9 分组覆盖，3 个发现（0 P0/P1, 0 P2, 3 P3） |
-| teleport | ✅ Audited | 2/2 分组覆盖，8 个发现（0 P0/P1, 0 P2, 8 P3） |
+| teleport | ✅ Audited | 3/3 分组覆盖，8 个发现（0 P0/P1, 0 P2, 8 P3） |
 
 ### 总体状态
 

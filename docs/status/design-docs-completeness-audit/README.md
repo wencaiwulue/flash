@@ -66,13 +66,13 @@ Design docs: 0 errors, 71 warnings
 | scheduling | 5 | 22/22 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（仅 cron-lifecycle 测试） | 6 | batch-5.md#scheduling |
 | task-system | 5 | 21/21 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ❌无测试 | 5 | batch-5.md#task-system |
 | workflow | 5 | 7/7 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（完整 workflow 测试） | 6 | batch-5.md#workflow |
-| daemon-background | 6 | 0/10 | open | open | open | unverified | 0 | 未生成 |
-| deep-link | 6 | 0/7 | open | open | open | unverified | 0 | 未生成 |
-| open-runner | 6 | 0/7 | open | open | open | unverified | 0 | 未生成 |
-| platform-integrations | 6 | 0/16 | open | open | open | unverified | 0 | 未生成 |
-| remote-control | 6 | 0/7 | open | open | open | unverified | 0 | 未生成 |
-| ssh | 6 | 0/9 | open | open | open | unverified | 0 | 未生成 |
-| teleport | 6 | 0/3 | open | open | open | unverified | 0 | 未生成 |
+| daemon-background | 6 | 10/10 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（有测试） | 3 | [batch-6.md#daemon-background](batch-6.md#daemon-background) |
+| deep-link | 6 | 7/7 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（无测试） | 4 | [batch-6.md#deep-link](batch-6.md#deep-link) |
+| open-runner | 6 | 7/7 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ✅ 充分（有完整测试） | 7 | [batch-6.md#open-runner](batch-6.md#open-runner) |
+| platform-integrations | 6 | 16/16 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（无完整测试） | 3 | [batch-6.md#platform-integrations](batch-6.md#platform-integrations) |
+| remote-control | 6 | 7/7 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（部分测试） | 3 | [batch-6.md#remote-control](batch-6.md#remote-control) |
+| ssh | 6 | 9/9 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ✅ 充分（有完整测试） | 3 | [batch-6.md#ssh](batch-6.md#ssh) |
+| teleport | 6 | 3/3 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ✅ 充分（有完整测试） | 8 | [batch-6.md#teleport](batch-6.md#teleport) |
 | build-feature-profile | 7 | 0/7 | open | open | open | unverified | 0 | 未生成 |
 | data-structures | 7 | 0/15 | open | open | open | unverified | 0 | 未生成 |
 | diagnostics | 7 | 0/2 | open | open | open | unverified | 0 | 未生成 |
@@ -173,6 +173,19 @@ Design docs: 0 errors, 71 warnings
 | P2 | 9 |
 | P3 | 23 |
 
+### Batch 6 统计
+
+| 项目 | 数量 |
+|------|------|
+| 审查子系统 | 7 |
+| 完整文档 | 7 |
+| 实现一致 | 7 |
+| 发现总数 | 31 |
+| P0 | 0 |
+| P1 | 0 |
+| P2 | 6 |
+| P3 | 25 |
+
 ### 整改优先级
 
 1. **P2（2项）**：添加 plugins/query-core 集成测试
@@ -186,3 +199,4 @@ batch 2：✅ 已完成审查，报告已生成并链接；官方文档与 strin
 batch 3：✅ 已完成审查，报告已生成并链接；官方文档与 strings 已收集，真实模型/API 行为尚未验证。
 batch 4：✅ 已完成审查，报告已生成并链接；官方文档与 strings 已收集，真实模型/API 行为尚未验证。
 batch 5：✅ 已完成审查，报告已生成并链接；官方文档与 strings 已收集，真实模型/API 行为尚未验证。
+batch 6：✅ 已完成审查，报告已生成并链接；官方文档与 strings 已收集，真实模型/API 行为尚未验证。
