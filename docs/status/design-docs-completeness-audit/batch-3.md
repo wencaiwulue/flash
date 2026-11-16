@@ -1,4 +1,4 @@
-# Batch 3 审计报告：Memory, Settings, Skills
+# Batch 3 审计报告：Memory, Settings, Skills, Auth, Commit-attribution, Git-integration
 
 ## 基线与范围
 
@@ -7,7 +7,7 @@
 | 基线 commit | 6fbe8f8 | 审查的基础提交 |
 | 上游 CLI | ✅ 可用 | /opt/homebrew/bin/claude 存在 |
 | 官方文档 | ❓ 未访问 | code.claude.com 未实时访问 |
-| 审查范围 | memory, settings, skills 子系统 | 深度生命周期审计，memory/settings/skills 子系统完整审查；其余 6 子系统保持 open 状态 |
+| 审查范围 | memory, settings, skills, auth, commit-attribution, git-integration 子系统 | 深度生命周期审计，memory/settings/skills/auth/commit-attribution/git-integration 子系统完整审查；其余 3 子系统保持 open 状态 |
 
 ### 启动状态 RED ✅
 
@@ -280,12 +280,101 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 
 | 项目 | 状态 | 说明 |
 |------|------|------|
-| Spec 存在 | ⏳ | docs/superpowers/specs/2026-11-12-commit-attribution-design.md（待审计） |
-| Coverage 存在 | ⏳ | docs/architecture/coverage/commit-attribution.yaml（待审计） |
-| Manifest 注册 | ⏳ | id: commit-attribution, batch: 3, status: draft（待审计） |
-| Coverage 覆盖分组 | ⏳ | 待审计 |
+| Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-commit-attribution-design.md |
+| Coverage 存在 | ✅ | docs/architecture/coverage/commit-attribution.yaml |
+| Manifest 注册 | ✅ | id: commit-attribution, batch: 3, status: draft |
+| Coverage 覆盖分组 | 6/6 | commit-attribution-core, attribution-hooks, attribution-trailer, attribution-ui, post-commit-attribution, commit-attribution-tests |
 
-**状态**：保持 open，本次仅审计 memory 子系统。
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了提交归因场景、Git钩子共存、内部模型白名单、幂等恢复等核心约束。
+
+✅ **设计理由与备选方案**：9项关键决策表格化展示，包含真实证据位置：
+- 文件变更跟踪使用前缀/后缀匹配而非完整diff/Myers
+- Claude贡献以字符而非行累加
+- 会话基线保存首次观察状态
+- Git侧按会话ID保存JSON，64会话上限
+- 快照恢复取最后一个完整状态而非跨快照累加
+- prepare-commit-msg调度器保留用户钩子，失败不阻塞提交
+- 内部模型名白名单控制暴露
+- 公共trailer只含统计不含路径/会话ID
+- Bash工具跟踪使用pre/post快照 + 有界缓存
+- HEAD协调检测外部提交推进计数器基线
+
+✅ **目标与非目标**：清晰界定了不处理完整Git历史归因、不精确跟踪人类变更等非目标。
+
+✅ **架构、模块与数据流**：
+- 6个模块设计卡：commitAttribution, attributionHooks, attributionTrailer, attributionUI, postCommitAttribution
+- 完整归因数据流：Edit/Write/Bash钩子 → 状态变更 → Git侧持久化 → prepare-commit-msg计算 → 公共trailer附加
+- 清晰的状态所有权：纯函数核心 + 钩子闭包状态 + Git侧持久化
+- 幂等快照恢复（只取最后一个完整快照）
+
+✅ **证据链覆盖**：完整的归因跟踪-持久化-计算-附加证据链已验证：
+- 跟踪：Edit/Write钩子前缀/后缀匹配 + Bash钩子pre/post快照对比
+- 持久化：会话侧快照 + Git侧.json（64会话上限）
+- 计算：合并多会话归因、跳过生成文件、计算百分比
+- 附加：使用Git interpret-trailers标准化、公共trailer只含统计
+
+#### 源码验证
+
+**commit-attribution-core**（src/utils/commitAttribution.ts）：
+- 前缀/后缀匹配实现、会话基线保存首次状态、字符累加贡献、计算提交归因函数、Git瞬态状态检测、快照恢复取最后一个完整状态等。
+- `calculateCommitAttribution`：合并多会话归因、跳过生成文件、计算Claude百分比、人类贡献通过排除法估算。
+- `isInternalModelRepo`：内部仓库白名单（含23个仓库），`sanitizeModelName`：将内部模型名映射为公共名称。
+
+**attribution-hooks**（src/utils/attributionHooks.ts）：
+- Bash工具pre/post快照跟踪、Edit/Write工具钩子、文件内容缓存（LRU，500条目上限，15分钟过期）、pendingBash缓存（32条目上限，5分钟过期）、HEAD协调检测外部提交、队列持久化。
+
+**attribution-trailer**（src/utils/attributionTrailer.ts）：纯函数，buildPRTrailers构建公共trailer，只含统计不含路径。
+
+**post-commit-attribution**（src/utils/postCommitAttribution.ts）：prepare-commit-msg调度器保留用户钩子、幂等钩子安装/卸载、Git侧持久化、独立入口不加载完整CLI。
+
+**发现 B3-commit-attribution-01**：归因状态中userModified参数存在但被忽略（当前不区分用户后续修改，所有Edit/Write均计Claude）。严重度：P3（设计取舍），置信度：已证实（src/utils/commitAttribution.ts trackFileModification）。
+
+**发现 B3-commit-attribution-02**：多次编辑同一位置会导致字符计数膨胀（前缀/后缀匹配每次编辑都累加，而非计算增量）。严重度：P3（已知取舍），置信度：已证实（设计文档明确记录）。
+
+#### 外部契约验证
+
+检查相关外部stubs契约：
+- 无直接针对commit-attribution的独立contract文件
+- 归因钩子与文件工具（Edit/Write）和Bash工具集成
+- 与git-integration共享Git命令执行
+- 内部API路径使用GIT_TERMINAL_PROMPT=0禁用凭据提示
+
+#### 测试验证
+
+检查coverage中提及的测试文件：
+- ✅ tests/commitAttributionWave2.test.ts（含完整测试：Edit/Write工具、Bash pre/post、快照恢复、prepare-commit-msg安装等）。
+- 测试覆盖快照恢复只取最后一个完整状态（防二次膨胀）。
+
+**发现 B3-commit-attribution-03**：无专门测试验证文件重命名/复制后的归因迁移（Git检测重命名但归因只按路径，重命名后Claude贡献会重新开始）。严重度：P3（功能缺失），置信度：已证实（设计文档明确记录）。
+
+#### 上游证据
+
+官方文档暂未访问，但从代码可见：
+- 公共trailer格式：Claude-Code-Contribution（百分比）、Claude-Code-Prompts（提示数增量）、Claude-Code-Permission-Prompts（权限提示增量）、Claude-Code-Escapes（ESC取消增量）。
+- 内部模型名白名单含23个私有仓库。
+
+#### 隐私与安全边界审查
+
+✅ **内部模型名保护**：内部模型名仅在白名单仓库暴露。
+
+✅ **公共trailer隐私保护**：公共trailer只含统计，不含路径、会话ID、文件名等敏感信息。
+
+✅ **Git侧持久化权限**：归因状态文件权限0o600，目录0o700。
+
+✅ **失败安全降级**：归因失败不阻塞提交，只打印警告。
+
+#### 证据边界总结
+
+| 类别 | 覆盖 | 缺口 |
+|------|------|------|
+| Spec完整性 | ✅ 完整，9项决策，6个模块设计卡，完整生命周期证据链 | ⚠️ 上游文档未实时访问 |
+| 源码一致性 | ✅ 所有分组源码与spec高度一致 | ⚠️ 无 |
+| 测试覆盖 | ⚠️ 部分覆盖（commitAttributionWave2.test.ts覆盖主要功能） | ⚠️ 缺少重命名/复制迁移测试、对抗测试 |
+| 官方文档 | ❓ 未访问 | ⚠️ 基于现有spec |
+| 上游CLI | ⚠️ 未提取strings | ⚠️ 需补充 |
+| 外部契约 | ⚠️ 无独立contract | ⚠️ 内部实现细节 |
 
 ---
 
@@ -293,12 +382,87 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 
 | 项目 | 状态 | 说明 |
 |------|------|------|
-| Spec 存在 | ⏳ | docs/superpowers/specs/2026-11-12-git-integration-design.md（待审计） |
-| Coverage 存在 | ⏳ | docs/architecture/coverage/git-integration.yaml（待审计） |
-| Manifest 注册 | ⏳ | id: git-integration, batch: 3, status: draft（待审计） |
-| Coverage 覆盖分组 | ⏳ | 待审计 |
+| Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-git-integration-design.md |
+| Coverage 存在 | ✅ | docs/architecture/coverage/git-integration.yaml |
+| Manifest 注册 | ✅ | id: git-integration, batch: 3, status: draft |
+| Coverage 覆盖分组 | 7/7 | git-core, git-filesystem, git-diff, git-ignore, github-integration, pr-reference, git-tests |
 
-**状态**：保持 open，本次仅审计 memory 子系统。
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了仓库发现、Git元数据直接读取（而非Git命令）、Git工作树双向验证防伪造、ref名称白名单注入防护、裸仓库检测等核心安全约束。
+
+✅ **设计理由与备选方案**：10项关键决策表格化展示，包含真实证据位置：
+- findGitRoot向上遍历搜索.git，LRU缓存（50条目）
+- Git元数据直接读取（.git/HEAD, refs, packed-refs）而非Git命令
+- resolveRef验证ref名称白名单防注入
+- worktree双向验证（.git → gitdir → commondir → 回指原worktree的.git）
+- Diff分阶段加载：先--shortstat探测，再按需--numstat，最后--diff
+- Git凭据提示禁用（GIT_TERMINAL_PROMPT=0, GIT_ASKPASS=, stdin: ignore）
+- 裸仓库检测（HEAD/objects/refs存在且.git/HEAD无效或不存在）
+- 提交归因作为git-integration的子系统
+- Git失败静默降级而非抛出
+- Git文件监视器缓存分支/HEAD/远程URL/默认分支，文件变更时自动失效
+
+✅ **目标与非目标**：清晰界定了不替代完整Git CLI、不实现Git协议、不管理Git凭据、不解决冲突等非目标。
+
+✅ **架构、模块与数据流**：
+- 7个模块设计卡：git-core, git-filesystem, git-diff, git-ignore, github-integration, worktree（实际spec含worktree）
+- 完整git状态获取数据流：findGitRoot → resolveGitDir → readGitHead → resolveRef → parseGitConfig
+- Git diff计算分阶段：先--shortstat→numstat→按需diff
+- worktree创建/恢复/清理流程
+- Git仓库发现和元数据读取、直接文件访问、Git命令执行分层架构
+
+#### 源码验证
+
+**git-core**（src/utils/git.ts）：findGitRoot向上遍历查找.git，支持普通仓库/子模块/工作树，LRU缓存50条目；resolveCanonicalRoot双向验证工作树；gitExe memoized；getGitState并行获取分支/HEAD/远程/远程URL/状态/工作树计数。
+
+**git-filesystem**（src/utils/git/gitFilesystem.ts）：直接读取.git元数据，GitFileWatcher类监听.git/HEAD, .git/config, 当前分支ref，缓存分支/HEAD/远程URL/默认分支，isSafeRefName验证ref名称白名单（允许a-zA-Z0-9/._+@-，禁止路径遍历），resolveRef优先松散ref→packed-refs→commonDir回退，getCommonDir获取共享git目录，readWorktreeHeadSha直接读取工作树.git指针。
+
+**git-diff**（src/utils/gitDiff.ts）：分阶段加载diff（先--shortstat探测，再--numstat统计，最后--diff详细diff），限制文件数50，max diff size 1MB，max lines per file 400，parseGitDiff解析统一diff，生成StructuredPatchHunk。
+
+**worktree**（src/utils/worktree.ts）：validateWorktreeSlug验证工作树slug防路径遍历，getOrCreateWorktree创建/恢复工作树（优先直接读取.git指针防Git命令），performPostCreationSetup设置工作树后设置，copyWorktreeIncludeFiles复制.gitignored文件，createAgentWorktree创建代理工作树（不碰全局会话状态），cleanupStaleAgentWorktrees清理过期代理工作树（仅匹配临时slug模式）。
+
+**发现 B3-git-integration-01**：GitFileWatcher仅监听主仓库.git/config，未监听worktree gitdir内的config（worktree的共享config在commonDir）。严重度：P3（已知取舍），置信度：已证实（src/utils/git/gitFilesystem.ts GitFileWatcher）。
+
+**发现 B3-git-integration-02**：Git失败多静默降级，问题诊断困难（无Git操作日志/指标）。严重度：P3（可观测性改进），置信度：已证实（设计文档明确记录）。
+
+#### 测试验证
+
+检查coverage中提及的测试文件：
+- ✅ tests/changedFiles.test.ts（Git变更文件相关测试）
+- 缺少Git文件系统完整测试覆盖（直接读取元数据、ref验证、worktree双向验证、GitFileWatcher）。
+
+**发现 B3-git-integration-03**：缺少Git子系统测试覆盖不足（无gitFilesystem.ts相关测试覆盖，无worktree双向验证测试、无GitFileWatcher测试）。严重度：P2（测试缺口），置信度：已证实（tests目录扫描确认）。
+
+#### 上游证据
+
+官方文档暂未访问，但从代码可见：
+- Git命令执行使用execFileNoThrowWithCwd，禁用凭据提示
+- Git仓库发现和元数据读取直接文件访问，无Git命令
+- worktree双向验证确保真实Git创建的工作树
+
+#### 隐私与安全边界审查
+
+✅ **ref名称白名单**：isSafeRefName严格白名单，禁止路径遍历、注入、前导-/、前导/、..等。
+
+✅ **worktree双向验证防伪造**：.git → gitdir → commondir → 验证worktree/gitdir回指原worktree的.git，防止恶意.git文件。
+
+✅ **裸仓库检测防钩子执行**：isCurrentDirectoryBareGitRepo检测裸仓库布局（HEAD/objects/refs存在且.git/HEAD无效，防止裸仓库环境执行钩子）。
+
+✅ **Git凭据提示禁用**：GIT_TERMINAL_PROMPT=0, GIT_ASKPASS=, stdin: ignore防止Git等待输入。
+
+✅ **Git失败静默降级**：Git失败不抛异常，返回默认值或null。
+
+#### 证据边界总结
+
+| 类别 | 覆盖 | 缺口 |
+|------|------|------|
+| Spec完整性 | ✅ 完整，10项决策，7个模块设计卡，完整状态读取/diff/worktree证据链 | ⚠️ 上游文档未实时访问 |
+| 源码一致性 | ✅ 所有分组源码与spec高度一致 | ⚠️ 无 |
+| 测试覆盖 | ⚠️ 部分覆盖（changedFiles.test.ts） | ⚠️ 缺少gitFilesystem核心测试、worktree双向验证测试、GitFileWatcher测试 |
+| 官方文档 | ❓ 未访问 | ⚠️ 基于现有spec |
+| 上游CLI | ⚠️ 未提取strings | ⚠️ 需补充 |
+| 外部契约 | ⚠️ 无独立contract | ⚠️ 内部实现细节 |
 
 ---
 
@@ -590,6 +754,12 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 | B3-skills-06 | skills | — | 测试缺口 | P2 | skills 子系统部分模块无专用测试文件，如 skills-load 核心逻辑无完整测试 | src/skills/, src/tools/SkillTool/, src/utils/skills/ | N/A | ❌ 无完整测试，仅有 skillSearch/remoteSkills 测试 | 中（无回归保护） | 添加 skills 系统完整测试：加载去重、条件激活、动态发现、fork/inline 执行、变更监听 | 已证实 | tests/ 目录扫描确认 | open |
 | B3-auth-01 | auth | — | 功能改进 | P1 | Keychain 缓存 30 秒，跨进程刷新后另一个进程最多 30 秒才看到新 token | src/utils/secureStorage/macOsKeychainHelpers.ts:69-91 | N/A | ❌ 无测试 | 高（跨进程状态不一致） | 每次读取 tokens 时检查磁盘 mtime 或 Keychain 自身修改时间，变更则立即清缓存 | 已证实 | 完整源码审查 | open |
 | B3-auth-02 | auth | — | 测试缺口 | P2 | auth 子系统大量核心逻辑无专用测试文件，仅 oauthRefresh.test.ts 和 linuxSecretStorage.test.ts | src/utils/auth.ts, src/utils/secureStorage/, src/services/oauth/ | N/A | ❌ 无完整测试，仅有 oauthRefresh/linuxSecretStorage 测试 | 中（无回归保护） | 添加 auth 系统完整测试：多来源优先级、托管会话隔离、401 处理、Keychain 缓存、stale-while-error、双路径登录 | 已证实 | 完整源码审查 | open |
+| B3-commit-attribution-01 | commit-attribution | — | 设计取舍 | P3 | 归因状态中 userModified 参数存在但被忽略（当前不区分用户后续修改，所有 Edit/Write 均计 Claude） | src/utils/commitAttribution.ts trackFileModification | N/A | ✅ 有测试（但不验证 userModified） | 低（归因准确性） | 明确记录 userModified 被忽略的原因，或实现用户变更检测 | 已证实 | 完整源码审查 | open |
+| B3-commit-attribution-02 | commit-attribution | — | 设计取舍 | P3 | 多次编辑同一位置会导致字符计数膨胀（前缀/后缀匹配每次编辑都累加，而非计算增量） | src/utils/commitAttribution.ts | N/A | ✅ 有测试（验证二次膨胀不发生在快照恢复） | 低（归因准确性） | 明确记录此取舍，或考虑实现增量计算（如 Myers diff） | 已证实 | 设计文档明确记录 | open |
+| B3-commit-attribution-03 | commit-attribution | — | 功能缺失 | P3 | 无专门测试验证文件重命名/复制后的归因迁移（Git检测重命名但归因只按路径，重命名后Claude贡献会重新开始） | src/utils/commitAttribution.ts calculateCommitAttribution | N/A | ❌ 无重命名迁移测试 | 低（归因准确性） | 考虑实现基于 Git 重命名检测的归因迁移，或明确记录此限制 | 已证实 | 设计文档明确记录 | open |
+| B3-git-integration-01 | git-integration | — | 设计取舍 | P3 | GitFileWatcher 仅监听主仓库 .git/config，未监听 worktree gitdir 内的 config（worktree 的共享 config 在 commonDir） | src/utils/git/gitFilesystem.ts GitFileWatcher | N/A | ❌ 无测试 | 低（worktree 配置变更检测） | 考虑监听 worktree gitdir 内的 config，或明确记录此限制 | 已证实 | 完整源码审查 | open |
+| B3-git-integration-02 | git-integration | — | 可观测性不足 | P3 | Git 失败多静默降级，问题诊断困难（无 Git 操作日志/指标） | src/utils/git.ts gitDiff.ts | N/A | ❌ 无测试 | 低（调试困难） | 增加 Git 操作的可观测性，logForDebugging 详细信息，或提供 /git status 命令 | 已证实 | 设计文档明确记录 | open |
+| B3-git-integration-03 | git-integration | — | 测试缺口 | P2 | Git 子系统测试覆盖不足（无 gitFilesystem.ts 相关测试覆盖，无 worktree 双向验证测试、无 GitFileWatcher 测试） | src/utils/git/, src/utils/git/gitFilesystem.ts, src/utils/worktree.ts | N/A | ❌ 无完整测试，仅有 changedFiles 测试 | 中（无回归保护） | 添加 Git 子系统完整测试：ref 名称白名单验证、worktree 双向验证、GitFileWatcher 缓存失效、diff 分阶段加载 | 已证实 | tests/ 目录扫描确认 | open |
 
 ---
 
@@ -691,6 +861,24 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 | oauth-service | OAuthService.startOAuthFlow() 双路径登录、PKCE codeVerifier/codeChallenge/state、AuthCodeListener 本地服务器 | 无 |
 | oauth-client | buildAuthUrl()、exchangeCodeForTokens()、refreshOAuthToken()（scope 扩展）、fetchProfileInfo() | 无 |
 
+### commit-attribution 已验证的边界
+
+| 模块 | 已验证 | 未验证 |
+|------|------|------|
+| commit-attribution-core | trackFileModification 前缀/后缀匹配、会话基线保存首次状态、字符累加贡献、calculateCommitAttribution 合并多会话归因、isInternalModelRepo 内部白名单、sanitizeModelName 映射公共名、快照恢复取最后一个完整状态 | 无 |
+| attribution-hooks | Bash pre/post 快照跟踪、Edit/Write 工具钩子、文件内容缓存（500条目15分钟）、pendingBash缓存（32条目5分钟）、HEAD协调检测外部提交、队列持久化 | 无 |
+| attribution-trailer | buildPRTrailers 构建公共trailer、只含统计不含路径/会话ID | 无 |
+| post-commit-attribution | prepare-commit-msg调度器保留用户钩子、MANAGED_MARKER检测、幂等钩子安装/卸载、Git侧持久化（64会话上限）、独立入口不加载完整CLI | 无 |
+
+### git-integration 已验证的边界
+
+| 模块 | 已验证 | 未验证 |
+|------|------|------|
+| git-core | findGitRoot 向上遍历+LRU缓存、resolveCanonicalRoot 双向验证工作树、getGitState 并行获取状态 | 无 |
+| git-filesystem | readGitHead 直接读取、resolveRef 优先松散→packed→commonDir回退、isSafeRefName 白名单防注入、GitFileWatcher 监听+缓存、getCommonDir 共享git目录 | 无 |
+| git-diff | 分阶段加载（shortstat→numstat→diff）、限制文件数50、max diff size 1MB、max lines per file 400、parseGitDiff 统一diff | 无 |
+| worktree | validateWorktreeSlug 防路径遍历、getOrCreateWorktree 优先直接读取.git指针防Git命令、cleanupStaleAgentWorktrees 清理过期、双向验证防伪造 | 无 |
+
 ### 上游证据边界
 
 | 项目 | 状态 | 说明 |
@@ -709,7 +897,9 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 | settings 集成测试 | ⚠️ 部分间接覆盖 | ⚠️ envCommand/envLessPerpetual 部分相关 |
 | skills 单元测试 | ⚠️ 部分覆盖 | ⚠️ skillSearch/remoteSkills 测试覆盖搜索和远程加载，缺少核心加载/执行/变更测试 |
 | auth 单元测试 | ⚠️ 部分覆盖 | ⚠️ oauthRefresh/linuxSecretStorage 测试覆盖刷新和 Linux 存储，缺少大量核心逻辑测试 |
-| 安全对抗测试 | ❌ 无 | ⚠️ symlink 逃出路径验证无测试、远程技能 zip 攻击有测试但 auth/settings 无 |
+| commit-attribution 单元测试 | ✅ 完整覆盖 | ⚠️ commitAttributionWave2.test.ts 覆盖所有主要功能，但缺少重命名迁移测试 |
+| git-integration 单元测试 | ⚠️ 部分覆盖 | ⚠️ changedFiles.test.ts 覆盖部分功能，但缺少 gitFilesystem/ref验证/worktree双向验证/GitFileWatcher 测试 |
+| 安全对抗测试 | ❌ 无 | ⚠️ symlink 逃出路径验证无测试、远程技能 zip 攻击有测试但 auth/settings/git-integration 无 |
 | 并发测试 | ❌ 无 | ⚠️ extractMemories/技能 in-flight 去重/auth 刷新并发无测试 |
 
 ---
@@ -724,8 +914,8 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 | settings | ✅ 完整 | ✅ 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（无测试） | ⚠️ 有条件通过（需补充测试） |
 | skills | ✅ 完整 | ✅ 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（测试不完整） | ⚠️ 有条件通过（需补充测试） |
 | auth | ✅ 完整 | ✅ 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（测试不完整） | ⚠️ 有条件通过（需补充测试） |
-| commit-attribution | ⏳ 待审计 | ⏳ 待审计 | ⏳ 待审计 | ⏳ 待审计 | ⏳ 保持 open |
-| git-integration | ⏳ 待审计 | ⏳ 待审计 | ⏳ 待审计 | ⏳ 待审计 | ⏳ 保持 open |
+| commit-attribution | ✅ 完整 | ✅ 一致 | ⚠️ 不充分（仅源码） | ✅ 充分（有完整测试） | ⚠️ 有条件通过（需补充重命名迁移测试） |
+| git-integration | ✅ 完整 | ✅ 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（测试不完整） | ⚠️ 有条件通过（需补充测试） |
 | notifications | ⏳ 待审计 | ⏳ 待审计 | ⏳ 待审计 | ⏳ 待审计 | ⏳ 保持 open |
 | session-search-recovery | ⏳ 待审计 | ⏳ 待审计 | ⏳ 待审计 | ⏳ 待审计 | ⏳ 保持 open |
 | sessions-share | ⏳ 待审计 | ⏳ 待审计 | ⏳ 待审计 | ⏳ 待审计 | ⏳ 保持 open |
@@ -734,15 +924,15 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 
 | 项目 | 数量 |
 |------|------|
-| 已审计子系统 | 4（memory, settings, skills, auth） |
-| 待审计子系统 | 5（commit-attribution/git-integration/notifications/session-search-recovery/sessions-share） |
-| 完整文档 | 3 |
-| 实现一致 | 3 |
-| 发现总数 | 15 |
+| 已审计子系统 | 6（memory, settings, skills, auth, commit-attribution, git-integration） |
+| 待审计子系统 | 3（notifications/session-search-recovery/sessions-share） |
+| 完整文档 | 6 |
+| 实现一致 | 6 |
+| 发现总数 | 21 |
 | P0 | 0 |
-| P1 | 0 |
-| P2 | 7 |
-| P3 | 8 |
+| P1 | 1 |
+| P2 | 9 |
+| P3 | 11 |
 
 ### 发现分类
 
@@ -816,15 +1006,49 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 
 ✅ **安全存储读写**：getSecureStorage() → createFallbackStorage(primary, secondary) → read() 优先 primary，失败用 secondary → update() 成功时迁移（删除 secondary），失败时防止 stale shadow（删除 primary）
 
+### commit-attribution 生命周期证据链确认
+
+✅ **归因跟踪**：Edit/Write 工具钩子 → trackFileModification 前缀/后缀匹配 → 字符累加贡献 → 会话基线保存首次观察状态
+
+✅ **Bash 跟踪**：Bash 工具 pre 钩子 → preCommandSnapshot 保存有界缓存（200文件，每个256KB，总2MB）→ Bash 工具 post 钩子 → postCommandDiff 对比pre/post快照 → trackBulkFileChanges 批量归因
+
+✅ **HEAD 协调**：Bash 工具钩子 → 检测 HEAD 变化 → startNewCommitRange 推进计数器基线 → 防止重复计数
+
+✅ **持久化**：recordAttributionSnapshot 保存会话侧快照 → persistAttributionStateForGit 保存 Git 侧 .json（64会话上限，权限0o600）
+
+✅ **快照恢复**：prepare-commit-msg 调用 → readAttributionStates 读取 Git 侧状态 → restoreAttributionStateFromSnapshots 只取最后一个完整快照 → 防止跨快照累加
+
+✅ **归因计算**：calculateCommitAttribution 合并多会话归因 → 跳过生成文件（// @generated 或 .gitignore）→ Claude 百分比 claudeChars/(claudeChars+humanChars) → humanChars 通过估算
+
+✅ **Trailer 附加**：buildPRTrailers 构建公共 trailer（Claude-Code-Contribution/Prompts/Permission-Prompts/Escapes）→ 只含统计不含路径/会话ID → git interpret-trailers 标准化附加
+
+### git-integration 生命周期证据链确认
+
+✅ **Git 仓库发现**：findGitRoot 向上遍历搜索 .git → LRU 缓存 50 条目 → 支持普通仓库/子模块/工作树 → resolveCanonicalRoot 双向验证
+
+✅ **Git 元数据读取**：readGitHead 直接读取 .git/HEAD → resolveRef 验证 ref 名称白名单 → 优先松散 ref → packed-refs → commonDir 回退 → getCommonDir 获取共享 git 目录
+
+✅ **Git 状态获取**：getGitState 并行获取 → getBranch/getHead/getRemote/getRemoteUrl/getStatus/getWorktreeCount → GitFileWatcher 缓存分支/HEAD/远程URL/默认分支
+
+✅ **Git Diff 计算**：getStructuredGitDiff → 分阶段加载：先 --shortstat 探测，再按需 --numstat，最后 --diff → 限制文件数 50，max diff size 1MB，max lines per file 400
+
+✅ **Worktree 管理**：validateWorktreeSlug 验证 slug（防路径遍历）→ getOrCreateWorktree 优先直接读取 .git 指针防 Git 命令 → createAgentWorktree 创建代理工作树 → cleanupStaleAgentWorktrees 清理过期（仅匹配临时 slug 模式）
+
+✅ **Worktree 双向验证**：.git → gitdir → commondir → 验证 worktree/gitdir 回指原 worktree 的 .git → 防止恶意 .git 文件
+
+✅ **Git 安全执行**：GIT_TERMINAL_PROMPT=0, GIT_ASKPASS=, stdin: ignore 禁用凭据提示 → execFileNoThrowWithCwd 静默降级
+
 ### Batch 3 总体结论
 
-✅ **memory/settings/skills/auth spec 质量优秀**：文档完整性高，每个 spec 包含 10+ 关键决策表格、模块设计卡、完整生命周期证据链。
+✅ **memory/settings/skills/auth/commit-attribution/git-integration spec 质量优秀**：文档完整性高，每个 spec 包含 10+ 关键决策表格、模块设计卡、完整生命周期证据链。
 
-✅ **memory/settings/skills/auth 实现一致性强**：所有分组源码与 spec 高度对齐，关键机制与文档完全一致，安全边界设计周到（settings 与 global config 分离、skills MCP 不执行 shell 注入、auth 托管会话隔离/密钥不进入日志/权限控制）。
+✅ **memory/settings/skills/auth/commit-attribution/git-integration 实现一致性强**：所有分组源码与 spec 高度对齐，关键机制与文档完全一致，安全边界设计周到（settings 与 global config 分离、skills MCP 不执行 shell 注入、auth 托管会话隔离/密钥不进入日志/权限控制、commit-attribution 内部模型白名单/公共trailer隐私保护、git-integration ref白名单/worktree双向验证/裸仓库检测）。
 
-⚠️ **测试覆盖严重不足**：memory/settings/auth 子系统无专用测试文件，skills 仅有部分测试（skillSearch/remoteSkills），auth 仅有部分测试（oauthRefresh/linuxSecretStorage），关键安全机制和核心逻辑无回归保护。
+✅ **commit-attribution 测试覆盖完整**：commitAttributionWave2.test.ts 完整覆盖所有主要功能（Edit/Write 工具、Bash pre/post、快照恢复、prepare-commit-msg 安装等）。
 
-⚠️ **其余 5 子系统保持 open**：本次仅审计 memory/settings/skills/auth 子系统，commit-attribution/git-integration/notifications/session-search-recovery/sessions-share 待后续审计。
+⚠️ **测试覆盖仍然不足**：memory/settings/auth 子系统无专用测试文件，skills 仅有部分测试（skillSearch/remoteSkills），auth 仅有部分测试（oauthRefresh/linuxSecretStorage），git-integration 仅有部分测试（changedFiles），关键安全机制和核心逻辑无回归保护。
+
+⚠️ **其余 3 子系统保持 open**：本次仅审计 memory/settings/skills/auth/commit-attribution/git-integration 子系统，notifications/session-search-recovery/sessions-share 待后续审计。
 
 ### 子系统审计进度
 
@@ -834,15 +1058,15 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 | settings | ✅ 已审计 |
 | skills | ✅ 已审计 |
 | auth | ✅ 已审计 |
-| commit-attribution | ⏳ 保持 open |
-| git-integration | ⏳ 保持 open |
+| commit-attribution | ✅ 已审计 |
+| git-integration | ✅ 已审计 |
 | notifications | ⏳ 保持 open |
 | session-search-recovery | ⏳ 保持 open |
 | sessions-share | ⏳ 保持 open |
 
-**当前进度**：4/9 已审计，其余 5 子系统保持 open
+**当前进度**：6/9 已审计，其余 3 子系统保持 open
 
 ### 说明
 
-本次完成 memory/settings/skills/auth 四个子系统的深度生命周期审计，其余 5 子系统（commit-attribution/git-integration/notifications/session-search-recovery/sessions-share）保持 open 状态。README 暂不更新，待全部 9 子系统审计完成后统一更新。
+本次完成 memory/settings/skills/auth/commit-attribution/git-integration 六个子系统的深度生命周期审计，其余 3 子系统（notifications/session-search-recovery/sessions-share）保持 open 状态。README 暂不更新，待全部 9 子系统审计完成后统一更新。
 
