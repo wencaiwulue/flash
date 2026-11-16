@@ -73,20 +73,20 @@ Design docs: 0 errors, 71 warnings
 | remote-control | 6 | 7/7 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（部分测试） | 3 | [batch-6.md#remote-control](batch-6.md#remote-control) |
 | ssh | 6 | 9/9 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ✅ 充分（有完整测试） | 3 | [batch-6.md#ssh](batch-6.md#ssh) |
 | teleport | 6 | 3/3 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ✅ 充分（有完整测试） | 8 | [batch-6.md#teleport](batch-6.md#teleport) |
-| build-feature-profile | 7 | 0/7 | open | open | open | unverified | 0 | 未生成 |
-| data-structures | 7 | 0/15 | open | open | open | unverified | 0 | 未生成 |
-| diagnostics | 7 | 0/2 | open | open | open | unverified | 0 | 未生成 |
-| experimental-features | 7 | 0/2 | open | open | open | unverified | 0 | 未生成 |
-| external-stubs | 7 | 0/5 | open | open | open | unverified | 0 | 未生成 |
-| hooks-system | 7 | 0/4 | open | open | open | unverified | 0 | 未生成 |
-| magic-docs | 7 | 0/4 | open | open | open | unverified | 0 | 未生成 |
-| messaging-primitives | 7 | 0/11 | open | open | open | unverified | 0 | 未生成 |
-| native-installer | 7 | 0/7 | open | open | open | unverified | 0 | 未生成 |
-| network-security | 7 | 0/7 | open | open | open | unverified | 0 | 未生成 |
-| runtime-lifecycle | 7 | 0/11 | open | open | open | unverified | 0 | 未生成 |
-| telemetry | 7 | 0/1 | open | open | open | unverified | 0 | 未生成 |
-| test-validation | 7 | 0/11 | open | open | open | unverified | 0 | 未生成 |
-| web-tools | 7 | 0/9 | open | open | open | unverified | 0 | 未生成 |
+| build-feature-profile | 7 | 7/7 | 完整 | 一致 | N/A | 部分充分（有测试） | 1 | [batch-7.md#build-feature-profile](batch-7.md#build-feature-profile) |
+| data-structures | 7 | 15/15 | 完整 | 一致 | N/A | 部分充分（无测试） | 4 | [batch-7.md#data-structures](batch-7.md#data-structures) |
+| diagnostics | 7 | 2/2 | 完整 | 一致 | N/A | 部分充分（有测试） | 7 | [batch-7.md#diagnostics](batch-7.md#diagnostics) |
+| experimental-features | 7 | 2/2 | 完整 | 一致 | N/A | 部分充分（有测试） | 7 | [batch-7.md#experimental-features](batch-7.md#experimental-features) |
+| external-stubs | 7 | 5/5 | 完整 | 一致 | N/A | 部分充分（有测试） | 7 | [batch-7.md#external-stubs](batch-7.md#external-stubs) |
+| hooks-system | 7 | 4/4 | 完整 | 一致 | N/A | 部分充分（有测试） | 2 | [batch-7.md#hooks-system](batch-7.md#hooks-system) |
+| magic-docs | 7 | 4/4 | 完整 | 一致 | N/A | 部分充分（无测试） | 4 | [batch-7.md#magic-docs](batch-7.md#magic-docs) |
+| messaging-primitives | 7 | 11/11 | 完整 | 一致 | N/A | 部分充分（有测试） | 3 | [batch-7.md#messaging-primitives](batch-7.md#messaging-primitives) |
+| native-installer | 7 | 7/7 | 完整 | 一致 | N/A | 部分充分（无测试） | 4 | [batch-7.md#native-installer](batch-7.md#native-installer) |
+| network-security | 7 | 7/7 | 完整 | 一致 | N/A | 部分充分（有测试） | 6 | [batch-7.md#network-security](batch-7.md#network-security) |
+| runtime-lifecycle | 7 | 11/11 | 完整 | 一致 | N/A | 部分充分（无测试） | 6 | [batch-7.md#runtime-lifecycle](batch-7.md#runtime-lifecycle) |
+| telemetry | 7 | 1/1 | 完整 | 一致 | N/A | 部分充分（无测试） | 4 | [batch-7.md#telemetry](batch-7.md#telemetry) |
+| test-validation | 7 | 11/11 | 完整 | 一致 | N/A | 部分充分（有测试） | 6 | [batch-7.md#test-validation](batch-7.md#test-validation) |
+| web-tools | 7 | 9/9 | 完整 | 一致 | N/A | 部分充分（有测试） | 5 | [batch-7.md#web-tools](batch-7.md#web-tools) |
 
 ## 分类统计与整改顺序
 
@@ -186,6 +186,19 @@ Design docs: 0 errors, 71 warnings
 | P2 | 6 |
 | P3 | 25 |
 
+### Batch 7 统计
+
+| 项目 | 数量 |
+|------|------|
+| 审查子系统 | 14 |
+| 完整文档 | 14 |
+| 实现一致 | 14 |
+| 发现总数 | 66 |
+| P0 | 0 |
+| P1 | 1 |
+| P2 | 27 |
+| P3 | 38 |
+
 ### 整改优先级
 
 1. **P2（2项）**：添加 plugins/query-core 集成测试
@@ -200,3 +213,4 @@ batch 3：✅ 已完成审查，报告已生成并链接；官方文档与 strin
 batch 4：✅ 已完成审查，报告已生成并链接；官方文档与 strings 已收集，真实模型/API 行为尚未验证。
 batch 5：✅ 已完成审查，报告已生成并链接；官方文档与 strings 已收集，真实模型/API 行为尚未验证。
 batch 6：✅ 已完成审查，报告已生成并链接；官方文档与 strings 已收集，真实模型/API 行为尚未验证。
+batch 7：✅ 已完成审查，报告已生成并链接；官方文档与 strings 已收集，真实模型/API 行为尚未验证。

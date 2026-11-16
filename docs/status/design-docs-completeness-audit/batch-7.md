@@ -761,7 +761,7 @@
 | Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-messaging-primitives-design.md |
 | Coverage 存在 | ✅ | docs/architecture/coverage/messaging-primitives.yaml |
 | Manifest 注册 | ✅ | id: messaging-primitives, batch: 7, status: draft |
-| Coverage 覆盖分组 | 10/10 | mailbox, message-queue-manager, peer-address, direct-member-message, control-message-compat, message-predicates, messages-mappers, messages-system-init, uds-messaging-test, constants-messages, uncovered-message-types |
+| Coverage 覆盖分组 | 11/11 | mailbox, message-queue-manager, peer-address, direct-member-message, control-message-compat, message-predicates, messages-mappers, messages-system-init, uds-messaging-test, constants-messages, uncovered-message-types |
 
 #### 文档完整性审查
 
@@ -1017,7 +1017,7 @@
 | Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-network-security-design.md |
 | Coverage 存在 | ✅ | docs/architecture/coverage/network-security.yaml |
 | Manifest 注册 | ✅ | id: network-security, batch: 7, status: draft |
-| Coverage 覆盖分组 | 6/6 | ca-certs, mtls, http-proxy, aws-auth, crypto-hash, protected-namespace |
+| Coverage 覆盖分组 | 7/7 | ca-certs, mtls, http-proxy, aws-auth, crypto-hash, protected-namespace, protected-namespace-test |
 
 #### 文档完整性审查
 
@@ -1150,7 +1150,7 @@
 | Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-runtime-lifecycle-design.md |
 | Coverage 存在 | ✅ | docs/architecture/coverage/runtime-lifecycle.yaml |
 | Manifest 注册 | ✅ | id: runtime-lifecycle, batch: 7, status: draft |
-| Coverage 覆盖分组 | 9/9 | abort-controller, combined-abort-signal, cleanup-registry, cleanup-old-files, graceful-shutdown, idle-timeout, activity-manager, event-loop-stall-detector, process-identity, generic-process-utils |
+| Coverage 覆盖分组 | 11/11 | additional-files, abort-controller, combined-abort-signal, cleanup-registry, cleanup-old-files, graceful-shutdown, idle-timeout, activity-manager, event-loop-stall-detector, process-identity, generic-process-utils |
 
 #### 文档完整性审查
 
@@ -1388,7 +1388,7 @@
 | Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-test-validation-design.md |
 | Coverage 存在 | ✅ | docs/architecture/coverage/test-validation.yaml |
 | Manifest 注册 | ✅ | id: test-validation, batch: 7, status: draft |
-| Coverage 覆盖分组 | 6/6 | test-runner、live-cloud-validation、live-desktop-validation、live-model-validation、live-skillhub-validation、smoke-tests、cross-cutting-acceptance、test-fixtures、uncovered-tests |
+| Coverage 覆盖分组 | 11/11 | additional-files, test-runner, external-feature-profile, live-cloud-validation, live-desktop-validation, live-model-validation, live-skillhub-validation, smoke-tests, cross-cutting-acceptance, test-fixtures, uncovered-tests |
 
 #### 文档完整性审查
 
