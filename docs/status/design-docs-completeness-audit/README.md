@@ -39,15 +39,15 @@ Design docs: 0 errors, 71 warnings
 | session-persistence | 2 | 7/7 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（关键路径无测试） | 4 | [batch-2.md#session-persistence](batch-2.md#session-persistence) |
 | shell-tools | 2 | 13/13 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（关键路径无测试） | 4 | [batch-2.md#shell-tools](batch-2.md#shell-tools) |
 | tool-framework | 2 | 7/7 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（关键路径无测试） | 4 | [batch-2.md#tool-framework](batch-2.md#tool-framework) |
-| auth | 3 | 0/20 | open | open | open | unverified | 0 | 未生成 |
-| commit-attribution | 3 | 0/6 | open | open | open | unverified | 0 | 未生成 |
-| git-integration | 3 | 0/9 | open | open | open | unverified | 0 | 未生成 |
-| memory | 3 | 0/7 | open | open | open | unverified | 0 | 未生成 |
-| notifications | 3 | 0/7 | open | open | open | unverified | 0 | 未生成 |
-| session-search-recovery | 3 | 0/8 | open | open | open | unverified | 0 | 未生成 |
-| sessions-share | 3 | 0/6 | open | open | open | unverified | 0 | 未生成 |
-| settings | 3 | 0/21 | open | open | open | unverified | 0 | 未生成 |
-| skills | 3 | 0/17 | open | open | open | unverified | 0 | 未生成 |
+| auth | 3 | 20/20 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（仅 oauthRefresh 和 linuxSecretStorage） | 2 | [batch-3.md#auth](batch-3.md#auth) |
+| commit-attribution | 3 | 6/6 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ✅ 充分（有完整测试） | 3 | [batch-3.md#commit-attribution](batch-3.md#commit-attribution) |
+| git-integration | 3 | 9/9 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（测试不完整） | 3 | [batch-3.md#git-integration](batch-3.md#git-integration) |
+| memory | 3 | 7/7 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（无测试） | 6 | [batch-3.md#memory](batch-3.md#memory) |
+| notifications | 3 | 7/7 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（测试不完整） | 1 | [batch-3.md#notifications](batch-3.md#notifications) |
+| session-search-recovery | 3 | 8/8 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（测试不完整） | 1 | [batch-3.md#session-search-recovery](batch-3.md#session-search-recovery) |
+| sessions-share | 3 | 6/6 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ✅ 充分（share/ccshare 有完整测试） | 1 | [batch-3.md#sessions-share](batch-3.md#sessions-share) |
+| settings | 3 | 21/21 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（无测试） | 3 | [batch-3.md#settings](batch-3.md#settings) |
+| skills | 3 | 17/17 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（测试不完整） | 6 | [batch-3.md#skills](batch-3.md#skills) |
 | app-state | 4 | 0/10 | open | open | open | unverified | 0 | 未生成 |
 | assistant-ui | 4 | 0/2 | open | open | open | unverified | 0 | 未生成 |
 | commands-framework | 4 | 0/3 | open | open | open | unverified | 0 | 未生成 |
@@ -136,6 +136,19 @@ Design docs: 0 errors, 71 warnings
 | P1 | 0 |
 | P2 | 24 |
 | P3 | 17 |
+
+### Batch 3 统计
+
+| 项目 | 数量 |
+|------|------|
+| 审查子系统 | 9 |
+| 完整文档 | 9 |
+| 实现一致 | 9 |
+| 发现总数 | 26 |
+| P0 | 0 |
+| P1 | 1 |
+| P2 | 12 |
+| P3 | 13 |
 
 ### 发现分类（含 Batch 2）
 

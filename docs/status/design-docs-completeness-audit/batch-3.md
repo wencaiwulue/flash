@@ -385,7 +385,7 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 | Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-git-integration-design.md |
 | Coverage 存在 | ✅ | docs/architecture/coverage/git-integration.yaml |
 | Manifest 注册 | ✅ | id: git-integration, batch: 3, status: draft |
-| Coverage 覆盖分组 | 7/7 | git-core, git-filesystem, git-diff, git-ignore, github-integration, pr-reference, git-tests |
+| Coverage 覆盖分组 | 9/9 | additional-files, commands, git-core, git-filesystem, git-ignore, git-diff, github-integration, pr-reference, git-tests |
 
 #### 文档完整性审查
 
@@ -473,7 +473,7 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 | Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-notifications-design.md |
 | Coverage 存在 | ✅ | docs/architecture/coverage/notifications.yaml |
 | Manifest 注册 | ✅ | id: notifications, batch: 3, status: draft |
-| Coverage 覆盖分组 | 6/6 | notifications-context, notifications-hooks, os-notifier, push-notification-tool, collapse-background-notifications, notifications-xml |
+| Coverage 覆盖分组 | 7/7 | notifications-context, notifications-hooks, os-notifier, push-notification-tool, collapse-background-notifications, notifications-xml, notifications-tests |
 
 #### 文档完整性审查
 
@@ -576,7 +576,7 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 | Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-session-search-recovery-design.md |
 | Coverage 存在 | ✅ | docs/architecture/coverage/session-search-recovery.yaml |
 | Manifest 注册 | ✅ | id: session-search-recovery, batch: 3, status: draft |
-| Coverage 覆盖分组 | 7/7 | session-search, conversation-recovery, session-listing, assistant-discovery, concurrent-sessions, cross-project-resume, backfill-command |
+| Coverage 覆盖分组 | 8/8 | session-search, conversation-recovery, session-listing, assistant-discovery, concurrent-sessions, cross-project-resume, backfill-command, recovery-tests |
 
 #### 文档完整性审查
 
@@ -798,7 +798,7 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 | Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-settings-design.md |
 | Coverage 存在 | ✅ | docs/architecture/coverage/settings.yaml |
 | Manifest 注册 | ✅ | id: settings, batch: 3, status: draft |
-| Coverage 覆盖分组 | 14/14 | settings-types, settings-core, settings-constants, settings-cache, settings-change-detector, settings-validation, settings-permission-validation, settings-internal-writes, settings-managed-path, settings-apply-change, settings-schema-output, settings-all-errors, remote-managed-settings, policy-limits, settings-sync, settings-migrations, global-config-boundary, constants-settings, additional-files-source, additional-files-test, commands |
+| Coverage 覆盖分组 | 21/21 | settings-types, settings-core, settings-constants, settings-cache, settings-change-detector, settings-validation, settings-permission-validation, settings-internal-writes, settings-managed-path, settings-apply-change, settings-schema-output, settings-all-errors, remote-managed-settings, policy-limits, settings-sync, settings-migrations, global-config-boundary, constants-settings, additional-files-source, additional-files-test, commands |
 
 #### 文档完整性审查
 
@@ -905,7 +905,7 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 | Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-skills-design.md |
 | Coverage 存在 | ✅ | docs/architecture/coverage/skills.yaml |
 | Manifest 注册 | ✅ | id: skills, batch: 3, status: draft |
-| Coverage 覆盖分组 | 11/11 | skills-load, skills-bundled, skills-mcp, skill-tool, discover-skills-tool, skill-search-local, skill-search-remote, skill-search-prefetch, skill-search-feature, skill-change-detector, skills-tests, skills-bundled-verify |
+| Coverage 覆盖分组 | 17/17 | commands, skills-load, skills-bundled, skills-mcp, skill-tool, discover-skills-tool, skill-search-local, skill-search-remote, skill-search-prefetch, skill-search-feature, skill-search-telemetry, skill-change-detector, skill-hooks, skill-components, skill-telemetry, skills-tests, skills-bundled-verify |
 
 #### 文档完整性审查
 
@@ -1217,23 +1217,25 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 | 待审计子系统 | 0 |
 | 完整文档 | 9 |
 | 实现一致 | 9 |
-| 发现总数 | 24 |
+| 发现总数 | 26 |
 | P0 | 0 |
 | P1 | 1 |
 | P2 | 12 |
-| P3 | 11 |
+| P3 | 13 |
 
 ### 发现分类
 
 | 类别 | 数量 |
 |------|------|
 | 安全边界 | 3 |
-| 测试缺口 | 7 |
+| 测试缺口 | 9 |
 | 契约缺口 | 1 |
-| 功能缺失 | 3 |
-| 可观测性不足 | 1 |
+| 功能缺失 | 4 |
+| 可观测性不足 | 2 |
 | 灵活性不足 | 2 |
 | 缓存一致性 | 1 |
+| 设计取舍 | 3 |
+| 功能改进 | 1 |
 
 ### memory 生命周期证据链确认
 
