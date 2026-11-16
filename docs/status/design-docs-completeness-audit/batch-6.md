@@ -835,41 +835,41 @@
 
 ## 发现登记
 
-### 按严重度排序
+### 完整登记（14列schema）
 
-| ID | 子系统 | 严重度 | 标题 |
-|----|--------|--------|------|
-| B6-daemon-background-01 | daemon-background | P3 | Supervisor 无持久化日志，调试困难 |
-| B6-daemon-background-02 | daemon-background | P3 | `--resume` 标志预留但未实现 |
-| B6-daemon-background-03 | daemon-background | P3 | 无自动墓碑过期机制 |
-| B6-deep-link-01 | deep-link | P3 | Windows cmd.exe 后备有 8191 字符限制 |
-| B6-deep-link-02 | deep-link | P3 | 不支持自定义终端路径配置 |
-| B6-deep-link-03 | deep-link | P3 | 不支持 `claude://` 桌面协议服务端 |
-| B6-deep-link-04 | deep-link | P2 | deep-link 子系统无任何测试覆盖 |
-| B6-open-runner-01 | open-runner | P3 | 路径验证 Windows 盘符检测在 Linux/macOS 上也生效（设计权衡） |
-| B6-open-runner-02 | open-runner | P3 | Server 仅绑定 localhost 但无 TLS 支持（设计非目标） |
-| B6-open-runner-03 | open-runner | P3 | Store 是单进程文件存储，不支持分布式（设计非目标） |
-| B6-open-runner-04 | open-runner | P2 | 没有状态迁移工具，未来格式变更可能导致数据丢失 |
-| B6-open-runner-05 | open-runner | P3 | Worker 没有自动清理 worker.log 的机制 |
-| B6-open-runner-06 | open-runner | P3 | prctl 仅在 Linux+Bun 下有效，其他平台无内存防护（设计权衡） |
-| B6-open-runner-07 | open-runner | P2 | upstream-proxy/relay.ts 没有独立测试覆盖 |
-| B6-platform-integrations-01 | platform-integrations | P3 | WSL 配置读取失败时仅记录日志，无用户可见提示（设计权衡，静默降级） |
-| B6-platform-integrations-02 | platform-integrations | P3 | QR 码生成失败时静默降级（仅留空），无用户可见提示 |
-| B6-platform-integrations-03 | platform-integrations | P2 | platform-integrations 子系统测试覆盖严重不足，仅 1 个最小测试文件，缺少核心功能测试 |
-| B6-remote-control-01 | remote-control | P2 | SessionsWebSocket 重连逻辑无独立单元测试（当前仅通过集成验证） |
-| B6-remote-control-02 | remote-control | P2 | sdkMessageAdapter 无独立单元测试 |
-| B6-remote-control-03 | remote-control | P3 | RemoteSessionManager pendingPermissionRequests 无超时清理机制 |
-| B6-ssh-01 | ssh | P3 | SSH 重连后无状态同步机制，远程可能已前进但本地不知道已改变的工具状态 |
-| B6-ssh-02 | ssh | P3 | 当前仅支持 Linux glibc 目标，不支持 musl libc（Alpine）或 BSD/macOS 远程 |
-| B6-ssh-03 | ssh | P3 | 单次 scp 传输大文件在弱网下可能慢或失败，无断点续传 |
-| B6-teleport-01 | teleport | P3 | Git Bundle 上传无进度显示，大仓库上传时用户体验差 |
-| B6-teleport-02 | teleport | P3 | Git Bundle 上传无断点续传，大文件失败需重新上传 |
-| B6-teleport-03 | teleport | P3 | API 重试逻辑无用户反馈，重试期间用户不知道进度 |
-| B6-teleport-04 | teleport | P3 | 未跟踪文件不包含在 Bundle 中，可能导致远程环境缺少必要文件 |
-| B6-teleport-05 | teleport | P3 | 缺少大仓库 Bundle 创建性能测试 |
-| B6-teleport-06 | teleport | P3 | 缺少网络中断恢复测试 |
-| B6-teleport-07 | teleport | P3 | 缺少 GHE 仓库验证测试 |
-| B6-teleport-08 | teleport | P3 | 缺少并发 Teleport 操作测试 |
+| ID | 主责 | 关联 | 类别 | 严重度 | 问题陈述 | 源码证据 | 上游证据 | 测试证据 | 影响 | 修订建议 | 置信度 | 验证边界 | 状态 |
+|----|------|------|------|--------|----------|----------|----------|----------|------|----------|--------|----------|------|
+| B6-daemon-background-01 | daemon-background | — | 设计已知非目标 | P3 | Supervisor 无持久化日志，调试困难 | src/daemon/main.ts:57，spec 明确记录 | 上游 CLI strings 匹配 daemon 相关函数 | tests/daemon.test.ts 存在但不覆盖此非目标功能 | 低（仅影响调试难度） | 按 spec 保持现状（设计已知非目标） | 已证实 | 源码与 spec 明确记录为非目标 | open |
+| B6-daemon-background-02 | daemon-background | — | 设计已知非目标 | P3 | `--resume` 标志预留但未实现 | spec 非目标明确记录 | 上游 CLI strings 匹配 daemon 相关函数 | tests/daemon.test.ts 存在但不覆盖此预留标志 | 低（预留标志不影响现有功能） | 按 spec 保持现状（设计已知非目标） | 已证实 | spec 明确记录为非目标 | open |
+| B6-daemon-background-03 | daemon-background | — | 设计已知非目标 | P3 | 无自动墓碑过期机制 | spec 非目标明确记录 | 上游 CLI strings 匹配 daemon/background 相关函数 | tests/backgroundSessions.test.ts 存在但不覆盖此非目标功能 | 低（仅长期运行可能积累墓碑） | 按 spec 保持现状（设计已知非目标） | 已证实 | spec 明确记录为非目标 | open |
+| B6-deep-link-01 | deep-link | — | 设计权衡 | P3 | Windows cmd.exe 后备有 8191 字符限制，超长 query 可能启动失败 | src/utils/deepLink/parseDeepLink.ts:60-69 注释，spec 记录此权衡 | 上游 CLI strings 匹配 deep-link 相关函数 | 无 deep-link 相关测试 | 低（设计权衡，已在 spec 记录） | 按 spec 保持现状（设计权衡） | 已证实 | spec 注释明确记录此权衡 | open |
+| B6-deep-link-02 | deep-link | — | 设计已知非目标 | P3 | 不支持自定义终端路径配置，仅支持预定义终端列表 | spec 非目标明确记录 | 上游 CLI strings 匹配 deep-link 相关函数 | 无 deep-link 相关测试 | 低（仅预定义终端支持） | 按 spec 保持现状（设计已知非目标） | 已证实 | spec 明确记录为非目标 | open |
+| B6-deep-link-03 | deep-link | — | 设计已知非目标 | P3 | 不支持 `claude://` 桌面协议服务端，仅作为客户端调用桌面 | spec 非目标明确记录 | 上游 CLI strings 匹配 deep-link 相关函数 | 无 deep-link 相关测试 | 低（仅客户端功能） | 按 spec 保持现状（设计已知非目标） | 已证实 | spec 明确记录为非目标 | open |
+| B6-deep-link-04 | deep-link | — | 测试缺口 | P2 | deep-link 子系统无任何测试覆盖，包括协议解析、安全验证、跨平台注册、终端启动等核心功能 | tests/ 目录扫描确认无 deepLink 相关测试文件 | 上游 CLI strings 匹配 deep-link 相关函数 | 无 deep-link 相关测试 | 中等（外部输入入口，无回归保护） | 补充 deep-link 完整测试覆盖（协议解析、安全验证、跨平台注册、终端启动） | 已证实 | tests/ 目录完整扫描确认缺失 | open |
+| B6-open-runner-01 | open-runner | — | 设计权衡 | P3 | 路径验证 Windows 盘符检测在 Linux/macOS 上也生效（设计权衡） | src/open-runner/protocol.ts 路径验证逻辑，spec 记录此权衡 | 上游 CLI strings 包含 open-runner 嵌入二进制 | tests/openRunnerProtocol.test.ts 存在 | 低（设计权衡，不影响主要功能） | 按 spec 保持现状（设计权衡） | 已证实 | 源码与 spec 明确记录此权衡 | open |
+| B6-open-runner-02 | open-runner | — | 设计已知非目标 | P3 | Server 仅绑定 localhost 但无 TLS 支持（设计非目标） | spec 非目标明确记录 | 上游 CLI strings 包含 open-runner 嵌入二进制 | tests/openRunnerProtocol.test.ts 存在 | 低（仅 localhost 绑定，TLS 为非目标） | 按 spec 保持现状（设计已知非目标） | 已证实 | spec 明确记录为非目标 | open |
+| B6-open-runner-03 | open-runner | — | 设计已知非目标 | P3 | Store 是单进程文件存储，不支持分布式（设计非目标） | spec 非目标明确记录 | 上游 CLI strings 包含 open-runner 嵌入二进制 | tests/openRunnerProtocol.test.ts 存在 | 低（单进程设计，分布式为非目标） | 按 spec 保持现状（设计已知非目标） | 已证实 | spec 明确记录为非目标 | open |
+| B6-open-runner-04 | open-runner | — | 改进建议 | P2 | 没有状态迁移工具，未来 Open Runner Store 格式变更可能导致数据丢失 | spec 改进建议明确记录 | 上游 CLI strings 包含 open-runner 嵌入二进制 | tests/openRunnerProtocol.test.ts 存在但不覆盖迁移工具 | 中等（未来格式升级风险） | 按 spec 改进建议，评估并实现状态迁移工具 | 已证实 | spec 改进建议明确记录 | open |
+| B6-open-runner-05 | open-runner | — | 设计已知非目标 | P3 | Worker 没有自动清理 worker.log 的机制 | spec 非目标明确记录 | 上游 CLI strings 包含 open-runner 嵌入二进制 | tests/openRunnerWorker.test.ts 存在但不覆盖日志清理 | 低（仅长期运行可能积累日志） | 按 spec 保持现状（设计已知非目标） | 已证实 | spec 明确记录为非目标 | open |
+| B6-open-runner-06 | open-runner | — | 设计权衡 | P3 | prctl 仅在 Linux+Bun 下有效，其他平台无内存防护（设计权衡） | src/upstreamproxy/upstreamproxy.ts:140-144，spec 记录此权衡 | 上游 CLI strings 包含 open-runner 嵌入二进制 | tests/openBackends.test.ts 存在 | 低（设计权衡，仅 Linux+Bun 有防护） | 按 spec 保持现状（设计权衡） | 已证实 | 源码与 spec 明确记录此权衡 | open |
+| B6-open-runner-07 | open-runner | — | 测试缺口 | P2 | upstream-proxy/relay.ts 没有独立测试覆盖，仅通过集成验证 | tests/ 目录扫描确认无 relay 相关测试文件 | 上游 CLI strings 包含 open-runner 嵌入二进制 | tests/openRunnerProtocol.test.ts 存在但不覆盖 relay.ts | 中等（安全关键组件，无回归保护） | 补充 upstream-proxy/relay.ts 独立单元测试 | 已证实 | tests/ 目录完整扫描确认缺失 | open |
+| B6-platform-integrations-01 | platform-integrations | — | 设计权衡（静默降级） | P3 | WSL 配置读取失败时仅记录日志，无用户可见提示（设计权衡，静默降级） | src/utils/claudeDesktop.ts，spec 记录此权衡 | 上游 CLI strings 匹配 platform-integrations (desktop/mobile/slack) | tests/claudeInChromeWiring.test.ts 存在但不覆盖 WSL 配置读取 | 低（设计权衡，静默降级） | 按 spec 保持现状（设计权衡） | 已证实 | spec 明确记录此权衡 | open |
+| B6-platform-integrations-02 | platform-integrations | — | 设计权衡（静默降级） | P3 | QR 码生成失败时静默降级（仅留空），无用户可见提示 | src/commands/mobile/mobile.tsx，spec 上下文记录此行为 | 上游 CLI strings 匹配 platform-integrations (desktop/mobile/slack) | tests/claudeInChromeWiring.test.ts 存在但不覆盖 QR 码生成 | 低（设计权衡，静默降级） | 按 spec 保持现状（设计权衡） | 已证实 | 源码与 spec 上下文记录此行为 | open |
+| B6-platform-integrations-03 | platform-integrations | — | 测试缺口 | P2 | platform-integrations 子系统测试覆盖严重不足，仅 1 个最小测试文件，缺少核心功能测试 | tests/ 目录完整扫描确认仅 claudeInChromeWiring.test.ts 存在 | 上游 CLI strings 匹配 platform-integrations (desktop/mobile/slack) | tests/claudeInChromeWiring.test.ts 存在但覆盖极小 | 中等（外部输入/跨平台集成，无回归保护） | 补充 platform-integrations 完整测试覆盖（deep-link、桌面检测、WSL 配置、浏览器检测、socket/pipe 通信、QR 码生成、Slack 集成、Desktop upsell） | 已证实 | tests/ 目录完整扫描确认缺失 | open |
+| B6-remote-control-01 | remote-control | — | 测试缺口 | P2 | SessionsWebSocket 重连逻辑无独立单元测试，当前仅通过集成验证 | tests/ 目录扫描确认无 SessionsWebSocket 专项测试 | 上游 CLI strings 匹配 remote-control 相关函数（RemoteSessionManager、[RemoteSessionManager] Connecting to session） | tests/directConnect.test.ts 存在但不覆盖 CCR 模式 SessionsWebSocket | 中等（CCR 模式可靠性核心，无回归保护） | 补充 SessionsWebSocket 独立单元测试（重连策略、4001 特殊处理、viewerOnly 永不放弃逻辑） | 已证实 | tests/ 目录完整扫描确认缺失 | open |
+| B6-remote-control-02 | remote-control | — | 测试缺口 | P2 | sdkMessageAdapter 无独立单元测试 | tests/ 目录扫描确认无 sdkMessageAdapter 专项测试 | 上游 CLI strings 匹配 remote-control 相关函数 | tests/directConnect.test.ts 存在但不覆盖 sdkMessageAdapter | 中等（远程消息渲染核心，无回归保护） | 补充 sdkMessageAdapter 独立单元测试（消息转换、未知类型处理） | 已证实 | tests/ 目录完整扫描确认缺失 | open |
+| B6-remote-control-03 | remote-control | — | 设计已知限制 | P3 | RemoteSessionManager pendingPermissionRequests 无超时清理机制 | spec 非目标明确记录，源码确认无超时逻辑 | 上游 CLI strings 匹配 remote-control 相关函数 | tests/directConnect.test.ts 存在但不覆盖此限制 | 低（仅服务器永远不取消权限请求时可能内存泄漏） | 按 spec 保持现状（设计已知限制） | 已证实 | spec 明确记录为非目标 | open |
+| B6-ssh-01 | ssh | — | 设计已知限制 | P3 | SSH 重连后无状态同步机制，远程可能已前进但本地不知道已改变的工具状态 | spec 改进建议明确记录 | 上游 CLI strings 匹配 ssh 相关函数（sshAuthProxy） | tests/sshSession.test.ts 存在但不覆盖状态同步 | 低（仅断线期间远程前进时可能不一致） | 按 spec 改进建议，评估并实现状态同步机制 | 已证实 | spec 改进建议明确记录 | open |
+| B6-ssh-02 | ssh | — | 设计已知限制 | P3 | 当前仅支持 Linux glibc 目标，不支持 musl libc（Alpine）或 BSD/macOS 远程 | spec 明确记录 | 上游 CLI strings 匹配 ssh 相关函数 | tests/sshSession.test.ts 存在但仅覆盖 glibc 目标 | 低（仅限制目标环境） | 按 spec 保持现状（设计已知限制） | 已证实 | spec 明确记录 | open |
+| B6-ssh-03 | ssh | — | 设计已知限制 | P3 | 单次 scp 传输大文件在弱网下可能慢或失败，无断点续传 | spec 改进建议明确记录 | 上游 CLI strings 匹配 ssh 相关函数 | tests/sshSession.test.ts 存在但不覆盖断点续传 | 低（仅弱网大文件传输可能受影响） | 按 spec 改进建议，评估并实现断点续传 | 已证实 | spec 改进建议明确记录 | open |
+| B6-teleport-01 | teleport | — | 改进建议 | P3 | Git Bundle 上传无进度显示，大仓库上传时用户体验差 | spec 改进建议明确记录 | 上游 CLI strings 匹配 teleport 相关函数（teleportToRemote、teleportToRemoteWithErrorHandling、[teleportToRemote]） | tests/teleport.test.ts 存在但不覆盖进度显示 | 低（仅影响大仓库上传体验） | 按 spec 改进建议，评估并实现上传进度显示 | 已证实 | spec 改进建议明确记录 | open |
+| B6-teleport-02 | teleport | — | 改进建议 | P3 | Git Bundle 上传无断点续传，大文件失败需重新上传 | spec 改进建议明确记录 | 上游 CLI strings 匹配 teleport 相关函数 | tests/teleport.test.ts 存在但不覆盖断点续传 | 低（仅弱网大文件上传可能受影响） | 按 spec 改进建议，评估并实现断点续传 | 已证实 | spec 改进建议明确记录 | open |
+| B6-teleport-03 | teleport | — | 设计改进 | P3 | API 重试逻辑无用户反馈，重试期间用户不知道进度 | src/utils/teleport/api.ts，基于代码理解 | 上游 CLI strings 匹配 teleport 相关函数 | tests/teleport.test.ts 存在但不覆盖用户反馈 | 低（仅影响重试期间体验） | 按 spec 改进建议，评估并实现 API 重试用户反馈 | 已证实 | 基于代码理解 | open |
+| B6-teleport-04 | teleport | — | 设计权衡 | P3 | 未跟踪文件不包含在 Bundle 中，可能导致远程环境缺少必要文件 | spec 明确记录此权衡 | 上游 CLI strings 匹配 teleport 相关函数 | tests/teleport.test.ts 存在但覆盖此权衡 | 低（设计权衡，仅未跟踪文件可能缺失） | 按 spec 保持现状（设计权衡） | 已证实 | spec 明确记录此权衡 | open |
+| B6-teleport-05 | teleport | — | 测试缺口 | P3 | 缺少大仓库 Bundle 创建性能测试 | spec 改进建议明确记录 | 上游 CLI strings 匹配 teleport 相关函数 | tests/teleport.test.ts 存在但不覆盖大仓库性能 | 低（仅性能测试缺失） | 补充大仓库 Bundle 创建性能测试 | 已证实 | spec 改进建议明确记录 | open |
+| B6-teleport-06 | teleport | — | 测试缺口 | P3 | 缺少网络中断恢复测试 | spec 改进建议明确记录 | 上游 CLI strings 匹配 teleport 相关函数 | tests/teleport.test.ts 存在但不覆盖网络中断恢复 | 低（仅网络中断恢复测试缺失） | 补充网络中断恢复测试 | 已证实 | spec 改进建议明确记录 | open |
+| B6-teleport-07 | teleport | — | 测试缺口 | P3 | 缺少 GHE 仓库验证测试 | spec 改进建议明确记录 | 上游 CLI strings 匹配 teleport 相关函数 | tests/teleport.test.ts 存在但不覆盖 GHE 仓库验证 | 低（仅 GHE 验证测试缺失） | 补充 GHE 仓库验证测试 | 已证实 | spec 改进建议明确记录 | open |
+| B6-teleport-08 | teleport | — | 测试缺口 | P3 | 缺少并发 Teleport 操作测试 | spec 改进建议明确记录 | 上游 CLI strings 匹配 teleport 相关函数 | tests/teleport.test.ts 存在但不覆盖并发操作 | 低（仅并发操作测试缺失） | 补充并发 Teleport 操作测试 | 已证实 | spec 改进建议明确记录 | open |
 
 ### 汇总统计
 
