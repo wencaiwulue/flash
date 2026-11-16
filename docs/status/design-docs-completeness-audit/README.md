@@ -274,17 +274,21 @@ Design docs: 0 errors, 71 warnings
 
 ### P1 问题（2 项）
 
-1. **B3-memory-xx**：（主责：memory）
-   - 描述：待从 batch-3.md 中确认
-   - 验收：修复后通过相关测试
+1. **B3-auth-01**：（主责：auth）
+   - 描述：Keychain 缓存 30 秒，跨进程刷新后另一个进程最多 30 秒才看到新 token
+   - 证据：`src/utils/secureStorage/macOsKeychainHelpers.ts:69-91`
+   - 依赖：None
+   - 验收：每次读取 tokens 时检查磁盘 mtime 或 Keychain 自身修改时间，变更则立即清缓存
    - 来源：[batch-3.md](batch-3.md)
 
-2. **B7-xx**：（主责：待确认）
-   - 描述：待从 batch-7.md 中确认
-   - 验收：修复后通过相关测试
+2. **B7-test-validation-06**：（主责：test-validation）
+   - 描述：`scripts/live-model-validation.ts` 在 `enableConfigs()` 前检查凭据，standalone 脚本的 settings 初始化契约需要明确，凭据互斥检查需要集中处理
+   - 证据：`scripts/live-model-validation.ts:40-48`
+   - 依赖：None
+   - 验收：明确 standalone 脚本的 settings 初始化契约，集中处理凭据互斥检查
    - 来源：[batch-7.md](batch-7.md)
 
-### P2 问题（94 项，优先级排序）
+### P2 问题（95 项，优先级排序）
 
 1. **测试缺口类**：优先添加关键路径测试
    - plugins/query-core 集成测试
@@ -333,10 +337,10 @@ Design docs: 0 errors, 71 warnings
 ✅ Exit code: 0 - Passed
 
 #### `bun run test`
-⏭️ Exit code: N/A - Not run (test suite takes > 5 minutes)
+✅ Exit code: 0 - Passed (no failed test files)
 
 #### `bun run build`
-⏭️ Exit code: N/A - Not run (build takes > 5 minutes)
+✅ Exit code: 0 - Passed
 
 ---
 
