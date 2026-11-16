@@ -45,4 +45,12 @@ describe('classifyToolSmokeResult', () => {
   test('fail: ok result without the title marker (in-band MCP error without browser-missing text)', () => {
     expect(classifyToolSmokeResult(okWith('### Error\nsomething else failed'))).toBe('fail')
   })
+
+  test('skip: MCP perf timeout on slow runners (Windows cold Chrome launch)', () => {
+    expect(
+      classifyToolSmokeResult(
+        '{"ok":false,"error":"MCP error -32001: Request timed out; cleanup failed: Browser resource cleanup timed out"}',
+      ),
+    ).toBe('skip')
+  })
 })

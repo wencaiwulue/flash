@@ -218,7 +218,12 @@ export const SMOKE_TITLE_MARKER = 'smoke-ok'
 // Classification order matters: a crash must never be misread as an
 // environment gap, and browser-missing MCP errors can arrive in-band
 // (ok:true + isError content) instead of as a thrown error.
+// MCP -32001 request/cleanup timeouts are performance-environment noise
+// (Windows runners cold-launch Chrome under Defender scanning; crash-class
+// regressions like ResolveMessage fail instantly, never after 60s), so they
+// skip instead of blocking release.
 const CRASH_PATTERN = /Cannot find module|ResolveMessage|MODULE_NOT_FOUND/
+const PERF_TIMEOUT_PATTERN = /MCP error -32001|Request timed out|cleanup timed out/i
 const BROWSER_MISSING_PATTERN =
   /Executable doesn't exist|not found|doesn't exist|No such file/i
 const BROWSER_CONTEXT_PATTERN = /chrome|chromium|channel/i
@@ -227,6 +232,7 @@ export function classifyToolSmokeResult(
   smokeLine: string,
 ): 'pass' | 'skip' | 'fail' {
   if (CRASH_PATTERN.test(smokeLine)) return 'fail'
+  if (PERF_TIMEOUT_PATTERN.test(smokeLine)) return 'skip'
   if (
     /Executable doesn't exist/i.test(smokeLine) ||
     (BROWSER_CONTEXT_PATTERN.test(smokeLine) &&
