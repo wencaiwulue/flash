@@ -42,6 +42,9 @@ v0.0.1 bundled 二进制中模型调用 WebBrowser 工具即崩溃：
 - bundled（compile）与 dist（bun build）两种产物形态下，WebBrowser 工具端到端可用（launch → navigate → evaluate → screenshot）。
 - 产物脱离编译机路径：编译源目录删除后二进制仍正常。
 - playwright 升级导致插件失配时，测试套件立即失败（绊线）。
+- **自动化交互测试门禁**（用户要求，防"只能人工发现"的 bundled 运行时回归）：
+  - release 构建冒烟在真实二进制内端到端调用 WebBrowser（见 §4.5）；
+  - 测试套件含 pty 交互启动冒烟（见 §4.6）。
 - 契约文档 `docs/external-stubs/contracts/open-chrome.md` 修订：声明 bundled isolated 路径已支持。
 
 ### 非目标
@@ -83,6 +86,41 @@ v0.0.1 bundled 二进制中模型调用 WebBrowser 工具即崩溃：
 - `bun run build` → `bun dist/main.js` 形态同样验证 WebBrowser 可用。
 - 源码形态回归：`bun run test` 全绿；`bun run dev` 下 WebBrowser 行为不回归。
 
+### 4.5 release 冒烟：真实二进制内端到端工具调用
+
+背景：`scripts/build-binary.ts:235-245` 的 `smokeTestStandaloneBinary` 已通过临时重命名 node_modules
+强制"真独立"环境跑 `--version` 冒烟；v0.0.1 崩溃恰属该冒烟覆盖不到的运行时调用路径。
+本次把它升级为**崩溃类回归的硬门禁**：
+
+1. **测试通道**：`src/main.tsx` 入口最早期（UI 初始化之前）检查 `FLASH_SMOKE_TOOL` 环境变量：
+   - `FLASH_SMOKE_TOOL=WebBrowser`、`FLASH_SMOKE_INPUT=<tool input JSON>` 时：
+     加载工具注册表 → 取 `WebBrowserTool` → `tool.call(JSON.parse(input))` → stdout 打印一行
+     JSON 结果（含 `ok`/`error` 字段）→ `process.exit(0)`（成功）或 `exit(1)`（抛错）。
+   - 不走模型、不开 Ink UI、不写配置；变量未设时行为与现状完全一致。
+   - 命名用 `FLASH_` 前缀（本仓库自有测试通道，先例：`OVERFLOW_TEST_TOOL` 测试工具、
+     `flash-binary-home-` 临时目录前缀）。
+2. **冒烟步骤**（追加进 `smokeTestStandaloneBinary`，node_modules 隐藏态下执行）：
+   spawn 二进制，env 注入 `FLASH_SMOKE_TOOL=WebBrowser` + input
+   `{"action":"browser_navigate","arguments":{"url":"data:text/html,<title>smoke-ok</title>"}}`
+   → 读 stdout JSON → `ok === true` 且结果含 `smoke-ok` 即通过。
+3. **失败语义**：
+   - 崩溃类（ResolveMessage、MODULE_NOT_FOUND、非 Chrome 缺失的工具错误）→ 冒烟失败 → **构建失败**。
+   - Chrome 缺失（launch 报 executable/channel 找不到类错误）→ **警告跳过**（CI 机器可能没装 Chrome），
+     构建继续，stderr 打印 `Smoke skip: Chrome not available on this machine`。
+   - 区分依据：错误文本匹配 playwright 的 browser-not-found 模式（`Executable doesn't exist`、
+     `channel.*not.*found`、`No such file or directory.*chrome` 等合集，实现时以实际报错为准并记入测试断言）。
+
+### 4.6 测试套件 pty 交互启动冒烟
+
+`tests/interactiveStartup.test.ts`（unix-only，`process.platform === 'win32'` 时 skip）：
+- pty（`script -q /dev/null`）拉起 `bun dist/main.js`（dist 形态最接近 bundled 的单文件 bundle），
+  HOME 指向 mkdtemp 隔离目录。
+- 断言 15s 内输出包含欢迎框特征字符串（`Welcome back` 或版本框）且进程未以崩溃堆栈退出；
+  超时 kill 后按输出判定。
+- 目的：捕获交互启动类回归（如启动即崩、欢迎 UI 崩溃）；不依赖模型 API。
+- 前置：需要 `dist/main.js` 存在；缺失时 skip 并提示先 `bun run build`（避免 `bun run test` 强制全量构建）。
+ 
+
 ## 5. 失败语义与风险
 
 | 风险 | 场景 | 缓解 |
@@ -96,11 +134,12 @@ v0.0.1 bundled 二进制中模型调用 WebBrowser 工具即崩溃：
 ## 6. 现状验收标准
 
 1. `scripts/playwrightInlinePlugin.ts` 存在并挂入全部 Bun.build 路径。
-2. `tests/playwrightInlinePlugin.test.ts` 三类断言全过；`bun run test` 全绿。
-3. 本机 bundled 产物 pty 实测：WebBrowser 端到端成功；编译源目录删除后仍成功。
-4. dist 产物 `bun dist/main.js` 下 WebBrowser 端到端成功。
+2. `tests/playwrightInlinePlugin.test.ts` 三类断言全过；`tests/interactiveStartup.test.ts` 过（无 dist 时 skip）；`bun run test` 全绿。
+3. 本机 bundled 产物：`FLASH_SMOKE_TOOL` 冒烟端到端成功（node_modules 隐藏态）；编译源目录删除后仍成功。
+4. dist 产物 `bun dist/main.js` 下 WebBrowser 端到端成功；pty 启动冒烟通过。
 5. `docs/external-stubs/contracts/open-chrome.md` 修订完成（bundled isolated 支持 + 已知限制清单）。
 6. manifest 登记 + `bun scripts/check-design-docs.ts` 0 errors。
+7. release 构建冒烟失败语义验证：模拟崩溃（移除插件编译一次）→ 构建失败；模拟无 Chrome → 警告跳过。
 
 ## 7. 代码与测试证据
 
