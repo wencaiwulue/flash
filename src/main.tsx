@@ -881,6 +881,7 @@ export async function main() {
   const smokeToolName = process.env.FLASH_SMOKE_TOOL
   if (smokeToolName) {
     const { getAllBaseTools } = await import('./tools.js')
+    const { runCleanupFunctions } = await import('./utils/cleanupRegistry.js')
     const tools = await getAllBaseTools()
     const tool = tools.find(candidate => candidate?.name === smokeToolName)
     if (!tool) {
@@ -889,20 +890,39 @@ export async function main() {
       )
       process.exit(1)
     }
+    let smokeError: string | undefined
+    let smokeResult: unknown
     try {
       const smokeInput = JSON.parse(process.env.FLASH_SMOKE_INPUT ?? '{}') as never
-      const smokeResult = await tool.call(
+      smokeResult = await tool.call(
         smokeInput,
         {} as never,
         async () => ({ behavior: 'allow' as const, updatedInput: smokeInput }),
         {} as never,
       )
+    } catch (error) {
+      smokeError = error instanceof Error ? error.message : String(error)
+    }
+
+    // Run cleanup before exit to prevent browser process leaks
+    let cleanupError: string | undefined
+    try {
+      await runCleanupFunctions()
+    } catch (error) {
+      cleanupError = error instanceof Error ? error.message : String(error)
+    }
+
+    // Combine errors if both occurred
+    const finalError = smokeError && cleanupError
+      ? `${smokeError}; cleanup failed: ${cleanupError}`
+      : smokeError || cleanupError
+
+    if (finalError) {
+      process.stdout.write(`${JSON.stringify({ ok: false, error: finalError })}\n`)
+      process.exit(1)
+    } else {
       process.stdout.write(`${JSON.stringify({ ok: true, result: smokeResult })}\n`)
       process.exit(0)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      process.stdout.write(`${JSON.stringify({ ok: false, error: message })}\n`)
-      process.exit(1)
     }
   }
 

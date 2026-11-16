@@ -244,23 +244,39 @@ function smokeTestBinary(
     },
   })
   const smokeStdout = smoke.stdout.toString()
+  const smokeStderr = smoke.stderr.toString()
   const smokeLine = smokeStdout.split('\n').find(line => line.startsWith('{"ok":'))
   if (!smokeLine) {
+    const combinedOutput = smokeStdout
+      ? smokeStderr
+        ? `${smokeStdout.slice(0, 1000)}\n\nstderr:\n${smokeStderr.slice(0, 1000)}`
+        : smokeStdout.slice(0, 2000)
+      : smokeStderr.slice(0, 2000)
     throw new Error(
-      `Tool smoke produced no result line (exit=${smoke.exitCode}): ${smokeStdout.slice(0, 2000)}`,
+      `Tool smoke produced no result line (exit=${smoke.exitCode}): ${combinedOutput}`,
     )
   }
   const smokeResult = JSON.parse(smokeLine) as { ok: boolean; error?: string }
   if (!smokeResult.ok) {
     const errorText = smokeResult.error ?? ''
+
+    // First check for crash patterns that should always block release
+    const isCrashPattern = /Cannot find module|ResolveMessage|MODULE_NOT_FOUND/.test(errorText)
+    if (isCrashPattern) {
+      throw new Error(`Tool smoke failed: ${errorText.slice(0, 2000)}`)
+    }
+
+    // Then check for Chrome missing patterns
     const browserMissing =
-      /Executable doesn't exist/.test(errorText) ||
+      /Executable doesn't exist/i.test(errorText) ||
       (/chrome|chromium|channel/i.test(errorText) &&
         /not found|doesn't exist|No such file/i.test(errorText))
     if (browserMissing) {
       console.warn('Smoke skip: Chrome not available on this machine')
       return
     }
+
+    // All other errors also block release
     throw new Error(`Tool smoke failed: ${errorText.slice(0, 2000)}`)
   }
   if (!smokeStdout.includes('smoke-ok')) {
