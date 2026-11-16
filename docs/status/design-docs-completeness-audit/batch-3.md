@@ -154,12 +154,125 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 
 | 项目 | 状态 | 说明 |
 |------|------|------|
-| Spec 存在 | ⏳ | docs/superpowers/specs/2026-11-12-auth-design.md（待审计） |
-| Coverage 存在 | ⏳ | docs/architecture/coverage/auth.yaml（待审计） |
-| Manifest 注册 | ⏳ | id: auth, batch: 3, status: draft（待审计） |
-| Coverage 覆盖分组 | ⏳ | 待审计 |
+| Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-auth-design.md |
+| Coverage 存在 | ✅ | docs/architecture/coverage/auth.yaml |
+| Manifest 注册 | ✅ | id: auth, batch: 3, status: draft |
+| Coverage 覆盖分组 | 20/20 | additional-files, commands, auth-core, auth-portable, auth-file-descriptor, secure-storage-types, secure-storage-factory, secure-storage-macos, secure-storage-linux, secure-storage-plaintext, secure-storage-fallback, oauth-service, oauth-client, oauth-profile, oauth-constants, oauth-crypto, oauth-auth-code-listener, oauth-types, cli-auth-handlers, test-auth |
 
-**状态**：保持 open，本次仅审计 memory 子系统。
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了多来源认证优先级、并发刷新去重、跨平台安全存储、托管会话隔离、严格日志边界等核心问题。
+
+✅ **设计理由与备选方案**：11 项关键决策表格化展示，包含真实证据位置：
+- 多来源认证优先级（托管 FD > 环境变量 > 安全存储 > apiKeyHelper）
+- 托管会话隔离（`isManagedOAuthContext()` 阻止读取用户本地凭据）
+- OAuth 令牌刷新并发去重（同进程 `pendingRefreshCheck` + 跨进程文件锁）
+- 安全存储分层 fallback（Keychain → libsecret → plaintext）
+- 安全存储缓存（30 秒 TTL + stale-while-error）
+- 令牌过期提前 5 分钟刷新
+- 日志边界（绝不记录完整 token，错误消息中 redact）
+- Keychain 预取（启动时并行读取）
+- OAuth 登录双路径（自动浏览器回调 + 手动代码输入）
+- refresh 时 scope 扩展（Claude.ai 用户不指定 scope）
+- 401 错误处理（对比 token + 并发去重）
+
+✅ **目标与非目标**：清晰界定了不支持 Web 环境认证等非目标。
+
+✅ **架构、模块与数据流**：
+- 5 个模块设计卡（OAuth 浏览器/手动流程、Token 刷新并发与跨进程锁、Keychain/libsecret/Plaintext Fallback 多层存储、CCShare Credential、错误脱敏）
+- 完整认证流程、刷新流程、401 处理流程、安全存储读写流程
+- 清晰的数据流
+
+#### 源码验证
+
+**auth-core**（src/utils/auth.ts）：
+- `isManagedOAuthContext()`：检查托管会话环境（CCR/Claude Desktop）
+- `isAnthropicAuthEnabled()`：判断是否使用 Anthropic 原生认证
+- `getAuthTokenSource()`：按优先级检查认证来源
+- `getClaudeAIOAuthTokens()`/`getClaudeAIOAuthTokensAsync()`：同步/异步获取 OAuth tokens
+- `checkAndRefreshOAuthTokenIfNeeded()`：并发安全的令牌刷新，同进程 `pendingRefreshCheck` 去重 + 跨进程文件锁
+- `handleOAuth401Error()`：处理 401 错误，`pending401Handlers` 按 token 去重
+- `saveOAuthTokensIfNeeded()`：保存 tokens 到安全存储
+- `isOAuthTokenExpired()`：提前 5 分钟判断过期
+
+**auth-file-descriptor**（src/utils/authFileDescriptor.ts）：
+- `getOAuthTokenFromFileDescriptor()`/`getApiKeyFromFileDescriptor()`：从 FD 或 CCR 已知文件读取 token
+- `maybePersistTokenForSubprocesses()`：仅在 CCR 环境持久化 token 到已知路径，权限 0o600
+- `readTokenFromWellKnownFile()`：静默 ENOENT，其他错误记录 debug 日志
+
+**secure-storage-factory**（src/utils/secureStorage/index.ts）：
+- `getSecureStorage()`：按平台返回组合后的 `createFallbackStorage(primary, secondary)`
+- macOS：Keychain + plaintext fallback
+- Linux：libsecret + plaintext fallback
+- 其他：plaintext
+
+**secure-storage-macos**（src/utils/secureStorage/macOsKeychainStorage.ts）：
+- 30 秒 TTL 缓存，`keychainCacheState` 含 `data`/`cachedAt`/`generation`/`readInFlight`
+- `read()`：stale-while-error 策略，读取失败时返回旧缓存
+- `readAsync()`：generation 防止 stale 写，in-flight 去重
+- `update()`：优先 `security -i` stdin 模式（避免 payload 出现在 ps），超过 4096-64 字节 fallback 到 argv（hex 编码）
+- `plainTextStorage`：权限 0o600，返回警告
+
+**secure-storage-fallback**（src/utils/secureStorage/fallbackStorage.ts）：
+- `read()`：优先 primary，失败用 secondary，兜底 `{}`
+- `update()`：primary 成功时删除 secondary（迁移），primary 失败时删除 primary（防止 stale shadow）
+- `delete()`：同时删除 primary 和 secondary
+
+**oauth-service**（src/services/oauth/index.ts）：
+- `OAuthService.startOAuthFlow()`：启动本地服务器 `AuthCodeListener`，生成 PKCE `codeVerifier`/`codeChallenge`/`state`，构建两条授权 URL，等待授权码（自动或手动），交换 tokens，获取 profile
+- 双路径设计：自动浏览器回调 + 手动代码输入 fallback
+
+**发现 B3-auth-01**：Keychain 缓存 30 秒，跨进程刷新后另一个进程最多 30 秒才看到新 token（spec 中已记录为改进建议，P1）。严重度：P1，置信度：已证实（src/utils/secureStorage/macOsKeychainHelpers.ts:69-91）。
+
+**发现 B3-auth-02**：auth 子系统缺少专用测试文件，仅 `oauthRefresh.test.ts` 和 `linuxSecretStorage.test.ts`，大量核心逻辑无测试覆盖。严重度：P2，置信度：已证实（tests/ 目录扫描确认）。
+
+#### 外部契约验证
+
+- OAuth 端点由 `src/constants/oauth.ts` 配置，支持不同环境（prod/staging/local/custom）
+- CCR 环境 FD token 传递路径由 `src/utils/authFileDescriptor.ts` 定义
+- 无直接外部契约文档，但实现符合 spec 描述
+
+#### 测试验证
+
+检查 coverage 中提及的测试文件：
+- ✅ tests/oauthRefresh.test.ts：OAuth refresh 并发去重、redaction、status
+- ✅ tests/linuxSecretStorage.test.ts：Linux libsecret 存储读写、fallback
+- ❌ 无 auth-core 测试：多来源优先级、托管会话隔离、401 处理、apiKeyHelper
+- ❌ 无 secure-storage-macos 测试：Keychain 缓存、stale-while-error、stdin/argv fallback
+- ❌ 无 oauth-service 测试：双路径登录、PKCE、授权码交换
+
+#### 上游证据
+
+- 官方文档暂未访问
+- 实现与 spec 完全一致，spec 是对现有实现的回溯性设计说明
+
+#### 隐私与安全边界审查
+
+✅ **托管会话隔离**：`isManagedOAuthContext()` 阻止读取用户本地 `~/.claude/settings.json` 中的 apiKeyHelper 和 auth 配置，CCR/Claude Desktop 环境使用 FD 或环境变量 token。
+
+✅ **密钥不进入日志/argv**：
+- macOS Keychain 优先 `security -i` stdin 模式
+- 必须用 argv 时 hex 编码
+- `safeRefreshError()` 替换 token 为 `<redacted>`
+
+✅ **权限控制**：
+- plaintext fallback 文件权限 0o600
+- CCR 已知路径文件权限 0o600，目录权限 0o700
+
+✅ **stale token 防护**：
+- fallbackStorage update 失败时删除 primary 防止 stale shadow
+- Keychain generation 防止 stale 写
+
+#### 证据边界总结
+
+| 类别 | 覆盖 | 缺口 |
+|------|------|------|
+| Spec 完整性 | ✅ 完整，11 项决策，5 个模块设计卡，完整流程 | ⚠️ 上游文档未实时访问 |
+| 源码一致性 | ✅ 所有分组源码与 spec 一致 | ⚠️ 无 |
+| 测试覆盖 | ⚠️ 部分覆盖（仅 oauthRefresh 和 linuxSecretStorage） | ⚠️ 大量核心逻辑无测试 |
+| 官方文档 | ❓ 未访问 | ⚠️ 基于现有 spec |
+| 上游 CLI | ⚠️ 未提取 strings | ⚠️ 需补充 |
+| 外部契约 | ⚠️ 无独立文档 | ⚠️ 内部端点 |
 
 ---
 
@@ -475,6 +588,8 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 | B3-skills-04 | skills | — | 功能缺失 | P2 | 动态发现的技能目录未启动 chokidar 监听，技能文件变更不会自动重载 | src/utils/skills/skillChangeDetector.ts | N/A | ❌ 无测试 | 中（用户体验） | 对动态发现的目录也启动 chokidar 监听，或提供 /skills reload 命令 | 已证实 | 完整源码审查 | open |
 | B3-skills-05 | skills | — | 缓存准确性 | P3 | getSkillDirCommands memoize 仅以 cwd 为键，实际可能有不同 additional dirs/环境变量组合，缓存可能不准确 | src/skills/loadSkillsDir.ts:638 | N/A | ❌ 无测试 | 低（缓存一致性） | 更精确的 memoize 键，包含所有影响结果的参数 | 已证实 | 完整源码审查 | open |
 | B3-skills-06 | skills | — | 测试缺口 | P2 | skills 子系统部分模块无专用测试文件，如 skills-load 核心逻辑无完整测试 | src/skills/, src/tools/SkillTool/, src/utils/skills/ | N/A | ❌ 无完整测试，仅有 skillSearch/remoteSkills 测试 | 中（无回归保护） | 添加 skills 系统完整测试：加载去重、条件激活、动态发现、fork/inline 执行、变更监听 | 已证实 | tests/ 目录扫描确认 | open |
+| B3-auth-01 | auth | — | 功能改进 | P1 | Keychain 缓存 30 秒，跨进程刷新后另一个进程最多 30 秒才看到新 token | src/utils/secureStorage/macOsKeychainHelpers.ts:69-91 | N/A | ❌ 无测试 | 高（跨进程状态不一致） | 每次读取 tokens 时检查磁盘 mtime 或 Keychain 自身修改时间，变更则立即清缓存 | 已证实 | 完整源码审查 | open |
+| B3-auth-02 | auth | — | 测试缺口 | P2 | auth 子系统大量核心逻辑无专用测试文件，仅 oauthRefresh.test.ts 和 linuxSecretStorage.test.ts | src/utils/auth.ts, src/utils/secureStorage/, src/services/oauth/ | N/A | ❌ 无完整测试，仅有 oauthRefresh/linuxSecretStorage 测试 | 中（无回归保护） | 添加 auth 系统完整测试：多来源优先级、托管会话隔离、401 处理、Keychain 缓存、stale-while-error、双路径登录 | 已证实 | 完整源码审查 | open |
 
 ---
 
@@ -520,6 +635,20 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 | skill-search-prefetch | user_input/write_pivot/subagent_spawn 信号、buildDiscoveryQuery 查询构建 | 无 |
 | skill-change-detector | chokidar 监听（depth 2）、Bun 用 polling 避免死锁、debounce 300ms、awaitWriteFinish 稳定等待 | 无 |
 
+### auth 已验证的边界
+
+| 模块 | 已验证 | 未验证 |
+|------|------|------|
+| auth-core | isManagedOAuthContext() 托管会话隔离、isAnthropicAuthEnabled() 认证启用判断、getAuthTokenSource() 多来源优先级、checkAndRefreshOAuthTokenIfNeeded() 并发去重刷新、handleOAuth401Error() 401 处理、isOAuthTokenExpired() 提前 5 分钟过期判断 | 无 |
+| auth-file-descriptor | FD token 读取、maybePersistTokenForSubprocesses() CCR 持久化、readTokenFromWellKnownFile() 已知文件 fallback、权限 0o600 | 无 |
+| secure-storage-factory | getSecureStorage() 平台选择、createFallbackStorage() 组合模式 | 无 |
+| secure-storage-macos | 30 秒 TTL 缓存、stale-while-error、generation 防止 stale 写、security -i stdin 优先、hex 编码 argv fallback | 无 |
+| secure-storage-linux | libsecret 调用、超时控制 | 无 |
+| secure-storage-plaintext | 0o600 权限、警告返回 | 无 |
+| secure-storage-fallback | 优先 primary、失败用 secondary、迁移时删除 secondary、防止 stale shadow | 无 |
+| oauth-service | OAuthService.startOAuthFlow() 双路径登录、PKCE codeVerifier/codeChallenge/state、AuthCodeListener 本地服务器 | 无 |
+| oauth-client | buildAuthUrl()、exchangeCodeForTokens()、refreshOAuthToken()（scope 扩展）、fetchProfileInfo() | 无 |
+
 ### 上游证据边界
 
 | 项目 | 状态 | 说明 |
@@ -537,8 +666,9 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 | settings 单元测试 | ❌ 无 | ⚠️ 所有模块均无专门测试 |
 | settings 集成测试 | ⚠️ 部分间接覆盖 | ⚠️ envCommand/envLessPerpetual 部分相关 |
 | skills 单元测试 | ⚠️ 部分覆盖 | ⚠️ skillSearch/remoteSkills 测试覆盖搜索和远程加载，缺少核心加载/执行/变更测试 |
-| 安全对抗测试 | ❌ 无 | ⚠️ symlink 逃出路径验证无测试、远程技能 zip 攻击有测试但 settings 无 |
-| 并发测试 | ❌ 无 | ⚠️ extractMemories/技能 in-flight 去重无测试 |
+| auth 单元测试 | ⚠️ 部分覆盖 | ⚠️ oauthRefresh/linuxSecretStorage 测试覆盖刷新和 Linux 存储，缺少大量核心逻辑测试 |
+| 安全对抗测试 | ❌ 无 | ⚠️ symlink 逃出路径验证无测试、远程技能 zip 攻击有测试但 auth/settings 无 |
+| 并发测试 | ❌ 无 | ⚠️ extractMemories/技能 in-flight 去重/auth 刷新并发无测试 |
 
 ---
 
@@ -551,7 +681,7 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 | memory | ✅ 完整 | ✅ 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（无测试） | ⚠️ 有条件通过（需补充测试） |
 | settings | ✅ 完整 | ✅ 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（无测试） | ⚠️ 有条件通过（需补充测试） |
 | skills | ✅ 完整 | ✅ 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（测试不完整） | ⚠️ 有条件通过（需补充测试） |
-| auth | ⏳ 待审计 | ⏳ 待审计 | ⏳ 待审计 | ⏳ 待审计 | ⏳ 保持 open |
+| auth | ✅ 完整 | ✅ 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（测试不完整） | ⚠️ 有条件通过（需补充测试） |
 | commit-attribution | ⏳ 待审计 | ⏳ 待审计 | ⏳ 待审计 | ⏳ 待审计 | ⏳ 保持 open |
 | git-integration | ⏳ 待审计 | ⏳ 待审计 | ⏳ 待审计 | ⏳ 待审计 | ⏳ 保持 open |
 | notifications | ⏳ 待审计 | ⏳ 待审计 | ⏳ 待审计 | ⏳ 待审计 | ⏳ 保持 open |
@@ -562,8 +692,8 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 
 | 项目 | 数量 |
 |------|------|
-| 已审计子系统 | 3（memory, settings, skills） |
-| 待审计子系统 | 6（auth/commit-attribution/git-integration/notifications/session-search-recovery/sessions-share） |
+| 已审计子系统 | 4（memory, settings, skills, auth） |
+| 待审计子系统 | 5（commit-attribution/git-integration/notifications/session-search-recovery/sessions-share） |
 | 完整文档 | 3 |
 | 实现一致 | 3 |
 | 发现总数 | 15 |
@@ -630,15 +760,29 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 
 ✅ **变更监听**：skillChangeDetector.initialize → chokidar 监听（Bun 用 polling）→ awaitWriteFinish 稳定等待 → debounce 300ms → clearSkillCaches + clearCommandsCache → skillsChanged 信号
 
+### auth 生命周期证据链确认
+
+✅ **启动预取**：main.tsx → startKeychainPrefetch() 并行读取 Keychain → prime keychainCacheState → 避免阻塞主线程
+
+✅ **认证来源读取**：getAuthTokenSource() → 按优先级检查（托管 FD → 环境变量 → 安全存储 → apiKeyHelper）→ isManagedOAuthContext() 隔离托管会话
+
+✅ **OAuth 登录**：/login → authLogin() → OAuthService.startOAuthFlow() → 启动本地服务器 → 生成 PKCE/state → 构建两条授权 URL → 等待授权码（自动回调或手动输入）→ exchangeCodeForTokens() → fetchProfileInfo() → saveOAuthTokensIfNeeded()
+
+✅ **Token 刷新**：API 请求前 → checkAndRefreshOAuthTokenIfNeeded() → 同进程 pendingRefreshCheck 去重 → invalidateOAuthCacheIfDiskChanged() → 检查过期 → 二次读取 → 获取文件锁 → 三次检查 → refreshOAuthToken() → saveOAuthTokensIfNeeded() → clearOAuthTokenCache()
+
+✅ **401 处理**：API 返回 401 → handleOAuth401Error(failedAccessToken) → pending401Handlers 按 token 去重 → clearOAuthTokenCache() → 重新读取 tokens → 对比 access token → 强制刷新（如需）
+
+✅ **安全存储读写**：getSecureStorage() → createFallbackStorage(primary, secondary) → read() 优先 primary，失败用 secondary → update() 成功时迁移（删除 secondary），失败时防止 stale shadow（删除 primary）
+
 ### Batch 3 总体结论
 
-✅ **memory/settings/skills spec 质量优秀**：文档完整性高，每个 spec 包含 10+ 关键决策表格、模块设计卡、完整生命周期证据链。
+✅ **memory/settings/skills/auth spec 质量优秀**：文档完整性高，每个 spec 包含 10+ 关键决策表格、模块设计卡、完整生命周期证据链。
 
-✅ **memory/settings/skills 实现一致性强**：所有分组源码与 spec 高度对齐，关键机制与文档完全一致，安全边界设计周到（settings 与 global config 分离、skills MCP 不执行 shell 注入、远程技能 zip 安全检查）。
+✅ **memory/settings/skills/auth 实现一致性强**：所有分组源码与 spec 高度对齐，关键机制与文档完全一致，安全边界设计周到（settings 与 global config 分离、skills MCP 不执行 shell 注入、auth 托管会话隔离/密钥不进入日志/权限控制）。
 
-⚠️ **测试覆盖严重不足**：memory/settings 子系统无专用测试文件，skills 仅有部分测试（skillSearch/remoteSkills），关键安全机制和核心逻辑无回归保护。
+⚠️ **测试覆盖严重不足**：memory/settings/auth 子系统无专用测试文件，skills 仅有部分测试（skillSearch/remoteSkills），auth 仅有部分测试（oauthRefresh/linuxSecretStorage），关键安全机制和核心逻辑无回归保护。
 
-⚠️ **其余 6 子系统保持 open**：本次仅审计 memory/settings/skills 子系统，auth/commit-attribution/git-integration/notifications/session-search-recovery/sessions-share 待后续审计。
+⚠️ **其余 5 子系统保持 open**：本次仅审计 memory/settings/skills/auth 子系统，commit-attribution/git-integration/notifications/session-search-recovery/sessions-share 待后续审计。
 
 ### 子系统审计进度
 
@@ -647,16 +791,16 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 | memory | ✅ 已审计 |
 | settings | ✅ 已审计 |
 | skills | ✅ 已审计 |
-| auth | ⏳ 保持 open |
+| auth | ✅ 已审计 |
 | commit-attribution | ⏳ 保持 open |
 | git-integration | ⏳ 保持 open |
 | notifications | ⏳ 保持 open |
 | session-search-recovery | ⏳ 保持 open |
 | sessions-share | ⏳ 保持 open |
 
-**当前进度**：3/9 已审计，其余 6 子系统保持 open
+**当前进度**：4/9 已审计，其余 5 子系统保持 open
 
 ### 说明
 
-本次完成 memory/settings/skills 三个子系统的深度生命周期审计，其余 6 子系统（auth/commit-attribution/git-integration/notifications/session-search-recovery/sessions-share）保持 open 状态。README 暂不更新，待全部 9 子系统审计完成后统一更新。
+本次完成 memory/settings/skills/auth 四个子系统的深度生命周期审计，其余 5 子系统（commit-attribution/git-integration/notifications/session-search-recovery/sessions-share）保持 open 状态。README 暂不更新，待全部 9 子系统审计完成后统一更新。
 
