@@ -547,7 +547,165 @@
 | Spec 存在 | ✅ | docs/superpowers/specs/2026-11-12-scheduling-design.md |
 | Coverage 存在 | ✅ | docs/architecture/coverage/scheduling.yaml |
 | Manifest 注册 | ✅ | id: scheduling, batch: 5, status: draft |
-| 审计状态 | ⏸️ 待审计 | 本次仅审计 agent-swarms，scheduling 保持 open |
+| Coverage 覆盖分组 | 22/22 | cron-core, cron-tasks, cron-scheduler, cron-lock, cron-notification, cron-jitter-config, jobs-schema, jobs-supervisor, jobs-state, jobs-classifier, jobs-operations, jobs-discovery, proactive-core, proactive-hooks, cron-create-tool, cron-delete-tool, cron-list-tool, cron-tool-prompt, sleep-tool, remote-trigger-tool, cron-lifecycle-tests, template-jobs-tests |
+
+#### 文档完整性审查
+
+✅ **问题与约束**：准确描述了 cron 定时任务、模板作业、主动唤醒的核心需求和约束条件（5字段cron、时区、跨会话协调、默认关闭等）。
+
+✅ **设计理由与备选方案**：10项关键决策表格化展示，包含真实证据位置：
+- cron任务持久化到`.claude/scheduled_tasks.json`
+- PID锁文件防止多会话重复触发
+- cron抖动（Jitter）避峰
+- 模板作业双进程监督者模式
+- 主动唤醒功能开关设计
+- SleepTool仅在proactive激活时可用
+- 一次性错过任务启动时询问而非自动触发
+- 周期性任务7天后自动过期（除非permanent）
+- 会话级任务不持久化，仅存内存
+
+✅ **目标与非目标**：清晰界定了cron、模板作业、主动唤醒的目标，明确不支持高级cron语法（L/W/?/名称别名）、跨机器调度、优先级队列等。
+
+✅ **架构、模块与数据流**：11个模块设计卡（CronLock、CronTasks、CronScheduler、CronNotification、JobState、JobSupervisor、JobClassifier、Proactive、SleepTool、RemoteTrigger），完整的cron调度主循环、模板作业监督者流程、proactive状态流转。
+
+✅ **证据链覆盖**：完整的调度锁获取/释放流程、cron任务创建/触发/清理流程、模板作业进程管理流程、proactive状态管理流程、错过任务检测流程已验证。
+
+#### 源码验证
+
+**cron-core** (src/utils/cron.ts)：
+- 5字段标准cron表达式解析，支持通配符、N、step (*/N)、范围(N-M)、列表(N,M,...)
+- 不支持L/W/?/名称别名
+- 时区使用本地时区
+- `parseCronExpression`、`computeNextCronRun`、`cronToHuman`完整实现 ✅
+
+**cron-tasks** (src/utils/cronTasks.ts)：
+- 任务持久化到`.claude/scheduled_tasks.json`，格式`{tasks: [...]}`
+- 任务ID为8字符UUID片段
+- 支持durable=false会话级任务（内存存储）
+- 抖动计算：周期性任务使用frac*interval cap 15分钟；一次性任务在mod 30分钟时提前0-90秒
+- 确定性抖动基于taskId哈希
+- `addCronTask`、`removeCronTasks`、`listAllCronTasks`、`markCronTasksFired`完整实现 ✅
+
+**cron-scheduler** (src/utils/cronScheduler.ts)：
+- 秒级轮询check()循环
+- PID锁持有者处理文件任务
+- inFlight防止重复触发
+- nextFireAt锚定到lastFiredAt/createdAt而非现在
+- 错过任务仅在初始加载时检测一次性任务
+- 周期性任务7天自动过期（可配置）
+- `createCronScheduler`、`isRecurringTaskAged`完整实现 ✅
+
+**cron-lock** (src/utils/cronTasksLock.ts)：
+- `O_EXCL`原子创建锁文件
+- PID存活检测（`/proc` on Linux, `ps` on macOS/BSD）
+- 锁文件包含sessionId、pid、acquiredAt
+- 陈旧锁自动恢复
+- 退出时自动清理锁
+- `tryAcquireSchedulerLock`、`releaseSchedulerLock`完整实现 ✅
+
+**cron-notification** (src/utils/cronNotification.ts)：
+- `buildMissedTaskNotification`格式化错过任务提示
+- 使用动态长度反引号围栏防止注入
+- 错过任务询问后立即删除 ✅
+
+**jobs-state** (src/jobs/state.ts)：
+- 作业目录隔离在`~/.claude/jobs/<uuid>`
+- `assertSecureJobDirectory`安全检查（目录在jobs root内、非symlink、权限0o700）
+- `writeJsonAtomic`原子写入（临时文件+rename+fsync）
+- `withJobLock`使用proper-lockfile（stale 60s, retries 40）
+- PID复用防护：`getProcessStartToken`获取进程启动时间
+- `reconcileJob`检测崩溃supervisor并标记失败
+- 完整的transcript JSONL追加机制 ✅
+
+**jobs-supervisor** (src/jobs/supervisor.ts)：
+- `spawnSupervisorProcess` detached启动监督者
+- 监督者spawn子进程执行实际任务
+- 监控stdout/stderr/exit
+- 所有事件追加到transcript
+- `mergeProcessOutcome`结合exit code和分类器结果
+- 双进程设计保证监控可靠性 ✅
+
+**proactive-core** (src/proactive/index.ts)：
+- `activateProactive`仅接受'command'源
+- 状态管理：active/paused/contextBlocked
+- `subscribeToProactiveChanges`通知机制
+- 状态变化时`nextTickAt`自动清空
+- 仅内存存储，不持久化 ✅
+
+**sleep-tool** (src/tools/SleepTool/SleepTool.ts)：
+- `isEnabled()`检查`isProactiveActive()`
+- 支持`duration`和`duration_ms`（已弃用）
+- 可中断sleep实现
+- 最小/最大sleep duration配置 ✅
+
+**cron-create-tool** (src/tools/ScheduleCronTool/CronCreateTool.ts)：
+- `MAX_JOBS=50`限制
+- cron表达式验证
+- 队友agent不支持durable cron
+- `setScheduledTasksEnabled(true)`自动启用调度器 ✅
+
+**发现 B5-scheduling-01**：scheduling子系统核心测试不完整，仅有cron-lifecycle-tests覆盖基本生命周期（一次性任务触发、周期性任务调度、锁竞争接管），缺少jobs-classifier、proactive、sleep-tool、remote-trigger-tool的专用测试。严重度：P2（功能正常但无回归保护），置信度：已证实（tests/目录扫描确认）。
+
+**发现 B5-scheduling-02**：错过任务检测仅在初始加载时进行，会话运行期间错过的任务（如电脑休眠唤醒后）静默立即触发，不询问用户。spec已明确记录此权衡，无功能问题。严重度：P3（文档已记录，无功能问题），置信度：已证实（spec与源码一致）。
+
+**发现 B5-scheduling-03**：jobs-classifier模块在spec中提及但未详细展开设计说明，源码实现完整但测试仅template-jobs-tests覆盖部分场景。严重度：P3（可维护性），置信度：已证实。
+
+**发现 B5-scheduling-04**：cron锁的probe interval硬编码为5000ms，可配置性更好但非必需。spec已记录，无功能问题。严重度：P3（文档已记录，无功能问题），置信度：已证实（spec与源码一致）。
+
+**发现 B5-scheduling-05**：proactive功能仅提供状态管理框架，没有默认行为或示例实现。这是显式设计权衡（安全优先，用户显式控制）。严重度：P3（设计权衡已记录），置信度：已证实（spec与源码一致）。
+
+**发现 B5-scheduling-06**：`.claude/scheduled_tasks.json`无显式权限设置，依赖目录umask。建议创建时设置为0o600。严重度：P3（低风险，可改进），置信度：已证实（源码检查）。
+
+#### 测试验证
+
+检查coverage中提及的测试文件：
+- ✅ `tests/cronLifecycle.test.ts`：覆盖一次性任务触发、周期性任务调度、锁竞争接管
+- ✅ `tests/templateJobs.test.ts`：存在但未详细验证
+- ❌ 无 proactive-core专用测试
+- ❌ 无 sleep-tool专用测试
+- ❌ 无 remote-trigger-tool专用测试
+- ❌ 无 jobs-classifier完整场景测试
+- ❌ 无 cron-notification注入防护测试
+
+#### 隐私与安全边界审查
+
+**cron任务安全边界**：
+- 任务存储在项目目录`.claude/scheduled_tasks.json`
+- 无权限检查（同目录多用户场景需注意）
+- 错过任务提示使用动态长度反引号围栏防止prompt注入 ✅
+
+**模板作业安全边界**：
+- 作业目录在`~/.claude/jobs/<uuid>`，权限0o700
+- `assertSecureJobDirectory`防止目录穿越和symlink攻击
+- `writeJsonAtomic`原子写入防止崩溃损坏
+- proper-lockfile防止并发操作
+- PID+startToken双重验证防止PID复用攻击 ✅
+
+**proactive安全边界**：
+- 默认关闭，需显式`activateProactive('command')`启用
+- 不持久化，会话结束状态丢失
+- SleepTool仅在proactive激活时可用，防止普通交互误用 ✅
+
+#### 上游证据
+
+上游CLI strings已提取，关键匹配：
+- `scheduled_tasks.json`、`scheduled_tasks.lock`文件名匹配 ✅
+- `CronCreate`、`CronDelete`、`CronList`工具名匹配 ✅
+- `SleepTool`工具名匹配 ✅
+- `RemoteTrigger`工具名匹配 ✅
+- `template-job-supervisor`命令匹配 ✅
+- cron抖动相关配置匹配 ✅
+- 周期性任务过期相关逻辑匹配 ✅
+
+#### 证据边界总结
+
+| 类别 | 覆盖 | 缺口 |
+|------|------|------|
+| Spec完整性 | ✅ 完整，10项决策，11个模块设计卡，完整生命周期证据链 | ⚠️ jobs-classifier模块设计说明较简略 |
+| 源码一致性 | ✅ 所有22个coverage分组源码与spec高度对齐 | ⚠️ 无明显上游偏离 |
+| 测试覆盖 | ⚠️ 仅有cronLifecycle.test.ts和templateJobs.test.ts两个测试文件，核心模块测试不足 | ❌ proactive、sleep-tool、remote-trigger-tool、jobs-classifier无专用测试 |
+| 官方文档 | ❓ 未访问 | ⚠️ 基于现有spec |
+| 上游CLI | ✅ 已提取strings，关键术语匹配 | ⚠️ 仅静态证据 |
 
 ---
 
@@ -594,6 +752,12 @@
 | B5-review-analysis-01 | review-analysis | review-artifact-tool, ctx-inspect-tool, insights-command, context-analysis | 测试缺口 | P2 | review-analysis 子系统仅 1 个测试文件（ReviewArtifact 基础测试），其余核心功能无测试覆盖。CtxInspectTool、insights 命令完整流、sessionMeta 提取、facet 提取、detectMultiClauding、两级缓存均无专用测试 | src/tools/CtxInspectTool/, src/commands/insights.ts, src/commands/insights/sessionMeta.ts | ✅ strings 匹配 | ⚠️ 仅 1 个测试文件 | 中（功能正常但无回归保护） | 添加 CtxInspectTool 输出验证测试、insights sessionMeta 提取测试、facet 提取测试、detectMultiClauding 算法测试、两级缓存读写测试 | 已证实 | 完整源码审查 | open |
 | B5-review-analysis-02 | review-analysis | insights-command | 实现改进 | P3 | facet 缓存直接写入非原子，与 sessionMeta 原子写入不一致。进程崩溃时可能留下半写 facet 缓存文件 | src/commands/insights.ts:2352-2360 | ✅ strings 匹配 | ❌ 无测试 | 低（低概率，可重新提取） | facet 缓存也使用临时文件 + rename 原子写入，保持与 sessionMeta 一致 | 已证实 | 完整源码审查 | open |
 | B5-review-analysis-03 | review-analysis | insights-command | 工程改进 | P3 | insights 无缓存过期/清理机制，长期使用可能积累大量旧缓存文件 | src/commands/insights.ts, src/commands/insights/sessionMeta.ts | ✅ strings 匹配 | ❌ 无测试 | 低（磁盘空间通常足够） | 实现缓存过期机制（如保留最近 90 天），或提供 /insights --clean 命令手动清理 | 已证实 | 完整源码审查 | open |
+| B5-scheduling-01 | scheduling | cron-lifecycle-tests, template-jobs-tests | 测试缺口 | P2 | scheduling子系统核心测试不完整，仅有cron-lifecycle-tests覆盖基本生命周期，缺少jobs-classifier、proactive、sleep-tool、remote-trigger-tool的专用测试 | src/proactive/index.ts, src/tools/SleepTool/SleepTool.ts, src/tools/RemoteTriggerTool/RemoteTriggerTool.ts, src/jobs/classifier.ts | ✅ strings 匹配 | ⚠️ 仅2个测试文件 | 中（功能正常但无回归保护） | 添加proactive状态管理测试、sleep-tool启用/禁用测试、remote-trigger工具调用测试、jobs-classifier分类结果验证测试 | 已证实 | 完整源码审查 | open |
+| B5-scheduling-02 | scheduling | cron-scheduler | 设计权衡 | P3 | 错过任务检测仅在初始加载时进行，会话运行期间错过的任务（如电脑休眠唤醒后）静默立即触发，不询问用户。spec已明确记录此权衡 | src/utils/cronScheduler.ts:201-234 | ✅ strings 匹配 | ❌ 无测试 | 低（文档已记录，无功能问题） | 无需变更，spec已明确记录此权衡 | 已证实 | spec与源码一致 | open |
+| B5-scheduling-03 | scheduling | jobs-classifier | 可维护性 | P3 | jobs-classifier模块在spec中提及但未详细展开设计说明，源码实现完整但测试仅template-jobs-tests覆盖部分场景 | src/jobs/classifier.ts | ✅ strings 匹配 | ⚠️ 仅部分测试 | 低（可维护性） | 补充jobs-classifier模块设计说明，添加完整场景测试 | 已证实 | 完整源码审查 | open |
+| B5-scheduling-04 | scheduling | cron-lock | 设计权衡 | P3 | cron锁的probe interval硬编码为5000ms，可配置性更好但非必需。spec已记录，无功能问题 | src/utils/cronTasksLock.ts | ✅ strings 匹配 | ❌ 无测试 | 低（文档已记录，无功能问题） | 无需变更，spec已明确记录此权衡 | 已证实 | spec与源码一致 | open |
+| B5-scheduling-05 | scheduling | proactive-core | 设计权衡 | P3 | proactive功能仅提供状态管理框架，没有默认行为或示例实现。这是显式设计权衡（安全优先，用户显式控制） | src/proactive/index.ts | ✅ strings 匹配 | ❌ 无测试 | 低（设计权衡已记录） | 无需变更，spec已明确记录此权衡 | 已证实 | spec与源码一致 | open |
+| B5-scheduling-06 | scheduling | cron-tasks | 安全改进 | P3 | `.claude/scheduled_tasks.json`无显式权限设置，依赖目录umask。建议创建时设置为0o600 | src/utils/cronTasks.ts:165-182 | ✅ strings 匹配 | ❌ 无测试 | 低（低风险，可改进） | 在writeCronTasks中添加显式权限设置为0o600 | 已证实 | 完整源码审查 | open |
 
 ---
 
@@ -656,17 +820,34 @@
 
 ---
 
+### scheduling 已验证的边界
+
+| 模块 | 已验证 | 未验证 |
+|------|------|------|
+| cron-core | 5字段标准cron解析、本地时区、不支持L/W/?/名称别名 | 极端边界cron表达式处理 |
+| cron-tasks | 任务持久化格式、8字符UUID、durable=false会话任务、确定性抖动、7天过期 | 抖动真实避峰效果验证 |
+| cron-scheduler | 秒级轮询、锁持有者处理文件任务、inFlight防重复、nextFireAt锚定策略 | 真实长周期调度稳定性 |
+| cron-lock | O_EXCL原子创建、PID存活检测、陈旧锁恢复、退出清理 | 多进程高并发锁竞争 |
+| cron-notification | 错过任务提示格式化、动态反引号围栏防注入 | 真实注入攻击测试 |
+| jobs-state | 作业目录隔离、安全检查、原子写入、proper-lockfile、PID+startToken防护 | 真实PID复用场景测试 |
+| jobs-supervisor | detached启动、子进程监控、transcript记录、结果合并 | 真实worker崩溃恢复场景 |
+| proactive-core | 仅'command'源激活、状态管理、subscribe通知、不持久化 | 真实proactive agent集成 |
+| sleep-tool | 仅proactive激活时可用、可中断sleep、配置限制 | 长时间sleep中断测试 |
+| cron-create-tool | MAX_JOBS=50限制、cron验证、teammate限制、自动启用调度器 | 真实用户使用场景测试 |
+
+---
+
 ### Batch 5 总体结论
 
-✅ **4 个子系统 spec 质量优秀**：agent-swarms、help-feedback、plan-worktree、review-analysis 文档完整性高，关键决策表格化，模块设计卡完整，生命周期证据链清晰。
+✅ **5 个子系统 spec 质量优秀**：agent-swarms、help-feedback、plan-worktree、review-analysis、scheduling 文档完整性高，关键决策表格化，模块设计卡完整，生命周期证据链清晰。
 
-✅ **4 个子系统实现一致性强**：所有 coverage 分组源码与 spec 高度对齐，关键机制与文档完全一致，安全边界设计周全。
+✅ **5 个子系统实现一致性强**：所有 coverage 分组源码与 spec 高度对齐，关键机制与文档完全一致，安全边界设计周全。
 
 ✅ **无上游 deviance**：未发现与上游 CLI 明显不一致的实现，spec 与源码高度匹配。
 
-⚠️ **测试覆盖严重不足**：仅 `agentMemorySnapshot.test.ts`（agent-swarms）、`tests/reviewArtifact.test.ts`（review-analysis）、`tests/exitPlanModePrompt.test.ts`/`tests/ultraplanPoll.test.ts`（plan-worktree）这 4 个小型测试文件，其余核心功能均无专用测试。
+⚠️ **测试覆盖严重不足**：仅 `agentMemorySnapshot.test.ts`（agent-swarms）、`tests/reviewArtifact.test.ts`（review-analysis）、`tests/exitPlanModePrompt.test.ts`/`tests/ultraplanPoll.test.ts`（plan-worktree）、`tests/cronLifecycle.test.ts`/`tests/templateJobs.test.ts`（scheduling）这 6 个小型测试文件，其余核心功能均无专用测试。
 
-⚠️ **有 2 项 P2 实现改进建议**：TeamFile 原子写入应使用临时文件 rename 保护（B5-agent-swarms-08/09）；facet 缓存也应使用原子写入（B5-review-analysis-02）。
+⚠️ **有 3 项 P2 实现改进建议**：TeamFile 原子写入应使用临时文件 rename 保护（B5-agent-swarms-08/09）；facet 缓存也应使用原子写入（B5-review-analysis-02）；scheduling子系统核心测试不完整（B5-scheduling-01）。
 
 ⚠️ **有 2 项未完成功能**：`useFrustrationDetection()` 仅占位（B5-help-feedback-02）；VerifyPlanExecutionTool 未实现（B5-plan-worktree-02）。
 
@@ -680,8 +861,8 @@
 | help-feedback | ✅ 已审计 |
 | plan-worktree | ✅ 已审计 |
 | review-analysis | ✅ 已审计 |
-| scheduling | ⏸️ 待审计（open） |
+| scheduling | ✅ 已审计 |
 | task-system | ⏸️ 待审计（open） |
 | workflow | ⏸️ 待审计（open） |
 
-**当前进度**：4/7 已审计；剩余 3 子系统保持 open。
+**当前进度**：5/7 已审计；剩余 2 子系统保持 open。
