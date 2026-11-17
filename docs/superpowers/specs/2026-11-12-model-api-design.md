@@ -1299,7 +1299,7 @@ type APIProvider = 'firstParty' | 'bedrock' | 'vertex' | 'foundry'
 - **流式失败降级到非流式是内部实现**：调用方不感知，仅看到最终结果
 - **query-core 处理降级后的对话适配**：model-api 仅抛出 FallbackTriggeredError
 
-### 4.7 关键流程与失败/取消/禁用路径
+### 4.7 关键流程与失败路径
 
 ```text
 模型选择流程

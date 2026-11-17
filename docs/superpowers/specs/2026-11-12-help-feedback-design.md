@@ -952,7 +952,7 @@ closed → open → [good/bad/fine] → [transcript_prompt?] → [thanks]
 └────────────────────┘ └────────────────────┘ └───────────────┘
 ```
 
-### 关键流程与失败/取消/禁用路径
+### 关键流程与失败路径
 
 ```text
 [主线] FeedbackSurvey显示与响应流程

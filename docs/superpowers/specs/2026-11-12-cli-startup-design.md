@@ -2360,7 +2360,7 @@ type CleanupFunction = () => void | Promise<void>
 - bootstrap/state.ts 是全局单例，跨模块共享
 - graceful shutdown 监听在 init 早期设置，确保后续分配的资源都能被清理
 
-### 4.10 关键流程与失败/取消/禁用路径
+### 4.10 关键流程与失败路径
 
 ```text
 完整 CLI 启动流程（交互式 REPL 路径）

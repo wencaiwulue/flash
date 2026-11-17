@@ -1127,7 +1127,7 @@ interface CompactMetadata {
 - **压缩不修改原始消息数组的所有权**：仅修改内容或返回新数组
 - **compact boundary 由 QueryEngine 处理数组裁剪**：compaction 模块仅生成 boundary marker
 
-### 4.7 关键流程与失败/取消/禁用路径
+### 4.7 关键流程与失败路径
 
 ```text
 整体压缩策略优先级：microcompact → context collapse → autocompact → reactive compact

@@ -151,7 +151,7 @@ status: draft
 - **internal/external**：使用系统 OpenSSH 而非自己实现 SSH 协议
 - **bundled/source**：远程工件是预构建的 bun + main.js + manifest.json
 
-### 4.2 关键流程与失败/取消/禁用路径
+### 4.2 关键流程与失败路径
 
 ```text
 SSH Session 创建（主流程）：

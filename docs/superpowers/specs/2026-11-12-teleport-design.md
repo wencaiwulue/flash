@@ -228,7 +228,7 @@ Teleport 是 Claude Code 的核心功能，允许用户在本地 CLI 和 Claude.
 - **internal/external**：使用 GitHub API 和 Anthropic Sessions API，不自己实现云端
 - **bundled/source**：Git bundle 是完整对象包，可选降级为 squash
 
-### 4.2 关键流程与失败/取消/禁用路径
+### 4.2 关键流程与失败路径
 
 ```text
 Teleport 上云（主流程）：
