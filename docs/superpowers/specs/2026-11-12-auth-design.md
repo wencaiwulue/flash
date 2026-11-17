@@ -532,6 +532,174 @@ type AuthTokenSource =
 - **Config**：`oauthAccount` 信息存储在 global config（非敏感），本文描述与安全存储的边界
 - **Lockfile**：跨进程锁使用 lockfile 模块，本文只描述调用方式
 
+### 4.7 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                          Claude Code Auth Subsystem                              │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                 │
+│  ┌─────────────────────────┐    ┌───────────────────────────────────────┐      │
+│  │  CLI / OAuth UI         │    │  Third-party Services (Bedrock/Vertex)│      │
+│  │  (login/logout/status)  │    │  (auth boundary only)                 │      │
+│  └───────────┬─────────────┘    └───────────────────────────────────────┘      │
+│              │                                                                   │
+│              ▼                                                                   │
+│  ┌───────────────────────────────────────────────────────────────────────┐     │
+│  │                        auth.ts (Core Auth Logic)                      │     │
+│  ├───────────────────────────────────────────────────────────────────────┤     │
+│  │ • getAuthTokenSource() (priority: FD > env > storage > apiKeyHelper)  │     │
+│  │ • getClaudeAIOAuthTokens() / getClaudeAIOAuthTokensAsync()            │     │
+│  │ • checkAndRefreshOAuthTokenIfNeeded() (with dedup/lock)               │     │
+│  │ • handleOAuth401Error() (recheck + force refresh)                     │     │
+│  │ • saveOAuthTokensIfNeeded() / saveApiKey()                            │     │
+│  │ • isManagedOAuthContext() (CCR/Claude Desktop isolation)              │     │
+│  └───────────────────────────┬───────────────────────────────────────────┘     │
+│                              │                                                   │
+│          ┌───────────────────┼───────────────────┐                           │
+│          ▼                   ▼                   ▼                           │
+│ ┌────────────────┐  ┌──────────────────┐  ┌──────────────────┐               │
+│ │ authFile-      │  │  OAuth Service   │  │  secureStorage/  │               │
+│ │ Descriptor.ts  │  │  (Authorization) │  │  index.ts        │               │
+│ ├────────────────┤  ├──────────────────┤  ├──────────────────┤               │
+│ │ • FD reading   │  │ • startOAuth-    │  │ • Factory for    │               │
+│ │ • CCR path     │  │   Flow()         │  │   platform storage│               │
+│ │ • persist for  │  │ • AuthCode-      │  │ • createFallback- │               │
+│ │   subprocesses │  │   Listener       │  │   Storage()       │               │
+│ └────────────────┘  └──────────────────┘  └──────────────────┘               │
+│                                                  │                             │
+│                     ┌────────────────────────────┼──────────────────────────┐  │
+│                     ▼                            ▼                          ▼  │
+│          ┌───────────────────────┐  ┌───────────────────────┐  ┌────────────────┐│
+│          │ macOsKeychain-        │  │  linuxSecretStorage   │  │ plainText-     ││
+│          │ Storage.ts            │  ├───────────────────────┤  │ Storage.ts     ││
+│          ├───────────────────────┤  │ • secret-tool calls   │  ├────────────────┤│
+│          │ • security -i stdin   │  └───────────────────────┘  │ • ~/.claude/  ││
+│          │ • 30s LRU cache       │                              │   .credentials ││
+│          │ • stale-while-error   │                              │ • 0o600        ││
+│          │ • hex encoding        │                              └────────────────┘│
+│          └───────────────────────┘                                               │
+│                                                                                 │
+│  ┌───────────────────────────────────────────────────────────────────────┐     │
+│  │                      Persistence Layer                                 │     │
+│  ├───────────────────────────────────────────────────────────────────────┤     │
+│  │ • macOS Keychain: "Claude Code-credentials" service                   │     │
+│  │ • Linux: libsecret (secret-tool)                                      │     │
+│  │ • Fallback: ~/.claude/.credentials.json (0o600)                       │     │
+│  │ • CCR: /home/claude/.claude/remote/.oauth_token (0o600)               │     │
+│  │ • Lock: ~/.claude/ (lockfile for cross-process refresh)               │     │
+│  └───────────────────────────────────────────────────────────────────────┘     │
+│                                                                                 │
+│  ┌───────────────────────────────────────────────────────────────────────┐     │
+│  │                      State & Isolation Boundaries                       │     │
+│  ├───────────────────────────────────────────────────────────────────────┤     │
+│  │ • CCR/Claude Desktop: NO reading local ~/.claude/settings.json        │     │
+│  │ • All token logging uses <redacted> replacement                        │     │
+│  │ • Token never appears in ps/top (stdin priority, hex fallback)         │     │
+│  └───────────────────────────────────────────────────────────────────────┘     │
+│                                                                                 │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 4.8 关键流程与失败路径
+
+#### 主流程：Token 读取与刷新
+
+```text
+用户发起 API 请求
+      │
+      ▼
+┌─────────────────────────────────────┐
+│ getAuthTokenSource()                │
+│ (check priority: FD > env > storage)│
+└──────────────────┬──────────────────┘
+                   │
+                   ▼
+┌─────────────────────────────────────┐
+│ getClaudeAIOAuthTokens()            │
+│ (try cache → primary → fallback)    │
+└──────────────────┬──────────────────┘
+                   │
+                   ▼
+┌─────────────────────────────────────┐
+│ isOAuthTokenExpired(expiresAt)?     │
+│ (with -5min buffer)                 │
+└─────────┬───────────────────────────┘
+          │
+       ┌──┴──┐
+       │ No  │
+       └──┬──┘
+          ▼
+    ┌──────────────┐
+    │ Return token │
+    └──────────────┘
+          │
+       ┌──┴──┐
+       │ Yes │
+       └──┬──┘
+          ▼
+┌─────────────────────────────────────────┐
+│ checkAndRefreshOAuthTokenIfNeeded()     │
+├─────────────────────────────────────────┤
+│ 1. Check pendingRefreshCheck (dedup)    │
+│ 2. Invalidate cache if .credentials.json│
+│    changed                              │
+│ 3. Recheck expiration (async read)      │
+│ 4. Acquire lockfile on ~/.claude/       │
+│    (5 retries, exponential backoff)     │
+│ 5. Recheck token again (hold lock)      │
+│ 6. Call refreshOAuthToken()             │
+│ 7. saveOAuthTokensIfNeeded()            │
+│ 8. Clear cache, release lock            │
+└──────────────────┬──────────────────────┘
+                   │
+         ┌─────────┴─────────┐
+         ▼                   ▼
+    ┌─────────┐        ┌──────────────┐
+    │ Success │        │ 401 Error    │
+    └────┬────┘        └──────┬───────┘
+         ▼                    ▼
+    ┌─────────┐    ┌─────────────────────────┐
+    │ Return  │    │ handleOAuth401Error()   │
+    │ new     │    ├─────────────────────────┤
+    │ token   │    │ • Check pending401 by  │
+    └─────────┘    │   token (dedup)        │
+                   │ • Clear cache, re-read  │
+                   │ • Check if token changed│
+                   │ • Force refresh if not  │
+                   └───────────┬─────────────┘
+                               ▼
+                        ┌─────────────────┐
+                        │ Return result   │
+                        └─────────────────┘
+
+失败路径：
+  ├─ Lock acquire failed → retry 5x → give up, return false
+  ├─ Refresh network failed → throw, caller retries later
+  ├─ Invalid refresh token → throw, user needs re-login
+  ├─ Storage write failed → fallback to plaintext + warning
+  └─ Safe refresh error: token in error message → redact
+```
+
+### 4.9 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| `OAuthTokens` (access/refresh/expiresAt) | `auth.ts` + secure storage | 首次 OAuth 登录：`OAuthService.startOAuthFlow()` → `installOAuthTokens()` → `saveOAuthTokensIfNeeded()` | 进程内：共享模块级缓存（30s）；跨进程：同一用户共享安全存储，不同用户隔离 | macOS: Keychain "Claude Code-credentials" service；Linux: libsecret；Fallback: `~/.claude/.credentials.json` (0o600)；CCR: `/home/claude/.claude/remote/.oauth_token` | 缓存失效：`clearOAuthTokenCache()`；完整登出：`performLogout()` 删除存储 | 无显式取消，过期或刷新时自动替换 |
+| `pendingRefreshCheck` (同进程去重) | `auth.ts` 模块级 | 首次刷新调用时：`checkAndRefreshOAuthTokenIfNeeded()` → `pendingRefreshCheck = promise` | 同进程内共享，去重并发刷新请求 | 不持久化，纯内存 | Promise resolve/reject 后自动重置 | 无显式取消，Promise 完成即清理 |
+| `pending401Handlers` (按 token 去重) | `auth.ts` 模块级 | 首次 401 处理：`handleOAuth401Error()` → Map 中创建 Promise 条目 | 同进程内按 failedAccessToken 分组共享 | 不持久化，纯内存 | Promise resolve/reject 后自动从 Map 删除 | 无显式取消，Promise 完成即清理 |
+| `~/.claude/` lockfile (跨进程锁) | `lockfile` 模块 | `checkAndRefreshOAuthTokenIfNeeded()` → `lockfile.lock(getClaudeConfigHomeDir())` | 跨进程互斥锁 | 不持久化锁状态，锁文件释放即删除 | 持有锁期间最多 5 次重试获取，超时放弃 | Promise finally 块中保证 `release()` 释放 |
+| `keychainCacheState` (macOS Keychain 缓存) | `macOsKeychainHelpers.ts` 模块级 | `startKeychainPrefetch()` (main.tsx 启动时并行调用) | 同进程内共享 | 不持久化，纯内存 LRU | 失效：`clearKeychainCache()` (generation++)；自动过期：30s TTL；stale-while-error: 读取失败时保留旧值 | 进程退出自动清理，无显式取消 |
+| `SecureStorageData` (JSON payload) | 各平台存储实现 | `update()` 时从 `OAuthTokens` 等序列化 | 同一用户共享同一存储条目，不同用户/服务隔离 | Keychain/libsecret: 加密存储；plaintext: `~/.claude/.credentials.json` (0o600) | 完整删除：`delete()`；更新时删除 stale primary 防止 shadow | 更新失败时自动回滚（尝试删除 primary） |
+| `apiKeyHelper` 缓存 (epoch + in-flight + value) | `auth.ts` 模块级 | 首次调用 `getAnthropicApiKeyWithSource()` 时初始化 | 同进程内共享，带 epoch 避免竞态 | 不持久化，纯内存 SWR（stale-while-revalidate） | 无显式重置，epoch 递增时旧值自然失效 | `_executeApiKeyHelper()` 失败时缓存 ' ' sentinel 避免重试风暴 |
+
+生命周期证据：
+- Token 读取优先级：`src/utils/auth.ts:152-206`
+- 刷新并发控制：`src/utils/auth.ts:1427-1562`
+- Keychain 缓存：`src/utils/secureStorage/macOsKeychainHelpers.ts:69-91`
+- 安全存储 fallback：`src/utils/secureStorage/index.ts:10-20`
+- FD/CCR 读取：`src/utils/authFileDescriptor.ts:13-196`
+
 ## 5. 失败语义与工程取舍
 
 | 触发条件 | 检测位置 | 消息/异常如何传播 | 是否重试及上限 | 状态与资源清理 | 调用方可见结果 |

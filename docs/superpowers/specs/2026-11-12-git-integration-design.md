@@ -609,6 +609,368 @@ Git commit 前
 | `settings.ts` | 读取 Worktree 配置（sparsePaths、symlinkDirectories） | settings |
 | `model/model.ts` | 模型名规范化用于归因 | model-api |
 
+### 4.7 架构与资源边界图
+
+```text
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                       Claude Code Git Integration                             │
+├───────────────────────────────────────────────────────────────────────────────┤
+│                                                                               │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                          Entry Points                                 │  │
+│  ├───────────────────────────────────────────────────────────────────────┤  │
+│  │ • git.ts: findGitRoot(), getBranch(), getHead(), getRemoteUrl(),     │  │
+│  │   getGitState(), getIsClean(), isCurrentDirectoryBareGitRepo()        │  │
+│  │ • gitDiff.ts: fetchGitDiff(), fetchGitDiffHunks(),                  │  │
+│  │   fetchSingleFileGitDiff()                                            │  │
+│  │ • worktree.ts: createWorktreeForSession(), getOrCreateWorktree(),    │  │
+│  │   cleanupWorktree(), keepWorktree(), cleanupStaleAgentWorktrees()    │  │
+│  │ • detectRepository.ts: parseGitRemote(), normalizeGitRemoteUrl(),    │  │
+│  │   getRepoRemoteHash(), detectCurrentRepository()                    │  │
+│  └───────────────────────────────────┬───────────────────────────────────┘  │
+│                                      │                                       │
+│          ┌───────────────────────────┼───────────────────────────┐          │
+│          ▼                           ▼                           ▼          │
+│  ┌───────────────────┐    ┌───────────────────────┐    ┌─────────────────┐ │
+│  │  gitFilesystem.ts │    │  gitDiff.ts          │    │  worktree.ts    │ │
+│  ├───────────────────┤    ├───────────────────────┤    ├─────────────────┤ │
+│  │ • resolveGitDir() │    │ • fetchGitDiff():    │    │ • validate-     │ │
+│  │ • readGitHead()   │    │   shortstat → num-   │    │   WorktreeSlug()│ │
+│  │ • resolveRef():   │    │   stat → hunks (on   │    │ • flattenSlug() │ │
+│  │   loose → packed  │    │   demand)            │    │ • getOrCreate-  │ │
+│  │ • parseGitConfig- │    │ • MAX_FILES=50,     │    │   Worktree():   │ │
+│  │   Value()         │    │   MAX_DIFF_SIZE=1MB,│    │   fast path for │ │
+│  │ • getCommonDir()  │    │   MAX_LINES_PER_FILE│    │   existing, skip│ │
+│  │ • isSafeRefName() │    │   =400               │    │   fetch if      │ │
+│  │ • isValidGitSha() │    │ • isInTransientGit- │    │   possible       │ │
+│  │ • GitFileWatcher: │    │   State(): checks    │    │ • GIT_NO_PROMPT_│ │
+│  │   fs.watchFile()  │    │   MERGE_HEAD/REBASE │    │   ENV: GIT_TERMI│ │
+│  │   + dirty cache   │    │   _HEAD/etc          │    │   NAL_PROMPT=0, │ │
+│  └───────────────────┘    └───────────────────────┘    │   GIT_ASKPASS= │ │
+│                                                        └────────┬────────┘ │
+│                                                                 │          │
+│          ┌──────────────────────────────────────────────────────┼──────┐  │
+│          ▼                                                      ▼      ▼  │
+│  ┌─────────────────────────────┐    ┌───────────────────────────────────┐ │
+│  │  commitAttribution.ts /     │    │  detectRepository.ts / GitHub     │ │
+│  │  attribution*.ts            │    │  Integration                      │ │
+│  └─────────────────────────────┘    └───────────────────────────────────┘ │
+│                                                                               │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                        Git Filesystem Layer                           │  │
+│  ├───────────────────────────────────────────────────────────────────────┤  │
+│  │ • Direct file reads: NO git commands for metadata                     │  │
+│  │   - .git/HEAD (ref: refs/heads/main or SHA)                          │  │
+│  │   - .git/refs/heads/<branch> (loose ref)                             │  │
+│  │   - .git/packed-refs (packed refs)                                   │  │
+│  │   - .git/config (remote URL, default branch)                          │  │
+│  │   - .git/worktrees/<name>/ (Worktree metadata)                       │  │
+│  │ • fs.watchFile(): auto-invalidate cache on change                     │  │
+│  │ • CACHE: GitFileWatcher.cache (dirty flags + values)                  │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                               │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                        Git Command Layer                              │  │
+│  ├───────────────────────────────────────────────────────────────────────┤  │
+│  │ • execFileNoThrow(): NEVER throws, always resolves with code/stdout/  │  │
+│  │   stderr; default timeout 10min (gitDiff uses 5s)                     │  │
+│  │ • Git commands: rev-parse, diff, ls-files, worktree, fetch,          │  │
+│  │   interpret-trailers                                                 │  │
+│  │ • Security: GIT_TERMINAL_PROMPT=0, GIT_ASKPASS=, stdin=ignore for    │  │
+│  │   network operations (fetch)                                          │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                               │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                        Worktree Layer                                 │  │
+│  ├───────────────────────────────────────────────────────────────────────┤  │
+│  │ • Location: ~/.claude/worktrees/<slug>/ (slug flattened: / → +)       │  │
+│  │ • Branch: worktree-<slug> (auto-created)                              │  │
+│  │ • Safety: validateWorktreeSlug() - no .., length ≤64, safe chars     │  │
+│  │ • Fast path: check .git pointer first, skip fetch if exists          │  │
+│  │ • Sparse checkout: optional, git sparse-checkout set + checkout      │  │
+│  │ • Cleanup: stale agent worktrees (>30 days) with clean status        │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                               │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                        Security Boundaries                            │  │
+│  ├───────────────────────────────────────────────────────────────────────┤  │
+│  │ • isSafeRefName(): whitelist [a-zA-Z0-9/._+@-], NO .., NO leading -/ │  │
+│  │ • isValidGitSha(): 40/64 hex only                                     │  │
+│  │ • Worktree双向验证：.git → gitdir → commondir → worktrees/<name>/gitdir│  │
+│  │ • isCurrentDirectoryBareGitRepo(): detect bare repo attacks          │  │
+│  │ • NO credential prompts: GIT_NO_PROMPT_ENV                            │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                               │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                        Caching Strategy                               │  │
+│  ├───────────────────────────────────────────────────────────────────────┤  │
+│  │ • findGitRoot(): LRU cache (50 entries, permanent)                   │  │
+│  │ • resolveCanonicalRoot(): LRU cache (50 entries)                     │  │
+│  │ • GitFileWatcher: cache with dirty flags, fs.watchFile() invalidates │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                               │
+└───────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 4.8 关键流程与失败路径
+
+#### 主流程：仓库发现与 HEAD/分支读取
+
+```text
+findGitRoot(startPath)
+      │
+      ▼
+┌─────────────────────────────────────┐
+│ Check LRU cache (50 entries)        │
+│ • Cache hit: return immediately     │
+└───────────────┬─────────────────────┘
+                │
+            ┌───┴───┐
+            │ Miss  │
+            └───┬───┘
+                ▼
+┌─────────────────────────────────────┐
+│ Start from startPath, go up to /    │
+│ For each dir:                        │
+│   • Check if <dir>/.git exists      │
+│   • Can be directory OR file        │
+│     (Worktree/submodule)            │
+└───────────────┬─────────────────────┘
+                │
+         ┌──────┴──────┐
+         ▼             ▼
+    ┌────────┐    ┌───────────┐
+    │ Found  │    │ Not found │
+    └────┬───┘    └─────┬─────┘
+         │              │
+         ▼              ▼
+    ┌─────────┐    ┌─────────┐
+    │ Cache   │    │ Cache   │
+    │ result  │    │ as null │
+    │ and     │    │ (to    │
+    │ return  │    │ avoid   │
+    │         │    │ repeats)│
+    └─────────┘    └─────────┘
+
+         │
+         ▼
+┌─────────────────────────────────────┐
+│ getBranch() / getHead()             │
+│ • Use GitFileWatcher                │
+│ • Check cache dirty flag            │
+│ • Dirty? Re-read from filesystem    │
+│   - readGitHead(.git/HEAD)          │
+│   - if ref: resolveRef(branch)      │
+│     (loose → packed → commonDir)    │
+│ • fs.watchFile() auto-invalidates   │
+│   on change                         │
+└─────────────────────────────────────┘
+
+失败路径：
+  ├─ .git/HEAD parse failed → return null
+  ├─ resolveRef() loose failed → try packed
+  ├─ packed failed → try commonDir (Worktree)
+  ├─ all failed → return null
+  ├─ ref name fails isSafeRefName() → ignore
+  └─ sha fails isValidGitSha() → ignore
+```
+
+#### 主流程：Diff 计算
+
+```text
+fetchGitDiff()
+      │
+      ▼
+┌─────────────────────────────────────┐
+│ isInTransientGitState()?            │
+│ • Check .git/MERGE_HEAD             │
+│ • Check .git/REBASE_HEAD            │
+│ • Check .git/CHERRY_PICK_HEAD       │
+│ • Check .git/REVERT_HEAD            │
+└───────┬─────────────────────────────┘
+        │
+    ┌───┴───┐
+    │  Yes  │
+    └───┬───┘
+        ▼
+    ┌────────────────┐
+    │ Return null    │
+    │ (skip diff)    │
+    └────────────────┘
+        │
+    ┌───┴───┐
+    │  No   │
+    └───┬───┘
+        ▼
+┌─────────────────────────────────────┐
+│ git diff --shortstat (O(1) memory)  │
+│ • Check if > MAX_FILES_FOR_DETAILS=500│
+└───────┬─────────────────────────────┘
+        │
+    ┌───┴───┐
+    │  >500  │
+    └───┬───┘
+        ▼
+    ┌────────────────────────────┐
+    │ Return only stats, no      │
+    │ per-file details           │
+    └────────────────────────────┘
+        │
+    ┌───┴───┐
+    │  ≤500  │
+    └───┬───┘
+        ▼
+┌─────────────────────────────────────┐
+│ git diff --numstat                  │
+│ (per-file added/removed lines)      │
+└───────┬─────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────┐
+│ git ls-files --others --exclude-    │
+│ standard (untracked files)          │
+└───────┬─────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────┐
+│ Return GitDiffResult:               │
+│ • stats: total files/lines          │
+│ • perFileStats: Map (no hunks yet) │
+└─────────────────────────────────────┘
+        │
+        ▼
+fetchGitDiffHunks() (on demand)
+      │
+      ▼
+┌─────────────────────────────────────┐
+│ git diff HEAD                       │
+│ • Apply limits:                     │
+│   - MAX_FILES=50                    │
+│   - MAX_DIFF_SIZE=1MB               │
+│   - MAX_LINES_PER_FILE=400          │
+│ • Parse hunks, ''+line to break V8 │
+│   sliced string references          │
+└─────────────────────────────────────┘
+
+失败路径：
+  ├─ Transient Git state → return null
+  ├─ Git command fails → return null/empty
+  ├─ Diff too large → skip hunks
+  └─ Parse fails → return empty Map
+```
+
+#### 主流程：Worktree 创建
+
+```text
+createWorktreeForSession(sessionId, slug, tmuxSessionName?, options?)
+      │
+      ▼
+┌─────────────────────────────────────┐
+│ validateWorktreeSlug(slug)          │
+│ • Check length ≤64                  │
+│ • Check no .. segments               │
+│ • Check chars: [a-zA-Z0-9._-] only  │
+│ • Flatten / → + (avoid nested)      │
+└───────┬─────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────┐
+│ Check for WorktreeCreate hook       │
+│ • If exists: run it, return result  │
+└───────┬─────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────┐
+│ getOrCreateWorktree(repoRoot, slug, │
+│   options)                          │
+│ • First: try fast path              │
+│   - Check ~/.claude/worktrees/<slug>│
+│   - Read .git pointer file         │
+│   - If exists AND valid: return it  │
+│     (NO fetch, NO worktree add)     │
+│ • Fast path fails: proceed to create│
+└───────┬─────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────┐
+│ Options has prNumber?               │
+└───┬─────────────────────────────────┘
+    │
+┌───┴───┐                        ┌───────┴───────┐
+│  Yes  │                        │      No       │
+└───┬───┘                        └───────┬───────┘
+    │                                  │
+    ▼                                  ▼
+┌─────────────────────────────┐  ┌─────────────────────────────┐
+│ git fetch origin pull/<n>/  │  │ Check if origin/<default>   │
+│ head (with GIT_NO_PROMPT_ENV│  │ ref exists locally (direct  │
+│ + stdin=ignore)             │  │ file read, no git command)  │
+└───────────┬─────────────────┘  └───────┬─────────────────────┘
+            │                            │
+            └───────────┬────────────────┘
+                        │
+                        ▼
+┌─────────────────────────────────────┐
+│ git worktree add -B worktree-<slug> │
+│   <path> <ref>                      │
+│ • -B overwrites existing temp branch│
+│ • Path: ~/.claude/worktrees/<slug>/ │
+└───────┬─────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────┐
+│ sparsePaths configured?             │
+│ • git sparse-checkout set --cone -- │
+│   <paths>                           │
+│ • git checkout HEAD                 │
+│ • FAILED? git worktree remove --force│
+│   and rethrow                       │
+└───────┬─────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────┐
+│ performPostCreationSetup()          │
+│ • Copy settings.local.json          │
+│ • Configure core.hooksPath (opt)   │
+│ • Symlink dirs (opt)               │
+│ • Copy .worktreeinclude files      │
+│ • Install attribution hook (opt)   │
+└───────┬─────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────┐
+│ Save currentWorktreeSession to      │
+│ project config                      │
+└─────────────────────────────────────┘
+
+失败路径：
+  ├─ Slug validation fails → throw
+  ├─ Hook fails → throw
+  ├─ Fetch fails (PR) → throw
+  ├─ git worktree add fails → throw
+  ├─ sparse checkout fails → cleanup worktree + throw
+  └─ Any post-setup fails → worktree exists but partial setup
+```
+
+### 4.9 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| `findGitRoot` LRU 缓存 | `git.ts` 模块级 | `createFindGitRoot()` 创建，首次调用时填充 | 同进程内共享，按 startPath 缓存 | 不持久化，纯内存 | 失效策略：LRU，满 50 条目时淘汰最旧；永久有效无 TTL | 无显式清理 |
+| `resolveCanonicalRoot` LRU 缓存 | `git.ts` 模块级 | `createFindCanonicalGitRoot()` 创建，首次调用时填充 | 同进程内共享，按 gitRoot 缓存 | 不持久化，纯内存 | 失效策略：LRU，满 50 条目时淘汰最旧；永久有效无 TTL | 无显式清理 |
+| `GitFileWatcher` 缓存与监听器 | `gitFilesystem.ts` 模块级 | `resolveGitDir()` 后初始化，`ensureStarted()` 启动 `fs.watchFile()` | 同进程内共享，按 gitDir/commonDir 监听 | 不持久化，纯内存 | 失效策略：文件变化时设置 dirty 标志；下次 `get()` 重新计算；`fs.watchFile()` 自动监听 | 进程退出自动清理监听器 |
+| `~/.claude/worktrees/<slug>/` (Worktree 目录) | `worktree.ts` | `git worktree add` 创建，或 fast path 直接使用已存在的 | 每个 slug 独立隔离；Git worktree 机制自身隔离 | 持久化到文件系统：`~/.claude/worktrees/<slug>/` + Git worktree 元数据 | 无自动失效；`cleanupStaleAgentWorktrees()` 清理 >30 天的 agent worktrees (匹配 `EPHEMERAL_WORKTREE_PATTERNS`) | `cleanupWorktree()`：`git worktree remove --force` + `git branch -D worktree-<slug>` + `git worktree prune`；`keepWorktree()`：跳过自动清理 |
+| `.git/hooks/prepare-commit-msg` (归因钩子) | `postCommitAttribution.ts` | `installPrepareCommitMsgHook()`：锁目录 → 检查 MANAGED_MARKER → 重命名用户钩子 → 原子写入调度器 (0o755) | 每个 Git 仓库独立 | 持久化到 `.git/hooks/prepare-commit-msg` (调度器) + `.git/hooks/prepare-commit-msg.claude-user` (用户原始钩子) | 无自动失效；用户可手动卸载 | `uninstallPrepareCommitMsgHook()`：恢复用户钩子 → 删除调度器 |
+| `.git/claude-code/attribution/*.json` (归因会话状态) | `postCommitAttribution.ts` | `persistAttributionStateForGit()`：确保目录 (0o700) → 原子写入 JSON (0o600) | 按 sessionId 隔离 (sha256 哈希) | 持久化到 `.git/claude-code/attribution/<sha256(sessionId)>.json` (0o600) | 64 会话上限：`readAttributionStates()` 仅取文件名排序的前 64 个；无自动 GC，旧文件超过 64 时不再读取 | 无显式删除机制，依赖 64 上限自然淘汰 |
+| `GIT_NO_PROMPT_ENV` (凭据提示禁用) | `worktree.ts` 网络操作 | 环境变量字典：`{ GIT_TERMINAL_PROMPT: '0', GIT_ASKPASS: '' }`，传入 execFileNoThrow | 每次调用独立传入，不共享 | 不持久化，仅环境变量 | 无失效，每次调用重新传入 | 无取消，仅作用于单次 Git 命令调用 |
+
+生命周期证据：
+- 仓库发现与缓存：`src/utils/git.ts: findGitRoot(), createFindGitRoot(), resolveCanonicalRoot(), createFindCanonicalGitRoot()`
+- GitFileWatcher 与直接文件读取：`src/utils/git/gitFilesystem.ts: GitFileWatcher, readGitHead(), resolveRef(), parseGitConfigValue(), getCommonDir()`
+- Diff 计算与限制：`src/utils/gitDiff.ts: fetchGitDiff(), fetchGitDiffHunks(), MAX_FILES=50, MAX_DIFF_SIZE=1MB, MAX_LINES_PER_FILE=400, MAX_FILES_FOR_DETAILS=500, GIT_TIMEOUT_MS=5s`
+- Worktree 创建与管理：`src/utils/worktree.ts: validateWorktreeSlug(), flattenSlug(), getOrCreateWorktree(), createWorktreeForSession(), cleanupWorktree(), keepWorktree(), cleanupStaleAgentWorktrees(), GIT_NO_PROMPT_ENV, EPHEMERAL_WORKTREE_PATTERNS`
+- 安全机制：`src/utils/git/gitFilesystem.ts: isSafeRefName(), isValidGitSha()`, `src/utils/git.ts: resolveCanonicalRoot() (Worktree 双向验证), isCurrentDirectoryBareGitRepo()`
+
 ## 5. 失败语义与工程取舍
 
 ### 5.1 失败语义表
