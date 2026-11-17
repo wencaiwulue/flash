@@ -73,6 +73,8 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-1.md"; if
 
 **发现 B1-cli-startup-01**：spec 提及 4.13 节，但读取的文档在第 1620 行截断，未能验证完整内容。
 
+> **更新**：此发现已被重新验证为误报。实际 spec 文档完整包含 2394 行，4.13 节（及后续所有章节）均完整存在。原始审计只读取了文档前 1620 行，导致误判。详细证据见下文“发现登记”表格中的状态更新说明。
+
 ---
 
 ### context-compaction
@@ -364,7 +366,7 @@ projectView() 应用到当前消息
 
 | ID | 主责 | 关联 | 类别 | 严重度 | 问题陈述 | 源码证据 | 上游证据 | 测试证据 | 影响 | 修订建议 | 置信度 | 验证边界 | 状态 |
 |----|------|------|------|--------|----------|----------|----------|----------|------|----------|--------|----------|------|
-| B1-cli-startup-01 | cli-startup | — | 证据边界 | P3 | spec 文档在第 1620 行截断，4.13 节"快速路径详览"未完整验证 | `docs/superpowers/specs/2026-11-12-cli-startup-design.md:1-1620` | N/A | 不涉及测试 | 极低（仅文档截断） | 补充完整 spec 文档 | 已证实 | 文档截断不影响已验证部分 | open |
+| B1-cli-startup-01 | cli-startup | — | 证据边界 | P3 | spec 文档在第 1620 行截断，4.13 节"快速路径详览"未完整验证 | `docs/superpowers/specs/2026-11-12-cli-startup-design.md:1-2394`（完整文档验证） | N/A | 不涉及测试 | 无（误报） | 无需操作 | 已重新验证 | 原始审计只读取前 1620 行，实际文档完整共 2394 行，4.13 节及后续所有章节完整存在 | rejected |
 | B1-context-compaction-01 | context-compaction | — | 测试缺口 | P2 | context-compaction spec 7.0 节列出的 27 个核心模块，大多数标注"无直接测试"，仅 context-collapse 和 reactive-compact 有测试覆盖 | `docs/superpowers/specs/2026-11-12-context-compaction-design.md:7.0` | N/A | `tests/contextCollapse.test.ts`、`tests/reactiveCompact.test.ts` 存在但覆盖不全 | 中等（核心模块有测试，但边缘情况可能未覆盖） | 补充 compactConversation、autoCompact、microCompact（cached/time-based）的单元测试 | 已证实 | 测试文件存在但覆盖范围有限 | open |
 | B1-context-compaction-02 | context-compaction | — | 设计风险 | P2 | context collapse 使用模块级全局状态（collapseStore），多会话/多 agent 环境下不安全；spec 已指出此问题但状态保持不变 | `src/services/contextCollapse/index.ts:1-346`、`src/services/contextCollapse/store.ts:1-90` | 上游 CLI 同样使用模块级状态 | 测试使用 initContextCollapse() 注入依赖，但真实代码使用模块级状态 | 中等（当前单会话设计下无问题，但扩展受限） | 将 collapseStore 改为由 QueryEngine 或 SessionContext 拥有 | 已证实 | 源码结构明显 | open |
 | B1-context-compaction-03 | context-compaction | — | 设计风险 | P2 | cached MC 使用模块级全局状态（cachedMCState），非主线程被禁用；spec 已指出此问题但状态保持不变 | `src/services/compact/microCompact.ts:53-62`、`src/services/compact/cachedMicrocompact.ts` | 上游 CLI 同样使用模块级状态 | 无直接测试 | 中等（当前主线程优先设计下无问题，但子 agent 无法使用 cached MC） | 将 cachedMCState 绑定到 QueryEngine 或会话上下文 | 已证实 | 源码结构明显 | open |

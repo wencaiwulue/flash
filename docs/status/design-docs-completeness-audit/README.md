@@ -113,17 +113,19 @@ Design docs: 0 errors, 73 warnings
 | 实现一致 | 3 |
 | 上游一致 | 3 |
 | 发现总数 | 5 |
+| 有效发现（open） | 4 |
+| 误报（rejected） | 1 |
 | P0 | 0 |
 | P1 | 0 |
 | P2 | 3 |
-| P3 | 2 |
+| P3 | 2（其中 1 个 rejected） |
 
-### 发现分类
+### 发现分类（仅有效发现）
 
 | 类别 | 数量 |
 |------|------|
 | 测试缺口 | 4 |
-| 证据不足 | 1 |
+| 证据不足 | 0（原 1 个为误报） |
 
 ### Batch 2 统计
 
@@ -231,7 +233,7 @@ Design docs: 0 errors, 73 warnings
 | 类别 | 数量 |
 |------|------|
 | Batch 0 | 5 |
-| Batch 1 | 5 |
+| Batch 1 | 4（原 5，1 个 rejected） |
 | Batch 2 | 41 |
 | Batch 3 | 26 |
 | Batch 4 | 17 |
@@ -239,17 +241,23 @@ Design docs: 0 errors, 73 warnings
 | Batch 6 | 31 |
 | Batch 7 | 66 |
 | 跨域 | 9 |
-| **总计** | **235** |
+| **总计** | **234**（原 235，1 个 rejected） |
 
-### 按严重度分类
+### 按严重度分类（仅有效发现）
 
 | 严重度 | 数量 |
 |--------|------|
 | P0 | 0 |
 | P1 | 2 |
 | P2 | 97 |
-| P3 | 136 |
-| **总计** | **235** |
+| P3 | 135（原 136，1 个 rejected） |
+| **总计** | **234** |
+
+### 误报记录（rejected）
+
+| 批次 | ID | 说明 |
+|------|----|------|
+| Batch 1 | B1-cli-startup-01 | cli-startup spec 截断误报——实际文档完整共 2394 行 |
 
 ### 发现分类统计
 
@@ -350,7 +358,7 @@ Design docs: 0 errors, 73 warnings
 | 批次 | 状态 | 说明 |
 |------|------|------|
 | batch 0 | ✅ 已完成 | 核心契约审查，5 项发现 |
-| batch 1 | ✅ 已完成 | Context 审查，5 项发现 |
+| batch 1 | ✅ 已完成 | Context 审查，4 项有效发现（1 项误报 rejected） |
 | batch 2 | ✅ 已完成 | 工具与会话审查，41 项发现 |
 | batch 3 | ✅ 已完成 | Memory 审查，26 项发现（含 1 P1） |
 | batch 4 | ✅ 已完成 | UI 子系统审查，17 项发现 |
@@ -359,4 +367,4 @@ Design docs: 0 errors, 73 warnings
 | batch 7 | ✅ 已完成 | 工程模块审查，66 项发现（含 1 P1） |
 | cross-subsystem | ✅ 已完成 | 横向契约审查，9 项发现 |
 
-**总体状态**：✅ **审计完成** - 所有 69 个子系统已覆盖（含新增 webbrowser-bundled-support），发现已登记，无 P0 问题，2 项 P1 问题待修复。完整报告请参考各 batch 文件及 [cross-subsystem.md](cross-subsystem.md)。
+**总体状态**：✅ **审计完成** - 所有 69 个子系统已覆盖（含新增 webbrowser-bundled-support），发现已登记，无 P0 问题，2 项 P1 问题待修复。完整报告请参考各 batch 文件及 [cross-subsystem.md](cross-subsystem.md)。注：总计 234 项有效发现，另有 1 项误报（B1-cli-startup-01）已标记 rejected。
