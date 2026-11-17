@@ -285,6 +285,10 @@ function smokeTestBinary(
       ...env,
       FLASH_SMOKE_TOOL: 'WebBrowser',
       FLASH_SMOKE_INPUT: smokeInput,
+      // Playwright's debug log goes to stderr and reveals where a launch
+      // stalls (pipe transport, CDP handshake) on platforms where the full
+      // flow exceeds the MCP request timeout (Windows runners).
+      DEBUG: 'pw:browser,pw:channel',
     },
     // Windows runners cold-launch Chrome (Defender scans, first run) well
     // beyond the default 30s, and the smoke channel's MCP request timeout is
@@ -306,9 +310,10 @@ function smokeTestBinary(
     )
   }
   const verdict = classifyToolSmokeResult(smokeLine)
+  const stderrTail = smoke.stderr.toString().slice(-1500)
   if (verdict.startsWith('skip')) {
     console.warn(
-      `Smoke skip (${verdict.slice('skip:'.length)}): ${smokeLine.slice(0, 500)}`,
+      `Smoke skip (${verdict.slice('skip:'.length)}): ${smokeLine.slice(0, 500)}\nstderr tail:\n${stderrTail}`,
     )
     return
   }
