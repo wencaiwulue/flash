@@ -141,6 +141,32 @@ status: draft
 - **不负责 CLI UI 的组件实现**：渲染方法返回 React 节点，但具体的组件设计不属于本框架的范围。
 - **不重新实现权限系统**：工具框架调用 `checkPermissions` 和 `canUseTool`，但权限规则由 `utils/permissions/` 子系统负责。
 
+## 3a. Claude API 工具调用协议契约测试边界（B2-tool-framework-03）
+
+### 协议边界与测试覆盖状态
+
+| 协议层次 | 契约行为 | 实现位置 | 测试覆盖状态 | 未覆盖/不足覆盖边界 |
+|---------|---------|---------|-------------|-------------------|
+| 工具定义转换 | `Tool.prompt()` → Claude API `tool` schema<br>- 名称、描述、参数 schema 映射<br>- `inputSchema` 使用 Zod 生成 JSON Schema<br>- 必填/可选字段正确标记 | `src/Tool.ts`（各工具 `prompt()` 方法） | 仅间接覆盖（集成测试） | 复杂嵌套 schema、递归类型、Zod 高级特性（`z.discriminatedUnion`、`z.literal` 多态）、超大 schema（>100KB） |
+| Tool Use 块解析 | Claude 返回的 `tool_use` 块<br>- `id`、`name`、`input` 字段提取<br>- 输入 Zod 验证 `tool.inputSchema.safeParse(input)`<br>- 业务验证 `tool.validateInput(input, context)`（可选） | `src/services/tools/toolExecution.ts` | 部分覆盖（`tests/internalTools.test.ts` 等） | 超大工具输入（>100MB）、输入包含循环引用、`tool_use` 缺少字段、`input` 非对象（数组/字符串/数字） |
+| 权限检查与决策 | `canUseTool()` → `{behavior: allow/deny/ask/passthrough}`<br>- 支持 hook 修改权限 `resolveHookPermissionDecision()`<br>- 决策缓存到 `context.toolDecisions` | `src/services/tools/toolExecution.ts`、`src/utils/permissions/` | 部分覆盖（权限相关测试） | 权限 hook 在工具执行中修改状态、权限决策循环依赖、`toolDecisions` 高并发访问（多工具并行） |
+| 工具结果转换 | `Tool.mapToolResultToToolResultBlockParam(content, toolUseId)` → Claude API `tool_result` 块<br>- 支持文本内容、数组内容块<br>- 支持 `isError: true` 标记错误<br>- 处理大结果持久化（>64KB 写入文件） | `src/Tool.ts`、`src/services/tools/toolExecution.ts` | 部分覆盖（集成测试） | 超大工具结果（>100MB）、二进制数据块、混合内容类型（文本+图像+文件）、`isError` 与正常结果混合 |
+| 进度消息流 | `ToolProgress` → `ProgressMessage`<br>- `toolUseId` 关联正确工具调用<br>- `parentToolUseId` 处理嵌套工具（AgentTool）<br>- 消息实时 yield 不等待最终结果 | `src/Tool.ts`、`src/services/tools/toolExecution.ts` | 仅间接覆盖（集成测试） | 快速连续进度更新（>100/秒）、嵌套进度层次 >3、进度消息包含大数据、进度与最终结果交错顺序 |
+| 上下文修改器 | `ToolResult.contextModifier(context)` → 修改后续工具的 `ToolUseContext`<br>- 仅非并发安全工具的 context modifier 被尊重<br>- 在工具成功后、产出最终 tool_result 前应用 | `src/Tool.ts`、`src/services/tools/toolExecution.ts` | 仅间接覆盖（AgentTool） | context modifier 执行时间 >30s、context modifier 抛出错误、连续多个工具都有 context modifier、context modifier 修改不可变配置 |
+| 工具执行钩子 | `PreToolUseHook`、`PostToolUseHook`、`PostToolUseFailureHook`<br>- Pre 钩子可以修改输入、返回权限决策、阻止继续<br>- Post 钩子可以修改 MCP 工具输出、附加消息<br>- 失败钩子专门处理工具执行错误 | `src/services/tools/toolHooks.ts` | 部分覆盖（钩子相关测试） | 钩子抛出未捕获错误、钩子修改上下文后工具失败、多个钩子链式修改、钩子执行时间 >30s |
+| 中止与清理 | `AbortSignal` → 工具执行及时中止<br>- 信号传递给子进程/网络请求<br>- 清理资源（子进程 kill、文件关闭、锁释放）<br>- `finally` 块确保 `stopSessionActivity('tool_exec')` 并清理 `toolDecisions` | `src/services/tools/toolExecution.ts` | 部分覆盖（集成测试） | 工具执行在 `finally` 块之前中止、清理本身抛出错误、`AbortSignal.abort()` 在工具开始执行前触发、嵌套工具中止传播 |
+
+### Claude API 协议兼容性边界
+
+- **不声明私有协议兼容：** 仅公开使用 Claude Messages API 标准工具调用模式，不依赖未文档化的协议细节或私有扩展
+- **协议版本兼容：** 假设 API 向后兼容，未实现显式协议版本协商或降级
+- **未测试的 API 边界：**
+  - 超过 100 个工具的工具列表（触发分页或截断）
+  - 工具名称包含特殊字符（非 ASCII、空格、符号）
+  - `tool_use`/`tool_result` 消息顺序异常（如 tool_result 在 tool_use 之前）
+  - API 返回的 `tool_use` 包含 `thinking`/`redacted` 块
+  - 流式 tool_use 块分多次到达
+
 ## 4. 架构、模块与数据流
 
 ### 4.1 核心类型与职责边界

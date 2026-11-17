@@ -107,6 +107,29 @@ Computer Use 是 Claude Code 提供的桌面与浏览器自动化能力，支持
 - 不将应用白名单等同于截图安全保证；终端 Surrogate Host 与截图可见性必须分别处理。
 - 不在后台会话结束后保留隐藏应用、热键或文件锁，不在线验证真实桌面环境之外的服务能力。
 
+## 3a. 边界与验证矩阵（B2-computer-use-01, B2-computer-use-03）
+
+### TypeScript Stub 层与 Swift/Rust 内部实现边界
+
+| 组件 | TypeScript Stub 层 | Swift/Rust 内部实现 | 边界与契约 | 验证方式 | 未覆盖边界 |
+|-----|-------------------|-------------------|-----------|---------|-----------|
+| 显示与分辨率 | `resolvePrepareCapture()`、`targetImageSize()`、`API_RESIZE_PARAMS` | 原生 CoreGraphics/Quartz 捕获与缩放 | TypeScript 只负责坐标转换和尺寸计算，实际像素捕获在 Swift/Rust | 单元测试（`tests/computerUseExecutor.test.ts`）验证尺寸计算 | 多显示器排列非矩形、Retina/非 Retina 混合、4K/8K 超大分辨率 |
+| 窗口与应用隐藏 | `prepareForAction()`、`withoutTerminal()`、`surrogateHost` | 原生 NSWorkspace、CGWindowList | TypeScript 提供 bundleId 列表和 surrogate，Swift 执行实际隐藏/激活/显示分辨率 | 单元测试验证 bundleId 过滤和 surrogate 选择 | 应用被系统强制挂起、全屏应用、多空间/ Mission Control |
+| 鼠标与键盘输入 | `moveAndSettle()`、`animatedMove()`、`holdKey()`、`typeViaClipboard()`、`withModifiers()` | 原生 CoreGraphics EventTap、NSEvent | TypeScript 负责坐标转换、修饰键管理、剪贴板验证，Swift/Rust 执行实际输入 | 单元测试验证修饰键状态和释放逻辑；真实桌面验收需手动（TCC 限制） | 高 DPI 像素坐标、快速连续输入（>100/秒）、修饰键按下时崩溃/中止 |
+| TCC 权限检查 | `ensureOsPermissions()`、`checkAccessibility()`、`checkScreenRecording()` | 原生 CGRequestAccess、kTCCService | TypeScript 仅调用 Swift 导出的检查函数，不直接访问 TCC 数据库 | 单元测试 mock 检查函数；真实桌面验收需手动 | TCC 提示被用户忽略、权限在运行中被撤销、旧 macOS 版本（<13） |
+| ESC 热键注册 | `registerEscHotkey()`、`unregisterEscHotkey()`、`notifyExpectedEscape()` | 原生 CGEventTap 事件监听与过滤 | TypeScript 管理注册状态和回调，Swift 管理全局事件拦截和 `notifyExpectedEscape()` 豁免窗口 | 单元测试验证回调触发和清理；真实桌面验收需手动 | 热键与其他应用冲突、EventTap 被系统终止、高频率 ESC 事件（>10/秒） |
+| 屏幕截图 | `screenshot()` → Swift helper JSON Lines → base64 图像数据 | 原生 CoreGraphics CGDisplayCreateImage | TypeScript 负责尺寸缩放和 base64 解析，Swift/Rust 负责实际捕获和排除窗口 | `tests/computerUseExecutor.test.ts` 间接验证；真实桌面验收需手动 | 窗口叠加/重叠、敏感内容截图、部分应用拒绝被排除 |
+
+### 真实桌面验收边界（不可在 CI 中完全自动化）
+
+| 验收项 | 需要的环境 | 手动验证步骤 | 现状 |
+|-------|-----------|------------|-----|
+| 真实 TCC 提示与权限授予 | macOS，首次运行 Claude Code | 运行 Claude Code，触发 Computer Use，验证 TCC 提示出现且授予后功能正常 | 无自动化测试，依赖开发/用户手动验证 |
+| 真实应用隐藏与恢复 | macOS，多个打开的应用 | 运行 Computer Use `screenshot` 工具，验证非授权应用被隐藏，回合结束后恢复 | 无自动化测试，依赖开发/用户手动验证 |
+| 真实鼠标与键盘输入 | macOS，可安全测试的应用（如 TextEdit） | 运行 Computer Use 鼠标/键盘工具，验证输入生效 | 无自动化测试，依赖开发/用户手动验证 |
+| 真实 ESC 热键中止 | macOS，运行中的 Computer Use | 运行长时间 Computer Use 操作，按 ESC 验证及时中止 | 无自动化测试，依赖开发/用户手动验证 |
+| 真实多显示器场景 | macOS，多个显示器 | 测试 Computer Use 在多显示器间的截图和坐标转换 | 无自动化测试，依赖开发/用户手动验证 |
+
 ## 4. 架构、模块与数据流
 
 ### 4.1 后端抽象模块

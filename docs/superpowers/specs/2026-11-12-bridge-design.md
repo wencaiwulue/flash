@@ -902,6 +902,22 @@ const sessionWorktrees = new Map<string, {...}>()
 - 测试：tests/perpetualBridge.test.ts（perpetual 模式指针管理）
 - 测试：tests/daemonBridge.test.ts（daemon bridge 队列与状态）
 
+### 4.2a 协议与契约覆盖矩阵（B2-bridge-03）
+
+| 功能区域 | 协议/接口 | 实现位置 | 测试覆盖 | 已验证边界 | 未验证边界 |
+|---------|---------|---------|---------|-----------|-----------|
+| 环境注册 | `POST /v1/environments/bridge` | `src/bridge/bridgeApi.ts` | `tests/daemonBridge.test.ts`（部分） | client 生成 UUID 幂等、`reuseEnvironmentId`、OAuth + env secret 两层认证 | 极端网络重试次数（>10）、同时多个 bridge 竞争同一 environment、并发 reconnectSession |
+| 轮询 | `GET /v1/environments/{envId}/work/poll` | `src/bridge/bridgeMain.ts` | `tests/perpetualBridge.test.ts`（部分） | `reclaim_older_than_ms`、不在容量/在容量双模式、心跳与轮询的配合 | 长时间（>24h）持续轮询、频繁 capacity 抖动（多次/秒）、`poll_interval_ms` 极小时的服务器压力 |
+| 工作认领与启动 | `decodeWorkSecret()`、`buildSdkUrl()`、`buildCCRv2SdkUrl()` | `src/bridge/workSecret.ts` | `tests/perpetualBridge.test.ts`（v1/v2路径） | `use_code_sessions` 切换协议、`sessionIngressToken` 生命周期、`sessionId` 前缀兼容（`session_`/`cse_`） | 同时包含 v1 和 v2 字段的 WorkSecret、`workerEpoch` 为非数字类型、`sources` 数组长度>100 |
+| 会话输入/输出 | NDJSON stdin/stdout 管道 | `src/bridge/sessionRunner.ts` | 无直接测试 | 活动跟踪（环形缓冲区）、动词映射、权限请求透明路由、`updateAccessToken` stdin 更新 | 超大工具输入（>100MB）、快速连续工具调用（>100/秒）、权限响应与工具输出交错 |
+| 心跳 | `POST /v1/environments/{envId}/work/{workId}/heartbeat` | `src/bridge/bridgeMain.ts` | 无直接测试 | session ingress token 认证、延长租约语义、与轮询的互操作 | 心跳频率过高（<1s）、心跳与轮询同时失败、长时间心跳间隔（>10min）后恢复 |
+| 权限回调 | `control_request` NDJSON → `sendPermissionResponseEvent()` → `control_response` NDJSON | `src/bridge/bridgePermissionCallbacks.ts`、`src/bridge/sessionRunner.ts` | 无直接测试 | 透明路由不修改 payload、权限请求无超时、与工具执行互操作 | 并发权限请求（>10同时）、非常大的权限请求/响应（>10MB）、权限请求时 session 被终止 |
+| 干净关闭 | SIGINT/SIGTERM → `stopWork()` → archive → deregister → cleanup | `src/bridge/bridgeMain.ts`（2435-2600+行） | 无直接测试 | 多会话同时关闭、`stopWork()` 重试、`shutdownGraceMs` 等待、`perpetual` 模式保留指针 | `shutdownGraceMs=0` 立即 kill、关闭时网络断开导致 deregister 失败、多个子进程同时被 kill 时的资源清理 |
+| 崩溃恢复（v1） | `bridge-pointer.json` + `reuseEnvironmentId` + `reconnectSession` | `src/bridge/bridgePointer.ts`、`src/bridge/bridgeMain.ts` | `tests/perpetualBridge.test.ts`（指针恢复） | TTL 4h、跨 worktree 扫描 (`MAX_WORKTREE_FANOUT=50`)、幂等恢复、强制 stale worker 终止 | 指针文件损坏（无效 JSON）、`lastSequenceNum` 缺失/非数字、扫描到 >50 worktrees、恢复时原 session 仍在运行 |
+| 崩溃恢复（v2） | `env-less-bridge-pointer.json` + `lastSequenceNum` + flush gate | `src/bridge/envLessBridgePointer.ts`、`src/bridge/flushGate.ts` | `tests/perpetualBridge.test.ts`（指针恢复） | `lastSequenceNum` 事件重放、flush gate 防止历史与实时交错、perpetual 模式 | 历史重放超过 10000 条事件、`lastSequenceNum` 回绕（负数）、flush gate 持有写入超过 10min |
+| 入站信封验证 | `SAFE_ID_PATTERN`、`MAX_INBOUND_TEXT_LENGTH`、`MAX_INBOUND_BASE64_LENGTH`、字段白名单 | `src/bridge/inboundMessages.ts` | `tests/inboundEnvelope.test.ts` | 防止路径遍历、防止超大消息、只允许白名单字段 | 精心构造的路径遍历绕过（编码/Unicode）、恰好等于限制值的边界情况、字段顺序不同但内容相同 |
+| Open Runner/Direct Connect | `use_code_sessions=true`、`buildCCRv2SdkUrl()`、`registerWorker()` | `src/bridge/workSecret.ts`、`src/bridge/initReplBridge.ts` | `tests/perpetualBridge.test.ts`（v2路径） | code session 模式、`worker_epoch`、`sessionIngressToken`、与 v1 共享核心逻辑 | Direct Connect 无轮询完全事件驱动、`registerWorker` 与上游服务器的精确契约、`worker_epoch` 高并发更新 |
+
 ### 4.3 主控制流
 
 #### 初始化流程（Standalone）

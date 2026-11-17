@@ -171,6 +171,36 @@ Shell tools（Bash 和 PowerShell）需要解决的核心问题是如何在保�
 - 不管理全局 shell 配置：用户 `.bashrc`/`.zshrc` 不在设计范围内
 - 不吞并通用 permissions 域：权限裁决核心逻辑由 permissions 模块拥有
 
+## 3a. @anthropic-ai/sandbox-runtime 外部行为契约与未验证组合（B2-shell-tools-03）
+
+### 沙箱运行时外部行为契约
+
+| 功能 | 契约行为 | 配置来源 | 验证状态 | 测试覆盖 |
+|-----|---------|---------|---------|---------|
+| 文件系统权限 | - `allowWrite` 列表中的路径允许写入<br>- `denyWrite` 列表中的路径拒绝写入<br>- 总是允许 Claude 临时目录<br>- 总是拒绝 `.claude/skills` 写入<br>- Git 裸仓库路径（`.git`/`objects`/`refs`）如果存在则拒绝写入，不存在则事后 scrub | `convertToSandboxRuntimeConfig()` 从 FileEdit/FileRead 权限规则生成 | 部分验证（仅手动） | 无直接沙箱测试，依赖集成测试 |
+| 网络权限 | - `allowManagedDomainsOnly` 时仅允许 policy 中的域名<br>- 域名支持通配符前缀（如 `*.example.com`）<br>- 默认拒绝所有网络 | 从 WebFetch 权限规则生成 | 部分验证（仅手动） | 无直接沙箱测试，依赖集成测试 |
+| 命令执行包装 | - 沙箱包装命令字符串，不改变参数语义<br>- `bwrap` 在 Linux/macOS（无 Windows 支持）<br>- POSIX 使用 `O_APPEND` 原子写入输出文件；Windows 使用普通 `w` 模式避免 MSYS2 问题 | `SandboxManager.wrapWithSandbox()` | 部分验证（仅手动） | 无直接沙箱测试，依赖集成测试 |
+| Git 裸仓库防护 | - 检测到 `HEAD`/`objects`/`refs` 路径存在时拒绝写入<br>- 如果不存在但命令可能创建，事后 `scrubBareGitRepoFiles()` 清理 | `sandbox-adapter.ts` 路径检查与 scrub | 部分验证（仅手动） | 无直接沙箱测试，依赖集成测试 |
+| 错误报告 | - 沙箱违规会输出到 stderr<br>- `annotateStderrWithSandboxFailures()` 会将违规注释到工具结果 stderr<br>- 违规不会导致工具失败（仅注释） | `SandboxManager.annotateStderrWithSandboxFailures()` | 部分验证（仅手动） | 无直接沙箱测试，依赖集成测试 |
+
+### 未验证的沙箱组合与边界情况
+
+| 组合 | 风险 | 为什么未验证 |
+|-----|-----|-------------|
+| 沙箱 + `command1 && command2` 复合命令 | 第二个命令可能绕过沙箱限制 | 集成测试未覆盖此组合 |
+| 沙箱 + `sudo` / `doas` / 其他提权命令 | 可能突破沙箱隔离 | 显式禁止但无测试验证 |
+| 沙箱 + 进程间通信（Unix socket/共享内存） | 可能绕过文件系统/网络限制 | 未测试此场景 |
+| 沙箱 + Git 工作树（非裸仓库） + Git 钩子 | Git 钩子可能执行非沙箱命令 | 集成测试未覆盖 Git 钩子场景 |
+| 沙箱 + 非常长的命令行（>100KB） | 可能触发系统限制或包装器 bug | 未测试此边界情况 |
+| 沙箱 + 嵌套沙箱（命令内部再次调用沙箱） | 可能逃逸或崩溃 | `enableWeakerNestedSandbox` 选项但无测试验证 |
+| 沙箱 + macOS 签名/公证二进制 | 可能被系统拒绝 | 未测试此场景 |
+| 沙箱 + Linux AppArmor/SELinux 强制访问控制 | 可能与 bwrap 冲突 | 未测试此场景 |
+
+**@anthropic-ai/sandbox-runtime 外部依赖说明：**
+- 沙箱运行时是外部 npm 包，其内部实现细节不属于本 spec
+- 本 spec 仅描述 `src/utils/sandbox/sandbox-adapter.ts` 如何包装和配置该包
+- 不声明与上游沙箱运行时的私有 API 或行为兼容
+
 ## 4. 架构、模块与数据流
 
 ### 4.1 入口与公共契约

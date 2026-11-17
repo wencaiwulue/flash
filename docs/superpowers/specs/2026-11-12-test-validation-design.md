@@ -627,7 +627,36 @@ finally: await closeOpenComputerUseClient()
 
 ---
 
-### 模块设计卡 5：Live Model/Workflow/Proactive/Context Collapse 验证（API Key 与 Auth Token 互斥）
+### 模块设计卡 5：Live Model/Workflow/Proactive/Context Collapse 验证（API Key 与 Auth Token 互斥；B7-test-validation-06）
+
+#### 关键初始化顺序与风险点
+
+**当前实际顺序（与 settings 初始化耦合）：**
+```
+1. 脚本启动
+2. 直接读取 `process.env.ANTHROPIC_API_KEY` / `process.env.ANTHROPIC_AUTH_TOKEN`（无 settings）
+3. 互斥检查
+4. 检查是否两者都无 → `MODEL_LIVE_SKIPPED`
+5. 调用 `enableConfigs()`（可能初始化 settings）
+6. 继续验证
+```
+
+**风险点：**
+- 无 `enableConfigs()` 时，settings 中的默认值/持久化配置不会被读取
+- 当前检查仅依赖进程环境变量，不合并 Claude 配置文件中的设置
+- 如果 `ANTHROPIC_AUTH_TOKEN` 在 settings 中存在但不在环境变量中，会被错误跳过
+- `enableConfigs()` 之前的凭据来源不统一，可能与实际运行时不一致
+
+**未声明已修复的 P1 问题：**
+⚠️ 此初始化顺序问题尚未修复。本 spec 仅记录现状，不包含修复方案或声明修复完成。
+
+**必须验收的初始化契约（现状）：**
+1. 互斥检查在 `enableConfigs()` 之前
+2. 检查仅使用 `process.env`，不使用 settings 持久化值
+3. 如果同时设置 `ANTHROPIC_API_KEY` 和 `ANTHROPIC_AUTH_TOKEN`，立即失败（早）
+4. 如果两者都无，打印 `MODEL_LIVE_SKIPPED` 并退出 0
+5. 如果有任一，继续执行后续验证
+6. 后续验证中使用 `getMainLoopModel()` 等函数（这些可能依赖 settings）
 
 **真实入口签名**
 ```typescript

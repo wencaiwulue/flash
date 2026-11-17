@@ -1116,6 +1116,26 @@ Chrome CDP 端点验证：
 
 [Coverage](../../architecture/coverage/external-stubs.yaml)
 
+## 2a. 契约文档与实现同步/漂移检查规则（B7-external-stubs-06）
+
+### 手动检查清单（现状无自动验证）
+
+本仓库**不包含**自动契约验证机制，依赖以下手动检查清单防止漂移：
+
+| 检查项 | 频率 | 如何验证 | 漂移风险 |
+|-------|-----|---------|---------|
+| `computer-use-types.ts` 接口与实际调用方匹配 | 每次修改 | grep 调用方代码，检查字段使用：`src/utils/computer-use/`、`src/utils/computer-use/wrapper.tsx`、`src/utils/computer-use/mcpServer.ts` | 新增字段未在所有实现中使用、字段类型不匹配 |
+| `claude-for-chrome-mcp.ts` CDP 端点验证与 Playwright MCP 期望一致 | 每次 Playwright 升级 | 运行 `tests/openBackends.test.ts`，手动检查端点格式 | 上游 Playwright MCP 更改端点格式或安全要求 |
+| Zavora `createComputerUseServer()` 选项与宿主 `authorizeZavoraCall()` 权限检查一致 | 每次修改 | 检查 `authorizeToolCall` 配置与 `ComputerUseSessionContext` 接口的对应关系 | Zavora 新增权限选项未在宿主检查中覆盖 |
+| `external-stubs/contracts/` 文档与 `src/external-stubs/` 实现同步 | 每次修改实现 | 手动对比 `docs/external-stubs/contracts/` 下的文档与代码实现 | 文档描述与代码行为不一致 |
+| Swift/Input 占位符 (`unavailable`) 标记不被意外移除 | 每次修改 | grep `// unavailable` 或 `isSupported = false` | 私有实现意外暴露或标记被移除 |
+
+### 现有覆盖检查集成（非自动验证）
+
+`bun scripts/check-design-docs.ts` 会检查 `docs/architecture/coverage/external-stubs.yaml` 中定义的覆盖组，但仅验证文件存在，不验证契约内容一致性。
+
+**不虚构自动验证：** 目前无计划实现契约与实现的自动一致性验证，上述清单为当前唯一验证机制。
+
 ## 9. 改进建议
 
 | 优先级 | 触发场景与证据 | 建议方向 | 回归风险 | 验收方式 | 工作量 | 置信度 |
