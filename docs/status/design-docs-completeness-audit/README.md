@@ -248,10 +248,10 @@ Design docs: 0 errors, 73 warnings
 | 严重度 | 数量 |
 |--------|------|
 | P0 | 0 |
-| P1 | 2 |
-| P2 | 97 |
+| P1 | 1（原 2，1 个已修复） |
+| P2 | 98（原 97，新增 1 个测试） |
 | P3 | 135（原 136，1 个 rejected） |
-| **总计** | **234** |
+| **总计** | **234**（原 235，1 个修复 +1 个新增测试） |
 
 ### 误报记录（rejected）
 
@@ -274,20 +274,19 @@ Design docs: 0 errors, 73 warnings
 
 | ID | 主责 | 说明 | 证据 | 依赖 | 验收条件 | 来源 |
 |----|------|------|------|------|----------|------|
-| B3-auth-01 | auth | Keychain 缓存 30 秒，跨进程刷新后另一个进程最多 30 秒才看到新 token | `src/utils/secureStorage/macOsKeychainHelpers.ts:69-91` | None | 每次读取 tokens 时检查磁盘 mtime 或 Keychain 自身修改时间，变更则立即清缓存 | [03-memory-auth-settings.md](03-memory-auth-settings.md) |
+| B3-auth-01 ✅ | auth | [已修复] Keychain 缓存 30 秒，跨进程刷新后另一个进程最多 30 秒才看到新 token | `src/utils/secureStorage/macOsKeychainHelpers.ts:90-109` | None | 使用共享 cache-version 标记（~/.claude/.keychain-cache-version.json），每次写入时原子更新 UUID，读取前检查版本，变更则立即刷新缓存 | [03-memory-auth-settings.md](03-memory-auth-settings.md) |
 | B7-test-validation-06 | test-validation | `scripts/live-model-validation.ts` 在 `enableConfigs()` 前检查凭据，standalone 脚本的 settings 初始化契约需要明确，凭据互斥检查需要集中处理 | `scripts/live-model-validation.ts:40-48` | None | 明确 standalone 脚本的 settings 初始化契约，集中处理凭据互斥检查 | [07-build-runtime-stubs.md](07-build-runtime-stubs.md) |
 
 ---
 
 ## 完整整改优先级
 
-### P1 问题（2 项）
+### P1 问题（1 项，1 项已修复）
 
-1. **B3-auth-01**：（主责：auth）
-   - 描述：Keychain 缓存 30 秒，跨进程刷新后另一个进程最多 30 秒才看到新 token
-   - 证据：`src/utils/secureStorage/macOsKeychainHelpers.ts:69-91`
-   - 依赖：None
-   - 验收：每次读取 tokens 时检查磁盘 mtime 或 Keychain 自身修改时间，变更则立即清缓存
+1. **B3-auth-01 ✅ 已修复**：（主责：auth）
+   - 描述：[已修复] Keychain 缓存 30 秒，跨进程刷新后另一个进程最多 30 秒才看到新 token
+   - 证据：`src/utils/secureStorage/macOsKeychainHelpers.ts:90-109, src/utils/secureStorage/macOsKeychainStorage.ts:26-199`
+   - 修复方案：使用共享 cache-version 标记（~/.claude/.keychain-cache-version.json），每次写入时原子更新 UUID，读取前检查版本，变更则立即刷新缓存
    - 来源：[03-memory-auth-settings.md](03-memory-auth-settings.md)
 
 2. **B7-test-validation-06**：（主责：test-validation）
