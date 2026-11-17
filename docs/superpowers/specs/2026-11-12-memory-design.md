@@ -26,6 +26,21 @@ Claude Code 需要记忆用户偏好、项目上下文、团队共享信息，�
 - **本层**：记忆系统核心（memdir）、Session Memory、Extract Memories、Team Memory Sync、Auto Dream
 - **下游**：文件系统（存储记忆）、Claude API（提取/整理记忆）、GitHub（团队记忆的仓库标识）
 
+### 记忆类型职责与调用关系
+| 记忆类型 | 存储位置 | 共享范围 | 主要消费者 | 相关子系统 |
+|---------|---------|---------|----------|-----------|
+| **Session Memory** | 项目目录`.session-memory.md` | 本地会话 | context-compaction（session memory compact） | session-persistence、context-compaction |
+| **Auto Memory** | `~/.claude/projects/.../memory/` | 本地用户 | 系统prompt注入 | query-core、extractMemories、autoDream |
+| **Team Memory** | auto目录下的`team/`子目录 | GitHub团队协作 | 团队同步、共享记忆 | teamMemorySync、permissions |
+| **CLAUDE.md** | 项目根目录 | 项目（git） | attachments系统 | ClaudeMD、attachments（非本系统） |
+| **KAIROS Daily Log** | auto目录下的`logs/YYYY/MM/` | 本地用户 | KAIROS模式恢复 | KAIROS（见相关spec） |
+
+### CLAUDE.md与记忆系统边界
+CLAUDE.md通过attachments系统注入上下文，**不是**记忆系统的一部分。记忆系统不处理CLAUDE.md的加载/解析/缓存。
+
+- **证据**: `memdir/memdir.ts`中无CLAUDE.md相关代码
+- **相关spec**: attachments spec、ClaudeMD spec
+
 ### 约束条件
 
 - 记忆类型限于 4 种：user（用户信息）、feedback（反馈/行为指南）、project（项目信息）、reference（外部资源引用）
@@ -73,6 +88,27 @@ Claude Code 需要记忆用户偏好、项目上下文、团队共享信息，�
 | **代价** | 实现复杂，有多层检查和错误处理 |
 | **证据** | `src/memdir/teamMemPaths.ts`（PathTraversalError、validateTeamMemWritePath、validateTeamMemKey、realpathDeepestExisting、isRealPathWithinTeamDir 等） |
 
+### 团队记忆路径验证差异（读取 vs 写入）
+
+| 操作 | 验证函数 | 验证程度 | 证据位置 | 说明 |
+|-----|---------|---------|---------|------|
+| **读取/权限检查** | `isTeamMemPath` | 仅字符串前缀检查 | `teamMemPaths.ts:214-220` | 快速路径，无symlink解析，存在潜在逃逸风险（但写入有完整验证） |
+| **写入/同步** | `validateTeamMemWritePath` | 完整symlink解析 + 真实路径检查 | `teamMemPaths.ts:228-284` | 安全路径，深度验证，防止逃逸 |
+| **远程键验证** | `validateTeamMemKey` | 清理+规范化检查 | `teamMemPaths.ts:22-63` | 键名安全，防止路径遍历注入 |
+
+- **验证边界**：读取路径仅做前缀检查是设计权衡（性能vs安全），因为写入路径已有完整保护；但需注意：若已存在恶意symlink，读取可能访问外部文件。
+- **相关发现登记**：X-memory-01（见cross-subsystem.md）
+
+### 删除文件后的cursor/索引失效与重复注入
+
+记忆删除后无显式追踪机制：
+- **extractMemories cursor**: lastMemoryMessageUuid基于消息UUID，不追踪已删除文件。若主代理删除记忆后重启，extractMemories可能重新提取相同内容到新文件（重复注入）。
+- **post-compact重新注入**: 压缩重建附件时，若记忆文件已删除但仍在cached，可能尝试重新注入已删除内容（但实际会因文件不存在而失败）。
+
+- **证据**: `extractMemories/extractMemories.ts:296-313,432-435` + `memoryScan.ts:84-94`
+- **验证边界**: 无删除追踪机制，cursor回退到计数所有消息
+- **降级行为**: 删除后无崩溃，重复提取仅创建新文件，不覆盖旧文件
+
 ### extractMemories 与主代理互斥（检查 hasMemoryWritesSince），而非并行工作
 
 | 决策维度 | 说明 |
@@ -109,9 +145,12 @@ Claude Code 需要记忆用户偏好、项目上下文、团队共享信息，�
 
 #### 状态与生命周期
 
-- **模块级状态**：autoDream：closure-scoped（inside initAutoDream），包含 lastSessionScanAt；extractMemories：closure-scoped（inside initExtractMemories），包含 lastMemoryMessageUuid、inProgress、turnsSinceLastExtraction、pendingContext、inFlightExtractions；Session Memory：module-level（lastMemoryMessageUuid）；teamMemPaths：无（纯函数，状态由调用方传入 SyncState）
+- **模块级状态**：autoDream：closure-scoped（inside initAutoDream），包含 lastSessionScanAt；extractMemories：closure-scoped（inside initExtractMemories），包含 lastMemoryMessageUuid、inProgress、turnsSinceLastExtraction、pendingContext、inFlightExtractions；Session Memory：module-level（lastSummarizedMessageUuid / lastMemoryMessageUuid）；teamMemPaths：无（纯函数，状态由调用方传入 SyncState）
 - **持久化**：记忆存储在文件系统：auto 记忆在 auto 目录，team 记忆在 auto/team 子目录；Session Memory：存储在会话目录的 .session-memory.md；autoDream：lock 文件和 lastConsolidatedAt 存储在 auto 目录；team 记忆 SyncState（lastKnownChecksum、serverChecksums、serverMaxEntries）：会话级，不持久化
 - **重置**：extractMemories：initExtractMemories 创建新 closure；autoDream：initAutoDream 创建新 closure；Session Memory：resetLastMemoryMessageUuid（测试用）
+- **lastSummarizedMessageUuid持久化**：Session Memory的lastSummarizedMessageUuid**仅在内存中维护**，不持久化到磁盘。会话重启时重置为undefined，可能导致重复提取。
+  - **证据**: `SessionMemory/sessionMemoryUtils.ts:44-69`
+  - **验证边界**: 无持久化机制，重启后cursor丢失
 
 #### 接口与数据
 
@@ -877,6 +916,8 @@ const MAX_CONFLICT_RETRIES = 2
 **隐私与信任边界**
 - **深度路径验证**：symlink 解析确保不能逃出 team 目录
 - **密钥扫描**：推送前扫描所有文件，含 gitleaks patterns 的文件跳过不上传
+  - **验证边界**：secret scanner存在，但patterns完整性未完全验证（不声明为缺失，仅记录当前验证范围）
+  - **证据**: `teamMemorySync/secretScanner.ts`
 - **仅团队类型**：user 类型记忆始终不应在 team 目录（提示层约束）
 - **隔离验证**：`validateTeamMemWritePath()` 在写入时验证，`isTeamMemPath()` 仅前缀检查（权限快速路径）
 - **服务器访问控制**：repo 级别权限，同一 org 的协作成员可访问

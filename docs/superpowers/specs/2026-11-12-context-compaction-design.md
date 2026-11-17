@@ -15,9 +15,20 @@ status: draft
 当对话历史增长超过模型上下文窗口的90%时，用户会遇到`prompt too long`错误，导致对话无法继续；当历史更长时，即使压缩本身也会因prompt过长而失败。同时，工具结果（尤其是shell输出、grep结果、文件内容）会占用大量token，而大部分历史对话的完整细节在后续轮次中不再需要。
 
 ### 调用方与职责边界
-- **上游**: query.ts的主循环、QueryEngine.submitMessage()
+- **上游**: query.ts的主循环、QueryEngine.submitMessage()（见query-core spec）
 - **本层**: 7种压缩机制的协调与执行
-- **下游**: Claude API（用于生成摘要）、sessionStorage（用于持久化）
+- **下游**: Claude API（用于生成摘要，见model-api spec）、sessionStorage（用于持久化，见session-persistence spec）
+
+### Context投影层次区分
+| 层次 | 描述 | 包含内容 | 拥有者 |
+|------|------|----------|--------|
+| **模型可见投影** | 实际发送到Claude API的messages | 已压缩历史、projected collapses、microcompact结果 | `compact.ts`/`contextCollapse/operations.ts` |
+| **UI transcript** | 用户在界面看到的对话 | 完整历史（含tombstones/progress/compact boundaries） | `query.ts`/`QueryEngine` |
+| **SDK输出** | 通过SDK生成器yield给消费者的内容 | 过滤tombstones，包含compact_boundary | `QueryEngine.ts` yield处理 |
+| **磁盘历史** | session storage持久化的JSONL | 完整parentUuid链、compact boundaries、collapses | `sessionStorage.ts` |
+
+### Progress消息UI桥接
+Progress消息存在于mutableMessages中用于UI，但不在transcript链中持久化。恢复时通过`sessionStoragePortable.ts`中的progress bridge机制处理，避免链分叉。详见session-persistence spec。
 
 ### 约束条件
 - 7种压缩机制有明确的优先级：microcompact → snip → context collapse → autocompact → reactive compact → session memory compact → manual compact
@@ -38,12 +49,32 @@ status: draft
   - `DISABLE_AUTO_COMPACT` (仅禁用autocompact)
 - **用户配置**: `autoCompactEnabled` (全局配置)
 
+### Cache Edits API层消费
+Cached microcompact的pending cache edits不在query.ts循环中应用，而是在API层(`claude.ts`)通过`consumePendingCacheEdits()`消费。该函数在API请求构建前调用，将cache edits附加到请求中，避免修改原始消息数组。
+
+- **证据**: `microCompact.ts:92-98`、`claude.ts`（见model-api spec）
+- **职责边界**: 本层仅设置pendingCacheEdits，API层负责消费，query-core负责协调时机
+
+### Compact Boundary Yield前持久化
+Compact boundary在yield到SDK前必须先持久化到session storage，确保resume时preserved segment relink能找到tailUuid。QueryEngine在yield前会flush到tailUuid的消息。
+
+- **证据**: `QueryEngine.ts:701-715`
+- **验证边界**: 若SDK subprocess在flush前重启，tailUuid指向未写入消息，`applyPreservedSegmentRelinks`失败，回退到加载完整pre-compact历史
+- **相关spec**: session-persistence spec
+
+### Forked Agent maxOutputTokens与Prompt Cache
+Forked agent（如context collapse的marble_origami、extract memories等）若修改maxOutputTokens，会改变thinking配置并破坏prompt cache共享。代码中有显式警告注释。
+
+- **证据**: `forkedAgent.ts:96-102`（见agent-swarms spec）
+- **设计取舍**: 暂不支持forked agent动态调整maxOutputTokens以保持cache命中
+
+
 ## 2. 设计理由与备选方案
 
 | 决策 | 实际机制 | 为什么采用 | 备选方案及不采用原因 | 代价 | 证据 |
 |---|---|---|---|---|---|
 | 7种压缩机制分层，而非单一方案 | microcompact清理工具结果 → context collapse后台渐变 → autocompact完整摘要 → reactive compact错误恢复 | 不同场景适用不同策略：microcompact零延迟、context collapse低干扰、autocompact最彻底 | 单一完整压缩：延迟太高，频繁打断用户；单一裁剪：丢失太多上下文 | 实现复杂度高，状态管理分散 | src/services/compact/ 下7个模块；src/services/contextCollapse/ 下4个模块 |
-| context collapse使用非阻塞spawn + staging + 溢出commit | token>90%时后台spawn summarizer；完成后staged；仅当真正溢出时才commit并project | 避免在正常对话路径上插入延迟；staged状态不影响当前投影；仅在紧急时才真正变更历史 | 阻塞式summarize：用户可见延迟高；立即commit：用户可能注意到历史突然变化 | 状态机复杂：spawned/staged/committed多状态；generation计数器防过期 | src/services/contextCollapse/index.ts:228-317 (applyCollapsesIfNeeded), 187-226 (commitStaged) |
+| context collapse使用非阻塞spawn + staging + 溢出commit | token>90%时后台spawn summarizer；完成后staged；仅当真正溢出时才commit并project | 避免在正常对话路径上插入延迟；staged状态不影响当前投影；仅在紧急时才真正变更历史 | 阻塞式summarize：用户可见延迟高；立即commit：用户可能注意到历史突然变化 | 状态机复杂：spawned/staged/committed多状态；generation计数器防过期；**模块级全局状态有跨会话污染风险**（见下文） | src/services/contextCollapse/index.ts:228-317 (applyCollapsesIfNeeded), 187-226 (commitStaged) |
 | reactive compact使用strip-images + PTL重试循环 | 先strip images/documents替换为[image]/[document]；若仍PTL，truncate最旧API-round groups | 图片/doc占用大量token，通常压缩摘要不需要；PTL重试是最后逃生门 | 直接压缩：图片可能导致压缩本身PTL | 有损：图片/doc永久丢失；压缩仍可能失败（MAX_PTL_RETRIES=3次） | src/services/compact/compact.ts:145-209 (stripImagesFromMessages), 243-291 (truncateHeadForPTLRetry), 457-498 (PTL重试循环) |
 | compact boundary后数组裁剪+GC | QueryEngine收到compact boundary时，裁剪mutableMessages和局部messages数组，仅保留边界后的内容 | 避免压缩后历史仍在内存中累积，防止长期运行会话OOM | 保留完整历史：内存无限增长，长会话变慢 | 需要正确维护preserved segment的parent UUID链；重放时需从session storage重建 | src/QueryEngine.ts (compact boundary处理分支，见query-core spec) |
 | autocompact circuit breaker防止死循环 | consecutiveFailures计数，达到MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES(=3)时停止尝试 | 避免在上下文 irrecoverably over limit时，每轮都尝试注定失败的压缩 | 无限制重试：浪费API调用，延迟每轮对话 | 用户可能不知道为什么autocompact停止工作；需手动触发 | src/services/compact/autoCompact.ts:260-265 (circuit breaker), 341-349 (failure计数) |
@@ -1114,9 +1145,11 @@ interface CompactMetadata {
 ### 证据边界
 - 所有测试均使用mock依赖（summarize/recordCommit/recordSnapshot/compact等），无真实API调用
 - 无长会话压力测试
-- 无并发/多agent测试
+- **无并发/多agent测试**：模块级全局状态（collapseStore、cachedMCState）在多会话环境下的污染风险未验证
 - 无持久化损坏恢复测试
 - 无端到端query.ts集成测试（仅单元测试）
+- **阈值硬编码**：90%/95% context collapse阈值、13,000 autocompact buffer均为硬编码，无配置选项（设计注意，非文档缺失）
+- **多会话状态风险**：collapseStore和cachedMCState为模块级全局，若多个会话同时使用可能互相污染（代码整改项，需重构到QueryEngine/SessionContext）
 
 ## 8. 文件覆盖与相关子系统
 
