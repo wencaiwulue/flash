@@ -1,7 +1,8 @@
 import { randomUUID } from 'crypto'
 import { queryModelWithStreaming } from '../services/api/claude.js'
 import { autoCompactIfNeeded } from '../services/compact/autoCompact.js'
-import { microcompactMessages } from '../services/compact/microCompact.js'
+import { microcompactMessages, MicrocompactSession } from '../services/compact/microCompact.js'
+import { ContextCollapseSession } from '../services/contextCollapse/index.js'
 
 // -- deps
 
@@ -25,6 +26,38 @@ export type QueryDeps = {
   // -- compaction
   microcompact: typeof microcompactMessages
   autocompact: typeof autoCompactIfNeeded
+  // Session-scoped compaction wrappers (use these when available)
+  microcompactFromSession?: (
+    messages: Parameters<typeof microcompactMessages>[0],
+    context: Parameters<typeof microcompactMessages>[1],
+    querySource: Parameters<typeof microcompactMessages>[2],
+  ) => ReturnType<typeof microcompactMessages>
+  applyCollapsesFromSession?: (
+    messages: Parameters<
+      ContextCollapseSession['applyCollapsesIfNeeded']
+    >[0],
+    context: Parameters<ContextCollapseSession['applyCollapsesIfNeeded']>[1],
+    querySource: Parameters<ContextCollapseSession['applyCollapsesIfNeeded']>[2],
+  ) => ReturnType<ContextCollapseSession['applyCollapsesIfNeeded']>
+  isContextCollapseWithheldFromSession?: (
+    message: Parameters<
+      ContextCollapseSession['isWithheldPromptTooLong']
+    >[0],
+    isPromptTooLongMessage: Parameters<
+      ContextCollapseSession['isWithheldPromptTooLong']
+    >[1],
+    querySource: Parameters<
+      ContextCollapseSession['isWithheldPromptTooLong']
+    >[2],
+  ) => ReturnType<ContextCollapseSession['isWithheldPromptTooLong']>
+  recoverFromOverflowFromSession?: (
+    messages: Parameters<
+      ContextCollapseSession['recoverFromOverflow']
+    >[0],
+    querySource: Parameters<
+      ContextCollapseSession['recoverFromOverflow']
+    >[1],
+  ) => ReturnType<ContextCollapseSession['recoverFromOverflow']>
 
   // -- platform
   uuid: () => string
