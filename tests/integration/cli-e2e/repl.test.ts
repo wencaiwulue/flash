@@ -14,9 +14,16 @@ afterAll(async () => {
   }
 })
 
+// 预置 customApiKeyResponses（normalizeApiKeyForConfig = apiKey.slice(-20)，'mock-key' 全长即截断值，
+// 证据：src/utils/authPortable.ts:17、src/utils/config.ts:1107、src/interactiveHelpers.tsx:283）
+// 使 "Do you want to use this API key?" 对话框不再出现，REPL 启动完全确定。
+function approvedKeyConfig(): Record<string, unknown> {
+  return { customApiKeyResponses: { approved: [MOCK_API_KEY] } }
+}
+
 async function startRepl(): Promise<{ session: PtySession; sandbox: Sandbox; mock: MockAnthropic }> {
   const mock = await createMockAnthropic()
-  const sandbox = await createSandbox()
+  const sandbox = await createSandbox({ globalConfig: approvedKeyConfig() })
   const session = await spawnPty({
     cmd: [process.execPath, await distMainPath()],
     cwd: sandbox.project,
@@ -24,35 +31,35 @@ async function startRepl(): Promise<{ session: PtySession; sandbox: Sandbox; moc
   })
   toClose.push({ session, sandbox, mock })
 
-  // Handle API key dialog - evidence-based: wait for dialog elements first
-  try {
-    await session.waitFor(/Detected|API key|Yes.*No/, 10000)
-    // Dialog confirmed present - select Yes (up arrow once from default No) and confirm with two writes
-    session.write('\x1b[A')
-    await new Promise(r => setTimeout(r, 300))
-    session.write('\r')
-    await new Promise(r => setTimeout(r, 500))
-  } catch {
-    // No dialog appeared, continue
-  }
-
-  // Wait for the prompt - deterministic readiness signal
-  await session.waitFor(/❯/, 30000)
+  // Ready 信号：状态栏 '/effort' 只在活跃 REPL 渲染（对话框/启动屏没有它）。
+  await session.waitFor('/effort', 30_000)
 
   return { session, sandbox, mock }
 }
 
 describe('REPL interaction', () => {
+  test('submits input, renders scripted reply, exits via /exit', { timeout: 90_000 }, async () => {
+    const { session, mock } = await startRepl()
+
+    // 就绪后再入队。注意：用户提示会先触发一次 haiku 辅助请求（如话题命名），
+    // 再发主对话请求 —— 队首必须留给辅助调用（实测：hello 后共 3 个 /v1/messages 请求）。
+    mock.enqueue({ type: 'text', text: 'HAIKU_AUX_OK' }, { type: 'text', text: 'REPL_REPLY_2e8b' })
+    session.write('hello\r')
+    await session.waitFor('REPL_REPLY_2e8b', 30_000)
+    expect(mock.requests.some(r => r.path === '/v1/messages')).toBe(true)
+
+    session.write('/exit\r')
+    const exitCode = await session.exited()
+    expect([0, 130, -1]).toContain(exitCode)
+  })
+
   test('unknown slash command shows error and process stays alive', { timeout: 90_000 }, async () => {
     const { session } = await startRepl()
 
-    // Send unknown command
     session.write('/definitely-not-a-valid-command-xyz\r')
+    await session.waitFor('Unknown skill:', 15_000)
 
-    // Wait for the real error message (captured via probe)
-    await session.waitFor('Unknown skill:', 15000)
-
-    // Verify process is still alive by exiting cleanly with double Ctrl+C
+    // 进程存活：双 Ctrl+C 干净退出
     session.write('\x03')
     await new Promise(r => setTimeout(r, 300))
     session.write('\x03')
@@ -65,10 +72,7 @@ describe('REPL interaction', () => {
   test('/exit command exits the REPL', { timeout: 90_000 }, async () => {
     const { session } = await startRepl()
 
-    // Send /exit
     session.write('/exit\r')
-
-    // Verify it exits (actual behavior captured via probe)
     const exitCode = await session.exited()
     expect(exitCode).toBeDefined()
     expect([0, 130, -1]).toContain(exitCode)
