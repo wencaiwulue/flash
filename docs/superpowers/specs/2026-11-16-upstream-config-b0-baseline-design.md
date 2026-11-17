@@ -16,7 +16,7 @@ status: approved
 
 - 2026-11-16 查询官方 `@anthropic-ai/claude-code` dist-tags：`stable=2.1.311`、`latest=2.1.326`、`next=2.1.326`。B0 固定 stable `2.1.311`，不是本机旧版 2.1.212，也不是 latest。
 - 原生二进制观测版本为 `2.1.311 (Claude Code)`，doctor 报告 commit `e7d3b8365a0f`、平台 `darwin-arm64`。
-- 文档是 2026-11-16 获取的实时页面快照；文件名中的版本只表示本批基线，不宣称官方提供版本化文档。证据包记录 URL、采集时间和 SHA-256。
+- 文档是 2026-11-17T08:57:19Z 获取的实时页面快照；spec/plan 文件名的 2026-11-16 是创建日期，版本目录只表示本批基线，不宣称官方提供版本化文档。证据包记录 URL、实际采集时间和 SHA-256。
 - 实时文档可能领先 stable。例如 `permissions.denyInsteadOfPrompting` 标注 Requires v2.1.319。此类条目仍进入清单，但记录 `introduced` 和 `afterBaseline:true`，本批 runtime 只能 blocked，不能声称已在 2.1.311 验证。
 - 文档快照包括 settings reference、settings、hooks reference 和 environment variables。证据包还记录 llms.txt 的索引 URL。
 - 不采用 `npm view claude-code` 的结果；该名称返回无关包 1.0.0。
@@ -52,6 +52,7 @@ status: approved
 | inventory 与 matrix 分离 | inventory 是上游事实；matrix 额外记录 flash 实现和验收 | 重采集不会覆盖人工验证结论 | 单一文件全部由生成器覆盖 | B0 需要可重生成与人工状态并存 |
 | 只自动 diff settings 与 hooks | settings 来自 JSON Schema，hooks 来自 `HOOK_EVENTS`；env 仍由矩阵证据约束 | 当前没有可信的全量 env 注册表，不能用 grep 冒充语义检查 | 对源码做字符串存在性检查即标记 aligned | 总路线“注入不算完成” |
 | 保留 deprecated/removed 标签 | 文档明确标记的项进入 inventory，再由 matrix 记录替代项或排除理由 | 防止悄悄漏项；区分不支持与故意迁移 | 解析时直接删除废弃行 | 总路线排除记录要求 |
+| 复合类型保留完整语义 | 仅规范化简单主类型；object/array 的属性、映射、union 与反引号 code span 全文保留 | 首个逗号/冒号可能属于属性列表或 code span，截断会伪造类型 | 按首个逗号/冒号切割全部类型 | 官方 settings reference 的 `hooks`、`permissions`、`sandbox.filesystem` Type 行；SHA-256 `7817edfb…6a6f2f` |
 | 未列出不等于 removed | 只有文档明确标记才设 lifecycle；重采集消失记为 upstream-disappeared 并人工复核 | 实时文档可能调整结构 | 将消失项自动删除或宣称上游移除 | 文档非版本化快照 |
 | hooks 三类局部清洗 | 非对象 hooks、未知事件、已知事件非数组分别删除并诊断 | 与 2.1.311 黑盒观测一致，保留有效兄弟配置 | 全字段通用容错；继续整文件失败 | doctor probe；官方 settings 文档 |
 | 不扩散容错 | 已知事件数组内部的坏 matcher 仍走 schema；`model` 等普通字段不变 | 这些行为未在本批完整测量 | 递归清洗任意 hook 内容 | 2.1.311 仅证明三类局部行为 |
@@ -140,12 +141,15 @@ type UpstreamEntry = {
 
 生成器必须：
 
-1. 读取 settings reference 的有效设置表和嵌套小节，保留点路径、scope、完整来源限制、优先级/合并原文、类型、默认值、deprecated/removed 与 replacement。未找到优先级说明时 `precedenceDocumented:false`，不得把空串解释为固定优先级。
-2. 读取 hooks reference 的事件清单；二进制 doctor 列表用于交叉验证，不以文档缺行推断事件不存在。
-3. 读取 environment variables 的 Variables 表；包含 deprecated 项。
-4. 按 `kind`、`id` 稳定排序，拒绝重复 ID、空 path、非法 lifecycle 和无来源条目。
-5. 从 Requires 语句提取 `introduced`；版本高于 2.1.311 时设 `afterBaseline:true`，matrix 初始状态为 blocked，并在 notes 中记录文档领先 stable。
-6. 数量由当次文档重新计算，禁止把早期审核的 `99 + 22` 写成预期常量。
+1. 读取 settings reference 的有效设置表和嵌套小节，保留点路径、scope、完整来源限制、优先级/合并原文、类型、默认值、deprecated/removed。表格索引和详情标题只识别 fenced code block 外的结构行；目标表连续非空块中的畸形数据行必须抛错，正常空行或新标题结束表格。表格 cell 按连续反引号 run 识别 code span，span 内的 `|` 不分列。
+2. Scope 行中的 precedence/override/merge/highest/outrank 原文同样进入 `precedence`。未找到优先级说明时 `precedenceDocumented:false`，不得把空串解释为固定优先级。
+3. 简单主类型 string/boolean/number/object/array 可规范化为小写主类型；带描述的复合 object/array 必须保留完整语义，不得按逗号/冒号截断属性列表或反引号 code span。Default 的反引号布尔、null、有限数字在后接空白或 `, . ; : ! ?` 时仍转 JSON 值；unset 和描述性默认值保留 `default:null`、`defaultDocumented:true`。
+4. 只有 lifecycle 为 deprecated/removed 时才从 `use \`replacement\`` 提取 replacement；active 条目的普通示例用语不得生成 replacement。
+5. 读取 hooks reference 的事件清单；二进制 doctor 列表用于交叉验证，不以文档缺行推断事件不存在。
+6. 读取 environment variables 的 Variables 表；包含 deprecated 项。
+7. 按 `kind`、`id` 稳定排序，拒绝重复 ID、空 path、非法 lifecycle、无来源或空 source anchor 条目。
+8. 从 Requires 语句提取 `introduced`；版本高于 2.1.311 时设 `afterBaseline:true`，matrix 初始状态为 blocked，并在 notes 中记录文档领先 stable。
+9. 数量由当次文档重新计算，禁止把早期审核的 `99 + 22` 写成预期常量。
 
 #### 4.1.3 compatibility 数据契约
 

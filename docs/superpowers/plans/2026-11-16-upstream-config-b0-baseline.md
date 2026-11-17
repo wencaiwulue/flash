@@ -14,7 +14,7 @@
 
 - B0 不实现 6 个新事件的运行时协议，不把 schema/矩阵登记标成 runtime aligned；这些属于 B1。
 - 不执行或提交真实用户 HOME、凭据、OAuth token、上游二进制和完整文档；probe 只使用隔离临时目录。
-- 文档是 2026-11-16 实时快照。Requires 版本高于 2.1.311 的项必须 `afterBaseline:true`、runtime blocked。
+- 文档实际采集时间是 2026-11-17T08:57:19Z；2026-11-16 是 spec/plan 创建日期。Requires 版本高于 2.1.311 的项必须 `afterBaseline:true`、runtime blocked。
 - 不实现通用字段容错；已知 hook 数组内部、普通字段、managed/MDM/remote/inline 行为保持原样。
 - 不用 `npm view claude-code`；包名是 `@anthropic-ai/claude-code`。
 - 测试以退出码判断，不能只看 tail；不修改无关未跟踪文件。
@@ -173,16 +173,16 @@ Expected: FAIL，无法 import `scripts/upstreamConfigInventory.ts`；此时尚�
 
 创建 `scripts/upstreamConfigInventory.ts`，导出 spec 中的类型及以上函数。实现必须遵守以下确定规则：
 
-1. settings 顶层索引行按 `[ \`path\` ](#anchor)`（去掉空格）识别；从对应 `### \`path\`` 到下一个同级/更高级标题提取 Scope/Type/Default。索引提供 scope/category 回退，详情提供类型与默认值。表格 splitting 只认未转义且不在反引号内的 `|`；目标表中的畸形行必须抛错，不能静默跳过。
-2. 完整 Scope 行写入 `sourceRules`；详情节中 Per-session overrides 行及包含 precedence/override/merge/highest/outrank 的非代码段写入 `precedence`，有原文时 `precedenceDocumented:true`。env Purpose 中同类规则同样保留；hook 没有文档优先级时明确 false/空串。
-3. Type 取第一个逗号或冒号前的主类型，并把 Boolean→boolean、String→string、Number→number、Object→object、Array→array；其余保留小写原文。Default 的反引号 `true/false/null`、有限数字转对应 JSON 值；unset 和描述性默认值保留 `default:null`，同时 `defaultDocumented:true`，原文进入 excerpt。
-4. 描述以 Deprecated 开头设 deprecated，以 Removed 开头设 removed；env 的 `\[DEPRECATED]`/`[DEPRECATED]` 前缀也设 deprecated。`use \`replacement\`` 提取 replacement。Requires 正则 `/Requires Claude Code v(\d+\.\d+\.\d+)/`；按数字三段比较 2.1.311。
-5. hooks 只解析 `| Event | When it fires |` 后的连续表行；env 只解析 `| Variable | Purpose |` 后的连续表行，避免把正文示例误登记。
-6. `stripMarkdown()` 去除 link 的 URL 但保留文本、反引号和 HTML；`excerpt` 压成单行，最长 1000 字符。不得从配置示例采集任何值。
-7. `buildInventory()` 深检查重复 ID，按 `setting`、`hook`、`env` 再按 id 排序；baseline.distTag 固定 `stable`，version 固定 `2.1.311`。
+1. settings 顶层索引行按 `[ \`path\` ](#anchor)`（去掉空格）识别；从对应 `### \`path\`` 到下一个同级/更高级标题提取 Scope/Type/Default。索引提供 scope/category 回退，详情提供类型与默认值。表格 splitting 只认未转义且不在 code span 内的 `|`，code span 以连续反引号 run 为 delimiter，双反引号内单个反引号或 `|` 不得误判。目标表连续非空块中的畸形数据行必须抛错；正常空行或新标题结束表格。目标表索引和详情小节标题统一排除 fenced code block。
+2. 完整 Scope 行写入 `sourceRules`；详情节中 Per-session overrides 行及包含 precedence/override/merge/highest/outrank 的非代码段写入 `precedence`，包括 Scope 行中的同类原文；有原文时 `precedenceDocumented:true`。env Purpose 中同类规则同样保留；hook 没有文档优先级时明确 false/空串。
+3. 简单主类型 string/boolean/number/object/array 可规范化为小写主类型；带描述的复合 object/array 必须保留完整 Type 语义，绝不按反引号内或属性列表中的逗号/冒号切割。Default 的反引号 `true/false/null`、有限数字在后接空白或 `, . ; : ! ?` 时仍转对应 JSON 值；unset 和描述性默认值保留 `default:null`，同时 `defaultDocumented:true`，原文进入 excerpt。
+4. 描述以 Deprecated 开头设 deprecated，以 Removed 开头设 removed；env 的 `\[DEPRECATED]`/`[DEPRECATED]` 前缀也设 deprecated。仅 deprecated/removed 生命周期可从 `use \`replacement\`` 提取 replacement，active 不得因普通示例中的 use 生成伪 replacement。Requires 正则 `/Requires Claude Code v(\d+\.\d+\.\d+)/`；按数字三段比较 2.1.311。
+5. hooks 只解析 fenced code block 外 `| Event | When it fires |` 后的连续表行；env 只解析 `| Variable | Purpose |` 后的连续表行，避免把前置 fenced 示例表误登记，也不得被详情 code fence 中的伪标题截断。
+6. `stripMarkdown()` 去除 link 的 URL 但保留文本、反引号和 HTML；链接 destination 用最小平衡括号扫描，保留嵌套括号的正确边界，不扩展成完整 Markdown 引擎。`excerpt` 压成单行，最长 1000 字符。不得从配置示例采集任何值。
+7. `buildInventory()` 深检查重复 ID，按 `setting`、`hook`、`env` 再按 id 排序；拒绝空 source anchor；baseline.distTag 固定 `stable`，version 固定 `2.1.311`。
 8. CLI 参数为 `--settings-reference --settings --hooks-reference --env-vars --llms --binary --binary-commit --binary-platform --captured-at --output-dir`。使用 `createHash('sha256')` 计算文档和二进制哈希；`spawnSync(binary, ['--version'], { encoding:'utf8' })` 只获取版本，不运行 doctor。
 9. evidence.json 写 `schemaVersion:1`、`capturedAt`、五个文档的 URL/hash、`binary:{version,commit,platform,sha256}`、`probeDirectory` 不写本机路径。inventory.json 的 baseline 复用同一份数据。
-10. 所有未知参数、缺失参数、重复 ID、空 entries、二进制版本不含 2.1.311 均非零退出。
+10. 所有未知参数、缺失参数、重复 ID、空 entries 均非零退出。二进制版本开头必须是完整 semver `2.1.311` 并以空白或字符串结尾为边界；不得用 substring includes 接受 2.1.3110 或 12.1.311。
 
 - [ ] **Step 4: 运行真实采集并保存脱敏 probe**
 
@@ -204,12 +204,12 @@ bun scripts/upstreamConfigInventory.ts \
   --binary /tmp/flash-upstream-2.1.311.hQPPEu/native/package/claude \
   --binary-commit e7d3b8365a0f \
   --binary-platform darwin-arm64 \
-  --captured-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --captured-at "2026-11-17T08:57:19Z" \
   --output-dir fixtures/upstream-config/2.1.311
 ```
 
 若临时文件已清理，下载 URL 依次为：
-`https://code.claude.com/docs/en/settings-reference.md`、`settings.md`、`hooks-reference.md`、`env-vars.md`、`https://code.claude.com/docs/llms.txt`。不得用 latest 二进制替换固定的 2.1.311 证据；原二进制不可用时停止并重新按官方 native 安装渠道获取该精确版本。
+`https://code.claude.com/docs/en/settings-reference.md`、`https://code.claude.com/docs/en/settings.md`、`https://code.claude.com/docs/en/hooks.md`、`https://code.claude.com/docs/en/env-vars.md`、`https://code.claude.com/docs/llms.txt`。备用入口曾写的 `hooks-reference.md` 已返回 404；本次 evidence 的 `llms.txt` 中 Hooks reference 条目明确指向 canonical `hooks.md`，因此切换到该入口，避免把不存在的别名当作采集来源。此修正不改变 2.1.311 基线或原五份文档的证据哈希。不得用 latest 二进制替换固定的 2.1.311 证据；原二进制不可用时停止并重新按官方 native 安装渠道获取该精确版本。
 
 创建 `probes/hooks-results.json`，只记录以下结构化结果，不复制隔离 `.claude.json`：
 
@@ -241,7 +241,7 @@ bun scripts/upstreamConfigInventory.ts --help
 git diff --exit-code -- fixtures/upstream-config/2.1.311/inventory.json
 ```
 
-Expected: `--help` 非零或零均可但必须只列用法；inventory 无非 capturedAt 引起的 diff。若比较包含 capturedAt，逐字段排除该字段后必须相同。
+Expected: `--help` 非零或零均可但必须只列用法；使用相同五份文档、二进制和固定 capturedAt 重采时，evidence/inventory 必须逐字节确定，inventory 无 diff。
 
 - [ ] **Step 6: 提交 Task 1**
 
