@@ -1,6 +1,6 @@
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { stat, unlink } from 'fs/promises'
+import { stat } from 'fs/promises'
 
 export interface PtyOptions {
   cmd: string[]
