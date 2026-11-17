@@ -601,3 +601,80 @@ describe('Open Chrome Disabled/Stub (Real API)', () => {
     expect(() => createOpenChromeConfig({ ...baseContext, cdpTimeoutMs: -1 })).toThrow()
   })
 })
+
+describe('OpenRunnerClient Redirect Handling (Real API)', () => {
+  test('follows 302 redirects correctly with real fetch', async () => {
+    // Track which paths are requested
+    const requestedPaths: string[] = []
+    let server: any = null
+
+    try {
+      // Create a minimal HTTP server that redirects
+      const { createServer } = await import('node:http')
+      server = createServer((req: any, res: any) => {
+        requestedPaths.push(req.url)
+
+        if (req.url === '/open-runner/v1/runners/register') {
+          // Initial request - redirect to final path
+          res.writeHead(302, {
+            Location: '/final-register-endpoint',
+            'Content-Type': 'application/json',
+          })
+          res.end()
+        } else if (req.url === '/final-register-endpoint') {
+          // Final destination - return valid response
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({
+            protocol: 'open-runner-v1',
+            runner_id: 'test-runner',
+            instance_id: 'test-instance',
+            worker_epoch: 1,
+            heartbeat_interval_ms: 30000,
+            lease_ms: 30000,
+            server_time: new Date().toISOString(),
+          }))
+        } else {
+          res.writeHead(404, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: 'Not found' }))
+        }
+      })
+
+      // Start server on ephemeral port
+      await new Promise<void>((resolve) => {
+        server.listen(0, '127.0.0.1', () => resolve())
+      })
+      const address = server.address()
+      const serverUrl = `http://127.0.0.1:${address.port}`
+
+      // Create real OpenRunnerClient - it will use the global fetch which follows redirects
+      const client = new OpenRunnerClient({
+        serverUrl,
+        token: 'test-token',
+        maxRetries: 0, // No retries needed for redirect
+      })
+
+      // Make the request
+      const result = await client.register({
+        runner_id: 'test-runner',
+        instance_id: 'test-instance',
+      })
+
+      // Verify both paths were requested
+      expect(requestedPaths).toContain('/open-runner/v1/runners/register')
+      expect(requestedPaths).toContain('/final-register-endpoint')
+
+      // Verify the client returned the parsed response
+      expect(result.protocol).toBe('open-runner-v1')
+      expect(result.runner_id).toBe('test-runner')
+      expect(result.worker_epoch).toBe(1)
+
+    } finally {
+      // Clean up server
+      if (server) {
+        await new Promise<void>((resolve) => {
+          server.close(() => resolve())
+        })
+      }
+    }
+  })
+})

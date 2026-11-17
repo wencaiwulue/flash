@@ -680,4 +680,99 @@ describe('Session Concurrency Contracts', () => {
       await rm(testTempDir, { recursive: true, force: true })
     }
   })
+
+  test('SDK fork file isolation: session-stamping works correctly', async () => {
+    // This test exercises the critical behavior at sessionStorage.ts:1088
+    // where messages are re-stamped with the current session ID
+
+    // Track what happens in two separate sessions
+    let session1Id: any
+    let session2Id: any
+    let transcriptPath1: string
+    let transcriptPath2: string
+
+    // Use a simpler approach - work with one session at a time, manually verify paths differ
+
+    // -------------------
+    // First, Session ONE
+    // -------------------
+    {
+      const testTempDir = await mkdtemp(join(tmpdir(), 'claude-fork-test1-'))
+      try {
+        const originalConfigDir = process.env.CLAUDE_CONFIG_DIR
+        process.env.CLAUDE_CONFIG_DIR = join(testTempDir, 'config')
+
+        const s1 = randomUUID() as any
+        switchSession(s1, projectDir)
+
+        const msgA = {
+          type: 'user',
+          uuid: randomUUID(),
+          parentUuid: null,
+          message: { role: 'user', content: 'msg A' },
+          isMeta: false,
+        }
+        await recordTranscript([msgA])
+        await flushSessionStorage()
+
+        transcriptPath1 = getTranscriptPath()
+        const { messages } = await loadTranscriptFile(transcriptPath1)
+        const loaded = messages.get(msgA.uuid as any)!
+        session1Id = loaded.sessionId
+
+        if (originalConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR
+        else process.env.CLAUDE_CONFIG_DIR = originalConfigDir
+        resetStateForTests()
+        resetProjectForTesting()
+      } finally {
+        await rm(testTempDir, { recursive: true, force: true })
+      }
+    }
+
+    // -------------------
+    // Now, Session TWO
+    // -------------------
+    {
+      const testTempDir = await mkdtemp(join(tmpdir(), 'claude-fork-test2-'))
+      try {
+        const originalConfigDir = process.env.CLAUDE_CONFIG_DIR
+        process.env.CLAUDE_CONFIG_DIR = join(testTempDir, 'config')
+
+        const s2 = randomUUID() as any
+        switchSession(s2, projectDir)
+
+        // Simulate a "copied" message that still has session1's stamp
+        const copiedMsg = {
+          type: 'user',
+          uuid: randomUUID(),
+          parentUuid: null,
+          message: { role: 'user', content: 'copied msg' },
+          isMeta: false,
+          sessionId: session1Id, // This carries the old session ID!
+        }
+
+        await recordTranscript([copiedMsg])
+        await flushSessionStorage()
+
+        transcriptPath2 = getTranscriptPath()
+        const { messages } = await loadTranscriptFile(transcriptPath2)
+        const loaded = messages.get(copiedMsg.uuid as any)!
+        session2Id = loaded.sessionId
+
+        // The critical assertion: session-stamping overwrote the old sessionId!
+        expect(loaded.sessionId).not.toBe(session1Id)
+        expect(loaded.sessionId).toBe(session2Id)
+
+        if (originalConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR
+        else process.env.CLAUDE_CONFIG_DIR = originalConfigDir
+        resetStateForTests()
+        resetProjectForTesting()
+      } finally {
+        await rm(testTempDir, { recursive: true, force: true })
+      }
+    }
+
+    // Also verify the two transcript paths are different (different session IDs)
+    expect(transcriptPath1).not.toBe(transcriptPath2)
+  })
 })
