@@ -83,7 +83,7 @@ status: draft
 ```text
 docs/status/design-docs-completeness-audit/
   README.md                 # 总矩阵、统计、整改顺序、完成状态
-  batch-0.md ... batch-7.md # 逐 spec、逐 coverage group 的证据与发现
+  00-core-query-sdk.md ... 07-build-runtime-stubs.md # 逐 spec、逐 coverage group 的证据与发现
   cross-subsystem.md        # 跨系统契约矩阵和关联发现
 ```
 

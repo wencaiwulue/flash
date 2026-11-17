@@ -13,7 +13,7 @@
 
 ```bash
 # 门禁运行验证
-bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if (!(await Bun.file(file).exists())) { console.error("FAIL: batch-2 report missing"); process.exit(1); }'
+bun -e 'const file = "docs/status/design-docs-completeness-audit/02-tools-permissions-sessions.md"; if (!(await Bun.file(file).exists())) { console.error("FAIL: batch-2 report missing"); process.exit(1); }'
 # 退出码 0（已创建）
 ```
 

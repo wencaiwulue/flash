@@ -38,14 +38,14 @@
 ## File Structure
 
 - Create `docs/status/design-docs-completeness-audit/README.md`：仓库/上游基线、68 行总矩阵、分类统计、整改顺序和最终完成状态。
-- Create `docs/status/design-docs-completeness-audit/batch-0.md`：5 个核心 spec，以及顶层文档和未注册工程 spec 的一致性审查。
-- Create `docs/status/design-docs-completeness-audit/batch-1.md`：CLI 启动、context compaction、model API。
-- Create `docs/status/design-docs-completeness-audit/batch-2.md`：附件、工具、权限、MCP 与会话持久化等 12 个 spec。
-- Create `docs/status/design-docs-completeness-audit/batch-3.md`：认证、Git、memory、设置、技能等 9 个 spec。
-- Create `docs/status/design-docs-completeness-audit/batch-4.md`：AppState、UI、输入、渲染等 11 个 spec。
-- Create `docs/status/design-docs-completeness-audit/batch-5.md`：子代理、计划、调度、任务与 DAG 等 7 个 spec。
-- Create `docs/status/design-docs-completeness-audit/batch-6.md`：后台、远程、SSH、teleport 等 7 个 spec。
-- Create `docs/status/design-docs-completeness-audit/batch-7.md`：构建、stubs、hooks、运行时、遥测、验证等 14 个 spec。
+- Create `docs/status/design-docs-completeness-audit/00-core-query-sdk.md`：5 个核心 spec，以及顶层文档和未注册工程 spec 的一致性审查。
+- Create `docs/status/design-docs-completeness-audit/01-startup-context-model.md`：CLI 启动、context compaction、model API。
+- Create `docs/status/design-docs-completeness-audit/02-tools-permissions-sessions.md`：附件、工具、权限、MCP 与会话持久化等 12 个 spec。
+- Create `docs/status/design-docs-completeness-audit/03-memory-auth-settings.md`：认证、Git、memory、设置、技能等 9 个 spec。
+- Create `docs/status/design-docs-completeness-audit/04-app-state-terminal-ui.md`：AppState、UI、输入、渲染等 11 个 spec。
+- Create `docs/status/design-docs-completeness-audit/05-agents-tasks-workflows.md`：子代理、计划、调度、任务与 DAG 等 7 个 spec。
+- Create `docs/status/design-docs-completeness-audit/06-remote-background-platforms.md`：后台、远程、SSH、teleport 等 7 个 spec。
+- Create `docs/status/design-docs-completeness-audit/07-build-runtime-stubs.md`：构建、stubs、hooks、运行时、遥测、验证等 14 个 spec。
 - Create `docs/status/design-docs-completeness-audit/cross-subsystem.md`：context、memory、共享状态、持久化恢复、构建门和 CLI/SDK/远程契约矩阵。
 
 ## 通用证据操作（每个批次任务必须执行）
@@ -225,7 +225,7 @@ git commit -m "Start comprehensive design docs audit" -m "Co-Authored-By: Claude
 ### Task 2: 审查 batch 0 核心契约与顶层文档
 
 **Files:**
-- Create: `docs/status/design-docs-completeness-audit/batch-0.md`
+- Create: `docs/status/design-docs-completeness-audit/00-core-query-sdk.md`
 - Modify: `docs/status/design-docs-completeness-audit/README.md`
 - Review: `docs/superpowers/specs/2026-11-12-codebase-design-docs-design.md` + `docs/architecture/coverage/documentation-system.yaml`
 - Review: `docs/superpowers/specs/2026-11-12-plugins-design.md` + `docs/architecture/coverage/plugins.yaml`
@@ -250,7 +250,7 @@ git commit -m "Start comprehensive design docs audit" -m "Co-Authored-By: Claude
 - [ ] **Step 1: 运行 batch 0 报告门禁并确认 RED**
 
 ```bash
-bun -e 'const ids = ["documentation-system","plugins","query-core","sdk-query-sessions","sdk-type-generation"]; const file = "docs/status/design-docs-completeness-audit/batch-0.md"; if (!(await Bun.file(file).exists())) { console.error("FAIL: batch-0 report missing", ids); process.exit(1); }'
+bun -e 'const ids = ["documentation-system","plugins","query-core","sdk-query-sessions","sdk-type-generation"]; const file = "docs/status/design-docs-completeness-audit/00-core-query-sdk.md"; if (!(await Bun.file(file).exists())) { console.error("FAIL: batch-0 report missing", ids); process.exit(1); }'
 ```
 
 Expected: 退出码 1，报告尚不存在。
@@ -280,7 +280,7 @@ strings /opt/homebrew/bin/claude | rg -n -i -C 2 'unstable_v2|resumeSession|fork
 
 - [ ] **Step 5: 写 batch-0 报告并更新总矩阵**
 
-报告包含五个真实 spec ID 的三级小节、顶层文档专节、发现表、证据边界和完成判定。每个 coverage group 都有审查记录；query/SDK 的跨域问题只设一个主责。将 README 对应 5 行的 open 替换为实际结论，并使用真实锚点链接，例如 `batch-0.md#query-core`；其余 63 行保持原状态。
+报告包含五个真实 spec ID 的三级小节、顶层文档专节、发现表、证据边界和完成判定。每个 coverage group 都有审查记录；query/SDK 的跨域问题只设一个主责。将 README 对应 5 行的 open 替换为实际结论，并使用真实锚点链接，例如 `00-core-query-sdk.md#query-core`；其余 63 行保持原状态。
 
 - [ ] **Step 6: 独立复核高优先级发现并处理反证**
 
@@ -291,7 +291,7 @@ strings /opt/homebrew/bin/claude | rg -n -i -C 2 'unstable_v2|resumeSession|fork
 ```bash
 bun - <<'TS'
 const ids = ['documentation-system','plugins','query-core','sdk-query-sessions','sdk-type-generation']
-const report = await Bun.file('docs/status/design-docs-completeness-audit/batch-0.md').text()
+const report = await Bun.file('docs/status/design-docs-completeness-audit/00-core-query-sdk.md').text()
 const required = ['## 基线与范围','## 子系统审查','## 发现登记','## 证据边界','## 完成判定','## 顶层与工程文档一致性']
 const missing = [...ids.filter(id => !report.includes(`### ${id}\n`)), ...required.filter(h => !report.includes(h))]
 if (missing.length) { console.error('FAIL', missing); process.exit(1) }
@@ -306,7 +306,7 @@ Expected: 门禁 PASS；结构检查 0 errors；无 whitespace 错误。然后�
 - [ ] **Step 8: Commit**
 
 ```bash
-git add docs/status/design-docs-completeness-audit/README.md docs/status/design-docs-completeness-audit/batch-0.md
+git add docs/status/design-docs-completeness-audit/README.md docs/status/design-docs-completeness-audit/00-core-query-sdk.md
 git commit -m "Audit core design contracts" -m "Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
 
@@ -315,7 +315,7 @@ git commit -m "Audit core design contracts" -m "Co-Authored-By: Claude <noreply@
 ### Task 3: 审查 batch 1 启动、模型与 Context Compaction
 
 **Files:**
-- Create: `docs/status/design-docs-completeness-audit/batch-1.md`
+- Create: `docs/status/design-docs-completeness-audit/01-startup-context-model.md`
 - Modify: `docs/status/design-docs-completeness-audit/README.md`
 - Review: `docs/superpowers/specs/2026-11-12-cli-startup-design.md` + `docs/architecture/coverage/cli-startup.yaml`
 - Review: `docs/superpowers/specs/2026-11-12-context-compaction-design.md` + `docs/architecture/coverage/context-compaction.yaml`
@@ -328,7 +328,7 @@ git commit -m "Audit core design contracts" -m "Co-Authored-By: Claude <noreply@
 - [ ] **Step 1: 运行 batch 1 报告门禁并确认 RED**
 
 ```bash
-bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-1.md"; if (!(await Bun.file(file).exists())) { console.error("FAIL: batch-1 report missing"); process.exit(1); }'
+bun -e 'const file = "docs/status/design-docs-completeness-audit/01-startup-context-model.md"; if (!(await Bun.file(file).exists())) { console.error("FAIL: batch-1 report missing"); process.exit(1); }'
 ```
 
 Expected: 退出码 1。
@@ -360,7 +360,7 @@ strings /opt/homebrew/bin/claude | rg -n -i -C 2 'autoCompact|microcompact|conte
 ```bash
 bun - <<'TS'
 const ids = ['cli-startup','context-compaction','model-api']
-const report = await Bun.file('docs/status/design-docs-completeness-audit/batch-1.md').text()
+const report = await Bun.file('docs/status/design-docs-completeness-audit/01-startup-context-model.md').text()
 const required = ['## 基线与范围','## 子系统审查','## 发现登记','## 证据边界','## 完成判定']
 const missing = [...ids.filter(id => !report.includes(`### ${id}\n`)), ...required.filter(h => !report.includes(h))]
 if (missing.length) { console.error('FAIL', missing); process.exit(1) }
@@ -375,7 +375,7 @@ Expected: PASS、0 errors、无 whitespace 错误。请用户审阅 batch-1，�
 - [ ] **Step 6: Commit**
 
 ```bash
-git add docs/status/design-docs-completeness-audit/README.md docs/status/design-docs-completeness-audit/batch-1.md
+git add docs/status/design-docs-completeness-audit/README.md docs/status/design-docs-completeness-audit/01-startup-context-model.md
 git commit -m "Audit context and model design specs" -m "Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
 
@@ -384,7 +384,7 @@ git commit -m "Audit context and model design specs" -m "Co-Authored-By: Claude 
 ### Task 4: 审查 batch 2 工具、权限与会话持久化
 
 **Files:**
-- Create: `docs/status/design-docs-completeness-audit/batch-2.md`
+- Create: `docs/status/design-docs-completeness-audit/02-tools-permissions-sessions.md`
 - Modify: `docs/status/design-docs-completeness-audit/README.md`
 - Review: `docs/superpowers/specs/2026-11-12-attachments-design.md` + `docs/architecture/coverage/attachments.yaml`
 - Review: `docs/superpowers/specs/2026-11-12-bridge-design.md` + `docs/architecture/coverage/bridge.yaml`
@@ -406,7 +406,7 @@ git commit -m "Audit context and model design specs" -m "Co-Authored-By: Claude 
 - [ ] **Step 1: 运行 batch 2 报告门禁并确认 RED**
 
 ```bash
-bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-2.md"; if (!(await Bun.file(file).exists())) { console.error("FAIL: batch-2 report missing"); process.exit(1); }'
+bun -e 'const file = "docs/status/design-docs-completeness-audit/02-tools-permissions-sessions.md"; if (!(await Bun.file(file).exists())) { console.error("FAIL: batch-2 report missing"); process.exit(1); }'
 ```
 
 Expected: 退出码 1。
@@ -433,7 +433,7 @@ strings /opt/homebrew/bin/claude | rg -n -i -C 2 'tool_result|permission|canUseT
 ```bash
 bun - <<'TS'
 const ids = ['attachments','bridge','buddy','computer-use','file-tools','lsp','mcp','onboarding-ui','permissions','session-persistence','shell-tools','tool-framework']
-const report = await Bun.file('docs/status/design-docs-completeness-audit/batch-2.md').text()
+const report = await Bun.file('docs/status/design-docs-completeness-audit/02-tools-permissions-sessions.md').text()
 const required = ['## 基线与范围','## 子系统审查','## 发现登记','## 证据边界','## 完成判定']
 const missing = [...ids.filter(id => !report.includes(`### ${id}\n`)), ...required.filter(h => !report.includes(h))]
 if (missing.length) { console.error('FAIL', missing); process.exit(1) }
@@ -448,7 +448,7 @@ Expected: PASS、0 errors、无 whitespace 错误。请用户审阅 batch-2。
 - [ ] **Step 6: Commit**
 
 ```bash
-git add docs/status/design-docs-completeness-audit/README.md docs/status/design-docs-completeness-audit/batch-2.md
+git add docs/status/design-docs-completeness-audit/README.md docs/status/design-docs-completeness-audit/02-tools-permissions-sessions.md
 git commit -m "Audit tools and session design specs" -m "Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
 
@@ -457,7 +457,7 @@ git commit -m "Audit tools and session design specs" -m "Co-Authored-By: Claude 
 ### Task 5: 审查 batch 3 Memory、设置、认证与恢复
 
 **Files:**
-- Create: `docs/status/design-docs-completeness-audit/batch-3.md`
+- Create: `docs/status/design-docs-completeness-audit/03-memory-auth-settings.md`
 - Modify: `docs/status/design-docs-completeness-audit/README.md`
 - Review: `docs/superpowers/specs/2026-11-12-auth-design.md` + `docs/architecture/coverage/auth.yaml`
 - Review: `docs/superpowers/specs/2026-11-12-commit-attribution-design.md` + `docs/architecture/coverage/commit-attribution.yaml`
@@ -476,7 +476,7 @@ git commit -m "Audit tools and session design specs" -m "Co-Authored-By: Claude 
 - [ ] **Step 1: 运行 batch 3 报告门禁并确认 RED**
 
 ```bash
-bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-3.md"; if (!(await Bun.file(file).exists())) { console.error("FAIL: batch-3 report missing"); process.exit(1); }'
+bun -e 'const file = "docs/status/design-docs-completeness-audit/03-memory-auth-settings.md"; if (!(await Bun.file(file).exists())) { console.error("FAIL: batch-3 report missing"); process.exit(1); }'
 ```
 
 Expected: 退出码 1。
@@ -505,7 +505,7 @@ Memory 小节增加“加载 → 检索 → 写入/提取 → 整理/同步 → 
 ```bash
 bun - <<'TS'
 const ids = ['auth','commit-attribution','git-integration','memory','notifications','session-search-recovery','sessions-share','settings','skills']
-const report = await Bun.file('docs/status/design-docs-completeness-audit/batch-3.md').text()
+const report = await Bun.file('docs/status/design-docs-completeness-audit/03-memory-auth-settings.md').text()
 const required = ['## 基线与范围','## 子系统审查','## 发现登记','## 证据边界','## 完成判定']
 const missing = [...ids.filter(id => !report.includes(`### ${id}\n`)), ...required.filter(h => !report.includes(h))]
 if (missing.length) { console.error('FAIL', missing); process.exit(1) }
@@ -520,7 +520,7 @@ Expected: PASS、0 errors、无 whitespace 错误。请用户审阅 batch-3，�
 - [ ] **Step 6: Commit**
 
 ```bash
-git add docs/status/design-docs-completeness-audit/README.md docs/status/design-docs-completeness-audit/batch-3.md
+git add docs/status/design-docs-completeness-audit/README.md docs/status/design-docs-completeness-audit/03-memory-auth-settings.md
 git commit -m "Audit memory and settings design specs" -m "Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
 
@@ -529,7 +529,7 @@ git commit -m "Audit memory and settings design specs" -m "Co-Authored-By: Claud
 ### Task 6: 审查 batch 4 AppState 与终端 UI
 
 **Files:**
-- Create: `docs/status/design-docs-completeness-audit/batch-4.md`
+- Create: `docs/status/design-docs-completeness-audit/04-app-state-terminal-ui.md`
 - Modify: `docs/status/design-docs-completeness-audit/README.md`
 - Review: `docs/superpowers/specs/2026-11-12-app-state-design.md` + `docs/architecture/coverage/app-state.yaml`
 - Review: `docs/superpowers/specs/2026-11-12-assistant-ui-design.md` + `docs/architecture/coverage/assistant-ui.yaml`
@@ -550,7 +550,7 @@ git commit -m "Audit memory and settings design specs" -m "Co-Authored-By: Claud
 - [ ] **Step 1: 运行 batch 4 报告门禁并确认 RED**
 
 ```bash
-bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-4.md"; if (!(await Bun.file(file).exists())) { console.error("FAIL: batch-4 report missing"); process.exit(1); }'
+bun -e 'const file = "docs/status/design-docs-completeness-audit/04-app-state-terminal-ui.md"; if (!(await Bun.file(file).exists())) { console.error("FAIL: batch-4 report missing"); process.exit(1); }'
 ```
 
 Expected: 退出码 1。
@@ -577,7 +577,7 @@ strings /opt/homebrew/bin/claude | rg -n -i -C 2 'AppState|Ink|voice|cost|token 
 ```bash
 bun - <<'TS'
 const ids = ['app-state','assistant-ui','commands-framework','cost-tracking','ide-integration','ink-platform','repl-input','text-formatting','ui-rendering','voice-assistant','workspace-ui']
-const report = await Bun.file('docs/status/design-docs-completeness-audit/batch-4.md').text()
+const report = await Bun.file('docs/status/design-docs-completeness-audit/04-app-state-terminal-ui.md').text()
 const required = ['## 基线与范围','## 子系统审查','## 发现登记','## 证据边界','## 完成判定']
 const missing = [...ids.filter(id => !report.includes(`### ${id}\n`)), ...required.filter(h => !report.includes(h))]
 if (missing.length) { console.error('FAIL', missing); process.exit(1) }
@@ -592,7 +592,7 @@ Expected: PASS、0 errors、无 whitespace 错误。请用户审阅 batch-4。
 - [ ] **Step 6: Commit**
 
 ```bash
-git add docs/status/design-docs-completeness-audit/README.md docs/status/design-docs-completeness-audit/batch-4.md
+git add docs/status/design-docs-completeness-audit/README.md docs/status/design-docs-completeness-audit/04-app-state-terminal-ui.md
 git commit -m "Audit state and terminal UI design specs" -m "Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
 
@@ -601,7 +601,7 @@ git commit -m "Audit state and terminal UI design specs" -m "Co-Authored-By: Cla
 ### Task 7: 审查 batch 5 Agent、任务与工作流
 
 **Files:**
-- Create: `docs/status/design-docs-completeness-audit/batch-5.md`
+- Create: `docs/status/design-docs-completeness-audit/05-agents-tasks-workflows.md`
 - Modify: `docs/status/design-docs-completeness-audit/README.md`
 - Review: `docs/superpowers/specs/2026-11-12-agent-swarms-design.md` + `docs/architecture/coverage/agent-swarms.yaml`
 - Review: `docs/superpowers/specs/2026-11-12-help-feedback-design.md` + `docs/architecture/coverage/help-feedback.yaml`
@@ -618,7 +618,7 @@ git commit -m "Audit state and terminal UI design specs" -m "Co-Authored-By: Cla
 - [ ] **Step 1: 运行 batch 5 报告门禁并确认 RED**
 
 ```bash
-bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-5.md"; if (!(await Bun.file(file).exists())) { console.error("FAIL: batch-5 report missing"); process.exit(1); }'
+bun -e 'const file = "docs/status/design-docs-completeness-audit/05-agents-tasks-workflows.md"; if (!(await Bun.file(file).exists())) { console.error("FAIL: batch-5 report missing"); process.exit(1); }'
 ```
 
 Expected: 退出码 1。
@@ -645,7 +645,7 @@ DAG 和任务并发问题必须给出具体状态序列，不能只写“可能�
 ```bash
 bun - <<'TS'
 const ids = ['agent-swarms','help-feedback','plan-worktree','review-analysis','scheduling','task-system','workflow']
-const report = await Bun.file('docs/status/design-docs-completeness-audit/batch-5.md').text()
+const report = await Bun.file('docs/status/design-docs-completeness-audit/05-agents-tasks-workflows.md').text()
 const required = ['## 基线与范围','## 子系统审查','## 发现登记','## 证据边界','## 完成判定']
 const missing = [...ids.filter(id => !report.includes(`### ${id}\n`)), ...required.filter(h => !report.includes(h))]
 if (missing.length) { console.error('FAIL', missing); process.exit(1) }
@@ -660,7 +660,7 @@ Expected: PASS、0 errors、无 whitespace 错误。请用户审阅 batch-5。
 - [ ] **Step 6: Commit**
 
 ```bash
-git add docs/status/design-docs-completeness-audit/README.md docs/status/design-docs-completeness-audit/batch-5.md
+git add docs/status/design-docs-completeness-audit/README.md docs/status/design-docs-completeness-audit/05-agents-tasks-workflows.md
 git commit -m "Audit agent and workflow design specs" -m "Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
 
@@ -669,7 +669,7 @@ git commit -m "Audit agent and workflow design specs" -m "Co-Authored-By: Claude
 ### Task 8: 审查 batch 6 后台、远程与迁移
 
 **Files:**
-- Create: `docs/status/design-docs-completeness-audit/batch-6.md`
+- Create: `docs/status/design-docs-completeness-audit/06-remote-background-platforms.md`
 - Modify: `docs/status/design-docs-completeness-audit/README.md`
 - Review: `docs/superpowers/specs/2026-11-12-daemon-background-design.md` + `docs/architecture/coverage/daemon-background.yaml`
 - Review: `docs/superpowers/specs/2026-11-12-deep-link-design.md` + `docs/architecture/coverage/deep-link.yaml`
@@ -686,7 +686,7 @@ git commit -m "Audit agent and workflow design specs" -m "Co-Authored-By: Claude
 - [ ] **Step 1: 运行 batch 6 报告门禁并确认 RED**
 
 ```bash
-bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-6.md"; if (!(await Bun.file(file).exists())) { console.error("FAIL: batch-6 report missing"); process.exit(1); }'
+bun -e 'const file = "docs/status/design-docs-completeness-audit/06-remote-background-platforms.md"; if (!(await Bun.file(file).exists())) { console.error("FAIL: batch-6 report missing"); process.exit(1); }'
 ```
 
 Expected: 退出码 1。
@@ -713,7 +713,7 @@ strings /opt/homebrew/bin/claude | rg -n -i -C 2 'teleport|remote.control|deep.l
 ```bash
 bun - <<'TS'
 const ids = ['daemon-background','deep-link','open-runner','platform-integrations','remote-control','ssh','teleport']
-const report = await Bun.file('docs/status/design-docs-completeness-audit/batch-6.md').text()
+const report = await Bun.file('docs/status/design-docs-completeness-audit/06-remote-background-platforms.md').text()
 const required = ['## 基线与范围','## 子系统审查','## 发现登记','## 证据边界','## 完成判定']
 const missing = [...ids.filter(id => !report.includes(`### ${id}\n`)), ...required.filter(h => !report.includes(h))]
 if (missing.length) { console.error('FAIL', missing); process.exit(1) }
@@ -728,7 +728,7 @@ Expected: PASS、0 errors、无 whitespace 错误。请用户审阅 batch-6。
 - [ ] **Step 6: Commit**
 
 ```bash
-git add docs/status/design-docs-completeness-audit/README.md docs/status/design-docs-completeness-audit/batch-6.md
+git add docs/status/design-docs-completeness-audit/README.md docs/status/design-docs-completeness-audit/06-remote-background-platforms.md
 git commit -m "Audit remote and background design specs" -m "Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
 
@@ -737,7 +737,7 @@ git commit -m "Audit remote and background design specs" -m "Co-Authored-By: Cla
 ### Task 9: 审查 batch 7 构建、Stubs、Hooks 与运行时
 
 **Files:**
-- Create: `docs/status/design-docs-completeness-audit/batch-7.md`
+- Create: `docs/status/design-docs-completeness-audit/07-build-runtime-stubs.md`
 - Modify: `docs/status/design-docs-completeness-audit/README.md`
 - Review: `docs/superpowers/specs/2026-11-12-build-feature-profile-design.md` + `docs/architecture/coverage/build-feature-profile.yaml`
 - Review: `docs/superpowers/specs/2026-11-12-data-structures-design.md` + `docs/architecture/coverage/data-structures.yaml`
@@ -761,7 +761,7 @@ git commit -m "Audit remote and background design specs" -m "Co-Authored-By: Cla
 - [ ] **Step 1: 运行 batch 7 报告门禁并确认 RED**
 
 ```bash
-bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-7.md"; if (!(await Bun.file(file).exists())) { console.error("FAIL: batch-7 report missing"); process.exit(1); }'
+bun -e 'const file = "docs/status/design-docs-completeness-audit/07-build-runtime-stubs.md"; if (!(await Bun.file(file).exists())) { console.error("FAIL: batch-7 report missing"); process.exit(1); }'
 ```
 
 Expected: 退出码 1。
@@ -788,7 +788,7 @@ strings /opt/homebrew/bin/claude | rg -n -i -C 2 'PreToolUse|PostToolUse|Session
 ```bash
 bun - <<'TS'
 const ids = ['build-feature-profile','data-structures','diagnostics','experimental-features','external-stubs','hooks-system','magic-docs','messaging-primitives','native-installer','network-security','runtime-lifecycle','telemetry','test-validation','web-tools']
-const report = await Bun.file('docs/status/design-docs-completeness-audit/batch-7.md').text()
+const report = await Bun.file('docs/status/design-docs-completeness-audit/07-build-runtime-stubs.md').text()
 const required = ['## 基线与范围','## 子系统审查','## 发现登记','## 证据边界','## 完成判定']
 const missing = [...ids.filter(id => !report.includes(`### ${id}\n`)), ...required.filter(h => !report.includes(h))]
 if (missing.length) { console.error('FAIL', missing); process.exit(1) }
@@ -803,7 +803,7 @@ Expected: PASS、0 errors、无 whitespace 错误。请用户审阅 batch-7。
 - [ ] **Step 6: Commit**
 
 ```bash
-git add docs/status/design-docs-completeness-audit/README.md docs/status/design-docs-completeness-audit/batch-7.md
+git add docs/status/design-docs-completeness-audit/README.md docs/status/design-docs-completeness-audit/07-build-runtime-stubs.md
 git commit -m "Audit build and runtime design specs" -m "Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
 
@@ -814,7 +814,7 @@ git commit -m "Audit build and runtime design specs" -m "Co-Authored-By: Claude 
 **Files:**
 - Create: `docs/status/design-docs-completeness-audit/cross-subsystem.md`
 - Modify: `docs/status/design-docs-completeness-audit/README.md`
-- Consumes: `docs/status/design-docs-completeness-audit/batch-0.md` 至 `batch-7.md`
+- Consumes: `docs/status/design-docs-completeness-audit/00-core-query-sdk.md` 至 `07-build-runtime-stubs.md`
 
 **Interfaces:**
 - Produces: `X-context-*`、`X-memory-*`、`X-state-*`、`X-recovery-*`、`X-boundary-*` 发现及完整矩阵。
@@ -910,7 +910,7 @@ git commit -m "Audit cross-subsystem design contracts" -m "Co-Authored-By: Claud
 
 **Files:**
 - Modify: `docs/status/design-docs-completeness-audit/README.md`
-- Verify: `docs/status/design-docs-completeness-audit/batch-0.md` 至 `batch-7.md`
+- Verify: `docs/status/design-docs-completeness-audit/00-core-query-sdk.md` 至 `07-build-runtime-stubs.md`
 - Verify: `docs/status/design-docs-completeness-audit/cross-subsystem.md`
 
 **Interfaces:**

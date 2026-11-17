@@ -13,7 +13,7 @@
 
 ```bash
 # 门禁运行
-bun -e 'const file = "docs/status/design-docs-completeness-audit/batch-1.md"; if (!(await Bun.file(file).exists())) { console.error("FAIL: batch-1 report missing"); process.exit(1); }'
+bun -e 'const file = "docs/status/design-docs-completeness-audit/01-startup-context-model.md"; if (!(await Bun.file(file).exists())) { console.error("FAIL: batch-1 report missing"); process.exit(1); }'
 # 退出码 1（RED 状态）
 ```
 
