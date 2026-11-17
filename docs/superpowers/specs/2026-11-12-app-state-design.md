@@ -19,7 +19,6 @@ Claude Code 需要管理应用级别的共享状态（设置、权限模式、�
 - 不同模块对同一份状态的更新容易产生竞态条件
 - 状态变更时，依赖该状态的模块（如 CCR 同步、全局配置持久化等）无法得到通知
 - 渲染性能问题：整个状态树变更时所有组件都重新渲染
-- 循环更新风险：模块自身更新状态后又收到变更通知
 
 因此本系统必须在以下约束下完成：
 
@@ -27,10 +26,13 @@ Claude Code 需要管理应用级别的共享状态（设置、权限模式、�
 - 支持非 React 消费：通过 `getState()` 和 `setState(updater)` 读写，通过 `subscribe()` 监听变化
 - 不可变更新：状态变更需返回新对象，避免直接修改原对象
 - 单次通知：同一 `setState` 调用只在更新完成后通知所有订阅者一次
-- 循环更新防护：设置者自己不会收到自己触发的变更通知
 - 全局变更 hook：支持 `onChangeAppState` 钩子，用于同步状态到外部系统（CCR、全局配置文件等）
 - 单一 store：整个应用只有一个 AppStateProvider，不能嵌套
 - 类型安全：完整的 TypeScript 类型覆盖，支持深度不可变标记
+
+### 重要澄清：无循环更新防护
+
+当前实现**不提供**循环更新防护：调用 `setState()` 的模块/组件如果同时也订阅了状态，**会收到自己触发的变更通知**。这是调用者需要注意的行为边界——如果需要避免循环更新，必须在 `onChangeAppState` 或订阅回调中自己进行变更检查（比较 oldState 和 newState）。
 
 ## 2. 设计理由与备选方案
 
@@ -48,6 +50,7 @@ Claude Code 需要管理应用级别的共享状态（设置、权限模式、�
 | 安全 useAppState 版本：useAppStateMaybeOutsideOfProvider | 提供不抛错版本，返回 undefined 当在 Provider 外时 | 某些组件可能在 Provider 初始化前渲染（或在非 React 环境中复用），需要降级处理 | 总是抛错：组件无法在 Provider 外使用，复用性差；默认返回空值：类型不安全 | 调用方需处理 undefined 情况 | `src/state/AppState.tsx:193-200` |
 | 计算选择器：纯函数无状态 | `selectors.ts` 中的 `getViewedTeammateTask`、`getActiveAgentForInput` 是纯函数，接收 AppState 参数返回计算结果 | 简单、可测试、无缓存一致性问题；由 React 组件调用时配合 useAppState 自动重新计算 | 带缓存的选择器（Reselect）：需要维护缓存 key，当前场景下计算简单，收益不高 | 每次调用都重新计算，计算复杂时可能有性能问题（当前实现下可接受） | `src/state/selectors.ts:1-76` |
 | Teammate 视图逻辑集中在 teammateViewHelpers | `enterTeammateView`、`exitTeammateView`、`stopOrDismissAgent` 等辅助函数封装任务状态的复杂转换逻辑 | 避免组件中散落重复的状态转换代码；集中管理任务 retain/release、evictAfter 设置、viewSelectionMode 切换等 | 直接在组件中修改 AppState：代码重复，容易遗漏某个字段的更新 | 辅助函数需传入 setAppState，依赖 AppState 的类型定义 | `src/state/teammateViewHelpers.ts:46-141` |
+| **无订阅者过滤/去重** | `setState` 无条件调用所有 listeners，包括触发更新的模块本身 | 简单、可预测；调用链清晰，没有隐式行为 | 跟踪调用栈/订阅者身份并过滤：增加复杂度，容易出错；延迟通知批处理：引入更多状态，难以推理 | 订阅者必须自己处理可能的循环更新；比较 oldState/newState 或使用标志位避免递归 | `src/state/store.ts:26` [B4-app-state-01] |
 
 ## 3. 目标与非目标
 
@@ -147,7 +150,7 @@ Store.setState(updater)
   │   │   ├─ 检查 verbose 变更 → 更新全局配置
   │   │   ├─ 检查设置变更 → 清除 auth 缓存、重新应用环境变量
   │   │   └─ … 其他同步逻辑
-  │   └─ 遍历 listeners 调用每个 listener()
+  │   └─ 遍历 listeners 调用每个 listener()  [*]
   └─ 返回
   ↓
 React useSyncExternalStore 收到 listener 通知
@@ -155,6 +158,8 @@ React useSyncExternalStore 收到 listener 通知
   ├─ Object.is(prevSelectedValue, selectedValue) → 相同则不渲染
   └─ 不同则重新渲染组件
 ```
+
+[*] **重要行为边界**：所有订阅者都会收到通知，包括触发这次 `setState` 的模块/组件本身。没有去重或过滤机制——如果需要避免循环更新，必须在回调中自己比较 `oldState` 与 `newState`。
 
 设置变更双向同步流：
 
@@ -428,6 +433,7 @@ onChangeAppState 检测到 settings 变更
 | selector 返回新对象导致多余渲染 | 运行时 React 重渲染 | 无异常，性能下降 | 不重试 | 无 | 组件重新渲染 |
 | 深层状态字段变更时忘记复制上层对象 | setState() 调用后 | 无异常，但 UI 不更新 | 不重试 | 无 | 状态变化 UI 无响应 |
 | onChangeAppState 中调用 setState | onChangeAppState() 内部 | 无限循环 | 不重试 | 无 | 应用卡死 |
+| 订阅者在回调中调用 setState | listener() 内部 | 无限循环 | 不重试 | 无 | 应用卡死 |
 | 可变字段被直接修改而不通过 setState | 外部代码 | 无异常，但 UI 不同步 | 不重试 | 无 | 状态与 UI 不一致 |
 | Bootstrap State 与 AppState 重复或不一致 | 业务逻辑 | 行为不可预测 | 不重试 | 无 | 应用行为异常 |
 
@@ -437,6 +443,7 @@ onChangeAppState 检测到 settings 变更
 | 不可变更新 vs Immer | 手动 spread，无 Immer | 容易出错，代码冗长 | 无依赖，性能可预测 |
 | 单一 Store vs 多 Store | 单一 Store | 状态树可能变大，某些场景不够灵活 | 避免协调问题，单一事实来源 |
 | Bootstrap 分离 vs 合并 | Bootstrap 与 AppState 分离 | 两套系统，心智负担 | 避免循环依赖，启动阶段可访问 |
+| 无订阅者过滤 vs 有过滤 | 不跟踪调用者，所有订阅者都收到通知 | 订阅者必须自己处理循环更新风险 | 简单、可预测，没有隐式行为 |
 
 ## 6. 现状验收标准
 
