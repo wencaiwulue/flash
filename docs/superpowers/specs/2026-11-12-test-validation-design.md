@@ -814,9 +814,33 @@ finally: runCleanupFunctions()
   - 选择：每行一个子系统
   - 理由：便于定位哪个子验证失败
 
+**初始化生命周期与回滚**
+1. **启动阶段**：脚本加载模块，无副作用
+2. **配置初始化阶段**：`enableConfigs()` 执行 settings 初始化、迁移、缓存设置
+3. **凭据验证阶段**：`validateCredentialSources(process.env)` 纯函数检查，无状态变更
+4. **验证执行阶段**：workflow/proactive/context collapse/reactive compaction 依次执行
+5. **清理阶段**：`finally` 块调用 `runCleanupFunctions()` 确保资源释放
+- **无部分成功回滚**：验证失败直接抛错，由调用者处理；不尝试回滚已执行的子验证
+- **凭据安全**：错误信息不含 `ANTHROPIC_API_KEY` 或 `ANTHROPIC_AUTH_TOKEN` 实际值
+- **测试保护**：`import.meta.main` 保护，导入模块不触发真实模型调用或验证
+
+**三层证据对齐**
+- **官方文档**：上游 settings spec 确认 `enableConfigs()` 语义（settings-design.md 第 4 节）
+- **仓库契约**：settings-design.md 第 4.1 节确认设置加载优先级与来源
+- **实际行为**：`scripts/live-model-validation.ts:91-107` 显示 `enableConfigs()` 先行
+
+**测试结果证据**
+- `tests/liveModelValidation.test.ts`: 5/5 通过，覆盖无凭据、仅 API Key、仅 Bearer Token、两者都有、错误信息不含凭据
+- `bun run test`: Exit code 0，无失败测试文件
+- `bun run typecheck`: Exit code 0，无类型错误
+- `bun run build`: Exit code 0，构建产物完整
+- 真实运行（无凭据）：输出 `MODEL_LIVE_SKIPPED`，正常退出
+
 **源码测试证据**
-- `scripts/live-model-validation.ts:40-47`：互斥与存在性检查
-- `scripts/live-model-validation.ts:56-85`：四个子验证
+- `scripts/live-model-validation.ts:15-28`：`validateCredentialSources()` 纯函数
+- `scripts/live-model-validation.ts:30-96`：`main()` 先 `enableConfigs()` 再检查凭据
+- `scripts/live-model-validation.ts:98-107`：`import.meta.main` 保护
+- `tests/liveModelValidation.test.ts:1-47`：完整测试覆盖
 
 ---
 
