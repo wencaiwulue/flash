@@ -350,6 +350,118 @@ function generateSdkTypes(): void  // 生成 coreTypes.generated.ts 和 controlT
 | 紧急通知 | 可显示 | 可显示 | `src/components/EmergencyTip.tsx` |
 | 发布说明 | 编译时打包 | 网络获取/缓存 | `src/utils/releaseNotes.ts` |
 
+### 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│                         构建流程 (Build Process)                  │
+├─────────────────────────────────────────────────────────────────┤
+│  ┌──────────────────┐                                          │
+│  │  Schema 源文件   │  coreSchemas.ts, controlSchemas.ts      │
+│  └────────┬─────────┘                                          │
+│           │ generateSdkTypes()                                 │
+│           ▼                                                    │
+│  ┌──────────────────┐                                          │
+│  │ 生成的类型文件   │  coreTypes.generated.ts, controlTypes.ts│
+│  └────────┬─────────┘                                          │
+│           │                                                    │
+│     ┌─────┴─────┐                                              │
+│     ▼           ▼                                              │
+│ ┌─────────┐ ┌─────────┐                                        │
+│ │CLI 入口 │ │SDK 入口 │  cli.tsx, agentSdkTypes.ts            │
+│ └────┬────┘ └────┬────┘                                        │
+│      │           │                                             │
+│      └─────┬─────┘                                             │
+│            ▼                                                   │
+│  ┌─────────────────────────────────┐                          │
+│  │   Bun.build (createBuildOptions)│                          │
+│  │  • features: [...EXTERNAL_FEATURES] │                        │
+│  │  • define: MACRO.* + USER_TYPE  │                          │
+│  │  • loader: .md/.txt 为 text     │                          │
+│  └───────────────┬─────────────────┘                          │
+│                  ▼                                              │
+│     ┌───────────────────────┐                                  │
+│     │   构建输出            │                                  │
+│     ├───────────────────────┤                                  │
+│     │ • dist/main.js (CLI)  │ chmod 0o755                    │
+│     │ • dist/sdk.mjs (SDK)  │                                  │
+│     │ • dist/types/...      │                                  │
+│     └───────────┬───────────┘                                  │
+│                 ▼                                              │
+│  ┌─────────────────────────────┐                              │
+│  │  EXTERNAL_FEATURES (唯一源) │  与测试共享                    │
+│  └─────────────────────────────┘                              │
+└─────────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      验收测试 (Acceptance Tests)                 │
+├─────────────────────────────────────────────────────────────────┤
+│ • 使用相同的 EXTERNAL_FEATURES + USER_TYPE=external             │
+│ • 构建 feature-check.ts fixture                                │
+│ • 在独立子进程中导入                                            │
+│ • 验证工具注册表、命令可用性等                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 关键流程与失败路径
+
+```text
+主构建流程
+=========
+1. generateSdkTypes()
+   ├─ 成功：类型文件写入
+   └─ 失败：抛出错误 → process.exit(1)
+   
+2. Bun.build CLI (src/entrypoints/cli.tsx → dist/main.js)
+   ├─ 成功：dist/main.js 创建，含 shebang
+   └─ 失败：打印日志 → process.exit(1)
+   
+3. Bun.build SDK (src/entrypoints/agentSdkTypes.ts → dist/sdk.mjs)
+   ├─ 成功：dist/sdk.mjs 创建
+   └─ 失败：打印日志 → process.exit(1)
+   
+4. chmod 0o755 dist/main.js
+   └─ 构建成功后总是执行
+
+验收流程
+=======
+1. 使用 EXTERNAL_FEATURES + USER_TYPE=external 构建 feature-check.ts
+2. 在子进程中导入 fixture
+3. 验证：
+   ├─ 工具数量匹配
+   ├─ 无 null 工具
+   ├─ 特定工具存在/不存在
+   ├─ Sleep 初始禁用 → proactive 激活 → 启用
+   ├─ Worker 后台状态
+   ├─ Reactive compact 状态
+   ├─ Skill 注册
+   └─ 命令可用性
+
+失败路径
+=======
+• Schema 无匹配导出 → generateSdkTypes() 抛出
+• 构建配置错误 → Bun.build 失败
+• 工具注册表不匹配 → 验收测试失败
+• 功能不在 EXTERNAL_FEATURES 中 → DCE 移除代码
+• USER_TYPE=external → 内部代码路径移除
+• 外层环境变化 → 子进程隔离防止 profile 漂移
+```
+
+### 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| `EXTERNAL_FEATURES` | `externalFeatureProfile.ts` | `export const EXTERNAL_FEATURES = [...] as const` | build.ts 与测试共享 | 仅编译时（嵌入构建） | 定义后不可变 | N/A（常量） |
+| `MACRO` 常量 | `runtimeMacros.ts` | 构建时：`Bun.build(define: { MACRO.*: ... })`<br>运行时：`Object.assign(globalThis, { MACRO: ... })` | 全局单例 | 构建时嵌入 dist<br>运行时：仅内存 | 构建时：新构建覆盖<br>运行时：无（只读） | N/A |
+| `BuildConfig` | `scripts/build.ts` | `createBuildOptions()` 创建配置，含 `EXTERNAL_FEATURES`、`MACRO` 定义、`USER_TYPE=external` | 每次构建调用隔离 | 仅内存 | 构建完成后 GC 回收 | N/A（同步） |
+| `feature()` 调用 | `bun:bundle` | 编译时：根据 `EXTERNAL_FEATURES` 将 `feature(name)` 替换为 `true`/`false` | 每个功能编译时 | DCE 移除禁用代码路径 | 使用不同 `EXTERNAL_FEATURES` 重新构建 | N/A（编译时） |
+| `dist/main.js` | `scripts/build.ts` | `Bun.build()` 写入文件 + `banner` shebang | 共享产物 | 磁盘文件 | 下次构建覆盖 | 构建成功后应用 `chmod 0o755` |
+| `dist/sdk.mjs` | `scripts/build.ts` | `Bun.build()` 写入文件 | 共享产物 | 磁盘文件 | 下次构建覆盖 | N/A |
+| Feature profile fixture | `tests/fixtures/verify-enabled-features.ts` | 使用与生产相同的 `EXTERNAL_FEATURES` + `USER_TYPE=external` 构建 | 隔离子进程 | 临时构建文件 | 子进程退出清理 | 隔离子进程中的动态导入防止污染 |
+
+生命周期证据：`scripts/build.ts:1-74`、`scripts/externalFeatureProfile.ts:1-41`、`src/runtimeMacros.ts:1-17`、`tests/fixtures/verify-enabled-features.ts:1-79`
+
 ## 5. 失败语义与工程取舍
 
 | 失败场景 | 处理方式 | 工程取舍 |

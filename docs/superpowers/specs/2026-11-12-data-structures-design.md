@@ -115,6 +115,114 @@ utils/markdownConfigLoader.ts → utils/frontmatterParser.ts
                              → utils/memoize.ts
 ```
 
+### 架构与资源边界图
+
+```text
+┌──────────────────────────────────────────────────────────────────────┐
+│                        数据结构模块层                                  │
+├──────────────────────────────────────────────────────────────────────┤
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │  纯函数工具组 (无状态)                                          │  │
+│  ├──────────────────────────────────────────────────────────────┤  │
+│  │  • array.ts: intersperse, count, uniq                       │  │
+│  │  • objectGroupBy.ts: objectGroupBy (无原型)                  │  │
+│  │  • contentArray.ts: insertBlockAfterToolResults (突变数组)    │  │
+│  │  • generators.ts: lastX, returnValue, all, toArray, fromArray│  │
+│  │  • jsonRead.ts: stripBOM                                     │  │
+│  │  • lazySchema.ts: lazySchema (工厂延迟初始化)                 │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │  有状态类 (实例隔离)                                           │  │
+│  ├──────────────────────────────────────────────────────────────┤  │
+│  │  • CircularBuffer<T>: buffer[], head, size (实例私有)        │  │
+│  │    - add(), addAll(), getRecent(), toArray(), clear()       │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │  带缓存模块 (模块级状态，LRU 有界)                             │  │
+│  ├──────────────────────────────────────────────────────────────┤  │
+│  │  • memoize.ts: Map (cache), Map (in-flight)                  │  │
+│  │    - memoizeWithTTL, memoizeWithTTLAsync, memoizeWithLRU     │  │
+│  │  • json.ts: LRUCache (parseJSONCached, 50 条目，≤8KB)        │  │
+│  │    - safeParseJSON, safeParseJSONC, parseJSONL, readJSONLFile│  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │  解析器 (纯函数，带重试逻辑)                                   │  │
+│  ├──────────────────────────────────────────────────────────────┤  │
+│  │  • frontmatterParser.ts: parseFrontmatter (YAML → quote重试) │  │
+│  │  • markdownConfigLoader.ts: loadMarkdownFilesForSubdir       │  │
+│  │    (dev+ino 去重，LRU 缓存)                                  │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │  Schema 模块 (循环依赖隔离)                                    │  │
+│  ├──────────────────────────────────────────────────────────────┤  │
+│  │  • schemas/hooks.ts: HookCommandSchema, HookMatcherSchema,   │  │
+│  │    HooksSchema (全部使用 lazySchema)                          │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+### 关键流程与失败路径
+
+```text
+CircularBuffer 流程
+===================
+1. new CircularBuffer<T>(capacity)
+   ├─ 成功: buffer = new Array(capacity), head=0, size=0
+   └─ 失败: capacity ≤ 0 → 未定义行为 (无验证)
+   
+2. add(item) / addAll(items)
+   ├─ 成功: buffer[head] = item, head = (head+1) % capacity
+   │           size = min(size+1, capacity)
+   └─ 总是成功 (无错误)
+   
+3. getRecent(count) / toArray()
+   ├─ 成功: 返回最近 N 项 / 全部项 (旧→新顺序)
+   └─ 空 → 返回 []
+   
+4. clear()
+   └─ 成功: buffer.length = 0, head=0, size=0 (帮助 GC)
+
+safeParseJSON 流程
+==================
+1. 输入 json 字符串 (null/undefined → 返回 null)
+2. 检查 json.length > 8KB?
+   ├─ 是 → parseJSONUncached (不缓存)
+   └─ 否 → parseJSONCached (LRU 50 条目)
+3. parseJSONUncached:
+   ├─ 成功 → { ok: true, value: ... }
+   └─ 失败 → { ok: false } (可选记录日志)
+4. parseJSONCached:
+   ├─ 缓存命中 → 返回缓存值
+   └─ 缓存未命中 → 计算后缓存
+5. 返回 result.ok ? value : null
+
+失败路径
+=======
+• CircularBuffer capacity ≤ 0 → 未定义行为
+• safeParseJSON 输入 > 8KB → 不缓存
+• JSONL 部分行解析失败 → 跳过失败行
+• frontmatter YAML 解析失败 → 自动 quote 重试 → 仍失败 → 返回 {}
+• memoize 函数抛出 → 同步版本不缓存，异步版本传播
+• JSONL 文件 > 100MB → 只读最后 100MB，跳过第一行
+• markdownConfigLoader dev+ino 重复 → 去重
+```
+
+### 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| `CircularBuffer<T>` 实例 | 调用方 | `new CircularBuffer<T>(capacity)` → `buffer = new Array(capacity)`, `head=0`, `size=0` | 每个实例隔离 | 仅内存 | `clear()` → `buffer.length = 0`, `head=0`, `size=0` | GC 回收，无显式清理 |
+| `memoizeWithTTL` 缓存 | `memoize.ts` 闭包 | 首次调用时创建 `Map<string, CacheEntry<Result>>` | 每个返回函数的闭包私有 | 仅内存，TTL 过期仍返回陈旧值 (后台刷新) | `cache.clear()` → 清空 Map | 刷新失败时删除缓存键；`clear()` 同时清理 in-flight Map |
+| `memoizeWithTTLAsync` 缓存 | `memoize.ts` 闭包 | `Map` (cache) + `Map` (in-flight) 用于去重 | 每个返回函数的闭包私有 | 仅内存 | `cache.clear()` → 同时清空 cache 和 in-flight | `inFlight` Map 防止并发重复调用；刷新失败删除键 |
+| `safeParseJSON` LRU 缓存 | `json.ts` 模块 | `memoizeWithLRU(parseJSONUncached, json => json, 50)` | 模块级单例共享 | 仅内存，≤8KB 才缓存 | `safeParseJSON.cache.clear()` | LRU 自动逐出旧条目 (max 50) |
+| `parseJSONL` 结果 | `json.ts` | 逐行解析，跳过失败行 | 每次调用隔离 | 仅内存 | GC 回收 | 无 |
+| `readJSONLFile` 句柄 | `json.ts` | `await open(filePath, 'r')` → Buffer 分配 (最多 100MB) | 每次调用隔离 | 仅内存 (Buffer) | `await using fd` → 自动关闭 | 超过 100MB 只读取最后 100MB，跳过第一行 |
+| `parseFrontmatter` 重试 | `frontmatterParser.ts` | 首次 parseYaml 失败 → `quoteProblematicValues()` → 再次尝试 | 每次调用隔离 | 仅内存 | GC 回收 | 仍失败 → 记录调试日志，返回 `{}` |
+| `markdownConfigLoader` 去重 | `markdownConfigLoader.ts` | 使用 `dev+ino` 识别重复文件 | 每次调用隔离 | 仅内存 | GC 回收 | dev=0/ino=0 时跳过去重 |
+| `lazySchema` 工厂 | `lazySchema.ts` | `() => (cached ??= factory())` | 每个返回函数的闭包私有 | 仅内存 | 无 (不可重置) | `factory()` 返回 undefined 时每次重新调用 |
+
+生命周期证据：`src/utils/CircularBuffer.ts:1-85`、`src/utils/memoize.ts:1-270`、`src/utils/json.ts:1-278`、`src/utils/frontmatterParser.ts:1-371`、`src/utils/lazySchema.ts:1-999`
+
 ## 5. 失败语义与工程取舍
 
 ### 失败语义
