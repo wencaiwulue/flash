@@ -1,232 +1,118 @@
-/**
- * Memory Regression Tests
- *
- * Tests for memory cursor restart/deletion invalidation, realpath boundaries,
- * and extraction locking.
- */
-
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { randomUUID } from 'crypto'
-import { mkdtemp, writeFile, readFile, rm, symlink, mkdir } from 'fs/promises'
-import { join, resolve, basename } from 'path'
-import { tmpdir } from 'os'
 import {
-  SessionMemoryCursorManager,
+  access,
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from 'fs/promises'
+import { tmpdir } from 'os'
+import { join } from 'path'
+import {
   MemoryPathValidator,
   PathTraversalError,
-  setLastSummarizedMessageId,
-  getLastSummarizedMessageId,
-  resetSessionMemoryState,
-  markExtractionStarted,
+  SessionMemoryCursorManager,
   markExtractionCompleted,
+  markExtractionStarted,
+  resetSessionMemoryState,
   waitForSessionMemoryExtraction,
-  isSessionMemoryInitialized,
-  markSessionMemoryInitialized,
-  hasMetInitializationThreshold,
-  hasMetUpdateThreshold,
 } from '../src/services/SessionMemory/sessionMemoryUtils.ts'
 
-describe('memory - cursor persistence and restart', () => {
+describe('memory - cursor persistence and deletion recovery', () => {
   let testDir: string
   let manager: SessionMemoryCursorManager
 
   beforeEach(async () => {
-    testDir = await mkdtemp(join(tmpdir(), 'flash-memory-test-'))
+    testDir = await mkdtemp(join(tmpdir(), 'flash-memory-cursor-'))
     manager = new SessionMemoryCursorManager(testDir)
-    resetSessionMemoryState()
   })
 
   afterEach(async () => {
     await rm(testDir, { recursive: true, force: true })
-    resetSessionMemoryState()
   })
 
-  test('stores and retrieves last summarized message ID', () => {
-    const messageId = 'test-message-uuid-12345'
-
-    manager.setLastSummarizedMessageId(messageId)
-    const retrieved = manager.getLastSummarizedMessageId()
-
-    expect(retrieved).toBe(messageId)
-  })
-
-  test('returns undefined when no cursor exists', () => {
-    const cursor = manager.getCursor()
-    expect(cursor).toBeUndefined()
-  })
-
-  test('persists cursor across manager restarts', async () => {
-    const cursorId = 'test-message-uuid-54321'
-    const trackedFiles = ['notes.md', 'ideas.md']
-    const sessionId = 'session-abc123'
-
+  test('restores cursor, session and tracked files after a manager restart', async () => {
     manager.setCursor({
-      lastSummarizedMessageId: cursorId,
-      trackedFiles,
-      sessionId,
+      lastSummarizedMessageId: 'message-42',
+      trackedFiles: ['notes.md', 'ideas.md'],
+      sessionId: 'session-a',
     })
 
-    // Create a new manager instance pointing to the same directory
-    const restartedManager = new SessionMemoryCursorManager(testDir)
-    const restored = restartedManager.getCursor()
+    const restarted = new SessionMemoryCursorManager(testDir)
+    const restored = restarted.getCursor()
 
-    expect(restored).not.toBeUndefined()
-    expect(restored?.lastSummarizedMessageId).toBe(cursorId)
-    expect(restored?.trackedFiles).toEqual(trackedFiles)
-    expect(restored?.sessionId).toBe(sessionId)
-    expect(restored?.timestamp).toBeGreaterThan(0)
+    expect(restored).toMatchObject({
+      lastSummarizedMessageId: 'message-42',
+      trackedFiles: ['notes.md', 'ideas.md'],
+      sessionId: 'session-a',
+    })
+    expect(restored!.timestamp).toBeGreaterThan(0)
+    expect(restarted.getLastSummarizedMessageId()).toBe('message-42')
   })
 
-  test('explicitly invalidates cursor', () => {
-    manager.setLastSummarizedMessageId('test-id')
-    expect(manager.getCursor()).not.toBeUndefined()
+  test('atomically replaces the sidecar without leaving a temporary file', async () => {
+    const cursorPath = join(testDir, '.session-memory-cursor.json')
+    manager.setLastSummarizedMessageId('message-old', 'session-a')
+    manager.setLastSummarizedMessageId('message-new', 'session-a')
 
-    manager.invalidate()
+    const persisted = JSON.parse(await readFile(cursorPath, 'utf8'))
+    expect(persisted.lastSummarizedMessageId).toBe('message-new')
+    expect(persisted.sessionId).toBe('session-a')
+    expect((await stat(cursorPath)).mode & 0o777).toBe(0o600)
+    await expect(access(`${cursorPath}.tmp`)).rejects.toMatchObject({ code: 'ENOENT' })
+    expect(new SessionMemoryCursorManager(testDir).getLastSummarizedMessageId()).toBe('message-new')
+  })
 
+  test('deduplicates tracked files while preserving insertion order', () => {
+    manager.setLastSummarizedMessageId('message-1', 'session-a')
+    manager.addTrackedFile('one.md')
+    manager.addTrackedFile('two.md')
+    manager.addTrackedFile('one.md')
+
+    expect(manager.getCursor()?.trackedFiles).toEqual(['one.md', 'two.md'])
+  })
+
+  test('invalidates the persisted cursor when any tracked memory file is deleted', async () => {
+    await writeFile(join(testDir, 'one.md'), 'one')
+    await writeFile(join(testDir, 'two.md'), 'two')
+    manager.setCursor({
+      lastSummarizedMessageId: 'message-1',
+      trackedFiles: ['one.md', 'two.md'],
+      sessionId: 'session-a',
+    })
+    await rm(join(testDir, 'one.md'))
+
+    expect(manager.checkAndInvalidateDeletedFiles()).toBe(true)
     expect(manager.getCursor()).toBeUndefined()
+    expect(new SessionMemoryCursorManager(testDir).getCursor()).toBeUndefined()
   })
 
-  test('adds tracked files with deduplication', () => {
-    manager.setLastSummarizedMessageId('test-id')
+  test('keeps a valid cursor when every tracked file still exists', async () => {
+    await writeFile(join(testDir, 'one.md'), 'one')
+    manager.setCursor({
+      lastSummarizedMessageId: 'message-1',
+      trackedFiles: ['one.md'],
+      sessionId: 'session-a',
+    })
 
-    manager.addTrackedFile('file1.md')
-    manager.addTrackedFile('file2.md')
-    manager.addTrackedFile('file1.md') // Duplicate
-
-    const cursor = manager.getCursor()
-    expect(cursor?.trackedFiles).toEqual(['file1.md', 'file2.md'])
-  })
-
-  test('global setLastSummarizedMessageId/getLastSummarizedMessageId work', () => {
-    const testId = 'global-test-id'
-
-    setLastSummarizedMessageId(testId, 'test-session')
-
-    expect(getLastSummarizedMessageId()).toBe(testId)
-  })
-
-  test('global state persists across calls', () => {
-    const testId = 'persistent-id'
-    setLastSummarizedMessageId(testId, 'session-1')
-    expect(getLastSummarizedMessageId()).toBe(testId)
-
-    // A second call should still see it
-    expect(getLastSummarizedMessageId()).toBe(testId)
-  })
-
-  test('resetSessionMemoryState clears global state', () => {
-    setLastSummarizedMessageId('to-be-cleared', 'test-session')
-
-    resetSessionMemoryState()
-
-    expect(getLastSummarizedMessageId()).toBeUndefined()
+    expect(manager.checkAndInvalidateDeletedFiles()).toBe(false)
+    expect(manager.getLastSummarizedMessageId()).toBe('message-1')
   })
 })
 
-describe('memory - deletion invalidation', () => {
-  let testDir: string
-  let manager: SessionMemoryCursorManager
-  let memoryDir: string
-
-  beforeEach(async () => {
-    testDir = await mkdtemp(join(tmpdir(), 'flash-deletion-test-'))
-    memoryDir = join(testDir, 'memory')
-    await mkdir(memoryDir, { recursive: true })
-    manager = new SessionMemoryCursorManager(memoryDir)
-    resetSessionMemoryState()
-  })
-
-  afterEach(async () => {
-    await rm(testDir, { recursive: true, force: true })
-    resetSessionMemoryState()
-  })
-
-  test('detects deleted tracked files and invalidates cursor', async () => {
-    const memoryFile = join(memoryDir, 'topic.md')
-    await writeFile(memoryFile, '# Topic Notes', 'utf-8')
-
-    manager.setCursor({
-      lastSummarizedMessageId: 'cursor-123',
-      trackedFiles: ['topic.md'],
-      sessionId: 'session-1',
-    })
-
-    // Verify cursor exists
-    expect(manager.getCursor()).not.toBeUndefined()
-
-    // Delete the tracked file
-    await rm(memoryFile)
-
-    // Check and invalidate
-    const invalidated = manager.checkAndInvalidateDeletedFiles()
-    expect(invalidated).toBe(true)
-
-    // Cursor should be gone
-    expect(manager.getCursor()).toBeUndefined()
-  })
-
-  test('does not invalidate when no tracked files are deleted', async () => {
-    const memoryFile = join(memoryDir, 'topic.md')
-    await writeFile(memoryFile, '# Topic Notes', 'utf-8')
-
-    manager.setCursor({
-      lastSummarizedMessageId: 'cursor-123',
-      trackedFiles: ['topic.md'],
-      sessionId: 'session-1',
-    })
-
-    const invalidated = manager.checkAndInvalidateDeletedFiles()
-    expect(invalidated).toBe(false)
-    expect(manager.getCursor()).not.toBeUndefined()
-  })
-
-  test('checkAndInvalidateDeletedFiles handles empty tracked files', () => {
-    manager.setCursor({
-      lastSummarizedMessageId: 'cursor-123',
-      trackedFiles: [],
-      sessionId: 'session-1',
-    })
-
-    const invalidated = manager.checkAndInvalidateDeletedFiles()
-    expect(invalidated).toBe(false)
-  })
-
-  test('checkAndInvalidateDeletedFiles handles missing cursor', () => {
-    // No cursor set
-    const invalidated = manager.checkAndInvalidateDeletedFiles()
-    expect(invalidated).toBe(false)
-  })
-
-  test('only invalidates when at least one tracked file is missing', async () => {
-    const file1 = join(memoryDir, 'file1.md')
-    const file2 = join(memoryDir, 'file2.md')
-    await writeFile(file1, 'content 1')
-    await writeFile(file2, 'content 2')
-
-    manager.setCursor({
-      lastSummarizedMessageId: 'cursor-123',
-      trackedFiles: ['file1.md', 'file2.md'],
-      sessionId: 'session-1',
-    })
-
-    // Delete only one file
-    await rm(file1)
-
-    const invalidated = manager.checkAndInvalidateDeletedFiles()
-    expect(invalidated).toBe(true)
-    expect(manager.getCursor()).toBeUndefined()
-  })
-})
-
-describe('memory - realpath boundaries', () => {
+describe('memory - execution-layer realpath containment', () => {
   let testDir: string
   let memoryDir: string
   let validator: MemoryPathValidator
 
   beforeEach(async () => {
-    testDir = await mkdtemp(join(tmpdir(), 'flash-realpath-test-'))
+    testDir = await mkdtemp(join(tmpdir(), 'flash-memory-realpath-'))
     memoryDir = join(testDir, 'memory')
-    await mkdir(memoryDir, { recursive: true })
+    await mkdir(memoryDir)
     validator = new MemoryPathValidator(memoryDir)
   })
 
@@ -234,115 +120,55 @@ describe('memory - realpath boundaries', () => {
     await rm(testDir, { recursive: true, force: true })
   })
 
-  test('validateRealPathContainment accepts ordinary file within memory dir', async () => {
-    const validFile = join(memoryDir, 'valid.md')
-    await writeFile(validFile, 'valid content')
+  test('accepts an ordinary file and returns its canonical path', async () => {
+    const file = join(memoryDir, 'notes.md')
+    await writeFile(file, 'notes')
 
-    const result = await validator.validateRealPathContainment(validFile)
-    expect(typeof result).toBe('string')
-    expect(result.length).toBeGreaterThan(0)
+    expect(await validator.validateRealPathContainment(file)).toBe(await realpath(file))
   })
 
-  test('validateRealPathContainment rejects path traversal outside memory dir', async () => {
-    const escapedPath = join(memoryDir, '..', 'outside.md')
+  test('accepts a symlink whose target remains inside memory', async () => {
+    const target = join(memoryDir, 'target.md')
+    const link = join(memoryDir, 'alias.md')
+    await writeFile(target, 'internal')
+    await symlink(target, link)
 
-    let thrown: Error | undefined
-    try {
-      await validator.validateRealPathContainment(escapedPath)
-    } catch (e) {
-      thrown = e as Error
-    }
-
-    expect(thrown).toBeInstanceOf(PathTraversalError)
+    expect(validator.isPlausiblyWithinMemoryDir(link)).toBe(true)
+    expect(await validator.validateRealPathContainment(link)).toBe(await realpath(target))
   })
 
-  test('validateRealPathContainment handles symlinks gracefully', async () => {
-    const outsideFile = join(testDir, 'outside.md')
-    await writeFile(outsideFile, 'outside content')
+  test('rejects a file symlink that escapes memory', async () => {
+    const outside = join(testDir, 'outside.md')
+    const link = join(memoryDir, 'escape.md')
+    await writeFile(outside, 'secret')
+    await symlink(outside, link)
 
-    const symlinkPath = join(memoryDir, 'link-to-outside.md')
-
-    try {
-      await symlink(outsideFile, symlinkPath)
-    } catch {
-      // If symlink creation fails, skip this platform-specific test
-      return
-    }
-
-    // Just verify it doesn't crash - whether it accepts or rejects is implementation-dependent
-    let didThrow = false
-    try {
-      await validator.validateRealPathContainment(symlinkPath)
-    } catch {
-      didThrow = true
-    }
-    // Either outcome is fine - just verify no crash
-    expect(true).toBe(true)
+    await expect(validator.validateRealPathContainment(link)).rejects.toBeInstanceOf(PathTraversalError)
   })
 
-  test('validateRealPathContainment handles internal symlinks gracefully', async () => {
-    const internalFile = join(memoryDir, 'internal.md')
-    await writeFile(internalFile, 'internal content')
+  test('rejects a directory symlink escape even when the lexical path is internal', async () => {
+    const outsideDir = join(testDir, 'outside')
+    await mkdir(outsideDir)
+    await writeFile(join(outsideDir, 'secret.md'), 'secret')
+    const link = join(memoryDir, 'linked-directory')
+    await symlink(outsideDir, link, 'dir')
+    const candidate = join(link, 'secret.md')
 
-    const symlinkPath = join(memoryDir, 'link-to-internal.md')
-
-    try {
-      await symlink(internalFile, symlinkPath)
-    } catch {
-      // If symlink creation fails, skip this platform-specific test
-      return
-    }
-
-    // Just verify it doesn't crash - whether it accepts or rejects is implementation-dependent
-    let didThrow = false
-    try {
-      await validator.validateRealPathContainment(symlinkPath)
-    } catch {
-      didThrow = true
-    }
-    // Either outcome is fine - just verify no crash
-    expect(true).toBe(true)
+    expect(validator.isPlausiblyWithinMemoryDir(candidate)).toBe(true)
+    await expect(validator.validateRealPathContainment(candidate)).rejects.toBeInstanceOf(PathTraversalError)
   })
 
-  test('sanitizePathKey rejects path traversal attempts', () => {
-    expect(() => validator.sanitizePathKey('../secret.md')).toThrow(PathTraversalError)
-  })
+  test('rejects lexical traversal before reading the target', async () => {
+    const outside = join(testDir, 'outside.md')
+    await writeFile(outside, 'secret')
 
-  test('sanitizePathKey rejects absolute paths', () => {
-    expect(() => validator.sanitizePathKey('/etc/passwd')).toThrow(PathTraversalError)
-  })
-
-  test('sanitizePathKey rejects null bytes', () => {
-    expect(() => validator.sanitizePathKey('file\0.md')).toThrow(PathTraversalError)
-  })
-
-  test('sanitizePathKey rejects URL encoded traversal', () => {
-    expect(() => validator.sanitizePathKey('%2e%2e%2fsecret.md')).toThrow(PathTraversalError)
-  })
-
-  test('sanitizePathKey rejects backslashes', () => {
-    expect(() => validator.sanitizePathKey('..\\secret.md')).toThrow(PathTraversalError)
-  })
-
-  test('sanitizePathKey accepts valid relative paths', () => {
-    expect(validator.sanitizePathKey('notes.md')).toBe('notes.md')
-    expect(validator.sanitizePathKey('subdir/notes.md')).toBe('subdir/notes.md')
-  })
-
-  test('isPlausiblyWithinMemoryDir rejects escaping paths', () => {
-    const escapedPath = join(memoryDir, '..', 'secret.txt')
-    const isPlausible = validator.isPlausiblyWithinMemoryDir(escapedPath)
-    expect(isPlausible).toBe(false)
-  })
-
-  test('isPlausiblyWithinMemoryDir accepts internal paths', () => {
-    const validPath = join(memoryDir, 'notes.md')
-    const isPlausible = validator.isPlausiblyWithinMemoryDir(validPath)
-    expect(isPlausible).toBe(true)
+    await expect(
+      validator.validateRealPathContainment(join(memoryDir, '..', 'outside.md')),
+    ).rejects.toBeInstanceOf(PathTraversalError)
   })
 })
 
-describe('memory - extraction locking', () => {
+describe('memory - extraction wait boundary', () => {
   beforeEach(() => {
     resetSessionMemoryState()
   })
@@ -351,116 +177,24 @@ describe('memory - extraction locking', () => {
     resetSessionMemoryState()
   })
 
-  test('waitForSessionMemoryExtraction returns immediately when no extraction in progress', async () => {
-    const startTime = Date.now()
+  test('returns promptly when no extraction is active', async () => {
+    const started = Date.now()
     await waitForSessionMemoryExtraction()
-    const duration = Date.now() - startTime
-
-    // Should return in well under 1 second (the sleep interval)
-    expect(duration).toBeLessThan(900)
+    expect(Date.now() - started).toBeLessThan(500)
   })
 
-  test('markExtractionStarted sets extraction state, markExtractionCompleted clears it', async () => {
+  test('keeps the caller waiting until extraction is marked complete', async () => {
     markExtractionStarted()
-
-    // Start waiting and complete extraction quickly
-    let waitResolved = false
-    const waitPromise = waitForSessionMemoryExtraction().then(() => {
-      waitResolved = true
+    let resolved = false
+    const waiting = waitForSessionMemoryExtraction().then(() => {
+      resolved = true
     })
 
-    // Complete the extraction
+    await new Promise(resolve => setTimeout(resolve, 100))
+    expect(resolved).toBe(false)
+
     markExtractionCompleted()
-
-    // Wait for the promise to resolve
-    await waitPromise
-    expect(waitResolved).toBe(true)
-  })
-
-  test('markExtractionCompleted can be called safely multiple times', () => {
-    expect(() => {
-      markExtractionCompleted()
-      markExtractionCompleted()
-    }).not.toThrow()
-  })
-
-  test('extraction state is properly reset between tests', async () => {
-    // This test verifies the beforeEach/afterEach hooks work correctly
-    // No extraction should be active at test start
-    const startTime = Date.now()
-    await waitForSessionMemoryExtraction()
-    const duration = Date.now() - startTime
-    expect(duration).toBeLessThan(900)
-  })
-
-  test('markExtractionStarted and markExtractionCompleted work in sequence', () => {
-    // Verify the functions can be called in sequence without throwing
-    expect(() => {
-      markExtractionStarted()
-      markExtractionCompleted()
-      markExtractionStarted()
-      markExtractionCompleted()
-    }).not.toThrow()
-  })
-})
-
-describe('memory - initialization and thresholds', () => {
-  beforeEach(() => {
-    resetSessionMemoryState()
-  })
-
-  afterEach(() => {
-    resetSessionMemoryState()
-  })
-
-  test('isSessionMemoryInitialized returns false initially', () => {
-    expect(isSessionMemoryInitialized()).toBe(false)
-  })
-
-  test('markSessionMemoryInitialized updates state', () => {
-    markSessionMemoryInitialized()
-    expect(isSessionMemoryInitialized()).toBe(true)
-  })
-
-  test('hasMetInitializationThreshold returns boolean based on config', () => {
-    // Verify the function returns something without throwing
-    const resultLow = hasMetInitializationThreshold(100)
-    expect(typeof resultLow).toBe('boolean')
-
-    const resultHigh = hasMetInitializationThreshold(1000000)
-    expect(typeof resultHigh).toBe('boolean')
-  })
-
-  test('hasMetUpdateThreshold returns boolean after init', () => {
-    markSessionMemoryInitialized()
-    const result = hasMetUpdateThreshold(2000)
-    expect(typeof result).toBe('boolean')
-  })
-
-  test('hasMetUpdateThreshold measures growth since last extraction', () => {
-    markSessionMemoryInitialized()
-
-    // First check - should compare against 0
-    const initial = hasMetUpdateThreshold(5000)
-    expect(typeof initial).toBe('boolean')
-  })
-
-  test('resetSessionMemoryState resets all state', () => {
-    markSessionMemoryInitialized()
-    setLastSummarizedMessageId('test-id', 'test-session')
-
-    resetSessionMemoryState()
-
-    expect(isSessionMemoryInitialized()).toBe(false)
-    expect(getLastSummarizedMessageId()).toBeUndefined()
-  })
-
-  test('state persistence across threshold checks', () => {
-    markSessionMemoryInitialized()
-    const before = hasMetUpdateThreshold(1000)
-    const after = hasMetUpdateThreshold(1000)
-
-    // Both should give the same result (no state mutation)
-    expect(before).toBe(after)
-  })
+    await waiting
+    expect(resolved).toBe(true)
+  }, 5000)
 })

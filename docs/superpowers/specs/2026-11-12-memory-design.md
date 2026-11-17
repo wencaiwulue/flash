@@ -66,6 +66,8 @@ CLAUDE.md通过attachments系统注入上下文，**不是**记忆系统的一�
 - 上游二进制：对 `/opt/homebrew/bin/claude` 执行 `strings` 检索 `lastSummarizedMessageId`、`collapseStore`、`cachedMCState` 未找到对应符号，不能据此推断上游的 cursor 或路径隔离实现。
 - 本仓库源码/测试：`src/services/SessionMemory/sessionMemoryUtils.ts`、`src/services/SessionMemory/sessionMemory.ts`、`src/memdir/memoryScan.ts`、`tests/sessionMemory.test.ts`、`tests/memoryPaths.test.ts`。
 
+**2026-11-18 执行层回归整改**：`tests/memory.test.ts` 新增真实文件、内部 symlink、文件 symlink 逃逸和目录 symlink 逃逸场景。RED 复现表明 `FsOperations` 契约只提供 `realpathSync`/`lstatSync`，而 validator 曾调用不存在的异步 `realpath`/`lstat`；无错误码异常被逐层吞掉后会退回原始路径，导致逃逸校验失效。实现仅改为调用契约内同步原语，保留 async API、 deepest-existing-ancestor 算法和失败关闭语义。回滚不得恢复为纯前缀检查或未知异步方法；若需撤回调用方，对应读写必须保持拒绝，且重跑上述对抗测试。
+
 ### Feature Gates 与 Disabled 机制
 
 - **build-time gates**：`feature('TEAMMEM')`（团队记忆）、`feature('KAIROS')`（KAIROS 长会话模式的每日日志）
