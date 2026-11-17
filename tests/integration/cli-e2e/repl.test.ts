@@ -24,23 +24,57 @@ async function startRepl(): Promise<{ session: PtySession; sandbox: Sandbox; moc
   })
   toClose.push({ session, sandbox, mock })
 
-  // Navigate the API key dialog - wait a bit then select Yes
-  await new Promise(r => setTimeout(r, 3000))
-  session.write('\x1b[A\r') // Up arrow then Enter
-  await new Promise(r => setTimeout(r, 2000))
+  // Handle API key dialog - evidence-based: wait for dialog elements first
+  try {
+    await session.waitFor(/Detected|API key|Yes.*No/, 10000)
+    // Dialog confirmed present - select Yes (up arrow once from default No) and confirm
+    session.write('\x1b[A\r')
+    await new Promise(r => setTimeout(r, 3000))
+  } catch {
+    // No dialog appeared, continue
+  }
 
-  // Wait for the flash banner
-  await session.waitFor(/flash/, 30_000)
+  // Wait for the prompt - deterministic readiness signal
+  await session.waitFor(/❯/, 30000)
 
   return { session, sandbox, mock }
 }
 
 describe('REPL interaction', () => {
-  test('basic REPL startup and double Ctrl+C exit', { timeout: 90_000 }, async () => {
+  test('unknown slash command shows error and process stays alive', { timeout: 90_000 }, async () => {
     const { session } = await startRepl()
 
-    // Verify we can exit with double Ctrl+C
-    await new Promise(r => setTimeout(r, 1000))
+    // Send unknown command
+    session.write('/definitely-not-a-valid-command-xyz\r')
+
+    // Wait for the real error message (captured via probe)
+    await session.waitFor('Unknown skill:', 15000)
+
+    // Verify process is still alive by exiting cleanly with double Ctrl+C
+    session.write('\x03')
+    await new Promise(r => setTimeout(r, 300))
+    session.write('\x03')
+
+    const exitCode = await session.exited()
+    expect(exitCode).toBeDefined()
+    expect([0, 130, -1]).toContain(exitCode)
+  })
+
+  test('/exit command exits the REPL', { timeout: 90_000 }, async () => {
+    const { session } = await startRepl()
+
+    // Send /exit
+    session.write('/exit\r')
+
+    // Verify it exits (actual behavior captured via probe)
+    const exitCode = await session.exited()
+    expect(exitCode).toBeDefined()
+    expect([0, 130, -1]).toContain(exitCode)
+  })
+
+  test('double Ctrl+C exits REPL', { timeout: 90_000 }, async () => {
+    const { session } = await startRepl()
+
     session.write('\x03')
     await new Promise(r => setTimeout(r, 300))
     session.write('\x03')
@@ -48,46 +82,4 @@ describe('REPL interaction', () => {
     const code = await session.exited()
     expect([0, 130, -1]).toContain(code)
   })
-
-  test('unknown slash command doesn\'t crash the process', { timeout: 90_000 }, async () => {
-    const { session } = await startRepl()
-
-    // Send unknown command
-    await new Promise(r => setTimeout(r, 1000))
-    session.write('/definitely-not-a-valid-command-xyz\r')
-    await new Promise(r => setTimeout(r, 2000))
-
-    // Verify the process is still alive by exiting cleanly
-    session.write('\x03')
-    await new Promise(r => setTimeout(r, 300))
-    session.write('\x03')
-
-    const exitCode = await session.exited()
-    expect([0, 130, -1]).toContain(exitCode)
-  })
-
-  test('/exit command is handled (or fallback to Ctrl+C)', { timeout: 90_000 }, async () => {
-    const { session } = await startRepl()
-
-    await new Promise(r => setTimeout(r, 1000))
-    session.write('/exit\r')
-
-    let exitCode: number | undefined
-    try {
-      exitCode = await Promise.race([
-        session.exited(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
-      ])
-    } catch {
-      // /exit didn't work, use double Ctrl+C
-      session.write('\x03')
-      await new Promise(r => setTimeout(r, 300))
-      session.write('\x03')
-      exitCode = await session.exited()
-    }
-
-    expect(exitCode).toBeDefined()
-    expect([0, 130, -1]).toContain(exitCode)
-  })
 })
-
