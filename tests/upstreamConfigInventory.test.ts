@@ -253,6 +253,72 @@ Prose after the table is not a malformed row.
     expect(actual).toEqual(cases.map(({ expected }) => [expected]))
   })
 
+  test('extracts constrained object-with children without reading literals or examples', () => {
+    const markdown = `
+| Setting | Description | Category | Scope |
+| :- | :- | :- | :- |
+| [\`parent\`](#parent) | Parent object | Other | User or managed |
+| [\`parent.enabled\`](#parent-enabled) | Explicit child | Other | User or managed |
+### \`parent\`
+Requires Claude Code v2.1.319 or later.
+* **Scope**: [\`User or managed\`](#scopes). The highest source overrides the whole object.
+* **Type**: object with \`plain\`, optional \`optionalValue\`, an \`items\` array of strings, \`enabled\` (Boolean), \`name\` (string), \`mode\` (\`"append"\`, \`"replace"\`), \`Boolean\`, \`string\`, \`false\`, \`1\`, and \`command\` always \`"command"\`
+* **Default**: unset
+\`\`\`json
+{ "parent": { "exampleOnly": true, "plain": "example" } }
+\`\`\`
+### \`parent.enabled\`
+Explicit child.
+* **Scope**: [\`User or managed\`](#scopes)
+* **Type**: Boolean
+* **Default**: \`true\`
+`
+    const entries = parseSettingsReference(markdown, source)
+    const byId = new Map(entries.map(entry => [entry.id, entry]))
+    expect(entries).toHaveLength(8)
+    expect([...byId.keys()].sort()).toEqual([
+      'setting:parent',
+      'setting:parent.command',
+      'setting:parent.enabled',
+      'setting:parent.items',
+      'setting:parent.mode',
+      'setting:parent.name',
+      'setting:parent.optionalValue',
+      'setting:parent.plain',
+    ])
+    expect(byId.get('setting:parent.enabled')).toMatchObject({
+      default: true,
+      defaultDocumented: true,
+      types: ['boolean'],
+      source: { anchor: '#parent-enabled' },
+    })
+    expect(byId.get('setting:parent.items')).toMatchObject({
+      path: 'parent.items',
+      title: 'parent.items',
+      types: ['array'],
+      default: null,
+      defaultDocumented: false,
+      scopes: ['User or managed'],
+      precedence: '',
+      precedenceDocumented: false,
+      lifecycle: 'active',
+      introduced: '2.1.319',
+      afterBaseline: true,
+      source: { anchor: '#parent' },
+    })
+    expect(byId.get('setting:parent.name')?.types).toEqual(['string'])
+    expect(byId.get('setting:parent.plain')?.types).toEqual([])
+    expect(byId.get('setting:parent.optionalValue')?.types).toEqual([])
+    expect(byId.get('setting:parent.mode')?.types).toEqual([])
+    expect(byId.get('setting:parent.command')?.types).toEqual([])
+    expect(byId.get('setting:parent.items')?.sourceRules).toBe(
+      byId.get('setting:parent')?.sourceRules,
+    )
+    expect(byId.get('setting:parent.items')?.excerpt).toContain(
+      '* **Type**: object with `plain`',
+    )
+  })
+
   test('parses backtick literal defaults followed by punctuation', () => {
     const cases = [
       { literal: 'true', punctuation: '.', expected: true },
@@ -409,7 +475,7 @@ Set the model.
     expect(evidence.binary.version).toBe('2.1.311 (Claude Code)')
     expect(Object.fromEntries(['setting', 'hook', 'env'].map(kind => [
       kind, inventory.entries.filter(entry => entry.kind === kind).length,
-    ]))).toEqual({ setting: 249, hook: 33, env: 413 })
+    ]))).toEqual({ setting: 285, hook: 33, env: 413 })
     expect(inventory.entries.some(entry =>
       entry.id === 'setting:permissions.denyInsteadOfPrompting' && entry.afterBaseline,
     )).toBe(true)
@@ -500,6 +566,67 @@ Set the model.
       expect(byId.get(`setting:strictPluginOnlyCustomization.${key}`)?.types).toEqual([
         `the string \`"${key}"\` in the \`strictPluginOnlyCustomization\` array`,
       ])
+    }
+  })
+
+  test('real snapshot registers every static child declared by an object-with Type', async () => {
+    const { inventory } = await readSnapshot()
+    const byId = new Map(inventory.entries.map(entry => [entry.id, entry]))
+    const expectedIds = [
+      'setting:autoMode.allow',
+      'setting:autoMode.environment',
+      'setting:autoMode.hard_deny',
+      'setting:autoMode.soft_deny',
+      'setting:fileSuggestion.command',
+      'setting:fileSuggestion.type',
+      'setting:modelPicker.options',
+      'setting:modelPicker.replaceBuiltInOptions',
+      'setting:modelPricing.multiplier',
+      'setting:modelPricing.overrides',
+      'setting:permissions.disableAutoMode',
+      'setting:sandbox.credentials.sigv4.presigned',
+      'setting:sandbox.credentials.sigv4.sigv4a',
+      'setting:sandbox.credentials.sigv4.streaming',
+      'setting:sandbox.network.tlsTerminate.caCertPath',
+      'setting:sandbox.network.tlsTerminate.caKeyPath',
+      'setting:sandbox.ripgrep.args',
+      'setting:sandbox.ripgrep.command',
+      'setting:spellcheck.checker',
+      'setting:spellcheck.color',
+      'setting:spellcheck.enabled',
+      'setting:spellcheck.language',
+      'setting:spinnerTipsOverride.excludeDefault',
+      'setting:spinnerTipsOverride.label',
+      'setting:spinnerTipsOverride.tips',
+      'setting:spinnerTipsOverride.tipsFile',
+      'setting:spinnerVerbs.mode',
+      'setting:spinnerVerbs.verbs',
+      'setting:statusLine.command',
+      'setting:statusLine.hideVimModeIndicator',
+      'setting:statusLine.padding',
+      'setting:statusLine.refreshInterval',
+      'setting:statusLine.type',
+      'setting:voice.autoSubmit',
+      'setting:voice.enabled',
+      'setting:voice.mode',
+    ]
+    expect(expectedIds.filter(id => !byId.has(id))).toEqual([])
+    for (const id of expectedIds) {
+      const child = byId.get(id)!
+      const parent = byId.get(id.slice(0, id.lastIndexOf('.')))!
+      expect(child.path).toBe(id.slice('setting:'.length))
+      expect(child.title).toBe(child.path)
+      expect(child.default).toBeNull()
+      expect(child.defaultDocumented).toBe(false)
+      expect(child.scopes).toEqual(parent.scopes)
+      expect(child.sourceRules).toBe(parent.sourceRules)
+      expect(child.precedence).toBe('')
+      expect(child.precedenceDocumented).toBe(false)
+      expect(child.lifecycle).toBe(parent.lifecycle)
+      expect(child.introduced).toBe(parent.introduced)
+      expect(child.afterBaseline).toBe(parent.afterBaseline)
+      expect(child.source).toEqual(parent.source)
+      expect(child.excerpt).toContain('* **Type**: object with')
     }
   })
 

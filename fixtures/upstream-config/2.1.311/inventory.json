@@ -715,6 +715,28 @@
       "excerpt": "Add your own allow and deny rules to the auto mode classifier | * **Scope**: `User or managed` | * **Type**: object with `environment`, `allow`, `soft_deny`, and `hard_deny` arrays of prose rules, plus the `classifyAllShell` Boolean | * **Default**: unset, so the classifier uses only its built-in rules"
     },
     {
+      "id": "setting:autoMode.allow",
+      "kind": "setting",
+      "path": "autoMode.allow",
+      "title": "autoMode.allow",
+      "types": [],
+      "default": null,
+      "defaultDocumented": false,
+      "scopes": [
+        "User or managed"
+      ],
+      "sourceRules": "* **Scope**: `User or managed`",
+      "precedence": "",
+      "precedenceDocumented": false,
+      "lifecycle": "active",
+      "source": {
+        "url": "https://code.claude.com/docs/en/settings-reference.md",
+        "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+        "anchor": "#automode"
+      },
+      "excerpt": "* **Type**: object with `environment`, `allow`, `soft_deny`, and `hard_deny` arrays of prose rules, plus the `classifyAllShell` Boolean | * **Scope**: `User or managed`"
+    },
+    {
       "id": "setting:autoMode.classifyAllShell",
       "kind": "setting",
       "path": "autoMode.classifyAllShell",
@@ -738,6 +760,72 @@
         "anchor": "#automode-classifyallshell"
       },
       "excerpt": "Send every shell command through the auto mode classifier, even ones a narrow allow rule matches | * **Scope**: `User or managed`. Read wherever `autoMode` is read. | * **Type**: Boolean | * **Default**: `false` | Send every Bash and PowerShell command through the auto mode classifier while auto mode is active. By default, auto mode suspends only allow rules that could run arbitrary code: tool-wide and wildcard rules such as `Bash(*)`, and interpreter or shell-wrapper prefixes such as `Bash(python *)`. A command that any other allow rule matches, such as `Bash(npm test)`, skips the classifier unless it carries per-command allowed domains. When it skips, a destructive argument the rule's prefix didn't anticipate can get through unseen. Setting this key suspends every shell allow rule for the session so the classifier sees every command. Requires Claude Code v2.1.193 or later."
+    },
+    {
+      "id": "setting:autoMode.environment",
+      "kind": "setting",
+      "path": "autoMode.environment",
+      "title": "autoMode.environment",
+      "types": [],
+      "default": null,
+      "defaultDocumented": false,
+      "scopes": [
+        "User or managed"
+      ],
+      "sourceRules": "* **Scope**: `User or managed`",
+      "precedence": "",
+      "precedenceDocumented": false,
+      "lifecycle": "active",
+      "source": {
+        "url": "https://code.claude.com/docs/en/settings-reference.md",
+        "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+        "anchor": "#automode"
+      },
+      "excerpt": "* **Type**: object with `environment`, `allow`, `soft_deny`, and `hard_deny` arrays of prose rules, plus the `classifyAllShell` Boolean | * **Scope**: `User or managed`"
+    },
+    {
+      "id": "setting:autoMode.hard_deny",
+      "kind": "setting",
+      "path": "autoMode.hard_deny",
+      "title": "autoMode.hard_deny",
+      "types": [],
+      "default": null,
+      "defaultDocumented": false,
+      "scopes": [
+        "User or managed"
+      ],
+      "sourceRules": "* **Scope**: `User or managed`",
+      "precedence": "",
+      "precedenceDocumented": false,
+      "lifecycle": "active",
+      "source": {
+        "url": "https://code.claude.com/docs/en/settings-reference.md",
+        "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+        "anchor": "#automode"
+      },
+      "excerpt": "* **Type**: object with `environment`, `allow`, `soft_deny`, and `hard_deny` arrays of prose rules, plus the `classifyAllShell` Boolean | * **Scope**: `User or managed`"
+    },
+    {
+      "id": "setting:autoMode.soft_deny",
+      "kind": "setting",
+      "path": "autoMode.soft_deny",
+      "title": "autoMode.soft_deny",
+      "types": [],
+      "default": null,
+      "defaultDocumented": false,
+      "scopes": [
+        "User or managed"
+      ],
+      "sourceRules": "* **Scope**: `User or managed`",
+      "precedence": "",
+      "precedenceDocumented": false,
+      "lifecycle": "active",
+      "source": {
+        "url": "https://code.claude.com/docs/en/settings-reference.md",
+        "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+        "anchor": "#automode"
+      },
+      "excerpt": "* **Type**: object with `environment`, `allow`, `soft_deny`, and `hard_deny` arrays of prose rules, plus the `classifyAllShell` Boolean | * **Scope**: `User or managed`"
     },
     {
       "id": "setting:autoScrollEnabled",
@@ -2286,6 +2374,50 @@
       "excerpt": "Supply `@` file autocomplete from your own command | * **Scope**: `Any file`. Under the status line and file suggestion gates, Claude Code turns the command off or runs only a managed value, and skips yours without warning. | * **Type**: object with `type`, always `\"command\"`, and `command`, the shell command to run | * **Default**: unset, so Claude Code uses the built-in file suggestion"
     },
     {
+      "id": "setting:fileSuggestion.command",
+      "kind": "setting",
+      "path": "fileSuggestion.command",
+      "title": "fileSuggestion.command",
+      "types": [],
+      "default": null,
+      "defaultDocumented": false,
+      "scopes": [
+        "Any file"
+      ],
+      "sourceRules": "* **Scope**: `Any file`. Under the status line and file suggestion gates, Claude Code turns the command off or runs only a managed value, and skips yours without warning.",
+      "precedence": "",
+      "precedenceDocumented": false,
+      "lifecycle": "active",
+      "source": {
+        "url": "https://code.claude.com/docs/en/settings-reference.md",
+        "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+        "anchor": "#filesuggestion"
+      },
+      "excerpt": "* **Type**: object with `type`, always `\"command\"`, and `command`, the shell command to run | * **Scope**: `Any file`. Under the status line and file suggestion gates, Claude Code turns the command off or runs only a managed value, and skips yours without warning."
+    },
+    {
+      "id": "setting:fileSuggestion.type",
+      "kind": "setting",
+      "path": "fileSuggestion.type",
+      "title": "fileSuggestion.type",
+      "types": [],
+      "default": null,
+      "defaultDocumented": false,
+      "scopes": [
+        "Any file"
+      ],
+      "sourceRules": "* **Scope**: `Any file`. Under the status line and file suggestion gates, Claude Code turns the command off or runs only a managed value, and skips yours without warning.",
+      "precedence": "",
+      "precedenceDocumented": false,
+      "lifecycle": "active",
+      "source": {
+        "url": "https://code.claude.com/docs/en/settings-reference.md",
+        "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+        "anchor": "#filesuggestion"
+      },
+      "excerpt": "* **Type**: object with `type`, always `\"command\"`, and `command`, the shell command to run | * **Scope**: `Any file`. Under the status line and file suggestion gates, Claude Code turns the command off or runs only a managed value, and skips yours without warning."
+    },
+    {
       "id": "setting:footerLinksRegexes",
       "kind": "setting",
       "path": "footerLinksRegexes",
@@ -2893,6 +3025,56 @@
       "excerpt": "Choose which models the `/model` picker lists, in your own order and with your own labels | * **Scope**: `User or managed`. Claude Code reads the key from managed settings, `--settings`, and user settings, and ignores it in project and local settings so a repository you clone can't relabel the picker. The highest of those three that sets the key supplies the whole lineup, and Claude Code never combines lineups from two sources. | * **Type**: object with an `options` array of rows and an optional `replaceBuiltInOptions` Boolean | * **Default**: unset, so the picker shows the built-in lineup | List the models the `/model` picker offers, in the order you write them and under labels you choose, so the picker lists the models your organization runs, after the built-in lineup or instead of it. Each row's `model` is taken verbatim, so it accepts anything `--model` accepts: an alias such as `opus`, an Anthropic model ID, or a provider-format ID for Amazon Bedrock, Google Cloud's Agent Platform"
     },
     {
+      "id": "setting:modelPicker.options",
+      "kind": "setting",
+      "path": "modelPicker.options",
+      "title": "modelPicker.options",
+      "types": [
+        "array"
+      ],
+      "default": null,
+      "defaultDocumented": false,
+      "scopes": [
+        "User or managed"
+      ],
+      "sourceRules": "* **Scope**: `User or managed`. Claude Code reads the key from managed settings, `--settings`, and user settings, and ignores it in project and local settings so a repository you clone can't relabel the picker. The highest of those three that sets the key supplies the whole lineup, and Claude Code never combines lineups from two sources.",
+      "precedence": "",
+      "precedenceDocumented": false,
+      "lifecycle": "active",
+      "introduced": "2.1.242",
+      "source": {
+        "url": "https://code.claude.com/docs/en/settings-reference.md",
+        "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+        "anchor": "#modelpicker"
+      },
+      "excerpt": "* **Type**: object with an `options` array of rows and an optional `replaceBuiltInOptions` Boolean | * **Scope**: `User or managed`. Claude Code reads the key from managed settings, `--settings`, and user settings, and ignores it in project and local settings so a repository you clone can't relabel the picker. The highest of those three that sets the key supplies the whole lineup, and Claude Code never combines lineups from two sources."
+    },
+    {
+      "id": "setting:modelPicker.replaceBuiltInOptions",
+      "kind": "setting",
+      "path": "modelPicker.replaceBuiltInOptions",
+      "title": "modelPicker.replaceBuiltInOptions",
+      "types": [
+        "boolean"
+      ],
+      "default": null,
+      "defaultDocumented": false,
+      "scopes": [
+        "User or managed"
+      ],
+      "sourceRules": "* **Scope**: `User or managed`. Claude Code reads the key from managed settings, `--settings`, and user settings, and ignores it in project and local settings so a repository you clone can't relabel the picker. The highest of those three that sets the key supplies the whole lineup, and Claude Code never combines lineups from two sources.",
+      "precedence": "",
+      "precedenceDocumented": false,
+      "lifecycle": "active",
+      "introduced": "2.1.242",
+      "source": {
+        "url": "https://code.claude.com/docs/en/settings-reference.md",
+        "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+        "anchor": "#modelpicker"
+      },
+      "excerpt": "* **Type**: object with an `options` array of rows and an optional `replaceBuiltInOptions` Boolean | * **Scope**: `User or managed`. Claude Code reads the key from managed settings, `--settings`, and user settings, and ignores it in project and local settings so a repository you clone can't relabel the picker. The highest of those three that sets the key supplies the whole lineup, and Claude Code never combines lineups from two sources."
+    },
+    {
       "id": "setting:modelPricing",
       "kind": "setting",
       "path": "modelPricing",
@@ -2916,6 +3098,52 @@
         "anchor": "#modelpricing"
       },
       "excerpt": "Report spend at your organization's contracted rates instead of list price | * **Scope**: `Managed`. Deploy the key through server-managed settings, an MDM policy, a `managed-settings.json` file, or a policy helper. Claude Code ignores it in user, project, and local settings, in `--settings`, and on Windows in the user-writable HKCU registry. With server-managed settings, each session reports costs at list price until that session's settings fetch has confirmed the setting. A host application that embeds Claude Code and sets `CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST` can supply a table of its own through the SDK `managedSettings` option, which Claude Code uses only when no managed source sets the key and only in Claude Code v2.1.246 or later. | * **Type**: object with an optional `multiplier` and an optional `overrides` map | * **Default**: unset, so Claude Code reports list price unless a host application supplies a table | Report spend at the rates your organization pays instead of list "
+    },
+    {
+      "id": "setting:modelPricing.multiplier",
+      "kind": "setting",
+      "path": "modelPricing.multiplier",
+      "title": "modelPricing.multiplier",
+      "types": [],
+      "default": null,
+      "defaultDocumented": false,
+      "scopes": [
+        "Managed"
+      ],
+      "sourceRules": "* **Scope**: `Managed`. Deploy the key through server-managed settings, an MDM policy, a `managed-settings.json` file, or a policy helper. Claude Code ignores it in user, project, and local settings, in `--settings`, and on Windows in the user-writable HKCU registry. With server-managed settings, each session reports costs at list price until that session's settings fetch has confirmed the setting. A host application that embeds Claude Code and sets `CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST` can supply a table of its own through the SDK `managedSettings` option, which Claude Code uses only when no managed source sets the key and only in Claude Code v2.1.246 or later.",
+      "precedence": "",
+      "precedenceDocumented": false,
+      "lifecycle": "active",
+      "introduced": "2.1.242",
+      "source": {
+        "url": "https://code.claude.com/docs/en/settings-reference.md",
+        "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+        "anchor": "#modelpricing"
+      },
+      "excerpt": "* **Type**: object with an optional `multiplier` and an optional `overrides` map | * **Scope**: `Managed`. Deploy the key through server-managed settings, an MDM policy, a `managed-settings.json` file, or a policy helper. Claude Code ignores it in user, project, and local settings, in `--settings`, and on Windows in the user-writable HKCU registry. With server-managed settings, each session reports costs at list price until that session's settings fetch has confirmed the setting. A host application that embeds Claude Code and sets `CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST` can supply a table of its own through the SDK `managedSettings` option, which Claude Code uses only when no managed source sets the key and only in Claude Code v2.1.246 or later."
+    },
+    {
+      "id": "setting:modelPricing.overrides",
+      "kind": "setting",
+      "path": "modelPricing.overrides",
+      "title": "modelPricing.overrides",
+      "types": [],
+      "default": null,
+      "defaultDocumented": false,
+      "scopes": [
+        "Managed"
+      ],
+      "sourceRules": "* **Scope**: `Managed`. Deploy the key through server-managed settings, an MDM policy, a `managed-settings.json` file, or a policy helper. Claude Code ignores it in user, project, and local settings, in `--settings`, and on Windows in the user-writable HKCU registry. With server-managed settings, each session reports costs at list price until that session's settings fetch has confirmed the setting. A host application that embeds Claude Code and sets `CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST` can supply a table of its own through the SDK `managedSettings` option, which Claude Code uses only when no managed source sets the key and only in Claude Code v2.1.246 or later.",
+      "precedence": "",
+      "precedenceDocumented": false,
+      "lifecycle": "active",
+      "introduced": "2.1.242",
+      "source": {
+        "url": "https://code.claude.com/docs/en/settings-reference.md",
+        "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+        "anchor": "#modelpricing"
+      },
+      "excerpt": "* **Type**: object with an optional `multiplier` and an optional `overrides` map | * **Scope**: `Managed`. Deploy the key through server-managed settings, an MDM policy, a `managed-settings.json` file, or a policy helper. Claude Code ignores it in user, project, and local settings, in `--settings`, and on Windows in the user-writable HKCU registry. With server-managed settings, each session reports costs at list price until that session's settings fetch has confirmed the setting. A host application that embeds Claude Code and sets `CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST` can supply a table of its own through the SDK `managedSettings` option, which Claude Code uses only when no managed source sets the key and only in Claude Code v2.1.246 or later."
     },
     {
       "id": "setting:modelSettings",
@@ -3258,6 +3486,28 @@
         "anchor": "#permissions-denyinsteadofprompting"
       },
       "excerpt": "Deny tool calls that would wait on a permission prompt, so a session nobody is watching keeps working | * **Scope**: `User or managed`, and `--settings`. A repository can't set it for you. | * **Type**: Boolean | * **Default**: unset, so a call that needs approval prompts you | Set this to `true` to keep a session running when nobody is there to answer a permission prompt. Claude Code denies a tool call that would otherwise wait on a prompt, and the turn continues. Requires Claude Code v2.1.319 or later."
+    },
+    {
+      "id": "setting:permissions.disableAutoMode",
+      "kind": "setting",
+      "path": "permissions.disableAutoMode",
+      "title": "permissions.disableAutoMode",
+      "types": [],
+      "default": null,
+      "defaultDocumented": false,
+      "scopes": [
+        "Any file"
+      ],
+      "sourceRules": "* **Scope**: `Any file`",
+      "precedence": "",
+      "precedenceDocumented": false,
+      "lifecycle": "active",
+      "source": {
+        "url": "https://code.claude.com/docs/en/settings-reference.md",
+        "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+        "anchor": "#permissions"
+      },
+      "excerpt": "* **Type**: object with `allow`, `ask`, `deny`, `additionalDirectories`, `blockReadsOutsideWorkingDirectories`, `blockWritesOutsideWorkingDirectories`, `defaultMode`, `denyInsteadOfPrompting`, `disableBypassPermissionsMode`, and `disableAutoMode` | * **Scope**: `Any file`"
     },
     {
       "id": "setting:permissions.disableBypassPermissionsMode",
@@ -4107,6 +4357,75 @@
       "excerpt": "Choose whether streaming, presigned, or SigV4A AWS requests fail or pass through | * **Scope**: `User or managed` | * **Type**: object with `streaming`, `presigned`, and `sigv4a`, each one of: | * **Default**: unset, so every form is `\"deny\"` | Choose what the sandbox proxy does with AWS request forms it can't re-sign: `streaming` for aws-chunked streaming uploads, `presigned` for presigned URLs, and `sigv4a` for SigV4A asymmetric signatures. This applies only to requests signed with a masked pair's placeholder access key ID. Requires Claude Code v2.1.224 or later."
     },
     {
+      "id": "setting:sandbox.credentials.sigv4.presigned",
+      "kind": "setting",
+      "path": "sandbox.credentials.sigv4.presigned",
+      "title": "sandbox.credentials.sigv4.presigned",
+      "types": [],
+      "default": null,
+      "defaultDocumented": false,
+      "scopes": [
+        "User or managed"
+      ],
+      "sourceRules": "* **Scope**: `User or managed`",
+      "precedence": "",
+      "precedenceDocumented": false,
+      "lifecycle": "active",
+      "introduced": "2.1.224",
+      "source": {
+        "url": "https://code.claude.com/docs/en/settings-reference.md",
+        "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+        "anchor": "#sandbox-credentials-sigv4"
+      },
+      "excerpt": "* **Type**: object with `streaming`, `presigned`, and `sigv4a`, each one of: | * **Scope**: `User or managed`"
+    },
+    {
+      "id": "setting:sandbox.credentials.sigv4.sigv4a",
+      "kind": "setting",
+      "path": "sandbox.credentials.sigv4.sigv4a",
+      "title": "sandbox.credentials.sigv4.sigv4a",
+      "types": [],
+      "default": null,
+      "defaultDocumented": false,
+      "scopes": [
+        "User or managed"
+      ],
+      "sourceRules": "* **Scope**: `User or managed`",
+      "precedence": "",
+      "precedenceDocumented": false,
+      "lifecycle": "active",
+      "introduced": "2.1.224",
+      "source": {
+        "url": "https://code.claude.com/docs/en/settings-reference.md",
+        "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+        "anchor": "#sandbox-credentials-sigv4"
+      },
+      "excerpt": "* **Type**: object with `streaming`, `presigned`, and `sigv4a`, each one of: | * **Scope**: `User or managed`"
+    },
+    {
+      "id": "setting:sandbox.credentials.sigv4.streaming",
+      "kind": "setting",
+      "path": "sandbox.credentials.sigv4.streaming",
+      "title": "sandbox.credentials.sigv4.streaming",
+      "types": [],
+      "default": null,
+      "defaultDocumented": false,
+      "scopes": [
+        "User or managed"
+      ],
+      "sourceRules": "* **Scope**: `User or managed`",
+      "precedence": "",
+      "precedenceDocumented": false,
+      "lifecycle": "active",
+      "introduced": "2.1.224",
+      "source": {
+        "url": "https://code.claude.com/docs/en/settings-reference.md",
+        "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+        "anchor": "#sandbox-credentials-sigv4"
+      },
+      "excerpt": "* **Type**: object with `streaming`, `presigned`, and `sigv4a`, each one of: | * **Scope**: `User or managed`"
+    },
+    {
       "id": "setting:sandbox.enableWeakerNestedSandbox",
       "kind": "setting",
       "path": "sandbox.enableWeakerNestedSandbox",
@@ -4708,6 +5027,50 @@
       "excerpt": "Have the sandbox proxy terminate TLS so it can read HTTPS requests | * **Scope**: `User or managed`. A repository can't switch it on or supply a certificate authority. | * **Type**: object with optional `caCertPath` and `caKeyPath` strings, each a file path | * **Default**: unset, so the proxy doesn't terminate or inspect TLS | When more than one honored source sets it, Claude Code uses the value from the highest-precedence source: managed settings, then the `--settings` flag, then user settings."
     },
     {
+      "id": "setting:sandbox.network.tlsTerminate.caCertPath",
+      "kind": "setting",
+      "path": "sandbox.network.tlsTerminate.caCertPath",
+      "title": "sandbox.network.tlsTerminate.caCertPath",
+      "types": [],
+      "default": null,
+      "defaultDocumented": false,
+      "scopes": [
+        "User or managed"
+      ],
+      "sourceRules": "* **Scope**: `User or managed`. A repository can't switch it on or supply a certificate authority.",
+      "precedence": "",
+      "precedenceDocumented": false,
+      "lifecycle": "active",
+      "source": {
+        "url": "https://code.claude.com/docs/en/settings-reference.md",
+        "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+        "anchor": "#sandbox-network-tlsterminate"
+      },
+      "excerpt": "* **Type**: object with optional `caCertPath` and `caKeyPath` strings, each a file path | * **Scope**: `User or managed`. A repository can't switch it on or supply a certificate authority."
+    },
+    {
+      "id": "setting:sandbox.network.tlsTerminate.caKeyPath",
+      "kind": "setting",
+      "path": "sandbox.network.tlsTerminate.caKeyPath",
+      "title": "sandbox.network.tlsTerminate.caKeyPath",
+      "types": [],
+      "default": null,
+      "defaultDocumented": false,
+      "scopes": [
+        "User or managed"
+      ],
+      "sourceRules": "* **Scope**: `User or managed`. A repository can't switch it on or supply a certificate authority.",
+      "precedence": "",
+      "precedenceDocumented": false,
+      "lifecycle": "active",
+      "source": {
+        "url": "https://code.claude.com/docs/en/settings-reference.md",
+        "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+        "anchor": "#sandbox-network-tlsterminate"
+      },
+      "excerpt": "* **Type**: object with optional `caCertPath` and `caKeyPath` strings, each a file path | * **Scope**: `User or managed`. A repository can't switch it on or supply a certificate authority."
+    },
+    {
       "id": "setting:sandbox.ripgrep",
       "kind": "setting",
       "path": "sandbox.ripgrep",
@@ -4730,6 +5093,52 @@
         "anchor": "#sandbox-ripgrep"
       },
       "excerpt": "Use your own ripgrep binary inside the sandbox | * **Scope**: `User or managed` | * **Type**: object with `command`, the path to the ripgrep binary, and optional `args`, an array of arguments to prepend | * **Default**: unset, so the sandbox uses the same ripgrep binary as Claude Code. That is the bundled binary unless you set `USE_BUILTIN_RIPGREP` to `0`"
+    },
+    {
+      "id": "setting:sandbox.ripgrep.args",
+      "kind": "setting",
+      "path": "sandbox.ripgrep.args",
+      "title": "sandbox.ripgrep.args",
+      "types": [
+        "array"
+      ],
+      "default": null,
+      "defaultDocumented": false,
+      "scopes": [
+        "User or managed"
+      ],
+      "sourceRules": "* **Scope**: `User or managed`",
+      "precedence": "",
+      "precedenceDocumented": false,
+      "lifecycle": "active",
+      "source": {
+        "url": "https://code.claude.com/docs/en/settings-reference.md",
+        "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+        "anchor": "#sandbox-ripgrep"
+      },
+      "excerpt": "* **Type**: object with `command`, the path to the ripgrep binary, and optional `args`, an array of arguments to prepend | * **Scope**: `User or managed`"
+    },
+    {
+      "id": "setting:sandbox.ripgrep.command",
+      "kind": "setting",
+      "path": "sandbox.ripgrep.command",
+      "title": "sandbox.ripgrep.command",
+      "types": [],
+      "default": null,
+      "defaultDocumented": false,
+      "scopes": [
+        "User or managed"
+      ],
+      "sourceRules": "* **Scope**: `User or managed`",
+      "precedence": "",
+      "precedenceDocumented": false,
+      "lifecycle": "active",
+      "source": {
+        "url": "https://code.claude.com/docs/en/settings-reference.md",
+        "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+        "anchor": "#sandbox-ripgrep"
+      },
+      "excerpt": "* **Type**: object with `command`, the path to the ripgrep binary, and optional `args`, an array of arguments to prepend | * **Scope**: `User or managed`"
     },
     {
       "id": "setting:sandbox.socatPath",
@@ -4997,6 +5406,104 @@
       "excerpt": "Underline misspelled words in the prompt input with a spell checker you install | * **Scope**: `User or managed`. The block from the highest tier that sets it applies as a whole. | * **Type**: object with `enabled` (Boolean), `checker` (`\"aspell\"`, `\"hunspell\"`, `\"ispell\"`, or `\"auto\"`), `language` (string, passed to the checker as its dictionary name), and `color` (string, a terminal color name, `#rrggbb`, `rgb(r,g,b)`, `ansi256(n)`, or `ansi:<name>`) | * **Default**: unset, so spell checking is off; `checker` defaults to `\"auto\"`, the first of the three found on `PATH`; `language` defaults to the checker's own dictionary; `color` defaults to the theme's error color | Underline misspelled words in the prompt input as you type, using a spell checker you install. Claude Code checks only the text in the input box. Check spelling as you type covers installing aspell, hunspell, or ispell and what the checker covers. Requires Claude Code v2.1.235 or later. | * **Scope**: `User or managed`. "
     },
     {
+      "id": "setting:spellcheck.checker",
+      "kind": "setting",
+      "path": "spellcheck.checker",
+      "title": "spellcheck.checker",
+      "types": [],
+      "default": null,
+      "defaultDocumented": false,
+      "scopes": [
+        "User or managed"
+      ],
+      "sourceRules": "* **Scope**: `User or managed`. The block from the highest tier that sets it applies as a whole.",
+      "precedence": "",
+      "precedenceDocumented": false,
+      "lifecycle": "active",
+      "introduced": "2.1.235",
+      "source": {
+        "url": "https://code.claude.com/docs/en/settings-reference.md",
+        "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+        "anchor": "#spellcheck"
+      },
+      "excerpt": "* **Type**: object with `enabled` (Boolean), `checker` (`\"aspell\"`, `\"hunspell\"`, `\"ispell\"`, or `\"auto\"`), `language` (string, passed to the checker as its dictionary name), and `color` (string, a terminal color name, `#rrggbb`, `rgb(r,g,b)`, `ansi256(n)`, or `ansi:<name>`) | * **Scope**: `User or managed`. The block from the highest tier that sets it applies as a whole."
+    },
+    {
+      "id": "setting:spellcheck.color",
+      "kind": "setting",
+      "path": "spellcheck.color",
+      "title": "spellcheck.color",
+      "types": [
+        "string"
+      ],
+      "default": null,
+      "defaultDocumented": false,
+      "scopes": [
+        "User or managed"
+      ],
+      "sourceRules": "* **Scope**: `User or managed`. The block from the highest tier that sets it applies as a whole.",
+      "precedence": "",
+      "precedenceDocumented": false,
+      "lifecycle": "active",
+      "introduced": "2.1.235",
+      "source": {
+        "url": "https://code.claude.com/docs/en/settings-reference.md",
+        "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+        "anchor": "#spellcheck"
+      },
+      "excerpt": "* **Type**: object with `enabled` (Boolean), `checker` (`\"aspell\"`, `\"hunspell\"`, `\"ispell\"`, or `\"auto\"`), `language` (string, passed to the checker as its dictionary name), and `color` (string, a terminal color name, `#rrggbb`, `rgb(r,g,b)`, `ansi256(n)`, or `ansi:<name>`) | * **Scope**: `User or managed`. The block from the highest tier that sets it applies as a whole."
+    },
+    {
+      "id": "setting:spellcheck.enabled",
+      "kind": "setting",
+      "path": "spellcheck.enabled",
+      "title": "spellcheck.enabled",
+      "types": [
+        "boolean"
+      ],
+      "default": null,
+      "defaultDocumented": false,
+      "scopes": [
+        "User or managed"
+      ],
+      "sourceRules": "* **Scope**: `User or managed`. The block from the highest tier that sets it applies as a whole.",
+      "precedence": "",
+      "precedenceDocumented": false,
+      "lifecycle": "active",
+      "introduced": "2.1.235",
+      "source": {
+        "url": "https://code.claude.com/docs/en/settings-reference.md",
+        "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+        "anchor": "#spellcheck"
+      },
+      "excerpt": "* **Type**: object with `enabled` (Boolean), `checker` (`\"aspell\"`, `\"hunspell\"`, `\"ispell\"`, or `\"auto\"`), `language` (string, passed to the checker as its dictionary name), and `color` (string, a terminal color name, `#rrggbb`, `rgb(r,g,b)`, `ansi256(n)`, or `ansi:<name>`) | * **Scope**: `User or managed`. The block from the highest tier that sets it applies as a whole."
+    },
+    {
+      "id": "setting:spellcheck.language",
+      "kind": "setting",
+      "path": "spellcheck.language",
+      "title": "spellcheck.language",
+      "types": [
+        "string"
+      ],
+      "default": null,
+      "defaultDocumented": false,
+      "scopes": [
+        "User or managed"
+      ],
+      "sourceRules": "* **Scope**: `User or managed`. The block from the highest tier that sets it applies as a whole.",
+      "precedence": "",
+      "precedenceDocumented": false,
+      "lifecycle": "active",
+      "introduced": "2.1.235",
+      "source": {
+        "url": "https://code.claude.com/docs/en/settings-reference.md",
+        "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+        "anchor": "#spellcheck"
+      },
+      "excerpt": "* **Type**: object with `enabled` (Boolean), `checker` (`\"aspell\"`, `\"hunspell\"`, `\"ispell\"`, or `\"auto\"`), `language` (string, passed to the checker as its dictionary name), and `color` (string, a terminal color name, `#rrggbb`, `rgb(r,g,b)`, `ansi256(n)`, or `ansi:<name>`) | * **Scope**: `User or managed`. The block from the highest tier that sets it applies as a whole."
+    },
+    {
       "id": "setting:spinnerTipsEnabled",
       "kind": "setting",
       "path": "spinnerTipsEnabled",
@@ -5045,6 +5552,94 @@
       "excerpt": "Add your own tips to the spinner rotation, or replace the built-in tips | * **Scope**: `Any file`. Claude Code honors tip objects, `tipsFile`, `label`, and `excludeDefault` from user settings, the `--settings` flag, and managed settings; from project and local settings it reads plain string tips only. | * **Type**: object with `tips`, `tipsFile`, `label`, and `excludeDefault` fields, each optional | * **Default**: unset, so Claude Code shows only the built-in tips | When more than one settings file sets the key, Claude Code shows tips from all of them and takes `tipsFile`, `label`, and `excludeDefault` from whichever of managed settings, the `--settings` flag, and user settings is the highest-precedence one that sets each."
     },
     {
+      "id": "setting:spinnerTipsOverride.excludeDefault",
+      "kind": "setting",
+      "path": "spinnerTipsOverride.excludeDefault",
+      "title": "spinnerTipsOverride.excludeDefault",
+      "types": [],
+      "default": null,
+      "defaultDocumented": false,
+      "scopes": [
+        "Any file"
+      ],
+      "sourceRules": "* **Scope**: `Any file`. Claude Code honors tip objects, `tipsFile`, `label`, and `excludeDefault` from user settings, the `--settings` flag, and managed settings; from project and local settings it reads plain string tips only.",
+      "precedence": "",
+      "precedenceDocumented": false,
+      "lifecycle": "active",
+      "source": {
+        "url": "https://code.claude.com/docs/en/settings-reference.md",
+        "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+        "anchor": "#spinnertipsoverride"
+      },
+      "excerpt": "* **Type**: object with `tips`, `tipsFile`, `label`, and `excludeDefault` fields, each optional | * **Scope**: `Any file`. Claude Code honors tip objects, `tipsFile`, `label`, and `excludeDefault` from user settings, the `--settings` flag, and managed settings; from project and local settings it reads plain string tips only."
+    },
+    {
+      "id": "setting:spinnerTipsOverride.label",
+      "kind": "setting",
+      "path": "spinnerTipsOverride.label",
+      "title": "spinnerTipsOverride.label",
+      "types": [],
+      "default": null,
+      "defaultDocumented": false,
+      "scopes": [
+        "Any file"
+      ],
+      "sourceRules": "* **Scope**: `Any file`. Claude Code honors tip objects, `tipsFile`, `label`, and `excludeDefault` from user settings, the `--settings` flag, and managed settings; from project and local settings it reads plain string tips only.",
+      "precedence": "",
+      "precedenceDocumented": false,
+      "lifecycle": "active",
+      "source": {
+        "url": "https://code.claude.com/docs/en/settings-reference.md",
+        "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+        "anchor": "#spinnertipsoverride"
+      },
+      "excerpt": "* **Type**: object with `tips`, `tipsFile`, `label`, and `excludeDefault` fields, each optional | * **Scope**: `Any file`. Claude Code honors tip objects, `tipsFile`, `label`, and `excludeDefault` from user settings, the `--settings` flag, and managed settings; from project and local settings it reads plain string tips only."
+    },
+    {
+      "id": "setting:spinnerTipsOverride.tips",
+      "kind": "setting",
+      "path": "spinnerTipsOverride.tips",
+      "title": "spinnerTipsOverride.tips",
+      "types": [],
+      "default": null,
+      "defaultDocumented": false,
+      "scopes": [
+        "Any file"
+      ],
+      "sourceRules": "* **Scope**: `Any file`. Claude Code honors tip objects, `tipsFile`, `label`, and `excludeDefault` from user settings, the `--settings` flag, and managed settings; from project and local settings it reads plain string tips only.",
+      "precedence": "",
+      "precedenceDocumented": false,
+      "lifecycle": "active",
+      "source": {
+        "url": "https://code.claude.com/docs/en/settings-reference.md",
+        "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+        "anchor": "#spinnertipsoverride"
+      },
+      "excerpt": "* **Type**: object with `tips`, `tipsFile`, `label`, and `excludeDefault` fields, each optional | * **Scope**: `Any file`. Claude Code honors tip objects, `tipsFile`, `label`, and `excludeDefault` from user settings, the `--settings` flag, and managed settings; from project and local settings it reads plain string tips only."
+    },
+    {
+      "id": "setting:spinnerTipsOverride.tipsFile",
+      "kind": "setting",
+      "path": "spinnerTipsOverride.tipsFile",
+      "title": "spinnerTipsOverride.tipsFile",
+      "types": [],
+      "default": null,
+      "defaultDocumented": false,
+      "scopes": [
+        "Any file"
+      ],
+      "sourceRules": "* **Scope**: `Any file`. Claude Code honors tip objects, `tipsFile`, `label`, and `excludeDefault` from user settings, the `--settings` flag, and managed settings; from project and local settings it reads plain string tips only.",
+      "precedence": "",
+      "precedenceDocumented": false,
+      "lifecycle": "active",
+      "source": {
+        "url": "https://code.claude.com/docs/en/settings-reference.md",
+        "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+        "anchor": "#spinnertipsoverride"
+      },
+      "excerpt": "* **Type**: object with `tips`, `tipsFile`, `label`, and `excludeDefault` fields, each optional | * **Scope**: `Any file`. Claude Code honors tip objects, `tipsFile`, `label`, and `excludeDefault` from user settings, the `--settings` flag, and managed settings; from project and local settings it reads plain string tips only."
+    },
+    {
       "id": "setting:spinnerVerbs",
       "kind": "setting",
       "path": "spinnerVerbs",
@@ -5067,6 +5662,52 @@
         "anchor": "#spinnerverbs"
       },
       "excerpt": "Add or replace the verbs shown while a turn runs | * **Scope**: `Any file` | * **Type**: object with a `verbs` array of strings and `mode`, one of: | * **Default**: unset, so Claude Code uses the built-in verbs"
+    },
+    {
+      "id": "setting:spinnerVerbs.mode",
+      "kind": "setting",
+      "path": "spinnerVerbs.mode",
+      "title": "spinnerVerbs.mode",
+      "types": [],
+      "default": null,
+      "defaultDocumented": false,
+      "scopes": [
+        "Any file"
+      ],
+      "sourceRules": "* **Scope**: `Any file`",
+      "precedence": "",
+      "precedenceDocumented": false,
+      "lifecycle": "active",
+      "source": {
+        "url": "https://code.claude.com/docs/en/settings-reference.md",
+        "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+        "anchor": "#spinnerverbs"
+      },
+      "excerpt": "* **Type**: object with a `verbs` array of strings and `mode`, one of: | * **Scope**: `Any file`"
+    },
+    {
+      "id": "setting:spinnerVerbs.verbs",
+      "kind": "setting",
+      "path": "spinnerVerbs.verbs",
+      "title": "spinnerVerbs.verbs",
+      "types": [
+        "array"
+      ],
+      "default": null,
+      "defaultDocumented": false,
+      "scopes": [
+        "Any file"
+      ],
+      "sourceRules": "* **Scope**: `Any file`",
+      "precedence": "",
+      "precedenceDocumented": false,
+      "lifecycle": "active",
+      "source": {
+        "url": "https://code.claude.com/docs/en/settings-reference.md",
+        "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+        "anchor": "#spinnerverbs"
+      },
+      "excerpt": "* **Type**: object with a `verbs` array of strings and `mode`, one of: | * **Scope**: `Any file`"
     },
     {
       "id": "setting:sshConfigs",
@@ -5163,6 +5804,124 @@
         "anchor": "#statusline"
       },
       "excerpt": "Run your own command to render a status line below the prompt | * **Scope**: `Any file`. When `allowManagedHooksOnly` is on, or `disableAllHooks` is set outside managed settings, only the managed settings value runs. | * **Type**: object with `type` set to `\"command\"` and a `command` string, plus optional `padding` as a number of characters, `refreshInterval` as a number of seconds, minimum `1`, and `hideVimModeIndicator` as a Boolean | * **Default**: unset, so no status line"
+    },
+    {
+      "id": "setting:statusLine.command",
+      "kind": "setting",
+      "path": "statusLine.command",
+      "title": "statusLine.command",
+      "types": [
+        "string"
+      ],
+      "default": null,
+      "defaultDocumented": false,
+      "scopes": [
+        "Any file"
+      ],
+      "sourceRules": "* **Scope**: `Any file`. When `allowManagedHooksOnly` is on, or `disableAllHooks` is set outside managed settings, only the managed settings value runs.",
+      "precedence": "",
+      "precedenceDocumented": false,
+      "lifecycle": "active",
+      "source": {
+        "url": "https://code.claude.com/docs/en/settings-reference.md",
+        "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+        "anchor": "#statusline"
+      },
+      "excerpt": "* **Type**: object with `type` set to `\"command\"` and a `command` string, plus optional `padding` as a number of characters, `refreshInterval` as a number of seconds, minimum `1`, and `hideVimModeIndicator` as a Boolean | * **Scope**: `Any file`. When `allowManagedHooksOnly` is on, or `disableAllHooks` is set outside managed settings, only the managed settings value runs."
+    },
+    {
+      "id": "setting:statusLine.hideVimModeIndicator",
+      "kind": "setting",
+      "path": "statusLine.hideVimModeIndicator",
+      "title": "statusLine.hideVimModeIndicator",
+      "types": [
+        "boolean"
+      ],
+      "default": null,
+      "defaultDocumented": false,
+      "scopes": [
+        "Any file"
+      ],
+      "sourceRules": "* **Scope**: `Any file`. When `allowManagedHooksOnly` is on, or `disableAllHooks` is set outside managed settings, only the managed settings value runs.",
+      "precedence": "",
+      "precedenceDocumented": false,
+      "lifecycle": "active",
+      "source": {
+        "url": "https://code.claude.com/docs/en/settings-reference.md",
+        "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+        "anchor": "#statusline"
+      },
+      "excerpt": "* **Type**: object with `type` set to `\"command\"` and a `command` string, plus optional `padding` as a number of characters, `refreshInterval` as a number of seconds, minimum `1`, and `hideVimModeIndicator` as a Boolean | * **Scope**: `Any file`. When `allowManagedHooksOnly` is on, or `disableAllHooks` is set outside managed settings, only the managed settings value runs."
+    },
+    {
+      "id": "setting:statusLine.padding",
+      "kind": "setting",
+      "path": "statusLine.padding",
+      "title": "statusLine.padding",
+      "types": [
+        "number"
+      ],
+      "default": null,
+      "defaultDocumented": false,
+      "scopes": [
+        "Any file"
+      ],
+      "sourceRules": "* **Scope**: `Any file`. When `allowManagedHooksOnly` is on, or `disableAllHooks` is set outside managed settings, only the managed settings value runs.",
+      "precedence": "",
+      "precedenceDocumented": false,
+      "lifecycle": "active",
+      "source": {
+        "url": "https://code.claude.com/docs/en/settings-reference.md",
+        "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+        "anchor": "#statusline"
+      },
+      "excerpt": "* **Type**: object with `type` set to `\"command\"` and a `command` string, plus optional `padding` as a number of characters, `refreshInterval` as a number of seconds, minimum `1`, and `hideVimModeIndicator` as a Boolean | * **Scope**: `Any file`. When `allowManagedHooksOnly` is on, or `disableAllHooks` is set outside managed settings, only the managed settings value runs."
+    },
+    {
+      "id": "setting:statusLine.refreshInterval",
+      "kind": "setting",
+      "path": "statusLine.refreshInterval",
+      "title": "statusLine.refreshInterval",
+      "types": [
+        "number"
+      ],
+      "default": null,
+      "defaultDocumented": false,
+      "scopes": [
+        "Any file"
+      ],
+      "sourceRules": "* **Scope**: `Any file`. When `allowManagedHooksOnly` is on, or `disableAllHooks` is set outside managed settings, only the managed settings value runs.",
+      "precedence": "",
+      "precedenceDocumented": false,
+      "lifecycle": "active",
+      "source": {
+        "url": "https://code.claude.com/docs/en/settings-reference.md",
+        "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+        "anchor": "#statusline"
+      },
+      "excerpt": "* **Type**: object with `type` set to `\"command\"` and a `command` string, plus optional `padding` as a number of characters, `refreshInterval` as a number of seconds, minimum `1`, and `hideVimModeIndicator` as a Boolean | * **Scope**: `Any file`. When `allowManagedHooksOnly` is on, or `disableAllHooks` is set outside managed settings, only the managed settings value runs."
+    },
+    {
+      "id": "setting:statusLine.type",
+      "kind": "setting",
+      "path": "statusLine.type",
+      "title": "statusLine.type",
+      "types": [],
+      "default": null,
+      "defaultDocumented": false,
+      "scopes": [
+        "Any file"
+      ],
+      "sourceRules": "* **Scope**: `Any file`. When `allowManagedHooksOnly` is on, or `disableAllHooks` is set outside managed settings, only the managed settings value runs.",
+      "precedence": "",
+      "precedenceDocumented": false,
+      "lifecycle": "active",
+      "source": {
+        "url": "https://code.claude.com/docs/en/settings-reference.md",
+        "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+        "anchor": "#statusline"
+      },
+      "excerpt": "* **Type**: object with `type` set to `\"command\"` and a `command` string, plus optional `padding` as a number of characters, `refreshInterval` as a number of seconds, minimum `1`, and `hideVimModeIndicator` as a Boolean | * **Scope**: `Any file`. When `allowManagedHooksOnly` is on, or `disableAllHooks` is set outside managed settings, only the managed settings value runs."
     },
     {
       "id": "setting:strictKnownMarketplaces",
@@ -5789,6 +6548,76 @@
         "anchor": "#voice"
       },
       "excerpt": "Turn on voice dictation and pick hold or tap mode | * **Scope**: `Any file` | * **Type**: object with `enabled` as a Boolean, `autoSubmit` as a Boolean that applies in hold mode only, and `mode`, one of: | * **Default**: unset, so dictation is off; when `enabled` is `true` and `mode` is unset, Claude Code uses `\"hold\"`"
+    },
+    {
+      "id": "setting:voice.autoSubmit",
+      "kind": "setting",
+      "path": "voice.autoSubmit",
+      "title": "voice.autoSubmit",
+      "types": [
+        "boolean"
+      ],
+      "default": null,
+      "defaultDocumented": false,
+      "scopes": [
+        "Any file"
+      ],
+      "sourceRules": "* **Scope**: `Any file`",
+      "precedence": "",
+      "precedenceDocumented": false,
+      "lifecycle": "active",
+      "source": {
+        "url": "https://code.claude.com/docs/en/settings-reference.md",
+        "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+        "anchor": "#voice"
+      },
+      "excerpt": "* **Type**: object with `enabled` as a Boolean, `autoSubmit` as a Boolean that applies in hold mode only, and `mode`, one of: | * **Scope**: `Any file`"
+    },
+    {
+      "id": "setting:voice.enabled",
+      "kind": "setting",
+      "path": "voice.enabled",
+      "title": "voice.enabled",
+      "types": [
+        "boolean"
+      ],
+      "default": null,
+      "defaultDocumented": false,
+      "scopes": [
+        "Any file"
+      ],
+      "sourceRules": "* **Scope**: `Any file`",
+      "precedence": "",
+      "precedenceDocumented": false,
+      "lifecycle": "active",
+      "source": {
+        "url": "https://code.claude.com/docs/en/settings-reference.md",
+        "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+        "anchor": "#voice"
+      },
+      "excerpt": "* **Type**: object with `enabled` as a Boolean, `autoSubmit` as a Boolean that applies in hold mode only, and `mode`, one of: | * **Scope**: `Any file`"
+    },
+    {
+      "id": "setting:voice.mode",
+      "kind": "setting",
+      "path": "voice.mode",
+      "title": "voice.mode",
+      "types": [],
+      "default": null,
+      "defaultDocumented": false,
+      "scopes": [
+        "Any file"
+      ],
+      "sourceRules": "* **Scope**: `Any file`",
+      "precedence": "",
+      "precedenceDocumented": false,
+      "lifecycle": "active",
+      "source": {
+        "url": "https://code.claude.com/docs/en/settings-reference.md",
+        "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+        "anchor": "#voice"
+      },
+      "excerpt": "* **Type**: object with `enabled` as a Boolean, `autoSubmit` as a Boolean that applies in hold mode only, and `mode`, one of: | * **Scope**: `Any file`"
     },
     {
       "id": "setting:voiceEnabled",

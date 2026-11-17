@@ -53,6 +53,7 @@ status: approved
 | 只自动 diff settings 与 hooks | settings 来自 JSON Schema，hooks 来自 `HOOK_EVENTS`；env 仍由矩阵证据约束 | 当前没有可信的全量 env 注册表，不能用 grep 冒充语义检查 | 对源码做字符串存在性检查即标记 aligned | 总路线“注入不算完成” |
 | 保留 deprecated/removed 标签 | 文档明确标记的项进入 inventory，再由 matrix 记录替代项或排除理由 | 防止悄悄漏项；区分不支持与故意迁移 | 解析时直接删除废弃行 | 总路线排除记录要求 |
 | 复合类型保留完整语义 | 仅规范化简单主类型；object/array 的属性、映射、union 与反引号 code span 全文保留；非主类型复合描述保留大小写 | 首个逗号/冒号可能属于属性列表或 code span，截断或整体小写化会伪造类型 | 按首个逗号/冒号切割全部类型；对未识别复合 Type 整体小写化 | 官方 settings reference 的 `hooks`、`permissions`、`sandbox.filesystem`、`strictPluginOnlyCustomization.*` Type 行；SHA-256 `7817edfb…6a6f2f` |
+| Type 声明的静态子键同等登记 | 非示例 Type 以 `object with` 开头时，提取该行的静态子键并生成父 anchor 下的 nested entry；已有 index/detail 路径优先 | 上游在父 Type 中明确声明的字段与显式小节一样是配置事实，不能因没有独立标题而漏项 | 只登记 11 个 schema 已知名；从 JSON 示例或动态 map 猜路径 | 同一文档 `modelPicker`、`autoMode`、`sandbox.ripgrep`、`spinnerTipsOverride`、`statusLine`、`voice` 等 Type 行；SHA-256 `7817edfb…6a6f2f` |
 | 默认值对齐固定基线 | `default` 表示 2.1.311 有效值；明确 `Before vX` 历史语句按版本边界选择 literal，当前原文留在 excerpt | 实时文档可能已修改默认值，不能把当前文档值误记为 stable 基线值 | 另设平行默认值体系；针对单条路径硬编码 | `sandbox.autoAllowBashIfSandboxed` Default：`false`，Before v2.1.324 为 `true`；同文档 SHA-256 `7817edfb…6a6f2f` |
 | 未列出不等于 removed | 只有文档明确标记才设 lifecycle；重采集消失记为 upstream-disappeared 并人工复核 | 实时文档可能调整结构 | 将消失项自动删除或宣称上游移除 | 文档非版本化快照 |
 | hooks 三类局部清洗 | 非对象 hooks、未知事件、已知事件非数组分别删除并诊断 | 与 2.1.311 黑盒观测一致，保留有效兄弟配置 | 全字段通用容错；继续整文件失败 | doctor probe；官方 settings 文档 |
@@ -151,6 +152,14 @@ type UpstreamEntry = {
 7. 按 `kind`、`id` 稳定排序，拒绝重复 ID、空 path、非法 lifecycle、无来源或空 source anchor 条目。
 8. 从 Requires 语句提取 `introduced`；版本高于 2.1.311 时设 `afterBaseline:true`，matrix 初始状态为 blocked，并在 notes 中记录文档领先 stable。
 9. 数量由当次文档重新计算，禁止把早期审核的 `99 + 22` 写成预期常量。
+
+**Type-declared nested entries 数据契约：** 显式 index/detail 小节与父设置非示例 Type 中明确声明的静态子键都是上游事实。后者没有独立标题时也必须进入 inventory，但不能虚构独立小节的元数据。
+
+- 只处理规范化后以 `object with` 开头的父 Type，并且只读取同一 Type 行中的顶层反引号 code span。键名必须匹配静态标识符；括号内的枚举/类型注记、带引号字符串、数字、颜色/函数样值、`Boolean`/`string` 等类型词和 `false`/`null` 等字面量都不是路径。已有 index 或 detail 路径不重复生成。
+- `object mapping ... to an object with ...` 表示动态 map，`object keyed by hook event` 表示 hooks 的动态 event 结构；二者不生成去掉动态段的伪静态路径。`object with the sub-keys below` 没有在同行声明键时不猜测。hooks 的 event/matcher 和 JSON/fenced 配置示例均不是该提取器的输入。
+- `id`/`path`/`title` 使用 `parent.child`；`source.url`、`source.sha256`、`source.anchor` 指向父节，`excerpt` 保留父 Type 原文并可附父 Scope，确保事实可追溯。`scopes` 与 `sourceRules` 只继承父 Scope 的明确事实。
+- 子 entry 一律 `default:null`、`defaultDocumented:false`，不把父对象默认值或示例值当作子字段默认值。`precedence:''`、`precedenceDocumented:false`，不把父对象整体优先级推断成子键独立规则；不继承父 replacement。`lifecycle`、`introduced`、`afterBaseline` 只沿用父级明确事实。
+- `types` 默认为 `[]`；只有同一 Type 行把单数 `array`/`object`/`string`/`number`/`Boolean` 直接绑定到该子键、且无歧义提取时才记录对应小写主类型。共享复数类型后缀、字面量 union、动态 map 或仅从 prose/example 可见的类型保持 `[]`，父 Type 原文仍完整保留在 excerpt，未提取不等于宣称上游未说明。
 
 #### 4.1.3 compatibility 数据契约
 
