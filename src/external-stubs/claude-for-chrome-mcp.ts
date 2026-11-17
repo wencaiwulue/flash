@@ -513,7 +513,11 @@ export async function getOpenBrowserClient(): Promise<Client> {
           const { chromium } = await import('playwright')
           const browser = await chromium.launch({
             channel: 'chrome',
-            chromiumSandbox: true,
+            // FLASH_SMOKE_TOOL marks the release-smoke channel: CI runners
+            // (e.g. ubuntu-24.04-arm) lack user-namespace support, where
+            // Chromium's SUID/namespace sandbox cannot start. Normal
+            // sessions keep the sandbox enabled.
+            chromiumSandbox: process.env.FLASH_SMOKE_TOOL ? false : true,
             ...config.browser?.launchOptions,
             args: launchArgs,
             handleSIGINT: false,
