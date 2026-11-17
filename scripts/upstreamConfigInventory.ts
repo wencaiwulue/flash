@@ -80,9 +80,48 @@ const KIND_ORDER: Record<UpstreamEntry['kind'], number> = {
 const PRECEDENCE_PATTERN = /precedence|override|merge|highest|outrank/i
 const REQUIRES_PATTERN = /Requires Claude Code v(\d+\.\d+\.\d+)/g
 
+function stripMarkdownLinks(value: string): string {
+  const linkStart = /\[([^\]]+)\]\(/g
+  let result = ''
+  let cursor = 0
+  let match: RegExpExecArray | null
+  while ((match = linkStart.exec(value))) {
+    let depth = 1
+    let index = linkStart.lastIndex
+    let escaped = false
+    for (; index < value.length; index++) {
+      const character = value[index]!
+      if (escaped) {
+        escaped = false
+        continue
+      }
+      if (character === '\\') {
+        escaped = true
+        continue
+      }
+      if (character === '(') depth++
+      if (character === ')') {
+        depth--
+        if (depth === 0) {
+          index++
+          break
+        }
+      }
+    }
+    if (depth !== 0) {
+      result += value.slice(cursor, linkStart.lastIndex)
+      cursor = linkStart.lastIndex
+      continue
+    }
+    result += value.slice(cursor, match.index) + match[1]!
+    cursor = index
+    linkStart.lastIndex = index
+  }
+  return result + value.slice(cursor)
+}
+
 export function stripMarkdown(value: string): string {
-  return value
-    .replace(/\[([^\]]+)\]\((?:\\.|[^)])*\)/g, '$1')
+  return stripMarkdownLinks(value)
     .replace(/\\(.)/g, (match, character: string) =>
       '\\`*_{}[]()#+-.!|>'.includes(character) ? character : match,
     )
@@ -93,9 +132,10 @@ function splitTableRow(line: string): string[] {
   const cells: string[] = []
   let cell = ''
   let escaped = false
-  let inBackticks = false
+  let codeDelimiterLength = 0
 
-  for (const character of line) {
+  for (let index = 0; index < line.length; index++) {
+    const character = line[index]!
     if (escaped) {
       cell += character
       escaped = false
@@ -107,11 +147,16 @@ function splitTableRow(line: string): string[] {
       continue
     }
     if (character === '`') {
-      inBackticks = !inBackticks
-      cell += character
+      let end = index + 1
+      while (line[end] === '`') end++
+      const delimiterLength = end - index
+      cell += line.slice(index, end)
+      if (codeDelimiterLength === 0) codeDelimiterLength = delimiterLength
+      else if (codeDelimiterLength === delimiterLength) codeDelimiterLength = 0
+      index = end - 1
       continue
     }
-    if (character === '|' && !inBackticks) {
+    if (character === '|' && codeDelimiterLength === 0) {
       cells.push(cell)
       cell = ''
       continue
@@ -125,13 +170,40 @@ function splitTableRow(line: string): string[] {
   return cells.map(cell => cell.trim())
 }
 
+function codeFenceVisibility(lines: string[]): boolean[] {
+  const visible: boolean[] = []
+  let fence: { character: string; length: number } | undefined
+  for (const line of lines) {
+    const marker = line.match(/^\s*(?:>\s*)?(`{3,}|~{3,})/)?.[1]
+    if (fence) {
+      visible.push(false)
+      if (
+        marker?.[0] === fence.character &&
+        marker.length >= fence.length &&
+        /^\s*(?:>\s*)?(?:`{3,}|~{3,})\s*$/.test(line)
+      ) {
+        fence = undefined
+      }
+      continue
+    }
+    if (marker) {
+      fence = { character: marker[0]!, length: marker.length }
+      visible.push(false)
+    } else {
+      visible.push(true)
+    }
+  }
+  return visible
+}
+
 function parseTargetTable(
   markdown: string,
   expectedHeaders: readonly string[],
 ): TableRow[] {
   const lines = markdown.split(/\r?\n/)
-  const headerIndex = lines.findIndex(line => {
-    if (!line.trimStart().startsWith('|')) return false
+  const visible = codeFenceVisibility(lines)
+  const headerIndex = lines.findIndex((line, index) => {
+    if (!visible[index] || !line.trimStart().startsWith('|')) return false
     const cells = splitTableRow(line)
     return cells.length === expectedHeaders.length &&
       cells.every((cell, index) => stripMarkdown(cell) === expectedHeaders[index])
@@ -142,8 +214,13 @@ function parseTargetTable(
 
   const rows: TableRow[] = []
   for (let index = headerIndex + 1; index < lines.length; index++) {
+    if (!visible[index]) continue
     const line = lines[index]!
-    if (!line.trimStart().startsWith('|')) break
+    if (line.trim() === '') break
+    if (!line.trimStart().startsWith('|')) {
+      if (/^#{1,6}\s+/.test(line.trimStart())) break
+      throw new Error(`malformed target table row at line ${index + 1}: expected a leading |`)
+    }
     const cells = splitTableRow(line)
     if (cells.length !== expectedHeaders.length) {
       throw new Error(
@@ -158,28 +235,25 @@ function parseTargetTable(
 
 function indexDetailSections(markdown: string): Map<string, DetailSection> {
   const lines = markdown.split(/\r?\n/)
+  const visible = codeFenceVisibility(lines)
   const sections = new Map<string, DetailSection>()
   for (let index = 0; index < lines.length; index++) {
+    if (!visible[index]) continue
     const match = lines[index]!.match(/^###\s+`([^`]+)`\s*$/)
     if (!match) continue
     let end = index + 1
-    while (end < lines.length && !/^#{1,3}\s+/.test(lines[end]!)) end++
+    while (
+      end < lines.length &&
+      (!visible[end] || !/^#{1,3}\s+/.test(lines[end]!))
+    ) end++
     sections.set(match[1]!, { lines: lines.slice(index + 1, end) })
   }
   return sections
 }
 
 function withoutCodeBlocks(lines: string[]): string[] {
-  const result: string[] = []
-  let inCodeBlock = false
-  for (const line of lines) {
-    if (/^\s*(?:>\s*)?```/.test(line)) {
-      inCodeBlock = !inCodeBlock
-      continue
-    }
-    if (!inCodeBlock) result.push(line)
-  }
-  return result
+  const visible = codeFenceVisibility(lines)
+  return lines.filter((_, index) => visible[index])
 }
 
 function metadataValue(lines: string[], label: string): string | undefined {
@@ -200,15 +274,14 @@ function metadataLine(lines: string[], label: string): string | undefined {
 
 function normalizeType(value: string | undefined): string[] {
   if (!value) return []
-  const primary = stripMarkdown(value).split(/[,:]/, 1)[0]!.trim().toLowerCase()
-  const aliases: Record<string, string> = {
-    boolean: 'boolean',
-    string: 'string',
-    number: 'number',
-    object: 'object',
-    array: 'array',
+  const cleaned = stripMarkdown(value).trim()
+  const match = cleaned.match(/^(boolean|string|number|object|array)\b(.*)$/i)
+  if (!match) return [cleaned.toLowerCase()]
+  const primary = match[1]!.toLowerCase()
+  if (primary === 'object' || primary === 'array') {
+    return [`${primary}${match[2]!}`]
   }
-  return [aliases[primary] ?? primary]
+  return [primary]
 }
 
 function parseDefault(value: string | undefined): {
@@ -217,14 +290,14 @@ function parseDefault(value: string | undefined): {
 } {
   if (value === undefined) return { value: null, documented: false }
   const cleaned = stripMarkdown(value)
-  const literal = cleaned.match(/^`(true|false|null)`(?:\s|$)/)
+  const literal = cleaned.match(/^`(true|false|null)`(?=$|[\s,.;:?!])/)
   if (literal) {
     return {
       value: literal[1] === 'null' ? null : literal[1] === 'true',
       documented: true,
     }
   }
-  const numeric = cleaned.match(/^`(-?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)`(?:\s|$)/i)
+  const numeric = cleaned.match(/^`(-?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)`(?=$|[\s,.;:?!])/i)
   if (numeric) {
     const number = Number(numeric[1])
     if (Number.isFinite(number)) return { value: number, documented: true }
@@ -284,7 +357,7 @@ function settingsPrecedence(lines: string[]): string {
       continue
     }
     if (!PRECEDENCE_PATTERN.test(line)) continue
-    if (/^\s*(?:#|\*\s*\*\*(?:Scope|Type|Default)\*\*:|```)/.test(line)) continue
+    if (/^\s*(?:#|\*\s*\*\*(?:Type|Default)\*\*:|```)/.test(line)) continue
     const cleaned = stripMarkdown(line)
     if (cleaned) passages.push(cleaned)
   }
@@ -350,7 +423,9 @@ export function parseSettingsReference(
     const resolvedLifecycle = lifecycle === 'active' ? detailLifecycle(prose) : lifecycle
     const requiresText = primaryProse.join('\n')
     const versions = versionMetadata(`${description}\n${requiresText}`)
-    const replacement = replacementFromText(`${description}\n${prose.join('\n')}`)
+    const replacement = resolvedLifecycle === 'active'
+      ? undefined
+      : replacementFromText(`${description}\n${prose.join('\n')}`)
     const sourceRules = scopeLine ? stripMarkdown(scopeLine) : ''
 
     return {
@@ -391,7 +466,7 @@ export function parseHooksReference(
     const description = stripMarkdown(cells[1]!)
     const lifecycle = lifecycleFromText(description)
     const versions = versionMetadata(description)
-    const replacement = replacementFromText(description)
+    const replacement = lifecycle === 'active' ? undefined : replacementFromText(description)
     return {
       id: `hook:${path}`,
       kind: 'hook',
@@ -424,7 +499,7 @@ export function parseEnvironmentReference(
     const deprecated = /^\[DEPRECATED\](?:\s|$)/i.test(description)
     const lifecycle = deprecated ? 'deprecated' : lifecycleFromText(description)
     const versions = versionMetadata(description)
-    const replacement = replacementFromText(description)
+    const replacement = lifecycle === 'active' ? undefined : replacementFromText(description)
     const precedence = PRECEDENCE_PATTERN.test(description) ? description : ''
     return {
       id: `env:${path}`,
@@ -463,6 +538,9 @@ export function buildInventory(input: BuildInventoryInput): UpstreamInventory {
     }
     if (!entry.source?.url || !entry.source.sha256) {
       throw new Error(`inventory entry requires a source: ${entry.id}`)
+    }
+    if (!entry.source.anchor) {
+      throw new Error(`inventory entry requires a source anchor: ${entry.id}`)
     }
   }
 
@@ -606,7 +684,8 @@ async function runCli(arguments_: string[]): Promise<void> {
     throw new Error(`upstream binary --version exited ${versionResult.status}: ${versionResult.stderr.trim()}`)
   }
   const version = versionResult.stdout.trim()
-  if (!version.includes(UPSTREAM_BASELINE_VERSION)) {
+  const binaryVersion = version.match(/^\d+\.\d+\.\d+(?=\s|$)/)?.[0]
+  if (binaryVersion !== UPSTREAM_BASELINE_VERSION) {
     throw new Error(`upstream binary is not ${UPSTREAM_BASELINE_VERSION}: ${version}`)
   }
   const binary: UpstreamBinary = {

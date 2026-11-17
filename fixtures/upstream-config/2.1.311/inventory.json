@@ -119,7 +119,7 @@
       "types": [
         "boolean"
       ],
-      "default": null,
+      "default": false,
       "defaultDocumented": true,
       "scopes": [
         "Managed"
@@ -143,7 +143,7 @@
       "types": [
         "boolean"
       ],
-      "default": null,
+      "default": false,
       "defaultDocumented": true,
       "scopes": [
         "Managed"
@@ -192,7 +192,7 @@
       "types": [
         "boolean"
       ],
-      "default": null,
+      "default": false,
       "defaultDocumented": true,
       "scopes": [
         "Managed"
@@ -238,7 +238,7 @@
       "path": "allowedChannelPlugins",
       "title": "allowedChannelPlugins",
       "types": [
-        "array of objects"
+        "array of objects, each with `marketplace` and `plugin` strings. An entry can instead be a `\"plugin@marketplace\"` string such as `\"telegram@claude-plugins-official\"`, which Claude Code treats as the equivalent object. The string form requires Claude Code v2.1.267 or later; earlier versions reject the whole `allowedChannelPlugins` value when it contains one"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -262,7 +262,7 @@
       "path": "allowedHttpHookUrls",
       "title": "allowedHttpHookUrls",
       "types": [
-        "array of url patterns"
+        "array of URL patterns, with `*` as a wildcard"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -270,15 +270,15 @@
         "Any file"
       ],
       "sourceRules": "* **Scope**: `Any file`. Arrays merge across settings files.",
-      "precedence": "",
-      "precedenceDocumented": false,
+      "precedence": "* **Scope**: `Any file`. Arrays merge across settings files.",
+      "precedenceDocumented": true,
       "lifecycle": "active",
       "source": {
         "url": "https://code.claude.com/docs/en/settings-reference.md",
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#allowedhttphookurls"
       },
-      "excerpt": "Limit which URLs HTTP hooks can target | * **Scope**: `Any file`. Arrays merge across settings files. | * **Type**: array of URL patterns, with `*` as a wildcard | * **Default**: unset, so any URL is allowed"
+      "excerpt": "Limit which URLs HTTP hooks can target | * **Scope**: `Any file`. Arrays merge across settings files. | * **Type**: array of URL patterns, with `*` as a wildcard | * **Default**: unset, so any URL is allowed | * **Scope**: `Any file`. Arrays merge across settings files."
     },
     {
       "id": "setting:allowedMcpServers",
@@ -286,7 +286,7 @@
       "path": "allowedMcpServers",
       "title": "allowedMcpServers",
       "types": [
-        "array of objects"
+        "array of objects, each with exactly one key. Use `serverName`, a string limited to letters, numbers, hyphens, and underscores; `serverCommand`, an array of the command and its arguments matched exactly; or `serverUrl`, a URL pattern with `*` wildcards"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -294,16 +294,15 @@
         "Any file"
       ],
       "sourceRules": "* **Scope**: `Any file`. Entries from every file merge into one allowlist unless `allowManagedMcpServersOnly` is set. Deploy it in managed settings to enforce it.",
-      "precedence": "A `deniedMcpServers` entry takes precedence, so a server on both lists is blocked. Once the list contains any `serverCommand` entry, a stdio server must match a `serverCommand` entry, and once it contains any `serverUrl` entry, a remote server must match a `serverUrl` entry: a `serverName` match no longer admits that kind of server. See Policy-based control with allowlists and denylists.",
+      "precedence": "* **Scope**: `Any file`. Entries from every file merge into one allowlist unless `allowManagedMcpServersOnly` is set. Deploy it in managed settings to enforce it.\nA `deniedMcpServers` entry takes precedence, so a server on both lists is blocked. Once the list contains any `serverCommand` entry, a stdio server must match a `serverCommand` entry, and once it contains any `serverUrl` entry, a remote server must match a `serverUrl` entry: a `serverName` match no longer admits that kind of server. See Policy-based control with allowlists and denylists.",
       "precedenceDocumented": true,
       "lifecycle": "active",
-      "replacement": "serverName",
       "source": {
         "url": "https://code.claude.com/docs/en/settings-reference.md",
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#allowedmcpservers"
       },
-      "excerpt": "Allowlist which MCP servers users can add | * **Scope**: `Any file`. Entries from every file merge into one allowlist unless `allowManagedMcpServersOnly` is set. Deploy it in managed settings to enforce it. | * **Type**: array of objects, each with exactly one key. Use `serverName`, a string limited to letters, numbers, hyphens, and underscores; `serverCommand`, an array of the command and its arguments matched exactly; or `serverUrl`, a URL pattern with `*` wildcards | * **Default**: unset, so every server is allowed; an empty array blocks every server users add | A `deniedMcpServers` entry takes precedence, so a server on both lists is blocked. Once the list contains any `serverCommand` entry, a stdio server must match a `serverCommand` entry, and once it contains any `serverUrl` entry, a remote server must match a `serverUrl` entry: a `serverName` match no longer admits that kind of server. See Policy-based control with allowlists and denylists."
+      "excerpt": "Allowlist which MCP servers users can add | * **Scope**: `Any file`. Entries from every file merge into one allowlist unless `allowManagedMcpServersOnly` is set. Deploy it in managed settings to enforce it. | * **Type**: array of objects, each with exactly one key. Use `serverName`, a string limited to letters, numbers, hyphens, and underscores; `serverCommand`, an array of the command and its arguments matched exactly; or `serverUrl`, a URL pattern with `*` wildcards | * **Default**: unset, so every server is allowed; an empty array blocks every server users add | * **Scope**: `Any file`. Entries from every file merge into one allowlist unless `allowManagedMcpServersOnly` is set. Deploy it in managed settings to enforce it. A `deniedMcpServers` entry takes precedence, so a server on both lists is blocked. Once the list contains any `serverCommand` entry, a stdio server must match a `serverCommand` entry, and once it contains any `serverUrl` entry, a remote server must match a `serverU"
     },
     {
       "id": "setting:allowedProviders",
@@ -311,7 +310,7 @@
       "path": "allowedProviders",
       "title": "allowedProviders",
       "types": [
-        "array of strings"
+        "array of strings, each one of:"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -432,7 +431,7 @@
       "path": "attribution",
       "title": "attribution",
       "types": [
-        "object with `commit` and `pr` strings and a `sessionurl` boolean"
+        "object with `commit` and `pr` strings and a `sessionUrl` Boolean, or `false` to hide all attribution. The `false` value requires Claude Code v2.1.281 or later; earlier versions reject it and skip the whole user, project, or local settings file that holds it"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -552,7 +551,7 @@
       "path": "autoCompactWindow",
       "title": "autoCompactWindow",
       "types": [
-        "number of tokens"
+        "number"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -697,7 +696,7 @@
       "path": "autoMode",
       "title": "autoMode",
       "types": [
-        "object with `environment`"
+        "object with `environment`, `allow`, `soft_deny`, and `hard_deny` arrays of prose rules, plus the `classifyAllShell` Boolean"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -794,7 +793,7 @@
       "path": "availableModels",
       "title": "availableModels",
       "types": [
-        "array of model aliases or ids"
+        "array of model aliases or IDs"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -947,7 +946,7 @@
         "User or managed"
       ],
       "sourceRules": "* **Scope**: `User or managed`. A `true` counts only from your user settings, JSON passed with `--settings`, or managed settings, so a `true` in a repository's `.claude/settings.json` or `.claude/settings.local.json` can't turn the recording on. A `false` in either repository file still turns it off unless a higher-precedence file sets `true`.",
-      "precedence": "`CLAUDE_CODE_BASH_EDIT_DIFF` takes precedence over this key for one session",
+      "precedence": "* **Scope**: `User or managed`. A `true` counts only from your user settings, JSON passed with `--settings`, or managed settings, so a `true` in a repository's `.claude/settings.json` or `.claude/settings.local.json` can't turn the recording on. A `false` in either repository file still turns it off unless a higher-precedence file sets `true`.\n`CLAUDE_CODE_BASH_EDIT_DIFF` takes precedence over this key for one session",
       "precedenceDocumented": true,
       "lifecycle": "active",
       "introduced": "2.1.269",
@@ -956,7 +955,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#basheditdiffenabled"
       },
-      "excerpt": "Record the files that changed while a Bash command ran in every permission mode | * **Scope**: `User or managed`. A `true` counts only from your user settings, JSON passed with `--settings`, or managed settings, so a `true` in a repository's `.claude/settings.json` or `.claude/settings.local.json` can't turn the recording on. A `false` in either repository file still turns it off unless a higher-precedence file sets `true`. | * **Type**: Boolean | * **Default**: unset, so Claude Code records changes in auto mode and `bypassPermissions` mode when it directs Claude to edit files through Bash | Set the key to `true` to record them in every permission mode. Requires Claude Code v2.1.269 or later. | `CLAUDE_CODE_BASH_EDIT_DIFF` takes precedence over this key for one session"
+      "excerpt": "Record the files that changed while a Bash command ran in every permission mode | * **Scope**: `User or managed`. A `true` counts only from your user settings, JSON passed with `--settings`, or managed settings, so a `true` in a repository's `.claude/settings.json` or `.claude/settings.local.json` can't turn the recording on. A `false` in either repository file still turns it off unless a higher-precedence file sets `true`. | * **Type**: Boolean | * **Default**: unset, so Claude Code records changes in auto mode and `bypassPermissions` mode when it directs Claude to edit files through Bash | Set the key to `true` to record them in every permission mode. Requires Claude Code v2.1.269 or later. | * **Scope**: `User or managed`. A `true` counts only from your user settings, JSON passed with `--settings`, or managed settings, so a `true` in a repository's `.claude/settings.json` or `.claude/settings.local.json` can't turn the recording on. A `false` in either repository file still turns it"
     },
     {
       "id": "setting:bashOutputMaxChars",
@@ -964,7 +963,7 @@
       "path": "bashOutputMaxChars",
       "title": "bashOutputMaxChars",
       "types": [
-        "number of characters"
+        "number"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -989,7 +988,7 @@
       "path": "blockedMarketplaces",
       "title": "blockedMarketplaces",
       "types": [
-        "array of marketplace source objects"
+        "array of marketplace source objects, in the same forms as `strictKnownMarketplaces`"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -1109,7 +1108,7 @@
       "path": "claudeMdExcludes",
       "title": "claudeMdExcludes",
       "types": [
-        "array of strings"
+        "array of strings, each a glob pattern or absolute path"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -1133,7 +1132,7 @@
       "path": "cleanupPeriodDays",
       "title": "cleanupPeriodDays",
       "types": [
-        "number of days"
+        "number"
       ],
       "default": 30,
       "defaultDocumented": true,
@@ -1301,7 +1300,7 @@
       "path": "deniedMcpServers",
       "title": "deniedMcpServers",
       "types": [
-        "array of objects"
+        "array of objects, each with exactly one key: `serverName`, a string, so a claude.ai connector's display name such as `\"claude.ai Slack\"` works; `serverCommand`, an array of the command and its arguments matched exactly; or `serverUrl`, a URL pattern with `*` wildcards"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -1309,7 +1308,7 @@
         "Any file"
       ],
       "sourceRules": "* **Scope**: `Any file`. Entries from every file merge into one denylist, and `allowManagedMcpServersOnly` doesn't change that. Deploy it in managed settings to enforce it.",
-      "precedence": "The denylist takes precedence over `allowedMcpServers`, so a server on both lists is blocked. See Policy-based control with allowlists and denylists.",
+      "precedence": "* **Scope**: `Any file`. Entries from every file merge into one denylist, and `allowManagedMcpServersOnly` doesn't change that. Deploy it in managed settings to enforce it.\nThe denylist takes precedence over `allowedMcpServers`, so a server on both lists is blocked. See Policy-based control with allowlists and denylists.",
       "precedenceDocumented": true,
       "lifecycle": "active",
       "source": {
@@ -1317,7 +1316,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#deniedmcpservers"
       },
-      "excerpt": "Block specific MCP servers by URL, command, or name | * **Scope**: `Any file`. Entries from every file merge into one denylist, and `allowManagedMcpServersOnly` doesn't change that. Deploy it in managed settings to enforce it. | * **Type**: array of objects, each with exactly one key: `serverName`, a string, so a claude.ai connector's display name such as `\"claude.ai Slack\"` works; `serverCommand`, an array of the command and its arguments matched exactly; or `serverUrl`, a URL pattern with `*` wildcards | * **Default**: unset, so no server is blocked; an empty array also blocks nothing | The denylist takes precedence over `allowedMcpServers`, so a server on both lists is blocked. See Policy-based control with allowlists and denylists."
+      "excerpt": "Block specific MCP servers by URL, command, or name | * **Scope**: `Any file`. Entries from every file merge into one denylist, and `allowManagedMcpServersOnly` doesn't change that. Deploy it in managed settings to enforce it. | * **Type**: array of objects, each with exactly one key: `serverName`, a string, so a claude.ai connector's display name such as `\"claude.ai Slack\"` works; `serverCommand`, an array of the command and its arguments matched exactly; or `serverUrl`, a URL pattern with `*` wildcards | * **Default**: unset, so no server is blocked; an empty array also blocks nothing | * **Scope**: `Any file`. Entries from every file merge into one denylist, and `allowManagedMcpServersOnly` doesn't change that. Deploy it in managed settings to enforce it. The denylist takes precedence over `allowedMcpServers`, so a server on both lists is blocked. See Policy-based control with allowlists and denylists."
     },
     {
       "id": "setting:deniedModels",
@@ -1325,7 +1324,7 @@
       "path": "deniedModels",
       "title": "deniedModels",
       "types": [
-        "array of model aliases or ids"
+        "array of model aliases or IDs"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -1350,9 +1349,9 @@
       "path": "desktopSessionCleanupPeriodDays",
       "title": "desktopSessionCleanupPeriodDays",
       "types": [
-        "number of days"
+        "number"
       ],
-      "default": null,
+      "default": 0,
       "defaultDocumented": true,
       "scopes": [
         "User or managed"
@@ -1505,15 +1504,15 @@
         "Any file"
       ],
       "sourceRules": "* **Scope**: `Any file`. Most useful in managed settings, where users can't override it. Also accepted under `permissions` as `permissions.disableAutoMode`.",
-      "precedence": "",
-      "precedenceDocumented": false,
+      "precedence": "* **Scope**: `Any file`. Most useful in managed settings, where users can't override it. Also accepted under `permissions` as `permissions.disableAutoMode`.",
+      "precedenceDocumented": true,
       "lifecycle": "active",
       "source": {
         "url": "https://code.claude.com/docs/en/settings-reference.md",
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#disableautomode"
       },
-      "excerpt": "Remove auto mode from the permission mode cycle | * **Scope**: `Any file`. Most useful in managed settings, where users can't override it. Also accepted under `permissions` as `permissions.disableAutoMode`. | * **Type**: the string `\"disable\"` | * **Default**: unset"
+      "excerpt": "Remove auto mode from the permission mode cycle | * **Scope**: `Any file`. Most useful in managed settings, where users can't override it. Also accepted under `permissions` as `permissions.disableAutoMode`. | * **Type**: the string `\"disable\"` | * **Default**: unset | * **Scope**: `Any file`. Most useful in managed settings, where users can't override it. Also accepted under `permissions` as `permissions.disableAutoMode`."
     },
     {
       "id": "setting:disableBrowserExternalNavigation",
@@ -1521,7 +1520,7 @@
       "path": "disableBrowserExternalNavigation",
       "title": "disableBrowserExternalNavigation",
       "types": [
-        "boolean; only the json boolean `true` takes effect"
+        "boolean"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -1571,7 +1570,7 @@
       "types": [
         "boolean"
       ],
-      "default": null,
+      "default": false,
       "defaultDocumented": true,
       "scopes": [
         "Any file"
@@ -1642,7 +1641,7 @@
       "path": "disableDesktopLocalSessions",
       "title": "disableDesktopLocalSessions",
       "types": [
-        "boolean; only the json boolean `true` takes effect"
+        "boolean"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -1666,7 +1665,7 @@
       "path": "disableMobileSimulatorTools",
       "title": "disableMobileSimulatorTools",
       "types": [
-        "boolean; only the json boolean `true` takes effect"
+        "boolean"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -1714,7 +1713,7 @@
       "path": "disableRemotePreviewScripts",
       "title": "disableRemotePreviewScripts",
       "types": [
-        "boolean; only the json boolean `true` takes effect"
+        "boolean"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -1798,7 +1797,6 @@
       "precedence": "`CLAUDE_CODE_DISABLE_WORKFLOWS` turns workflows off for one session; whichever of the two turns them off, the other can't turn them back on",
       "precedenceDocumented": true,
       "lifecycle": "active",
-      "replacement": "enableWorkflows",
       "source": {
         "url": "https://code.claude.com/docs/en/settings-reference.md",
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
@@ -1812,7 +1810,7 @@
       "path": "disabledMcpjsonServers",
       "title": "disabledMcpjsonServers",
       "types": [
-        "array of strings"
+        "array of strings, the server names as they appear in `.mcp.json`"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -1980,7 +1978,7 @@
       "path": "enabledMcpjsonServers",
       "title": "enabledMcpjsonServers",
       "types": [
-        "array of strings"
+        "array of strings, the server names as they appear in `.mcp.json`"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -2004,7 +2002,7 @@
       "path": "enabledPlugins",
       "title": "enabledPlugins",
       "types": [
-        "object mapping `plugin-name@marketplace-name` to a boolean"
+        "object mapping `plugin-name@marketplace-name` to a Boolean"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -2101,7 +2099,7 @@
       "path": "extraKnownMarketplaces",
       "title": "extraKnownMarketplaces",
       "types": [
-        "object mapping a marketplace name to an object with a `source` object and an optional `autoupdate` boolean"
+        "object mapping a marketplace name to an object with a `source` object and an optional `autoUpdate` Boolean"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -2125,7 +2123,7 @@
       "path": "fallbackModel",
       "title": "fallbackModel",
       "types": [
-        "array of model aliases or ids; `\"default\"` expands to the default model"
+        "array of model aliases or IDs; `\"default\"` expands to the default model"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -2221,7 +2219,7 @@
       "path": "feedbackSurveyRate",
       "title": "feedbackSurveyRate",
       "types": [
-        "number between `0` and `1`"
+        "number"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -2269,7 +2267,7 @@
       "path": "fileSuggestion",
       "title": "fileSuggestion",
       "types": [
-        "object with `type`"
+        "object with `type`, always `\"command\"`, and `command`, the shell command to run"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -2293,7 +2291,7 @@
       "path": "footerLinksRegexes",
       "title": "footerLinksRegexes",
       "types": [
-        "array of objects"
+        "array of objects, each with `type` set to `\"regex\"`, a `pattern` regex, a `url` template, and an optional `label`; `{name}` placeholders in `url` and `label` are filled from named capture groups in `pattern`"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -2397,15 +2395,15 @@
         "Managed"
       ],
       "sourceRules": "* **Scope**: `Managed`. Claude Code honors a `true` from any admin-controlled managed source, even one that isn't the highest-priority source.",
-      "precedence": "",
-      "precedenceDocumented": false,
+      "precedence": "* **Scope**: `Managed`. Claude Code honors a `true` from any admin-controlled managed source, even one that isn't the highest-priority source.",
+      "precedenceDocumented": true,
       "lifecycle": "active",
       "source": {
         "url": "https://code.claude.com/docs/en/settings-reference.md",
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#forceremotesettingsrefresh"
       },
-      "excerpt": "Block startup until server-managed settings are freshly fetched | * **Scope**: `Managed`. Claude Code honors a `true` from any admin-controlled managed source, even one that isn't the highest-priority source. | * **Type**: Boolean | * **Default**: `false`"
+      "excerpt": "Block startup until server-managed settings are freshly fetched | * **Scope**: `Managed`. Claude Code honors a `true` from any admin-controlled managed source, even one that isn't the highest-priority source. | * **Type**: Boolean | * **Default**: `false` | * **Scope**: `Managed`. Claude Code honors a `true` from any admin-controlled managed source, even one that isn't the highest-priority source."
     },
     {
       "id": "setting:gatewayInternalNetworks",
@@ -2413,7 +2411,7 @@
       "path": "gatewayInternalNetworks",
       "title": "gatewayInternalNetworks",
       "types": [
-        "array of strings"
+        "array of strings, at most four IPv4 CIDR blocks, each `/8` to `/32`, not overlapping one another, and none overlapping private space."
       ],
       "default": null,
       "defaultDocumented": true,
@@ -2462,7 +2460,7 @@
       "path": "hooks",
       "title": "hooks",
       "types": [
-        "object keyed by hook event; each value is an array of `{ \"matcher\""
+        "object keyed by hook event; each value is an array of `{ \"matcher\", \"hooks\" }` groups whose `hooks` entries have a `type` of `\"command\"`, `\"prompt\"`, `\"agent\"`, `\"http\"`, or `\"mcp_tool\"`"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -2470,15 +2468,15 @@
         "Any file"
       ],
       "sourceRules": "* **Scope**: `Any file`. Hooks merge across files rather than replacing each other, and hooks from managed settings can't be removed from other files.",
-      "precedence": "",
-      "precedenceDocumented": false,
+      "precedence": "* **Scope**: `Any file`. Hooks merge across files rather than replacing each other, and hooks from managed settings can't be removed from other files.",
+      "precedenceDocumented": true,
       "lifecycle": "active",
       "source": {
         "url": "https://code.claude.com/docs/en/settings-reference.md",
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#hooks"
       },
-      "excerpt": "Run your own commands as hooks at points in Claude Code's lifecycle | * **Scope**: `Any file`. Hooks merge across files rather than replacing each other, and hooks from managed settings can't be removed from other files. | * **Type**: object keyed by hook event; each value is an array of `{ \"matcher\", \"hooks\" }` groups whose `hooks` entries have a `type` of `\"command\"`, `\"prompt\"`, `\"agent\"`, `\"http\"`, or `\"mcp_tool\"` | * **Default**: unset, so no hooks run"
+      "excerpt": "Run your own commands as hooks at points in Claude Code's lifecycle | * **Scope**: `Any file`. Hooks merge across files rather than replacing each other, and hooks from managed settings can't be removed from other files. | * **Type**: object keyed by hook event; each value is an array of `{ \"matcher\", \"hooks\" }` groups whose `hooks` entries have a `type` of `\"command\"`, `\"prompt\"`, `\"agent\"`, `\"http\"`, or `\"mcp_tool\"` | * **Default**: unset, so no hooks run | * **Scope**: `Any file`. Hooks merge across files rather than replacing each other, and hooks from managed settings can't be removed from other files."
     },
     {
       "id": "setting:httpHookAllowedEnvVars",
@@ -2494,15 +2492,15 @@
         "Any file"
       ],
       "sourceRules": "* **Scope**: `Any file`. Arrays merge across settings files.",
-      "precedence": "",
-      "precedenceDocumented": false,
+      "precedence": "* **Scope**: `Any file`. Arrays merge across settings files.",
+      "precedenceDocumented": true,
       "lifecycle": "active",
       "source": {
         "url": "https://code.claude.com/docs/en/settings-reference.md",
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#httphookallowedenvvars"
       },
-      "excerpt": "Limit which env vars HTTP hooks can put in headers | * **Scope**: `Any file`. Arrays merge across settings files. | * **Type**: array of environment variable names | * **Default**: unset, so each hook's own `allowedEnvVars` list applies"
+      "excerpt": "Limit which env vars HTTP hooks can put in headers | * **Scope**: `Any file`. Arrays merge across settings files. | * **Type**: array of environment variable names | * **Default**: unset, so each hook's own `allowedEnvVars` list applies | * **Scope**: `Any file`. Arrays merge across settings files."
     },
     {
       "id": "setting:idleCompaction",
@@ -2703,7 +2701,7 @@
       "path": "managedMcpServers",
       "title": "managedMcpServers",
       "types": [
-        "object keyed by server name. each entry has the `.mcp.json` shape for an `http` or `sse` server"
+        "object keyed by server name. Each entry has the `.mcp.json` shape for an `http` or `sse` server: a required `https://` `url`, and optionally `headers`, `oauth`, and the other HTTP and SSE options. Claude Code drops entries that fail validation, and What an entry can contain lists the conditions"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -2736,7 +2734,7 @@
         "Managed"
       ],
       "sourceRules": "* **Scope**: `Managed`. Claude Code reads this key from the highest-priority source that carries either this key or a policy key, and ignores this key in every source ranked lower, so a lower source can't opt itself into combining with the source above it. Neither the Windows HKCU registry nor parent settings from an embedding host take part in the merge.",
-      "precedence": "Choose whether Claude Code applies only the highest-priority managed source your organization delivers, or combines every admin source it delivers. By default Claude Code takes the highest-priority source that carries a policy key and ignores the rest. A policy key is any settings key other than this one and `wslInheritsWindowsSettings`. Under that default, once server-managed settings or an MDM policy deliver a policy key, a `managed-settings.json` file contributes only the keys Claude Code reads from every admin source. With `\"merge\"`, every admin source you deliver contributes its keys to one combined policy. Requires Claude Code v2.1.242 or later.\nSet `\"merge\"` only where every source ranked below your highest one is under an administrator's control, because Claude Code then adds entries from a lower source, such as `permissions.allow` rules, to the policy.\n* `\"first-wins\"`: the highest-priority source that carries a policy key supplies the policy, and lower sources contribute only the keys Claude Code reads from every admin source\n* `\"merge\"`: every admin source you deliver contributes its keys, combined by the rules below\nDeliver the key in the highest-priority source you deploy. A machine that never receives server-managed settings needs the key in its MDM profile too, because Claude Code reads the key from the highest-priority source that carries it or a policy key. A `managed-settings.json` file is the lowest-ranked admin source, so `\"merge\"` set there has no source below it to combine with. In server-managed settings, the key looks like this:\nUnder `\"merge\"`, Claude Code combines each key by its kind. This table gives the rule for each kind. The restriction allowlist, values-taken-whole, and highest-source-only rows name every key they cover, and the other rows give examples:\n| Locks | Applies the strictest value any source sets. When no source sets a strict value, applies a looser value only from the highest source | `allowManagedPermissionRulesOnly`, `permissions.disableBypassPermissionsMode`, and other boolean or enum locks |\n| Restriction allowlists | Takes the list whole from the highest source that sets it, without adding entries from lower sources. When the highest source doesn't set one, takes it whole from the next source down | `availableModels`, `allowedMcpServers`, `allowedProviders`, `strictKnownMarketplaces`, `allowedChannelPlugins`, and the `fallbackModel` chain |\n| Values taken whole | Takes the value whole from the highest source that sets it, without combining entries or fields from lower sources. When the highest source doesn't set it, takes it whole from the next source down | `sandbox.credentials.awsPairs`, `sandbox.ripgrep` |\n| Read from the highest-priority source only | Reads the key only from the highest-priority source that carries a policy key, so a lower source's value is ignored even when the highest source sets none | `apiKeyHelper`, `awsAuthRefresh`, `awsCredentialExport`, `gcpAuthRefresh`, `otelHeadersHelper`, `proxyAuthHelper`, `parentSettingsBehavior`, `modelPicker`, `policyHelper`, `permissions.defaultMode` |\n| `env` | Merges per variable across admin sources, under both `\"first-wins\"` and `\"merge\"` | `env` |\n| Every other key | Takes the value from the highest source that sets it | `cleanupPeriodDays`, `model` |\n* **`policyHelper`**: Claude Code honors it only when the highest source that carries a policy key is an MDM policy or a managed settings file, so under server-managed settings it doesn't apply.\n* **`modelOverrides`**: pairs with `availableModels`. Claude Code takes `modelOverrides` from the highest source that sets it, unless a higher source sets `availableModels` without `modelOverrides`. In that case it ignores `modelOverrides` from every source.\n* **`forceLoginGatewayUrl`, `gatewayInternalNetworks`, and the `\"gateway\"` value of `forceLoginMethod`**: Claude Code never reads any of them from server-managed settings, so a value there neither applies nor hides one set in an MDM policy or managed settings file. Among the admin sources on the machine, only the highest-ranked one that carries a policy key supplies them, whether or not server-managed settings are also present.",
+      "precedence": "Choose whether Claude Code applies only the highest-priority managed source your organization delivers, or combines every admin source it delivers. By default Claude Code takes the highest-priority source that carries a policy key and ignores the rest. A policy key is any settings key other than this one and `wslInheritsWindowsSettings`. Under that default, once server-managed settings or an MDM policy deliver a policy key, a `managed-settings.json` file contributes only the keys Claude Code reads from every admin source. With `\"merge\"`, every admin source you deliver contributes its keys to one combined policy. Requires Claude Code v2.1.242 or later.\nSet `\"merge\"` only where every source ranked below your highest one is under an administrator's control, because Claude Code then adds entries from a lower source, such as `permissions.allow` rules, to the policy.\n* **Scope**: `Managed`. Claude Code reads this key from the highest-priority source that carries either this key or a policy key, and ignores this key in every source ranked lower, so a lower source can't opt itself into combining with the source above it. Neither the Windows HKCU registry nor parent settings from an embedding host take part in the merge.\n* `\"first-wins\"`: the highest-priority source that carries a policy key supplies the policy, and lower sources contribute only the keys Claude Code reads from every admin source\n* `\"merge\"`: every admin source you deliver contributes its keys, combined by the rules below\nDeliver the key in the highest-priority source you deploy. A machine that never receives server-managed settings needs the key in its MDM profile too, because Claude Code reads the key from the highest-priority source that carries it or a policy key. A `managed-settings.json` file is the lowest-ranked admin source, so `\"merge\"` set there has no source below it to combine with. In server-managed settings, the key looks like this:\nUnder `\"merge\"`, Claude Code combines each key by its kind. This table gives the rule for each kind. The restriction allowlist, values-taken-whole, and highest-source-only rows name every key they cover, and the other rows give examples:\n| Locks | Applies the strictest value any source sets. When no source sets a strict value, applies a looser value only from the highest source | `allowManagedPermissionRulesOnly`, `permissions.disableBypassPermissionsMode`, and other boolean or enum locks |\n| Restriction allowlists | Takes the list whole from the highest source that sets it, without adding entries from lower sources. When the highest source doesn't set one, takes it whole from the next source down | `availableModels`, `allowedMcpServers`, `allowedProviders`, `strictKnownMarketplaces`, `allowedChannelPlugins`, and the `fallbackModel` chain |\n| Values taken whole | Takes the value whole from the highest source that sets it, without combining entries or fields from lower sources. When the highest source doesn't set it, takes it whole from the next source down | `sandbox.credentials.awsPairs`, `sandbox.ripgrep` |\n| Read from the highest-priority source only | Reads the key only from the highest-priority source that carries a policy key, so a lower source's value is ignored even when the highest source sets none | `apiKeyHelper`, `awsAuthRefresh`, `awsCredentialExport`, `gcpAuthRefresh`, `otelHeadersHelper`, `proxyAuthHelper`, `parentSettingsBehavior`, `modelPicker`, `policyHelper`, `permissions.defaultMode` |\n| `env` | Merges per variable across admin sources, under both `\"first-wins\"` and `\"merge\"` | `env` |\n| Every other key | Takes the value from the highest source that sets it | `cleanupPeriodDays`, `model` |\n* **`policyHelper`**: Claude Code honors it only when the highest source that carries a policy key is an MDM policy or a managed settings file, so under server-managed settings it doesn't apply.\n* **`modelOverrides`**: pairs with `availableModels`. Claude Code takes `modelOverrides` from the highest source that sets it, unless a higher source sets `availableModels` without `modelOverrides`. In that case it ignores `modelOverrides` from every source.\n* **`forceLoginGatewayUrl`, `gatewayInternalNetworks`, and the `\"gateway\"` value of `forceLoginMethod`**: Claude Code never reads any of them from server-managed settings, so a value there neither applies nor hides one set in an MDM policy or managed settings file. Among the admin sources on the machine, only the highest-ranked one that carries a policy key supplies them, whether or not server-managed settings are also present.",
       "precedenceDocumented": true,
       "lifecycle": "active",
       "introduced": "2.1.242",
@@ -2778,7 +2776,7 @@
       "path": "maxProseWidth",
       "title": "maxProseWidth",
       "types": [
-        "number of terminal columns"
+        "number"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -2811,15 +2809,15 @@
         "Any file"
       ],
       "sourceRules": "* **Scope**: `Any file`. Set this key in managed settings to pin an organization-wide minimum that user and project settings can't override.",
-      "precedence": "",
-      "precedenceDocumented": false,
+      "precedence": "* **Scope**: `Any file`. Set this key in managed settings to pin an organization-wide minimum that user and project settings can't override.",
+      "precedenceDocumented": true,
       "lifecycle": "active",
       "source": {
         "url": "https://code.claude.com/docs/en/settings-reference.md",
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#minimumversion"
       },
-      "excerpt": "Keep auto-updates from installing anything below a version | * **Scope**: `Any file`. Set this key in managed settings to pin an organization-wide minimum that user and project settings can't override. | * **Type**: string, a version number such as `\"2.1.323\"`; a value that isn't a valid version is ignored | * **Default**: unset, so updates can install any version the channel offers"
+      "excerpt": "Keep auto-updates from installing anything below a version | * **Scope**: `Any file`. Set this key in managed settings to pin an organization-wide minimum that user and project settings can't override. | * **Type**: string, a version number such as `\"2.1.323\"`; a value that isn't a valid version is ignored | * **Default**: unset, so updates can install any version the channel offers | * **Scope**: `Any file`. Set this key in managed settings to pin an organization-wide minimum that user and project settings can't override."
     },
     {
       "id": "setting:model",
@@ -2851,7 +2849,7 @@
       "path": "modelOverrides",
       "title": "modelOverrides",
       "types": [
-        "object mapping model id to provider model id"
+        "object mapping model ID to provider model ID"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -2875,7 +2873,7 @@
       "path": "modelPicker",
       "title": "modelPicker",
       "types": [
-        "object with an `options` array of rows and an optional `replacebuiltinoptions` boolean"
+        "object with an `options` array of rows and an optional `replaceBuiltInOptions` Boolean"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -2883,7 +2881,7 @@
         "User or managed"
       ],
       "sourceRules": "* **Scope**: `User or managed`. Claude Code reads the key from managed settings, `--settings`, and user settings, and ignores it in project and local settings so a repository you clone can't relabel the picker. The highest of those three that sets the key supplies the whole lineup, and Claude Code never combines lineups from two sources.",
-      "precedence": "An `availableModels` allowlist still applies to these rows. Before you add a listed model to the allowlist, read Merge behavior: a specific model ID narrows its family's wildcard entry. Claude Code also checks each row against the session before it shows the picker:",
+      "precedence": "* **Scope**: `User or managed`. Claude Code reads the key from managed settings, `--settings`, and user settings, and ignores it in project and local settings so a repository you clone can't relabel the picker. The highest of those three that sets the key supplies the whole lineup, and Claude Code never combines lineups from two sources.\nAn `availableModels` allowlist still applies to these rows. Before you add a listed model to the allowlist, read Merge behavior: a specific model ID narrows its family's wildcard entry. Claude Code also checks each row against the session before it shows the picker:",
       "precedenceDocumented": true,
       "lifecycle": "active",
       "introduced": "2.1.242",
@@ -2925,7 +2923,7 @@
       "path": "modelSettings",
       "title": "modelSettings",
       "types": [
-        "object mapping a model name to an object with any of these fields"
+        "object mapping a model name to an object with any of these fields:"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -3006,7 +3004,7 @@
         "Managed"
       ],
       "sourceRules": "* **Scope**: `Managed`. Claude Code reads it from the highest-priority admin-controlled managed source.",
-      "precedence": "Choose whether Claude Code applies managed settings supplied by an embedding host process, such as the Agent SDK or an IDE extension, when an admin-deployed managed tier is also present. With `\"first-wins\"`, Claude Code drops the host-supplied settings; with `\"merge\"`, it applies them under the admin tier through a restrictive-only filter. Set `\"merge\"` when a host needs to pass its own restrictions to the sessions it launches, for example Claude Desktop delivering a gateway's egress allowlist.\n* `\"merge\"`: Claude Code applies the host-supplied settings under the admin tier through a restrictive-only filter",
+      "precedence": "Choose whether Claude Code applies managed settings supplied by an embedding host process, such as the Agent SDK or an IDE extension, when an admin-deployed managed tier is also present. With `\"first-wins\"`, Claude Code drops the host-supplied settings; with `\"merge\"`, it applies them under the admin tier through a restrictive-only filter. Set `\"merge\"` when a host needs to pass its own restrictions to the sessions it launches, for example Claude Desktop delivering a gateway's egress allowlist.\n* **Scope**: `Managed`. Claude Code reads it from the highest-priority admin-controlled managed source.\n* `\"merge\"`: Claude Code applies the host-supplied settings under the admin tier through a restrictive-only filter",
       "precedenceDocumented": true,
       "lifecycle": "active",
       "source": {
@@ -3014,7 +3012,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#parentsettingsbehavior"
       },
-      "excerpt": "Apply or drop restrictions an SDK or IDE host passes when you deploy managed settings | * **Scope**: `Managed`. Claude Code reads it from the highest-priority admin-controlled managed source. | * **Type**: string, one of: | * **Default**: `\"first-wins\"` | Choose whether Claude Code applies managed settings supplied by an embedding host process, such as the Agent SDK or an IDE extension, when an admin-deployed managed tier is also present. With `\"first-wins\"`, Claude Code drops the host-supplied settings; with `\"merge\"`, it applies them under the admin tier through a restrictive-only filter. Set `\"merge\"` when a host needs to pass its own restrictions to the sessions it launches, for example Claude Desktop delivering a gateway's egress allowlist. * `\"merge\"`: Claude Code applies the host-supplied settings under the admin tier through a restrictive-only filter"
+      "excerpt": "Apply or drop restrictions an SDK or IDE host passes when you deploy managed settings | * **Scope**: `Managed`. Claude Code reads it from the highest-priority admin-controlled managed source. | * **Type**: string, one of: | * **Default**: `\"first-wins\"` | Choose whether Claude Code applies managed settings supplied by an embedding host process, such as the Agent SDK or an IDE extension, when an admin-deployed managed tier is also present. With `\"first-wins\"`, Claude Code drops the host-supplied settings; with `\"merge\"`, it applies them under the admin tier through a restrictive-only filter. Set `\"merge\"` when a host needs to pass its own restrictions to the sessions it launches, for example Claude Desktop delivering a gateway's egress allowlist. * **Scope**: `Managed`. Claude Code reads it from the highest-priority admin-controlled managed source. * `\"merge\"`: Claude Code applies the host-supplied settings under the admin tier through a restrictive-only filter"
     },
     {
       "id": "setting:permissionExplainerEnabled",
@@ -3046,7 +3044,7 @@
       "path": "permissions",
       "title": "permissions",
       "types": [
-        "object with `allow`"
+        "object with `allow`, `ask`, `deny`, `additionalDirectories`, `blockReadsOutsideWorkingDirectories`, `blockWritesOutsideWorkingDirectories`, `defaultMode`, `denyInsteadOfPrompting`, `disableBypassPermissionsMode`, and `disableAutoMode`"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -3315,7 +3313,7 @@
       "path": "pluginConfigs",
       "title": "pluginConfigs",
       "types": [
-        "object mapping a plugin id to an object with an `options` field"
+        "object mapping a plugin ID to an object with an `options` field, mapping each option name to a string, number, Boolean, or array of strings, and an optional `mcpServers` field holding per-server user configuration values in the same shape"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -3387,7 +3385,7 @@
       "path": "policyHelper",
       "title": "policyHelper",
       "types": [
-        "object with `path`"
+        "object with `path`, `timeoutMs`, and `refreshIntervalMs`"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -3395,7 +3393,7 @@
         "Managed"
       ],
       "sourceRules": "* **Scope**: `Managed`. Read from the macOS plist, the Windows HKLM registry, or the managed settings file. Claude Code reads the key from the highest-priority managed source that carries a policy key and runs the helper only when that source is one of those three; it ignores the key in server-managed settings, the HKCU registry, and host-supplied parent settings.",
-      "precedence": "When server-managed settings deliver the policy at launch, they take precedence over the helper's source and the helper doesn't run.\nWhen the helper emits `managedSettings`, that object becomes the only managed settings source for the run: Claude Code ignores the MDM, file, and HKCU sources, reads the cross-source keys from the helper's output alone, and never merges parent settings.",
+      "precedence": "* **Scope**: `Managed`. Read from the macOS plist, the Windows HKLM registry, or the managed settings file. Claude Code reads the key from the highest-priority managed source that carries a policy key and runs the helper only when that source is one of those three; it ignores the key in server-managed settings, the HKCU registry, and host-supplied parent settings.\nWhen server-managed settings deliver the policy at launch, they take precedence over the helper's source and the helper doesn't run.\nWhen the helper emits `managedSettings`, that object becomes the only managed settings source for the run: Claude Code ignores the MDM, file, and HKCU sources, reads the cross-source keys from the helper's output alone, and never merges parent settings.",
       "precedenceDocumented": true,
       "lifecycle": "active",
       "source": {
@@ -3403,7 +3401,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#policyhelper"
       },
-      "excerpt": "Run an executable that computes managed settings at startup | * **Scope**: `Managed`. Read from the macOS plist, the Windows HKLM registry, or the managed settings file. Claude Code reads the key from the highest-priority managed source that carries a policy key and runs the helper only when that source is one of those three; it ignores the key in server-managed settings, the HKCU registry, and host-supplied parent settings. | * **Type**: object with `path`, `timeoutMs`, and `refreshIntervalMs` | * **Default**: unset, so no helper runs | When server-managed settings deliver the policy at launch, they take precedence over the helper's source and the helper doesn't run. When the helper emits `managedSettings`, that object becomes the only managed settings source for the run: Claude Code ignores the MDM, file, and HKCU sources, reads the cross-source keys from the helper's output alone, and never merges parent settings."
+      "excerpt": "Run an executable that computes managed settings at startup | * **Scope**: `Managed`. Read from the macOS plist, the Windows HKLM registry, or the managed settings file. Claude Code reads the key from the highest-priority managed source that carries a policy key and runs the helper only when that source is one of those three; it ignores the key in server-managed settings, the HKCU registry, and host-supplied parent settings. | * **Type**: object with `path`, `timeoutMs`, and `refreshIntervalMs` | * **Default**: unset, so no helper runs | * **Scope**: `Managed`. Read from the macOS plist, the Windows HKLM registry, or the managed settings file. Claude Code reads the key from the highest-priority managed source that carries a policy key and runs the helper only when that source is one of those three; it ignores the key in server-managed settings, the HKCU registry, and host-supplied parent settings. When server-managed settings deliver the policy at launch, they take precedence over the "
     },
     {
       "id": "setting:policyHelper.path",
@@ -3435,7 +3433,7 @@
       "path": "policyHelper.refreshIntervalMs",
       "title": "policyHelper.refreshIntervalMs",
       "types": [
-        "integer"
+        "integer, milliseconds: `0` to disable refresh, otherwise at least `60000`"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -3459,7 +3457,7 @@
       "path": "policyHelper.timeoutMs",
       "title": "policyHelper.timeoutMs",
       "types": [
-        "integer"
+        "integer, milliseconds, minimum `1000`"
       ],
       "default": 10000,
       "defaultDocumented": true,
@@ -3823,7 +3821,7 @@
       "path": "sandbox",
       "title": "sandbox",
       "types": [
-        "object with `enabled`"
+        "object with `enabled`, `failIfUnavailable`, `autoAllowBashIfSandboxed`, `excludedCommands`, `allowUnsandboxedCommands`, `enableWeakerNestedSandbox`, `enableWeakerNetworkIsolation`, `allowAppleEvents`, `allowNestedUserNamespaces`, `bwrapPath`, `socatPath`, `ignoreViolations`, and `ripgrep`, plus the `filesystem`, `network`, and `credentials` objects"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -3879,8 +3877,8 @@
         "User or managed"
       ],
       "sourceRules": "* **Scope**: `User or managed`. A `true` counts from `~/.claude/settings.json`, JSON passed with `--settings`, or managed settings. Claude Code ignores a `true` in a project's `.claude/settings.json` or `.claude/settings.local.json`. In a session with `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` set to `1`, Claude Code ignores a `true` from every source. A `false` counts from any file, by settings precedence.",
-      "precedence": "",
-      "precedenceDocumented": false,
+      "precedence": "* **Scope**: `User or managed`. A `true` counts from `~/.claude/settings.json`, JSON passed with `--settings`, or managed settings. Claude Code ignores a `true` in a project's `.claude/settings.json` or `.claude/settings.local.json`. In a session with `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` set to `1`, Claude Code ignores a `true` from every source. A `false` counts from any file, by settings precedence.",
+      "precedenceDocumented": true,
       "lifecycle": "active",
       "introduced": "2.1.305",
       "source": {
@@ -3888,7 +3886,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#sandbox-allownestedusernamespaces"
       },
-      "excerpt": "Let sandboxed commands create user namespaces on Linux and WSL2 | * **Scope**: `User or managed`. A `true` counts from `~/.claude/settings.json`, JSON passed with `--settings`, or managed settings. Claude Code ignores a `true` in a project's `.claude/settings.json` or `.claude/settings.local.json`. In a session with `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` set to `1`, Claude Code ignores a `true` from every source. A `false` counts from any file, by settings precedence. | * **Type**: Boolean | * **Default**: `false` | Let sandboxed commands on Linux and WSL2 create user namespaces, which Chromium's and Electron's own sandbox, a nested bubblewrap, and `unshare` need. If you set this key to `true`, you turn off a security boundary: code from a sandboxed command can end up running outside the sandbox. For rootless Podman or Buildah, use `excludedCommands` instead, because the sandbox stops them in other ways too. Requires Claude Code v2.1.305 or later."
+      "excerpt": "Let sandboxed commands create user namespaces on Linux and WSL2 | * **Scope**: `User or managed`. A `true` counts from `~/.claude/settings.json`, JSON passed with `--settings`, or managed settings. Claude Code ignores a `true` in a project's `.claude/settings.json` or `.claude/settings.local.json`. In a session with `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` set to `1`, Claude Code ignores a `true` from every source. A `false` counts from any file, by settings precedence. | * **Type**: Boolean | * **Default**: `false` | Let sandboxed commands on Linux and WSL2 create user namespaces, which Chromium's and Electron's own sandbox, a nested bubblewrap, and `unshare` need. If you set this key to `true`, you turn off a security boundary: code from a sandboxed command can end up running outside the sandbox. For rootless Podman or Buildah, use `excludedCommands` instead, because the sandbox stops them in other ways too. Requires Claude Code v2.1.305 or later. | * **Scope**: `User or managed`. A `true`"
     },
     {
       "id": "setting:sandbox.allowUnsandboxedCommands",
@@ -3922,7 +3920,7 @@
       "types": [
         "boolean"
       ],
-      "default": null,
+      "default": false,
       "defaultDocumented": true,
       "scopes": [
         "Any file"
@@ -3968,7 +3966,7 @@
       "path": "sandbox.credentials",
       "title": "sandbox.credentials",
       "types": [
-        "object with `files`"
+        "object with `files`, `envVars`, `allowPlaintextInject`, `awsPairs`, and `sigv4`"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -4016,7 +4014,7 @@
       "path": "sandbox.credentials.awsPairs",
       "title": "sandbox.credentials.awsPairs",
       "types": [
-        "array of objects"
+        "array of objects, each with `accessKeyIdVar`, `secretAccessKeyVar`, and optionally `sessionTokenVar`, naming `sandbox.credentials.envVars` entries"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -4041,7 +4039,7 @@
       "path": "sandbox.credentials.envVars",
       "title": "sandbox.credentials.envVars",
       "types": [
-        "array of objects"
+        "array of objects, each with `name` and a `mode` of `\"deny\"` or `\"mask\"`, plus the optional mask fields for environment variables"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -4065,7 +4063,7 @@
       "path": "sandbox.credentials.files",
       "title": "sandbox.credentials.files",
       "types": [
-        "array of objects"
+        "array of objects, each with `path` and a `mode` of `\"deny\"` or `\"mask\"`, plus the optional mask fields for files"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -4089,7 +4087,7 @@
       "path": "sandbox.credentials.sigv4",
       "title": "sandbox.credentials.sigv4",
       "types": [
-        "object with `streaming`"
+        "object with `streaming`, `presigned`, and `sigv4a`, each one of:"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -4234,7 +4232,7 @@
       "path": "sandbox.filesystem",
       "title": "sandbox.filesystem",
       "types": [
-        "object with `allowwrite`"
+        "object with `allowWrite`, `denyWrite`, `denyRead`, and `allowRead` arrays, plus the `allowManagedReadPathsOnly` and `disabled` Booleans"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -4245,7 +4243,6 @@
       "precedence": "Unless a lock applies, Claude Code merges these lists across the settings files the session loads. `allowManagedReadPathsOnly` limits `allowRead` to entries from managed settings, and `allowManagedDomainsOnly` does the same for allowed domains. Repository locks leave out entries from a repository's settings files.",
       "precedenceDocumented": true,
       "lifecycle": "active",
-      "replacement": "//path",
       "source": {
         "url": "https://code.claude.com/docs/en/settings-reference.md",
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
@@ -4283,7 +4280,7 @@
       "path": "sandbox.filesystem.allowRead",
       "title": "sandbox.filesystem.allowRead",
       "types": [
-        "array of path strings"
+        "array of path strings, using the sandbox path prefixes"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -4307,7 +4304,7 @@
       "path": "sandbox.filesystem.allowWrite",
       "title": "sandbox.filesystem.allowWrite",
       "types": [
-        "array of path strings"
+        "array of path strings, using the sandbox path prefixes"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -4331,7 +4328,7 @@
       "path": "sandbox.filesystem.denyRead",
       "title": "sandbox.filesystem.denyRead",
       "types": [
-        "array of path strings"
+        "array of path strings, using the sandbox path prefixes"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -4355,7 +4352,7 @@
       "path": "sandbox.filesystem.denyWrite",
       "title": "sandbox.filesystem.denyWrite",
       "types": [
-        "array of path strings"
+        "array of path strings, using the sandbox path prefixes"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -4381,7 +4378,7 @@
       "types": [
         "boolean"
       ],
-      "default": null,
+      "default": false,
       "defaultDocumented": true,
       "scopes": [
         "User or managed"
@@ -4403,7 +4400,7 @@
       "path": "sandbox.ignoreViolations",
       "title": "sandbox.ignoreViolations",
       "types": [
-        "object mapping a command substring to an array of violation substrings"
+        "object mapping a command substring to an array of violation substrings, usually paths"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -4499,7 +4496,7 @@
       "path": "sandbox.network.allowMachLookup",
       "title": "sandbox.network.allowMachLookup",
       "types": [
-        "array of strings"
+        "array of strings, each a service name; a single trailing `*` matches a prefix, and `\"*\"` alone matches every service"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -4547,7 +4544,7 @@
       "path": "sandbox.network.allowUnixSockets",
       "title": "sandbox.network.allowUnixSockets",
       "types": [
-        "array of strings"
+        "array of strings, each a socket path"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -4571,7 +4568,7 @@
       "path": "sandbox.network.allowedDomains",
       "title": "sandbox.network.allowedDomains",
       "types": [
-        "array of strings"
+        "array of strings, each a domain, wildcard pattern, or IP literal, with an optional `:port` suffix"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -4595,7 +4592,7 @@
       "path": "sandbox.network.deniedDomains",
       "title": "sandbox.network.deniedDomains",
       "types": [
-        "array of strings"
+        "array of strings, each a domain, wildcard pattern, or IP literal, with an optional `:port` suffix"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -4692,7 +4689,7 @@
       "path": "sandbox.network.tlsTerminate",
       "title": "sandbox.network.tlsTerminate",
       "types": [
-        "object with optional `cacertpath` and `cakeypath` strings"
+        "object with optional `caCertPath` and `caKeyPath` strings, each a file path"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -4716,7 +4713,7 @@
       "path": "sandbox.ripgrep",
       "title": "sandbox.ripgrep",
       "types": [
-        "object with `command`"
+        "object with `command`, the path to the ripgrep binary, and optional `args`, an array of arguments to prepend"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -4838,7 +4835,7 @@
       "types": [
         "number"
       ],
-      "default": null,
+      "default": 0.01,
       "defaultDocumented": true,
       "scopes": [
         "Any file"
@@ -4860,7 +4857,7 @@
       "path": "skillListingMaxDescChars",
       "title": "skillListingMaxDescChars",
       "types": [
-        "number of characters"
+        "number"
       ],
       "default": 1536,
       "defaultDocumented": true,
@@ -4884,7 +4881,7 @@
       "path": "skillOverrides",
       "title": "skillOverrides",
       "types": [
-        "object mapping skill name to one of"
+        "object mapping skill name to one of:"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -4980,7 +4977,7 @@
       "path": "spellcheck",
       "title": "spellcheck",
       "types": [
-        "object with `enabled` (boolean)"
+        "object with `enabled` (Boolean), `checker` (`\"aspell\"`, `\"hunspell\"`, `\"ispell\"`, or `\"auto\"`), `language` (string, passed to the checker as its dictionary name), and `color` (string, a terminal color name, `#rrggbb`, `rgb(r,g,b)`, `ansi256(n)`, or `ansi:<name>`)"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -4988,8 +4985,8 @@
         "User or managed"
       ],
       "sourceRules": "* **Scope**: `User or managed`. The block from the highest tier that sets it applies as a whole.",
-      "precedence": "",
-      "precedenceDocumented": false,
+      "precedence": "* **Scope**: `User or managed`. The block from the highest tier that sets it applies as a whole.",
+      "precedenceDocumented": true,
       "lifecycle": "active",
       "introduced": "2.1.235",
       "source": {
@@ -4997,7 +4994,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#spellcheck"
       },
-      "excerpt": "Underline misspelled words in the prompt input with a spell checker you install | * **Scope**: `User or managed`. The block from the highest tier that sets it applies as a whole. | * **Type**: object with `enabled` (Boolean), `checker` (`\"aspell\"`, `\"hunspell\"`, `\"ispell\"`, or `\"auto\"`), `language` (string, passed to the checker as its dictionary name), and `color` (string, a terminal color name, `#rrggbb`, `rgb(r,g,b)`, `ansi256(n)`, or `ansi:<name>`) | * **Default**: unset, so spell checking is off; `checker` defaults to `\"auto\"`, the first of the three found on `PATH`; `language` defaults to the checker's own dictionary; `color` defaults to the theme's error color | Underline misspelled words in the prompt input as you type, using a spell checker you install. Claude Code checks only the text in the input box. Check spelling as you type covers installing aspell, hunspell, or ispell and what the checker covers. Requires Claude Code v2.1.235 or later."
+      "excerpt": "Underline misspelled words in the prompt input with a spell checker you install | * **Scope**: `User or managed`. The block from the highest tier that sets it applies as a whole. | * **Type**: object with `enabled` (Boolean), `checker` (`\"aspell\"`, `\"hunspell\"`, `\"ispell\"`, or `\"auto\"`), `language` (string, passed to the checker as its dictionary name), and `color` (string, a terminal color name, `#rrggbb`, `rgb(r,g,b)`, `ansi256(n)`, or `ansi:<name>`) | * **Default**: unset, so spell checking is off; `checker` defaults to `\"auto\"`, the first of the three found on `PATH`; `language` defaults to the checker's own dictionary; `color` defaults to the theme's error color | Underline misspelled words in the prompt input as you type, using a spell checker you install. Claude Code checks only the text in the input box. Check spelling as you type covers installing aspell, hunspell, or ispell and what the checker covers. Requires Claude Code v2.1.235 or later. | * **Scope**: `User or managed`. "
     },
     {
       "id": "setting:spinnerTipsEnabled",
@@ -5029,7 +5026,7 @@
       "path": "spinnerTipsOverride",
       "title": "spinnerTipsOverride",
       "types": [
-        "object with `tips`"
+        "object with `tips`, `tipsFile`, `label`, and `excludeDefault` fields, each optional"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -5053,7 +5050,7 @@
       "path": "spinnerVerbs",
       "title": "spinnerVerbs",
       "types": [
-        "object with a `verbs` array of strings and `mode`"
+        "object with a `verbs` array of strings and `mode`, one of:"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -5077,7 +5074,7 @@
       "path": "sshConfigs",
       "title": "sshConfigs",
       "types": [
-        "array of objects"
+        "array of objects, each with required `id`, `name`, and `sshHost` and optional `sshPort` and `sshIdentityFile`"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -5088,7 +5085,6 @@
       "precedence": "",
       "precedenceDocumented": false,
       "lifecycle": "active",
-      "replacement": "sshConfigs",
       "source": {
         "url": "https://code.claude.com/docs/en/settings-reference.md",
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
@@ -5126,7 +5122,7 @@
       "path": "sshHostCommands",
       "title": "sshHostCommands",
       "types": [
-        "array of objects"
+        "array of objects, each with required `id`, `name`, and `command` and optional `sshIdentityFile` and `startDirectory`. Desktop doesn't read `command` as shell syntax, so pipes and variables don't work: write it as a program and its arguments."
       ],
       "default": null,
       "defaultDocumented": true,
@@ -5150,7 +5146,7 @@
       "path": "statusLine",
       "title": "statusLine",
       "types": [
-        "object with `type` set to `\"command\"` and a `command` string"
+        "object with `type` set to `\"command\"` and a `command` string, plus optional `padding` as a number of characters, `refreshInterval` as a number of seconds, minimum `1`, and `hideVimModeIndicator` as a Boolean"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -5174,7 +5170,7 @@
       "path": "strictKnownMarketplaces",
       "title": "strictKnownMarketplaces",
       "types": [
-        "array of marketplace source objects; see allowed source types"
+        "array of marketplace source objects; see Allowed source types"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -5198,7 +5194,7 @@
       "path": "strictPluginOnlyCustomization",
       "title": "strictPluginOnlyCustomization",
       "types": [
-        "`true` to lock all of them"
+        "`true` to lock all of them, or an array naming the ones to lock, from `\"skills\"`, `\"agents\"`, `\"hooks\"`, and `\"mcp\"`"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -5643,7 +5639,6 @@
       "precedence": "`CLAUDE_CODE_NO_FLICKER` and `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN` take precedence over this key for one session: `CLAUDE_CODE_NO_FLICKER=1` turns fullscreen on, and `CLAUDE_CODE_NO_FLICKER=0` or `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1` turns it off; when both are set, Claude Code turns it off",
       "precedenceDocumented": true,
       "lifecycle": "active",
-      "replacement": "\"fullscreen\"",
       "source": {
         "url": "https://code.claude.com/docs/en/settings-reference.md",
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
@@ -5753,7 +5748,7 @@
       "path": "vimInsertModeRemaps",
       "title": "vimInsertModeRemaps",
       "types": [
-        "object mapping a two-character sequence to `\"<esc>\"`"
+        "object mapping a two-character sequence to `\"<Esc>\"`"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -5777,7 +5772,7 @@
       "path": "voice",
       "title": "voice",
       "types": [
-        "object with `enabled` as a boolean"
+        "object with `enabled` as a Boolean, `autoSubmit` as a Boolean that applies in hold mode only, and `mode`, one of:"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -5881,15 +5876,15 @@
         "Any file"
       ],
       "sourceRules": "* **Scope**: `Any file`. A value there takes precedence over the **Dynamic workflow size** choice in `/config`, which Claude Code stores in `~/.claude.json`, and Claude Code hides that row while a settings file sets the key.",
-      "precedence": "",
-      "precedenceDocumented": false,
+      "precedence": "* **Scope**: `Any file`. A value there takes precedence over the **Dynamic workflow size** choice in `/config`, which Claude Code stores in `~/.claude.json`, and Claude Code hides that row while a settings file sets the key.",
+      "precedenceDocumented": true,
       "lifecycle": "active",
       "source": {
         "url": "https://code.claude.com/docs/en/settings-reference.md",
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#workflowsizeguideline"
       },
-      "excerpt": "Set the agent count Claude aims for in dynamic workflows | * **Scope**: `Any file`. A value there takes precedence over the **Dynamic workflow size** choice in `/config`, which Claude Code stores in `~/.claude.json`, and Claude Code hides that row while a settings file sets the key. | * **Type**: string, one of: | * **Default**: `\"medium\"`, or `\"small\"` when you're signed in on a Pro plan with Claude Code v2.1.271 or later"
+      "excerpt": "Set the agent count Claude aims for in dynamic workflows | * **Scope**: `Any file`. A value there takes precedence over the **Dynamic workflow size** choice in `/config`, which Claude Code stores in `~/.claude.json`, and Claude Code hides that row while a settings file sets the key. | * **Type**: string, one of: | * **Default**: `\"medium\"`, or `\"small\"` when you're signed in on a Pro plan with Claude Code v2.1.271 or later | * **Scope**: `Any file`. A value there takes precedence over the **Dynamic workflow size** choice in `/config`, which Claude Code stores in `~/.claude.json`, and Claude Code hides that row while a settings file sets the key."
     },
     {
       "id": "setting:worktree",
@@ -5897,7 +5892,7 @@
       "path": "worktree",
       "title": "worktree",
       "types": [
-        "object with `baseref`"
+        "object with `baseRef`, `symlinkDirectories`, `sparsePaths`, and `bgIsolation`"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -5993,7 +5988,7 @@
       "path": "worktree.sparsePaths",
       "title": "worktree.sparsePaths",
       "types": [
-        "array of strings"
+        "array of strings, directory paths relative to the repository root"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -6017,7 +6012,7 @@
       "path": "worktree.symlinkDirectories",
       "title": "worktree.symlinkDirectories",
       "types": [
-        "array of strings"
+        "array of strings, directory paths relative to the repository root"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -6043,7 +6038,7 @@
       "types": [
         "boolean"
       ],
-      "default": null,
+      "default": false,
       "defaultDocumented": true,
       "scopes": [
         "Managed"
@@ -7896,7 +7891,6 @@
       "precedence": "",
       "precedenceDocumented": false,
       "lifecycle": "active",
-      "replacement": "CLAUDE_CODE_CHILD_SESSION",
       "source": {
         "url": "https://code.claude.com/docs/en/env-vars.md",
         "sha256": "a24a90eedaff614c964b8196dfb35b618c4eca853410636e29d921091c12cd95",
@@ -9186,7 +9180,6 @@
       "precedenceDocumented": false,
       "lifecycle": "active",
       "introduced": "2.1.198",
-      "replacement": "CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS",
       "source": {
         "url": "https://code.claude.com/docs/en/env-vars.md",
         "sha256": "a24a90eedaff614c964b8196dfb35b618c4eca853410636e29d921091c12cd95",
@@ -9721,7 +9714,6 @@
       "precedence": "",
       "precedenceDocumented": false,
       "lifecycle": "active",
-      "replacement": "MAX_THINKING_TOKENS=0",
       "source": {
         "url": "https://code.claude.com/docs/en/env-vars.md",
         "sha256": "a24a90eedaff614c964b8196dfb35b618c4eca853410636e29d921091c12cd95",
@@ -10599,7 +10591,6 @@
       "precedence": "",
       "precedenceDocumented": false,
       "lifecycle": "active",
-      "replacement": "0",
       "source": {
         "url": "https://code.claude.com/docs/en/env-vars.md",
         "sha256": "a24a90eedaff614c964b8196dfb35b618c4eca853410636e29d921091c12cd95",
@@ -13329,7 +13320,6 @@
       "precedence": "",
       "precedenceDocumented": false,
       "lifecycle": "active",
-      "replacement": "DISABLE_UPDATES",
       "source": {
         "url": "https://code.claude.com/docs/en/env-vars.md",
         "sha256": "a24a90eedaff614c964b8196dfb35b618c4eca853410636e29d921091c12cd95",
@@ -13831,7 +13821,6 @@
       "precedence": "Set to `1` to request a 1-hour prompt cache TTL instead of the default 5 minutes. Intended for API key, Amazon Bedrock, Google Cloud's Agent Platform, Microsoft Foundry, and Claude Platform on AWS users. For subscription users within included usage, Claude Code requests the 1-hour TTL automatically on the main conversation. Subscription users drawing on usage credits can set it to keep the 1-hour TTL. 1-hour cache writes are billed at a higher rate. To choose the TTL separately for the main conversation and for requests outside it, use `CLAUDE_CODE_PROMPT_CACHE_TTL` and `CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL`, which take precedence over this variable",
       "precedenceDocumented": true,
       "lifecycle": "active",
-      "replacement": "CLAUDE_CODE_PROMPT_CACHE_TTL",
       "source": {
         "url": "https://code.claude.com/docs/en/env-vars.md",
         "sha256": "a24a90eedaff614c964b8196dfb35b618c4eca853410636e29d921091c12cd95",
