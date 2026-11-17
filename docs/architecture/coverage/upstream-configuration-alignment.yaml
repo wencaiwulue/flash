@@ -1,0 +1,5 @@
+schema_version: 1
+spec_id: upstream-configuration-alignment
+spec: ../../superpowers/specs/2026-11-16-upstream-configuration-alignment-design.md
+status: draft
+groups: []

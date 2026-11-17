@@ -144,6 +144,11 @@ specs:
     coverage: docs/architecture/coverage/settings.yaml
     batch: 3
     status: draft
+  - id: upstream-configuration-alignment
+    spec: docs/superpowers/specs/2026-11-16-upstream-configuration-alignment-design.md
+    coverage: docs/architecture/coverage/upstream-configuration-alignment.yaml
+    batch: 3
+    status: draft
   - id: skills
     spec: docs/superpowers/specs/2026-11-12-skills-design.md
     coverage: docs/architecture/coverage/skills.yaml

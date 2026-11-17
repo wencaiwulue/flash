@@ -34,6 +34,7 @@
 | `session-search-recovery` | 3 | draft | [Session Search & Recovery 会话发现与跨项目恢复设计](../superpowers/specs/2026-11-12-session-search-recovery-design.md) | [coverage](coverage/session-search-recovery.yaml) |
 | `sessions-share` | 3 | draft | [Session Sharing 会话导出、共享与恢复设计](../superpowers/specs/2026-11-12-sessions-share-design.md) | [coverage](coverage/sessions-share.yaml) |
 | `settings` | 3 | draft | [Settings 设置来源、合并与变更生命周期设计](../superpowers/specs/2026-11-12-settings-design.md) | [coverage](coverage/settings.yaml) |
+| `upstream-configuration-alignment` | 3 | draft | [flash 与上游全量配置对齐路线设计](../superpowers/specs/2026-11-16-upstream-configuration-alignment-design.md) | [coverage](coverage/upstream-configuration-alignment.yaml) |
 | `skills` | 3 | draft | [Skills 技能发现、加载与执行设计](../superpowers/specs/2026-11-12-skills-design.md) | [coverage](coverage/skills.yaml) |
 | `app-state` | 4 | draft | [App State 应用状态、订阅与生命周期设计](../superpowers/specs/2026-11-12-app-state-design.md) | [coverage](coverage/app-state.yaml) |
 | `assistant-ui` | 4 | draft | [Assistant UI 助手会话与历史交互设计](../superpowers/specs/2026-11-12-assistant-ui-design.md) | [coverage](coverage/assistant-ui.yaml) |
