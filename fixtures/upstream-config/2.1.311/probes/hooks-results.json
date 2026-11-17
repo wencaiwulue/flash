@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "upstreamVersion": "2.1.311",
+  "isolation": ["temporary HOME", "temporary CLAUDE_CONFIG_DIR", "temporary project"],
+  "cases": [
+    { "case": "unknown-event", "input": "FutureUpstreamEvent", "result": "warning-and-entry-ignored" },
+    { "case": "event-not-array", "input": ["SessionStart:object", "PostToolUse:number"], "result": "warning-and-entry-ignored" },
+    { "case": "hooks-not-object", "input": "hooks:string", "result": "warning-hooks-ignored-siblings-retained" },
+    { "case": "ordinary-schema-error", "input": "model:number", "result": "Expected string, but received number" }
+  ]
+}

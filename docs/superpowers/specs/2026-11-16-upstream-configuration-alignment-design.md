@@ -3,7 +3,7 @@ id: upstream-configuration-alignment
 batch: 3
 title: flash 与上游全量配置对齐路线设计
 date: 2026-11-16
-status: draft
+status: approved
 ---
 
 # flash 与上游全量配置对齐路线设计
