@@ -1,6 +1,6 @@
 {
   "name": "flash",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Educational/research snapshot built on Claude Code: an agentic coding CLI and TypeScript Agent SDK built with Bun, React, and Ink.",
   "type": "module",
   "main": "dist/main.js",
