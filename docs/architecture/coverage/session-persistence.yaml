@@ -65,3 +65,4 @@ groups:
     summary: 会话持久化核心测试
     files:
       - tests/sessionChainRecovery.test.ts
+      - tests/sessionConcurrency.test.ts
