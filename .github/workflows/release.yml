@@ -129,7 +129,9 @@ jobs:
             # fine: the smoke then skips as perf-timeout as before.
             for i in 1 2 3 4 5 6; do
               START=$SECONDS
-              "$CHROME" --headless --disable-gpu --dump-dom about:blank >/dev/null 2>&1 || true
+              # Per-launch timeout: a hung headless launch (seen on runner
+              # VMs) must never stall the release build.
+              timeout 60 "$CHROME" --headless --disable-gpu --dump-dom about:blank >/dev/null 2>&1 || true
               ELAPSED=$((SECONDS - START))
               echo "warm launch $i took ${ELAPSED}s"
               if [[ $ELAPSED -le 5 ]]; then
