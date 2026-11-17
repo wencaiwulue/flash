@@ -93,8 +93,10 @@ jobs:
               bun x playwright install --with-deps chromium >/dev/null 2>&1 || true
               CHROMIUM_BIN="$(find ~/.cache/ms-playwright -path '*chromium*' -name chrome -type f 2>/dev/null | head -1)"
               if [[ -n "$CHROMIUM_BIN" ]]; then
-                sudo ln -sf "$CHROMIUM_BIN" /usr/bin/google-chrome
-                sudo ln -sf "$CHROMIUM_BIN" /usr/bin/google-chrome-stable
+                # Playwright's chrome channel probes exactly /opt/google/chrome/chrome
+                # on Linux — /usr/bin symlinks are never consulted.
+                sudo mkdir -p /opt/google/chrome
+                sudo ln -sf "$CHROMIUM_BIN" /opt/google/chrome/chrome
               else
                 echo "playwright chromium download failed; the smoke will skip"
               fi
@@ -110,10 +112,20 @@ jobs:
           if [[ -f "$CHROME" ]]; then
             # Fresh Windows VMs re-scan every Chrome DLL on first read under
             # Defender, which makes the smoke's real-browser launch exceed the
-            # MCP request timeout. Two throwaway headless launches prime the
-            # scan cache so the later smoke e2e runs at normal speed.
-            "$CHROME" --headless --disable-gpu --dump-dom about:blank >/dev/null 2>&1 || true
-            "$CHROME" --headless --disable-gpu --dump-dom about:blank >/dev/null 2>&1 || true
+            # MCP request timeout. Warm with throwaway headless launches until
+            # one finishes in <=5s (scan cache primed), capped at 6 rounds —
+            # x64 Chrome under ARM64 emulation may never get there, which is
+            # fine: the smoke then skips as perf-timeout as before.
+            for i in 1 2 3 4 5 6; do
+              START=$SECONDS
+              "$CHROME" --headless --disable-gpu --dump-dom about:blank >/dev/null 2>&1 || true
+              ELAPSED=$((SECONDS - START))
+              echo "warm launch $i took ${ELAPSED}s"
+              if [[ $ELAPSED -le 5 ]]; then
+                echo "Chrome warm"
+                break
+              fi
+            done
           else
             echo "Chrome not preinstalled on this runner; skipping pre-warm"
           fi
