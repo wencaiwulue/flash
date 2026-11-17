@@ -24,18 +24,32 @@ status: draft
 - 不重新实现文件检查点（属于 SDK 设计范围）
 - 支持 `--resume`、`--fork`、`--continue` 等 CLI 用例
 
+### 重要澄清：并发与契约边界 [B2-session-persistence-03]
+
+| 维度 | 当前可验证机制 | 调用方可见影响 |
+|-----|--------------|--------------|
+| JSONL 格式与 UUID/parentUuid | 每条消息携带 `uuid`、`parentUuid`、`sessionId`；`uuid` 唯一，`parentUuid` 指向前驱，`sessionId` 每条重复 | Fork 时重新生成所有 UUID；并行分支通过 API message ID 关联恢复 |
+| 写入等待与队列 | `appendEntry()` 返回 Promise<void>，但 resolve 发生在**队列化后、刷盘前**；100ms 定时器批量 flush；支持显式 `flush()` 等待 | 进程崩溃时未 flush 的队列数据丢失；调用方不能假设 append 返回后数据已持久化 |
+| 跨进程并发写入 | **无锁机制**；SDK 与 CLI 可同时写入同一 JSONL；最后写入获胜；元数据通过 `reAppendSessionMetadata` 先读后追加刷新 | 同时写入可能出现交错元数据；加载时取最后一个有效；没有原子性保证的批量操作 |
+| 原子性与锁 | 单条 JSONL 行追加（≤ PIPE_BUF）在大多数文件系统上原子；批量多行追加不原子；没有文件锁；没有事务 | 崩溃时可能出现部分写入的行；`loadTranscriptFile()` 跳过无效 JSON；多条消息可能部分写入 |
+| 恢复机制 | 加载时通过 `extractLastJsonStringField` 取最后一个元数据；通过 `recoverOrphanedParallelToolResults` 恢复并行分支；通过 `progress bridge` 兼容旧会话 | 截断历史通过 `compact_boundary`；部分崩溃场景需手动干预 |
+| SDK 格式边界 | CLI 与 SDK 共享 JSONL schema（通过 `sessionStoragePortable.ts`）；但 CLI 独有 `Project` 队列/flush 机制；SDK 直接写入无缓冲 | SDK 写入的元数据 CLI 可读取，反之亦然；但 CLI 的队列数据 SDK 看不到 |
+
+**注意**：本 spec 仅描述当前实现的可验证行为，不虚构未实现的锁、事务或强兼容性保证。
+
 ## 2. 设计理由与备选方案
 
 | 决策 | 实际机制 | 为什么采用 | 备选方案及不采用原因 | 代价 | 证据 |
 |---|---|---|---|---|---|
-| JSONL 追加写入，无原地改写（除末尾 tombstone） | sessionStorage.ts 中 appendEntry 始终追加；removeMessageByUuid 仅处理末尾或小文件 | 纯追加写入在大多数文件系统上是原子的（单 write 调用 ≤ PIPE_BUF）；避免大文件重写 | 文件头单次写入 sessionId：崩溃时部分写入的文件难以识别；使用文件名推断 sessionId：fork 时需重命名且元数据丢失 | 每条消息写入 sessionId，增加文件大小 | `src/utils/sessionStorage.ts:1-999` |
-| 大文件启动时仅读头尾 64KB | `LITE_READ_BUF_SIZE = 65536`，头尾各读 64KB；extractLastJsonStringField 取最后一个元数据 | 快速决定列表展示内容（不解析全文件），避免几 GB 文件启动慢 | 总是解析全量：大文件启动慢；构建单独索引文件：复杂度高，索引可能损坏 | 元数据需追加到末尾才能在列表中可见；reAppendSessionMetadata 需定期执行 | `src/utils/sessionStoragePortable.ts:1-999` |
-| 元数据与消息共存在同一 JSONL，追加不覆盖 | custom-title、tag、last-prompt 等作为单独 type 行追加，读取取最后一个 | 单一文件管理，原子性好；崩溃时部分写入只影响最后一行 | 单独 .meta.json 文件：文件数量加倍，原子性更难保证；原地更新元数据：需复杂锁或版本控制 | 扫描列表时需解析更多行；reAppendSessionMetadata 增加文件大小 | `src/utils/sessionStorage.ts:1-999` |
-| 并行工具调用通过 recoverOrphanedParallelToolResults 恢复 | 加载时从叶子回溯主链，然后从 Map 中找回同一 API ID 的并行分支插入 | 单条消息 parentUuid 指向主链，但并行分支需要单独恢复算法 | 写入时就保持多链结构：复杂度高，难以兼容现有格式；引入专门 fork 消息：需要迁移旧会话 | 加载时需额外扫描；需要消息中携带 API message ID | `src/utils/sessionChainRecovery.ts:1-999` |
-| 会话文件惰性创建（第一条 user/assistant 消息时） | pendingEntries 暂存元数据，materializeSessionFile 在第一条 user/assistant 时写入 | 避免空会话文件（只有元数据）污染列表；用户打开但没交互的会话不持久化 | 立即创建文件：大量空会话在 listSessions 中可见；在会话列表中过滤空会话：仍浪费磁盘空间和扫描时间 | 退出时如果没有 user/assistant 消息，元数据会丢失 | `src/utils/sessionStorage.ts:1-999` |
-| compact_boundary 截断历史，但保留 preservedSegment | 加载时定位最后一个 compact_boundary，截断到之后；有 preservedSegment 时恢复并重新链接 | 控制上下文长度，避免每次加载全量历史；同时保留用户明确保留的片段 | 永远保留全量：大文件启动慢；fork 时创建新文件：磁盘占用高 | 实现复杂度高；需处理 preservedSegment 的 parentUuid 重链接 | `src/utils/sessionStorage.ts:1-999` |
-| removeMessageByUuid 对不在末尾的消息，仅在文件 ≤ 50MB 时才重写 | `MAX_TOMBSTONE_REWRITE_BYTES = 50 * 1024 * 1024`，超过该大小只标记 tombstone 不重写 | 大文件重写慢且占用 I/O；通过 tombstone 标记在加载时过滤 | 总是重写整个文件：大文件卡顿；永不重写只 tombstone：需解析器支持过滤，文件会越来越大 | 大文件删除非末尾消息后，文件不会立即变小 | `src/utils/sessionStorage.ts:1-999` |
-| 文件历史快照按 messageId 关联，不是按 UUID | fileHistoryMakeSnapshot(messageId) 关联到 messageId；fork 时不复制文件历史快照 | fork 时重新 UUID 导致快照孤立；按 messageId 关联可以在 fork 后继续访问 | 按 UUID 关联：fork 时快照孤立；按时间戳关联：难以与会话历史对齐 | 需要消息同时携带 UUID 和 messageId | `src/utils/fileHistory.ts:1-999` |
+| JSONL 追加写入，无原地改写（除末尾 tombstone） | sessionStorage.ts 中 appendEntry 始终追加；removeMessageByUuid 仅处理末尾或小文件 | 纯追加写入在大多数文件系统上是原子的（单 write 调用 ≤ PIPE_BUF）；避免大文件重写 | 文件头单次写入 sessionId：崩溃时部分写入的文件难以识别；使用文件名推断 sessionId：fork 时需重命名且元数据丢失 | 每条消息写入 sessionId，增加文件大小 | `src/utils/sessionStorage.ts` |
+| 大文件启动时仅读头尾 64KB | `LITE_READ_BUF_SIZE = 65536`，头尾各读 64KB；extractLastJsonStringField 取最后一个元数据 | 快速决定列表展示内容（不解析全文件），避免几 GB 文件启动慢 | 总是解析全量：大文件启动慢；构建单独索引文件：复杂度高，索引可能损坏 | 元数据需追加到末尾才能在列表中可见；reAppendSessionMetadata 需定期执行 | `src/utils/sessionStoragePortable.ts:16-111` |
+| 元数据与消息共存在同一 JSONL，追加不覆盖 | custom-title、tag、last-prompt 等作为单独 type 行追加，读取取最后一个 | 单一文件管理，原子性好；崩溃时部分写入只影响最后一行 | 单独 .meta.json 文件：文件数量加倍，原子性更难保证；原地更新元数据：需复杂锁或版本控制 | 扫描列表时需解析更多行；reAppendSessionMetadata 增加文件大小 | `src/utils/sessionStorage.ts` |
+| 并行工具调用通过 recoverOrphanedParallelToolResults 恢复 | 加载时从叶子回溯主链，然后从 Map 中找回同一 API ID 的并行分支插入 | 单条消息 parentUuid 指向主链，但并行分支需要单独恢复算法 | 写入时就保持多链结构：复杂度高，难以兼容现有格式；引入专门 fork 消息：需要迁移旧会话 | 加载时需额外扫描；需要消息中携带 API message ID | `src/utils/sessionChainRecovery.ts:38-116` |
+| 会话文件惰性创建（第一条 user/assistant 消息时） | pendingEntries 暂存元数据，materializeSessionFile 在第一条 user/assistant 时写入 | 避免空会话文件（只有元数据）污染列表；用户打开但没交互的会话不持久化 | 立即创建文件：大量空会话在 listSessions 中可见；在会话列表中过滤空会话：仍浪费磁盘空间和扫描时间 | 退出时如果没有 user/assistant 消息，元数据会丢失 | `src/utils/sessionStorage.ts` |
+| compact_boundary 截断历史，但保留 preservedSegment | 加载时定位最后一个 compact_boundary，截断到之后；有 preservedSegment 时恢复并重新链接 | 控制上下文长度，避免每次加载全量历史；同时保留用户明确保留的片段 | 永远保留全量：大文件启动慢；fork 时创建新文件：磁盘占用高 | 实现复杂度高；需处理 preservedSegment 的 parentUuid 重链接 | `src/utils/sessionStorage.ts:1840-2039` |
+| removeMessageByUuid 对不在末尾的消息，仅在文件 ≤ 50MB 时才重写 | `MAX_TOMBSTONE_REWRITE_BYTES = 50 * 1024 * 1024`，超过该大小只标记 tombstone 不重写 | 大文件重写慢且占用 I/O；通过 tombstone 标记在加载时过滤 | 总是重写整个文件：大文件卡顿；永不重写只 tombstone：需解析器支持过滤，文件会越来越大 | 大文件删除非末尾消息后，文件不会立即变小 | `src/utils/sessionStorage.ts:124` |
+| 文件历史快照按 messageId 关联，不是按 UUID | fileHistoryMakeSnapshot(messageId) 关联到 messageId；fork 时不复制文件历史快照 | fork 时重新 UUID 导致快照孤立；按 messageId 关联可以在 fork 后继续访问 | 按 UUID 关联：fork 时快照孤立；按时间戳关联：难以与会话历史对齐 | 需要消息同时携带 UUID 和 messageId | `src/utils/fileHistory.ts` |
+| **队列化写入与 flush 时机** | `appendEntry()` 队列化后立即 resolve，不等待刷盘；100ms 定时器批量 flush；`flush()` 等待 active drain 和 pending writes | 不阻塞调用方 UI；批量写入减少 I/O 次数 | 同步等待刷盘：用户体验卡顿；每写入立即 flush：I/O 次数过多，性能差 | 崩溃时未 flush 的数据丢失；调用方必须调用 `flush()` 确保持久化 | `src/utils/sessionStorage.ts:533-687` [B2-session-persistence-03] |
 
 ## 3. 目标与非目标
 
@@ -1041,6 +1055,158 @@ type TranscriptMessage = {
 - **Hooks**：ConfigChange hook 由 hooks 系统触发，本文不涉及
 - **Settings**：读取 settings 但不写入，本文只描述读取接口
 - **Telemetry**：记录遥测事件，本文不涉及
+
+### 4.12 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          Project (单例)                                      │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │ writeQueues: Map<path, Array<{entry, resolve}>>                       │ │
+│  │ flushTimer: setTimeout (100ms)                                        │ │
+│  │ activeDrain: Promise<void> | null                                    │ │
+│  │ pendingEntries: Array<Entry> | null (惰性创建前缓存)                  │ │
+│  │ sessionFile: string | null (JSONL 路径)                              │ │
+│  └───────────────────────────────┬───────────────────────────────────────┘ │
+└───────────────────────────────────┼─────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    Filesystem Storage (实际 IO)                            │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │ ~/.claude/projects/<sanitized-path>/<session-id>.jsonl                │ │
+│  │   • 追加模式写入 (O_APPEND on POSIX, 'w' on Windows)                  │ │
+│  │   • 权限 0o600 (仅用户可读/写)                                         │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │ ~/.claude/file-history/<session-id>/                                  │ │
+│  │   • <hash>@v<version>: 文件备份 (硬链接共享 fork)                     │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    External Dependencies                                    │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐             │
+│  │ SDK Query Sess  │  │ File History    │  │ Settings (只读)│             │
+│  │ (共享 JSONL)    │  │ (快照/rewind)   │  │                 │             │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**边界说明：**
+- Project 单例在 CLI 中全局唯一，管理内存队列和 flush 时机
+- 大文件 (>5MB) 加载时仅读头尾 64KB (LITE_READ_BUF_SIZE)
+- SDK 与 CLI 共享 JSONL 格式，但各写各的，无协调
+
+### 4.13 关键流程与失败路径
+
+#### 完整写入-队列-flush 流程 (主路径)
+```text
+调用方 (insertMessageChain / recordTranscript)
+│
+▼
+appendEntry(entry)
+├─ sessionFile === null
+│   ├─ 是 → pendingEntries 缓存 (惰性创建)
+│   └─ 否 → 检查 messageSet 去重
+├─ 有重复 UUID (非 Agent sidechain) → 跳过
+└─ enqueueWrite(filePath, entry)
+    ├─ 推入 writeQueues[filePath]
+    ├─ Promise<void> 立即 resolve (队列化后)
+    └─ scheduleDrain() (启动 100ms 定时器)
+
+▼ (100ms 后或显式 flush)
+
+drainWriteQueue()
+├─ 暂停定时器
+├─ 遍历所有 file paths
+├─ 对每个 path：
+│   ├─ 收集队列所有 entries
+│   ├─ lazy jsonStringify (仅此时序列化)
+│   ├─ 检查大小 > MAX_CHUNK_BYTES (100MB) → 分块
+│   ├─ appendToFile():
+│   │   ├─ 尝试 fsAppendFile (0o600)
+│   │   ├─ ENOENT → mkdir -p 递归创建目录
+│   │   └─ 重试 fsAppendFile
+│   ├─ resolve 所有 Promise
+│   └─ 清空队列
+└─ 清理
+
+▼ (cleanup handler 退出时)
+
+flush() → reAppendSessionMetadata()
+├─ 先 drain 所有队列
+├─ readFileTailSync (读最后 64KB)
+├─ 提取 SDK 写入的最新 custom-title/tag
+├─ 追加最新元数据 (确保在 tail 窗口内)
+└─ 完成
+```
+
+#### 加载-恢复流程 (大文件)
+```text
+loadTranscriptFile(filePath)
+│
+▼
+stat(fileSize)
+├─ ≤ 5MB → 完整 readFile
+└─ > 5MB → readTranscriptForLoad()
+    ├─ 分块读取 1MB 前向扫描
+    ├─ 寻找最后一个 compact_boundary
+    ├─ 跳过边界前内容 (除非有 preservedSegment)
+    └─ 输出 postBoundaryBuf
+
+▼
+parseJSONL(postBoundaryBuf)
+├─ 逐行解析 JSON
+├─ 跳过无效行 (JSON.parse 失败)
+└─ 分类构建 Map/集合
+
+▼
+applyPreservedSegmentRelinks() (如果有)
+├─ 验证 tail → head 链完整
+├─ 修改 preserved 消息 parentUuid → anchor
+└─ anchor 其他子节点 → tail
+
+▼
+applySnipRemovals() (如果有)
+├─ 查找 snip boundary
+├─ 删除指定 UUID
+└─ 重链接 parentUuid 跨过删除区域
+
+▼
+findLatestMessage() (有可见用户内容)
+→ buildConversationChain(messages, leaf)
+→ recoverOrphanedParallelToolResults()
+→ progress bridge (旧会话兼容)
+```
+
+#### 失败路径：崩溃未 flush
+- **触发条件**：appendEntry 后、flush 前进程终止
+- **结果**：队列内存数据丢失，已刷盘消息保留
+- **恢复**：下次启动 loadTranscriptFile 时重建，丢失消息不可见
+
+#### 失败路径：部分写入行
+- **触发条件**：fsAppendFile 进行中崩溃
+- **结果**：JSONL 尾行可能损坏
+- **恢复**：loadTranscriptFile 跳过无效 JSON 行
+
+### 4.14 核心对象生命周期表
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| Project (单例) | CLI 全局 | 首次调用 appendEntry 时初始化 | 全局唯一 | 不持久化 (内存状态) | flush() 重置 flushTimer/activeDrain | 退出 cleanup 强制 flush，无取消操作 |
+| writeQueues | Project | Map 初始化空，按需添加 path | 全局唯一 | 不持久化 (内存队列) | drainWriteQueue() 后清空 path 队列 | flush() 强制 drain 所有队列 |
+| pendingEntries | Project | 空数组初始化 | 全局唯一 | 不持久化 (惰性缓存) | materializeSessionFile() 后清空 | 无取消操作，直接写入 |
+| sessionFile | Project | materializeSessionFile() 创建目录和文件 | 全局唯一 | JSONL 持久化到磁盘 | removeMessageByUuid() 可能 truncate 或标记 tombstone | 无取消操作 |
+| FileHistoryState | 工具调用上下文 | 首次 fileHistoryMakeSnapshot 初始化 | 会话内共享 | 备份文件持久化，状态不持久化 | snapshots > 100 时 slice(-100) 裁剪 | 无取消操作 |
+| DenialTrackingState (临时) | 加载会话 | createDenialTrackingState() 初始化 | 会话内共享 | 不持久化 | recordSuccess() 重置连续计数 | 无取消操作 |
+
+**生命周期证据：**
+- Project: `src/utils/sessionStorage.ts:533-687`
+- writeQueues: `src/utils/sessionStorage.ts:533-687`
+- pendingEntries: `src/utils/sessionStorage.ts:1129-1264`
+- FileHistoryState: `src/utils/fileHistory.ts:1-1118`
 
 ## 5. 失败语义与工程取舍
 

@@ -742,6 +742,146 @@ QueryEngine.submitMessage()
 
 ---
 
+### 4.11 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────┐
+│                    调用方 (SDK/CLI)                               │
+│  ┌───────────────────────────────────────────────────────────────┐ │
+│  │  createSdkQuery() / ask() / QueryEngine.submitMessage()    │ │
+│  └───────────────────────────────────────────────────────────────┘ │
+└────────────────────────┬────────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                   src/QueryEngine.ts                               │
+│  ┌───────────────────────────────────────────────────────────────┐ │
+│  │  跨轮次状态：mutableMessages, readFileCache,                │ │
+│  │  permissionDenials, totalUsage, abortController              │ │
+│  └───────────────────────────────────────────────────────────────┘ │
+└────────────────────────┬────────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    src/query.ts                                    │
+│  ┌───────────────────────────────────────────────────────────────┐ │
+│  │  query() / queryLoop() — 单轮模型-工具循环                │ │
+│  │  State: messages, autoCompactTracking,                      │ │
+│  │  maxOutputTokensRecoveryCount, turnCount, ...              │ │
+│  └───────────────────────────────────────────────────────────────┘ │
+└────────────────────────┬────────────────────────────────────────────┘
+                         │
+         ┌───────────────┼───────────────┐
+         ▼               ▼               ▼
+┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+│  src/utils/     │ │  Claude API    │ │  工具执行层     │
+│  queryHelpers.ts│ │  (模型调用)    │ │  (runTools /   │
+│  normalizeMessage│ │                │ │   StreamingTool)│
+│  handleOrphaned │ │                │ │                │
+│  extractReadFiles│ │                │ │                │
+└─────────────────┘ └─────────────────┘ └─────────────────┘
+         │                   │                   │
+         └───────────────────┼───────────────────┘
+                             ▼
+                    ┌─────────────────┐
+                    │  会话持久化     │
+                    │  (可选)         │
+                    └─────────────────┘
+```
+
+**边界说明**：
+- `QueryEngine` 实例隔离：每个实例有独立的 `mutableMessages`、`readFileCache` 等状态
+- 会话持久化是进程级全局设置，通过 lease 机制协调多个 query
+- 模型 API 调用由外部 `claude.ts` 模块处理，query-core 仅消费其 async generator
+- 工具执行（`runTools`/`StreamingToolExecutor`）是可替换的依赖注入点
+
+### 4.12 关键流程与失败路径
+
+```text
+用户消息进入 QueryEngine.submitMessage()
+       │
+       ▼
+┌─────────────────────────────────────┐
+│  processUserInput()               │
+│  └─► 处理斜杠命令，检查是否继续 │
+└────────┬────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────┐
+│  用户消息提前持久化              │
+│  ├─► 非 bare 模式：await recordTranscript() │
+│  └─► bare 模式：void recordTranscript()   │
+└────────┬────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────┐
+│  yield buildSystemInitMessage()  │
+└────────┬────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────┐
+│  进入 query() 循环（单次模型-工具轮次）                 │
+│  ┌───────────────────────────────────────────────────────┐ │
+│  │  1. 历史压缩（snip / micro-compact / context-  │ │
+│  │     collapse / auto-compact）                       │ │
+│  │  2. 调用模型（deps.callModel()）                   │ │
+│  │  3. 检查 withheld 可恢复错误                        │ │
+│  │  4. 执行工具（StreamingToolExecutor 或 runTools()）│ │
+│  │  5. 检查终止条件（maxTurns / maxBudget / abort） │ │
+│  │  6. yield 结果 / 错误                               │ │
+│  └───────────────────────────────────────────────────────┘ │
+└────────────────────────┬────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────┐
+│  消息分派（QueryEngine 中）                               │
+│  ├─► assistant：fire-and-forget 持久化，yield SDK 消息 │
+│  ├─► user：await 持久化，yield SDK 消息                │
+│  ├─► compact_boundary：await 持久化，裁剪数组，yield │
+│  ├─► tombstone：跳过，不持久化，不 yield               │
+│  ├─► progress：fire-and-forget 持久化，normalize 后 yield │
+│  ├─► attachment：fire-and-forget 持久化，检查 maxTurns │
+│  ├─► stream_event：可选 yield，更新 usage/stopReason   │
+│  └─► tool_use_summary：直接 yield                        │
+└────────────────────────┬────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────┐
+│  完成或失败                                             │
+│  ├─► 成功：yield result (success)                      │
+│  ├─► 失败：yield result (error_during_execution /       │
+│  │          error_max_turns / error_max_budget / ...)    │
+│  └─► 条件 flush：CLAUDE_CODE_EAGER_FLUSH / COWORK 模式   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**关键失败分支与恢复路径**：
+- `prompt_too_long`：withhold，尝试 context collapse drain → reactive compact → 失败后 yield
+- `max_output_tokens`：withhold，尝试 escalation → multi-turn recovery（最多3次）→ 失败后 yield
+- `media_size_error`：withhold，尝试 reactive compact → 失败后 yield
+- `FallbackTriggeredError`：tombstone 已输出消息，切换 fallback model，重试
+- `abort`：生成 synthetic tool_result，yield interruption 消息（可选）
+- 工具错误：作为 tool_result 返回给模型，由模型决定下一步
+
+### 4.13 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| `QueryEngine` 实例 | 调用方（SDK/CLI） | `new QueryEngine(config)`，初始化跨轮次状态 | 实例间完全隔离，无共享 | 不持久化（仅内存） | 实例丢弃后 GC，或 `abortController.abort()` | `interrupt()` 调用 `abortController.abort()`，中断进行中的模型/工具执行 |
+| `mutableMessages` (Message[]) | `QueryEngine` | 初始从 `config.initialMessages` 复制，每次 `submitMessage()` 追加 | 实例隔离 | 可选持久化（transcript） | compact_boundary 时裁剪前序消息 | 无（仅内存数组） |
+| `readFileCache` (FileStateCache) | `QueryEngine` | 初始从 `config.readFileCache` 克隆，或空，从历史消息重建 | 实例隔离 | 不持久化（仅内存） | 无明确重置，仅自然替换 | 无（LRU 大小限制自动淘汰） |
+| `query()` 内部 `State` | `query()` 函数闭包 | 每次 `query()` 调用创建新的 State 对象 | 单次 query 调用隔离 | 不持久化 | query 调用结束后 GC | 无（仅内存对象） |
+| `taskBudgetRemaining` | `queryLoop()` 闭包 | 初始 undefined，仅在 taskBudget 存在且 compact 发生时设置 | 单次 query 调用隔离，跨 compact 保留 | 不持久化 | query 调用结束后 GC | 无（仅内存变量） |
+| `StreamingToolExecutor` | `query()` | 仅当 `config.gates.streamingToolExecution` 启用时创建 | 单次 query 调用隔离 | 不持久化 | `discard()` 时失效，或 query 结束后 GC | `abort` 时 `getRemainingResults()` 生成 synthetic tool_result |
+| `AbortController` | `QueryEngine` 或调用方注入 | `QueryEngine` 构造时创建，或从 `config.abortController` 注入 | 实例隔离 | 不持久化 | `abort()` 调用后不可重用 | `abort()` 触发模型/工具执行中断，`queryLoop` 检测 `signal.aborted` |
+| `Error` (watermark) | `QueryEngine.submitMessage()` | 调用 `query()` 前捕获 `getInMemoryErrors().at(-1)` | 单次 submitMessage 隔离 | 不持久化 | submitMessage 结束后失效 | 无（仅引用比较） |
+
+生命周期证据：
+- `src/QueryEngine.ts` 的构造函数：每个实例创建独立的 `mutableMessages`、`readFileCache`、`abortController`
+- `src/query.ts` 的 `query()` 函数：每次调用创建新的 `State` 对象，无模块级可变状态
+- `src/query.ts` 的 `queryLoop()` 闭包：`taskBudgetRemaining` 在闭包中，不放入 `State`
+- `src/utils/sdkQuery.ts` 的 lease 机制：进程级全局 `activePersistenceLease`，引用计数协调多个 query
+
 ## 5. 失败语义与工程取舍
 
 ### 5.1 Abort 语义

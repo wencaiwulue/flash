@@ -517,6 +517,347 @@ const PermissionsSchema = z.object({
 - **Query Core**：query 读取 settings 但不写入；本文只描述读取接口，query-core spec 主拥有使用方式
 - **Settings Sync**：属于本文范围，描述上传和下载逻辑
 
+---
+
+### 4.12 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          Claude Code Settings System                         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │                     External Configuration Sources                      │ │
+│  │  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────────┐ │ │
+│  │  │ Policy Settings  │  │ Flag Settings    │  │ Environment Variables│ │ │
+│  │  │ (Highest Prio)   │  │ (--settings)     │  │ (not primary source) │ │ │
+│  │  │  • Remote:       │  │                  │  └──────────────────────┘ │ │
+│  │  │    SkillHub      │  └──────────────────┘                           │ │
+│  │  │  • MDM:          │                                                  │ │
+│  │  │    macOS Config  │  ┌──────────────────────────────────────────┐   │ │
+│  │  │    Windows Reg   │  │ Local Settings (cwd/.claude/settings.   │   │ │
+│  │  │  • File:         │  │ local.json) - gitignored, overrides     │   │ │
+│  │  │    managed-      │  │ project                                │   │ │
+│  │  │    settings.json │  └──────────────────────────────────────────┘   │ │
+│  │  │  • Drop-in:      │                                                  │ │
+│  │  │    managed-      │  ┌──────────────────────────────────────────┐   │ │
+│  │  │    settings.d/*.│  │ Project Settings (cwd/.claude/settings.  │   │ │
+│  │  │    json          │  │ json) - checked into git                │   │ │
+│  │  └──────────────────┘  └──────────────────────────────────────────┘   │ │
+│  │                                                                         │ │
+│  │                           ┌──────────────────────────────────────────┐ │ │
+│  │                           │ User Settings (~/.claude/settings.json) │ │ │
+│  │                           │ (Lowest priority except plugin/base)    │ │ │
+│  │                           └──────────────────────────────────────────┘ │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                                       │                                       │
+│                                       ▼                                       │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │                  Settings Core Layer (src/utils/settings/)              │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │  Constants (constants.ts)                                         │ │ │
+│  │  │  • SETTING_SOURCES priority order                                │ │ │
+│  │  │  • SettingSource enum                                            │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │  Settings (settings.ts)                                           │ │ │
+│  │  │  • getSettingsWithErrors() - main read entry                     │ │ │
+│  │  │  • getInitialSettings() - convenience wrapper                    │ │ │
+│  │  │  • updateSettingsForSource() - write entry                       │ │ │
+│  │  │  • settingsMergeCustomizer - deep merge + concat arrays         │ │ │
+│  │  │  • parseSettingsFile() - Zod validation + fail-open             │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │  Types & Validation (types.ts, validation.ts,                    │ │ │
+│  │  │                      permissionValidation.ts)                    │ │ │
+│  │  │  • SettingsSchema (Zod)                                          │ │ │
+│  │  │  • filterInvalidPermissionRules() - pre-filter                  │ │ │
+│  │  │  • formatZodError() - user-friendly messages                    │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │  Cache (settingsCache.ts)                                        │ │ │
+│  │  │  • sessionSettings - module-level cache                         │ │ │
+│  │  │  • parsedFiles cache                                             │ │ │
+│  │  │  • resetSettingsCache() - invalidate all                        │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │  Change Detector (changeDetector.ts)                             │ │ │
+│  │  │  • chokidar file watcher (or polling on Bun)                    │ │ │
+│  │  │  • 300ms debounce + 1000ms awaitWriteFinish                      │ │ │
+│  │  │  • 6.5s delete-rebuild window                                   │ │ │
+│  │  │  • internalWrite tracking (5s window)                           │ │ │
+│  │  │  • ConfigChange hook support                                    │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │  Internal Writes (internalWrites.ts)                             │ │ │
+│  │  │  • markInternalWrite() - track self-writes                      │ │ │
+│  │  │  • consumeInternalWrite() - check within window                 │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                                       │                                       │
+│                                       ▼                                       │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │                    Remote Services Layer                                │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │  Remote Managed Settings (src/services/remoteManagedSettings/)   │ │ │
+│  │  │  • loadRemoteManagedSettings() - SHA-256 checksum cache         │ │ │
+│  │  │  • refreshRemoteManagedSettings() - 1hr polling                 │ │ │
+│  │  │  • checkManagedSettingsSecurity() - user confirm risky changes  │ │ │
+│  │  │  • Local cache: ~/.claude/remote-settings.json                  │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │  Policy Limits (src/services/policyLimits/)                      │ │ │
+│  │  │  • loadPolicyLimits() - fetch from server                       │ │ │
+│  │  │  • isPolicyAllowed() - fail-open (default true)                │ │ │
+│  │  │  • Local cache: ~/.claude/policy-limits.json                    │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │  Settings Sync (src/services/settingsSync/)                      │ │ │
+│  │  │  • uploadUserSettingsInBackground() - async upload              │ │ │
+│  │  │  • downloadUserSettings() - startup download                    │ │ │
+│  │  │  • 500KB file size limit per file                               │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                                       │                                       │
+│                                       ▼                                       │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │                    Global Config (Separate Domain!)                     │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │  ~/.claude.json                                                  │ │ │
+│  │  │  • Auth credentials (NEVER in settings!)                        │ │ │
+│  │  │  • User ID, session state                                       │ │ │
+│  │  │  • Migrations: autoUpdates, bypassPermissionsAccepted moved to   │ │ │
+│  │  │    settings but kept for compatibility                          │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 4.13 关键流程与失败路径
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                   Settings Initialization & Read Flow                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Startup
+   │
+   ├─→ initializePolicyLimitsLoadingPromise()
+   │
+   ├─→ loadRemoteManagedSettings() [eligible users only]
+   │     │
+   │     ├─→ Check eligibility (Console API key = yes; OAuth = Team/Enterprise only)
+   │     │
+   │     ├─→ Read local cache (~/.claude/remote-settings.json) if exists
+   │     │
+   │     ├─→ Fetch from server with SHA-256 checksum in If-None-Match
+   │     │     │
+   │     │     ├─→ 304 Not Modified → Use cache
+   │     │     ├─→ 200 OK → Validate schema → Security check dangerous changes
+   │     │     │     │
+   │     │     │     ├─→ USER CONFIRMS → Apply new settings, save to cache
+   │     │     │     └─→ USER REJECTS → Keep old cache
+   │     │     │
+   │     │     └─→ FETCH FAILED (5 retries exponential backoff) → Use cache if exists
+   │     │
+   │     └─→ notifyChange('policySettings') if changed
+   │
+   ├─→ loadPolicyLimits() [similar flow to remote managed settings]
+   │
+   └─→ settingsChangeDetector.initialize()
+         │
+         ├─→ Collect watch targets (~/.claude, cwd/.claude, additional dirs)
+         ├─→ Start chokidar (Bun: usePolling=true, 2s interval)
+         ├─→ Configure awaitWriteFinish: 1000ms, 500ms poll
+         └─→ Start MDM poll timer (30 minutes)
+         │
+First call to getInitialSettings() → getSettingsWithErrors()
+   │
+   ├─→ Check sessionSettings cache → HIT? Return immediately
+   │
+   ├─→ MISS: Load sources in priority order (LOW to HIGH):
+   │     │
+   │     ├─→ Plugin Settings (base layer, whitelist only)
+   │     │
+   │     ├─→ User Settings (~/.claude/settings.json)
+   │     │     ├─→ parseSettingsFile()
+   │     │     │     ├─→ filterInvalidPermissionRules() - remove bad rules, warn
+   │     │     │     └─→ SettingsSchema.safeParse()
+   │     │     │           │
+   │     │     │           ├─→ VALID → Use settings
+   │     │     │           └─→ INVALID → Skip source, keep original file, log errors
+   │     │
+   │     ├─→ Project Settings (cwd/.claude/settings.json) [same parsing flow]
+   │     │
+   │     ├─→ Local Settings (cwd/.claude/settings.local.json) [same parsing flow]
+   │     │
+   │     ├─→ Flag Settings (--settings) [same parsing flow]
+   │     │
+   │     └─→ Policy Settings (HIGHEST PRIORITY):
+   │           ├─→ Try Remote first
+   │           ├─→ Then MDM
+   │           ├─→ Then File (managed-settings.json + managed-settings.d/*.json sorted)
+   │           ├─→ Then HKCU (Windows)
+   │           └─→ Take FIRST NON-EMPTY, NO MERGE
+   │
+   ├─→ Merge all loaded sources:
+   │     │
+   │     ├─→ Objects: deep merge with settingsMergeCustomizer
+   │     │     └─→ srcValue === undefined → DELETE key from target
+   │     │
+   │     └─→ Arrays: concat + dedupe (uniq([...target, ...source]))
+   │           NOTE: Cannot delete individual array items from lower sources
+   │
+   ├─→ Collect all validation errors from all sources
+   │
+   ├─→ Cache result in sessionSettings
+   │
+   └─→ Return { settings: mergedSettings, errors: validationErrors }
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                   Settings Change Detection & Notification                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+External Editor: Modifies project/settings.json
+   │
+   ▼
+chokidar detects 'change' or 'add' event
+   │
+   ▼
+Check: consumeInternalWrite(path, 5000)?
+   │
+   ├─→ YES (we wrote this ourselves in last 5s) → IGNORE
+   │
+   └─→ NO (external change) → Continue
+         │
+         ▼
+   Add path to pendingChangedPaths set
+         │
+         ▼
+   Start/Restart 300ms debounce timer
+         │
+         ▼
+   After 300ms quiet: Process all pending paths
+         │
+         ▼
+   executeConfigChangeHooks(source)
+         │
+         ├─→ Hook returns exit code 2 → BLOCK CHANGE, STOP
+         │
+         └─→ Hooks pass → Continue
+               │
+               ▼
+         fanOut(source)
+               │
+               ├─→ resetSettingsCache() - clear all caches
+               └─→ settingsChanged.emit(source) - notify subscribers
+               │
+               ▼
+         Subscribers re-read getInitialSettings()
+
+
+Special: Delete-rebuild pattern (vim, etc.)
+   │
+   ├─→ 'unlink' event detected
+   │     │
+   │     ├─→ Start 6.5s timer
+   │     │
+   │     └─→ If 'add'/'change' arrives within window → CANCEL timer, treat as change
+   │
+   └─→ Timer expires → Treat as real delete, notify subscribers
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                   Settings Write Flow (updateSettingsForSource)             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Call: updateSettingsForSource(EditableSettingSource, newSettings)
+   │
+   ├─→ Editable sources: userSettings, projectSettings, localSettings
+   │     (NOT policySettings or flagSettings)
+   │
+   ├─→ Read current source settings (bypass cache)
+   │
+   ├─→ Merge new settings into current
+   │
+   ├─→ markInternalWrite(filePath) - prevent self-trigger
+   │
+   ├─→ Write to disk
+   │     │
+   │     ├─→ localSettings: Auto-add to .gitignore if needed
+   │     │
+   │     └─→ FAILURE → Return { error: Error }, cache NOT updated
+   │
+   ├─→ resetSettingsCache() - invalidate
+   │
+   └─→ Return { error: null }
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                   Settings Sync Flow (Upload/Download)                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Upload (interactive CLI only):
+   uploadUserSettingsInBackground()
+   │
+   ├─→ Check eligibility (OAuth only, interactive, feature flag)
+   │
+   ├─→ Build entries: userSettings, userMemory, project localSettings, project localMemory
+   │
+   ├─→ Check file sizes (max 500KB each)
+   │
+   ├─→ Fetch remote version to compare
+   │
+   ├─→ Upload only changed items
+   │
+   └─→ Fail open: errors logged silently, no user impact
+
+
+Download (CCR mode startup):
+   downloadUserSettings()
+   │
+   ├─→ Check eligibility (OAuth only)
+   │
+   ├─→ Fetch with retries
+   │
+   ├─→ For each entry:
+   │     │
+   │     ├─→ markInternalWrite(filePath)
+   │     ├─→ Write to disk
+   │     └─→ clearMemoryFileCaches() / resetSettingsCache()
+   │
+   └─→ Return true if settings applied, false otherwise
+```
+
+### 4.14 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| sessionSettings缓存 | settingsCache.ts | 首次getSettingsWithErrors()时创建 | 进程级共享（单例） | 不持久化 | resetSettingsCache()或变更检测时清空 | 模块卸载时隐式清理 |
+| parsedFiles缓存 | settingsCache.ts | 首次解析文件时缓存，键为文件路径 | 进程级共享 | 不持久化 | resetSettingsCache()清空 | 无特殊清理 |
+| chokidar监听器 | changeDetector.ts | initialize()时创建，监听多个目录 | 进程级单例 | 不持久化 | dispose()关闭，MDM定时器清理 | dispose()完整清理 |
+| internalWrite标记 | internalWrites.ts | markInternalWrite(path)时添加到Map，带时间戳 | 进程级共享 | 不持久化 | 5秒后自动失效被忽略，或clearInternalWrites() | 无特殊清理（时间窗口处理） |
+| pendingDeletion定时器 | changeDetector.ts | 'unlink'事件时创建，6.5秒后触发 | 每个删除路径一个 | 不持久化 | 收到'add'/'change'取消定时器，或超时后自然清理 | clearTimeout取消 |
+| MDM轮询定时器 | changeDetector.ts | initialize()启动，30分钟间隔 | 进程级单例 | 不持久化 | dispose()清理，或每次轮询重置 | dispose()清理 |
+| 远程设置session缓存 | remoteManagedSettings/index.ts | loadRemoteManagedSettings()时设置 | 进程级共享 | 不持久化 | clearRemoteManagedSettingsCache()清空 | 无特殊清理 |
+| 远程设置文件缓存 | ~/.claude/remote-settings.json | 首次成功加载后写入 | 用户级共享 | 持久化，SHA-256校验 | checksum变化时覆盖，或手动删除 | 无特殊清理 |
+| policyLimits缓存 | policyLimits/index.ts | loadPolicyLimits()时设置 | 进程级共享 | 不持久化 | clearPolicyLimitsCache()清空 | 无特殊清理 |
+| policyLimits文件缓存 | ~/.claude/policy-limits.json | 首次成功加载后写入 | 用户级共享 | 持久化 | 新数据到达时覆盖 | 无特殊清理 |
+| settings.json文件 | settings.ts | updateSettingsForSource()写入，或用户手动创建 | 按来源隔离（user/project/local） | 持久化，用户管理 | 用户删除或修改 | 写入失败不修改 |
+| Global Config ~/.claude.json | config.ts | 独立管理，与settings分离 | 用户级单例 | 持久化，存储auth凭据等 | 从不自动删除 | 迁移时仅删除旧字段 |
+| ConfigChange hook | hooks系统 | 外部注册，settings变更时触发 | 全局注册 | 不持久化 | 注销时移除 | 无特殊清理 |
+
+**生命周期证据：**
+- 缓存机制：`src/utils/settings/settingsCache.ts`
+- 变更检测：`src/utils/settings/changeDetector.ts:66-490`
+- internalWrite：`src/utils/settings/internalWrites.ts`
+- 远程缓存：`src/services/remoteManagedSettings/index.ts:93-136`
+- 合并策略：`src/utils/settings/settings.ts:482-547`
+
+---
+
 ## 5. 失败语义与工程取舍
 
 | 触发条件 | 检测位置 | 消息/异常如何传播 | 是否重试及上限 | 状态与资源清理 | 调用方可见结果 |

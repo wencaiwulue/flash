@@ -15,9 +15,20 @@ status: draft
 当对话历史增长超过模型上下文窗口的90%时，用户会遇到`prompt too long`错误，导致对话无法继续；当历史更长时，即使压缩本身也会因prompt过长而失败。同时，工具结果（尤其是shell输出、grep结果、文件内容）会占用大量token，而大部分历史对话的完整细节在后续轮次中不再需要。
 
 ### 调用方与职责边界
-- **上游**: query.ts的主循环、QueryEngine.submitMessage()
+- **上游**: query.ts的主循环、QueryEngine.submitMessage()（见query-core spec）
 - **本层**: 7种压缩机制的协调与执行
-- **下游**: Claude API（用于生成摘要）、sessionStorage（用于持久化）
+- **下游**: Claude API（用于生成摘要，见model-api spec）、sessionStorage（用于持久化，见session-persistence spec）
+
+### Context投影层次区分
+| 层次 | 描述 | 包含内容 | 拥有者 |
+|------|------|----------|--------|
+| **模型可见投影** | 实际发送到Claude API的messages | 已压缩历史、projected collapses、microcompact结果 | `compact.ts`/`contextCollapse/operations.ts` |
+| **UI transcript** | 用户在界面看到的对话 | 完整历史（含tombstones/progress/compact boundaries） | `query.ts`/`QueryEngine` |
+| **SDK输出** | 通过SDK生成器yield给消费者的内容 | 过滤tombstones，包含compact_boundary | `QueryEngine.ts` yield处理 |
+| **磁盘历史** | session storage持久化的JSONL | 完整parentUuid链、compact boundaries、collapses | `sessionStorage.ts` |
+
+### Progress消息UI桥接
+Progress消息存在于mutableMessages中用于UI，但不在transcript链中持久化。恢复时通过`sessionStoragePortable.ts`中的progress bridge机制处理，避免链分叉。详见session-persistence spec。
 
 ### 约束条件
 - 7种压缩机制有明确的优先级：microcompact → snip → context collapse → autocompact → reactive compact → session memory compact → manual compact
@@ -38,12 +49,32 @@ status: draft
   - `DISABLE_AUTO_COMPACT` (仅禁用autocompact)
 - **用户配置**: `autoCompactEnabled` (全局配置)
 
+### Cache Edits API层消费
+Cached microcompact的pending cache edits不在query.ts循环中应用，而是在API层(`claude.ts`)通过`consumePendingCacheEdits()`消费。该函数在API请求构建前调用，将cache edits附加到请求中，避免修改原始消息数组。
+
+- **证据**: `microCompact.ts:92-98`、`claude.ts`（见model-api spec）
+- **职责边界**: 本层仅设置pendingCacheEdits，API层负责消费，query-core负责协调时机
+
+### Compact Boundary Yield前持久化
+Compact boundary在yield到SDK前必须先持久化到session storage，确保resume时preserved segment relink能找到tailUuid。QueryEngine在yield前会flush到tailUuid的消息。
+
+- **证据**: `QueryEngine.ts:701-715`
+- **验证边界**: 若SDK subprocess在flush前重启，tailUuid指向未写入消息，`applyPreservedSegmentRelinks`失败，回退到加载完整pre-compact历史
+- **相关spec**: session-persistence spec
+
+### Forked Agent maxOutputTokens与Prompt Cache
+Forked agent（如context collapse的marble_origami、extract memories等）若修改maxOutputTokens，会改变thinking配置并破坏prompt cache共享。代码中有显式警告注释。
+
+- **证据**: `forkedAgent.ts:96-102`（见agent-swarms spec）
+- **设计取舍**: 暂不支持forked agent动态调整maxOutputTokens以保持cache命中
+
+
 ## 2. 设计理由与备选方案
 
 | 决策 | 实际机制 | 为什么采用 | 备选方案及不采用原因 | 代价 | 证据 |
 |---|---|---|---|---|---|
 | 7种压缩机制分层，而非单一方案 | microcompact清理工具结果 → context collapse后台渐变 → autocompact完整摘要 → reactive compact错误恢复 | 不同场景适用不同策略：microcompact零延迟、context collapse低干扰、autocompact最彻底 | 单一完整压缩：延迟太高，频繁打断用户；单一裁剪：丢失太多上下文 | 实现复杂度高，状态管理分散 | src/services/compact/ 下7个模块；src/services/contextCollapse/ 下4个模块 |
-| context collapse使用非阻塞spawn + staging + 溢出commit | token>90%时后台spawn summarizer；完成后staged；仅当真正溢出时才commit并project | 避免在正常对话路径上插入延迟；staged状态不影响当前投影；仅在紧急时才真正变更历史 | 阻塞式summarize：用户可见延迟高；立即commit：用户可能注意到历史突然变化 | 状态机复杂：spawned/staged/committed多状态；generation计数器防过期 | src/services/contextCollapse/index.ts:228-317 (applyCollapsesIfNeeded), 187-226 (commitStaged) |
+| context collapse使用非阻塞spawn + staging + 溢出commit | token>90%时后台spawn summarizer；完成后staged；仅当真正溢出时才commit并project | 避免在正常对话路径上插入延迟；staged状态不影响当前投影；仅在紧急时才真正变更历史 | 阻塞式summarize：用户可见延迟高；立即commit：用户可能注意到历史突然变化 | 状态机复杂：spawned/staged/committed多状态；generation计数器防过期；**模块级全局状态有跨会话污染风险**（见下文） | src/services/contextCollapse/index.ts:228-317 (applyCollapsesIfNeeded), 187-226 (commitStaged) |
 | reactive compact使用strip-images + PTL重试循环 | 先strip images/documents替换为[image]/[document]；若仍PTL，truncate最旧API-round groups | 图片/doc占用大量token，通常压缩摘要不需要；PTL重试是最后逃生门 | 直接压缩：图片可能导致压缩本身PTL | 有损：图片/doc永久丢失；压缩仍可能失败（MAX_PTL_RETRIES=3次） | src/services/compact/compact.ts:145-209 (stripImagesFromMessages), 243-291 (truncateHeadForPTLRetry), 457-498 (PTL重试循环) |
 | compact boundary后数组裁剪+GC | QueryEngine收到compact boundary时，裁剪mutableMessages和局部messages数组，仅保留边界后的内容 | 避免压缩后历史仍在内存中累积，防止长期运行会话OOM | 保留完整历史：内存无限增长，长会话变慢 | 需要正确维护preserved segment的parent UUID链；重放时需从session storage重建 | src/QueryEngine.ts (compact boundary处理分支，见query-core spec) |
 | autocompact circuit breaker防止死循环 | consecutiveFailures计数，达到MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES(=3)时停止尝试 | 避免在上下文 irrecoverably over limit时，每轮都尝试注定失败的压缩 | 无限制重试：浪费API调用，延迟每轮对话 | 用户可能不知道为什么autocompact停止工作；需手动触发 | src/services/compact/autoCompact.ts:260-265 (circuit breaker), 341-349 (failure计数) |
@@ -1029,6 +1060,230 @@ interface CompactMetadata {
 - **[Telemetry](2026-11-12-telemetry-design.md)**: `tengu_compact`/`tengu_cached_microcompact`/`tengu_time_based_microcompact`/`tengu_compact_ptl_retry`等事件
 - **cachedMCState 与 cache_edits API**: `notifyCompaction()`/`notifyCacheDeletion()`调用
 
+### 4.6 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        调用方 (query.ts)                                │
+│  ┌─────────────────────────────────────────────────────────────────────┐ │
+│  │  1. query() 前：microcompactMessages() (可选)                     │ │
+│  │  2. query() 中：applyCollapsesIfNeeded() (每轮开始)               │ │
+│  │  3. query() 中：autoCompactIfNeeded() (每轮结束)                 │ │
+│  │  4. withheld 时：tryReactiveCompact() / reactiveCompactOnPromptTooLong() │ │
+│  │  5. 用户触发：compactConversation() / partialCompactConversation() │ │
+│  └─────────────────────────────────────────────────────────────────────┘ │
+└────────────────────────────┬──────────────────────────────────────────────┘
+                             │
+         ┌───────────────────┼───────────────────┐
+         ▼                   ▼                   ▼
+┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐
+│ microcompact.ts  │ │ contextCollapse/ │ │  compact.ts     │
+│  (工具清理)      │ │  index.ts (后台) │ │  (完整压缩)     │
+└────────┬─────────┘ └────────┬─────────┘ └────────┬─────────┘
+         │                   │                   │
+         └───────────────────┼───────────────────┘
+                             │
+         ┌───────────────────┼───────────────────┐
+         ▼                   ▼                   ▼
+┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐
+│ autoCompact.ts   │ │ reactiveCompact.ts│ │  (其他模块)     │
+└──────────────────┘ └──────────────────┘ └──────────────────┘
+                             │
+                             ▼
+                    ┌──────────────────┐
+                    │  Claude API     │
+                    │  (生成摘要)     │
+                    └──────────────────┘
+                             │
+                             ▼
+                    ┌──────────────────┐
+                    │  sessionStorage │
+                    │  (持久化 collapse/ │
+                    │   snapshot)       │
+                    └──────────────────┘
+
+────────────────────────────────────────────────────────────────────────────
+
+模块级状态持有者（非传入状态）：
+├─ contextCollapse/store.ts: collapseStore (模块级全局，包含 committed/staged/health/...)
+├─ contextCollapse/index.ts: generation (模块级计数器), activeSpawn (模块级 Promise)
+├─ microcompact.ts: cachedMCState (模块级), pendingCacheEdits (模块级单次请求)
+└─ autoCompact.ts: 无模块级状态（consecutiveFailures 由调用方通过 tracking 传入）
+
+────────────────────────────────────────────────────────────────────────────
+
+主要数据流向：
+1. microcompactMessages(messages) → (修改 messages 内容) 或 (设置 pendingCacheEdits)
+2. applyCollapsesIfNeeded(messages, ...) → (可能启动 spawn) → 返回 projectView(messages)
+3. autoCompactIfNeeded(messages, ...) → (可能调用 compactConversation) → 返回 {wasCompacted, compactionResult}
+4. tryReactiveCompact(attempt) → (调用 compactConversation) → 返回 outcome
+5. compactConversation(messages, ...) → 调用 Claude API → 返回 CompactionResult
+```
+
+边界说明：
+- **contextCollapse 状态是模块级全局**：多会话/多 agent 环境下可能污染，需 generation 防过期
+- **cached MC 仅主线程可用**：非主线程调用被禁用，避免污染
+- **pendingCacheEdits 是单次请求临时状态**：API 层消费后清空
+- **压缩不修改原始消息数组的所有权**：仅修改内容或返回新数组
+- **compact boundary 由 QueryEngine 处理数组裁剪**：compaction 模块仅生成 boundary marker
+
+### 4.7 关键流程与失败路径
+
+```text
+整体压缩策略优先级：microcompact → context collapse → autocompact → reactive compact
+
+────────────────────────────────────────────────────────────────────────────
+microcompactMessages() 流程（每轮 query 前调用）
+┌─────────────────────────────────────────────────────────────────────┐
+│  检查是否已执行过 → 是则跳过 ✅                                   │
+│  → clearCompactWarningSuppression()                                  │
+│  → 先尝试 time-based MC：evaluateTimeBasedTrigger()                │
+│     ├─ gap 超过阈值 → collectCompactableToolIds() → 保留最近 N 个 │
+│     │  → 直接修改其余 message.content 为 "[Old tool result content cleared]" │
+│     │  → log tengu_time_based_microcompact → resetMicrocompactState() (缓存失效) │
+│     │  → notifyCacheDeletion() → 返回 {messages} ✅               │
+│     └─ gap 未超过阈值 → 继续尝试 cached MC                        │
+│  → cached MC：检查 feature(CACHED_MICROCOMPACT) && 配置 enabled && 模型支持 && 主 thread │
+│     ├─ 是 → collectCompactableToolIds() → registerToolResult/registerToolMessage │
+│     │  → getToolResultsToDelete() → 创建 pendingCacheEdits → log tengu_cached_microcompact │
+│     │  → suppressCompactWarning() → notifyCacheDeletion() → 返回 {messages, compactionInfo} ✅ │
+│     └─ 否 → 返回 {messages} 未压缩 ✅                              │
+└─────────────────────────────────────────────────────────────────────┘
+
+────────────────────────────────────────────────────────────────────────────
+applyCollapsesIfNeeded() 流程（每轮 query 开始调用）
+┌─────────────────────────────────────────────────────────────────────┐
+│  检查 isContextCollapseEnabled() && querySource 不在禁用列表（marble_origami/compact/...） │
+│  → 否 → 直接返回 {messages} ✅                                    │
+│  → 是 → projectView(messages) 应用已 committed collapses          │
+│  → 计算 token ratio = tokens / effectiveContextWindow              │
+│  → 决策分支：                                                         │
+│     ├─ ratio < 0.9 → 返回 {messages} ✅                            │
+│     ├─ ratio >= 0.9 但 lastSpawnTokens 后增长 < 5k → 返回 {messages} ✅ │
+│     ├─ ratio >= 0.95 且有 activeSpawn → await activeSpawn → projectView() 返回 ✅ │
+│     ├─ ratio >= 0.9 且无 activeSpawn → selectCollapseSpan() → startSpawn() │
+│     │  └─ ratio >= 0.95 → await spawn → projectView() 返回 ✅      │
+│     │  └─ ratio < 0.95 → 立即返回 projectView(messages) ✅        │
+│     └─ (其他情况) → 返回 projectView(messages) ✅                  │
+│                                                                      │
+│  startSpawn() 内部：                                                 │
+│  ├─ increment generation → set armed=true                          │
+│  ├─ 异步调用 summarize() (默认 runForkedAgent(marble_origami))   │
+│  ├─ finally 中检查 currentGeneration === generation → 不同则静默丢弃结果 ❌ │
+│  ├─ summary 为空 → 记录 health.totalEmptySpawns/lastError → 不 commit → 丢弃结果 ❌ │
+│  └─ summary 有效 → commitStaged() → recordCommit() 持久化 → persistSnapshot() → notify listeners ✅ │
+└─────────────────────────────────────────────────────────────────────┘
+
+────────────────────────────────────────────────────────────────────────────
+autoCompactIfNeeded() 流程（每轮 query 结束调用）
+┌─────────────────────────────────────────────────────────────────────┐
+│  shouldAutoCompact() 判断：                                          │
+│  ├─ 检查 DISABLE_COMPACT/DISABLE_AUTO_COMPACT → 是则返回 false ❌  │
+│  ├─ 检查 querySource 过滤（session_memory/compact/marble_origami）→ 是则返回 false ❌ │
+│  ├─ 检查 tengu_cobalt_raccoon (reactive-only) → 是则返回 false ❌  │
+│  ├─ 检查 context collapse 启用 → 是则返回 false ❌                 │
+│  ├─ 计算 token count - snipTokensFreed                             │
+│  └─ 对比阈值（effectiveContextWindow - AUTOCOMPACT_BUFFER_TOKENS） → 返回 boolean │
+│                                                                      │
+│  → shouldAutoCompact() 返回 false → 返回 {wasCompacted: false} ✅  │
+│  → 否则：                                                           │
+│     ├─ 检查 circuit breaker（consecutiveFailures >= 3）→ 是则静默跳过，返回 {wasCompacted: false} ❌ │
+│     ├─ 先尝试 session memory compact（实验性）→ 成功则直接返回 ✅ │
+│     ├─ 调用 compactConversation(..., isAutoCompact=true, ...)     │
+│     ├─ 成功 → reset consecutiveFailures=0 → 执行 post-compact cleanup ✅ │
+│     └─ 失败 → increment consecutiveFailures → 仅记录 log → 返回 {wasCompacted: false} ❌ │
+└─────────────────────────────────────────────────────────────────────┘
+
+────────────────────────────────────────────────────────────────────────────
+tryReactiveCompact() / reactiveCompactOnPromptTooLong() 流程（withheld PTL 时）
+┌─────────────────────────────────────────────────────────────────────┐
+│  tryReactiveCompact(attempt):                                        │
+│  ├─ 检查 attempt.hasAttempted → 是则返回 null ❌                    │
+│  ├─ 检查 attempt.aborted → 是则返回 null ❌                        │
+│  ├─ 检查 querySource 过滤 → 是则返回 null ❌                        │
+│  ├─ 执行 preCompact hooks → dependencies.onSuccess() 注册 (成功后调用) │
+│  ├─ 调用 reactiveCompactOnPromptTooLong()                         │
+│  ├─ 成功 → dependencies.onSuccess() 调用 → setLastSummarizedMessageId() → runPostCompactCleanup() → suppressCompactWarning() ✅ │
+│  ├─ 合并 hook userDisplayMessage → 返回 outcome ✅                  │
+│  └─ 失败 → 返回 outcome (reason 见下) ❌                            │
+│                                                                      │
+│  reactiveCompactOnPromptTooLong(messages, ...):                     │
+│  ├─ 检查 signal.aborted → 是则返回 {ok: false, reason: 'aborted'} ❌ │
+│  ├─ 检查 groupMessagesByApiRound(messages).length >= 2 → 否则返回 {ok: false, reason: 'too_few_groups'} ❌ │
+│  ├─ media size error → 检查 containsStrippableMedia() → 否则返回 {ok: false, reason: 'media_unstrippable'} ❌ │
+│  ├─ stripImagesFromMessages() (user 消息中的 image 替换为 "[image]") │
+│  ├─ 调用 compactConversation(..., skipPreCompactHooks=true)        │
+│  ├─ 捕获 PTL 错误 → 返回 {ok: false, reason: 'exhausted'} ❌         │
+│  ├─ 捕获其他错误 → 返回 {ok: false, reason: 'error'} ❌              │
+│  └─ 成功 → 返回 {ok: true, result} ✅                              │
+└─────────────────────────────────────────────────────────────────────┘
+
+────────────────────────────────────────────────────────────────────────────
+compactConversation() 内部核心流程
+┌─────────────────────────────────────────────────────────────────────┐
+│  (非 skipPreCompactHooks 时) 执行 preCompact hooks                │
+│  → stripImagesFromMessages() / stripReinjectedAttachments()        │
+│  → streamCompactSummary(): 优先尝试 cached prefix 共享 (runForkedAgent) → 失败则 fallback 到直接 streaming │
+│  └─ PTL 时 truncateHeadForPTLRetry() → 最多 3 次 (MAX_PTL_RETRIES) │
+│  → 清空 readFileState / loadedNestedMemoryPaths                    │
+│  → 并行重建附件：最近文件、plan、invoked skills、工具 delta、agent 状态（受预算限制） │
+│  → 执行 sessionStart hooks                                         │
+│  → 标记 post-compaction (notifyCompaction/markPostCompaction)     │
+│  → 写入 KAIROS transcript segment (如果启用)                        │
+│  → 执行 postCompact hooks                                          │
+│  → 返回 CompactionResult ✅                                        │
+│                                                                      │
+│  失败路径：                                                         │
+│  ├─ 用户 abort → 检查 signal.aborted → 抛出 APIUserAbortError ❌   │
+│  ├─ 压缩 API PTL → truncateHeadForPTLRetry() → 最多 3 次 → 超过则抛出 ERROR_MESSAGE_PROMPT_TOO_LONG ❌ │
+│  ├─ 压缩 API 其他错误 → 直接抛出 → 若启用 tengu_compact_streaming_retry 则最多 2 次 ❌ │
+│  └─ (其他错误) → 直接抛出 ❌                                        │
+└─────────────────────────────────────────────────────────────────────┘
+
+────────────────────────────────────────────────────────────────────────────
+recoverFromOverflow() 流程（真正 PTL 时）
+┌─────────────────────────────────────────────────────────────────────┐
+│  检查 isContextCollapseEnabled() && querySource 不在禁用列表        │
+│  → 否 → 返回 {messages, committed: 0} ✅                            │
+│  → 是 → 对所有 staged collapse 执行 commitStaged() (同步内存状态，异步持久化) │
+│  → 返回 {messages: projectView(messages), committed: N} ✅          │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+禁用路径总结：
+| 禁用机制 | 触发位置 | 行为 | 证据 |
+|---------|---------|------|------|
+| feature gates (构建时) | 各处 feature(CACHED_MICROCOMPACT)/feature(CONTEXT_COLLAPSE)/feature(REACTIVE_COMPACT) 检查 | 对应代码被 DCE，功能不可用 | 见 2.3 节 |
+| runtime gates | shouldAutoCompact()/isReactiveCompactEnabled()/isContextCollapseEnabled() | 功能被禁用，静默跳过 | 见 2.3 节 |
+| 环境变量 | DISABLE_COMPACT/DISABLE_AUTO_COMPACT/CLAUDE_CONTEXT_COLLAPSE/CLAUDE_REACTIVE_COMPACT | 对应功能被禁用 | 见 2.3 节 |
+| 用户配置 | autoCompactEnabled (全局配置) | autocompact 被禁用 | 见 2.3 节 |
+| querySource 过滤 | applyCollapsesIfNeeded()/shouldAutoCompact()/tryReactiveCompact() | 特定来源（marble_origami/compact/session_memory/...）禁用对应功能 | 见各模块设计卡 |
+| circuit breaker | autoCompactIfNeeded() 检查 consecutiveFailures >= 3 | 静默跳过 autocompact，直到成功重置计数 | 见 4.2.2 模块设计卡 |
+| cached MC 非主线程检查 | cachedMicrocompactPath() | 非主线程调用被禁用 | 见 4.2.2 模块设计卡 |
+
+### 4.8 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| `collapseStore` | contextCollapse/store.ts 模块级 | 模块加载时初始化：committed=[], staged=[], nextId=0, armed=false, health={totalSpawns:0, totalErrors:0, totalEmptySpawns:0, emptySpawnWarningEmitted:false} | 进程单例全局共享（多会话污染风险） | committed collapses 和 staged snapshot 持久化到 session storage (类型 'marble-origami-commit'/'marble-origami-snapshot') | `resetCollapseStore()` 重置内存状态；`restoreFromEntries(commits, snapshot)` 从持久化重建 | 无（无取消机制，generation 防止过期 spawn 提交） |
+| `generation` (计数器) | contextCollapse/index.ts 模块级 | 模块加载时初始化为 0 | 进程单例全局共享 | 不持久化 | `resetContextCollapse()` 中 increment | generation 检查防止过期 spawn 提交：spawn 前 increment，finally 中对比 currentGeneration === generation，不同则静默丢弃结果 |
+| `activeSpawn` (Promise) | contextCollapse/index.ts 模块级 | `startSpawn()` 时设置为 summarize() Promise，spawn 完成后 undefined | 进程单例全局共享 | 不持久化 | spawn 完成后自动失效；`resetContextCollapse()` 设置为 undefined | 无（无取消机制，仅 await 或不 await） |
+| `cachedMCState` | microcompact.ts 模块级 | 模块加载时初始化：toolOrder=[], toolMessageMap=Map(), deletedRefs=Set(), pinnedEdits=[] | 进程单例全局共享（非主线程禁用） | 不持久化 | `resetMicrocompactState()` 重置为空初始状态 | 无（无取消机制） |
+| `pendingCacheEdits` | microcompact.ts 模块级 | `microcompactMessages()` cached MC 路径中设置 | 进程单例全局共享（单次请求临时状态） | 不持久化 | API 层 `consumePendingCacheEdits()` 后清空；`resetMicrocompactState()` 清空 | 无（无取消机制） |
+| `consecutiveFailures` (circuit breaker) | 调用方 (query.ts) tracking 参数 | 每次 autocompact 失败递增，成功重置为 0 | 单次 query 调用隔离（由调用方 tracking 持有） | 不持久化 | autocompact 成功后重置为 0；无时间衰减重置 | 无（无取消机制，circuit breaker 仅静默跳过） |
+| `CompactionResult` (返回值) | compactConversation()/autoCompactIfNeeded() 等 | 压缩成功时创建 | 单次调用隔离 | 不持久化（仅返回给调用方） | 调用方处理后 GC | 无（无取消机制） |
+| `staged collapse` (在途) | collapseStore.staged | `startSpawn()` 完成后添加到 staged | 进程单例全局共享 | 持久化到 session storage (snapshot) | `commitStaged()` 移动到 committed；`resetCollapseStore()` 清空 | 无（无取消机制，generation 过期则不 commit） |
+| `committed collapse` | collapseStore.committed | `commitStaged()` 时创建，添加到 committed | 进程单例全局共享 | 持久化到 session storage (commit entries) | `resetCollapseStore()` 清空 | 无（无取消机制） |
+| `signal.aborted` (用户取消) | 调用方传入 | 调用方创建 AbortController，传入 signal | 单次调用隔离 | 不持久化 | 调用方 controller.abort() 设置 | 压缩函数检查 signal.aborted，抛出 APIUserAbortError；不计入 autocompact consecutiveFailures |
+
+生命周期证据：
+- `src/services/contextCollapse/store.ts`: `collapseStore` 模块级初始化，`resetCollapseStore()` 重置
+- `src/services/contextCollapse/index.ts`: `generation` 模块级变量，`resetContextCollapse()` increment，spawn finally 检查
+- `src/services/contextCollapse/persist.ts`: `restoreFromEntries(commits, snapshot)` 从持久化重建
+- `src/services/compact/microcompact.ts`: `cachedMCState` 模块级，`resetMicrocompactState()` 重置，`pendingCacheEdits` 模块级单次请求
+- `src/services/compact/autoCompact.ts`: `consecutiveFailures` 由调用方通过 tracking 参数传入，非模块级状态
+- `src/services/compact/reactiveCompact.ts`: 检查 signal.aborted，返回 reason='aborted'
+
 ## 5. 失败语义与工程取舍
 
 | 触发条件 | 检测位置 | 消息/异常如何传播 | 是否重试及上限 | 状态与资源清理 | 调用方可见结果 |
@@ -1114,9 +1369,11 @@ interface CompactMetadata {
 ### 证据边界
 - 所有测试均使用mock依赖（summarize/recordCommit/recordSnapshot/compact等），无真实API调用
 - 无长会话压力测试
-- 无并发/多agent测试
+- **无并发/多agent测试**：模块级全局状态（collapseStore、cachedMCState）在多会话环境下的污染风险未验证
 - 无持久化损坏恢复测试
 - 无端到端query.ts集成测试（仅单元测试）
+- **阈值硬编码**：90%/95% context collapse阈值、13,000 autocompact buffer均为硬编码，无配置选项（设计注意，非文档缺失）
+- **多会话状态风险**：collapseStore和cachedMCState为模块级全局，若多个会话同时使用可能互相污染（代码整改项，需重构到QueryEngine/SessionContext）
 
 ## 8. 文件覆盖与相关子系统
 

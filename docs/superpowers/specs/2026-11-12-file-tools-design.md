@@ -1139,6 +1139,140 @@ type GrepOutput = {
 | fileHistoryTrackEdit | 文件历史备份 | FileWrite/FileEdit/NotebookEdit.call | 文件历史 spec |
 | ripGrep | ripgrep 封装 | GrepTool.call | 本 spec |
 
+### 4.6 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           ToolUseContext                                    │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │ readFileState: Map<path, {content, timestamp, offset, limit}>        │  │
+│  │   • FileRead 写入（带 offset/limit，可去重）                          │  │
+│  │   • FileWrite/Edit 更新（offset=undefined，阻止去重）                 │  │
+│  └───────────────────────────────┬──────────────────────────────────────┘  │
+└───────────────────────────────────┼──────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           File Tools (本 spec)                              │
+│  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐  │
+│  │ FileReadTool │───│ FileWriteTool│───│ FileEditTool │───│GlobTool/Grep │  │
+│  └───────┬──────┘   └───────┬──────┘   └───────┬──────┘   └───────┬──────┘  │
+│          │                  │                  │                  │         │
+│          └──────────────────┼──────────────────┼──────────────────┘         │
+│                             │                  │                            │
+│                             ▼                  ▼                            │
+│  ┌──────────────────────────────────────────────────────────────────────┐ │
+│  │ Shared Helpers: utils/file.ts, utils/permissions/filesystem.ts      │ │
+│  └──────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      External Dependencies / Other Subsystems               │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐             │
+│  │ Permission Spec │  │ File History    │  │ Tool Framework  │             │
+│  │ (权限检查)      │  │ (备份/历史)     │  │ (buildTool等)   │             │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**边界说明：**
+- readFileState 在 ToolUseContext 中，跨工具共享，不持久化
+- 权限检查由 Permission spec 拥有，本 spec 仅描述调用边界
+- 文件历史备份由 File History spec 拥有
+- 工具框架由 Tool Framework spec 拥有
+
+### 4.7 关键流程与失败路径
+
+#### 完整读取-编辑-写入流程（主路径）
+```text
+模型调用 FileRead
+  │
+  ▼
+validateInput: 路径检查、权限检查、设备文件检查、UNC 路径跳过
+  │
+  ▼
+去重检查
+  ├─ 有缓存条目？
+  │  ├─ offset/limit 精确匹配？
+  │  ├─ mtime 完全一致？
+  │  └─ killswitch 未启用？
+  │     └─ 是 → 返回 file_unchanged
+  └─ 否 → 继续读取
+  │
+  ▼
+文件类型分支（按扩展名优先级）
+  ├─ .ipynb → Notebook 分支
+  ├─ 图片扩展名 → Image 分支（带 token 预算压缩）
+  ├─ .pdf → PDF 分支（页数阈值检查）
+  └─ 其他 → Text 分支
+  │
+  ▼
+读取文件内容，存入 readFileState（带 offset/limit）
+  │
+  ▼
+返回完整输出
+
+...（模型处理）...
+
+模型调用 FileEdit
+  │
+  ▼
+validateInput
+  ├─ 检查 readFileState 有该文件条目
+  ├─ 检查 mtime ≤ 缓存 mtime
+  │  └─ Windows：mtime > 但内容相同 → 允许继续
+  └─ 检查 old_string 存在（findActualString 引号规范化）
+  │
+  ▼
+mkdir 父目录、fileHistoryTrackEdit 备份（临界区外）
+  │
+  ▼
+临界区开始（无 async 操作）
+  ├─ readFileSyncWithMetadata（同步读）
+  ├─ 二次检查 mtime ≤ 缓存
+  ├─ findActualString + preserveQuoteStyle
+  ├─ getPatchForEdit 生成 patch
+  └─ writeTextContent（保持原文件换行符）
+  │
+  ▼
+LSP 通知：didChange + didSave
+  │
+  ▼
+更新 readFileState（offset=undefined, limit=undefined）
+  │
+  ▼
+返回输出
+```
+
+**关键失败分支与恢复路径：**
+- FileRead 去重检查失败：继续读取完整文件
+- mtime > 缓存（非 Windows）：validateInput 返回拒绝，要求重新读取
+- Windows mtime > 但内容相同：继续编辑
+- old_string 未找到：validateInput 返回拒绝
+- old_string 多个匹配且 replace_all=false：validateInput 返回拒绝
+- 文件 > 1GiB：validateInput 返回拒绝
+- 临界区二次检查失败：抛出错误，未写入
+
+### 4.8 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| `readFileState` (Map) | `ToolUseContext` | 首次 FileRead 时创建空 Map，之后每次读写更新 | 同一对话内所有工具共享，不同对话隔离 | 不持久化（仅内存） | 无明确重置，会话结束后 GC | 无（随会话自动清理） |
+| `ReadFileStateEntry` (单个条目) | `readFileState` Map | FileRead 时创建（带 offset/limit），FileWrite/Edit 更新（offset=undefined） | Map 内共享 | 不持久化 | 下次不同 offset/limit 读取时替换，或 mtime 变化时失效 | 无（仅内存对象） |
+| `FileReadTool` 实例 | 工具框架 | 工具框架管理，单例复用 | 全局共享 | 不持久化 | 无 | 无 |
+| `FileWriteTool` 实例 | 工具框架 | 工具框架管理，单例复用 | 全局共享 | 不持久化 | 无 | 无 |
+| `FileEditTool` 实例 | 工具框架 | 工具框架管理，单例复用 | 全局共享 | 不持久化 | 无 | 无 |
+| Grep/Glob 工具实例 | 工具框架 | 工具框架管理，单例复用 | 全局共享 | 不持久化 | 无 | 无 |
+| 临时文件状态（mkdir） | `FileWriteTool.call()` | 临界区外创建父目录，无状态保留 | 隔离 | 不持久化 | 无 | 目录创建失败时返回错误 |
+| `ripGrep` 子进程 | `GrepTool.call()` | 每次 Grep 调用创建新子进程 | 隔离 | 不持久化 | 调用结束后进程退出 | 超时自动终止 |
+
+**生命周期证据：**
+- `src/tools/FileReadTool/FileReadTool.ts:1032-1037`：FileRead 填充 readFileState
+- `src/tools/FileWriteTool/FileWriteTool.ts:332-337`：FileWrite 更新 readFileState（offset=undefined）
+- `src/tools/FileEditTool/FileEditTool.ts:520-525`：FileEdit 更新 readFileState（offset=undefined）
+- `src/tools/GrepTool/GrepTool.ts:329-441`：每次调用创建 ripgrep 子进程
+
 ## 5. 失败语义与工程取舍
 
 | 触发条件 | 检测位置 | 消息/异常如何传播 | 是否重试及上限 | 状态与资源清理 | 调用方可见结果 |

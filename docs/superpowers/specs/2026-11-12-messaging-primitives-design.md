@@ -136,6 +136,372 @@ Claude Code 需要一个可靠的消息路由系统来处理多种通信场景�
 
 ### 4.1 入口与公共契约
 
+### 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           flash 进程内消息路由                               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────┐       │
+│  │  ADDRESS RESOLUTION                                             │       │
+│  └─────────────────────────────────────────────────────────────────┘       │
+│                              │                                               │
+│                              ▼                                               │
+│              ┌───────────────────────────────┐                              │
+│              │  parseAddress(input)          │                              │
+│              └───────────────────────────────┘                              │
+│                  │           │           │                                  │
+│         ┌────────┴─────┬─────┴─────┬─────┴───────┐                        │
+│         ▼              ▼           ▼             ▼                        │
+│  ┌───────────┐  ┌───────────┐ ┌───────────┐ ┌───────────┐                │
+│  │ uds:      │  │ bridge:   │ │ /path     │ │ teammate  │                │
+│  │ scheme    │  │ scheme    │ │ (legacy)  │ │ name      │                │
+│  └───────────┘  └───────────┘ └───────────┘ └───────────┘                │
+│         │              │           │             │                        │
+│         └───────┬──────┴───────────┴─────────────┘                        │
+│                 ▼                                                           │
+│     ┌───────────────────────┐                                              │
+│     │ { scheme, target }    │                                              │
+│     └───────────────────────┘                                              │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────┐       │
+│  │  COMMAND QUEUE (single queue, 3 priorities)                     │       │
+│  └─────────────────────────────────────────────────────────────────┘       │
+│                              │                                               │
+│                              ▼                                               │
+│              ┌───────────────────────────────┐                              │
+│              │  commandQueue: QueuedCommand[]│                              │
+│              │  (module-level single array)  │                              │
+│              └───────────────────────────────┘                              │
+│                              │                                               │
+│              ┌───────────────┼───────────────┐                              │
+│              │               │               │                              │
+│         enqueue()       dequeue()       peek()                            │
+│              │               │               │                              │
+│              ▼               ▼               ▼                              │
+│  ┌───────────────────────┐ ┌───────────────────┐ ┌───────────────────┐    │
+│  │ priority: 'now'   │ │ scan for highest │ │ scan for highest │    │
+│  │ priority: 'next'   │ │ priority (0>1>2),│ │ priority (0>1>2),│    │
+│  │ priority: 'later'  │ │ same priority:  │ │ same priority:  │    │
+│  │ (default: 'next')  │ │ FIFO (index order)│ │ FIFO (index order)│    │
+│  │ notifications: 'later' │ │ return command │ │ return noop    │    │
+│  └───────────────────────┘ └───────────────────┘ └───────────────────┘    │
+│              │               │               │                              │
+│              └───────┬───────┴───────────────┘                              │
+│                      ▼                                                      │
+│          ┌─────────────────────────┐                                      │
+│          │ snapshot: readonly      │                                      │
+│          │ Object.freeze([...])    │                                      │
+│          │ React useSyncExternalStore │                                  │
+│          └─────────────────────────┘                                      │
+│                      │                                                      │
+│                      ▼                                                      │
+│          ┌─────────────────────────┐                                      │
+│          │ subscribeToCommandQueue()│                                      │
+│          │ (notify React on change) │                                      │
+│          └─────────────────────────┘                                      │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────┐       │
+│  │  MAILBOX (message storage + waiters)                           │       │
+│  └─────────────────────────────────────────────────────────────────┘       │
+│                              │                                               │
+│                              ▼                                               │
+│              ┌───────────────────────────────┐                              │
+│              │  Mailbox class:               │                              │
+│              │  - queue: Message[]           │                              │
+│              │  - waiters: Waiter[]          │                              │
+│              │  - changed: Signal            │                              │
+│              │  - _revision: number          │                              │
+│              └───────────────────────────────┘                              │
+│                  │           │           │                                  │
+│         ┌────────┴─────┬─────┴─────┬─────┴───────┐                        │
+│         ▼              ▼           ▼             ▼                        │
+│  ┌───────────┐  ┌───────────┐ ┌───────────┐ ┌───────────┐                │
+│  │ send(msg) │  │ poll(fn)  │ │receive(fn)│ │subscribe()│                │
+│  └───────────┘  └───────────┘ └───────────┘ └───────────┘                │
+│         │              │           │             │                        │
+│         ▼              │           │             │                        │
+│  ┌───────────────────┐ │           │             │                        │
+│  │ match waiters first│ │           │             │                        │
+│  │ fn(msg) === true? │ │           │             │                        │
+│  └─────────┬─────────┘ │           │             │                        │
+│            │           │           │             │                        │
+│        Yes │       No  │           │             │                        │
+│            ▼           ▼           │             │                        │
+│  ┌───────────────────┐ ┌───────────┐ │             │                        │
+│  │ resolve(waiter)   │ │queue.push │ │             │                        │
+│  │ emit changed      │ │(msg)      │ │             │                        │
+│  │ _revision++       │ │emit changed│ │             │                        │
+│  └───────────────────┘ └───────────┘ │             │                        │
+│                                    │             │                        │
+│                                    ▼             │                        │
+│                          ┌───────────────────┐  │                        │
+│                          │ receive(fn):      │  │                        │
+│                          │ first poll(fn),   │  │                        │
+│                          │ if no match: add  │  │                        │
+│                          │ to waiters list   │  │                        │
+│                          └───────────────────┘  │                        │
+│                                                   │                        │
+│                                                   ▼                        │
+│                                          ┌───────────────────┐            │
+│                                          │ subscribe(callback)│            │
+│                                          │ returns unsubscribe │            │
+│                                          └───────────────────┘            │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────┐       │
+│  │  CONTROL MESSAGE COMPAT (receive-side normalization)            │       │
+│  └─────────────────────────────────────────────────────────────────┘       │
+│                              │                                               │
+│                              ▼                                               │
+│              ┌───────────────────────────────┐                              │
+│              │ normalizeControlMessageKeys() │                              │
+│              └───────────────────────────────┘                              │
+│                              │                                               │
+│                              ▼                                               │
+│              ┌───────────────────────────────┐                              │
+│              │ check: 'requestId' in obj     │                              │
+│              │   AND NOT 'request_id' in obj? │                              │
+│              └───────────────────────────────┘                              │
+│                              │                                               │
+│              ┌───────────────┴───────────────┐                              │
+│              │                               │                              │
+│            Yes                              No                              │
+│              │                               │                              │
+│              ▼                               │                              │
+│  ┌───────────────────────┐                  │                              │
+│  │ obj.request_id = obj.requestId         │                              │
+│  │ delete obj.requestId                   │                              │
+│  └───────────────────────┘                  │                              │
+│              │                               │                              │
+│              └───────────────┬───────────────┘                              │
+│                              ▼                                               │
+│              ┌───────────────────────────────┐                              │
+│              │ recursively check obj.response │                              │
+│              │ (if exists, not null, object)  │                              │
+│              └───────────────────────────────┘                              │
+│                              │                                               │
+│                              ▼                                               │
+│              ┌───────────────────────────────┐                              │
+│              │ snake_case key takes priority │                              │
+│              │ (never overwrite if both present) │                         │
+│              └───────────────────────────────┘                              │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  STATE OWNERSHIP:                                                            │
+│  • messageQueueManager.ts: commandQueue (array), snapshot (frozen array),│
+│                         queueChanged (signal)                            │
+│  • mailbox.ts: queue (Message[]), waiters (Waiter[]), changed (signal), │
+│               _revision (number)                                          │
+│  • peerAddress.ts: no state (pure parseAddress())                        │
+│  • directMemberMessage.ts: no state (pure functions)                     │
+│  • controlMessageCompat.ts: no state (pure normalize())                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 关键流程与失败路径
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Address Resolution Flow (Main + Legacy)                                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+  parseAddress(input: string)
+          │
+          ▼
+  input starts with 'uds:'?
+          │
+          ├─ Yes → return { scheme: 'uds', target: input.slice(4) }
+          │
+          ▼ No
+  input starts with 'bridge:'?
+          │
+          ├─ Yes → return { scheme: 'bridge', target: input.slice(7) }
+          │
+          ▼ No
+  input starts with '/'?
+          │
+          ├─ Yes → return { scheme: 'uds', target: input } (LEGACY COMPAT)
+          │
+          ▼ No
+  return { scheme: 'other', target: input } (teammate name)
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Command Queue Enqueue Flow (Priority + FIFO)                                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+  enqueue(command: QueuedCommand, priority?: QueuePriority)
+          │
+          ▼
+  const finalPriority = priority ?? 'next'
+          │
+          ▼
+  const clonedCommand = { ...command, priority: finalPriority }
+          │
+          ▼
+  commandQueue.push(clonedCommand) → NO SORT, INSERT AT END (preserves FIFO)
+          │
+          ▼
+  logOperation('enqueue', command.content) → write to session storage
+          │
+          ▼
+  notifySubscribers():
+          │
+          ├─ snapshot = Object.freeze([...commandQueue]) → NEW ARRAY EVERY TIME
+          └─ queueChanged.emit() → notify React subscribers
+          │
+          ▼
+  Done (FIFO within same priority, dequeue will scan for highest priority)
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Command Queue Dequeue Flow (Priority Scan + FIFO)                           │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+  dequeue(filter?: (cmd: QueuedCommand) => boolean)
+          │
+          ▼
+  let bestIndex: number | undefined = undefined
+  let bestPriority: number = Infinity
+          │
+          ▼
+  for i from 0 to commandQueue.length - 1:
+          │
+          ├─ cmd = commandQueue[i]
+          │
+          ├─ filter provided AND filter(cmd) === false? → skip
+          │
+          ├─ priorityNum = PRIORITY_ORDER[cmd.priority]
+          │       ('now' → 0, 'next' → 1, 'later' → 2)
+          │
+          └─ priorityNum < bestPriority?
+                  │
+                  ├─ Yes → bestPriority = priorityNum, bestIndex = i
+                  │
+                  └─ No (same priority) → keep earlier index (FIFO)
+          │
+          ▼
+  bestIndex === undefined?
+          │
+          ├─ Yes → return undefined (no match)
+          │
+          ▼ No
+  const [removedCmd] = commandQueue.splice(bestIndex, 1)
+          │
+          ▼
+  logOperation('dequeue', removedCmd.content)
+          │
+          ▼
+  notifySubscribers() → new snapshot, emit signal
+          │
+          ▼
+  return removedCmd
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Mailbox Send Flow (Waiters First, No Priority)                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+  mailbox.send(msg: Message)
+          │
+          ▼
+  _revision++
+          │
+          ▼
+  for waiter in waiters (in registration order):
+          │
+          ├─ waiter.fn(msg) === true? → MATCH
+          │      │
+          │      ▼
+          │  remove waiter from waiters array
+          │      │
+          │      ▼
+          │  waiter.resolve(msg)
+          │      │
+          │      ▼
+          │  changed.emit()
+          │      │
+          │      ▼
+          │  RETURN (no queueing, no further waiters checked)
+          │
+          └─ No match → continue to next waiter
+          │
+          ▼ (no waiter matched)
+  queue.push(msg)
+          │
+          ▼
+  changed.emit()
+          │
+          ▼
+  Done
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Control Message Normalization Flow (Receive-Side Only)                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+  normalizeControlMessageKeys(obj: unknown)
+          │
+          ▼
+  obj === null OR typeof obj !== 'object'?
+          │
+          ├─ Yes → return obj (no change)
+          │
+          ▼ No (it's an object)
+  const record = obj as Record<string, unknown>
+          │
+          ▼
+  'requestId' in record AND NOT 'request_id' in record?
+          │
+          ├─ Yes → record.request_id = record.requestId
+          │           delete record.requestId
+          │
+          ▼ (check nested response regardless)
+  'response' in record AND record.response !== null AND typeof record.response === 'object'?
+          │
+          ├─ Yes → normalizeControlMessageKeys(record.response) (RECURSION)
+          │
+          ▼
+  return obj (mutated in place, or same reference if no change)
+          │
+          ▼
+  NOTE: snake_case key takes precedence — if both 'request_id' AND 'requestId'
+        are present, do nothing (keeps snake_case, ignores camelCase)
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Failure Modes (No Persistence, Best Effort)                                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+  • Command queue: no size limit → can grow unbounded
+  • Command queue: no persistence → process crash → queue lost
+  • Mailbox: no persistence → process crash → queue/waiters lost
+  • Mailbox receive(): no timeout → Promise can hang forever
+  • Address parseAddress(): no validation → bad path/name fails later at send time
+  • Control message normalize(): only handles 'requestId' → other keys may need future fixes
+  • React snapshot: new array every mutation → small GC pressure but safe
+  • Priority starvation: 'later' may never run if constant 'next' messages
+```
+
+### 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|-----------|--------|--------------|-----------|--------|-----------|-----------|
+| `commandQueue` (array) | `messageQueueManager.ts` | 模块加载时创建空数组 `[]` | 模块级单例，全局共享 | 否 | 无自动重置 | `clearCommandQueue()`: `splice(0)` 清空，notify subscribers；`resetCommandQueue()`: alias for clear |
+| `snapshot` (frozen array) | `messageQueueManager.ts` | 初始化为 `Object.freeze([])`，每次突变时重新创建 `Object.freeze([...commandQueue])` | 模块级单例，全局共享（只读） | 否 | 每次 enqueue/dequeue/remove/clear 后替换 | 无（旧快照被 GC） |
+| `queueChanged` (signal) | `messageQueueManager.ts` | 模块加载时创建 signal | 模块级单例，全局共享 | 否 | 无重置 | 无（signal 是事件系统） |
+| `QueuedCommand` | 调用方 | 调用方创建对象，`enqueue()` 时浅拷贝，设置 priority | 入队后由 queue 唯一持有 | 否 | `dequeue()` 返回给调用方，`remove()` 从 queue 删除 | GC 自动回收 |
+| `Mailbox` instance | 调用方 | `new Mailbox()` 创建空 queue、空 waiters、signal、_revision=0 | 每个实例独立（可创建多个） | 否 | 无自动重置 | 无（无显式 close，GC 回收） |
+| `Message` (Mailbox item) | `Mailbox` | `send(msg)` 时调用方创建，`_revision++`，尝试匹配 waiters，不匹配则 `queue.push(msg)` | 每个 mailbox 独立 | 否 | `poll(fn)` 匹配时 `splice()` 移除并返回 | GC 自动回收 |
+| `Waiter` | `Mailbox` | `receive(fn)` 时先 `poll(fn)`，无匹配则创建 `{ fn, resolve }` 加入 `waiters` 数组 | 每个 mailbox 独立 | 否 | `send(msg)` 匹配时 `splice()` 移除并 resolve | 无超时机制（需调用方自行处理） |
+| `PendingNotification` (direct) | 调用方 | 调用方构建对象，调用 `enqueuePendingNotification(notif)` → 内部调用 `enqueue(notif, 'later')` | queue 持有，与其他 commands 共享 | 否 | `dequeuePendingNotification()` → alias for `dequeue()` | GC 自动回收 |
+| `PopAllEditableResult` | `popAllEditable()` | 从 queue 筛选 editable commands，合并文本、图片，计算光标偏移，queue 替换为 non-editable only | 每次调用返回新对象 | 否 | 使用后丢弃 | GC 自动回收 |
+
+**生命周期证据:** `src/utils/messageQueueManager.ts` (L1-500, commandQueue + snapshot), `src/utils/mailbox.ts` (L1-150, Mailbox class), `src/utils/peerAddress.ts` (L1-50, parseAddress pure), `src/utils/controlMessageCompat.ts` (L1-50, normalize pure)
+
 ```typescript
 // 地址解析
 function parseAddress(address: string): { scheme: string; target: string }

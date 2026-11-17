@@ -1541,6 +1541,206 @@ type SessionFacets = {
 | getClaudeConfigHomeDir | 缓存目录 | sessionMeta.getSessionMetaDir | Path utils spec |
 | jsonParse/jsonStringify | 慢操作封装 | 所有 JSON 读写 | Slow operations spec |
 
+---
+
+### 4.8 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                          Claude Code 主会话                                    │
+│                                                                                 │
+│  ┌───────────────────────────────────────────────────────────────────────────┐ │
+│  │  Query Engine / ToolRunner                                                │ │
+│  │                                                                           │ │
+│  │  ┌───────────────────────────────────────────────────────────────────┐  │ │
+│  │  │ ReviewArtifactTool                                              │  │ │
+│  │  │ • Input: artifact_path XOR content (max 1MB)                   │  │ │
+│  │  │ • Reuses FileReadTool permissions for artifact_path           │  │ │
+│  │  └────────────────────────┬──────────────────────────────────────────┘  │ │
+│  │                           │ runAgent()                                    │ │
+│  │                           ▼                                             │ │
+│  │  ┌───────────────────────────────────────────────────────────────────┐  │ │
+│  │  │ 独立 GENERAL_PURPOSE_AGENT (只读)                                  │  │ │
+│  │  │ • 工具限制: Read / Grep / Glob                                    │  │ │
+│  │  │ • 最大回合: 8                                                      │  │ │
+│  │  │ • System Prompt: "You are an independent artifact reviewer..."     │  │ │
+│  │  └────────────────────────┬──────────────────────────────────────────┘  │ │
+│  │                           │ parse JSON output                           │ │
+│  │                           ▼                                             │ │
+│  │  ┌───────────────────────────────────────────────────────────────────┐  │ │
+│  │  │ parseReviewerOutput                                                │  │ │
+│  │  │ • 提取 first '{' to last '}'                                      │  │ │
+│  │  │ • Zod schema 验证 (summary + findings array)                      │  │ │
+│  │  └────────────────────────┬──────────────────────────────────────────┘  │ │
+│  └───────────────────────────┼───────────────────────────────────────────────┘ │
+│                              │                                               │
+│  ┌───────────────────────────▼───────────────────────────────────────────┐ │
+│  │ /insights command                                                    │ │
+│  │ • 扫描会话日志: ~/.claude/projects/**/*.jsonl                       │ │
+│  │ ┌─────────────────────────────────────────────────────────────────┐ │ │
+│  │ │ sessionMeta 提取 (纯函数)                                       │ │ │
+│  │ │ • 消息计数 / Token 用量 / 工具统计 / Git 操作                   │ │ │
+│  │ │ • 用户中断 / 响应时间 / 工具错误分类 / MCP/WebSearch/WebFetch  │ │ │
+│  │ │ • 行数变更 / 多 Claude 检测时间戳                              │ │ │
+│  │ └──────────┬──────────────────────────────────────────────────────┘ │ │
+│  │            │ saveSessionMeta (原子写)                               │ │
+│  │            ▼                                                       │ │
+│  │ ┌─────────────────────────────────────────────────────────────────┐ │ │
+│  │ │ ~/.claude/usage-data/session-meta/<session-id>.json            │ │ │
+│  │ │ • 临时文件 + rename (原子性: 防止崩溃时损坏)                    │ │ │
+│  │ │ • 权限: 0o600 (用户只读)                                       │ │ │
+│  │ └──────────┬──────────────────────────────────────────────────────┘ │ │
+│  │            │ loadCachedSessionMeta (优先)                           │ │
+│  │            ▼                                                       │ │
+│  │ ┌─────────────────────────────────────────────────────────────────┐ │ │
+│  │ │ facets 提取 (调用模型)                                          │ │ │
+│  │ │ • 大模型 (Opus) 调用 queryWithModel()                           │ │ │
+│  │ │ • 最大输出 token: 4096                                         │ │ │
+│  │ │ • JSON 直接输出 (不用工具调用)                                  │ │ │
+│  │ │ • 并发限制: 50 个 (分批)                                        │ │ │
+│  │ └──────────┬──────────────────────────────────────────────────────┘ │ │
+│  │            │ saveFacets (直接写, 非原子)                           │ │
+│  │            ▼                                                       │ │
+│  │ ┌─────────────────────────────────────────────────────────────────┐ │ │
+│  │ │ ~/.claude/usage-data/facets/<session-id>.json                  │ │ │
+│  │ │ • 权限: 0o600                                                  │ │ │
+│  │ └──────────┬──────────────────────────────────────────────────────┘ │ │
+│  │            │ generate HTML report + upload (ant-only)              │ │
+│  │            ▼                                                       │ │
+│  │ ┌─────────────────────────────────────────────────────────────────┐ │ │
+│  │ │ ~/.claude/usage-data/report.html                               │ │ │
+│  │ └─────────────────────────────────────────────────────────────────┘ │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+│                                                                                 │
+│  ┌───────────────────────────────────────────────────────────────────────────┐ │
+│  │ CtxInspectTool (无状态)                                                    │ │
+│  │ • 输入: 无 (严格空对象)                                                    │ │
+│  │ • 调用: collectContextData() (查询核心)                                    │ │
+│  │ • 返回: JSON 字符串 (不含 gridRows)                                        │ │
+│  └───────────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+关键边界说明：
+- ReviewArtifactTool 无持久状态，每次调用创建新独立 agent
+- insights 缓存两级分离：sessionMeta (原子写) vs facets (直接写)
+- CtxInspectTool 只收集上下文数据，不包含 UI 渲染部分 (gridRows)
+- 权限委托：ReviewArtifactTool.checkPermissions 复用 FileReadTool.checkPermissions
+
+---
+
+### 4.9 关键流程与失败路径
+
+#### ReviewArtifactTool 主流程与失败路径
+
+```text
+用户/模型调用 ReviewArtifactTool
+         │
+         ├─► validateInput
+         │   ├─ artifact_path XOR content?
+         │   │   ├─ 两者都有 / 都无 → 返回 {result:false} (明确错误)
+         │   │   └─ OK → 继续
+         │   └─ 大小 ≤ 1MB?
+         │       ├─ 超过 → 抛出 Error
+         │       └─ OK → 继续
+         │
+         ├─► checkPermissions (仅 artifact_path)
+         │   └─ 复用 FileReadTool.checkPermissions
+         │
+         ├─► readArtifact
+         │   ├─ content 存在?
+         │   │   ├─ 是 → 检查 Buffer.byteLength → OK 返回
+         │   │   └─ 否 → lstat(path)
+         │   │       ├─ 非普通文件 → 抛出 Error
+         │   │       └─ 文件 > 1MB → 抛出 Error
+         │   └─ readFile (utf8)
+         │
+         ├─► defaultReviewer (子 agent)
+         │   ├─ 动态导入 runAgent / GENERAL_PURPOSE_AGENT
+         │   ├─ 工具过滤 → 仅 Read/Grep/Glob
+         │   ├─ 调用 runAgent (maxTurns=8)
+         │   │   └─ 无响应 → 抛出 Error
+         │   └─ 返回最后一条 assistant message
+         │
+         ├─► parseReviewerOutput
+         │   ├─ 查找 first '{' / last '}'
+         │   │   └─ 未找到 → 抛出 Error
+         │   ├─ JSON.parse
+         │   │   └─ 解析失败 → 抛出 SyntaxError
+         │   └─ Zod schema 验证
+         │       └─ 失败 → 抛出 ZodError
+         │
+         └─► 返回 { ...parsed, message: "Artifact review completed" }
+```
+
+#### insights 命令主流程与失败路径
+
+```text
+用户输入 /insights [--homespaces]
+         │
+         ├─► [ant-only] 收集远程 homespace 会话 → SCP 复制
+         │
+         ├─► Lite scan (不解析内容)
+         │   └─ 遍历 ~/.claude/projects/**/*.jsonl → mtime/size 排序
+         │
+         ├─► 加载 SessionMeta (分批)
+         │   ├─ for each 会话:
+         │   │   ├─ loadCachedSessionMeta?
+         │   │   │   ├─ 缓存存在 & 有效 → 使用
+         │   │   │   └─ 无效/不存在 → 解析 JSONL → logToSessionMeta → saveSessionMeta
+         │   │   │       └─ saveSessionMeta (原子写)
+         │   │   │           ├─ 临时文件: <path>.<8-hex>.tmp
+         │   │   │           ├─ writeFile + fsync
+         │   │   │           ├─ rename (原子替换)
+         │   │   │           └─ 失败 → 抛出, 清理 tmp
+         │   │   └─ 未缓存会话 > 200? → 停止 (资源限制)
+         │   └─ deduplicateSessionBranches (保留用户消息最多的分支)
+         │
+         ├─► 提取 Facets (分批)
+         │   └─ for each 会话 (无缓存):
+         │       ├─ formatTranscriptWithSummarization (≤30k 字符直接, >30k 分块摘要)
+         │       ├─ queryWithModel (Opus)
+         │       │   ├─ 失败 → logError → skip (不中断整体流程)
+         │       │   └─ 成功 → JSON 正则匹配
+         │       │       ├─ 无匹配 → skip
+         │       │       ├─ JSON.parse 失败 → skip
+         │       │       └─ isValidSessionFacets?
+         │       │           ├─ 否 → skip
+         │       │           └─ 是 → saveFacets
+         │       └─ saveFacets (直接 writeFile, 非原子)
+         │           └─ 失败 → logError → skip
+         │
+         ├─► aggregateData + generateParallelInsights
+         │
+         ├─► generateHtmlReport → write to ~/.claude/usage-data/report.html
+         │
+         └─► [ant-only] upload to S3 → 失败回退到本地 URL
+```
+
+关键失败处理：
+- 大部分失败采用 Promise.allSettled / try-catch 记录日志并跳过，保持部分失败不影响整体流程
+- 唯一硬失败点：saveSessionMeta 原子写失败直接抛出
+- Facet 提取无重试：失败该会话无 facet 但仍包含在统计中
+
+---
+
+### 4.10 核心对象生命周期表
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| ReviewArtifactTool 子 agent | 单次调用 | 调用 reviewArtifact 时动态导入 runAgent + GENERAL_PURPOSE_AGENT 并创建 | 完全隔离 (独立会话) | 无持久化 (每次调用新 agent) | 调用结束即消失 | maxTurns=8 自动结束；无主动取消机制 |
+| SessionMeta 缓存文件 | sessionMeta 模块 | 首次解析会话 JSONL 后调用 saveSessionMeta 创建 | 项目级共享 (所有会话可见) | ~/.claude/usage-data/session-meta/<session-id>.json (原子写: tmp+rename) | 旧缓存格式无效时 loadCachedSessionMeta 返回 null 并重新解析 | 无自动清理机制；用户可手动删除目录 |
+| Facets 缓存文件 | insights 主流程 | 首次调用 extractFacetsFromAPI 成功后调用 saveFacets 创建 | 项目级共享 (所有会话可见) | ~/.claude/usage-data/facets/<session-id>.json (直接 writeFile) | 旧缓存格式无效时 isValidSessionFacets 验证失败返回 null 并重新提取 | 无自动清理机制；用户可手动删除目录 |
+| insights 临时文件 (sessionMeta) | saveSessionMeta | 调用 open() 以 0o600 权限创建 <path>.<8-hex>.tmp | 私有 (仅当前进程) | 无持久化 (rename 后消失) | 进程崩溃时留下的 tmp 文件下次不会被读取 (文件名随机) | rename 成功后原目标文件被原子替换；失败时删除 tmp 文件 |
+| CtxInspectTool 上下文数据 | 调用方 | 调用 collectContextData(context) 时从当前会话内存收集 | 隔离 (每次调用重新收集) | 无持久化 (仅返回 JSON 字符串) | 调用结束即消失 | 无 |
+| 多 Claude 检测滑动窗口 | detectMultiClauding | 遍历会话时间戳时动态维护 sessionLastIndex Map | 纯函数局部状态 | 无持久化 | 函数返回即消失 | 无 |
+
+生命周期证据:
+- ReviewArtifactTool: `src/tools/ReviewArtifactTool/ReviewArtifactTool.ts:42-83` defaultReviewer 每次调用动态导入
+- SessionMeta: `src/commands/insights/sessionMeta.ts:460-495` saveSessionMeta 原子写实现
+- Facets: `src/commands/insights.ts:2352-2360` saveFacets 直接 writeFile
+- CtxInspectTool: `src/tools/CtxInspectTool/CtxInspectTool.ts:12-28` 无持久化状态
+
 ## 5. 失败语义与工程取舍
 
 | 触发条件 | 检测位置 | 消息/异常如何传播 | 是否重试及上限 | 状态与资源清理 | 调用方可见结果 |

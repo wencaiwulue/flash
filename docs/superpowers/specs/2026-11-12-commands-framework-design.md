@@ -750,6 +750,156 @@ getMessagesForPromptSlashCommand()
 - `src/commands/` 目录下各命令实现
 - `src/commands/insights.ts` 懒加载 shim 示例
 
+---
+
+### 4.8 架构与资源边界图
+
+```text
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                         User Input (Slash Command)                            │
+│                    /command-name arg1 arg2 ...                                │
+└───────────────────────────────────────────────────────────────────────────────┘
+                                        │
+                                        ▼
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                     processUserInput Module (Entry)                          │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │ parseSlashCommand(input) → ParsedSlashCommand                           │  │
+│  │ • Splits command name and args                                          │  │
+│  │ • Detects (MCP) suffix for MCP commands                                 │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+│                                        │                                        │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │ looksLikeCommand(commandName) → boolean                                 │  │
+│  │ • Distinguishes commands from file paths                               │  │
+│  │ • Checks for valid command characters (a-z, 0-9, :, -, _)               │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────────────────────────────────────────────────────┘
+                                        │
+                                        ▼
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                        Commands Aggregation (getCommands)                     │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │ Load Order (Highest → Lowest Priority)                                  │  │
+│  │ 1. Bundled Skills (getBundledSkills)                                   │  │
+│  │ 2. Builtin Plugin Skills (getBuiltinPluginSkillCommands)               │  │
+│  │ 3. Skill Directory (getSkillDirCommands(cwd))                          │  │
+│  │ 4. Workflow Commands (WORKFLOW_SCRIPTS)                                │  │
+│  │ 5. Plugin Commands (getPluginCommands)                                 │  │
+│  │ 6. Plugin Skills                                                       │  │
+│  │ 7. Dynamic Skills (getDynamicSkills) → Inserted at position 6.5       │  │
+│  │ 8. Builtin Commands (COMMANDS())                                       │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │ Memoization: lodash-es/memoize caches results per cwd                  │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────────────────────────────────────────────────────┘
+                                        │
+                                        ▼
+┌───────────────────────────────────────────────────────────────────────────────┐
+│              Command Execution (processSlashCommand)                         │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │ Type Dispatch via Discriminated Union                                  │  │
+│  │ • type: 'prompt'  → getMessagesForPromptSlashCommand()                 │  │
+│  │   ├─ context: 'inline' → Expand to current conversation               │  │
+│  │   └─ context: 'fork'   → executeForkedSlashCommand()                  │  │
+│  │ • type: 'local'   → load() + call()                                   │  │
+│  │ • type: 'local-jsx' → load() + call() + onDone callback                │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │ Remote Control Security Layer                                          │  │
+│  │ • REMOTE_SAFE_COMMANDS: Pre-initialization whitelist                   │  │
+│  │ • BRIDGE_SAFE_COMMANDS: Bridge mode whitelist                         │  │
+│  │ • isBridgeSafeCommand(): Checks command type and whitelist             │  │
+│  │   ├─ Prompt commands: All allowed                                      │  │
+│  │   ├─ Local commands: Only whitelisted                                  │  │
+│  │   └─ Local-JSX commands: Blocked entirely                              │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 4.9 关键流程与失败路径
+
+```text
+─── 主流程：Prompt 命令执行 (Inline 模式) ────────────────────────────────────────
+用户输入 /prompt-command arg1 arg2
+    │
+    ▼
+parseSlashCommand() → { commandName: 'prompt-command', args: 'arg1 arg2', isMcp: false }
+    │
+    ▼
+getCommands(cwd) → Get all aggregated commands
+    │
+    ▼
+findCommand(commandName, commands) → Find matching command (check aliases too)
+    │
+    ├─ 失败：命令未找到
+    │   └─ looksLikeCommand()?
+    │       ├─ 是 → 显示 "Unknown skill: /prompt-command"
+    │       └─ 否 → 当作文件路径处理
+    │
+    ▼
+检查 userInvocable → true
+    │
+    ▼
+getMessagesForPromptSlashCommand(command, args, context)
+    ├─ 检查 Coordinator Mode (CLAUDE_CODE_COORDINATOR_MODE)
+    │   └─ 是 → 返回摘要给 Coordinator，不执行
+    ├─ 调用 getPromptForCommand(args, context) → ContentBlockParam[]
+    ├─ registerSkillHooks() → 注册钩子（如果有权限）
+    ├─ addInvokedSkill() → 记录调用
+    ├─ formatCommandLoadingMetadata() → 创建元数据消息
+    └─ 构建消息列表：
+        1. 元数据消息 (isMeta: true)
+        2. 技能内容 (isMeta: true)
+        3. 附加消息 (from mentions/MCP)
+        4. 权限附加消息
+    │
+    ▼
+返回 { messages, shouldQuery: true, allowedTools, model, effort }
+    │
+    ▼
+执行用户钩子（如果 shouldQuery）
+    │
+    ▼
+消息添加到对话，查询模型
+
+─── 失败路径：Local-JSX 命令 onDone 未调用导致死锁 ────────────────────────────────
+用户输入 /local-jsx-command
+    │
+    ▼
+命令找到并执行 → load() → call(onDone, context, args)
+    │
+    ▼
+call() 渲染 UI，等待用户交互，但忘记调用 onDone()
+    │
+    ▼
+Promise 从未 resolve
+    │
+    ▼
+队列中的下一个命令无法执行 → 死锁
+    │
+    ▼
+防御机制：超时后自动 resolve Promise（虽然当前实现中未明确）
+    │
+    ▼
+用户可以继续，但命令状态可能不一致
+```
+
+### 4.10 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|----------|--------|-------------|----------|--------|----------|-----------|
+| Command 对象 (Prompt/Local/Local-JSX) | commands.ts aggregator | 各来源调用返回（getBundledSkills、getSkillDirCommands、COMMANDS 等） | 每次 getCommands(cwd) 调用重新创建数组；同名命令后加载覆盖先加载 | 无（动态创建） | clearCommandMemoizationCaches() 清除 memoize 缓存 | 无取消；不再引用后 GC |
+| 解析后的 ParsedSlashCommand | parseSlashCommand function | `parseSlashCommand(input)` 返回临时对象 | 单次调用专用；不共享 | 无 | 函数返回后丢弃 | 无取消 |
+| getCommands memoize cache | commands.ts 模块 | 第一次调用 getCommands(cwd) 时创建 | 每个 cwd 一个缓存条目；跨调用共享 | 无（内存中） | clearCommandsCache() 或 clearCommandMemoizationCaches() 清除 | 无取消；调用 clear 函数清除 |
+| Local/Local-JSX 命令加载后的模块 | processSlashCommand | `command.load()` → Promise<{ call: Function }> | 每次调用 load() 可能重新加载（取决于 bundler）；无共享缓存 | 无 | 命令执行完成后模块引用可能被 GC | 无取消；dynamic import 无 AbortController |
+| Local-JSX onDone 回调 Promise | processSlashCommand | 包装 call() 调用创建 Promise | 单个命令执行专用 | 无 | onDone() 被调用 → Promise resolve | 无取消；超时自动 resolve（如果实现） |
+
+生命周期证据：src/commands.ts, src/utils/slashCommandParsing.ts, src/utils/processUserInput/processSlashCommand.tsx
+
+---
+
 ## 5. 失败语义与工程取舍
 
 ### 5.1 失败语义

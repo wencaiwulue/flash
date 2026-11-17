@@ -1131,6 +1131,167 @@ Messages 入口
 | buildMessageLookups | 构建工具 ID 查找表 | 消息查找 | 本 spec |
 | Ink | Box, Text, Ansi, RawAnsi, useTheme | 终端渲染 | （外部依赖） |
 
+### 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           REPL / Desktop UI                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                     FullscreenLayout (可选)                           │  │
+│  │  ┌──────────────────────┐  ┌───────────────────────────────────────┐  │  │
+│  │  │  StickyPromptHeader  │  │  ScrollBox (scrollRef)              │  │  │
+│  │  └──────────────────────┘  │  ┌───────────────────────────────────┐ │  │  │
+│  │                            │  │  Messages Component               │ │  │  │
+│  │  ┌──────────────────────┐  │  │  ┌─────────────────────────────┐│ │  │  │
+│  │  │  NewMessagesPill    │  │  │  │  MessageRow (OffscreenFreeze)││ │  │  │
+│  │  └──────────────────────┘  │  │  └─────────────────────────────┘│ │  │  │
+│  │                            │  │  ┌─────────────────────────────┐│ │  │  │
+│  │                            │  │  │  Message                    ││ │  │  │
+│  │                            │  │  │  ├─ AssistantTextMessage    ││ │  │  │
+│  │                            │  │  │  ├─ AssistantToolUseMessage ││ │  │  │
+│  │                            │  │  │  ├─ AssistantThinkingMessage││ │  │  │
+│  │                            │  │  │  ├─ UserTextMessage         ││ │  │  │
+│  │                            │  │  │  ├─ UserToolResultMessage   ││ │  │  │
+│  │                            │  │  │  └─ SystemMessage           ││ │  │  │
+│  │                            │  │  └─────────────────────────────┘│ │  │  │
+│  │  ┌──────────────────────┐  │  │  ┌─────────────────────────────┐│ │  │  │
+│  │  │  Bottom (Input)     │  │  │  │  StreamingMarkdown          ││ │  │  │
+│  │  └──────────────────────┘  │  │  └─────────────────────────────┘│ │  │  │
+│  │                            │  └───────────────────────────────────┘ │  │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ┌─────────────────────────┐  ┌─────────────────────────────────────────┐ │
+│  │   SentryErrorBoundary   │  │      Shared Caches                    │ │
+│  │   (组件级错误隔离)      │  │                                         │ │
+│  └─────────────────────────┘  │  tokenCache (Markdown.tsx)            │ │
+│                               │  ├─ Map<string, Token[]>               │ │
+│                               │  └─ MRU, 500 entries                  │ │
+│                               │                                         │ │
+│  ┌───────────────────────┐   │  RENDER_CACHE (StructuredDiff.tsx)    │ │
+│  │  Ink Rendering Engine │   │  ├─ WeakMap<Patch, Map<Key, Render>> │ │
+│  │  (Box, Text, Ansi)   │   │  └─ 4 entries per patch               │ │
+│  └───────────────────────┘   └─────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+调用方: REPL.tsx
+内部边界:
+- Messages.tsx (消息列表管理、切片)
+- Message.tsx (消息类型路由)
+- Markdown.tsx (Markdown解析、缓存、流式稳定边界)
+- StructuredDiff.tsx (Diff渲染、缓存)
+- SentryErrorBoundary.ts (错误隔离)
+外部依赖:
+- marked (Markdown解析)
+- ColorDiff NAPI (语法高亮)
+- Ink (终端渲染)
+```
+
+### 关键流程与失败路径
+
+```text
+┌───────────────────────────────────────────────────────────────────────────┐
+│                        主流程: 消息渲染 (成功路径)                         │
+├───────────────────────────────────────────────────────────────────────────┤
+│  REPL.tsx 渲染 <Messages>                                                     │
+│    │                                                                         │
+│    ├─ normalizeMessages() 规范化消息                                         │
+│    ├─ reorderMessagesInUI() 重排消息顺序                                     │
+│    ├─ collapseReadSearchGroups() 折叠搜索消息                               │
+│    ├─ collapseHookSummaries() 折叠 Hook 摘要                               │
+│    ├─ collapseBackgroundBashNotifications() 折叠后台通知                   │
+│    ├─ collapseTeammateShutdowns() 折叠队友关闭通知                         │
+│    ├─ apply brief 过滤 (如果启用)                                           │
+│    ├─ buildMessageLookups() 构建工具查询表                                 │
+│    ├─ computeSliceStart() 计算切片起始点 (非虚拟滚动)                      │
+│    ├─ compute lastThinkingBlockId() 计算最后 thinking 块                  │
+│    │                                                                         │
+│    ├─ 渲染 LogoHeader (memo)                                                │
+│    │                                                                         │
+│    ├─ 渲染 MessageRow 列表:                                                 │
+│    │  ├─ 判断是否静态消息 → OffscreenFreeze 包裹                           │
+│    │  ├─ SentryErrorBoundary 包裹                                           │
+│    │  ├─ Message 组件: switch(message.type) → 路由到子组件                  │
+│    │  │  ├─ assistant → switch(content.type)                               │
+│    │  │  │  ├─ text → AssistantTextMessage → Markdown                     │
+│    │  │  │  ├─ tool_use → AssistantToolUseMessage → tool.render...      │
+│    │  │  │  ├─ thinking → AssistantThinkingMessage (受控于 last...)      │
+│    │  │  │  └─ ...                                                         │
+│    │  │  ├─ user → switch(content.type)                                    │
+│    │  │  │  ├─ text → UserTextMessage → Markdown                         │
+│    │  │  │  ├─ tool_result → UserToolResultMessage → tool.render...     │
+│    │  │  │  └─ ...                                                         │
+│    │  │  └─ system → SystemMessage                                         │
+│    │  │                                                                     │
+│    │  └─ Markdown 渲染: cachedLexer() → tokenCache hit/miss                │
+│    │                                                                         │
+│    └─ 渲染流式内容 (末尾):                                                   │
+│       ├─ streamingText → StreamingMarkdown                                │
+│       ├─ streamingThinking → AssistantThinkingMessage                    │
+│       └─ streamingToolUses → 流式工具消息                                  │
+└───────────────────────────────────────────────────────────────────────────┘
+
+┌───────────────────────────────────────────────────────────────────────────┐
+│                        失败路径 1: 单个组件渲染失败                         │
+├───────────────────────────────────────────────────────────────────────────┤
+│  某 Message 子组件抛出异常 → SentryErrorBoundary 捕获                      │
+│    ├─ getDerivedStateFromError 设置 hasError = true                      │
+│    ├─ render 返回 null (静默降级)                                          │
+│    ├─ 其他组件继续渲染                                                     │
+│    └─ Sentry 上报错误                                                      │
+└───────────────────────────────────────────────────────────────────────────┘
+
+┌───────────────────────────────────────────────────────────────────────────┐
+│                        失败路径 2: ColorDiff NAPI 不可用                   │
+├───────────────────────────────────────────────────────────────────────────┤
+│  StructuredDiff.tsx 调用 expectColorDiff() → 返回 null                    │
+│    ├─ fallback 到 StructuredDiffFallback                                  │
+│    ├─ 使用简单文本 diff 渲染 (无语法高亮)                                  │
+│    └─ 用户看到无高亮但可读的 diff                                          │
+└───────────────────────────────────────────────────────────────────────────┘
+
+┌───────────────────────────────────────────────────────────────────────────┐
+│                        失败路径 3: 流式文本非追加更新                      │
+├───────────────────────────────────────────────────────────────────────────┤
+│  StreamingMarkdown.tsx 接收新文本 → !stripped.startsWith(stablePrefix)   │
+│    ├─ 重置 stablePrefixRef.current = ''                                  │
+│    ├─ 重新从开头解析文本                                                  │
+│    ├─ 可能短暂闪烁                                                        │
+│    └─ 然后正常渲染                                                        │
+└───────────────────────────────────────────────────────────────────────────┘
+
+┌───────────────────────────────────────────────────────────────────────────┐
+│                        失败路径 4: 消息数超过上限                          │
+├───────────────────────────────────────────────────────────────────────────┤
+│  Messages.tsx computeSliceStart(): collapsed.length > 200 + 50            │
+│    ├─ 推进 sliceAnchorRef (UUID锚定)                                      │
+│    ├─ 静默切片 (不抛异常)                                                 │
+│    ├─ 用户看不到更早消息 (需用 ctrl+o transcript)                         │
+│    └─ 避免 remount 所有组件 (CC-941)                                      │
+└───────────────────────────────────────────────────────────────────────────┘
+```
+
+### 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|----------|--------|------------|---------|-------|----------|-----------|
+| tokenCache (Markdown token缓存) | Markdown.tsx 模块级 | 模块加载时创建 `new Map()` | 模块单例 (跨组件共享) | 不持久化，仅内存中 | 无显式重置机制 (当前设计缺口) | 进程退出释放内存 |
+| stablePrefixRef (流式稳定边界) | StreamingMarkdown组件 | 组件挂载时 `useRef('')` | 每个组件实例隔离 | 不持久化 | 文本非追加时重置为空; 组件卸载时 ref保留 | 组件卸载释放 |
+| RENDER_CACHE (Diff渲染缓存) | StructuredDiff.tsx模块级 | 模块加载时创建 `new WeakMap()` | 模块单例 (跨组件共享) | 不持久化，WeakMap自动回收 | 每patch超过4条目时清空该patch的缓存; 无全局重置 | patch对象被GC时自动回收; 进程退出释放 |
+| sliceAnchorRef (消息切片锚点) | Messages.tsx组件 | 组件挂载时 `useRef(null)` | 每个组件实例隔离 | 不持久化 | 组件卸载时保留 | 组件卸载释放 |
+| lastThinkingBlockId | Messages.tsx状态 | 每次消息变化时重新计算 | 每个组件实例隔离 | 不持久化 | hidePastThinking=false时不计算; 组件卸载清除 | 组件卸载释放 |
+| hasError (错误边界状态) | SentryErrorBoundary组件 | 组件state初始false | 每个组件实例隔离 | 不持久化 | getDerivedStateFromError设置为true; 组件remount重置为false | 组件卸载释放 |
+| activeOverlays (活动覆盖层) | AppState | 模块加载时初始化Set | 全局共享 (AppState) | 不持久化 | useRegisterOverlay cleanup时移除; 组件卸载自动清理 | 进程退出释放 |
+
+生命周期证据:
+- `src/components/Markdown.tsx:25-26` (tokenCache定义)
+- `src/components/Markdown.tsx:163-215` (StreamingMarkdown stablePrefixRef)
+- `src/components/StructuredDiff.tsx:42-44` (RENDER_CACHE定义)
+- `src/components/Messages.tsx:344-393` (sliceAnchorRef)
+- `src/components/Messages.tsx:454-481` (lastThinkingBlockId计算)
+- `src/components/SentryErrorBoundary.ts:11-28` (错误边界)
+- `src/context/overlayContext.tsx:37-72` (useRegisterOverlay)
+
 ## 5. 失败语义与工程取舍
 
 ### 失败表

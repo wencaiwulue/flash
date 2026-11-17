@@ -417,6 +417,229 @@ type NormalizedLanguage = {
 - **Proxy/mTLS**：connectVoiceStream 调用 `getWebSocketProxyUrl()`、`getWebSocketProxyAgent()`、`getWebSocketTLSOptions()`
 - **Keybindings**：useVoiceIntegration 使用 keybindings 获取语音键配置
 
+### 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         REPL / Terminal UI                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                    VoiceProvider (Context)                          │  │
+│  │  ┌─────────────────────────────────────────────────────────────────┐ │  │
+│  │  │  VoiceState: {voiceState, voiceError, voiceInterimTranscript,  │ │  │
+│  │  │               voiceAudioLevels, voiceWarmingUp}                │ │  │
+│  │  └─────────────────────────────────────────────────────────────────┘ │  │
+│  │  ┌─────────────────────────────────────────────────────────────────┐ │  │
+│  │  │  useVoiceIntegration (Hook)                                     │ │  │
+│  │  │  ├─ stripTrailing() 清理占位空格                                │ │  │
+│  │  │  ├─ resetAnchor() 重置锚点                                      │ │  │
+│  │  │  ├─ useVoiceKeybindingHandler() 键绑定处理                      │ │  │
+│  │  │  └─ VoiceKeybindingHandler() 实际处理                          │ │  │
+│  │  └─────────────────────────────────────────────────────────────────┘ │  │
+│  │  ┌─────────────────────────────────────────────────────────────────┐ │  │
+│  │  │  useVoice (主 Hook)                                              │ │  │
+│  │  │  ┌───────────────────────────────────────────────────────────┐ │ │  │
+│  │  │  │  状态 Refs: stateRef, connectionRef, accumulatedRef,       │ │ │  │
+│  │  │  │            fullAudioRef, sessionGenRef, attemptGenRef,    │ │ │  │
+│  │  │  │            retryUsedRef, silentDropRetriedRef,            │ │ │  │
+│  │  │  │            focusTriggeredRef, silenceTimedOutRef,         │ │ │  │
+│  │  │  │            hasAudioSignalRef, everConnectedRef,           │ │ │  │
+│  │  │  │            audioLevelsRef                                 │ │ │  │
+│  │  │  └───────────────────────────────────────────────────────────┘ │ │  │
+│  │  │  ┌───────────────────────────────────────────────────────────┐ │ │  │
+│  │  │  │  定时器 Refs: releaseTimerRef, repeatFallbackTimerRef,    │ │ │  │
+│  │  │  │                focusSilenceTimerRef, cleanupTimerRef      │ │ │  │
+│  │  │  └───────────────────────────────────────────────────────────┘ │ │  │
+│  │  └─────────────────────────────────────────────────────────────────┘ │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                    服务层 (Services)                                   │  │
+│  │  ┌───────────────────────────────┐  ┌───────────────────────────────┐│  │
+│  │  │ voice.ts (录音服务)            │  │ voiceStreamSTT.ts (WebSocket)││  │
+│  │  │  ├─ audioNapi (native模块)    │  │  ├─ VoiceStreamConnection     ││  │
+│  │  │  ├─ audioNapiPromise          │  │  ├─ keepaliveTimer (8s)      ││  │
+│  │  │  ├─ activeRecorder (子进程)   │  │  ├─ finalized/finishing状态  ││  │
+│  │  │  ├─ nativeRecordingActive     │  │  ├─ finalize timers (1.5s/5s)││  │
+│  │  │  ├─ arecordProbe (memoized)   │  │  └─ lastTranscriptText      ││  │
+│  │  │  └─ linuxAlsaCardsMemoized    │  └───────────────────────────────┘│  │
+│  │  └───────────────────────────────┘  ┌───────────────────────────────┐│  │
+│  │  ┌───────────────────────────────┐  │ voiceKeyterms.ts (术语提升)  ││  │
+│  │  │ voiceModeEnabled.ts (开关)    │  │  ├─ GLOBAL_KEYTERMS (const)  ││  │
+│  │  └───────────────────────────────┘  │  └─ MAX_KEYTERMS (50)        ││  │
+│  │                                      └───────────────────────────────┘│  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  外部依赖:                                                                   │
+│  ├─ audio-capture-napi (CoreAudio 原生录音)                                  │
+│  ├─ arecord / sox (子进程 fallback)                                          │
+│  ├─ wss://api.anthropic.com/.../voice_stream (WebSocket STT)                 │
+│  ├─ git (getBranch for keyterms)                                             │
+│  ├─ settings (voiceEnabled, language)                                        │
+│  ├─ auth (OAuth tokens)                                                      │
+│  └─ growthbook (feature flags)                                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+调用方:
+- /voice 命令 (voice/voice.ts)
+- useVoiceEnabled (React Hook)
+- useVoiceIntegration (React Hook)
+内部边界:
+- VoiceContext (状态共享)
+- useVoice (主状态机)
+- voice.ts (录音服务)
+- voiceStreamSTT.ts (WebSocket连接)
+- voiceKeyterms.ts (术语生成)
+```
+
+### 关键流程与失败路径
+
+```text
+┌───────────────────────────────────────────────────────────────────────────┐
+│                  主流程: Hold-to-Talk (成功路径)                          │
+├───────────────────────────────────────────────────────────────────────────┤
+│  用户按住语音键 (默认空格键) → handleKeyEvent()                             │
+│    │                                                                         │
+│  ┌─ currentState === idle → startRecordingSession() ─────────────────────┐  │
+│  │  1. 同步 updateState('recording') → 立即更新状态 (避免竞态)           │  │
+│  │  2. 并行启动:                                                          │  │
+│  │     ├─ checkRecordingAvailability() 检查录音环境                      │  │
+│  │     ├─ startRecording() 立即启动录音 → 音频数据缓冲到 callback        │  │
+│  │     ├─ getVoiceKeyterms() 获取STT提升术语                             │  │
+│  │     └─ connectVoiceStream() 连接WebSocket STT                        │  │
+│  │                                                                         │  │
+│  │  3. WebSocket onOpen:                                                  │  │
+│  │     ├─ 发送 KeepAlive                                                 │  │
+│  │     ├─ 启动 keepaliveTimer (8s间隔)                                   │  │
+│  │     ├─ onReady(connection) → flush 缓冲的音频                         │  │
+│  │     └─ 开始发送实时音频块 (32KB coalesce)                             │  │
+│  │                                                                         │  │
+│  │  4. WebSocket onMessage:                                              │  │
+│  │     ├─ TranscriptText → onTranscript(text, isFinal)                  │  │
+│  │     ├─ TranscriptEndpoint → onTranscript(last, isFinal=true)         │  │
+│  │     └─ TranscriptError → onError(error)                               │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│    │                                                                         │
+│  ┌─ 用户释放语音键 (键事件间隔 > RELEASE_TIMEOUT_MS) → finishRecording() ┐  │
+│  │  1. stopRecording() 停止录音                                           │  │
+│  │  2. connection.finalize() → 发送 CloseStream消息                        │  │
+│  │     ├─ 启动 finalize timers: 1.5s no-data, 5s safety                  │  │
+│  │     ├─ 等待 TranscriptEndpoint 或 timer 触发                          │  │
+│  │     └─ promote 未报告的 interim transcript → 最终文本                 │  │
+│  │                                                                         │  │
+│  │  3. 静默 drop 检测:                                                    │  │
+│  │     ├─ 条件: no-data timeout AND 有音频信号 AND wsConnected AND      │  │
+│  │              !focusTriggered AND !silentDropRetried                   │  │
+│  │     ├─ 是 → 重放 fullAudioRef 到新连接 (1次)                          │  │
+│  │     └─ 否 → 继续                                                      │  │
+│  │                                                                         │  │
+│  │  4. 调用 onTranscript(最终文本) → 回调到集成层                         │  │
+│  │  5. cleanup() → 关闭连接、清除所有状态、updateState('idle')            │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────────────────────────────────────────────────┘
+
+┌───────────────────────────────────────────────────────────────────────────┐
+│                      失败路径 1: Early Error Retry                         │
+├───────────────────────────────────────────────────────────────────────────┤
+│  收到 onError 且 !fatal AND !sawTranscript AND recording                  │
+│    ├─ retryUsedRef 为 false → 重试 1 次                                  │
+│    ├─ retryUsedRef = true                                                │
+│    ├─ 延迟 250ms (避免 rapid reconnect 竞态)                              │
+│    ├─ 清 connectionRef, 音频继续缓冲到 audioBuffer                        │
+│    ├─ 重新 getVoiceKeyterms() + connectVoiceStream()                     │
+│    └─ onReady 后 flush 新累积的音频 → 用户体验不受影响                     │
+└───────────────────────────────────────────────────────────────────────────┘
+
+┌───────────────────────────────────────────────────────────────────────────┐
+│                      失败路径 2: 静默 Drop Retry                           │
+├───────────────────────────────────────────────────────────────────────────┤
+│  finalize() no-data timeout 且有音频信号且 wsConnected 且 !focusTriggered  │
+│  且 !silentDropRetried                                                     │
+│    ├─ silentDropRetriedRef = true                                         │
+│    ├─ 关闭旧连接                                                           │
+│    ├─ 建立新连接 (voiceKeyterms + connectVoiceStream)                     │
+│    ├─ 重放 fullAudioRef (完整录音)                                       │
+│    └─ 等待新连接的最终 transcript → 用户无需重新录音                       │
+└───────────────────────────────────────────────────────────────────────────┘
+
+┌───────────────────────────────────────────────────────────────────────────┐
+│                      失败路径 3: Focus 模式自动停止                        │
+├───────────────────────────────────────────────────────────────────────────┤
+│  终端失去焦点 → useFocus 效果回调 → finishRecording()                     │
+│    └─ 转录已累积的最终文本 → cleanup() → idle                             │
+│                                                                             │
+│  OR                                                                         │
+│                                                                             │
+│  音频静默 > 5s (Focus模式) → focusSilenceTimer回调 → finishRecording()    │
+│    ├─ silenceTimedOutRef = true (下次focus不自动录音)                    │
+│    └─ 转录已累积的最终文本 → cleanup() → idle                             │
+└───────────────────────────────────────────────────────────────────────────┘
+
+┌───────────────────────────────────────────────────────────────────────────┐
+│                      失败路径 4: Native模块加载失败                        │
+├───────────────────────────────────────────────────────────────────────────┤
+│  loadAudioNapi() 失败 → log debug → 返回 unavailableAudioNapi           │
+│    └─ fallback 到子进程: Linux → arecord; macOS → sox                  │
+└───────────────────────────────────────────────────────────────────────────┘
+
+┌───────────────────────────────────────────────────────────────────────────┐
+│                      失败路径 5: 权限被拒绝 (macOS)                       │
+├───────────────────────────────────────────────────────────────────────────┤
+│  requestMicrophonePermission() / startRecording() 失败                   │
+│    ├─ 检查麦克风权限拒绝 (macOS TCC)                                    │
+│    ├─ cleanup() → idle                                                    │
+│    └─ onError 显示权限设置引导 (例如: "打开系统设置 → 隐私与安全性 → 麦克风")│
+└───────────────────────────────────────────────────────────────────────────┘
+
+┌───────────────────────────────────────────────────────────────────────────┐
+│                      失败路径 6: 远程环境检测                             │
+├───────────────────────────────────────────────────────────────────────────┤
+│  checkRecordingAvailability() 检测到 CCR/远程环境                        │
+│    ├─ 返回 {available: false, reason: "..."}                             │
+│    └─ onError 或 /voice 命令显示: "Voice mode requires microphone access, but no audio device is available in this environment."│
+└───────────────────────────────────────────────────────────────────────────┘
+```
+
+### 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|----------|--------|------------|---------|-------|----------|-----------|
+| VoiceState (voiceState/voiceError等) | VoiceContext | createStore() 初始化 | 全局共享 (Context) | 不持久化 | 组件树卸载时清除 | cleanup() 重置为 idle 状态 |
+| audioNapi (native录音模块) | voice.ts 模块级 | 延迟加载 (第一次按键) | 模块单例 | 不持久化 | 无显式卸载机制 (常驻内存) | 进程退出释放 |
+| audioNapiPromise | voice.ts 模块级 | 第一次 loadAudioNapi() 时创建 | 模块单例 | 不持久化 | 无显式重置 | 进程退出释放 |
+| activeRecorder (子进程) | voice.ts 模块级 | startRecording() spawn arecord/sox | 模块单例 | 不持久化 | stopRecording() 时 kill 进程 | stopRecording() 立即终止 |
+| arecordProbe | voice.ts 模块级 | 第一次 probeArecord() 时 memoized | 模块单例 | 不持久化 | 无显式重置 (设备插拔不重检) | 进程退出释放 |
+| linuxAlsaCardsMemoized | voice.ts 模块级 | 第一次 linuxHasAlsaCards() 时 memoized | 模块单例 | 不持久化 | 无显式重置 | 进程退出释放 |
+| nativeRecordingActive | voice.ts 模块级 | startRecording() 时设置为 true | 模块单例 | 不持久化 | stopRecording() 时设置为 false | stopRecording() 立即清除 |
+| VoiceStreamConnection (WS连接) | voiceStreamSTT.ts 闭包 | connectVoiceStream() 创建 | 每个连接实例隔离 | 不持久化 | close() 时清理; finalized=true 后丢弃音频 | close() 立即终止连接 |
+| keepaliveTimer (8s) | VoiceStreamConnection | WebSocket onOpen 时 setInterval | 每个连接实例隔离 | 不持久化 | close() 时 clearInterval | close() 立即清除 |
+| finalize timers (1.5s no-data/5s safety) | VoiceStreamConnection | finalize() 时 setTimeout | 每个连接实例隔离 | 不持久化 | 任一timer触发后 clear 所有; close() 时 clear | close() 立即清除 |
+| stateRef (useVoice主状态机) | useVoice 组件 | useRef({voiceState: 'idle'}) | 每个组件实例隔离 | 不持久化 | cleanup() 重置为 idle; 组件卸载保留 | 组件卸载释放 |
+| connectionRef | useVoice 组件 | useRef(null) | 每个组件实例隔离 | 不持久化 | cleanup() 时 close() 并设为 null | cleanup() 立即关闭 |
+| accumulatedRef (累积transcript) | useVoice 组件 | useRef('') | 每个组件实例隔离 | 不持久化 | cleanup() 重置为空; focus模式每个final后立即清空 | cleanup() 立即清除 |
+| fullAudioRef (完整录音重放) | useVoice 组件 | useRef([]) | 每个组件实例隔离 | 不持久化 | cleanup() 重置为空; focus模式不保存 (节省内存) | cleanup() 立即清除 |
+| sessionGenRef / attemptGenRef (防僵尸回调) | useVoice 组件 | useRef(0) | 每个组件实例隔离 | 不持久化 | startRecordingSession() / 重试时 +1 | cleanup() 时递增 +1 |
+| retryUsedRef / silentDropRetriedRef (重试标记) | useVoice 组件 | useRef(false) | 每个组件实例隔离 | 不持久化 | startRecordingSession() 重置为 false | cleanup() 立即清除 |
+| focusTriggeredRef / silenceTimedOutRef (Focus模式标记) | useVoice 组件 | useRef(false) | 每个组件实例隔离 | 不持久化 | startRecordingSession() 重置为 false; 按键时重置 silenceTimedOutRef | cleanup() 立即清除 |
+| hasAudioSignalRef / everConnectedRef | useVoice 组件 | useRef(false) | 每个组件实例隔离 | 不持久化 | startRecordingSession() 重置为 false | cleanup() 立即清除 |
+| audioLevelsRef (音频电平直方图) | useVoice 组件 | useRef(new Array(16).fill(0)) | 每个组件实例隔离 | 不持久化 | startRecordingSession() 重置为全0 | cleanup() 立即清除 |
+| releaseTimerRef (按键释放检测) | useVoice 组件 | useRef(null) | 每个组件实例隔离 | 不持久化 | cleanup() 时 clearTimeout; 每次按键时重置 | cleanup() 立即清除 |
+| repeatFallbackTimerRef (自动重复fallback) | useVoice 组件 | useRef(null) | 每个组件实例隔离 | 不持久化 | cleanup() 时 clearTimeout; 每次按键时重置 | cleanup() 立即清除 |
+| focusSilenceTimerRef (Focus模式静默超时) | useVoice 组件 | useRef(null) | 每个组件实例隔离 | 不持久化 | cleanup() 时 clearTimeout; 每次 transcript 时重置 | cleanup() 立即清除 |
+| cleanupTimerRef | useVoice 组件 | useRef(null) | 每个组件实例隔离 | 不持久化 | cleanup() 时 clearTimeout | cleanup() 立即清除 |
+| GLOBAL_KEYTERMS (固定术语列表) | voiceKeyterms.ts 模块级 | 模块加载时初始化 (const) | 模块单例 (只读) | 不持久化 (代码中定义) | 无重置机制 (只读常量) | 进程退出释放 |
+| voicePrefixRef / voiceSuffixRef (集成层占位锚点) | useVoiceIntegration 组件 | useRef(null) | 每个组件实例隔离 | 不持久化 | resetAnchor() 时重置; cleanup() 时清除 | 组件卸载释放 |
+| lastSetInputRef / rapidCountRef / charsInInputRef | useVoiceIntegration 组件 | useRef(...) | 每个组件实例隔离 | 不持久化 | 每次语音输入后重置 | 组件卸载释放 |
+| recordingFloorRef / isHoldActiveRef / resetTimerRef | useVoiceIntegration 组件 | useRef(...) | 每个组件实例隔离 | 不持久化 | 每次语音输入后重置 | 组件卸载释放 |
+
+生命周期证据:
+- `src/context/voice.tsx` (VoiceProvider / VoiceState)
+- `src/services/voice.ts:40-60` (loadAudioNapi / audioNapi)
+- `src/services/voiceStreamSTT.ts:111-544` (VoiceStreamConnection / timers)
+- `src/hooks/useVoice.ts:157-197` (useVoice state refs / timer refs)
+- `src/services/voiceKeyterms.ts:13-31` (GLOBAL_KEYTERMS)
+- `src/hooks/useVoiceIntegration.tsx:163-213` (集成层 refs)
+
 ## 5. 失败语义与工程取舍
 
 | 触发条件 | 检测位置 | 消息/异常如何传播 | 是否重试及上限 | 状态与资源清理 | 调用方可见结果 |

@@ -1349,6 +1349,310 @@ type SandboxDependencyCheck = {
 | useRegisterOverlay | 注册模态对话框 | DiffDialog、AddWorkspaceDirectory | 覆盖层 spec |
 | useKeybindings | 键盘快捷键 | 所有对话框组件 | 快捷键 spec |
 
+### 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         REPL / Terminal UI                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                  FullscreenLayout (可选)                            │  │
+│  │  ┌─────────────────────────────────────────────────────────────────┐ │  │
+│  │  │  ScrollBox (scrollRef)                                         │ │  │
+│  │  │  ┌───────────────────────────────────────────────────────────┐ │ │  │
+│  │  │  │  ScrollChromeContext: {setStickyPrompt}                   │ │ │  │
+│  │  │  │  ┌─────────────────────────────────────────────────────┐ │ │ │  │
+│  │  │  │  │  useUnseenDivider:                                 │ │ │ │  │
+│  │  │  │  │  ├─ dividerIndex (state)                           │ │ │ │  │
+│  │  │  │  │  ├─ dividerYRef (ref, scrollHeight snapshot)       │ │ │ │  │
+│  │  │  │  │  ├─ countRef (current message count)               │ │ │ │  │
+│  │  │  │  │  └─ pillsVisible (useSyncExternalStore)            │ │ │ │  │
+│  │  │  │  └─────────────────────────────────────────────────────┘ │ │ │  │
+│  │  │  └───────────────────────────────────────────────────────────┘ │ │  │
+│  │  │  ┌───────────────────────────────────────────────────────────┐ │ │  │
+│  │  │  │  Messages / Scrollable Content                          │ │ │  │
+│  │  │  └───────────────────────────────────────────────────────────┘ │ │  │
+│  │  │  ┌───────────────────────────────────────────────────────────┐ │ │  │
+│  │  │  │  Overlays (内联对话框):                                    │ │ │  │
+│  │  │  │  ├─ AddWorkspaceDirectory (add-dir)                      │ │ │  │
+│  │  │  │  └─ ...                                                  │ │ │  │
+│  │  │  └───────────────────────────────────────────────────────────┘ │ │  │
+│  │  └─────────────────────────────────────────────────────────────────┘ │  │
+│  │  ┌─────────────────────────────────────────────────────────────────┐ │  │
+│  │  │  StickyPromptHeader (可选, truncate-end)                      │ │  │
+│  │  └─────────────────────────────────────────────────────────────────┘ │  │
+│  │  ┌─────────────────────────────────────────────────────────────────┐ │  │
+│  │  │  NewMessagesPill (可选, count > 0 或 Jump to bottom)           │ │  │
+│  │  └─────────────────────────────────────────────────────────────────┘ │  │
+│  │  ┌─────────────────────────────────────────────────────────────────┐ │  │
+│  │  │  Bottom (固定区域: Input, Suggestions)                        │ │  │
+│  │  └─────────────────────────────────────────────────────────────────┘ │  │
+│  │  ┌─────────────────────────────────────────────────────────────────┐ │  │
+│  │  │  BottomFloat (右下角浮动)                                      │ │  │
+│  │  └─────────────────────────────────────────────────────────────────┘ │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                  Dialog Overlay (模态对话框)                        │  │
+│  │  ┌─────────────────────────────────────────────────────────────────┐ │  │
+│  │  │  DiffDialog (/diff 命令)                                         │ │  │
+│  │  │  ├─ viewMode: 'list' | 'detail'                                 │ │  │
+│  │  │  ├─ selectedIndex: number                                       │ │  │
+│  │  │  ├─ sourceIndex: number                                         │ │  │
+│  │  │  ├─ sources: [{type: 'current'}, {type: 'turn', turn: TurnDiff}]│ │  │
+│  │  │  ├─ DiffFileList: MAX_VISIBLE_FILES=5,上下指示器               │ │  │
+│  │  │  └─ DiffDetailView: 显示单个文件的diff                          │ │  │
+│  │  └─────────────────────────────────────────────────────────────────┘ │  │
+│  │  ┌─────────────────────────────────────────────────────────────────┐ │  │
+│  │  │  SandboxSettings (/sandbox-toggle 命令)                        │ │  │
+│  │  │  ├─ depCheck: {errors, warnings}                               │ │  │
+│  │  │  ├─ 动态标签页: errors? [Dependencies] : [Mode, Overrides, Config]││  │
+│  │  │  └─ showSocketWarning: boolean                                  │ │  │
+│  │  └─────────────────────────────────────────────────────────────────┘ │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                  共享基础组件                                         │  │
+│  │  ┌───────────────────────────────┐  ┌───────────────────────────────┐│  │
+│  │  │ CustomSelect (通用选择器)    │  │ Dialog (通用对话框)          ││  │
+│  │  │  ├─ useSelectState           │  │  └─ useRegisterOverlay       ││  │
+│  │  │  ├─ useSelectNavigation      │  └───────────────────────────────┘│  │
+│  │  │  └─ 三种布局: compact/expanded/compact-vertical               ││  │
+│  │  └───────────────────────────────┘  ┌───────────────────────────────┐│  │
+│  │                                      │ useRegisterOverlay (覆盖层)    ││  │
+│  │                                      │  ├─ activeOverlays (AppState)  ││  │
+│  │                                      │  └─ invalidatePrevFrame (useLayoutEffect cleanup)││  │
+│  │                                      └───────────────────────────────┘│  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  外部依赖与服务:                                                             │
+│  ├─ SandboxManager (沙箱管理)                                               │
+│  ├─ Git integration (git diff)                                             │
+│  ├─ Permissions system (applyPermissionUpdate, persistPermissionUpdate)   │
+│  ├─ Bootstrap state (setAdditionalDirectoriesForClaudeMd)                 │
+│  └─ Ink (Box, Text, useKeybindings)                                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+调用方:
+- /add-dir 命令 (commands/add-dir/add-dir.tsx)
+- /diff 命令 (commands/diff/diff.tsx)
+- /sandbox-toggle 命令 (commands/sandbox-toggle/sandbox-toggle.tsx)
+- REPL.tsx (渲染 FullscreenLayout)
+内部边界:
+- FullscreenLayout (滚动管理、粘性提示、新消息药丸)
+- useUnseenDivider (未读分隔线管理)
+- useRegisterOverlay (覆盖层注册)
+- DiffDialog (diff查看)
+- SandboxSettings (沙箱设置)
+- AddWorkspaceDirectory (目录添加对话框)
+- CustomSelect (通用选择器)
+```
+
+### 关键流程与失败路径
+
+```text
+┌───────────────────────────────────────────────────────────────────────────┐
+│                   主流程 1: /diff 命令 (成功路径)                         │
+├───────────────────────────────────────────────────────────────────────────┤
+│  用户输入 /diff → call() → 动态 import DiffDialog → 返回 <DiffDialog>    │
+│    │                                                                         │
+│  ┌─ DiffDialog 挂载 ─────────────────────────────────────────────────────┐  │
+│  │  1. useRegisterOverlay('diff-dialog') 注册 → 禁用聊天快捷键            │  │
+│  │  2. useDiffData() 获取当前 git diff → {loading, files, stats, hunks} │  │
+│  │  3. useTurnDiffs(messages) 从历史消息提取轮次 diff                   │  │
+│  │  4. 构建 sources: [{type: 'current'}, ...turnDiffs]                 │  │
+│  │  5. 初始状态: viewMode='list', selectedIndex=0, sourceIndex=0       │  │
+│  │  6. 注册键盘快捷键 (视图模式相关):                                    │  │
+│  │     ├─ list模式: ←/→ 切换源, ↑/↓ 选择文件, Enter 进入详情, Esc 关闭 │  │
+│  │     └─ detail模式: ←/Esc 返回列表                                   │  │
+│  │                                                                         │  │
+│  │  7. 渲染:                                                              │  │
+│  │     ├─ 多源? → 源选择器药丸 (Current · T1 · T2...)                   │  │
+│  │     ├─ list模式 → DiffFileList (最多5文件,上下指示器)                │  │
+│  │     └─ detail模式 → DiffDetailView (文件diff)                        │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                             │
+│  ┌─ 用户交互 ────────────────────────────────────────────────────────────┐  │
+│  │  - 按 ↓ → selectedIndex +1 (clamp)                                   │  │
+│  │  - 按 Enter → viewMode='detail' (如果选中文件存在)                  │  │
+│  │  - 按 → (list模式) → sourceIndex +1, selectedIndex 重置为 0         │  │
+│  │  - 按 ← (list模式) → sourceIndex -1, selectedIndex 重置为 0        │  │
+│  │  - 按 ← (detail模式) → viewMode='list'                               │  │
+│  │  - 按 Esc (list模式) → onDone("Diff dialog dismissed", ...) → 关闭 │  │
+│  │  - 按 Esc (detail模式) → viewMode='list'                            │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────────────────────────────────────────────────┘
+
+┌───────────────────────────────────────────────────────────────────────────┐
+│                   主流程 2: /add-dir 命令 (成功路径)                       │
+├───────────────────────────────────────────────────────────────────────────┤
+│  用户输入 /add-dir [路径] → call()                                        │
+│    │                                                                         │
+│  ┌─ 无路径参数 ──────────────────────────────────────────────────────────┐  │
+│  │  → 返回 <AddWorkspaceDirectory permissionContext=... onAddDirectory=...> │  │
+│  │  → 显示输入框 + Tab自动补全 (debounced 100ms)                           │  │
+│  │  → 用户输入路径 + 按 Enter → validateDirectoryForWorkspace()          │  │
+│  │  → 成功 → onAddDirectory(path, false) (仅会话)                        │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│    │                                                                         │
+│  ┌─ 有路径参数 ──────────────────────────────────────────────────────────┐  │
+│  │  → validateDirectoryForWorkspace() → 成功/失败                          │  │
+│  │  ├─ 失败 → 返回 <AddDirError> → setTimeout 0 后 onDone (错误先渲染)   │  │
+│  │  └─ 成功 → 返回 <AddWorkspaceDirectory directoryPath=...>              │  │
+│  │      → 显示确认对话框 + 三个选项:                                       │  │
+│  │         1. "Yes, for this session" → onAddDirectory(path, false)      │  │
+│  │         2. "Yes, and remember this directory" → onAddDirectory(path, true)│  │
+│  │         3. "No" → onCancel                                             │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│    │                                                                         │
+│  ┌─ onAddDirectory (path, remember) 内部流程 ─────────────────────────────┐  │
+│  │  1. applyPermissionUpdate 更新工具权限上下文                          │  │
+│  │  2. setAppState 更新状态                                               │  │
+│  │  3. setAdditionalDirectoriesForClaudeMd 更新bootstrap状态            │  │
+│  │  4. SandboxManager.refreshConfig() 刷新沙箱配置 (async,不等待)        │  │
+│  │  5. remember=true? → persistPermissionUpdate 写入本地设置 (可能抛异常) │  │
+│  │  6. onDone("Added directory ...") 退出                                │  │
+│  │     - persist抛异常? → message提示 "Added ... but failed to save"     │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────────────────────────────────────────────────┘
+
+┌───────────────────────────────────────────────────────────────────────────┐
+│                   主流程 3: /sandbox-toggle 命令 (成功路径)                │
+├───────────────────────────────────────────────────────────────────────────┤
+│  用户输入 /sandbox-toggle [exclude ...] → call()                          │
+│    │                                                                         │
+│  ┌─ 有 exclude 子命令 ───────────────────────────────────────────────────┐  │
+│  │  → 无模式参数? → 立即 onDone 错误提示 "要求提供模式"                   │  │
+│  │  → 有模式参数 → add to excluded commands → onDone 成功消息 → 返回 null │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│    │                                                                         │
+│  ┌─ 无 exclude 子命令 ───────────────────────────────────────────────────┐  │
+│  │  1. 检查平台支持: SandboxManager.isSupportedPlatform()                │  │
+│  │     → 不支持 (WSL1)? → 立即 onDone 错误提示 → 返回 null               │  │
+│  │  2. 获取 depCheck = SandboxManager.checkDependencies()                │  │
+│  │  3. 检查 enabledPlatforms: SandboxManager.isPlatformInEnabledList()    │  │
+│  │     → 不允许? → 立即 onDone 错误提示 → 返回 null                       │  │
+│  │  4. 检查设置锁定: SandboxManager.areSandboxSettingsLockedByPolicy()   │  │
+│  │     → 锁定? → 立即 onDone 错误提示 → 返回 null                         │  │
+│  │  5. 返回 <SandboxSettings onComplete=... depCheck=depCheck>           │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│    │                                                                         │
+│  ┌─ SandboxSettings 渲染 ────────────────────────────────────────────────┐  │
+│  │  1. 获取 currentEnabled, currentAutoAllow, settings                   │  │
+│  │  2. 计算 showSocketWarning = depCheck.warnings 存在且未允许所有Unix套接字│  │
+│  │  3. 动态构建标签页:                                                  │  │
+│  │     ├─ depCheck.errors 非空 → [Dependencies] 标签页                    │  │
+│  │     ├─ depCheck.warnings 非空 → [Mode, Dependencies, Overrides, Config]│ │  │
+│  │     └─ 无问题 → [Mode, Overrides, Config]                            │  │
+│  │  4. 用户选择模式选项 → SandboxManager.setSandboxSettings → onComplete │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────────────────────────────────────────────────┘
+
+┌───────────────────────────────────────────────────────────────────────────┐
+│                   主流程 4: FullscreenLayout 新消息药丸 (成功路径)         │
+├───────────────────────────────────────────────────────────────────────────┤
+│  新消息到达 → REPL 计算 newMessageCount (通过 computeUnseenDivider)      │
+│    │                                                                         │
+│  ┌─ 用户向上滚动 (触发 wheel 事件) → onScrollAway(handle) ───────────────┐  │
+│  │  1. 检查是否真正离开底部: scrollTop + pendingDelta + viewportHeight < max│  │
+│  │  2. dividerYRef.current 为 null (首次离开)?                           │  │
+│  │     ├─ dividerYRef.current = handle.getScrollHeight() (snapshot)     │  │
+│  │     └─ setDividerIndex = current message count                        │  │
+│  │  3. pillVisible 变为 true (useSyncExternalStore 订阅)                 │  │
+│  │  4. 渲染新消息药丸: count>0 显示 "N new messages" ,否则 "Jump to bottom"│  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│    │                                                                         │
+│  ┌─ 用户点击药丸/按快捷键 → onPillClick() ───────────────────────────────┐  │
+│  │  1. handle.scrollToBottom() → 滚动到底部                              │  │
+│  │  2. 新消息到达时 REPL 调用 onRepin()                                 │  │
+│  │  3. setDividerIndex(null) → state 更新                                │  │
+│  │  4. useEffect (延迟, 避免与 wheel 竞态) → dividerYRef.current = null │  │
+│  │  5. pillVisible 变为 false → 隐藏药丸                                 │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────────────────────────────────────────────────┘
+
+┌───────────────────────────────────────────────────────────────────────────┐
+│                      失败路径 1: AddDirError 特殊处理                     │
+├───────────────────────────────────────────────────────────────────────────┤
+│  validateDirectoryForWorkspace() 失败 → 返回 <AddDirError>                │
+│    ├─ AddDirError 渲染错误消息                                           │
+│    └─ useEffect → setTimeout 0 后调用 onDone → 错误先渲染避免立即卸载     │
+└───────────────────────────────────────────────────────────────────────────┘
+
+┌───────────────────────────────────────────────────────────────────────────┐
+│                      失败路径 2: persistPermissionUpdate 抛异常          │
+├───────────────────────────────────────────────────────────────────────────┤
+│  remember=true → persistPermissionUpdate(path) 抛异常                   │
+│    ├─ 权限/沙箱/bootstrap 已更新 (部分成功)                             │
+│    └─ onDone("Added directory ... but failed to save permanently") → 提示用户│
+└───────────────────────────────────────────────────────────────────────────┘
+
+┌───────────────────────────────────────────────────────────────────────────┐
+│                      失败路径 3: Sandbox平台不支持/锁定                    │
+├───────────────────────────────────────────────────────────────────────────┤
+│  SandboxManager.isSupportedPlatform() 为 false                           │
+│  OR SandboxManager.areSandboxSettingsLockedByPolicy() 为 true            │
+│    └─ 立即 onDone 错误提示 → 返回 null → 不显示设置对话框                 │
+└───────────────────────────────────────────────────────────────────────────┘
+
+┌───────────────────────────────────────────────────────────────────────────┐
+│                      失败路径 4: ScrollBox订阅回调抛异常                   │
+├───────────────────────────────────────────────────────────────────────────┤
+│  useSyncExternalStore 订阅回调执行时抛异常                                │
+│    ├─ React 错误边界捕获 (如果有)                                        │
+│    ├─ 药丸可能不显示 (部分功能缺失)                                       │
+│    └─ 核心功能不受影响 → 用户仍可正常对话                                 │
+└───────────────────────────────────────────────────────────────────────────┘
+
+┌───────────────────────────────────────────────────────────────────────────┐
+│                      失败路径 5: DiffDialog空状态                          │
+├───────────────────────────────────────────────────────────────────────────┤
+│  diff.loading → 显示 "Loading diff…"                                     │
+│  无变更文件 (current源) → 显示 "Working tree is clean"                   │
+│  无变更文件 (历史轮次源) → 显示 "No file changes in this turn"          │
+│  文件太多无法显示详情 (stats.filesCount>0但files空) → 显示 "Too many files to display details"│
+└───────────────────────────────────────────────────────────────────────────┘
+```
+
+### 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|----------|--------|------------|---------|-------|----------|-----------|
+| dividerIndex (未读分隔线索引) | useUnseenDivider Hook | useState(null) | 每个组件实例隔离 | 不持久化 | onRepin() 时设置为 null; 组件卸载清除 | 组件卸载释放 |
+| dividerYRef (scrollHeight snapshot) | useUnseenDivider Hook | useRef(null) | 每个组件实例隔离 | 不持久化 | onScrollAway() 时 snapshot; useEffect (延迟) 在 dividerIndex 变 null 后清除 | 组件卸载释放 |
+| countRef (当前消息计数) | useUnseenDivider Hook | useRef(0) | 每个组件实例隔离 | 不持久化 | 每次 render 更新为最新 messageCount | 组件卸载释放 |
+| activeOverlays (活动覆盖层集合) | AppState | 模块加载时初始化 Set() | 全局共享 (AppState) | 不持久化 | useRegisterOverlay cleanup 时移除; 组件卸载自动清理 | 进程退出释放 |
+| viewMode (DiffDialog视图模式) | DiffDialog 组件 | useState('list') | 每个组件实例隔离 | 不持久化 | 用户按 Enter/← 切换; 组件卸载清除 | 组件卸载释放 |
+| selectedIndex (DiffDialog选中文件) | DiffDialog 组件 | useState(0) | 每个组件实例隔离 | 不持久化 | 用户按 ↑/↓ 切换; 源切换时重置为 0 | 组件卸载释放 |
+| sourceIndex (DiffDialog选中源) | DiffDialog 组件 | useState(0) | 每个组件实例隔离 | 不持久化 | 用户按 ←/→ 切换; useEffect 钳制到 sources.length-1 | 组件卸载释放 |
+| prevSourceIndex (DiffDialog源切换检测) | DiffDialog 组件 | useRef(0) | 每个组件实例隔离 | 不持久化 | 每次 sourceIndex 变化时更新 | 组件卸载释放 |
+| directoryInput (AddWorkspaceDirectory输入) | AddWorkspaceDirectory 组件 | useState('') | 每个组件实例隔离 | 不持久化 | 用户输入更新; 组件卸载清除 | 组件卸载释放 |
+| error (AddWorkspaceDirectory验证错误) | AddWorkspaceDirectory 组件 | useState(null) | 每个组件实例隔离 | 不持久化 | validateDirectoryForWorkspace 时设置; 组件卸载清除 | 组件卸载释放 |
+| suggestions (AddWorkspaceDirectory补全建议) | AddWorkspaceDirectory 组件 | useState([]) | 每个组件实例隔离 | 不持久化 | debounced 100ms getDirectoryCompletions 更新; 组件卸载清除 | 组件卸载释放 |
+| selectedSuggestion (AddWorkspaceDirectory选中建议) | AddWorkspaceDirectory 组件 | useState(0) | 每个组件实例隔离 | 不持久化 | 用户按 ↑/↓ 切换; 组件卸载清除 | 组件卸载释放 |
+| depCheck (SandboxSettings依赖检查) | SandboxSettings 组件 | Props传入 (来自命令) | 每个组件实例隔离 | 不持久化 | 组件卸载清除 | 组件卸载释放 |
+| showSocketWarning (沙箱Socket警告) | SandboxSettings 组件 | useMemo 从 depCheck 计算 | 每个组件实例隔离 | 不持久化 | 组件卸载清除 | 组件卸载释放 |
+| isOpen (CustomSelect打开状态) | useSelectState Hook | useState(defaultValue 存在? true : false) | 每个组件实例隔离 | 不持久化 | 用户按 Esc 关闭; 组件卸载清除 | 组件卸载释放 |
+| selectedValue (CustomSelect选中值) | useSelectState Hook | useState(defaultValue) | 每个组件实例隔离 | 不持久化 | 用户按 Enter/点击选择; 组件卸载清除 | 组件卸载释放 |
+| focusedValue (CustomSelect焦点值) | useSelectState Hook | useState(defaultFocusValue 或 options[0].value) | 每个组件实例隔离 | 不持久化 | 用户按 ↑/↓ 切换; 组件卸载清除 | 组件卸载释放 |
+| visibleFromIndex (CustomSelect可见起始索引) | useSelectState Hook | useState(0) | 每个组件实例隔离 | 不持久化 | focusedValue 变化时调整; 组件卸载清除 | 组件卸载释放 |
+| imagesSelected / selectedImageIndex (图片粘贴模式) | CustomSelect 组件 | useState(false) / useState(0) | 每个组件实例隔离 | 不持久化 | 用户切换模式时更新; 组件卸载清除 | 组件卸载释放 |
+| inputValues (CustomSelect输入选项值) | CustomSelect 组件 | useState(new Map()) | 每个组件实例隔离 | 不持久化 | 用户输入时更新; lastInitialValues 变化时同步 (仅用户未编辑时) | 组件卸载释放 |
+| lastInitialValues (输入选项初始值追踪) | CustomSelect 组件 | useRef(new Map()) | 每个组件实例隔离 | 不持久化 | 每次 defaultValue 变化时更新 | 组件卸载释放 |
+| scrollRef (FullscreenLayout滚动引用) | FullscreenLayout 组件 | useRef(null) | 每个组件实例隔离 | 不持久化 | 组件卸载清除 | 组件卸载释放 |
+| modalScrollRef (模态对话框滚动引用) | FullscreenLayout 组件 | useRef(null) | 每个组件实例隔离 | 不持久化 | 组件卸载清除 | 组件卸载释放 |
+| dividerYRef (传入FullscreenLayout的分隔线ref) | FullscreenLayout 组件 | useRef(null) 或 来自 useUnseenDivider | 每个组件实例隔离 | 不持久化 | 组件卸载清除 | 组件卸载释放 |
+
+生命周期证据:
+- `src/components/FullscreenLayout.tsx:99-214` (useUnseenDivider)
+- `src/context/overlayContext.tsx:37-72` (useRegisterOverlay / activeOverlays)
+- `src/components/diff/DiffDialog.tsx:59-289` (DiffDialog state)
+- `src/components/permissions/rules/AddWorkspaceDirectory.tsx` (AddWorkspaceDirectory state)
+- `src/components/sandbox/SandboxSettings.tsx:29-160` (SandboxSettings)
+- `src/components/CustomSelect/select.tsx:26-225` (CustomSelect state)
+- `src/components/CustomSelect/useSelectState.ts` (useSelectState)
+- `src/components/CustomSelect/useSelectNavigation.ts` (useSelectNavigation)
+
 ## 5. 失败语义与工程取舍
 
 | 触发条件 | 检测位置 | 消息/异常如何传播 | 是否重试及上限 | 状态与资源清理 | 调用方可见结果 |

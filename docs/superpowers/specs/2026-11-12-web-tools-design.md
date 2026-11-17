@@ -1185,6 +1185,186 @@ WebFetch 完整安全检查链：
 | EgressBlockedError 检测 | `utils.ts:318-325` | 403 + x-proxy-error |
 | 沙箱分离测试 | `test/utils/sandbox/webfetch-preapproved-separated.test.ts` | 验证分离保证 |
 
+### 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────┐
+│                          Web Tools 架构                              │
+├─────────────────────────────────────────────────────────────────────┤
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │  WebSearchTool (委托 API)                                     │  │
+│  │  ┌──────────────────────────────────────────────────────┐  │  │
+│  │  │queryModelWithStreaming + extraToolSchemas             │  │  │
+│  │  │type: 'web_search_20250305', max_uses: 8             │  │  │
+│  │  │流式事件: content_block_start/delta/stop              │  │  │
+│  │  │来源引用要求 (Sources section 强制)                   │  │  │
+│  │  └──────────────────────────────────────────────────────┘  │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│                              ↕ 模型调用                             │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │  WebFetchTool (核心抓取)                                      │  │
+│  │  ┌──────────────────────────────────────────────────────┐  │  │
+│  │  │validateURL (长度 ≤2000, 无凭据, 主机 ≥2段)          │  │  │
+│  │  │URL_CACHE (LRU, 15分钟, 50MB)                       │  │  │
+│  │  │checkDomainBlocklist (API 调用, 缓存 allowed)       │  │  │
+│  │  │getWithPermittedRedirects (同主机/www)              │  │  │
+│  │  │HTML→Markdown (Turndown 懒加载单例)                  │  │  │
+│  │  │applyPromptToMarkdown (Haiku 次级模型)              │  │  │
+│  │  │二进制持久化 (mcpOutputStorage)                     │  │  │
+│  │  └──────────────────────────────────────────────────────┘  │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│                              ↕                                      │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │  安全检查层                                                    │  │
+│  │  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐         │  │
+│  │  │PREAPPROVED   │ │域名黑名单    │ │重定向权限    │         │  │
+│  │  │_HOSTS        │ │API 查询      │ │检查          │         │  │
+│  │  └──────────────┘ └──────────────┘ └──────────────┘         │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│                              ↕                                      │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │  缓存层                                                        │  │
+│  │  ┌─────────────────────┐ ┌─────────────────────┐            │  │
+│  │  │URL_CACHE           │ │DOMAIN_CHECK_CACHE   │            │  │
+│  │  │LRU, 15分钟, 50MB   │ │LRU, 5分钟, 128条    │            │  │
+│  │  │键: 原始 URL        │ │键: 主机名           │            │  │
+│  │  │仅缓存 allowed      │ │                     │            │  │
+│  │  └─────────────────────┘ └─────────────────────┘            │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────┘
+
+边界说明：
+• WebSearch 与沙箱网络完全分离 (不同权限路径)
+• WebFetch 预批准域名自动允许，但沙箱网络不继承此列表
+• 缓存仅内存，不持久化到磁盘
+• Turndown 懒加载，首次 HTML 转换时 import
+```
+
+### 关键流程与失败路径
+
+```text
+WebSearch 完整流程
+================
+WebSearchTool.call(query, allowed_domains?, blocked_domains?)
+  ↓
+validateInput
+  ├─ query 空? → 拒绝
+  └─ allowed_domains && blocked_domains? → 拒绝 (不能同时使用)
+  ↓
+checkPermissions
+  ↓
+构造 userMessage + extraToolSchemas (web_search_20250305, max_uses: 8)
+  ↓
+queryModelWithStreaming 流式调用
+  ↓
+事件循环
+  ├─ content_block_start
+  │  ├─ server_tool_use → 记录 currentToolUseId
+  │  └─ web_search_tool_result → 提取结果, 触发进度
+  ├─ content_block_delta
+  │  └─ currentToolUseId 存在? → 正则提取 query 用于进度
+  └─ content_block_stop → 重置 currentToolUseId
+  ↓
+makeOutputFromSearchResponse 组装结果
+  ↓
+mapToolResultToToolResultBlockParam → 追加 REMINDER (必须包含 Sources)
+
+WebFetch 完整流程
+================
+WebFetchTool.call(url, prompt)
+  ↓
+validateInput → new URL(url) 失败? → 拒绝
+  ↓
+checkPermissions
+  ├─ isPreapprovedHost(hostname, pathname)? → allow
+  └─ 否则检查域名规则 → allow/deny/ask
+  ↓
+getURLMarkdownContent(url, abortController)
+  ↓
+validateURL(url)
+  ├─ 长度 > 2000? → throw Error("Invalid URL")
+  ├─ 包含用户名密码? → throw Error("Invalid URL")
+  └─ 主机名 < 2 段? → throw Error("Invalid URL")
+  ↓
+URL_CACHE.has(url)?
+  ├─ Yes → 直接返回缓存
+  └─ No → 继续
+  ↓
+升级 http → https
+  ↓
+skipWebFetchPreflight?
+  └─ No → checkDomainBlocklist(hostname)
+         ├─ DOMAIN_CHECK_CACHE.has(hostname)? → allowed
+         └─ 请求 api.anthropic.com/api/web/domain_info
+                ├─ can_fetch=true → 存入 DOMAIN_CHECK_CACHE → allowed
+                ├─ can_fetch=false → throw DomainBlockedError
+                └─ 请求失败 → throw DomainCheckFailedError
+  ↓
+getWithPermittedRedirects(upgradedUrl, signal, isPermittedRedirect, depth=0)
+  ├─ axios.get (maxRedirects=0, timeout=60s)
+  ├─ 3xx 响应且有 Location?
+  │  ├─ 解析 redirectUrl
+  │  ├─ isPermittedRedirect(original, redirectUrl)?
+  │  │  ├─ 协议相同 && 端口相同 && stripWww 主机相同?
+  │  │  │  ├─ depth > 10? → throw Error("Too many redirects")
+  │  │  │  └─ 递归调用 (depth+1)
+  │  │  └─ 否 → 返回 { type: 'redirect', originalUrl, redirectUrl, statusCode }
+  │  └─ 非 3xx → 返回响应
+  ├─ 检测 403 + x-proxy-error → throw EgressBlockedError
+  ↓
+结果是 redirect?
+  ├─ Yes → 返回提示信息，要求重新调用 WebFetch with redirectUrl
+  └─ No → 继续
+  ↓
+isBinaryContentType(content-type)?
+  ├─ Yes → persistBinaryContent() → 记录 persistedPath
+  └─ No → 继续
+  ↓
+rawBuffer.toString('utf-8')
+  ↓
+content-type 是 text/html?
+  ├─ Yes → getTurndownService().turndown(html) → markdownContent
+  └─ No → markdownContent = htmlContent
+  ↓
+markdownContent 截断到 100,000 字符
+  ↓
+存入 URL_CACHE (键 = 原始 URL)
+  ↓
+isPreapproved && content-type includes text/markdown && length < 100,000?
+  ├─ Yes → result = markdownContent (跳过 Haiku)
+  └─ No → applyPromptToMarkdown(prompt, markdownContent, signal, ...)
+  ↓
+有 persistedPath? → 追加到 result
+  ↓
+返回结果
+
+失败路径汇总
+============
+• URL 验证失败 → throw Error
+• 域名黑名单 → throw DomainBlockedError
+• 域名检查失败 → throw DomainCheckFailedError
+• 抓取超时 → throw AxiosError
+• 跨主机重定向 → 返回 redirect 提示 (非错误)
+• 二进制内容 → 同时持久化 + 尝试摘要
+• 摘要超时 → signal.abort → throw AbortError
+• WebSearch 无结果 → 工具结果包含错误信息
+```
+
+### 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| `URL_CACHE` | `WebFetchTool/utils.ts` | 模块加载时 `new LRUCache({ max: 50MB, ttl: 15m })` | 全局单例，会话共享 | 仅内存 | TTL 自动过期 / LRU 驱逐 / `clearWebFetchCache()` | N/A (模块级变量) |
+| `DOMAIN_CHECK_CACHE` | `WebFetchTool/utils.ts` | 模块加载时 `new LRUCache({ max: 128, ttl: 5m })` | 全局单例，会话共享 | 仅内存 | TTL 自动过期 / LRU 驱逐 / `clearWebFetchCache()` | 仅缓存 allowed，不缓存 blocked/check_failed |
+| Turndown 服务 | `WebFetchTool/utils.ts` | 懒加载：首次调用 `getTurndownService()` 时 `import('turndown')` | 全局单例，会话共享 | 仅内存 | 进程退出释放 | N/A (模块级变量) |
+| `PREAPPROVED_HOSTS` | `WebFetchTool/preapproved.ts` | 模块加载时 `export const PREAPPROVED_HOSTS = [...]` | 全局单例，只读 | 仅编译时 (嵌入代码) | 定义后不可变 | N/A (常量) |
+| Axios 响应 | `WebFetchTool/utils.ts` | `getWithPermittedRedirects()` 中 `axios.get()` 创建 | 单次调用隔离 | 仅内存 | GC 回收 | 自动重定向禁用，手动处理 3xx |
+| 临时二进制文件 | `mcpOutputStorage` | `persistBinaryContent()` 保存到临时目录 | 单次调用隔离 | 磁盘文件 | 由 mcpOutputStorage 管理生命周期 | 工具调用后可访问，最终清理 |
+| AbortController | `ToolContext` | 工具调用时创建，传入 `getURLMarkdownContent()` 和 `applyPromptToMarkdown()` | 单次调用隔离 | 仅内存 | 工具完成或超时失效 | `signal.abort` 可取消模型摘要 |
+| WebSearch 流式状态 | `WebSearchTool/WebSearchTool.ts` | `StreamState` 对象：allContentBlocks, currentToolUseId, currentToolUseJson, toolUseQueries | 单次调用隔离 | 仅内存 | 工具完成后重置 | 流式事件处理中动态更新 |
+
+生命周期证据：`src/tools/WebFetchTool/utils.ts:51-106`、`src/tools/WebFetchTool/preapproved.ts:136-166`、`src/tools/WebSearchTool/WebSearchTool.ts:292-388`
+
 ## 5. 失败语义与工程取舍
 
 | 触发条件 | 检测位置 | 消息/异常如何传播 | 是否重试及上限 | 状态与资源清理 | 调用方可见结果 |

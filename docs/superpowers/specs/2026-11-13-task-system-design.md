@@ -992,6 +992,197 @@ export function notifyTasksUpdated(): void
 | 下游 | message queue | 通知发送 | query-core spec |
 | 下游 | UI components | 任务列表、任务详情、后台指示器 | 其他 spec |
 
+---
+
+### 4.9 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              flash CLI                                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ┌─────────────────────────────────────────────────────────────────────┐ │
+│  │                        AppState                                     │ │
+│  │  ┌───────────────────────────────────────────────────────────────┐│ │
+│  │  │ tasks: { [taskId]: TaskState }                           │ │
+│  │  │  ┌─────────────────────────────────────────────────────────┐│ │
+│  │  │  │ LocalShellTaskState                                 ││ │
+│  │  │  ├─────────────────────────────────────────────────────────┤│ │
+│  │  │  │ LocalAgentTaskState                                 ││ │
+│  │  │  ├─────────────────────────────────────────────────────────┤│ │
+│  │  │  │ ... (other task types)                              ││ │
+│  │  │  └─────────────────────────────────────────────────────────┘│ │
+│  │  └───────────────────────────────────────────────────────────────┘│ │
+│  └─────────────────────────────────────────────────────────────────────┘ │
+│                                    │                                      │
+│  ┌───────────────────────┐         │         ┌───────────────────────┐  │
+│  │  src/Task.ts    │◄────────┼────────►│  src/tasks/...        │  │
+│  │  (types + ID gen    │         │         │  (task implementations) │  │
+│  └───────────────────────┘         │         └───────────────────────┘  │
+│                                    │                                      │
+│  ┌───────────────────────────────────────────────────────────────────┐  │
+│  │              src/utils/task/                                    │  │
+│  │  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐  │  │
+│  │  │ framework.ts     │  │  diskOutput.ts    │  │  ...         │  │  │
+│  │  │ registerTask()   │  │  DiskTaskOutput  │  │              │  │  │
+│  │  │ updateTaskState()│  │  append/flush  │  │              │  │  │
+│  │  │ pollTasks()    │  │  getOutputDelta()│  │              │  │  │
+│  │  │ evictTerminal  │  │  cleanup()         │  │              │  │  │
+│  │  └──────────────────┘  └──────────────────┘  └──────────────────┘  │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
+│                                    │                                      │
+│  ┌───────────────────────────────────────────────────────────────────┐  │
+│  │  ┌───────────────────────────────────────────────────────────┐  │  │
+│  │  │  src/utils/tasks.ts (todo list)                        │  │  │
+│  │  │  - createTask() / updateTask() / deleteTask()        │  │  │
+│  │  │  - lockfile / high-water mark in ~/.claude/tasks/    │  │  │
+│  │  └───────────────────────────────────────────────────────────┘  │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
+│                                    │                                      │
+│  ┌───────────────────────────────────────────────────────────────────┐  │
+│  │                          输出文件系统                                 │  │
+│  │  ┌───────────────────────────────────────────────────────────┐  │  │
+│  │  │ {projectTempDir}/{sessionId}/tasks/{taskId}.output       │  │  │
+│  │  │ (异步写入，支持增量读取)                              │  │  │
+│  │  └───────────────────────────────────────────────────────────┘  │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
+│                                    │                                      │
+│  ┌───────────────────────┐         │         ┌───────────────────────┐  │
+│  │ TaskStopTool        │◄────────┼────────►│  Message Queue       │  │
+│  │  (stopTask())       │         │         │  (通知)         │  │
+│  └───────────────────────┘         │         └───────────────────────┘  │
+│                                    │                                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**说明：**
+- AppState 是核心共享内存状态，任务具体实现与框架通过 updater 函数原子更新
+- DiskTaskOutput 管理任务输出文件，队列化写入，5GB 上限截断
+- Todo list 独立文件存储在 ~/.claude/tasks/{taskListId}/ 下
+- 轮询由 framework.ts 每秒一次，生成附件、应用偏移、驱逐终态任务
+- 输出路径中 sessionId 隔离不同会话
+
+---
+
+### 4.10 关键流程与失败路径
+
+#### 主流程：LocalShellTask 创建 → 执行 → 完成/失败
+
+```text
+[用户输入/工具调用]
+        │
+        ▼
+┌─────────────────────────────────────────────────────────┐
+│ 1. createTaskStateBase(type="local_bash")          │
+│ 2. initTaskOutput(taskId) → 创建空输出文件        │
+│ 3. registerTask(task, setAppState)                │
+│    → 添加到 AppState.tasks                         │
+│    → emit task_started SDK 事件                      │
+└─────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────────────────────────┐
+│ 4. spawn child process (bash command)              │
+│    ├─ stdout/stderr → appendTaskOutput()     │
+│    └─ stall watchdog (每5s检查输出增长)       │
+└─────────────────────────────────────────────────────────┘
+        │
+        ▼
+   [子进程退出
+        │
+        ├─┬───────────────────┬─────────────────┐
+        │ │ 成功 (code=0)     │ 失败 (code≠0)   │
+        │ ▼                    ▼                 │
+        │ ┌──────────────────┐ ┌──────────────────┐  │
+        │ │ updateTaskState │ │ updateTaskState │  │
+        │ │ status=completed │ │ status=failed │  │
+        │ │ endTime=...      │ │ endTime=...    │  │
+        │ └──────────────────┘ └──────────────────┘  │
+        │ ├───────────────────────┤                  │
+        │ │ enqueuePending-    │                  │
+        │ │ Notification()         │                  │
+        │ └───────────────────┘                  │
+        └───────────────────────────┴──────────────────┘
+                              │
+                              ▼
+              ┌─────────────────────────────────────┐
+              │ pollTasks() 每秒循环:              │
+              │ - generateTaskAttachments()    │
+              │   → 检查输出更新               │
+              │ - applyTaskOffsetsAndEvictions()│
+              │   → 更新 outputOffset          │
+              │   → 驱逐 notified + terminal │
+              └─────────────────────────────────────┘
+```
+
+#### 失败路径 1：用户主动停止 (TaskStopTool)
+
+```text
+[用户调用 TaskStopTool(taskId)]
+        │
+        ▼
+┌─────────────────────────────────────────────────────────┐
+│ stopTask()                                           │
+│ 1. 验证任务存在且 status=running                     │
+│ 2. getTaskByType(task.type) → Task 实现            │
+│ 3. task.kill(taskId, setAppState, getAppState)  │
+│    ├─ LocalShellTask.kill(): 发送 SIGTERM 到子进程│
+│    └─ LocalAgentTask.kill(): abortController.abort() │
+│ 4. [LocalShellTask 特殊处理]                       │
+│    → 设置 notified=true                              │
+│    → 直接 emit SDK 事件 (抑制 bash 通知)            │
+└─────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────────────────────────┐
+│ updateTaskState() → status=killed                      │
+└─────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────────────────────────┐
+│ 最终被 evictTerminalTask() 从 AppState 移除          │
+└─────────────────────────────────────────────────────────┘
+```
+
+#### 失败路径 2：输出文件写入失败
+
+```text
+[任务输出写入]
+        │
+        ▼
+┌─────────────────────────────────────────────────────────┐
+│ DiskTaskOutput.#drain()                                 │
+│ 1. 尝试写入文件系统                                  │
+│ 2. 失败 → catch 并 logError()                         │
+│ 3. 内部重试一次 → 再次失败放弃                     │
+└─────────────────────────────────────────────────────────┘
+        │
+        ▼
+   [调用方无感知，输出可能不完整，队列保留不清理]
+        │
+        ▼
+   [任务继续执行直到子进程退出]
+```
+
+---
+
+### 4.11 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| `TaskState` (LocalShellTask/LocalAgentTask/...) | AppState | createTaskStateBase() + 类型特化字段 | 隔离：每个 taskId 独立；共享：通过不可变更新 | 否（进程退出丢失） | 终态后 evictTerminalTask() 从 AppState.tasks 移除 | task.kill() + 子进程终止 (LocalShellTask) / abort (LocalAgentTask) |
+| `DiskTaskOutput` instance | outputs Map (diskOutput.ts) | initTaskOutput(taskId) → 创建输出文件 + 实例化 DiskTaskOutput 加入 Map | 隔离：每个 taskId 一个实例 | 输出持久化到 {projectTempDir}/{sessionId}/tasks/{taskId}.output | evictTaskOutput(taskId) 从 Map 移除；cleanupTaskOutput() 删除文件 | 调用 cancel() 停止异步写入；cleanupTaskOutput() 删除文件 |
+| Todo list `Task` (json) | src/utils/tasks.ts | createTask() → 生成 ID、获取锁、写入 JSON 文件 | 共享：同一 taskListId 下多进程共享 | ~/.claude/tasks/{taskListId}/{taskId}.json; high-water mark: .highwatermark | deleteTask() → 删除 JSON、更新 high-water mark、清理 blocks/blockedBy 引用 | 无显式取消，锁自动释放 |
+| `AbortController` (task context) | task implementation (LocalAgentTask 等) | spawn/执行时创建 | 隔离：每个执行一个 | 否 | task.kill() 时调用 abort() | abort() 触发 AbortError，清理引用 |
+| `child process` (LocalShellTask) | LocalShellTask 实例 | child_process.spawn() | 隔离：每个 taskId 一个进程 | 否 | 子进程 exit 后清理句柄 | kill() → SIGTERM; cleanupTimeout 清理 |
+
+**生命周期证据：**
+- src/Task.ts:82-110 (generateTaskId, createTaskStateBase)
+- src/utils/task/diskOutput.ts:1-453
+- src/utils/task/framework.ts:1-308
+- src/utils/tasks.ts:1-861
+- src/tasks/LocalShellTask/LocalShellTask.tsx:1-18969
+- src/tasks/LocalAgentTask/LocalAgentTask.tsx:1-23501
+
 ## 5. 失败语义与工程取舍
 
 | 触发条件 | 检测位置 | 消息/异常如何传播 | 是否重试及上限 | 状态与资源清理 | 调用方可见结果 |

@@ -1287,6 +1287,145 @@ type AppState = {
 | 下游 | tasks system | 异步任务注册、进度更新、通知 | 其他 spec |
 | 下游 | analytics | agent 事件记录、telemetry | 其他 spec |
 
+### 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         调用方 (用户/模型/协调器)                         │
+└────────────────────────┬────────────────────────────────────────────────┘
+                         │
+         ┌───────────────┼───────────────────────────────────┐
+         │               │                                   │
+         ▼               ▼                                   ▼
+┌──────────────────┐ ┌──────────────────┐        ┌──────────────────────────┐
+│  AgentTool       │ │  TeamCreateTool │        │  TeamDeleteTool          │
+│  SendMessageTool │ │  (teams)         │        │  (teammates)            │
+└────────┬─────────┘ └────────┬─────────┘        └───────────┬──────────────┘
+         │                    │                              │
+         │                    │                              │
+         │         ┌──────────┼──────────────────────────────┤
+         │         │          │                              │
+         ▼         ▼          ▼                              ▼
+    ┌───────────────────────────────────────────────────────────────────┐
+    │           Internal Modules (src/utils/)                           │
+    │  ┌─────────────────┐  ┌──────────────────┐ ┌─────────────────┐    │
+    │  │ teammateMailbox │  │  teamHelpers     │ │ inProcessRunner │    │
+    │  │  (messages)     │  │  (team state)    │ │ (perms sync)   │    │
+    │  └────────┬────────┘  └────────┬─────────┘ └────────┬────────┘    │
+    │           │                    │                     │             │
+    │           └──────────┬─────────┴─────────────────────┘             │
+    │                      │                                             │
+    │                      ▼                                             │
+    │           ┌──────────────────────────┐                            │
+    │           │ permissionSync           │                            │
+    │           │ leaderPermissionBridge   │                            │
+    │           └──────────────────────────┘                            │
+    └───────────────────────────────────────────────────────────────────┘
+                              │
+                              │
+                              ▼
+    ┌───────────────────────────────────────────────────────────────────┐
+    │                     External State (files)                        │
+    │  ~/.claude/teams/{team}/config.json      (TeamFile)               │
+    │  ~/.claude/teams/{team}/inboxes/{agent}.json  (Mailbox)           │
+    │  ~/.claude/teams/{team}/permissions/pending/   (old perms)        │
+    │  ~/.claude/plans/{slug}.md                      (plans)           │
+    │  ~/.claude/worktrees/                            (worktrees)      │
+    └───────────────────────────────────────────────────────────────────┘
+                              │
+                              │
+                              ▼
+    ┌───────────────────────────────────────────────────────────────────┐
+    │                     External Dependencies                          │
+    │  git worktree     tmux/iTerm2     Claude API     Permission System│
+    └───────────────────────────────────────────────────────────────────┘
+```
+
+### 关键流程与失败路径
+
+```text
+[主线] Spawn子代理流程（同步）
+    ┌─────────────────┐
+    │ 用户调用AgentTool│
+    └────────┬────────┘
+             │
+             ▼
+    ┌────────────────────────────────┐
+    │ 检查feature gate                │
+    │ isAgentSwarmsEnabled?           │
+    └────────┬───────────────────────┘
+             │ 启用                    │ 禁用
+             │                         └───────────┐
+             ▼                                     ▼
+    ┌──────────────────────────┐         ┌─────────────────┐
+    │ 解析team_name与当前上下文│         │ 返回错误        │
+    └────────┬─────────────────┘         └─────────────────┘
+             │
+             ▼
+    ┌──────────────────────────┐
+    │ 检查权限规则              │
+    └────────┬─────────────────┘
+             │
+             ▼
+    ┌──────────────────────────┐
+    │ 决定执行模式              │
+    │ sync/async/teammate      │
+    └────────┬─────────────────┘
+             │
+             ▼
+    ┌──────────────────────────┐
+    │ effectiveIsolation?      │
+    │ worktree?                │
+    └────────┬─────────────────┘
+             │
+             ▼
+    ┌──────────────────────────┐
+    │ createAgentWorktree()    │
+    └────────┬─────────────────┘
+             │ 成功                    │ 失败
+             │                         └───────────┐
+             ▼                                     ▼
+    ┌──────────────────────────┐         ┌─────────────────┐
+    │ 构建enhancedSystemPrompt │         │ 抛出Error       │
+    └────────┬─────────────────┘         └─────────────────┘
+             │
+             ▼
+    ┌──────────────────────────┐
+    │ registerAgentForeground()│
+    └────────┬─────────────────┘
+             │
+             ▼
+    ┌──────────────────────────┐
+    │ runAgent()               │
+    └────────┬─────────────────┘
+             │ 用户ESC取消？
+             │ 是                       │ 否
+             └───────────┐               │
+                         ▼               ▼
+             ┌─────────────────┐ ┌───────────────────────┐
+             │ cleanupWorktree │ │ finalizeAgentTool()   │
+             │ ifNeeded()      │ └───────────┬───────────┘
+             └────────┬────────┘             │
+                      │                      ▼
+                      ▼              ┌─────────────────┐
+             ┌─────────────────┐    │ 返回结果        │
+             │ 设置状态为killed│    └─────────────────┘
+             └─────────────────┘
+```
+
+### 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| TeamFile (teams/{team}/config.json) | teamHelpers.ts | TeamCreateTool调用writeTeamFileAsync() | 全局 (跨会话) | 磁盘文件 | TeamDeleteTool删除 | 解散前检查活跃成员 |
+| Mailbox (inboxes/{agent}.json) | teammateMailbox.ts | writeToMailbox()自动创建 | 每个agent独立 | 磁盘文件 | clearMailbox() | lockfile确保原子访问 |
+| Worktree (git worktree) | worktree.ts | createAgentWorktree() | 每个agent隔离 | git管理 | removeAgentWorktree() | 无变更自动清理，有变更保留 |
+| AgentTask (AppState.tasks) | AgentTool | registerAsyncAgent()/registerAgentForeground() | 会话隔离 | 否（仅内存） | completeAsyncAgent()/failAsyncAgent() | 用户ESC设为killed |
+| SwarmPermissionRequest (pending/{id}.json) | permissionSync.ts | writePermissionRequest() | 每个请求独立 | 磁盘文件（旧路径） | 批准后移动到resolved/ | 无超时，永久等待 |
+| AbortController (inProcessRunner) | inProcessRunner.ts | createInProcessCanUseTool() | 每个inProcess agent | 否 | 关闭时abort | worker退出时清理 |
+
+生命周期证据: src/utils/swarm/teamHelpers.ts:64-182, src/utils/teammateMailbox.ts:43-91, src/utils/worktree.ts:677-753
+
 ## 5. 失败语义与工程取舍
 
 | 触发条件 | 检测位置 | 消息/异常如何传播 | 是否重试及上限 | 状态与资源清理 | 调用方可见结果 |

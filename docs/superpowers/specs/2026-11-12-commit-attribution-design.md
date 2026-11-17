@@ -1108,6 +1108,314 @@ git commit 触发 prepare-commit-msg
 | `execFileNoThrow.ts` | 执行 Git 命令 | shell-tools |
 | `lockfile.ts` | 钩子安装期间的并发保护 | （通用工具） |
 
+### 4.11 架构与资源边界图
+
+```text
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                    Claude Code Commit Attribution Subsystem                   │
+├───────────────────────────────────────────────────────────────────────────────┤
+│                                                                               │
+│  ┌──────────────────┐    ┌──────────────────────────────────────────────┐   │
+│  │  Edit/Write Tool │    │          Bash Tool                         │   │
+│  └────────┬─────────┘    └───────────────────┬──────────────────────────┘   │
+│           │                                 │                              │
+│           ▼                                 ▼                              │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                       attributionHooks.ts                              │  │
+│  ├───────────────────────────────────────────────────────────────────────┤  │
+│  │ • registerAttributionHooks()                                          │  │
+│  │ • PostToolUse: Edit/Write → trackFileModification()                  │  │
+│  │ • PreToolUse: Bash → candidatePaths() + readCandidate()              │  │
+│  │ • PostToolUse: Bash → compare pre/post → trackBulkFileChanges()      │  │
+│  │ • PostToolUseFailure: Bash → cleanupBashHook()                       │  │
+│  │ • reconcileCommitBaseline() (HEAD change counter)                    │  │
+│  │ • sweepFileContentCache() (15min/5min expiry)                        │  │
+│  └────────────────┬──────────────────────────────────────────────────────┘  │
+│                   │                                                         │
+│       ┌───────────┴───────────┬───────────────────────────┐                │
+│       ▼                       ▼                           ▼                │
+│  ┌─────────────────────┐ ┌───────────────────────┐ ┌─────────────────────┐│
+│  │  commitAttribution │ │  attributionTrailer  │ │  postCommit-        ││
+│  │  .ts               │ │  .ts                  │ │  Attribution.ts     ││
+│  ├─────────────────────┤ ├───────────────────────┤ ├─────────────────────┤│
+│  │ • createEmpty-     │ │ • buildPRTrailers()  │ │ • installPrepare-   ││
+│  │   AttributionState()│ │ • nonNegativeDelta() │ │   CommitMsgHook()   ││
+│  │ • trackFile-       │ │                       │ │ • uninstallPrepare-││
+│  │   Modification()   │ │                       │ │   CommitMsgHook()   ││
+│  │ • trackBulkFile-   │ │                       │ │ • dispatcher script ││
+│  │   Changes()        │ │                       │ │ • persistAttribution-││
+│  │ • computeFile-     │ │                       │ │   StateForGit()     ││
+│  │   ModificationState()│ │                      │ │ • readAttribution-  ││
+│  │ • calculateCommit- │ │                       │ │   States() (64 cap) ││
+│  │   Attribution()    │ │                       │ │ • runPrepareCommit-││
+│  │ • isInternalModel- │ │                       │ │   MsgAttribution()  ││
+│  │   Repo()           │ │                       │ │ • atomicWrite()     ││
+│  │ • sanitizeModel-   │ │                       │ │                     ││
+│  │   Name()           │ │                       │ │                     ││
+│  └─────────────────────┘ └───────────────────────┘ └─────────────────────┘│
+│                                                                               │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                        In-Memory State                                │  │
+│  ├───────────────────────────────────────────────────────────────────────┤  │
+│  │ • fileContentCache: LRU (500 entries, 15min TTL, 2MB total)          │  │
+│  │ • pendingBash: Map<toolUseId, PendingBash> (5min TTL, 32 cap)        │  │
+│  │ • lastHeadByRepo: Map<repoRoot, sha> (HEAD coordination)             │  │
+│  │ • AttributionState (per session):                                    │  │
+│  │   - fileStates: Map<path, {contentHash, claudeContribution, mtime}>  │  │
+│  │   - sessionBaselines: Map<path, {contentHash, mtime}>                │  │
+│  │   - promptCount/AtLastCommit, permissionPromptCount/AtLastCommit     │  │
+│  │   - escapeCount/AtLastCommit                                          │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                               │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                        Persistence Layer                              │  │
+│  ├───────────────────────────────────────────────────────────────────────┤  │
+│  │ • Session Storage: AttributionSnapshotMessage (full state, not delta)│  │
+│  │ • Git Side: .git/claude-code/attribution/<sha256(sessionId)>.json    │  │
+│  │   - 64 sessions max (filename sorted)                                │  │
+│  │   - 0o600 file permissions                                           │  │
+│  │ • Git Hooks: .git/hooks/prepare-commit-msg (dispatcher)              │  │
+│  │ • User Hook: .git/hooks/prepare-commit-msg.claude-user (if existing) │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                               │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                          Git Integration                              │  │
+│  ├───────────────────────────────────────────────────────────────────────┤  │
+│  │ • git interpret-trailers (add/remove Claude-Code-* trailers)          │  │
+│  │ • git diff --cached (staged files for attribution)                   │  │
+│  │ • git ls-files --others --exclude-standard (untracked candidates)    │  │
+│  │ • git rev-parse HEAD (baseline detection)                            │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                               │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                      Security Boundaries                              │  │
+│  ├───────────────────────────────────────────────────────────────────────┤  │
+│  │ • Internal model names: only exposed if remote matches INTERNAL_MODEL-│  │
+│  │   REPOS whitelist                                                     │  │
+│  │ • Public commit message: only stats, NO paths/session IDs             │  │
+│  │ • Hook dispatcher: first runs user hook, attribution never blocks    │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                               │
+└───────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 4.12 关键流程与失败路径
+
+#### 主流程：Edit/Write 工具变更跟踪
+
+```text
+Edit/Write 工具执行完成
+      │
+      ▼
+┌─────────────────────────────────────────────────────────┐
+│ PostToolUse hook (attributionHooks.ts)                  │
+│ • Validate filePath and tool input/output schema        │
+│ • Get file mtime from filesystem                        │
+│ • Read old content (from tool output) and new content   │
+│   (Edit: from disk; Write: from response)               │
+└───────────────────────────┬─────────────────────────────┘
+                            │
+                            ▼
+                  ┌───────────────────┐
+                  │ addBaselines()    │
+                  │ (only if no       │
+                  │  baseline yet)    │
+                  └─────────┬─────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────┐
+│ trackFileModification() (commitAttribution.ts)          │
+│ • computeFileModificationState():                      │
+│   - Find longest common prefix/suffix                  │
+│   - Changed region is middle part                       │
+│   - Contribution = max(old changed chars, new changed) │
+│ • Accumulate: claudeContribution += contribution       │
+│ • Update contentHash and mtime                         │
+└───────────────────────────┬─────────────────────────────┘
+                            │
+                            ▼
+              ┌─────────────────────────┐
+              │ updateAndPersist()      │
+              ├─────────────────────────┤
+              │ • Update AppState.     │
+              │   attribution          │
+              │ • queuePersistence():  │
+              │   - stateToSnapshot-   │
+              │     Message()          │
+              │   - recordAttribution- │
+              │     Snapshot()         │
+              │   - persistAttribution-│
+              │     StateForGit()      │
+              └─────────────────────────┘
+
+失败路径：
+  ├─ File read failed → skip tracking, log debug only
+  ├─ JSON parse failed (stored state) → skip, continue with empty
+  └─ persistAttributionStateForGit() failed → log debug, do NOT block tool
+```
+
+#### 主流程：Bash 工具变更跟踪
+
+```text
+PreToolUse (Bash)
+      │
+      ▼
+┌─────────────────────────────────────────────────────────┐
+│ candidatePaths()                                         │
+│ • attribution.fileStates paths                          │
+│ • attribution.sessionBaselines paths                    │
+│ • git diff --name-only (modified unstagged)             │
+│ • git ls-files --others --exclude-standard (untracked)  │
+│ • Truncate to MAX_CANDIDATE_FILES=200                  │
+└───────────────────────────┬─────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────┐
+│ readCandidate() for each path                            │
+│ • Check binary by extension                              │
+│ • Check MAX_FILE_BYTES=256KB, MAX_TOTAL_BYTES=2MB       │
+│ • Check normalized path still in repo                   │
+│ • Check real binary content (isBinaryContent())         │
+│ • Skip generated files                                  │
+└───────────────────────────┬─────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────┐
+│ Store in pendingBash[toolUseId]                         │
+│ • PendingBash: {repoRoot, createdAt, before: Map,      │
+│   incomplete: Set}                                      │
+└───────────────────────────┬─────────────────────────────┘
+                            │
+                            ▼
+                    ┌───────────────┐
+                    │ Bash executes │
+                    └───────┬───────┘
+                            │
+          ┌─────────────────┼─────────────────┐
+          ▼                 ▼                 ▼
+    ┌──────────┐    ┌──────────────┐  ┌─────────────────┐
+    │ Success  │    │ User Cancel  │  │ Tool Failure    │
+    └─────┬────┘    └──────┬───────┘  └────────┬────────┘
+          ▼               ▼                   ▼
+    ┌────────────────────────────┐  ┌───────────────────────┐
+    │ PostToolUse: Bash          │  │ PostToolUseFailure:   │
+    │ • Re-get candidatePaths    │  │   Bash                │
+    │ • Filter incomplete files  │  │ • cleanupBashHook()  │
+    │ • For new files: git ls-   │  │ • pendingBash.delete()│
+    │   files --error-unmatch    │  └───────────────────────┘
+    │ • Compare pre/post hash    │
+    │ • Build changes[] array    │
+    │ • trackBulkFileChanges()   │
+    │ • Cleanup pendingBash entry│
+    └───────────────┬────────────┘
+                    ▼
+        ┌─────────────────────────┐
+        │ updateAndPersist()      │
+        │ (same as Edit/Write)    │
+        └─────────────────────────┘
+
+失败路径：
+  ├─ PreToolUse: readCandidate() fails → mark as 'incomplete', skip in post
+  ├─ PreToolUse: >200 files → truncate, only track first 200
+  ├─ PreToolUse: >256KB/file OR >2MB total → mark as 'incomplete'
+  ├─ PostToolUse: Bash failed → cleanupBashHook(), delete pending entry
+  └─ pendingBash >32 entries → skip tracking (capacity guard)
+```
+
+#### 主流程：prepare-commit-msg 钩子执行
+
+```text
+User runs git commit
+      │
+      ▼
+┌─────────────────────────────────────────────────────────┐
+│ Git calls prepare-commit-msg hook                        │
+│ (dispatcher script installed by installPrepareCommitMsg- │
+│  Hook())                                                │
+└───────────────────────────┬─────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────┐
+│ Check for prepare-commit-msg.claude-user                │
+│ • If exists and executable: run it first                │
+│ • If user hook fails (exit code !=0): terminate commit  │
+│   WITHOUT running attribution                           │
+└───────────────────────────┬─────────────────────────────┘
+                            │
+                    ┌───────┴────────┐
+                    │ User hook OK   │
+                    └───────┬────────┘
+                            ▼
+┌─────────────────────────────────────────────────────────┐
+│ Run node <cli> --internal-prepare-commit-msg-attribution │
+│ (this avoids loading full CLI, avoids recursive hooks)  │
+└───────────────────────────┬─────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────┐
+│ runPrepareCommitMsgAttribution()                        │
+│ • Set original cwd state                               │
+│ • Check attribution feature enabled in settings        │
+│ • Check isGitTransientState(): merge/rebase/cherry-pick│
+│   → IF yes: SKIP attribution completely                │
+│ • getStagedFiles() → IF empty: SKIP                    │
+│ • readAttributionStates():                             │
+│   - Read .git/claude-code/attribution/*.json           │
+│   - Take first 64 (filename sorted)                    │
+│   - Skip invalid JSON, skip non-attribution-snapshot    │
+│ • calculateCommitAttribution(states, stagedFiles):    │
+│   - Merge fileStates across sessions (sum contributions)│
+│   - Merge baselines (earliest wins)                    │
+│   - Skip generated files (isGeneratedFile())           │
+│   - For staged files with state: Claude = sum chars    │
+│   - For staged files with baseline: Human = git diff   │
+│     estimate                                           │
+│   - Otherwise: Human = file size                       │
+│   - Claude% = Claude / (Claude + Human)                │
+│ • Merge counters: take max values across sessions      │
+│ • Read original commit message file                    │
+│ • Clean up old Claude-Code-* trailers from final para  │
+│ • buildPRTrailers() → add Claude-Code-Contribution etc │
+│ • git interpret-trailers --if-exists replace --if-    │
+│   missing add                                         │
+│ • atomicWrite() back to commit message file            │
+└───────────────────────────┬─────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────┐
+│ Always exit with code 0 (NEVER block commit)             │
+│ • If ANY step fails: print "Claude Code attribution was │
+│   unavailable; continuing commit." to stderr, exit 0    │
+└─────────────────────────────────────────────────────────┘
+
+失败路径：
+  ├─ Git transient state (merge/rebase/cherry-pick) → SKIP attribution
+  ├─ No staged files → SKIP
+  ├─ readAttributionStates(): some files corrupt → skip those only
+  ├─ calculateCommitAttribution() fails → skip attribution
+  ├─ git interpret-trailers fails → skip, commit message unchanged
+  └─ ANY error → log debug, exit 0, NO commit block
+```
+
+### 4.13 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| `AttributionState` (fileStates/sessionBaselines/counters) | `attributionHooks.ts` (闭包) + `AppState.attribution` (快照) | 会话启动：`restoreAttributionStateFromSnapshots()` → 仅取最后一个快照；空会话：`createEmptyAttributionState()` | 每个 Claude 会话独立隔离；Git 侧：多会话状态可共存，提交时合并 | 会话存储：`AttributionSnapshotMessage` (完整状态，非增量)；Git 侧：`.git/claude-code/attribution/<sha256(sessionId)>.json` (0o600, 64 会话上限) | 无显式重置；会话间自然隔离；Git 侧：64 会话上限自动淘汰旧文件 | 无显式取消；会话结束自动清理内存 |
+| `fileContentCache` (LRU 缓存) | `attributionHooks.ts` 模块级 | 首次 `readCandidate()` 时初始化并启动 `sweepFileContentCache()` 定时器 (60s 间隔) | 同进程内所有会话共享 LRU 缓存 | 不持久化，纯内存 | 失效策略：15min TTL；数量上限 500 条目；大小上限 2MB；`clearAttributionCaches()` 完全清空 | 进程退出定时器自动 unref，无显式清理 |
+| `pendingBash` (Bash 执行前后快照) | `attributionHooks.ts` 模块级 | `preBash()` 时：`pendingBash.set(toolUseId, pending)` | 按 toolUseId 隔离，每个 Bash 执行独立条目 | 不持久化，纯内存 | 失效策略：5min TTL；数量上限 32 条目；`postBash()` 成功后删除；`cleanupBashHook()` 失败时删除 | `PostToolUseFailure` 时调用 `cleanupBashHook()` → `pendingBash.delete(toolUseId)` |
+| `lastHeadByRepo` (HEAD 协调) | `attributionHooks.ts` 模块级 | 首次 `reconcileCommitBaseline()` 时：`lastHeadByRepo.set(repoRoot, currentHead)` | 按仓库隔离 | 不持久化，纯内存 | HEAD 变化时自动更新并推进 `*AtLastCommit` 计数器基线 | 无显式取消 |
+| `.git/claude-code/attribution/*.json` (Git 侧会话状态) | `postCommitAttribution.ts` | `persistAttributionStateForGit()`：确保目录存在 (0o700) → 原子写入 JSON (0o600) | 按 sessionId 隔离 (sha256 哈希)；64 会话上限 | 持久化到 `.git/claude-code/attribution/<sha256(sessionId)>.json` (0o600) | 64 会话上限：`readAttributionStates()` 仅取文件名排序的前 64 个；无自动 GC，但旧会话文件超过 64 时不再读取 | 无显式删除机制，依赖 64 上限自然淘汰 |
+| `prepare-commit-msg` 钩子 (调度器) | `postCommitAttribution.ts` | `installPrepareCommitMsgHook()`：锁钩子目录 (20 次重试) → 检查是否已有 MANAGED_MARKER → 重命名用户钩子为 `.claude-user` → 原子写入调度器脚本 (0o755) | 每个 Git 仓库独立钩子；调度器先运行用户钩子再运行归因 | 持久化到 `.git/hooks/prepare-commit-msg` (调度器) + `.git/hooks/prepare-commit-msg.claude-user` (用户原始钩子) | 卸载：`uninstallPrepareCommitMsgHook()` → 恢复用户钩子 → 删除调度器 | 失败时回滚：如果移动了用户钩子则移回 |
+| `Claude-Code-*` trailers (提交元数据) | `git interpret-trailers` | `buildPRTrailers()`：生成 `Claude-Code-Contribution` (百分比)、`Claude-Code-Prompts` (增量)、`Claude-Code-Permission-Prompts` (增量)、`Claude-Code-Escapes` (增量)；仅值>0 时包含 | 每个提交独立；不包含路径/会话 ID 等敏感信息 | 持久化到 Git commit message (trailer 部分) | 每次提交前清理最后一段中的旧 `Claude-Code-*` trailers，然后用 `git interpret-trailers --if-exists replace` 替换 | 无显式取消，可手动编辑 commit message 删除 |
+
+生命周期证据：
+- 快照恢复策略：`src/utils/commitAttribution.ts: stateToSnapshotMessage(), restoreAttributionStateFromSnapshots()`
+- Bash 钩子流程：`src/utils/attributionHooks.ts: preBash(), postBash(), cleanupBashHook()`
+- 钩子安装/调度器：`src/utils/postCommitAttribution.ts: installPrepareCommitMsgHook(), dispatcher`
+- 缓存常量：`src/utils/attributionHooks.ts: MAX_CANDIDATE_FILES=200, MAX_FILE_BYTES=256KB, MAX_TOTAL_BYTES=2MB, MAX_CACHE_FILES=500, MAX_PENDING_BASH=32, CACHE_TTL_MS=15min, PENDING_TTL_MS=5min`
+- Git 侧持久化：`src/utils/postCommitAttribution.ts: persistAttributionStateForGit(), readAttributionStates()` (64 会话上限)
+
 ## 5. 失败语义与工程取舍
 
 ### 5.1 失败语义表

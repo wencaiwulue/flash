@@ -178,7 +178,150 @@ Teleport 是 Claude Code 的核心功能，允许用户在本地 CLI 和 Claude.
 
 ## 4. 架构、模块与数据流
 
-### 组件分层
+### 4.1 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                          LOCAL CLI INSTANCE                                    │
+│  ┌──────────────────────────────────────────────────────────────────────────┐  │
+│  │ ┌──────────────────────┐  ┌──────────────────────────────────────────┐  │  │
+│  │ │ CLI Command Layer    │  │ UI Components Layer                      │  │  │
+│  │ │ • /teleport         │  │ • TeleportResumeWrapper                  │  │  │
+│  │ │ • --teleport        │  │ • TeleportError/TeleportProgress        │  │  │
+│  │ └───────────┬──────────┘  │ • TeleportRepoMismatchDialog            │  │  │
+│  │             │             └───────────────────┬──────────────────────┘  │  │
+│  │             ▼                                 ▼                          │  │
+│  │ ┌────────────────────────────────────────────────────────────────────┐  │  │
+│  │ │ Hooks Layer (useTeleportResume, ResumeTask)                        │  │  │
+│  │ └───────────┬────────────────────────────────────────────────────────┘  │  │
+│  │             │                                                             │  │
+│  │             ▼                                                             │  │
+│  │ ┌────────────────────────────────────────────────────────────────────┐  │  │
+│  │ │ Core Utils Layer (teleport.tsx)                                    │  │  │
+│  │ │ • teleportToRemote()  • teleportResumeCodeSession()               │  │  │
+│  │ │ • validateGitState()  • checkOutTeleportedSessionBranch()          │  │  │
+│  │ └───────────┬────────────────────────────────────────────────────────┘  │  │
+│  │             │                                                             │  │
+│  │             ▼                                                             │  │
+│  │ ┌─────────────────────┐ ┌────────────────────┐ ┌──────────────────────┐  │  │
+│  │ │ teleport/gitBundle  │ │teleport/environments│ │teleport/api.ts      │  │  │
+│  │ │ • create bundle     │ │ • fetchEnviron()   │ │ • fetchSession()    │  │  │
+│  │ │ • upload to Files   │ │ • select env       │ │ • sendEvent()       │  │  │
+│  │ │ API (_source_seed)  │ │                    │ │ • axiosGetWithRetry │  │  │
+│  │ └───────────┬─────────┘ └───────────┬────────┘ └───────────┬──────────┘  │  │
+│  └─────────────┼───────────────────────┼───────────────────────┼─────────────┘  │
+│                │                       │                       │                │
+└────────────────┼───────────────────────┼───────────────────────┼────────────────┘
+                 │                       │                       │
+                 ▼                       ▼                       ▼
+┌─────────────────────────┐  ┌─────────────────────────┐  ┌─────────────────────────┐
+│  LOCAL GIT REPOSITORY   │  │  ANTHROPIC CLAUDE.AI   │  │  GITHUB API (if needed) │
+│  • Working directory    │  │  • Sessions API         │  │  • Repo access          │
+│  • Git objects/refs     │  │  • Files API (bundle)   │  │  • App install check    │
+│  • Temp bundle file     │  │  • Events API (logs)    │  └─────────────────────────┘
+│  • refs/seed/stash (WIP)│  │  • Archive endpoint     │
+└─────────────────────────┘  └─────────────────────────┘
+```
+
+边界说明：
+- **local/remote** 分离：本地验证 Git 状态，远程会话通过 API 访问
+- **internal/external**：使用 GitHub API 和 Anthropic Sessions API，不自己实现云端
+- **bundled/source**：Git bundle 是完整对象包，可选降级为 squash
+
+### 4.2 关键流程与失败路径
+
+```text
+Teleport 上云（主流程）：
+┌──────────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐
+│ check OAuth  │   │ detect   │   │ generate │   │ GitHub   │   │ select   │
+│ (required)   │──▶│ repo     │──▶│ title/   │──▶│ pre-check│──▶│ env      │
+└──────────────┘   └──────────┘   │ branch   │   └────┬─────┘   └──────────┘
+                                  └──────────┘        │
+                                                      ▼
+                                        ┌─────────────────────────┐
+                                        │ GitHub OK? ──► yes ───► │
+                                        └────────────┬────────────┘
+                                                     │ no
+                                                     ▼
+                          ┌─────────────────────────────────────────────────┐
+                          │ Git bundle?  ──► yes ──► create/upload bundle │
+                          └───────────────┬─────────────────────────────────┘
+                                          │ no
+                                          ▼
+                          ┌─────────────────────────────────────────────────┐
+                          │ Create session with source (if possible) or   │
+                          │ empty sandbox                                  │
+                          └───────────────┬─────────────────────────────────┘
+                                          ▼
+                          ┌─────────────────────────────────────────────────┐
+                          │ POST /v1/sessions with initial control_request │
+                          │ for permissionMode                             │
+                          └───────────────┬─────────────────────────────────┘
+                                          ▼
+                          ┌─────────────────────────────────────────────────┐
+                          │ Return sessionId + title                        │
+                          └─────────────────────────────────────────────────┘
+
+失败路径（Git 脏状态）：
+┌──────────────┐   ┌──────────┐   ┌──────────┐
+│ validateGit  │──▶│ not clean│──▶│ block &  │──▶│ show TeleportStash UI │
+│ State()      │   │ (tracked)│   │ throw    │   │ (offer stash option)  │
+└──────────────┘   └──────────┘   └──────────┘   └────────────────────────┘
+
+失败路径（Repo Mismatch on Resume）：
+┌──────────────┐   ┌──────────┐   ┌──────────┐
+│ validateSess │──▶│ mismatch │──▶│ show     │──▶│ user selects known path │
+│ ionRepo()    │   │ (owner/  │   │ Teleport │──▶│ or cancels              │
+│              │   │ host)    │   │ Mismatch │   │                         │
+└──────────────┘   └──────────┘   └──────────┘   └────────────────────────┘
+
+降级路径（GitHub App 未安装）：
+┌──────────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐
+│ pre-check    │──▶│ not inst │──▶│ bundle   │──▶│ create   │──▶│ proceed with │
+│ GitHub App   │   │ alled    │   │ enabled? │   │ bundle   │   │ bundle mode  │
+└──────────────┘   └──────────┘   └──────────┘   └──────────┘   └──────────────┘
+                                                    │ no
+                                                    ▼
+                                          ┌──────────────────────┐
+                                          │ Error: need GitHub   │
+                                          │ or bundle disabled   │
+                                          └──────────────────────┘
+
+取消路径（AbortSignal）：
+┌──────────────┐   ┌──────────┐   ┌──────────┐
+│ user aborts  │──▶│ AbortSign│──▶│ cancel   │──▶│ cleanup temp bundle │
+│ (UI/Ctrl+C) │   │ al fires  │   │ in-flight│   │ file & refs/seed/*  │
+└──────────────┘   └──────────┘   └──────────┘   └──────────────────────┘
+
+分支检出失败（继续恢复）：
+┌──────────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐
+│ checkout     │──▶│ fails    │──▶│ try      │──▶│ try      │──▶│ all fail, │
+│ branch       │   │ locally  │   │ fetch +  │   │ --track  │   │ continue   │
+│              │   │          │   │ -b       │   │          │   │ resume     │
+└──────────────┘   └──────────┘   └──────────┘   └──────────┘   └────┬──────┘
+                                                                       │
+                                                                       ▼
+                                                          ┌────────────────────┐
+                                                          │ return branchError│
+                                                          │ processMessages() │
+                                                          │ shows warning      │
+                                                          └────────────────────┘
+```
+
+### 4.3 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| SessionResource | teleport.tsx | fetchSession(sessionId) → GET /v1/sessions/{id} → 解析新旧字段兼容 | 每个 session 独立，sessionId 唯一标识 | 云端持久化（Sessions API），本地不持久化 | 无本地重置，archive 时云端状态变为 archived | archiveRemoteSession() → POST /v1/sessions/{id}/archive |
+| GitSource | teleportToRemote() | detectCurrentRepositoryWithHost() → 解析 origin URL → 构造 { type: 'git_repository', url, revision, allow_unrestricted } | 每个 session 一个 GitSource；GitHub mode vs bundle mode 互斥 | 存入 SessionContext.sources，云端持久化 | 无重置，不同 session 独立 | 无（只用于会话创建） |
+| Git Bundle (temp file) | createAndUploadGitBundle() | generateTempFilePath('ccr-seed', '.bundle') → git bundle create → 写入文件 | 每个 teleport 操作一个临时 bundle，不共享 | 临时文件：系统 temp 目录；上传后删除 | bundle 创建后立即上传，成功/失败都删除 | finally 块：删除临时文件；删除 refs/seed/stash + refs/seed/root |
+| EnvironmentResource | teleport/environments.ts | fetchEnvironments() → GET /v1/environment_providers → 解析列表 | 所有 teleport 共享同一环境列表；选择策略：default → anthropic_cloud → byoc → bridge | 不持久化，每次 teleportToRemote() 重新获取 | 无重置，每次重新获取 | 无（API 调用无状态） |
+| TeleportProgressCallback | teleportResumeCodeSession() | 调用者传入 (step: TeleportProgressStep) => void，step: validating|fetching_logs|fetching_branch|checking_out|done | 每个 resume 操作一个 callback，不共享 | 不持久化 | resume 完成后自然失效 | 无（纯回调） |
+| RepoValidationResult | validateSessionRepository() | 比较 session GitSource 与本地 detectCurrentRepositoryWithHost() → { status: match|mismatch|not_in_repo|no_repo_required|error, sessionRepo, currentRepo, sessionHost, currentHost } | 每次 resume 一个结果，不共享 | 不持久化 | resume 完成后自然失效 | 无（纯数据对象） |
+
+生命周期证据：src/utils/teleport.tsx:214-500；src/utils/teleport/gitBundle.ts:243-312；src/utils/teleport/api.ts:36-466
+
+### 4.4 组件分层
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐

@@ -138,6 +138,220 @@ docs/external-stubs/
     └── ...
 ```
 
+### 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           flash 主进程                                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐   │
+│  │   WebBrowser     │────▶│  isolated Chrome │────▶│  Playwright MCP  │   │
+│  │   (tool)         │     │  connection      │     │  (headless)      │   │
+│  └──────────────────┘     └──────────────────┘     └──────────────────┘   │
+│           │                       ▲                                        │
+│           │                       │ (shared: isolatedConnection)         │
+│           └───────────────────────┘                                        │
+│                                                                              │
+│  ┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐   │
+│  │ ComputerUse      │────▶│  Zavora backend  │────▶│  @zavora/mcp     │   │
+│  │ (host adapter)   │     │  (clientPromise) │     │  (in-memory)     │   │
+│  └──────────────────┘     └──────────────────┘     └──────────────────┘   │
+│           │                       ▲                                        │
+│           │                       │ (shared: clientPromise)             │
+│           └───────────────────────┘                                        │
+│                                                                              │
+│  ┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐   │
+│  │  Open Chrome     │────▶│  real Chrome     │────▶│  Chrome CDP      │   │
+│  │  (context)       │     │  connection      │     │  (127.0.0.1)    │   │
+│  └──────────────────┘     └──────────────────┘     └──────────────────┘   │
+│           │                       ▲                                        │
+│           │                       │ (shared: chromeConnection, toolQueue)│
+│           └───────────────────────┘                                        │
+│                                                                              │
+│  ┌──────────────────────────────────────────────────────────────────────┐ │
+│  │  SAFETY BOUNDARY: assertLoopbackCdpEndpoint() + assertOpenChromeCtx()│ │
+│  └──────────────────────────────────────────────────────────────────────┘ │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  STATE OWNERSHIP:                                                            │
+│  • claude-for-chrome-mcp.ts: isolatedConnection, chromeConnection,      │
+│                           chromeGeneration, toolQueue                  │
+│  • computer-use-mcp.ts: clientPromise (module-level singleton)           │
+│  • computer-use-types.ts: no state (types only)                          │
+│  • computer-use-native.ts: no module-level state (closure per backend)  │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 关键流程与失败路径
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Open Chrome Connection Flow (Main Path)                                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+  getOpenChromeClient(context)
+          │
+          ▼
+  assertOpenChromeCtx(context) ────┐ (PRIVATE_EXTENSION_FIELDS present)
+          │                       │
+          │                       ▼
+          │              throw Error (explicit reject)
+          │
+          ▼
+  assertLoopbackCdpEndpoint(context.cdpEndpoint) ────┐ (not 127.0.0.1/::1)
+          │                                          │
+          │                                          ▼
+          │                               throw Error (explicit reject)
+          │
+          ▼
+  preflightOpenChrome(context) ────┐ (CDP unreachable)
+          │                       │
+          │                       ▼
+          │              throw Error (no fallback)
+          │
+          ▼
+  connectPlaywrightUpstream(context) ────┐
+          │                              │
+  Bun? ──┴─── Yes → spawn Node.js subprocess ────┐ (spawn fails)
+          │                                      │
+          No                                     ▼
+          │                              throw Error
+          ▼
+  connect to Playwright MCP ────┐ (timeout/network error)
+          │                     │
+          │                     ▼
+          │              throw Error
+          │
+          ▼
+  createOpenChromeProxyServer(context)
+          │
+          ▼
+  connectInMemory(server)
+          │
+          ▼
+  cache connection (chromeConnection, chromeGeneration++)
+          │
+          ▼
+  return client
+          │
+          ├─► SUCCESS: client.callTool() via proxy, toolQueue serialized
+          │
+          └─► FAILURE: connection drops → onToolCallDisconnected() callback
+                                                        │
+                                                        ▼
+                                              future calls fail with explicit error
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Zavora Backend Dispatch Flow (Main + Failure)                                │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+  backend.dispatch(name, args, context, signal)
+          │
+          ▼
+  checkAbort(signal) ────┐ (aborted)
+          │              │
+          │              ▼
+          │      throw hostError('aborted')
+          │
+          ▼
+  check current state (not re-entrant) ────┐ (already dispatching)
+          │                                │
+          │                                ▼
+          │                     throw hostError('lock_held')
+          │
+          ▼
+  authorizeZavoraCall(name, args, context) ────┐ (permission denied)
+          │                                     │
+          │                                     ▼
+          │                          throw hostError('permission_denied')
+          │
+          ├─► special case: name === 'screenshot' && args.full_screen === true
+          │      │
+          │      ▼
+          │      throw hostError('permission_denied')
+          │
+          ▼
+  client.callTool(name, args) ────┐ (network error)
+          │                        │
+          │                        ▼
+          │               throw hostError('backend_dispatch')
+          │
+          ▼
+  wrap result with structuredContent, telemetry
+          │
+          ▼
+  return to caller
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Native Adapter Dispatch Flow (Main + Failure)                                │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+  backend.dispatch(name, args, context, signal)
+          │
+          ▼
+  checkAbort(signal) ────┐ (aborted)
+          │              │
+          │              ▼
+          │      throw hostError('aborted')
+          │
+          ▼
+  adapter.isDisabled()? ────┐ (true)
+          │                  │
+          │                  ▼
+          │         return empty tools / throw error
+          │
+          ▼
+  checkCuLock() + acquireCuLock() ────┐ (lock held)
+          │                             │
+          │                             ▼
+          │                  throw hostError('lock_held')
+          │
+          ▼
+  adapter.ensureOsPermissions() ────┐ (TCC denied)
+          │                          │
+          │                          ▼
+          │               throw hostError('tcc_denied')
+          │
+          ▼
+  route to specific tool handler
+          │
+          ├─► screenshot: check target app authorized, capture
+          ├─► mouse/keyboard: prepareForAction(), verifyFrontmost()
+          │                          │
+          │                          ▼
+          │                  frontmost not authorized?
+          │                          │
+          │                          ▼
+          │                  throw hostError('permission_denied')
+          └─► ... other tools ...
+          │
+          ▼
+  wrap result with structuredContent, telemetry
+          │
+          ▼
+  return to caller
+```
+
+### 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|-----------|--------|--------------|-----------|--------|-----------|-----------|
+| `isolatedConnection` | `claude-for-chrome-mcp.ts` | `getOpenBrowserClient()` 首次调用时创建，含 `generation` 计数器 | 模块级单例，共享 | 否 | 下次调用时若 `generation` 不匹配则重建 | `closeOpenBrowserClient()`: 关闭连接，清除缓存，`generation++` |
+| `chromeConnection` | `claude-for-chrome-mcp.ts` | `getOpenChromeClient(context)` 首次调用时创建，含 `generation` 计数器 | 模块级单例，共享（同一 `context`） | 否 | 下次调用时若 `generation` 不匹配则重建 | `closeOpenChromeClient(expectedClient?)`: 关闭连接，清除缓存，`generation++`，代理不关闭用户 Chrome |
+| `toolQueue` (real Chrome) | `claude-for-chrome-mcp.ts` | 首次 `callOpenChromeTool()` 时隐式创建 | 每个连接独立 | 否 | 连接关闭时清空 | 通过 `Promise` 链式串行化，无显式取消 |
+| `clientPromise` (Zavora) | `computer-use-mcp.ts` | `createZavoraComputerUseBackend()` 或 `getOpenComputerUseClient()` 首次调用时创建 | 模块级单例，共享 | 否 | 无显式重置 | `closeOpenComputerUseClient()`: 关闭客户端，清除 `clientPromise` |
+| `ComputerUseBackend` (Zavora) | 调用方 | `createZavoraComputerUseBackend(options?)` 返回新实例 | 每个实例独立（可创建多个） | 否 | 调用方决定何时丢弃 | `backend.close()`: 关闭底层客户端（若共享则引用计数？） |
+| `ComputerUseBackend` (Native) | 调用方 | `createNativeComputerUseBackend(adapter, coordinateMode)` 返回新实例，持有 `adapter` 和 `coordinateMode`（冻结） | 每个实例独立（可创建多个） | 否 | 调用方决定何时丢弃 | `backend.close()`: 调用 `resetComputerUseInputLoader()` + `resetComputerUseSwiftLoader()` |
+| `OpenChromeContext` | 调用方 | 调用方创建，必须 `kind: 'chrome-cdp'`，无私有字段 | 每个连接独立 | 否 | 调用方决定何时丢弃 | 无（上下文是纯数据） |
+| `ComputerUseSessionContext` | 宿主 | 宿主实现，含权限、锁、回调 | 每次调用独立传入 | 否 | 调用方决定何时丢弃 | 无（上下文是接口） |
+
+**生命周期证据:** `src/external-stubs/claude-for-chrome-mcp.ts` (L418-511, isolatedConnection/chromeConnection), `src/external-stubs/computer-use-mcp.ts` (L1-490, clientPromise), `src/external-stubs/computer-use-native.ts` (L1-834, backend lifecycle)
+
 ### 4.2 模块设计卡
 
 #### Computer Use 类型系统（`computer-use-types.ts`）
@@ -1115,6 +1329,26 @@ Chrome CDP 端点验证：
 - 契约文档：`docs/external-stubs/contracts/` 定义各子系统行为
 
 [Coverage](../../architecture/coverage/external-stubs.yaml)
+
+## 2a. 契约文档与实现同步/漂移检查规则（B7-external-stubs-06）
+
+### 手动检查清单（现状无自动验证）
+
+本仓库**不包含**自动契约验证机制，依赖以下手动检查清单防止漂移：
+
+| 检查项 | 频率 | 如何验证 | 漂移风险 |
+|-------|-----|---------|---------|
+| `computer-use-types.ts` 接口与实际调用方匹配 | 每次修改 | grep 调用方代码，检查字段使用：`src/utils/computer-use/`、`src/utils/computer-use/wrapper.tsx`、`src/utils/computer-use/mcpServer.ts` | 新增字段未在所有实现中使用、字段类型不匹配 |
+| `claude-for-chrome-mcp.ts` CDP 端点验证与 Playwright MCP 期望一致 | 每次 Playwright 升级 | 运行 `tests/openBackends.test.ts`，手动检查端点格式 | 上游 Playwright MCP 更改端点格式或安全要求 |
+| Zavora `createComputerUseServer()` 选项与宿主 `authorizeZavoraCall()` 权限检查一致 | 每次修改 | 检查 `authorizeToolCall` 配置与 `ComputerUseSessionContext` 接口的对应关系 | Zavora 新增权限选项未在宿主检查中覆盖 |
+| `external-stubs/contracts/` 文档与 `src/external-stubs/` 实现同步 | 每次修改实现 | 手动对比 `docs/external-stubs/contracts/` 下的文档与代码实现 | 文档描述与代码行为不一致 |
+| Swift/Input 占位符 (`unavailable`) 标记不被意外移除 | 每次修改 | grep `// unavailable` 或 `isSupported = false` | 私有实现意外暴露或标记被移除 |
+
+### 现有覆盖检查集成（非自动验证）
+
+`bun scripts/check-design-docs.ts` 会检查 `docs/architecture/coverage/external-stubs.yaml` 中定义的覆盖组，但仅验证文件存在，不验证契约内容一致性。
+
+**不虚构自动验证：** 目前无计划实现契约与实现的自动一致性验证，上述清单为当前唯一验证机制。
 
 ## 9. 改进建议
 

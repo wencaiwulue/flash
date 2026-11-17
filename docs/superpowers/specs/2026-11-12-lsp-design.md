@@ -952,6 +952,150 @@ try {
 编辑文件时调用 `clearDeliveredDiagnosticsForFile()` 清除该文件的已交付诊断
 ```
 
+### 4.6 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                       LSPServerManager (全局单例)                           │
+│  ┌──────────────────────────────────────────────────────────────────────┐ │
+│  │ servers: Map<serverName, LSPServerInstance>                          │ │
+│  │ extensionMap: Map<ext, serverName[]>                                 │ │
+│  │ openedFiles: Map<path, serverName>                                   │ │
+│  └──────────────────────────────────────────────────────────────────────┘ │
+└───────────────────────────────────┬──────────────────────────────────────────┘
+                                    │
+        ┌───────────────────────────┼───────────────────────────┐
+        │                           │                           │
+        ▼                           ▼                           ▼
+┌───────────────────────┐  ┌───────────────────────┐  ┌───────────────────────┐
+│ LSPServerInstance #1 │  │ LSPServerInstance #2 │  │      (更多服务器)    │
+│  ┌─────────────────┐ │  │  ┌─────────────────┐ │  │                       │
+│  │ state: running │ │  │  │ state: stopped │ │  │                       │
+│  │ client: LSP   │ │  │  │ client: null   │ │  │                       │
+│  └────────┬────────┘ │  │  └─────────────────┘ │  │                       │
+└───────────┼───────────┘  └───────────────────────┘  └───────────────────────┘
+            │
+            ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          LSPClient (lazy load)                             │
+│  ┌──────────────────────────────────────────────────────────────────────┐ │
+│  │ vscode-jsonrpc (延迟 require，~129KB)                               │ │
+│  │ process: ChildProcess                                               │ │
+│  │ connection: MessageConnection                                       │ │
+│  └──────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+            │
+            ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     LSPDiagnosticRegistry (全局)                           │
+│  ┌──────────────────────────────────────────────────────────────────────┐ │
+│  │ pendingDiagnostics: Map<uuid, PendingLSPDiagnostic>                  │ │
+│  │ deliveredDiagnostics: LRUCache<path, Set<diagnosticKey>> (max 500)  │ │
+│  │ MAX_DIAGNOSTICS_PER_FILE = 10                                       │ │
+│  │ MAX_TOTAL_DIAGNOSTICS = 30                                         │ │
+│  └──────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+            │
+            ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                             LSPTool (工具)                                  │
+│  ┌──────────────────────────────────────────────────────────────────────┐ │
+│  │ 1-based → 0-based 转换（getMethodAndParams）                        │ │
+│  │ gitignore 过滤（findReferences/definition/workspaceSymbol）        │ │
+│  │ 文件大小限制 10MB（openFile）                                        │ │
+│  └──────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**边界说明：**
+- LSPServerManager 是全局单例，管理所有服务器
+- LSPClient 延迟加载 vscode-jsonrpc 以减少启动内存
+- LSPDiagnosticRegistry 使用 LRU 缓存避免内存无限增长
+- LSPTool 处理用户输入/显示（1-based）与协议（0-based）的转换
+
+### 4.7 关键流程与失败路径
+
+#### 完整服务器启动与请求流程（主路径）
+```text
+Claude Code 启动（非 bare 模式）
+  │
+  ▼
+initializeLspServerManager()（异步，不阻塞启动）
+  ├─ getAllLspServers() → 从插件加载配置
+  ├─ 创建 LSPServerInstance（状态 stopped）
+  └─ 注册被动诊断处理器
+  │
+  ▼（首次使用时）
+调用 LSPTool
+  │
+  ▼
+waitForInitialization()（如果初始化 pending）
+  │
+  ▼
+manager.ensureServerStarted(filePath)
+  ├─ 检查当前状态（仅 stopped/error 可启动）
+  ├─ 校验 maxRestarts（crashRecoveryCount > maxRestarts 时抛出）
+  ├─ 状态切换为 'starting'
+  ├─ createLSPClient.start() → spawn 子进程
+  ├─ 等待 'spawn' 事件
+  ├─ 发送 initialize 请求
+  ├─ 发送 initialized 通知
+  ├─ 状态切换为 'running'
+  └─ crashRecoveryCount 重置为 0
+  │
+  ▼
+检查文件是否已打开
+  └─ 未打开 → 读取文件（最大 10MB）→ manager.openFile()
+  │
+  ▼
+manager.sendRequest(filePath, method, params)
+  │
+  ▼
+instance.sendRequest(method, params)
+  ├─ 检查健康状态（running 且 client.isInitialized）
+  ├─ 调用 client.sendRequest()
+  └─ 拦截 ContentModified 错误（代码 -32801）
+     ├─ 重试最多 3 次
+     ├─ 指数退避：500ms → 1s → 2s
+     └─ 所有重试失败 → 抛出错误
+  │
+  ▼
+gitignore 过滤（适用操作：findReferences/definition/implementation/workspaceSymbol）
+  ├─ 收集位置 URI 并转换为文件路径
+  ├─ 去重后分批调用 git check-ignore（每批 50 路径，超时 5000ms）
+  └─ 过滤掉 gitignored 的路径
+  │
+  ▼
+转换结果（0-based → 1-based）并返回
+```
+
+**关键失败分支与恢复路径：**
+- 服务器 spawn 失败：记录错误，状态切换为 'error'，不影响其他服务器
+- 服务器初始化超时：记录错误，状态切换为 'error'，可通过 restart 重试
+- ContentModified 错误：指数退避重试最多 3 次，失败则抛出
+- 服务器崩溃：restartOnCrash 启用时自动重启，超过 maxRestarts 后状态固定为 'error'
+- git check-ignore 失败：不过滤结果，继续返回
+- 通知处理错误：仅记录，不抛出，跟踪连续失败次数（3+ 次警告）
+
+### 4.8 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| `LSPServerManager` 单例 | `src/services/lsp/manager.ts` | `initializeLspServerManager()` 创建 | 全局共享 | 不持久化 | `reinitializeLspServerManager()` 重置 | `shutdownLspServerManager()` 关闭所有服务器 |
+| `LSPServerInstance` 实例 | `LSPServerManager` | 初始化时创建，状态 'stopped' | 每个服务器实例隔离 | 不持久化 | 状态机转换：stopped → starting → running → stopping → stopped/error | `stop()` 清理：shutdown → exit → dispose → kill |
+| `LSPClient` 实例 | `LSPServerInstance` | `createLSPClient()` 创建，延迟加载 vscode-jsonrpc | 每个服务器实例隔离 | 不持久化 | 连接关闭后清理 | `stop()` 清理进程与连接资源 |
+| `LSPDiagnosticRegistry` 全局 | `src/services/lsp/LSPDiagnosticRegistry.ts` | 模块加载时初始化 | 全局共享 | 不持久化 | deliveredDiagnostics LRU 自动淘汰（最大 500 文件），编辑文件时清除该文件的已交付诊断 | 无（随会话自动清理） |
+| `pendingDiagnostics` 条目 | `LSPDiagnosticRegistry` | 注册诊断时创建，UUID 为键 | 全局共享 | 不持久化 | 交付后删除 | 无（自动清理） |
+| `LSPTool` 实例 | 工具框架 | 工具框架管理，单例复用 | 全局共享 | 不持久化 | 无 | 无 |
+| `git check-ignore` 子进程 | `LSPTool.call()` | 每次过滤时创建，每批 50 路径 | 隔离 | 不持久化 | 调用结束后进程退出 | 超时 5000ms 自动终止 |
+
+**生命周期证据：**
+- `src/services/lsp/LSPServerManager.ts`：管理器初始化与关闭
+- `src/services/lsp/LSPServerInstance.ts`：实例状态机、启动/停止/重启
+- `src/services/lsp/LSPClient.ts`：延迟加载、spawn 事件等待、资源清理
+- `src/services/lsp/LSPDiagnosticRegistry.ts`：LRU 缓存、诊断注册与交付
+- `src/tools/LSPTool/LSPTool.ts`：gitignore 过滤、位置转换
+
 ## 5. 失败语义与工程取舍
 
 | 失败场景 | 处理方式 | 工程取舍 |

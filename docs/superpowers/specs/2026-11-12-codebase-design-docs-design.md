@@ -355,6 +355,131 @@ bun scripts/check-design-docs.ts [--require-approved]
 - 仅从结构推导的动机必须写成“**设计推断：……**”。
 - “文件被覆盖”与“某证据支持设计决策”是两件事：前者进入 coverage，后者进入第 7 节正文。
 
+### 4.11 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────┐
+│                         调用方 (CLI/SDK)                            │
+└────────────────────────┬────────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│              scripts/check-design-docs.ts (主入口)                  │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │  loadManifest() ──► 解析 manifest.yaml                        │  │
+│  │  loadCoverage() ──► 解析 coverage.yaml                       │  │
+│  │  listRepositoryFiles() ──► git ls-files                      │  │
+│  │  checkOwnership() ──► 所有权计算与验证                      │  │
+│  │  checkSpecDocument() ──► spec 文档验证                      │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+└────────────────────────┬────────────────────────────────────────────┘
+                         │
+         ┌───────────────┼───────────────┐
+         ▼               ▼               ▼
+┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+│  docs/          │ │  src/           │ │  tests/         │
+│  architecture/  │ │   (源码根)      │ │   (测试根)      │
+│  manifest.yaml  │ └─────────────────┘ └─────────────────┘
+│  coverage/*.yaml│         │
+└─────────────────┘         │
+         │                  ▼
+         │         ┌───────────────────────┐
+         │         │  node_modules/zod     │
+         │         │   (schema 验证)      │
+         │         └───────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│              输出：Diagnostic (errors/warnings)                    │
+│              退出码：0=通过, 1=校验失败, 2=异常                  │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**边界说明**：
+- 源码根目录固定为 `src/`、`tests/`、`scripts/`，由 manifest 显式声明
+- 外部依赖仅 Zod schema 库，无其他外部请求
+- Git 操作为只读（`git ls-files`），不修改仓库状态
+- 生成代码排除通过 glob 匹配，不修改或删除文件
+
+### 4.12 关键流程与失败路径
+
+```text
+启动 check-design-docs.ts
+       │
+       ▼
+┌─────────────────┐
+│  loadManifest() │
+└────────┬────────┘
+         ├─► 成功：解析 manifest.yaml
+         │
+         └─► 失败：文件不存在/YAML 无效
+                └─► 抛异常，退出码 2
+
+       │
+       ▼
+┌─────────────────────┐
+│  listRepositoryFiles() │
+└────────┬────────────┘
+         ├─► 成功：获取 git ls-files
+         │
+         └─► 失败：git 命令失败
+                └─► 抛异常，退出码 2
+
+       │
+       ▼
+┌───────────────────┐
+│  checkOwnership() │
+└────────┬──────────┘
+         ├─► 重复文件归属 → errors: DUPLICATE_FILE
+         ├─► 排除无匹配 → errors: STALE_EXCLUSION
+         ├─► 排除与覆盖冲突 → errors: EXCLUSION_COVERED
+         ├─► coverage 元数据不匹配 → errors: COVERAGE_METADATA
+         └─► 未覆盖文件 → warnings: UNCOVERED_FILE
+
+       │
+       ▼
+┌───────────────────────┐
+│  遍历非 planned spec  │
+└────────┬──────────────┘
+         ├─► spec 不存在 → errors: MISSING_SPEC
+         ├─► frontmatter 错误 → errors: SPEC_METADATA
+         ├─► 章节缺失 → errors: MISSING_SECTION
+         ├─► 章节空 → errors: EMPTY_SECTION
+         ├─► 占位符 → errors: PLACEHOLDER
+         ├─► coverage 回链错误 → errors: SPEC_COVERAGE_LINK
+         ├─► INDEX 链接错误 → errors: INDEX_SPEC_LINK
+         ├─► Markdown 链接断裂 → errors: BROKEN_LINK
+         └─► 第 9 章推荐表错误 → errors: RECOMMENDATIONS_TABLE
+
+       │
+       ▼
+┌───────────────────────────────┐
+│  输出结果（stderr/stdout）  │
+│  退出码：0=无 error, 1=有 error  │
+└───────────────────────────────┘
+```
+
+**关键失败分支**：
+- Git 失败：不可恢复，直接抛异常退出码 2
+- Schema 验证失败：不可恢复，直接抛异常退出码 2
+- 单个 spec 验证失败：记录 error，继续验证其他 spec
+- 所有权问题：记录 error/warning，继续执行
+
+### 4.13 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| `Manifest` | `checkDesignDocs()` | `loadManifest()` 从 `docs/architecture/coverage/manifest.yaml` 解析 | 单次调用隔离，无共享 | 不持久化（每次重新解析） | 调用结束后 GC | 无（只读操作） |
+| `Coverage` | `checkOwnership()` | `loadCoverage()` 从单个 coverage.yaml 解析 | 单次调用隔离，无共享 | 不持久化（每次重新解析） | 调用结束后 GC | 无（只读操作） |
+| `CheckResult` | `checkDesignDocs()` | 初始空，逐步添加 `errors`/`warnings` | 单次调用隔离，无共享 | 不持久化（输出生成后丢弃） | 调用结束后 GC | 无（无状态修改） |
+| `Set<string>` (actualFiles) | `checkOwnership()` | 从 `git ls-files` 或注入参数构建 | 单次调用隔离，无共享 | 不持久化 | 调用结束后 GC | 无（只读操作） |
+| `Map<string, string>` (coveredFiles) | `checkOwnership()` | 从所有 coverage 文件收集构建 | 单次调用隔离，无共享 | 不持久化 | 调用结束后 GC | 无（只读操作） |
+
+生命周期证据：
+- `scripts/check-design-docs.ts` 的 `checkDesignDocs()` 函数：每个调用创建新的 `CheckResult`，无全局状态
+- `scripts/check-design-docs.ts` 的 `loadManifest()`/`loadCoverage()`：每次调用重新读取文件，无缓存
+- 所有数据结构均在函数内部创建，无模块级可变状态
+
 ## 5. 失败语义与工程取舍
 
 | 场景 | 当前行为 | 设计理由与代价 |

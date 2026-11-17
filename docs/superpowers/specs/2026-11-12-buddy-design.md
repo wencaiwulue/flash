@@ -56,6 +56,392 @@ Buddy (Companion) 是一个常驻的、个性化的终端伙伴精灵，它会�
 
 ## 4. 架构、模块与数据流
 
+### 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    Claude Code Main Interaction Loop                       │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │  User Input (each turn)                                               │ │
+│  │    ↓                                                                 │ │
+│  │  ┌─────────────────────────────────────────────────────────────────┐  │ │
+│  │  │ Main Agent Execution (query.ts)                                │  │ │
+│  │  │  - Tool calls                                                  │  │ │
+│  │  │  - Response generation                                        │  │ │
+│  │  └────────────┬────────────────────────────────────────────────────┘  │ │
+│  │               ↓ (async, side effect only)                           │ │
+│  │  ┌─────────────────────────────────────────────────────────────────┐  │ │
+│  │  │ fireCompanionObserver() (non-blocking)                         │  │ │
+│  │  │  ┌───────────────────────────────────────────────────────────┐ │  │ │
+│  │  │  │ inFlight check: true → skip (single concurrent)         │ │  │ │
+│  │  │  │ muted check: config.companionMuted → skip              │ │  │ │
+│  │  │  │ feature(BUDDY): false → skip (gate)                    │ │  │ │
+│  │  │  └────────────┬───────────────────────────────────────────────┘ │  │ │
+│  │               ↓ all checks pass → proceed                        │ │
+│  │  ┌─────────────────────────────────────────────────────────────────┐  │ │
+│  │  │ runSideQuestion() (fork infrastructure reuse)                  │  │ │
+│  │  │  - Full fork context (messages, system prompt)               │  │ │
+│  │  │  - No tool use allowed (just text generation)                │  │ │
+│  │  │  - Separate LLM call (doesn't block main agent)             │  │ │
+│  │  └────────────┬────────────────────────────────────────────────────┘  │ │
+│  │               ↓                                                   │ │
+│  │  ┌─────────────────────────────────────────────────────────────────┐  │ │
+│  │  │ parseCompanionObserverResponse() (lenient JSON)              │  │ │
+│  │  │  - Find first { and last } → extract substring             │  │ │
+│  │  │  - JSON.parse() → if fails, return undefined               │  │ │
+│  │  │  - Truncate fields: name ≤40, personality ≤300, reaction ≤500│  │ │
+│  │  └────────────┬────────────────────────────────────────────────────┘  │ │
+│  │               ↓ (if name/personality present and not saved yet)  │ │
+│  │  ┌─────────────────────────────────────────────────────────────────┐  │ │
+│  │  │ saveGlobalConfig() → persist companion soul                   │  │ │
+│  │  └────────────┬────────────────────────────────────────────────────┘  │ │
+│  │               ↓ (if reaction present)                             │ │
+│  │  ┌─────────────────────────────────────────────────────────────────┐  │ │
+│  │  │ onReaction(reaction) callback → AppState.companionReaction    │  │ │
+│  │  └─────────────────────────────────────────────────────────────────┘  │ │
+│  │                                                                       │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+│                            ↑                                              │
+│                            │ companion_intro attachment (if not muted)│
+┌───────────────────────────┼──────────────────────────────────────────────┐
+│  ┌───────────────────────┼───────────────────────────────────────────┐  │
+│  │ Global Config        ↓                                           │  │
+│  │ ~/.claude/config ┌─────────────────────────────────────────────┐ │  │
+│  │ (persistent)      │ config.companion (soul only, no bones)   │ │  │
+│  │                   │  - name (LLM-generated, truncated ≤40)    │ │  │
+│  │ ┌───────────────┐ │  - personality (LLM-generated, ≤300)     │ │  │
+│  │ │ companion     │ │  - hatchedAt (timestamp)                 │ │  │
+│  │ │ (soul saved)  │ └─────────────────────────────────────────────┘ │  │
+│  │ └───────────────┘ │ config.companionMuted (boolean)               │ │  │
+│  │ ┌───────────────┐ └─────────────────────────────────────────────┘ │  │
+│  │ │ muted?        │                                                 │  │
+│  │ └───────────────┘                                                 │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    ↑
+                                    │
+┌───────────────────────────────────┼───────────────────────────────────────┐
+│  ┌───────────────────────────────┼───────────────────────────────────┐  │
+│  │ Rendering Layer (React Ink)  ↓                                   │  │
+│  │  ┌───────────────────────────────────────────────────────────────┐ │  │
+│  │  │ CompanionSprite() (renders ASCII art)                      │ │  │
+│  │  │  ┌─────────────────────────────────────────────────────────┐│ │  │
+│  │  │  │ Width Check: columns ≥ MIN_COLS_FOR_FULL_SPRITE (100)││ │  │
+│  │  │  │  ├─→ Yes: Full sprite + speech bubble (inline)      ││ │  │
+│  │  │  │  │  └─→ if fullscreen: bubble → CompanionFloatingBubble││ │  │
+│  │  │  │  └─→ No: Narrow mode (just face + short quip)       ││ │  │
+│  │  │  └─────────────────────────────────────────────────────────┘│ │  │
+│  │  │  ┌─────────────────────────────────────────────────────────┐│ │  │
+│  │  │  │ Animation Loop: setInterval(TICK_MS=500)               ││ │  │
+│  │  │  │  - IDLE_SEQUENCE (15 steps, -1 = blink)             ││ │  │
+│  │  │  │  - SPEAKING: spriteFrame = tick % frameCount        ││ │  │
+│  │  │  │  - PETTING: heartFrame = PET_HEARTS[pulse % 5]     ││ │  │
+│  │  │  └─────────────────────────────────────────────────────────┘│ │  │
+│  │  │  ┌─────────────────────────────────────────────────────────┐│ │  │
+│  │  │  │ Reaction Bubble: ~10s timeout                          ││ │  │
+│  │  │  │  - T0: set AppState.companionReaction               ││ │  │
+│  │  │  │  - T0-T10s: show bubble                               ││ │  │
+│  │  │  │  - Last 6 ticks: fade (dimColor)                    ││ │  │
+│  │  │  │  - T10s+: setTimeout(clear, 10000) → clear state   ││ │  │
+│  │  │  └─────────────────────────────────────────────────────────┘│ │  │
+│  │  │  ┌─────────────────────────────────────────────────────────┐│ │  │
+│  │  │  │ Pet Interaction: Enter when focused (footerSelection)││ │  │
+│  │  │  │  - Set AppState.companionPetAt = Date.now()        ││ │  │
+│  │  │  │  - Trigger pet hearts animation for ~2.5s         ││ │  │
+│  │  │  └─────────────────────────────────────────────────────────┘│ │  │
+│  │  └───────────────────────────────────────────────────────────────┘ │  │
+│  │  ┌───────────────────────────────────────────────────────────────┐ │  │
+│  │  │ CompanionFloatingBubble() (fullscreen mode only)            │ │  │
+│  │  │  - Renders at bottom of screen (bottomFloat slot)          │ │  │
+│  │  │  - Independent from main input area                        │ │  │
+│  │  │  - Fades out after 10s as well                             │ │  │
+│  │  └───────────────────────────────────────────────────────────────┘ │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
+│                                                                          │
+│  ┌───────────────────────────────────────────────────────────────────┐  │
+│  │ Local Component State (not persistent)                          │  │
+│  │  ┌───────────────────────────────────────────────────────────────┐│ │
+│  │  │ tick (counter, every 500ms)               │                  ││ │
+│  │  │ lastSpokeTick (tracks when reaction started)│                  ││ │
+│  │  │ petStartTick, forPetAt (pet animation sync) │                  ││ │
+│  │  │ inFlight (module-level boolean: observer lock)│                  ││ │
+│  │  │ rollCache (key: userId + SALT, value: Roll) │                  ││ │
+│  │  └───────────────────────────────────────────────────────────────┘│ │
+│  └───────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    ↑
+                                    │
+┌───────────────────────────────────┼───────────────────────────────────────┐
+│  ┌───────────────────────────────┼───────────────────────────────────┐  │
+│  │ Buddy Teaser Notification (Apr 1-7, local time)                │  │
+│  │  - Trigger: feature(BUDDY) AND !config.companion AND window open│  │
+│  │  - UI: Rainbow text "/buddy" in notifications area            │  │
+│  │  - Timeout: 15s auto-dismiss                                  │  │
+│  │  - isBuddyTeaserWindow(): 2026-04-01 to 2026-04-07 local      │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    ↑
+                                    │
+┌───────────────────────────────────┼───────────────────────────────────────┐
+│  ┌───────────────────────────────┼───────────────────────────────────┐  │
+│  │ Deterministic Bones Generation (no persistence)              │  │
+│  │  ┌───────────────────────────────────────────────────────────────┐│ │
+│  │  │ roll(userId)                                              ││ │
+│  │  │  - Seed: hash(userId + "friend-2026-401")                  ││ │
+│  │  │  - PRNG: Mulberry32 (deterministic sequence)              ││ │
+│  │  │  - Rarity weights: legendary 1%, rare 5%, uncommon 20%,  ││ │
+│  │  │                      common 74% (total 100%)               ││ │
+│  │  │  - Species: 19 options, random (weighted by rarity)        ││ │
+│  │  │  - Eyes: random based on rarity                          ││ │
+│  │  │  - Hat: only uncommon/rare/legendary, random             ││ │
+│  │  │  - Shiny: 1% chance (independent roll)                   ││ │
+│  │  │  - Stats: one peak, one valley, rarity boosts minimum   ││ │
+│  │  │  - rollCache: LRU cache (prev key + value)               ││ │
+│  │  └───────────────────────────────────────────────────────────────┘│ │
+│  └───────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 关键流程与失败路径
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      Companion Hatching & Reaction Flow                      │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │ fireCompanionObserver(messages, onReaction, context, dependencies):│ │
+│  │                                                                     │ │
+│  │ 1. Pre-flight Checks (all must pass to proceed):                  │ │
+│  │    ├─→ if inFlight → return (single concurrent observer only)    │ │
+│  │    ├─→ if companionMuted → return (no new reactions)             │ │
+│  │    ├─→ if !feature(BUDDY) → return (gate closed)                 │ │
+│  │    └─→ if !context → return (no tool context available)          │ │
+│  │                                                                     │ │
+│  │ 2. Set inFlight = true (lock)                                      │ │
+│  │                                                                     │ │
+│  │ 3. Extract User Input:                                             │ │
+│  │    ├─→ latestUserText = last non-meta user message from messages │ │
+│  │    └─→ truncate to reasonable length for prompt                 │ │
+│  │                                                                     │ │
+│  │ 4. Get or Roll Companion:                                         │ │
+│  │    ├─→ existingCompanion = getCompanion()                       │ │
+│  │    │   ├─→ reads saved soul from config.companion             │ │
+│  │    │   ├─→ rolls deterministic bones from userId               │ │
+│  │    │   └─→ merges: bones + soul + hatchedAt → Companion object│ │
+│  │    └─→ no existingCompanion → hatch new one (first time)      │ │
+│  │         ├─→ userId = companionUserId()                       │ │
+│  │         │   (config.oauthAccount?.accountUuid ?? config.userUuid?? "anon")│ │
+│  │         ├─→ roll(userId) → bones (rarity, species, eyes, hat, shiny, stats)│ │
+│  │         └─→ will ask LLM for name/personality below          │ │
+│  │                                                                     │ │
+│  │ 5. Build Side Question Prompt:                                    │ │
+│  │    ├─→ if hatching (no saved soul yet):                           │ │
+│  │    │   └─→ "Create a coding companion named <name>... (full prompt)"│ │
+│  │    │       expects JSON: { name?, personality?, reaction? }    │ │
+│  │    └─→ if already hatched (has saved soul):                     │ │
+│  │        └─→ "You are <name>, a <rarity> <species>... (short prompt)"│ │
+│  │            expects JSON: { reaction? } (no name/personality)    │ │
+│  │                                                                     │ │
+│  │ 6. Run LLM via Side Question:                                     │ │
+│  │    ├─→ runObserverModel(question, cacheSafeParams)              │ │
+│  │    │   ├─→ dynamic import("../utils/sideQuestion.js")          │ │
+│  │    │   ├─→ runSideQuestion({ question, cacheSafeParams })       │ │
+│  │    │   ├─→ full fork context (messages, system prompt)        │ │
+│  │    │   ├─→ NO tool use allowed (pure text generation)         │ │
+│  │    │   └─→ async, doesn't block main agent                   │ │
+│  │    └─→ returns { response: string | null }                      │ │
+│  │                                                                     │ │
+│  │ 7. Parse Response (Lenient JSON Extraction):                     │ │
+│  │    ├─→ parseCompanionObserverResponse(response):               │ │
+│  │    │   ├─→ find first '{' and last '}' in text               │ │
+│  │    │   ├─→ extract substring between them (inclusive)          │ │
+│  │    │   ├─→ try JSON.parse() → if fails, return undefined       │ │
+│  │    │   ├─→ validate fields: name? string, personality? string,│ │
+│  │    │   │                    reaction? string                │ │
+│  │    │   ├─→ truncate: name ≤40 chars, personality ≤300 chars, │ │
+│  │    │   │                   reaction ≤500 chars              │ │
+│  │    │   └─→ return { name?, personality?, reaction? } or undefined│ │
+│  │    └─→ parsing fails OR no fields extracted → skip save/reaction│ │
+│  │                                                                     │ │
+│  │ 8. Save Soul (if name/personality present AND not saved yet):   │ │
+│  │    ├─→ if (!existingCompanion && parsed.name && parsed.personality):│ │
+│  │    │   ├─→ saveGlobalConfig(current => ({                    │ │
+│  │    │   │   ...current,                                       │ │
+│  │    │   │   companion: { name, personality, hatchedAt: Date.now() }│ │
+│  │    │   │ }))                                                  │ │
+│  │    │   └─→ now companion is saved for future sessions         │ │
+│  │    └─→ else (already saved OR no name/personality) → skip save  │ │
+│  │                                                                     │ │
+│  │ 9. Fire Reaction Callback (if reaction present):                │ │
+│  │    ├─→ if parsed.reaction:                                      │ │
+│  │    │   └─→ onReaction(parsed.reaction) → updates AppState      │ │
+│  │    │       └─→ AppState.companionReaction = reaction        │ │
+│  │    └─→ else → skip reaction                                    │ │
+│  │                                                                     │ │
+│  │ 10. Cleanup (FINALLY BLOCK, ALWAYS RUNS):                        │ │
+│  │    └─→ inFlight = false (release lock, no matter success/failure)│ │
+│  │                                                                     │ │
+│  │ Error Handling (ALL Caught, Never Rethrown):                      │ │
+│  │  ┌───────────────────────────────────────────────────────────────┐ │ │
+│  │  │ try { ... } catch (error) {                                  │ │ │
+│  │  │   logForDebugging("Companion observer failed: " + error)    │ │ │
+│  │  │   // user sees NO error, main agent continues unaffected   │ │ │
+│  │  │ } finally { inFlight = false; }                              │ │ │
+│  │  └───────────────────────────────────────────────────────────────┘ │ │
+│  │ Key Failure Guarantees:                                             │ │
+│  │  ├─→ No error visible to user (only debug logs)                 │ │
+│  │  ├─→ Main agent never blocked or delayed                       │ │
+│  │  ├─→ inFlight ALWAYS released (prevents deadlock)               │ │
+│  │  ├─→ Partial responses accepted (e.g., reaction without name)   │ │
+│  │  ├─→ Truncated fields never cause failure (just truncated)       │ │
+│  │  └─→ Missing JSON, invalid JSON, network error: all handled gracefully│ │
+│  │                                                                     │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                  Companion Sprite Rendering & Bubble Lifecycle              │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │ CompanionSprite() React Component                                    │ │
+│  │                                                                       │ │
+│  │ 1. Initialization (useEffect, runs once):                           │ │
+│  │    ├─→ if (!feature(BUDDY)) → return null (render nothing)        │ │
+│  │    ├─→ if (companionMuted) → return null (render nothing)         │ │
+│  │    └─→ tickInterval = setInterval(() => setTick(t => t+1), TICK_MS=500)│ │
+│  │        └─→ returns cleanup: () => clearInterval(tickInterval)    │ │
+│  │                                                                       │ │
+│  │ 2. Render (runs every tick + state change):                        │ │
+│  │    ├─→ Get companion = getCompanion() → rolls bones + gets soul    │ │
+│  │    │   (if no companion yet, returns undefined → render nothing)  │ │
+│  │    ├─→ Get columns from useTerminalSize() → decide layout mode    │ │
+│  │    │   ├─→ columns < MIN_COLS_FOR_FULL_SPRITE (100) → NARROW MODE │ │
+│  │    │   │   └─→ renderFace(companion) + short name/quip       │ │
+│  │    │   │       (max 24 chars, no bubble, no width reserve)     │ │
+│  │    │   └─→ columns ≥100 → WIDE MODE (default)                     │ │
+│  │    │       ├─→ if isFullscreenActive() →                       │ │
+│  │    │       │   └─→ render full sprite + CompanionFloatingBubble │ │
+│  │    │       │       (separate component, bottomFloat slot)       │ │
+│  │    │       └─→ else (not fullscreen) →                           │ │
+│  │    │           └─→ render full sprite + inline speech bubble   │ │
+│  │    │               (reserve width for prompt input)          │ │
+│  │    ├─→ Get reaction from AppState.companionReaction             │ │
+│  │    │   └─→ if reaction exists → lastSpokeTick.current = tick   │ │
+│  │    ├─→ Get petAt from AppState.companionPetAt → petting animation │ │
+│  │    ├─→ Calculate animation frame:                               │ │
+│  │    │   ├─→ if reaction → SPEAKING: frame = tick % frameCount  │ │
+│  │    │   ├─→ else if petting → PETTING: heart = PET_HEARTS[pulse %5]│ │
+│  │    │   └─→ else (idle) → IDLE_SEQUENCE[tick % 15]              │ │
+│  │    │       ├─→ step = -1 → BLINK (replace eyes with '-')    │ │
+│  │    │       └─→ else → frame = step % frameCount            │ │
+│  │    └─→ Render sprite: renderSprite(companion, frame) → string[] │ │
+│  │                                                                       │ │
+│  │ 3. Bubble Lifecycle (when reaction present):                      │ │
+│  │    ┌─────────────────────────────────────────────────────────────┐  │ │
+│  │    │ T0: AppState.companionReaction = reaction (set by callback)│  │ │
+│  │    │     ↓                                                      │  │ │
+│  │    │ T0: useEffect([reaction]) triggers                          │  │ │
+│  │    │     ├─→ lastSpokeTick.current = tick                       │  │ │
+│  │    │     └─→ timer = setTimeout(() => {                        │  │ │
+│  │    │             setAppState(prev => prev.companionReaction ?│  │ │
+│  │    │               { ...prev, companionReaction: undefined } : prev)│  │ │
+│  │    │           }, BUBBLE_SHOW * TICK_MS = 20 * 500 = 10000)  │  │ │
+│  │    │     ↓ (render, every tick for ~10s)                    │  │ │
+│  │    │ bubbleAge = tick - lastSpokeTick.current                   │  │ │
+│  │    │   ├─→ bubbleAge < BUBBLE_SHOW - FADE_WINDOW (20-6=14 ticks): │ │
+│  │    │   │   normal full brightness bubble                     │  │ │
+│  │    │   └─→ bubbleAge ≥14 AND <20: fade out (dimColor)           │  │ │
+│  │    │     ↓                                                    │  │ │
+│  │    │ T10s: setTimeout fires → clear AppState.companionReaction │  │ │
+│  │    │     ↓                                                    │  │ │
+│  │    │ Bubble gone from UI (next render)                       │  │ │
+│  │    │     ↓                                                    │  │ │
+│  │    │ Cleanup: timer cleared via useEffect cleanup function    │  │ │
+│  │    └─────────────────────────────────────────────────────────────┘  │ │
+│  │                                                                       │ │
+│  │ 4. Pet Interaction (Enter key when focused):                        │ │
+│  │    ├─→ footerSelection === "companion" → sprite is focusable      │ │
+│  │    ├─→ user presses Enter → setAppState(prev => ({            │ │
+│  │    │                           ...prev, companionPetAt: Date.now() }))│ │
+│  │    ├─→ during render: petAt !== forPetAt → sync setPetStart()      │ │
+│  │    │   (no useEffect, direct render-time state update)             │ │
+│  │    └─→ pet animation plays for ~2.5s (PET_BURST_MS=2500)           │ │
+│  │                                                                       │ │
+│  │ 5. Mute Behavior (when companionMuted becomes true):              │ │
+│  │    ├─→ Next render: CompanionSprite returns null (sprite hidden) │ │
+│  │    ├─→ BUT: AppState.companionReaction NOT cleared automatically  │ │
+│  │    │   (current behavior: old bubble stays until 10s timeout,      │ │
+│  │    │    then clears itself; improvement opportunity: mute could clear)│ │
+│  │    ├─→ fireCompanionObserver() skips new observers (muted check) │ │
+│  │    └─→ getCompanionIntroAttachment() returns empty array (no intro)│ │
+│  │                                                                       │ │
+│  │ 6. Feature Gate Behavior (feature(BUDDY) becomes false):          │ │
+│  │    ├─→ All components return null (no UI)                        │ │
+│  │    ├─→ All functions exit early (no observers, no intro)        │ │
+│  │    └─→ No error, just silent disable                             │ │
+│  │                                                                       │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                  /buddy Command & Mute/Unmute/Pet Flow                    │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │ Command: /buddy [status | mute | unmute] (default: status)          │ │
+│  │                                                                       │ │
+│  │ 1. Parse Argument:                                                   │ │
+│  │    ├─→ "status" → show current companion status (name, rarity, species,│ │
+│  │    │             muted? yes/no; if not hatched, show hatch teaser)│ │
+│  │    ├─→ "mute" → set companionMuted = true                         │ │
+│  │    ├─→ "unmute" → set companionMuted = false                       │ │
+│  │    └─→ no arg/unknown → show usage help + status                 │ │
+│  │                                                                       │ │
+│  │ 2. Save Mute State (if mute/unmute):                                 │ │
+│  │    ├─→ saveGlobalConfig(current => ({                            │ │
+│  │    │   ...current, companionMuted: action === "mute"              │ │
+│  │    │ }))                                                          │ │
+│  │    └─→ state persists across sessions                             │ │
+│  │                                                                       │ │
+│  │ 3. Immediate Effects:                                               │ │
+│  │    ├─→ "mute" → next fireCompanionObserver() skips (no new reactions)│ │
+│  │    ├─→ "mute" → next render: CompanionSprite returns null (hidden)│ │
+│  │    ├─→ "mute" → next getCompanionIntroAttachment() returns empty array│ │
+│  │    ├─→ "unmute" → next fireCompanionObserver() can run again     │ │
+│  │    ├─→ "unmute" → next render: CompanionSprite appears again      │ │
+│  │    └─→ "unmute" → next getCompanionIntroAttachment() sends intro if needed│ │
+│  │                                                                       │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| `Companion` (bones + soul merged) | `getCompanion()` callers, `CompanionSprite` | `getCompanion()`: 读取 `config.companion` (soul) + 调用 `roll(userId)` (bones) + 合并为完整对象，`hatchedAt` 来自保存的 soul | 跨会话共享（同一用户，同一设备） | **不完整持久化**：只持久化 soul (name, personality, hatchedAt)；bones 每次通过 `roll(userId)` 确定性重新计算（从不保存） | 无显式重置，bones 从 userId 重新计算，soul 保留直到手动删除 config | 无 |
+| `CompanionBones` (deterministic, never saved) | `roll()` function | `roll(userId)`: `hash(userId + SALT)` 为种子 → Mulberry32 PRNG → 按权重选择 rarity/species/eyes/hat, shiny 1% 概率, stats 一峰值一谷值 | 跨会话共享（同一 userId 总是得到相同 bones） | **否**，从不持久化（总是从 userId 重新计算） | 无重置，总是重新计算 | 无 |
+| `CompanionSoul` (LLM-generated, saved) | global config | 首次孵化时 `fireCompanionObserver()` 从 LLM 响应解析，`saveGlobalConfig()` 持久化 | 跨会话共享（同一设备，同一 config） | **是**，持久化到 `config.companion` (全局配置 JSON) | 手动编辑 config 删除，或未来可能的重命名功能 | 无 |
+| `rollCache` (LRU, module-level static) | `companion.ts` module | 初始为 `undefined`，首次 `roll(userId)` 后设置为 `{ key: userId + SALT, value: Roll }` | 模块级单例共享（同一进程） | 否（内存仅） | 下一次 `roll(differentUserId)` 时替换，进程退出清空 | 无（自动 GC） |
+| `inFlight` (boolean, module-level static) | `companionObserver.ts` module | 初始为 `false`，每次 `fireCompanionObserver()` 开始时设为 `true` | 模块级单例共享（单例锁） | 否（内存仅） | 每次 `fireCompanionObserver()` 的 `finally` 块总是设为 `false`（成功或失败） | 无（finally 块总是释放） |
+| `AppState.companionReaction` (string \| undefined) | `AppState` store, `onReaction` callback | `onReaction(reaction)` 回调设置，通常由 `fireCompanionObserver()` 调用 | 全局单例共享（同一进程） | 否（内存仅，React 状态） | 设置后 10s 自动 `setTimeout` 清空，组件卸载不自动清空，mute 不自动清空（当前行为） | `setTimeout(clear, 10000)` 在 `CompanionSprite` 中，组件卸载时清理 timeout |
+| `AppState.companionPetAt` (number \| undefined) | `AppState` store, `/buddy pet` command | `/buddy pet` 命令或聚焦精灵按 Enter 时设置为 `Date.now()` | 全局单例共享（同一进程） | 否（内存仅，React 状态） | 约 2.5s 后 pet 动画自然结束（`PET_BURST_MS=2500`），无显式重置 | 无（动画自然结束） |
+| `config.companionMuted` (boolean) | global config | 用户调用 `/buddy mute` 或 `/buddy unmute` 时设置，初始为 `undefined` (false) | 全局单例共享（同一设备，持久化） | **是**，持久化到 `config.companionMuted` | 用户调用 `/buddy unmute` 重置，手动编辑 config 删除 | 无 |
+| `tick` (counter, React local state) | `CompanionSprite` component | `useState(0)`，`useEffect` 启动 `setInterval(() => setTick(t => t+1), TICK_MS=500)` | 组件实例隔离（每个挂载一个） | 否（内存仅，React 状态） | 组件卸载时 `clearInterval(tickInterval)` 停止，不再递增 | 组件卸载 cleanup 函数 `() => clearInterval(tickInterval)` |
+| `lastSpokeTick` (number, React ref) | `CompanionSprite` component | `useRef(0)`，当 `AppState.companionReaction` 设置时，`useEffect([reaction])` 赋值为当前 `tick` | 组件实例隔离 | 否（内存仅，React ref） | 组件卸载时 ref 释放，10s 后反应清空时自然不再使用 | 无（ref 自动 GC） |
+| `IDLE_SEQUENCE` (readonly number[15]) | `CompanionSprite` module | 常量，模块加载时初始化，无需创建 | 模块级单例共享，只读 | 否（代码中硬编码） | 从不重置，从不失效 | 无 |
+| `PET_HEARTS` (readonly string[5]) | `CompanionSprite` module | 常量，模块加载时初始化，无需创建 | 模块级单例共享，只读 | 否（代码中硬编码） | 从不重置，从不失效 | 无 |
+| `MIN_COLS_FOR_FULL_SPRITE` (readonly 100) | `CompanionSprite` module | 常量，模块加载时初始化，无需创建 | 模块级单例共享，只读 | 否（代码中硬编码） | 从不重置，从不失效 | 无 |
+| `TICK_MS` (readonly 500) | `CompanionSprite` module | 常量，模块加载时初始化，无需创建 | 模块级单例共享，只读 | 否（代码中硬编码） | 从不重置，从不失效 | 无 |
+| `BUBBLE_SHOW` (readonly 20 ticks) | `CompanionSprite` module | 常量，模块加载时初始化，无需创建 | 模块级单例共享，只读 | 否（代码中硬编码） | 从不重置，从不失效 | 无 |
+| `FADE_WINDOW` (readonly 6 ticks) | `CompanionSprite` module | 常量，模块加载时初始化，无需创建 | 模块级单例共享，只读 | 否（代码中硬编码） | 从不重置，从不失效 | 无 |
+| `PET_BURST_MS` (readonly 2500) | `CompanionSprite` module | 常量，模块加载时初始化，无需创建 | 模块级单例共享，只读 | 否（代码中硬编码） | 从不重置，从不失效 | 无 |
+| `NARROW_QUIP_CAP` (readonly 24 chars) | `CompanionSprite` module | 常量，模块加载时初始化，无需创建 | 模块级单例共享，只读 | 否（代码中硬编码） | 从不重置，从不失效 | 无 |
+
+生命周期证据：
+- `src/buddy/companion.ts` (`roll()` 确定性骨骼生成，`rollCache` LRU 缓存，`getCompanion()` 合并骨骼+灵魂)
+- `src/buddy/companionObserver.ts` (`fireCompanionObserver()` 孵化/反应流程，`inFlight` 单例锁，`parseCompanionObserverResponse()` 宽松 JSON 解析+截断，`runSideQuestion()` 复用 fork 基础设施，错误只记录不抛出，finally 总是释放锁)
+- `src/buddy/CompanionSprite.tsx` (React 组件，tick 计时器 500ms，10s 气泡超时+最后 6 tick 淡出，pet 动画 2.5s，100 列宽窄布局切换，全屏浮动气泡，focus+Enter pet，组件卸载清理 interval)
+- `src/buddy/prompt.ts` (`getCompanionIntroAttachment()` 去重检查，`companionIntroText()` 角色边界提示)
+- `src/commands/buddy/index.ts` (`/buddy` 命令，mute/unmute/status，`saveGlobalConfig()` 持久化静音状态)
+- `src/buddy/useBuddyNotification.tsx` (`isBuddyTeaserWindow()` 本地时间 2026-04-01 至 2026-04-07，彩虹通知 15s 超时，预告显示条件：feature(BUDDY) AND !config.companion AND 窗口期内)
+
 ### 4.1 模块设计卡：孵化/生命周期
 
 #### 真实入口签名与关键类型

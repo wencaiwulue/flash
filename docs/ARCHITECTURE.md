@@ -59,3 +59,64 @@ Disabled modules may return `false`, an empty collection, or an explicit unavail
 ## Subsystem design specifications
 
 The retrospective subsystem designs, review status, and primary file ownership index are maintained in [Subsystem design specs](architecture/INDEX.md). This page remains the product-level summary; subsystem prose lives in the linked specs rather than being duplicated here.
+
+## Context and Memory Lifecycle Overview
+
+This section provides a product-level architecture overview of Context (conversation history) and Memory systems. Detailed designs can be found in subsystem specs.
+
+### Context Lifecycle: Prompt → Token → Compaction → PTL → Boundary → QueryEngine → Session Restore
+
+The Context system manages conversation history sent to the model, balancing token limits and user experience.
+
+1. **Pre-request: Micro-Compaction**
+   - Two paths: time-based (priority) and cached
+   - Cleans up old tool results when thresholds are met
+
+2. **During request: Context Collapse**
+   - Async summarization triggered at context window thresholds
+   - Applied collapses persist across sessions
+
+3. **PTL Recovery: Reactive Compact**
+   - Handles "Prompt too long" errors
+   - Strips media, applies full compaction, retries once
+
+4. **Compact Boundary: QueryEngine Truncation**
+   - Truncates history after boundary markers
+   - Maintains UUID chains for preserved segments
+
+5. **Session Restore**
+   - Reconstructs state from storage
+   - Applies persisted collapses
+
+### Memory Lifecycle: Source → Load → Extract → Consolidate → Invalidate → Restart
+
+The Memory system organizes contextual information from multiple sources.
+
+1. **Sources**
+   - Auto-memory: Automatic session summaries
+   - Team memory: Shared team context (internal users only)
+   - Session memory: Current session restore
+   - Project documentation: CLAUDE.md in project root
+   - Daily logs: KAIROS daily logs (internal users only)
+
+2. **Load & Extract**
+   - Loaded during setup() phase
+   - Extracted dynamically during skill execution
+   - Loaded on resume with --resume
+
+3. **Consolidate & Invalidate**
+   - Automatic extraction and autoDream consolidate durable memories
+   - Index truncation and cache clearing bound prompt usage and refresh changed memory
+
+4. **Restart & Resume**
+   - Session state is restored from persisted data where available
+   - In-memory-only cursors can cause repeated extraction after restart
+
+### Cross-Subsystem Boundaries & Primary Specs
+
+| Layer | Primary Subsystem | Spec | Coverage |
+|-------|-------------------|------|----------|
+| Context Compaction | context-compaction | [context-compaction spec](superpowers/specs/2026-11-12-context-compaction-design.md) | [coverage](architecture/coverage/context-compaction.yaml) |
+| Query Engine | query-core | [query-core spec](superpowers/specs/2026-11-12-query-core-design.md) | [coverage](architecture/coverage/query-core.yaml) |
+| Session Persistence | session-persistence | [session-persistence spec](superpowers/specs/2026-11-12-session-persistence-design.md) | [coverage](architecture/coverage/session-persistence.yaml) |
+| Memory System | memory | [memory spec](superpowers/specs/2026-11-12-memory-design.md) | [coverage](architecture/coverage/memory.yaml) |

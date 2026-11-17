@@ -88,7 +88,127 @@ status: draft
 
 ## 4. 架构、模块与数据流
 
-### 4.1 模块设计卡
+### 4.1 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                               LOCAL PROCESS                                    │
+│  ┌──────────────────────────────────────────────────────────────────────────┐  │
+│  │ ┌──────────────────────┐         ┌───────────────────────────────────┐  │  │
+│  │ │ SSHSessionManager    │         │ sshAuthProxy                      │  │  │
+│  │ │ • state: idle/init/… │         │ • Unix socket (0o600)            │  │  │
+│  │ │ • generation: 1+     │         │ • dev+ino identity validation    │  │  │
+│  │ │ • pendingPrompts     │         │ • upstream TLS pinned            │  │  │
+│  │ │ • permissions Map    │◄────────┤ • /v1/* only                     │  │  │
+│  │ │ • activeSessionId    │         │ • hop-by-hop header filter       │  │  │
+│  │ │ • reconnect logic    │         │ • credential injection           │  │  │
+│  │ └───────────┬──────────┘         └───────────────────────────────────┘  │  │
+│  │             │                                     ▲                       │  │
+│  │             │                                     │                       │  │
+│  │             ▼                                     │                       │  │
+│  │ ┌────────────────────────────────────────────────────────────────────┐  │  │
+│  │ │ createSSHSession    ├─────────────────────────────────────────────►│  │  │
+│  │ └───────────┬────────────────────────────────────────────────────────┘  │  │
+│  │             │                                                             │  │
+│  │             ▼                                                             │  │
+│  │ ┌────────────────────────────────────────────────────────────────────┐  │  │
+│  │ │ argv.ts           │ artifact.ts         │ openSSH.ts              │  │  │
+│  │ │ • probe script   │ • load/verify       │ • runCommand            │  │  │
+│  │ │ • build remote   │ • deploy/cache      │ • classify failures     │  │  │
+│  │ │   command        │ • sha256 check      │ • redact stderr         │  │  │
+│  │ └───────────┬────────────────────────────────────────────────────────┘  │  │
+│  └─────────────┼────────────────────────────────────────────────────────────┘  │
+│                │                                                                │
+│                ▼ SSH spawn                                                      │
+│  ┌───────────────────────────────────────────────────────────────────────────┐ │
+│  │           SYSTEM SSH PROCESS (ssh/scp)                                    │ │
+│  └───────────────────────────────────────────────────────────────────────────┘ │
+└────────────────────────────────┼───────────────────────────────────────────────┘
+                                 │ SSH tunnel
+                                 │
+                                 ▼
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                          REMOTE LINUX HOST                                     │
+│  ┌───────────────────────────────────────────────────────────────────────────┐│
+│  │ REMOTE BUN PROCESS (artifact)                                             ││
+│  │ • stream-json input/output                                                ││
+│  │ • uses forwarded Unix socket for API calls                               ││
+│  │ • sees placeholder credentials only                                      ││
+│  └───────────────────────────────────────────────────────────────────────────┘│
+│                                                                                │
+│  ┌───────────────────────────────────────────────────────────────────────────┐│
+│  │ REMOTE CACHE: ~/.cache/claude-code/ssh/<version>-<digest>/                ││
+│  └───────────────────────────────────────────────────────────────────────────┘│
+│                                                                                │
+│  ┌───────────────────────────────────────────────────────────────────────────┐│
+│  │ REMOTE TEMP SOCKET: /tmp/claude-ssh-<uid>-<random>.sock                   ││
+│  └───────────────────────────────────────────────────────────────────────────┘│
+└───────────────────────────────────────────────────────────────────────────────┘
+```
+
+边界说明：
+- **local/remote** 分离：凭证永远不离开本地，远程只通过转发 socket 访问代理
+- **internal/external**：使用系统 OpenSSH 而非自己实现 SSH 协议
+- **bundled/source**：远程工件是预构建的 bun + main.js + manifest.json
+
+### 4.2 关键流程与失败路径
+
+```text
+SSH Session 创建（主流程）：
+┌──────────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐
+│ validate     │   │ probe    │   │ verify   │   │ deploy   │   │ start    │   │ init     │
+│ platform     │──▶│ remote   │──▶│ artifact │──▶│ artifact │──▶│ proxy    │──▶│ session  │
+│ & auth       │   │ env      │   │ (cache?)│   │ (if need)│   │ & ssh    │   │ (wait   │
+└──────────────┘   └──────────┘   └──────────┘   └──────────┘   └──────────┘   │ for init)│
+                                                                                  └────┬─────┘
+                                                                                       │
+                                                                                       ▼
+                                                                                  ┌──────────┐
+                                                                                  │ connected│
+                                                                                  │ (state)  │
+                                                                                  └──────────┘
+
+失败路径（Host Key 验证失败）：
+┌──────────────┐   ┌──────────┐   ┌──────────┐
+│ probe remote │──▶│ ssh fails│──▶│ classify │──▶│ SSH_HOST_KEY_FAILED │──▶│ no retry, throw │
+│ env          │   │ (stderr) │   │ failure  │   │ error thrown        │   │ immediately     │
+└──────────────┘   └──────────┘   └──────────┘
+
+失败路径（连接后网络断开）：
+┌──────────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐
+│ ssh process  │──▶│ notify   │──▶│ invalidate│──▶│ schedule │──▶│ reconnect│
+│ closes       │   │ delivery │   │ permissions│   │ reconnect│──▶│ (3 max, │
+│              │   │ unknown  │   │          │   │ (exponen)│   │ exponential) │
+└──────────────┘   └──────────┘   └──────────┘   └──────────┘   └──────────┘
+                                                          │
+                                                          ▼
+                                              ┌──────────────────────────┐
+                                              │ success? → reconnecting │
+                                              │ → connected (new gen)   │
+                                              │ or fail → disconnected  │
+                                              └──────────────────────────┘
+
+取消路径（用户调用 disconnect()）：
+┌──────────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐
+│ state becomes│──▶│ send     │──▶│ graceful │──▶│ sigkill  │──▶│ proxy    │──▶│ finish   │
+│ disconnecting│   │ end_sess │   │ wait (2s)│   │ after 5s │   │ stop     │   │ disconnected│
+└──────────────┘   └──────────┘   └──────────┘   └──────────┘   └──────────┘   └──────────┘
+```
+
+### 4.3 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| SSHSessionManager | 调用者 (UI/SDK) | `new SSHSessionManager(options, callbacks)`，初始 state: idle，generation: 0 | 每个实例独立，内部状态不共享 | 无（仅内存） | disconnect() → invalidatePermissions() + clear timers；reconnect → generation++ | disconnect() → 发送 end_session → graceful shutdown (2s) → SIGKILL (5s) → 代理 stop → finishDisconnected() |
+| SSHManagedConnection | SSHSessionManager | createSSHSession() 返回 { proc, proxy, getStderrTail }；reconnect() 重新创建 | 每个 connection 独立，包含独立的 ChildProcess 和 proxy | 无 | attach() 新 connection 时替换旧的；terminateCurrent() → SIGKILL | ensureCurrentProcessStopped() → SIGKILL 进程；proxy.stop() 清理 socket |
+| SSHAuthProxy | createSSHSession() | `createSSHAuthProxy({ socketPath, resolveAuth, upstream, onError })` → 创建 Unix socket (0o600) → 启动 HTTP server → 记录 dev+ino 身份 | 每个 proxy 独立，一个 session 一个 proxy；socket 通过 SSH 转发到远程 | 无 | stop() 验证身份后删除 socket；重新连接时创建新 proxy | stop() → 关闭 server → 清理 socket (验证 dev+ino) → resolved stopped promise |
+| SSHArtifact | loadSSHArtifact() | `loadSSHArtifact({ artifactRoot, version, target })` → 读取 manifest.json → 验证 sha256/mode/version/target → 计算 digest | 本地缓存共享：~/.claude/ssh/artifacts/<version>/<target>/；远程缓存按 digest 隔离 | 本地缓存目录：~/.claude/ssh/artifacts/<version>/<target>/；远程缓存目录：~/.cache/claude-code/ssh/<version>-<digest>/ | 无（缓存只读） | 无（缓存不删除） |
+| PermissionEntry (g<gen>:<reqId>) | SSHSessionManager | onControlRequest() → `{ generation, remoteRequestId, serialized }` → 存入 permissions Map | 按 generation 隔离（g<gen>: 前缀）；跨 generation 同 remoteRequestId 视为冲突 | 无 | invalidatePermissions() → clear Map；generation++ 自然失效旧权限 | 响应后从 Map delete()；disconnect 时 invalidate |
+| pendingPrompts (generation) | SSHSessionManager | sendMessage() → add(generation) → 等待 SDK 消息确认 | 按 generation 隔离，仅同 generation 有效 | 无 | notifyDeliveryUnknown() → clear Set；SDK 消息收到 → clear Set；disconnect → clear | 无自动取消，用户需重新发送 |
+
+生命周期证据：src/ssh/SSHSessionManager.ts:64-624；src/ssh/sshAuthProxy.ts:64-599；src/ssh/artifact.ts:85-324
+
+### 4.4 模块设计卡
 
 #### 4.1.1 环境探测模块
 

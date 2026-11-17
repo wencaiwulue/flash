@@ -298,6 +298,258 @@ Worker → POST /work/:work_id/events（批量）
         返回分配的 seq
 ```
 
+---
+
+### 4.6 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          Open Runner 系统架构                               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ┌───────────────────────────────────────────────────────────────────────┐│
+│  │  Admin Client (作业提交/查询/取消)                                     ││
+│  │  ┌─────────────────────────────────────────────────────────────────┐││
+│  │  │ POST /open-runner/v1/work → 提交作业 (admin token)              │││
+│  │  │ GET /open-runner/v1/work → 查询作业列表                         │││
+│  │  │ GET /open-runner/v1/work/:work_id → 查询单个作业              │││
+│  │  │ POST /open-runner/v1/work/:work_id/cancel → 取消作业         │││
+│  │  │ GET /open-runner/v1/work/:work_id/events → 查询事件            │││
+│  │  └─────────────────────────────────────────────────────────────────┘││
+│  └───────────────────────────────────────────────────────────────────────┘│
+│                                    │                                        │
+│  ┌───────────────────────────────────────────────────────────────────────┐│
+│  │  Open Runner Server (HTTP API)                                        ││
+│  │  ┌─────────────────────────────────────────────────────────────────┐││
+│  │  │ src/open-runner/server.ts: OpenRunnerServer                  │││
+│  │  │ → 双 token 认证: worker token + admin token (timing-safe 比较)│││
+│  │  │ → 绑定仅 localhost (127.0.0.1 / ::1) → 无远程访问            │││
+│  │  │ → 请求体大小限制: MAX_EVENT_BATCH_BYTES + 1MB              │││
+│  │  │ → 所有错误统一格式、包含 retryable 标志                     │││
+│  │  │ → draining 模式: 拒绝新提交、允许已有作业继续             │││
+│  │  └─────────────────────────────────────────────────────────────────┘││
+│  └───────────────────────────────────────────────────────────────────────┘│
+│                                    │                                        │
+│  ┌───────────────────────────────────────────────────────────────────────┐│
+│  │  Open Runner Store (持久化与状态机)                                   ││
+│  │  ┌─────────────────────────────────────────────────────────────────┐││
+│  │  │ src/open-runner/store.ts: OpenRunnerStore                    │││
+│  │  │ → 状态目录: $stateDir/ → state.json、events/{workId}.jsonl│││
+│  │  │ → 串行化操作: 所有操作通过 Promise 链 → 无竞态            │││
+│  │  │ → 原子写入: temp → sync → rename → fsync 目录             │││
+│  │  │ → 租期管理: expire() 自动回收过期租期                      │││
+│  │  │ → Worker epoch: 新实例注册使旧 epoch 失效                 │││
+│  │  │ → 事件去重: event_id 映射 → 防止重复追加                  │││
+│  │  └─────────────────────────────────────────────────────────────────┘││
+│  └───────────────────────────────────────────────────────────────────────┘│
+│                                    │                                        │
+│  ┌───────────────────────────────────────────────────────────────────────┐│
+│  │  Worker Pool (作业执行)                                               ││
+│  │  ┌─────────────────────────────────────────────────────────────────┐││
+│  │  │ src/open-runner/worker.ts: OpenRunnerWorker                  │││
+│  │  │ → Worker 注册: POST /open-runner/v1/runners/register → 获取 epoch│││
+│  │  │ → 作业拉取: POST /open-runner/v1/work/poll → 循环等待       │││
+│  │  │ → 心跳: POST /open-runner/v1/work/:work_id/heartbeat → 续租   │││
+│  │  │ → 事件追加: POST /open-runner/v1/work/:work_id/events → 批量   │││
+│  │  │ → 完成: POST /open-runner/v1/work/:work_id/complete → 终态  │││
+│  │  └─────────────────────────────────────────────────────────────────┘││
+│  └───────────────────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────────────────────┘
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        Upstream Proxy (CCR 环境)                           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ┌───────────────────────────────────────────────────────────────────────┐│
+│  │  初始化 (仅 CLAUDE_CODE_REMOTE + CCR_UPSTREAM_PROXY_ENABLED=true)  ││
+│  │  ┌─────────────────────────────────────────────────────────────────┐││
+│  │  │ src/upstreamproxy/upstreamproxy.ts: initUpstreamProxy()    │││
+│  │  │ → 读取 session token: /run/ccr/session_token (权限 0o600)    │││
+│  │  │ → setNonDumpable() (Linux+Bun): prctl(PR_SET_DUMPABLE, 0) → 防止 ptrace│││
+│  │  │ → 下载并拼接 CA 证书: 系统 CA + CCR MITM CA                 │││
+│  │  │ → 启动 CONNECT-over-WebSocket 中继 (仅 localhost)          │││
+│  │  │ → unlink token 文件 (确认中继监听后) → 令牌仅内存保留      │││
+│  │  │ → 设置环境变量供子进程: HTTPS_PROXY、NO_PROXY、SSL_CERT_FILE│││
+│  │  └─────────────────────────────────────────────────────────────────┘││
+│  └───────────────────────────────────────────────────────────────────────┘│
+│                                    │                                        │
+│  ┌───────────────────────────────────────────────────────────────────────┐│
+│  │  中继协议 (CONNECT-over-WebSocket)                                     ││
+│  │  ┌─────────────────────────────────────────────────────────────────┐││
+│  │  │ src/upstreamproxy/relay.ts: startUpstreamProxyRelay()       │││
+│  │  │ → 本地: TCP 接受 HTTP CONNECT → 返回 200 → 双向隧道        │││
+│  │  │ → 远程: WebSocket 到 /v1/code/upstreamproxy/ws → BinaryType=arraybuffer│││
+│  │  │ → 协议: UpstreamProxyChunk protobuf 手动编码 (tag 0x0a + varint len + bytes)│││
+│  │  │ → 双认证: Upgrade header Bearer token + Proxy-Authorization Basic │││
+│  │  │ → Ping: 每 30s 发送空 chunk 保持连接                          │││
+│  │  │ → NO_PROXY: localhost、127.0.0.1、::1、169.254.0.0/16、10.0.0.0/8、172.16.0.0/12、192.168.0.0/16、anthropic.com、github.com、npm/pypi/crates/go 注册表│││
+│  │  └─────────────────────────────────────────────────────────────────┘││
+│  └───────────────────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**说明：**
+- Open Runner Server 绑定仅 localhost，双 token 认证 (worker/admin)，draining 模式优雅关闭
+- Store 单进程文件存储，串行化操作防竞态，原子写入防损坏，租期+心跳自动恢复
+- Worker 注册获取 epoch，新实例使旧 epoch 失效，阶段状态持久化用于崩溃恢复
+- Upstream Proxy 仅 CCR 环境启用，令牌仅内存保留、prctl 防 ptrace，CONNECT-over-WebSocket 中继
+- 环境变量白名单安全默认，黑名单移除敏感变量，日志脱敏 Bearer/sk-ant-/sk- 前缀
+
+---
+
+### 4.7 关键流程与失败路径
+
+#### 主流程：作业提交与执行端到端
+
+```text
+[Admin Client 提交作业]
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ POST /open-runner/v1/work (admin token)                              │
+│ 1. Server authenticate() → 验证 admin token (timing-safe)          │
+│ 2. Server 验证 work input → normalizeWorkInput() → contentHash()  │
+│ 3. Store.submit() → 串行化:                               │
+│    → 幂等键检查: 同 work_id 不同内容 → IDEMPOTENCY_CONFLICT     │
+│    → 创建 StoredWork: state=queued                      │
+│    → 原子写入 state.json                              │
+│ 4. 返回 work_id                                                 │
+└─────────────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Worker 拉取作业                                                         │
+│ 1. Worker.register() → POST /open-runner/v1/runners/register         │
+│    → 验证 runner_id/instance_id/capabilities → 递增 epoch        │
+│    → 持久化 instance.json                                      │
+│ 2. Worker.runOnce() → POST /open-runner/v1/work/poll (worker token) │
+│ 3. Store.poll() → 串行化:                                      │
+│    → expire() 回收过期租期                                       │
+│    → 取 queued/retry_wait 作业 → state=leased              │
+│    → 设置 lease_id/expires_at/runner_id/instance_id/epoch         │
+│    → 原子写入 state.json                                      │
+│ 4. 返回作业 (lease) → Worker 并发执行 (maxWork)                │
+└─────────────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Worker 执行作业                                                         │
+│ 1. 创建 ActiveWork → 写入 active-work-{leaseId}.json (持久化阶段) │
+│ 2. POST /open-runner/v1/work/:work_id/ack → state=leased→running  │
+│ 3. spawn 子进程:                                                      │
+│    → 环境白名单: 仅允许明确列出的变量 (PATH/HOME/USER 等)          │
+│    → 环境黑名单: 移除 OPEN_RUNNER_*/SSH_*/WORKER_TOKEN 等          │
+│    → stdout: NDJSON 事件流 (sdk/process/log/error)                 │
+│    → stderr: 记录到 worker.log (脱敏)                              │
+│ 4. 阶段更新: accepted → spawning → prompt_sending → prompt_sent → running│
+│ 5. 发送 prompt → 记录 pending_event (崩溃恢复用)                   │
+│ 6. 心跳: 定期 POST /open-runner/v1/work/:work_id/heartbeat → 续租    │
+│    → 失败≥3次 → 终止子进程 → 标记失败                             │
+│ 7. 事件转发: 子进程事件 → POST /open-runner/v1/work/:work_id/events │
+│    → event_id 去重 → 返回 seq                                 │
+│ 8. 完成: POST /open-runner/v1/work/:work_id/complete → 终态        │
+│    → succeeded/failed/cancelled → retryable 失败则 retry_wait    │
+│ 9. 清理: 删除 active-work-{leaseId}.json                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 崩溃恢复流程
+
+```text
+[Worker 启动 → initialize()]
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 扫描 $stateDir/active-work-*.json                                     │
+│ 对每个 active-work 文件:                                                │
+│ 1. recoverActiveWork() → 读取阶段状态                             │
+│ 2. 验证进程: pid + startToken → getProcessIdentity() → 存活则终止 │
+│ 3. 根据阶段决定恢复策略:                                           │
+│    - accepted/spawning/prompt_sent/running: RUNNER_RESTARTED (可重试) │
+│    - prompt_sending: DELIVERY_UNKNOWN (需显式重试)                 │
+│ 4. 发送 pending_event (如果有) → Store.appendEvents()           │
+│ 5. POST /open-runner/v1/work/:work_id/complete → 标记失败         │
+│ 6. 删除 active-work 文件                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 失败路径：租期过期
+
+```text
+[Worker 心跳超时/崩溃]
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Store.expire() → 下次 poll/ack/heartbeat 时自动执行              │
+│ 1. 检查 lease_expires_at 或 monotonic deadline → 已过期         │
+│ 2. state=leased/running → queued (retry_wait 如果之前失败过) │
+│ 3. 清空 lease_id/expires_at/runner_id/instance_id/epoch         │
+│ 4. 原子写入 state.json                                          │
+│ 5. 其他 Worker poll 时可拉取该作业 → 重新执行                    │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 失败路径：Worker epoch 过期
+
+```text
+[新 Worker 实例注册 (同 runner_id、新 instance_id)]
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Store.register() → 递增 epoch → 持久化                           │
+│ 旧实例后续请求 (ack/heartbeat/appendEvents/complete):              │
+│ 1. 解析 lease identity → 验证 epoch                           │
+│ 2. epoch < 当前 epoch → STALE_WORKER_EPOCH 错误 → 拒绝       │
+│ 3. 旧实例收到错误 → 优雅退出                                     │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Upstream Proxy 初始化与失败打开
+
+```text
+[CCR 环境初始化]
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ initUpstreamProxy()                                                   │
+│ 1. 检查 CLAUDE_CODE_REMOTE + CCR_UPSTREAM_PROXY_ENABLED=true → 未启用则跳过│
+│ 2. 读取 /run/ccr/session_token → 权限 0o600 → 失败则禁用        │
+│ 3. setNonDumpable() (Linux+Bun): prctl(PR_SET_DUMPABLE, 0) → 失败忽略│
+│ 4. 下载并拼接 CA 证书 → 失败则禁用                               │
+│ 5. 启动 CONNECT-over-WebSocket 中继 (仅 localhost) → 失败则禁用 │
+│ 6. unlink token 文件 → 令牌仅内存保留 → 崩溃后需重新注入         │
+│ 7. 设置环境变量供子进程: HTTPS_PROXY、NO_PROXY、SSL_CERT_FILE     │
+│                                                                       │
+│ 所有失败打开: 任何错误记录警告 → 禁用 proxy → 不破坏会话继续     │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 4.8 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| `OpenRunnerServer` (HTTP API) | startOpenRunnerServer() 调用方 | new OpenRunnerServer() → start() → listen localhost:port → 注册路由 → 双 token 认证 | 单例：单个 server 实例 | 否 | stop() → draining 模式拒绝新提交 → 等待已有作业 → 关闭 | stop() → 关闭服务器 |
+| `OpenRunnerStore` (状态机与持久化) | OpenRunnerServer | new OpenRunnerStore() → initialize() → 加载 state.json、重建 event_ids 映射 → 扫描 events/ 目录 | 单例：单个 store 实例 | 是 ($stateDir/state.json、events/{workId}.jsonl) | 重新初始化时重建内存状态、原子写入覆盖 | 无 |
+| `StoredWork` (作业记录) | OpenRunnerStore.submit() | submit() 创建 → state=queued → poll()→leased → ack()→running → complete()→succeeded/failed/cancelled/retry_wait | 隔离：每个 work_id 一个记录 | 是 (state.json) | 终态不可变、cancel_requested 可随时设置 | cancel() → 设置 cancel_requested → queued/retry_wait 立即完成、leased/running 通知 Worker |
+| `WorkEvent` (事件记录) | OpenRunnerStore.appendEvents() | appendEvents() 接收 event_id → 去重检查 → 分配 seq → 原子追加 JSONL → 更新 last_seq | 隔离：每个 work_id 有序事件流 | 是 (events/{workId}.jsonl) | 追加只读、seq 单调递增、event_id 冲突拒绝 | 无 |
+| `WorkerRegistration` (Worker 身份) | OpenRunnerStore.register() | register() 验证 runner_id/instance_id/capabilities → 新 instance_id 则递增 epoch → 持久化 instance.json | 隔离：每个 runner_id 独立 epoch | 是 ($stateDir/instance.json) | 新实例注册使旧 epoch 失效 | 无 |
+| `LeaseIdentity` (租期身份) | Store.poll() 创建、请求体提取 | poll() 创建 → lease_id+expires_at+runner_id+instance_id+epoch → 附加到作业 | 隔离：每次 lease 唯一 | 否 (仅内存和 state.json) | 过期自动释放、心跳续租、epoch 过期失效 | 无 |
+| `OpenRunnerWorker` (作业执行器) | runOpenRunnerWorker() 调用方 | new OpenRunnerWorker() → initialize() (扫描恢复 active-work) → register() (获取 epoch) → run()/runOnce() | 隔离：每个 worker 实例独立、可配置 maxWork 并发 | 否 (但 active-work 持久化) | stop() → 停止拉取新作业、等待执行中作业完成 | stop() → 优雅停止 |
+| `ActiveWork` (执行中作业状态) | OpenRunnerWorker.execute() | 创建阶段状态 → 写入 active-work-{leaseId}.json → 阶段更新 (accepted→spawning→prompt_sending→prompt_sent→running) | 隔离：每个 lease 一个记录 | 是 ($stateDir/active-work-{leaseId}.json) | 完成后删除、崩溃后用于恢复决策 | 完成后删除 |
+| `UpstreamProxyRelay` (CCR 中继) | initUpstreamProxy() | 仅 CCR 环境启用 → 读取 token → setNonDumpable → 下载 CA → 启动中继 → unlink token | 单例：单个中继实例 | 否 (token 仅内存保留) | 进程退出自动清理、无持久化状态 | 无 |
+
+**生命周期证据：**
+- src/open-runner/protocol.ts
+- src/open-runner/store.ts
+- src/open-runner/server.ts
+- src/open-runner/worker.ts
+- src/open-runner/client.ts
+- src/open-runner/main.ts
+- src/upstreamproxy/upstreamproxy.ts
+- src/upstreamproxy/relay.ts
+- tests/openRunnerProtocol.test.ts
+- tests/openRunnerWorker.test.ts
+
 ## 5. 失败语义与工程取舍
 
 ### 5.1 失败语义

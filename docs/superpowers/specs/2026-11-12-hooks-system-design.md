@@ -178,6 +178,358 @@ Claude Code 的 Hooks System 需要解决以下核心问题：
 
 ### 4.1 入口与公共契约
 
+### 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           flash 主事件循环                                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────┐       │
+│  │  HOOK TRIGGER POINTS                                            │       │
+│  │  • pre-tool-use / post-tool-use / post-tool-use-failure      │       │
+│  │  • permission-denied / permission-request                     │       │
+│  │  • session-start / session-end / setup                       │       │
+│  │  • user-prompt-submit / instructions-loaded                  │       │
+│  │  • subagent-start / subagent-stop / teammate-idle            │       │
+│  │  • task-created / task-completed / elicitation               │       │
+│  │  • file-changed / cwd-changed / config-change                │       │
+│  │  • notification / stop / stop-failure / pre-compact / post-compact │   │
+│  └─────────────────────────────────────────────────────────────────┘       │
+│                              │                                               │
+│                              ▼                                               │
+│              ┌───────────────────────────────┐                              │
+│              │  loadHooksConfig()            │                              │
+│              │  (settings + plugins +        │                              │
+│              │   session + managed hooks)    │                              │
+│              └───────────────────────────────┘                              │
+│                              │                                               │
+│                              ▼                                               │
+│              ┌───────────────────────────────┐                              │
+│              │  getMatchingHooks()           │                              │
+│              │  • event match                │                              │
+│              │  • tool/agent/notify matcher  │                              │
+│              │  • if condition eval          │                              │
+│              │  • dedupe (source + payload)  │                              │
+│              │  • filter HTTP (session-start/setup) │                       │
+│              └───────────────────────────────┘                              │
+│                              │                                               │
+│                              ▼                                               │
+│              ┌───────────────────────────────┐                              │
+│              │  shouldSkipHookDueToTrust()? │                              │
+│              └───────────────────────────────┘                              │
+│                  │           │                                               │
+│                 Yes          No                                              │
+│                  │           │                                               │
+│                  ▼           ▼                                               │
+│              [skip]    ┌───────────────────────────────┐                    │
+│                        │  Promise.allSettled()         │                    │
+│                        │  execute all hooks in parallel │                    │
+│                        └───────────────────────────────┘                    │
+│                              │                                               │
+│          ┌───────────────────┼───────────────────┐                          │
+│          │                   │                   │                          │
+│          ▼                   ▼                   ▼                          │
+│  ┌──────────────┐    ┌──────────────┐   ┌──────────────┐                  │
+│  │Command Hook  │    │  HTTP Hook   │   │ Prompt Hook  │                  │
+│  │execCommand() │    │ execHttp()   │   │ execPrompt() │                  │
+│  │shellCommand  │    │SSRFG guarded  │   │ small model  │                  │
+│  └──────────────┘    └──────────────┘   └──────────────┘                  │
+│          │                   │                   │                          │
+│          │                   ▼                   │                          │
+│          │    ┌───────────────────────────────┐  │                          │
+│          │    │ 首行 {"async":true}?         │  │                          │
+│          │    └───────────────────────────────┘  │                          │
+│          │              │           │             │                          │
+│          │             Yes         No            │                          │
+│          │              │           │             │                          │
+│          │              ▼           ▼             │                          │
+│          │    ┌──────────────┐ ┌──────────────┐  │                          │
+│          │    │Async Registry│ │Sync resolve  │  │                          │
+│          │    │register hook │ │parse output  │  │                          │
+│          │    │add to Map()  │ │exit code 0/1/2│ │                          │
+│          │    └──────────────┘ └──────────────┘  │                          │
+│          │              │                        │                          │
+│          │              ▼                        │                          │
+│          │    ┌──────────────┐                  │                          │
+│          │    │Agent Hook    │                  │                          │
+│          │    │execAgent()   │                  │                          │
+│          │    └──────────────┘                  │                          │
+│          │              │                        │                          │
+│          └──────────────┼────────────────────────┘                          │
+│                         ▼                                                   │
+│              ┌───────────────────────────────┐                              │
+│              │  aggregate results            │                              │
+│              │  • blocking error first       │                              │
+│              │  • permission: deny>ask>allow │                              │
+│              │  • merge system messages      │                              │
+│              │  • merge additional context   │                              │
+│              └───────────────────────────────┘                              │
+│                         │                                                   │
+│                         ▼                                                   │
+│              emitHookResponse()                                            │
+│              (notify listeners)                                            │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  STATE OWNERSHIP:                                                            │
+│  • hooks.ts: no module state (pure functions)                            │
+│  • AsyncHookRegistry.ts: pendingHooks (Map<processId, PendingAsyncHook>)│
+│  • shellCommand.ts: ChildProcess, stdout/stderr buffers                │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 关键流程与失败路径
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Command Hook Execution (Main + Failure + Async)                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+  execCommandHook(hook, event, name, jsonInput, signal, ...)
+          │
+          ▼
+  check pluginRoot exists ────┐ (not exists)
+          │                    │
+          │                    ▼
+          │            throw Error (exit code 2 not triggered)
+          │
+          ▼
+  select shell: hook.shell → DEFAULT_HOOK_SHELL → bash
+          │
+          ▼
+  Windows + bash? ────┬─── Yes → findGitBashPath() ────┐ (not found)
+          │            │                              │
+          │            │                              ▼
+          │            │                     throw Error
+          │            ▼
+          │      convert Windows path → POSIX
+          │      auto-prepend 'bash ' to .sh files
+          │
+          ▼
+  setup env vars: CLAUDE_PROJECT_DIR, CLAUDE_PLUGIN_ROOT, CLAUDE_ENV_FILE
+          │
+          ▼
+  interpolate ${CLAUDE_PLUGIN_ROOT}, ${user_config.X}
+          │
+          ▼
+  spawn child process (shell=true, windowsHide=true on Windows)
+          │
+          ├─► SPAWN FAILS (ENOENT, EACCES)
+          │      │
+          │      ▼
+          │      return { status: 1 (non-blocking), error }
+          │
+          ▼
+  write jsonInput + '\n' to stdin ────┐ (EPIPE: child exited early)
+          │                            │
+          │                            ▼
+          │                    return { status: 1 (non-blocking) }
+          │
+          ▼
+  check config.async || config.asyncRewake ────┬─── Yes
+          │                                     │
+          │                                     ▼
+          │                    executeInBackground()
+          │                      │
+          │                      ├─ asyncRewake=true: skip background(),
+          │                      │                   keep in memory
+          │                      │
+          │                      └─ async=true: call shellCommand.background(),
+          │                                        register to AsyncHookRegistry
+          │                      │
+          │                      ▼
+          │                    return early with { backgrounded: true }
+          │
+          No
+          │
+          ▼
+  collect stdout/stderr (data events)
+          │
+          ▼
+  check FIRST LINE of stdout ────┬─── starts with {"async":true}
+          │                       │
+          │                       ▼
+          │              executeInBackground() → same as above
+          │
+          │
+          ▼
+  check for prompt requests (requestPrompt callback provided)
+          │
+          │ (lines with {"prompt":"id","message":"...","options":[...]}
+          │  → strip from stdout, show prompt, write response to stdin)
+          │
+          ▼
+  wait for 'close' event ────┐ (signal aborted during execution)
+          │                    │
+          │                    ▼
+          │            shellCommand.kill()
+          │            return { aborted: true, status: 1 }
+          │
+          ▼
+  parse stdout:
+          │
+          ├─► is valid JSON? ────┬─── Yes → Zod validate HookOutput
+          │                       │           │
+          │                       │           ├─ success → merge
+          │                       │           └─ fail → treat as plain text
+          │                       │
+          │                       └─── No → treat as plain text
+          │
+          ▼
+  interpret exit code:
+          │
+          ├─ 0 → success
+          ├─ 1 → non-blocking error (show, continue)
+          └─ 2 → blocking error (stop main flow)
+          │
+          ▼
+  return { stdout, stderr, output, status, aborted? }
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  HTTP Hook Execution (Main + Failure + SSRF)                                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+  execHttpHook(hook, event, jsonInput, signal?)
+          │
+          ▼
+  check getHttpHookPolicy()
+          │
+          ├─► allowedUrls defined? ────┬─── Yes
+          │                             │
+          │                             ▼
+          │                    urlMatchesPattern(hook.url, allowedUrls)?
+          │                             │
+          │                             ├─ No → return { ok: false, error }
+          │                             └─ Yes → proceed
+          │
+          ▼
+  interpolate headers:
+          │
+          │ for each header value:
+          │   ${VAR} or $VAR → process.env[VAR], only if VAR in
+          │                     (hook.allowedEnvVars ∩ policy.allowedEnvVars)
+          │                     else → ''
+          │
+          ▼
+  sanitize header values (remove \r, \n, \x00)
+          │
+          ▼
+  check SandboxManager enabled? ────┬─── Yes → use sandbox proxy
+          │                          │
+          │                          ▼
+          │              SSRF protection via sandbox network rules
+          │
+          No
+          │
+          ▼
+  setup axios options:
+          │
+          ├─ method: POST
+          ├─ url: hook.url
+          ├─ headers: { 'Content-Type': 'application/json', ... }
+          ├─ data: jsonInput (string)
+          ├─ timeout: hook.timeout → DEFAULT_HTTP_HOOK_TIMEOUT_MS
+          ├─ maxRedirects: 0 (no redirects)
+          ├─ signal: createCombinedAbortSignal(signal, { timeoutMs })
+          ├─ lookup: ssrfGuardedLookup() (non-sandbox mode only)
+          │       │
+          │       └─► resolves domain → checks IP
+          │               ├─ private IP (RFC 1918, RFC 4193)? → reject
+          │               ├─ link-local (169.254.0.0/16)? → reject
+          │               ├─ localhost/127.0.0.1? → allow (exception)
+          │               └─ public IP → allow
+          │
+          ▼
+  send request ────┐ (network error / timeout / aborted)
+          │          │
+          │          ▼
+          │  return { ok: false, error, aborted? }
+          │
+          ▼
+  response received (any status code 2xx/3xx/4xx/5xx)
+          │
+          ▼
+  return {
+    ok: status ∈ 200-299,
+    statusCode,
+    body: response.data,
+    error?: message,
+    aborted?
+  }
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Async Hook Registry Flow (Check + Finalize)                                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+  Main Loop periodically calls checkForAsyncHookResponses()
+          │
+          ▼
+  snapshot pendingHooks (avoid concurrent modification issues)
+          │
+          ▼
+  for each pending hook:
+          │
+          ├─► no shellCommand? → remove from pendingHooks
+          │
+          ├─► shellCommand status killed? → remove from pendingHooks
+          │
+          ├─► not completed? → skip (wait)
+          │
+          ├─► response already sent? → remove from pendingHooks
+          │
+          ├─► stdout empty? → remove from pendingHooks
+          │
+          ▼ (has output, not sent yet)
+  parse stdout (skip first line if {"async":true})
+          │
+          ▼
+  emitHookResponse()
+          │
+          ▼
+  mark as responseAttachmentSent: true
+          │
+          ▼
+  collect to result array
+          │
+          ▼
+  remove from pendingHooks
+          │
+          ▼
+  return [async responses]
+
+
+  Session End: finalizePendingAsyncHooks() called
+          │
+          ▼
+  for each pending hook:
+          │
+          ├─► completed → emit response
+          │
+          └─► not killed → shellCommand.kill()
+          │              → emit as cancelled
+          │
+          ▼
+  pendingHooks.clear()
+```
+
+### 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|-----------|--------|--------------|-----------|--------|-----------|-----------|
+| `PendingAsyncHook` | `AsyncHookRegistry.ts` | `registerPendingAsyncHook()` 创建，含 `processId`, `shellCommand`, `timeout`, `startTime`, `asyncRewake` flag | 全局单例 Map（所有会话共享） | 否 | `removeDeliveredAsyncHooks(processIds[])` 移除已送达 | `finalizePendingAsyncHooks()`: kill 未完成进程，emit 所有，`clear()` Map |
+| `ShellCommand` | `shellCommand.ts` / `execCommandHook.ts` | `new ShellCommand(cmd, opts)` 创建，spawn 子进程，设置 stdout/stderr buffers | 每个 hook 独立 | 否 | `background()` 启用后台模式（spill to disk 除非 `asyncRewake=true`） | `kill()`: SIGTERM 子进程，清理监听器；`asyncRewake=true` 时保留内存缓冲 |
+| `HooksConfig` | `hooksConfig.ts` / `loadHooksConfig()` | `loadHooksConfig()` 从 settings/plugins/session 加载合并，去重，验证 | 每次 `executeHooksForEvent()` 重新加载 | 否 | 无缓存（每次重新加载） | 无（配置是纯数据） |
+| `CombinedAbortSignal` | `combinedAbortSignal.ts` | `createCombinedAbortSignal(parentSignal?, { timeoutMs? })` 创建新 AbortController，link parent + setTimeout | 每次调用独立 | 否 | 无重置 | `cleanup()`: 移除 parent listener，clearTimeout，防止内存泄漏（必调用） |
+| `MatchedHook` | `getMatchingHooks()` | 从 `HooksConfig` 筛选，匹配事件/matcher/if 条件，去重（source + payload），过滤 HTTP (session-start/setup) | 每次调用独立返回新数组 | 否 | 无缓存（每次重新匹配） | 无（匹配结果是纯数据） |
+| `HookOutput` | 各 exec 函数 | 解析 stdout JSON 或 plain text，根据 exit code 0/1/2 设置状态 | 每个 hook 独立 | 否 | 无重置 | 无（输出是纯数据） |
+| `AsyncHookResponse` | `checkForAsyncHookResponses()` | 从 `ShellCommand` 完成状态构建，含 stdout/stderr/exitCode/output | 每个完成的 hook 独立 | 否 | 送达后从 `pendingHooks` 移除 | 无（响应是纯数据） |
+
+**生命周期证据:** `src/utils/hooks/AsyncHookRegistry.ts` (L1-150, pendingHooks Map), `src/utils/shellCommand.ts` (L1-300, ShellCommand class), `src/utils/combinedAbortSignal.ts` (L1-100, signal cleanup), `src/utils/hooks.ts` (L747-1337, execCommandHook lifecycle)
+
 ```typescript
 // 钩子执行入口
 function executeHooksForEvent(

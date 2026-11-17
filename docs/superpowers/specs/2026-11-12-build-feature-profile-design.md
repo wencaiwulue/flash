@@ -294,6 +294,174 @@ function generateSdkTypes(): void  // 生成 coreTypes.generated.ts 和 controlT
 | **源码证据** | `tests/fixtures/verify-enabled-features.ts:1-79` |
 | **测试证据** | 该模块是 `enabledFeatures.test.ts` 的基础设施 |
 
+## 4.8. 构建与功能边界矩阵
+
+### 功能可用性分层与边界
+
+功能可用性由五层独立控制，**源码存在 ≠ 功能可用**：
+
+| 层级 | 控制机制 | 说明 | 验证方式 |
+|------|---------|------|---------|
+| 1. DCE 层 | `feature()` + `EXTERNAL_FEATURES` | 不在 `EXTERNAL_FEATURES` 中的功能代码完全不进入 bundle | `tests/enabledFeatures.test.ts` 验证 |
+| 2. USER_TYPE 层 | `process.env.USER_TYPE === 'ant'` | 内部员工专用代码路径在 external 构建中被 DCE 移除 | 源码中 `process.env.USER_TYPE` 检查 |
+| 3. 注册层 | 工具/命令注册表条件注册 | 即使代码在 bundle 中，未注册的功能也不可用 | `getAllBaseTools()`、`builtInCommandNames()` 验证 |
+| 4. Availability 层 | `availability` 回调 | 宿主环境检查（如是否 Claude Desktop、是否有 MCP 服务器） | 各工具 `availability` 实现 |
+| 5. 运行时状态层 | `isEnabled()` 回调 | 当前状态检查（如是否 proactive 激活、是否有 API key） | 各工具 `isEnabled` 实现 |
+
+### 工具边界矩阵（43 个工具，未全部验证）
+
+当前 external profile 包含 43 个工具，但**并非所有工具都验证过**，以下是验证状态（✓=已验证，?=未验证，空=无需验证）：
+
+| 工具名 | Feature Flag | DCE | 注册 | Availability | isEnabled | 验收测试位置 |
+|--------|--------------|-----|------|--------------|-----------|-------------|
+| Read | — | ✓ | ✓ | ✓ | ✓ | `tests/enabledFeatures.test.ts` |
+| Write | — | ✓ | ✓ | ✓ | ✓ | `tests/enabledFeatures.test.ts` |
+| Run | — | ✓ | ✓ | ✓ | ✓ | `tests/enabledFeatures.test.ts` |
+| Bash | — | ✓ | ✓ | ✓ | ✓ | `tests/enabledFeatures.test.ts` |
+| MCP* | `CHICAGO_MCP` | ✓ | ✓ | ? | ? | `tests/enabledFeatures.test.ts`（仅验证存在） |
+| ... [其余 38 个工具未完全验证] | ... | ... | ... | ... | ... | ... |
+
+**验证机制说明**：
+- 工具数量和无 null 项：`tests/fixtures/verify-enabled-features.ts` → `getAllBaseTools()`
+- 特定工具存在（CronCreate、RemoteTrigger、Monitor、Sleep、ToolSearch 等）：`tests/enabledFeatures.test.ts`
+- Sleep 初始 disabled、proactive 激活后 enabled：`tests/enabledFeatures.test.ts`
+- Worker 后台模式、有 Bash 无 Agent：`tests/enabledFeatures.test.ts`
+- 其余功能（reactive compact、hunter、proactive、peers、remote-control-server、workflows、buddy、fork、force-snip、assistant、ultraplan、voice、brief）注册状态：`tests/enabledFeatures.test.ts`
+
+### 环境变量与用户设置边界
+
+| 配置项 | 类型 | 层次 | 说明 | 验证位置 |
+|--------|------|------|------|---------|
+| `ANTHROPIC_API_KEY` | 环境变量 | 运行时 | 用于 API 认证，不影响 DCE | `src/utils/auth.ts` |
+| `ANTHROPIC_BASE_URL` | 环境变量 | 运行时 | API 端点覆盖，不影响 DCE | `src/utils/auth.ts` |
+| `ENABLE_TOOL_SEARCH` | 环境变量 | 构建时/运行时 | 验收测试时固定，影响 ToolSearch 可用性 | `tests/enabledFeatures.test.ts` |
+| `CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY` | 环境变量 | 运行时 | 禁用反馈调查，不影响 DCE | `src/components/FeedbackSurvey/useFeedbackSurvey.tsx` |
+| `CLAUDE_CODE_VERIFY_PLAN` | 环境变量 | 构建时 | external 构建时固定为 'false' | `scripts/build.ts` |
+| `settings.spinnerTipsEnabled` | 用户设置 | 运行时 | 控制提示显示，不影响 DCE | `src/services/tips/tipScheduler.ts` |
+| `settings.worktree.symlinkDirectories` | 用户设置 | 运行时 | 工作区 symlink 配置，不影响 DCE | `src/utils/worktree.ts` |
+
+### Internal vs External 边界
+
+| 维度 | Internal (ant) | External | 验证位置 |
+|------|---------------|----------|---------|
+| `USER_TYPE` | `'ant'` | `'external'` | `scripts/build.ts` |
+| 功能集 | `EXTERNAL_FEATURES` + internal-only | `EXTERNAL_FEATURES` | `scripts/externalFeatureProfile.ts` |
+| 反馈调查 | 始终启用 | 可禁用 | `src/components/FeedbackSurvey/useFeedbackSurvey.tsx` |
+| 紧急通知 | 可显示 | 可显示 | `src/components/EmergencyTip.tsx` |
+| 发布说明 | 编译时打包 | 网络获取/缓存 | `src/utils/releaseNotes.ts` |
+
+### 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│                         构建流程 (Build Process)                  │
+├─────────────────────────────────────────────────────────────────┤
+│  ┌──────────────────┐                                          │
+│  │  Schema 源文件   │  coreSchemas.ts, controlSchemas.ts      │
+│  └────────┬─────────┘                                          │
+│           │ generateSdkTypes()                                 │
+│           ▼                                                    │
+│  ┌──────────────────┐                                          │
+│  │ 生成的类型文件   │  coreTypes.generated.ts, controlTypes.ts│
+│  └────────┬─────────┘                                          │
+│           │                                                    │
+│     ┌─────┴─────┐                                              │
+│     ▼           ▼                                              │
+│ ┌─────────┐ ┌─────────┐                                        │
+│ │CLI 入口 │ │SDK 入口 │  cli.tsx, agentSdkTypes.ts            │
+│ └────┬────┘ └────┬────┘                                        │
+│      │           │                                             │
+│      └─────┬─────┘                                             │
+│            ▼                                                   │
+│  ┌─────────────────────────────────┐                          │
+│  │   Bun.build (createBuildOptions)│                          │
+│  │  • features: [...EXTERNAL_FEATURES] │                        │
+│  │  • define: MACRO.* + USER_TYPE  │                          │
+│  │  • loader: .md/.txt 为 text     │                          │
+│  └───────────────┬─────────────────┘                          │
+│                  ▼                                              │
+│     ┌───────────────────────┐                                  │
+│     │   构建输出            │                                  │
+│     ├───────────────────────┤                                  │
+│     │ • dist/main.js (CLI)  │ chmod 0o755                    │
+│     │ • dist/sdk.mjs (SDK)  │                                  │
+│     │ • dist/types/...      │                                  │
+│     └───────────┬───────────┘                                  │
+│                 ▼                                              │
+│  ┌─────────────────────────────┐                              │
+│  │  EXTERNAL_FEATURES (唯一源) │  与测试共享                    │
+│  └─────────────────────────────┘                              │
+└─────────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      验收测试 (Acceptance Tests)                 │
+├─────────────────────────────────────────────────────────────────┤
+│ • 使用相同的 EXTERNAL_FEATURES + USER_TYPE=external             │
+│ • 构建 feature-check.ts fixture                                │
+│ • 在独立子进程中导入                                            │
+│ • 验证工具注册表、命令可用性等                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 关键流程与失败路径
+
+```text
+主构建流程
+=========
+1. generateSdkTypes()
+   ├─ 成功：类型文件写入
+   └─ 失败：抛出错误 → process.exit(1)
+   
+2. Bun.build CLI (src/entrypoints/cli.tsx → dist/main.js)
+   ├─ 成功：dist/main.js 创建，含 shebang
+   └─ 失败：打印日志 → process.exit(1)
+   
+3. Bun.build SDK (src/entrypoints/agentSdkTypes.ts → dist/sdk.mjs)
+   ├─ 成功：dist/sdk.mjs 创建
+   └─ 失败：打印日志 → process.exit(1)
+   
+4. chmod 0o755 dist/main.js
+   └─ 构建成功后总是执行
+
+验收流程
+=======
+1. 使用 EXTERNAL_FEATURES + USER_TYPE=external 构建 feature-check.ts
+2. 在子进程中导入 fixture
+3. 验证：
+   ├─ 工具数量匹配
+   ├─ 无 null 工具
+   ├─ 特定工具存在/不存在
+   ├─ Sleep 初始禁用 → proactive 激活 → 启用
+   ├─ Worker 后台状态
+   ├─ Reactive compact 状态
+   ├─ Skill 注册
+   └─ 命令可用性
+
+失败路径
+=======
+• Schema 无匹配导出 → generateSdkTypes() 抛出
+• 构建配置错误 → Bun.build 失败
+• 工具注册表不匹配 → 验收测试失败
+• 功能不在 EXTERNAL_FEATURES 中 → DCE 移除代码
+• USER_TYPE=external → 内部代码路径移除
+• 外层环境变化 → 子进程隔离防止 profile 漂移
+```
+
+### 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| `EXTERNAL_FEATURES` | `externalFeatureProfile.ts` | `export const EXTERNAL_FEATURES = [...] as const` | build.ts 与测试共享 | 仅编译时（嵌入构建） | 定义后不可变 | N/A（常量） |
+| `MACRO` 常量 | `runtimeMacros.ts` | 构建时：`Bun.build(define: { MACRO.*: ... })`<br>运行时：`Object.assign(globalThis, { MACRO: ... })` | 全局单例 | 构建时嵌入 dist<br>运行时：仅内存 | 构建时：新构建覆盖<br>运行时：无（只读） | N/A |
+| `BuildConfig` | `scripts/build.ts` | `createBuildOptions()` 创建配置，含 `EXTERNAL_FEATURES`、`MACRO` 定义、`USER_TYPE=external` | 每次构建调用隔离 | 仅内存 | 构建完成后 GC 回收 | N/A（同步） |
+| `feature()` 调用 | `bun:bundle` | 编译时：根据 `EXTERNAL_FEATURES` 将 `feature(name)` 替换为 `true`/`false` | 每个功能编译时 | DCE 移除禁用代码路径 | 使用不同 `EXTERNAL_FEATURES` 重新构建 | N/A（编译时） |
+| `dist/main.js` | `scripts/build.ts` | `Bun.build()` 写入文件 + `banner` shebang | 共享产物 | 磁盘文件 | 下次构建覆盖 | 构建成功后应用 `chmod 0o755` |
+| `dist/sdk.mjs` | `scripts/build.ts` | `Bun.build()` 写入文件 | 共享产物 | 磁盘文件 | 下次构建覆盖 | N/A |
+| Feature profile fixture | `tests/fixtures/verify-enabled-features.ts` | 使用与生产相同的 `EXTERNAL_FEATURES` + `USER_TYPE=external` 构建 | 隔离子进程 | 临时构建文件 | 子进程退出清理 | 隔离子进程中的动态导入防止污染 |
+
+生命周期证据：`scripts/build.ts:1-74`、`scripts/externalFeatureProfile.ts:1-41`、`src/runtimeMacros.ts:1-17`、`tests/fixtures/verify-enabled-features.ts:1-79`
+
 ## 5. 失败语义与工程取舍
 
 | 失败场景 | 处理方式 | 工程取舍 |

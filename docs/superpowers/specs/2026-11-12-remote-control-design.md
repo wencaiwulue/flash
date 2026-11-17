@@ -89,6 +89,220 @@ status: draft
 
 ## 4. 架构、模块与数据流
 
+### 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           CCR 模式 (Cloud Controlled Runtime)                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │  Client (RemoteSessionManager)                                        │  │
+│  │  ┌─────────────────────────────────────────────────────────────────┐ │  │
+│  │  │ SessionsWebSocket                                              │ │  │
+│  │  │ - connect()                                                    │ │  │
+│  │  │ - sendControlRequest/Response()                                │ │  │
+│  │  │ - reconnect()  (指数退避: 最多 5 次, 首次 2000ms)               │ │  │
+│  │  │ [状态: connecting/connected/closed]                            │ │  │
+│  │  └─────────────────────────────────────────────────────────────────┘ │  │
+│  │  ┌─────────────────────────────────────────────────────────────────┐ │  │
+│  │  │ RemoteSessionManager                                           │ │  │
+│  │  │ - pendingPermissions Map<requestId, request>                  │ │  │
+│  │  │ - sendMessage()  [通过 HTTP POST]                              │ │  │
+│  │  └─────────────────────────────────────────────────────────────────┘ │  │
+│  │  ┌─────────────────────────────────────────────────────────────────┐ │  │
+│  │  │ sdkMessageAdapter  (无状态)                                     │ │  │
+│  │  │ - convertSDKMessage()                                          │ │  │
+│  │  └─────────────────────────────────────────────────────────────────┘ │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│                                    │                                         │
+│                                    ▼                                         │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │  Anthropic API                                                       │  │
+│  │  - wss://api.anthropic.com/v1/sessions/ws/{id}/subscribe            │  │
+│  │  - POST /v1/sessions/{id}/events                                    │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      Direct Connect 模式 (本地服务器)                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │  Direct Connect Server                                               │  │
+│  │  ┌─────────────────────────────────────────────────────────────────┐ │  │
+│  │  │ SessionManager                                                │ │  │
+│  │  │ - sessions Map<sessionId, RuntimeSession>                     │ │  │
+│  │  │ - idempotency Map<clientRequestId, {hash, result}>            │ │  │
+│  │  │ - controlIds Map<requestId, hash>                             │ │  │
+│  │  │ - lastSeq: number  (单调递增)                                 │ │  │
+│  │  │ - createSession() / attach() / handleClientMessage()          │ │  │
+│  │  │ - reapIdleSessions()  (detached + idle 超时)                   │ │  │
+│  │  └─────────────────────────────────────────────────────────────────┘ │  │
+│  │  ┌─────────────────────────────────────────────────────────────────┐ │  │
+│  │  │ ProcessBackend (子进程)                                        │ │  │
+│  │  │ - spawns Claude CLI with --print --input-format stream-json    │ │  │
+│  │  │ - on('stdout') → publish() events                              │ │  │
+│  │  └─────────────────────────────────────────────────────────────────┘ │  │
+│  │  ┌─────────────────────────────────────────────────────────────────┐ │  │
+│  │  │ startServer (Bun.serve)                                         │ │  │
+│  │  │ - HTTP endpoints: /health, /sessions, /sessions/{id}            │ │  │
+│  │  │ - WebSocket: /sessions/{id}/ws?after=N                          │ │  │
+│  │  │ - Unix Socket 权限: 0o600                                      │ │  │
+│  │  └─────────────────────────────────────────────────────────────────┘ │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│                                    │                                         │
+│                                    ▼                                         │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │  Persistent Storage                                                  │  │
+│  │  ┌─────────────────────────────────────────────────────────────────┐ │  │
+│  │  │ ~/.claude/server-sessions.json  (原子写入: tmp + rename)        │ │  │
+│  │  │ - version: 1, ownerId: UUID                                     │ │  │
+│  │  │ - sessions: Map<sessionId, SessionIndexEntry>                   │ │  │
+│  │  │ - idempotency: Map<clientRequestId, ...>                        │ │  │
+│  │  │ [权限: 0o600]                                                  │ │  │
+│  │  └─────────────────────────────────────────────────────────────────┘ │  │
+│  │  ┌─────────────────────────────────────────────────────────────────┐ │  │
+│  │  │ ~/.claude/server-events/{sessionId}.jsonl                       │ │  │
+│  │  │ - NDJSON 格式: 每行一个事件，带 seq 字段                        │ │  │
+│  │  │ - 自动轮转: 超过 16MB 时保留后半部分                            │ │  │
+│  │  │ [权限: 0o600]                                                  │ │  │
+│  │  └─────────────────────────────────────────────────────────────────┘ │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 关键流程与失败路径
+
+```text
+Direct Connect 会话创建流程
+────────────────────────────
+客户端 POST /sessions {cwd, sessionId?, clientRequestId?}
+    │
+    ├─ 验证 Bearer Token (SHA-256 + 时间安全比较)
+    │   └─ 失败 → 401 Unauthorized [永久失败]
+    │
+    ├─ 检查 clientRequestId 幂等性
+    │   ├─ 已存在且 hash 相同 → 直接返回缓存结果 [幂等保证]
+    │   └─ 已存在且 hash 不同 → 409 Conflict [冲突]
+    │
+    ├─ 验证 cwd 在允许 workspace 内
+    │   └─ 失败 → 403 Forbidden
+    │
+    ├─ 检查 sessionId 是否存在且 stopped
+    │   ├─ 存在且 stopped → Resume 流程
+    │   └─ 不存在 → 创建新会话
+    │
+    ├─ 启动子进程 (ProcessBackend)
+    │   ├─ 失败 → 记录 error，设置 status: stopped
+    │   └─ 成功 → 订阅 stdout → handleStdout()
+    │
+    ├─ 持久化会话索引 (原子写入: tmp + rename)
+    │
+    └─ 返回 {sessionId, ws_url, state, resumed, last_seq}
+
+WebSocket Attach + 事件重放流程
+─────────────────────────────────────
+WebSocket 升级 GET /sessions/{id}/ws?after=N
+    │
+    ├─ 验证会话存在且 running/detached
+    │   └─ 不存在/stopped → 409 Session Not Resumable
+    │
+    ├─ 读取事件日志 {id}.jsonl
+    │
+    ├─ 检查重放连续性
+    │   ├─ after + 1 < oldest_seq → 设置 replay_reset: true
+    │   ├─ 事件日志损坏 → 设置 replay_reset: true
+    │   └─ 正常 → 重放 seq > after 的事件
+    │
+    ├─ 发送 direct_connect/ready 消息
+    │   {last_seq, replayed_from, replay_reset?}
+    │
+    ├─ 按顺序重放历史事件
+    │
+    ├─ 连接加入 session.connections Set
+    │
+    ├─ 会话状态变为 running
+    │
+    └─ 新事件通过 publishNow() 分发给所有连接
+
+断线重连流程 (CCR + Direct Connect)
+─────────────────────────────────────
+网络中断 → WebSocket close
+    │
+    ├─ 检查 close code
+    │   ├─ 4003 (Unauthorized) → 永久失败，不重连
+    │   ├─ 4001 (Session Not Found) → 最多重试 3 次 (处理 compaction)
+    │   └─ 其他 → 最多重试 5 次
+    │
+    ├─ scheduleReconnect (2000ms * attempt)
+    │
+    ├─ 重连成功
+    │   ├─ 发送 ?after=lastSeq
+    │   ├─ 重放缺失事件
+    │   ├─ 发送缓冲的 outgoing 消息 (Direct Connect)
+    │   └─ 恢复正常流
+    │
+    └─ 重试耗尽 → 触发 onDisconnected 回调
+
+权限请求/响应流程 (带幂等去重)
+────────────────────────────────────────
+后端 → control_request {request_id, tool_name, input}
+    │
+    ├─ SessionManager.publish() → 所有连接
+    │
+    ├─ 客户端 → onPermissionRequest() → 用户决定
+    │
+    ├─ 客户端 → control_response {request_id, response}
+    │
+    └─ SessionManager.handleClientMessage()
+        ├─ 检查 controlIds Map (幂等去重)
+        ├─ 已存在且 hash 相同 → 忽略 (不重复转发)
+        ├─ 已存在且 hash 不同 → 发送 CONTROL_ID_CONFLICT 错误
+        └─ 未存在 → 记录 hash，转发给后端
+
+Idle 会话回收流程
+─────────────────────
+idleTimer 触发 (默认每 1 秒)
+    │
+    ├─ reapIdleSessions() 扫描所有会话
+    │
+    ├─ 条件判断
+    │   status === detached
+    │   AND connections.size === 0
+    │   AND now - lastActiveAt >= idleTimeoutMs
+    │
+    ├─ deleteSession()
+    │   ├─ status → stopping
+    │   ├─ backend.stop() → SIGTERM → 超时 SIGKILL
+    │   ├─ status → stopped
+    │   └─ 持久化索引
+    │
+    └─ 会话被清理，不再可恢复
+```
+
+### 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|-----------|--------|--------------|-----------|--------|-----------|------------|
+| `RuntimeSession` | `SessionManager` | `createSession()` 时创建，含 status/lastSeq/connections/controlIds/pendingControls | `sessions Map` 中共享，会话 ID 隔离 | 持久化到 `server-sessions.json` | `indexCorrupt=true` 时阻止 resume | `deleteSession()` 时停止后端、清理连接 |
+| `SessionManager.idempotency Map` | `SessionManager` | 构造时初始化，存储 `clientRequestId → {hash, result}` | `SessionManager` 单例共享 | 持久化到 `server-sessions.json` | 无重置机制，随会话生命周期存在 | 无显式清理，持久化保留 |
+| `RuntimeSession.controlIds Map` | `RuntimeSession` | 会话创建时初始化空 Map，存储 `requestId → hash` | 会话内共享，跨连接 | 不持久化 (内存) | 会话停止时清理 | `handleExit()` 时忽略残留，随会话回收 |
+| `RuntimeSession.pendingControls Set` | `RuntimeSession` | 会话创建时初始化空 Set，存储未响应的 requestId | 会话内共享，跨连接 | 不持久化 (内存) | `handleExit()` 时发送 `control_invalidated` 后清空 | 会话停止时清空 |
+| `Event Log ({id}.jsonl)` | `SessionManager` | `publishNow()` 时 append 新行，每行带 `seq` | 会话内所有连接共享 | 持久化到 `~/.claude/server-events/{id}.jsonl` | 超过 16MB 时自动轮转 (保留后半部分) | `deleteSession()` 时可能删除 (当前实现: 保留文件) |
+| `Server Index (server-sessions.json)` | `SessionManager` | 构造时初始化，临时文件 + rename 原子写入 | `SessionManager` 单例 | 持久化到 `~/.claude/server-sessions.json` (0o600) | `indexCorrupt=true` 时失效 | `destroyAll()` 时持久化最终状态 |
+| `SessionsWebSocket` | `RemoteSessionManager` | `connect()` 时创建，状态机: connecting/connected/closed | 客户端会话内隔离 | 不持久化 | `close()` 时状态设为 closed | `close()` 时清理定时器、WebSocket，清理 pending 状态 |
+| `RemoteSessionManager.pendingPermissions Map` | `RemoteSessionManager` | 构造时初始化，存储 `requestId → SDKControlPermissionRequest` | 客户端会话内隔离 | 不持久化 | 收到 `control_cancel_request` 时删除对应项 | `disconnect()` 时清理整个 Map |
+| `DirectConnectSessionManager` | 客户端 | 构造时初始化，含 WebSocket/lastSeq/outgoing 队列/attempts | 客户端会话内隔离 | 不持久化 | `disconnect()` 时重置 | `disconnect()` 时关闭 WebSocket、清理定时器 |
+| `Unix Socket Path` | `startServer` | 服务器启动时创建，权限 0o600，父目录 0o700 | 服务器进程独占 | 不持久化 (socket 文件) | 服务器停止时关闭 socket | `serverHandle.stop()` 时删除 socket 文件 |
+
+生命周期证据：
+- `src/server/sessionManager.ts:674-704, 706-724, 827-841, 927-940`
+- `src/server/server.ts:30-42, 94-95, 290-295`
+- `src/remote/SessionsWebSocket.ts:17-26, 234-288`
+- `src/remote/RemoteSessionManager.ts:153-183`
+- `src/server/directConnectManager.ts:153-166`
+
 ### 4.1 入口与公共契约
 
 #### CCR 模式客户端入口
