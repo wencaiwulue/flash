@@ -294,6 +294,62 @@ function generateSdkTypes(): void  // 生成 coreTypes.generated.ts 和 controlT
 | **源码证据** | `tests/fixtures/verify-enabled-features.ts:1-79` |
 | **测试证据** | 该模块是 `enabledFeatures.test.ts` 的基础设施 |
 
+## 4.8. 构建与功能边界矩阵
+
+### 功能可用性分层与边界
+
+功能可用性由五层独立控制，**源码存在 ≠ 功能可用**：
+
+| 层级 | 控制机制 | 说明 | 验证方式 |
+|------|---------|------|---------|
+| 1. DCE 层 | `feature()` + `EXTERNAL_FEATURES` | 不在 `EXTERNAL_FEATURES` 中的功能代码完全不进入 bundle | `tests/enabledFeatures.test.ts` 验证 |
+| 2. USER_TYPE 层 | `process.env.USER_TYPE === 'ant'` | 内部员工专用代码路径在 external 构建中被 DCE 移除 | 源码中 `process.env.USER_TYPE` 检查 |
+| 3. 注册层 | 工具/命令注册表条件注册 | 即使代码在 bundle 中，未注册的功能也不可用 | `getAllBaseTools()`、`builtInCommandNames()` 验证 |
+| 4. Availability 层 | `availability` 回调 | 宿主环境检查（如是否 Claude Desktop、是否有 MCP 服务器） | 各工具 `availability` 实现 |
+| 5. 运行时状态层 | `isEnabled()` 回调 | 当前状态检查（如是否 proactive 激活、是否有 API key） | 各工具 `isEnabled` 实现 |
+
+### 工具边界矩阵（43 个工具，未全部验证）
+
+当前 external profile 包含 43 个工具，但**并非所有工具都验证过**，以下是验证状态（✓=已验证，?=未验证，空=无需验证）：
+
+| 工具名 | Feature Flag | DCE | 注册 | Availability | isEnabled | 验收测试位置 |
+|--------|--------------|-----|------|--------------|-----------|-------------|
+| Read | — | ✓ | ✓ | ✓ | ✓ | `tests/enabledFeatures.test.ts` |
+| Write | — | ✓ | ✓ | ✓ | ✓ | `tests/enabledFeatures.test.ts` |
+| Run | — | ✓ | ✓ | ✓ | ✓ | `tests/enabledFeatures.test.ts` |
+| Bash | — | ✓ | ✓ | ✓ | ✓ | `tests/enabledFeatures.test.ts` |
+| MCP* | `CHICAGO_MCP` | ✓ | ✓ | ? | ? | `tests/enabledFeatures.test.ts`（仅验证存在） |
+| ... [其余 38 个工具未完全验证] | ... | ... | ... | ... | ... | ... |
+
+**验证机制说明**：
+- 工具数量和无 null 项：`tests/fixtures/verify-enabled-features.ts` → `getAllBaseTools()`
+- 特定工具存在（CronCreate、RemoteTrigger、Monitor、Sleep、ToolSearch 等）：`tests/enabledFeatures.test.ts`
+- Sleep 初始 disabled、proactive 激活后 enabled：`tests/enabledFeatures.test.ts`
+- Worker 后台模式、有 Bash 无 Agent：`tests/enabledFeatures.test.ts`
+- 其余功能（reactive compact、hunter、proactive、peers、remote-control-server、workflows、buddy、fork、force-snip、assistant、ultraplan、voice、brief）注册状态：`tests/enabledFeatures.test.ts`
+
+### 环境变量与用户设置边界
+
+| 配置项 | 类型 | 层次 | 说明 | 验证位置 |
+|--------|------|------|------|---------|
+| `ANTHROPIC_API_KEY` | 环境变量 | 运行时 | 用于 API 认证，不影响 DCE | `src/utils/auth.ts` |
+| `ANTHROPIC_BASE_URL` | 环境变量 | 运行时 | API 端点覆盖，不影响 DCE | `src/utils/auth.ts` |
+| `ENABLE_TOOL_SEARCH` | 环境变量 | 构建时/运行时 | 验收测试时固定，影响 ToolSearch 可用性 | `tests/enabledFeatures.test.ts` |
+| `CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY` | 环境变量 | 运行时 | 禁用反馈调查，不影响 DCE | `src/components/FeedbackSurvey/useFeedbackSurvey.tsx` |
+| `CLAUDE_CODE_VERIFY_PLAN` | 环境变量 | 构建时 | external 构建时固定为 'false' | `scripts/build.ts` |
+| `settings.spinnerTipsEnabled` | 用户设置 | 运行时 | 控制提示显示，不影响 DCE | `src/services/tips/tipScheduler.ts` |
+| `settings.worktree.symlinkDirectories` | 用户设置 | 运行时 | 工作区 symlink 配置，不影响 DCE | `src/utils/worktree.ts` |
+
+### Internal vs External 边界
+
+| 维度 | Internal (ant) | External | 验证位置 |
+|------|---------------|----------|---------|
+| `USER_TYPE` | `'ant'` | `'external'` | `scripts/build.ts` |
+| 功能集 | `EXTERNAL_FEATURES` + internal-only | `EXTERNAL_FEATURES` | `scripts/externalFeatureProfile.ts` |
+| 反馈调查 | 始终启用 | 可禁用 | `src/components/FeedbackSurvey/useFeedbackSurvey.tsx` |
+| 紧急通知 | 可显示 | 可显示 | `src/components/EmergencyTip.tsx` |
+| 发布说明 | 编译时打包 | 网络获取/缓存 | `src/utils/releaseNotes.ts` |
+
 ## 5. 失败语义与工程取舍
 
 | 失败场景 | 处理方式 | 工程取舍 |

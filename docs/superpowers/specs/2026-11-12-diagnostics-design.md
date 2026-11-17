@@ -30,9 +30,10 @@ Claude Code 需要一套完整的诊断系统来解决以下问题：
 - 严格隐私边界：诊断导出绝不包含用户代码、文件路径、API key、prompts 等敏感信息；仅包含错误分类、时间戳、性能指标、内存使用、checkpoint 名称
 - 多级别调试：支持 `--debug`、`--debug=category`、`--debug-file`、`--debug-to-stderr` 等多种调试模式
 - 分层性能分析：启动 profiling（采样）、query profiling（可开关）、headless profiling（非交互）
-- 内存诊断：支持 heap dump + 内存指标采集，诊断优先于 heap snapshot（因为 snapshot 可能崩溃）
+- 内存诊断：支持 heap dump + 内存指标采集，诊断优先于 heap snapshot（因为 snapshot 可能崩溃）；**heap snapshot 基础分析是未实现的建议**，当前仅保存原始 snapshot 文件
 - 错误隔离：错误日志独立存储，支持 sink 模式，启动前的错误先排队后处理
 - IDE 诊断跟踪：支持 LSP 诊断基线对比，检测编辑后的新增问题
+- 调试分类契约：调试消息需要包含分类前缀（如 `api: ...`、`[MCP] ...`）以支持过滤
 
 ## 2. 设计理由与备选方案
 
@@ -121,6 +122,30 @@ Claude Code 需要一套完整的诊断系统来解决以下问题：
 - **非目标**：不自动修复问题（只提供建议）
 
 ## 4. 架构、模块与数据流
+
+### 4.0 调试分类契约与覆盖边界
+
+#### 调试消息分类契约
+
+调试消息必须包含分类前缀以支持 `--debug=category` 过滤，支持的分类模式包括：
+
+| 模式 | 示例 | 提取结果 | 源码位置 |
+|------|------|---------|---------|
+| `category: message` | `api: requesting model` | `['api']` | `src/utils/debugFilter.ts` |
+| `[Category] message` | `[MCP] server connected` | `['MCP']` | `src/utils/debugFilter.ts` |
+| `MCP server "name": message` | `MCP server "github": tool called` | `['MCP']` | `src/utils/debugFilter.ts` |
+| `[ANT-ONLY] 1P event: message` | `[ANT-ONLY] 1P event: statsig` | `['1P']` | `src/utils/debugFilter.ts` |
+
+**混合模式不支持**：同时包含包含和排除模式（如 `api,!mcp`）会返回 null，显示全部日志。
+
+#### 覆盖边界与未实现功能
+
+| 功能 | 状态 | 说明 | 证据 |
+|------|------|------|------|
+| heap snapshot 基础分析 | **未实现**（建议） | 当前仅保存原始 `.heapsnapshot` 文件，无自动分析；建议未来添加泄漏检测 | `src/utils/heapDumpService.ts` |
+| 事件循环阻塞检测 | **DISABLED**（占位） | `startEventLoopStallDetector()` 始终返回 `{ enabled: false }` | `src/utils/eventLoopStallDetector.ts` |
+| 自动 heap dump 触发 | 未实现 | `auto-1.5GB` trigger 已定义但未自动触发 | `src/utils/heapDumpService.ts` |
+| 调试分类覆盖率 | 部分覆盖 | 并非所有调试消息都有正确分类前缀 | 需代码审查确认 |
 
 ### 4.1 入口与公共契约
 

@@ -1288,3 +1288,93 @@
 | webbrowser-bundled-support | ✅ 已审计 |
 
 **当前进度**：7/7 已审计；batch 5 完成。
+
+---
+
+## Task 16 整改证据
+
+### 1. webbrowser-bundled-support coverage 整改
+
+**问题**：B5-webbrowser-bundled-support-01 — tests/toolSmokeClassify.test.ts 未纳入 coverage
+
+**整改操作**：
+- 在 docs/architecture/coverage/webbrowser-bundled-support.yaml 的 tests 分组中新增 "tests/toolSmokeClassify.test.ts"
+- 修改前：tests 分组仅包含 tests/playwrightInlinePlugin.test.ts、tests/interactiveStartup.test.ts
+- 修改后：tests 分组包含 tests/playwrightInlinePlugin.test.ts、tests/interactiveStartup.test.ts、tests/toolSmokeClassify.test.ts
+
+**验证结果**：
+- ✅ bun run scripts/check-design-docs.ts — 确认该文件不再作为 UNCOVERED_FILE 警告
+- ✅ git status — 确认仅修改了 coverage yaml 文件
+
+---
+
+### 2. build-feature-profile-design.md 功能边界矩阵
+
+**整改操作**：
+- 新增 "4.8. 构建与功能边界矩阵" 章节
+- 新增 "功能可用性分层与边界" 子节，明确 DCE→USER_TYPE→注册→Availability→运行时状态 5 层控制
+- 新增 "工具边界矩阵（43 个工具，未全部验证）" 表格，标注验证状态
+- 新增 "环境变量与用户设置边界" 表格，区分构建期 vs 运行时配置
+- 新增 "Internal vs External 边界" 表格，对比两种构建形态差异
+- 更新 "6. 现状验收标准"，链接到新增的边界矩阵
+
+**验证结果**：
+- ✅ 源码存在不等于功能可用 — 明确 5 层控制链
+- ✅ 43 个工具数量提供真实验证位置/机制 — 验证 tests/enabledFeatures.test.ts 验收流
+- ✅ 未知处标未验证 — 标注其余工具未完整验证
+
+---
+
+### 3. diagnostics-design.md 调试分类与占位功能
+
+**整改操作**：
+- 新增关键约束：调试分类契约，heap snapshot 基础分析是未实现建议
+- 新增 "4.0. 调试分类契约与覆盖边界" 章节
+- 新增 "调试消息分类契约" 子节，列出支持的分类模式（category: message、[Category] message、MCP server "name": message、[ANT-ONLY] 1P event: message）
+- 新增 "覆盖边界与未实现功能" 子节，明确：
+  - heap snapshot 基础分析 — 未实现（建议）
+  - 事件循环阻塞检测 — DISABLED（占位）
+  - 自动 heap dump 触发 — 未实现
+  - 调试分类覆盖率 — 部分覆盖
+
+**验证结果**：
+- ✅ debug category 分类契约明确
+- ✅ heap snapshot 基础分析标注为未实现建议
+
+---
+
+### 4. help-feedback-design.md 占位功能
+
+**验证结果**：
+- ✅ useFrustrationDetection() 已明确标注为占位实现，未激活（原文档已正确标注，无需变更）
+
+---
+
+### 5. plan-worktree-design.md 占位功能
+
+**验证结果**：
+- ✅ VerifyPlanExecutionTool 已明确标注为未实现（原文档已正确标注，无需变更）
+
+---
+
+### 6. 设计文档警告计数验证
+
+**基线**（整改前）：
+- 1 项 UNCOVERED_FILE 警告（tests/toolSmokeClassify.test.ts）
+- 69 项 DRAFT_SPEC 警告
+- 总计：70 项警告
+
+**整改后**：
+- 0 项 UNCOVERED_FILE 警告
+- 69 项 DRAFT_SPEC 警告
+- 总计：69 项警告
+
+**验证命令**：
+```bash
+bun run scripts/check-design-docs.ts
+```
+
+**验证输出**：
+- ✅ 无错误
+- ✅ 69 项警告（全部为 DRAFT_SPEC）
+- ✅ tests/toolSmokeClassify.test.ts 不再出现在 UNCOVERED_FILE 列表中
