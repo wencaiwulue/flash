@@ -76,7 +76,7 @@ function assertSafePath(path: string): void {
  * Cache cleanup - removes expired and excess cache entries
  * Always keeps currently active (in use) paths
  */
-async function pruneCache(cacheRoot: string): Promise<void> {
+export async function pruneCache(cacheRoot: string): Promise<void> {
   try {
     const entries = await readdir(cacheRoot, { withFileTypes: true })
     const now = Date.now()
