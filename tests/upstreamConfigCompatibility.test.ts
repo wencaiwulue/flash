@@ -186,6 +186,22 @@ describe('matrix initialization', () => {
     )).toBe(true)
   })
 
+  test('refuses to synthesize evidence when an after-baseline Requires statement is incomplete', () => {
+    const incompleteInventory: CompatibilityInventory = {
+      ...lifecycleInventory,
+      entries: lifecycleInventory.entries.map(entry =>
+        entry.id === 'setting:futureKey'
+          ? { ...entry, excerpt: 'Future setting | Requires C' }
+          : entry
+      ),
+    }
+    expect(() => createInitialMatrix(
+      incompleteInventory,
+      collectSchemaPaths(syntheticSchema),
+      ['Stop'],
+    )).toThrow('complete Requires statement')
+  })
+
   test('records after-baseline, deprecated and removed lifecycle states honestly', () => {
     const matrix = createInitialMatrix(
       lifecycleInventory,
@@ -223,6 +239,35 @@ describe('compatibility diagnostics', () => {
     const before = structuredClone(matrix)
     expect(checkSynthetic(matrix)).toEqual([])
     expect(matrix).toEqual(before)
+  })
+
+  test('rejects an incompatible or missing matrix envelope', () => {
+    const wrongSchemaVersion = syntheticMatrix()
+    Reflect.set(wrongSchemaVersion, 'schemaVersion', 2)
+    const schemaDiagnostics = checkSynthetic(wrongSchemaVersion)
+    expect(schemaDiagnostics.map(diagnostic => diagnostic.code)).toContain(
+      'invalid-matrix-envelope',
+    )
+    expect(schemaDiagnostics.find(diagnostic =>
+      diagnostic.code === 'invalid-matrix-envelope'
+    )?.message).toContain('schemaVersion')
+
+    const wrongBaseline = syntheticMatrix()
+    wrongBaseline.baseline = '2.1.310'
+    const baselineDiagnostics = checkSynthetic(wrongBaseline)
+    expect(baselineDiagnostics.map(diagnostic => diagnostic.code)).toContain(
+      'invalid-matrix-envelope',
+    )
+    expect(baselineDiagnostics.find(diagnostic =>
+      diagnostic.code === 'invalid-matrix-envelope'
+    )?.message).toContain('2.1.311')
+
+    const missingEnvelope = syntheticMatrix()
+    Reflect.deleteProperty(missingEnvelope, 'schemaVersion')
+    Reflect.deleteProperty(missingEnvelope, 'baseline')
+    expect(checkSynthetic(missingEnvelope).map(diagnostic => diagnostic.code)).toContain(
+      'invalid-matrix-envelope',
+    )
   })
 
   test('rejects a false path claim and false total aligned evidence', () => {
@@ -270,6 +315,28 @@ describe('compatibility diagnostics', () => {
       hookEvents: ['Stop', 'LocalOnlyEvent'],
     })
     expect(hookDrift.map(diagnostic => diagnostic.code)).toContain('undocumented-hook-event')
+  })
+
+  test('requires string arrays and dimension evidence strings even when not aligned', () => {
+    expect(codes(syntheticMatrix())).toEqual([])
+
+    const missingImplementation = syntheticMatrix()
+    Reflect.deleteProperty(missingImplementation.entries[0]!, 'implementation')
+    expect(codes(missingImplementation)).toContain('invalid-matrix-structure')
+
+    const missingDimensionEvidence = syntheticMatrix()
+    Reflect.deleteProperty(missingDimensionEvidence.entries[0]!.dimensions.type, 'evidence')
+    expect(codes(missingDimensionEvidence)).toContain('invalid-matrix-structure')
+
+    for (const field of ['implementation', 'tests', 'evidence'] as const) {
+      const wrongArrayElement = syntheticMatrix()
+      Reflect.set(wrongArrayElement.entries[0]!, field, ['valid-path', 42])
+      expect(codes(wrongArrayElement)).toContain('invalid-matrix-structure')
+    }
+
+    const missingNotes = syntheticMatrix()
+    Reflect.deleteProperty(missingNotes.entries[0]!, 'notes')
+    expect(codes(missingNotes)).toContain('invalid-matrix-structure')
   })
 
   test('rejects invalid total and dimension statuses', () => {
@@ -382,6 +449,25 @@ describe('compatibility CLI and real baseline', () => {
     })
     expect(diagnostics).toEqual([])
     expect(realInventory.entries.filter((entry: { kind: string }) => entry.kind === 'hook')).toHaveLength(33)
+    const expectedRequires: Record<string, string> = {
+      'setting:permissions.blockWritesOutsideWorkingDirectories': 'Requires Claude Code v2.1.314 or later.',
+      'setting:permissions.denyInsteadOfPrompting': 'Requires Claude Code v2.1.319 or later.',
+      'env:CLAUDE_CODE_AUTOMOUNT_ROOTS': 'Requires Claude Code v2.1.323 or later',
+      'env:CLAUDE_CODE_CONFIG_LOCK_WAIT_MS': 'Requires Claude Code v2.1.318 or later',
+      'env:CLAUDE_CODE_DISABLE_FEATURE_FLAGS': 'Requires Claude Code v2.1.319 or later.',
+      'env:CLAUDE_CODE_DISABLE_ULTRATHINK': 'Requires Claude Code v2.1.316 or later',
+      'env:CLAUDE_CODE_DROP_UNAVAILABLE_DEFERRED_TOOL': 'Requires Claude Code v2.1.319 or later',
+      'env:CLAUDE_CODE_RESUME_HINT_COMMAND': 'Requires Claude Code v2.1.323 or later',
+    }
+    const laterEntries = realInventory.entries.filter((entry: { afterBaseline?: boolean }) => entry.afterBaseline)
+    expect(laterEntries).toHaveLength(8)
+    for (const inventoryEntry of laterEntries) {
+      const entry = matrix.entries.find((candidate: { id: string }) => candidate.id === inventoryEntry.id)
+      expect(entry.dimensions.runtime).toEqual({
+        status: 'blocked',
+        evidence: expectedRequires[inventoryEntry.id],
+      })
+    }
     for (const id of [
       'UserPromptExpansion', 'PostToolBatch', 'MessageDisplay',
       'DirectoryAdded', 'PreModelSwitch', 'PostModelSwitch',

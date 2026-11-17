@@ -2,6 +2,10 @@ import { readFile, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parse, stringify } from 'yaml'
+import {
+  completeRequiresStatement,
+  UPSTREAM_BASELINE_VERSION,
+} from './upstreamConfigInventory.ts'
 
 export const COMPATIBILITY_STATUSES = [
   'aligned',
@@ -84,6 +88,8 @@ export type Diagnostic = {
     | 'missing-in-flash'
     | 'undocumented-schema-key'
     | 'undocumented-hook-event'
+    | 'invalid-matrix-envelope'
+    | 'invalid-matrix-structure'
     | 'missing-matrix-entry'
     | 'stale-matrix-entry'
     | 'duplicate-matrix-entry'
@@ -190,10 +196,13 @@ function emptyDimensions(): Record<CompatibilityDimensionName, CompatibilityDime
 }
 
 function requiresEvidence(entry: CompatibilityInventoryEntry): string {
-  const excerpt = entry.excerpt ?? ''
-  const match = excerpt.match(/Requires Claude Code v\d+\.\d+\.\d+[^|]*/)
-  if (match) return match[0].trim()
-  return `Requires Claude Code v${entry.introduced ?? 'after baseline'} (upstream inventory)`
+  const evidence = completeRequiresStatement(entry.excerpt ?? '')
+  if (!evidence) {
+    throw new Error(
+      `after-baseline entry ${entry.id} requires a complete Requires statement in its inventory excerpt`,
+    )
+  }
+  return evidence
 }
 
 function lifecycleExclusion(entry: CompatibilityInventoryEntry): CompatibilityExclusion {
@@ -287,6 +296,10 @@ function hasEvidence(value: unknown): value is string[] {
   return Array.isArray(value) && value.some(item => hasText(item))
 }
 
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(item => typeof item === 'string')
+}
+
 export function checkCompatibility({
   inventory,
   matrix,
@@ -294,6 +307,16 @@ export function checkCompatibility({
   hookEvents,
 }: CheckCompatibilityInput): Diagnostic[] {
   const diagnostics: Diagnostic[] = []
+  if (
+    matrix.schemaVersion !== 1 ||
+    inventory.baseline.version !== UPSTREAM_BASELINE_VERSION ||
+    matrix.baseline !== inventory.baseline.version
+  ) {
+    diagnostics.push({
+      code: 'invalid-matrix-envelope',
+      message: `matrix envelope requires schemaVersion 1 and baseline ${UPSTREAM_BASELINE_VERSION} matching the inventory; received schemaVersion ${String(matrix.schemaVersion)} and baseline ${String(matrix.baseline)} (inventory ${String(inventory.baseline.version)})`,
+    })
+  }
   const inventoryById = new Map(inventory.entries.map(entry => [entry.id, entry]))
   const matrixEntriesById = new Map<string, CompatibilityMatrixEntry[]>()
   for (const entry of matrix.entries) {
@@ -372,6 +395,23 @@ export function checkCompatibility({
   for (const matrixEntry of matrix.entries) {
     const inventoryEntry = inventoryById.get(matrixEntry.id)
     const id = matrixEntry.id
+    const invalidStructure: string[] = []
+    for (const field of ['implementation', 'tests', 'evidence'] as const) {
+      if (!isStringArray(matrixEntry[field])) invalidStructure.push(field)
+    }
+    if (typeof matrixEntry.notes !== 'string') invalidStructure.push('notes')
+    for (const name of DIMENSION_NAMES) {
+      if (typeof matrixEntry.dimensions?.[name]?.evidence !== 'string') {
+        invalidStructure.push(`dimensions.${name}.evidence`)
+      }
+    }
+    if (invalidStructure.length > 0) {
+      diagnostics.push({
+        code: 'invalid-matrix-structure',
+        id,
+        message: `matrix entry ${id} requires string[] implementation/tests/evidence, string notes, and string evidence in all six dimensions; invalid: ${invalidStructure.join(', ')}`,
+      })
+    }
     if (!isCompatibilityStatus(matrixEntry.status)) {
       diagnostics.push({
         code: 'invalid-matrix-status',

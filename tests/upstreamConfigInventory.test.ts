@@ -88,6 +88,41 @@ describe('upstream config inventory', () => {
     })
   })
 
+  test('keeps a complete Requires statement ahead of long prose and metadata', () => {
+    const requires = 'Requires Claude Code v2.1.319 or later.'
+    const markdown = `
+| Setting | Description | Category | Scope |
+| :- | :- | :- | :- |
+| [\`futureKey\`](#futurekey) | Future setting | Other | Any file |
+### \`futureKey\`
+${'Long prose prefix. '.repeat(80)}${requires}
+* **Scope**: [\`Any file\`](#scopes). ${'Long scope metadata. '.repeat(80)}
+* **Type**: Boolean
+* **Default**: unset
+`
+    const entry = parseSettingsReference(markdown, source)[0]!
+    expect(entry.afterBaseline).toBe(true)
+    expect(entry.excerpt).toContain(requires)
+    expect(entry.excerpt.length).toBeLessThanOrEqual(1000)
+    expect(entry.excerpt).not.toContain('\n')
+  })
+
+  test('rejects a Requires statement that is too long to preserve completely', () => {
+    const markdown = `
+| Setting | Description | Category | Scope |
+| :- | :- | :- | :- |
+| [\`futureKey\`](#futurekey) | Future setting | Other | Any file |
+### \`futureKey\`
+Requires Claude Code v2.1.319 ${'x'.repeat(1001)} or later.
+* **Scope**: Any file
+* **Type**: Boolean
+* **Default**: unset
+`
+    expect(() => parseSettingsReference(markdown, source)).toThrow(
+      'complete Requires statement',
+    )
+  })
+
   test('does not mark an existing setting after-baseline for a later subfeature', () => {
     const markdown = `
 | Setting | Description | Category | Scope |
@@ -486,6 +521,29 @@ Set the model.
     for (const entry of inventory.entries) {
       expect(Object.keys(entry.source).sort()).toEqual(['anchor', 'sha256', 'url'])
       expect(entry.source.anchor).not.toBe('')
+    }
+  })
+
+  test('real snapshot retains the complete original Requires statement for all eight later entries', async () => {
+    const { inventory } = await readSnapshot()
+    const expectedRequires: Record<string, string> = {
+      'setting:permissions.blockWritesOutsideWorkingDirectories': 'Requires Claude Code v2.1.314 or later.',
+      'setting:permissions.denyInsteadOfPrompting': 'Requires Claude Code v2.1.319 or later.',
+      'env:CLAUDE_CODE_AUTOMOUNT_ROOTS': 'Requires Claude Code v2.1.323 or later',
+      'env:CLAUDE_CODE_CONFIG_LOCK_WAIT_MS': 'Requires Claude Code v2.1.318 or later',
+      'env:CLAUDE_CODE_DISABLE_FEATURE_FLAGS': 'Requires Claude Code v2.1.319 or later.',
+      'env:CLAUDE_CODE_DISABLE_ULTRATHINK': 'Requires Claude Code v2.1.316 or later',
+      'env:CLAUDE_CODE_DROP_UNAVAILABLE_DEFERRED_TOOL': 'Requires Claude Code v2.1.319 or later',
+      'env:CLAUDE_CODE_RESUME_HINT_COMMAND': 'Requires Claude Code v2.1.323 or later',
+    }
+    const laterEntries = inventory.entries.filter(entry => entry.afterBaseline)
+    expect(laterEntries.map(entry => entry.id).sort()).toEqual(
+      Object.keys(expectedRequires).sort(),
+    )
+    for (const entry of laterEntries) {
+      expect(entry.excerpt).toContain(expectedRequires[entry.id]!)
+      expect(entry.excerpt.length).toBeLessThanOrEqual(1000)
+      expect(entry.excerpt).not.toContain('\n')
     }
   })
 

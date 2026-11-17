@@ -3653,7 +3653,7 @@ entries:
         evidence: ""
       runtime:
         status: blocked
-        evidence: Requires Claude Code v2.1.314 (upstream inventory)
+        evidence: Requires Claude Code v2.1.314 or later.
     notes: Upstream documentation is ahead of stable 2.1.311; introduced in 2.1.314.
     exclusion: null
   - id: setting:permissions.defaultMode
@@ -11535,7 +11535,7 @@ entries:
         evidence: ""
       runtime:
         status: blocked
-        evidence: Requires Claude Code v2.1.319 or later. With this variable set, Remote Control and the other features that need feature-flag fetching are unavailable. Telemetry event logging stays on unless `DISABLE_TELEMETRY` is also set. The older name, `DISABLE_GROWTHBOOK`, still works, and it is the only one that v2.1.124 through v2.1.318 read
+        evidence: Requires Claude Code v2.1.319 or later.
     notes: Upstream documentation is ahead of stable 2.1.311; introduced in 2.1.319.
     exclusion: null
   - id: env:CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY

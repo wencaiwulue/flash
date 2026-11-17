@@ -61,6 +61,8 @@ status: approved
 | managed 默认不启用新增清洗 | managed file 显式关闭；MDM、remote、inline 原路径不变 | 新增容错不得削弱管理策略；待专项证据 | 所有来源复用同一 fail-open | 官方 managed 安全规则；总路线约束 5 |
 | warning 与 error 分型 | `ValidationError.severity` 缺省为 error；局部清洗和权限预过滤为 warning | UI 不能把“保留有效配置”显示成“文件整体跳过” | 全部沿用 Settings Error 文案 | 官方 Settings Warning/Error 分类 |
 | aligned 需要六维证据 | path/type/default/source/precedence/runtime 各自 aligned 且有证据 | schema 或注入不能代表运行时完成 | 只填一个状态字段 | 已批准总路线验收定义 |
+| Requires 原文优先且不可合成 | inventory 把完整 Requires 句放在 description 后、长 Scope/Type/Default/precedence 前；无法完整保留则抛错，matrix 只引用该原文 | 1000 字符截断不能把版本证据截成残句，也不能由 introduced 伪造上游引文 | 长元数据优先；缺失原文时生成 `(upstream inventory)` fallback | 官方快照 `permissions.blockWritesOutsideWorkingDirectories` 的完整 `Requires Claude Code v2.1.314 or later.`；长前缀与异常超长回归测试 |
+| matrix 入口先验校验 | 固定 `schemaVersion:1`，matrix baseline 必须等于 inventory 的固定 `2.1.311`；每条字段先校验 string[]/string 结构 | YAML 反序列化的类型断言不能替代运行时校验；非 aligned 允许空证据但不允许缺字段或错类型 | 强转后直接遍历；要求所有状态都有非空证据 | 合成 schemaVersion=2、baseline=2.1.310、缺 implementation/evidence 和非 string 数组元素测试 |
 
 ## 3. 目标与非目标
 
@@ -150,7 +152,7 @@ type UpstreamEntry = {
 5. 读取 hooks reference 的事件清单；二进制 doctor 列表用于交叉验证，不以文档缺行推断事件不存在。
 6. 读取 environment variables 的 Variables 表；包含 deprecated 项。
 7. 按 `kind`、`id` 稳定排序，拒绝重复 ID、空 path、非法 lifecycle、无来源或空 source anchor 条目。
-8. 从 Requires 语句提取 `introduced`；版本高于 2.1.311 时设 `afterBaseline:true`，matrix 初始状态为 blocked，并在 notes 中记录文档领先 stable。
+8. 从 Requires 语句提取 `introduced`；版本高于 2.1.311 时设 `afterBaseline:true`，matrix 初始状态为 blocked，并在 notes 中记录文档领先 stable。完整 Requires 句在 excerpt 中紧随 description，优先于 Scope/Type/Default/precedence；excerpt 始终单行且不超过 1000 字符。若 Requires 句本身异常超长，或前序 description 使其无法完整保留，生成必须抛错，不得把截断残句当作完整原文；matrix runtime evidence 只能引用该完整原文，找不到时抛错，禁止由 `introduced` 合成 fallback。
 9. 数量由当次文档重新计算，禁止把早期审核的 `99 + 22` 写成预期常量。
 
 **Type-declared nested entries 数据契约：** 显式 index/detail 小节与父设置非示例 Type 中明确声明的静态子键都是上游事实。后者没有独立标题时也必须进入 inventory，但不能虚构独立小节的元数据。
@@ -189,8 +191,10 @@ schemaExclusions: []
 
 状态只允许 `aligned | partial | missing | different | blocked | excluded`。规则：
 
+- matrix envelope 必须满足 `schemaVersion === 1`，且 `matrix.baseline === inventory.baseline.version === '2.1.311'`；错误或缺失产生 `invalid-matrix-envelope`，不能依靠 TypeScript 强转放行。
 - 每个 inventory ID 恰好出现一次；matrix 不得出现 inventory 之外的配置项。
-- `aligned` 要求六个 dimension 全为 aligned 且 evidence 非空，implementation/tests 非空；外部 live 尚未验证时只能 blocked/partial。
+- 每条 `implementation`、`tests`、`evidence` 必须是 `string[]`（允许空数组），`notes` 必须是 string（允许空串）；六个 dimension 均必须有 string 类型的 `evidence`（非 aligned 允许空串）。缺失或错类型产生 `invalid-matrix-structure`。
+- `aligned` 要求六个 dimension 全为 aligned 且 evidence 非空，implementation/tests 非空；外部 live 尚未验证时只能 blocked/partial。不得把该非空要求扩散到非 aligned 条目。
 - `excluded` 必须填写 exclusion 的 `reason`、`evidence`，deprecated 项若有 replacement 必须记录；排除不等于完成。
 - `different` 必须记录 notes 和 evidence，属于已声明差异，不会被差异门禁当作“未记录漂移”。
 - `schemaExclusions` 只用于 flash 自有 schema 扩展，每项包含 path、reason、evidence；不能用通配符吞掉一组未来字段。

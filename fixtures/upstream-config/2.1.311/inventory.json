@@ -158,7 +158,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#allowclaudeinchromewithmanagedmcp"
       },
-      "excerpt": "Let the built-in Claude in Chrome server run alongside a deployed `managed-mcp.json` | * **Scope**: `Managed`, from the device's own managed settings only: an MDM-deployed plist or HKLM registry key, or a system `managed-settings.json` file. Claude Code ignores it in server-managed settings, in the user-writable HKCU registry, and in user or project settings. | * **Type**: Boolean | * **Default**: `false`, so a deployed `managed-mcp.json` blocks Claude in Chrome in terminal sessions | Let the built-in Claude in Chrome server run alongside a deployed `managed-mcp.json`. Without this key, a deployed `managed-mcp.json` blocks Claude in Chrome in terminal sessions. Requires Claude Code v2.1.282 or later."
+      "excerpt": "Let the built-in Claude in Chrome server run alongside a deployed `managed-mcp.json` | Requires Claude Code v2.1.282 or later. | * **Scope**: `Managed`, from the device's own managed settings only: an MDM-deployed plist or HKLM registry key, or a system `managed-settings.json` file. Claude Code ignores it in server-managed settings, in the user-writable HKCU registry, and in user or project settings. | * **Type**: Boolean | * **Default**: `false`, so a deployed `managed-mcp.json` blocks Claude in Chrome in terminal sessions | Let the built-in Claude in Chrome server run alongside a deployed `managed-mcp.json`. Without this key, a deployed `managed-mcp.json` blocks Claude in Chrome in terminal sessions."
     },
     {
       "id": "setting:allowManagedHooksOnly",
@@ -327,7 +327,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#allowedproviders"
       },
-      "excerpt": "Limit which API providers a machine may use | * **Scope**: `Managed`. A list that the machine's own admin sources set, MDM policies and managed settings files, keeps applying when server-managed settings also deliver one: a session may then use only the providers on both lists, so a server-managed list can narrow what the machine allows but never widen it. Which machine source's `allowedProviders` counts follows how Claude Code combines managed sources. A list delivered through server-managed settings alone reaches only the sessions that fetch server-managed settings. | * **Type**: array of strings, each one of: | * **Default**: unset, so any provider can be used | List the services a machine may reach Claude through, such as the Anthropic API, Amazon Bedrock, or an LLM gateway. A session on a provider that isn't listed is refused at startup, at login, and when it next contacts the API, so switching to an unlisted provider mid-session is refused too. The refusal message names what sele"
+      "excerpt": "Limit which API providers a machine may use | Requires Claude Code v2.1.285 or later. | * **Scope**: `Managed`. A list that the machine's own admin sources set, MDM policies and managed settings files, keeps applying when server-managed settings also deliver one: a session may then use only the providers on both lists, so a server-managed list can narrow what the machine allows but never widen it. Which machine source's `allowedProviders` counts follows how Claude Code combines managed sources. A list delivered through server-managed settings alone reaches only the sessions that fetch server-managed settings. | * **Type**: array of strings, each one of: | * **Default**: unset, so any provider can be used | List the services a machine may reach Claude through, such as the Anthropic API, Amazon Bedrock, or an LLM gateway. A session on a provider that isn't listed is refused at startup, at login, and when it next contacts the API, so switching to an unlisted provider mid-session is refuse"
     },
     {
       "id": "setting:alwaysThinkingEnabled",
@@ -616,7 +616,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#autocontinueatusagelimit"
       },
-      "excerpt": "Wait in the open session and continue the task automatically after a claude.ai usage limit resets | * **Scope**: `User or managed`. Read from user settings, `--settings`, and managed settings only. When none of those sets the key, a project or local settings file that sets it turns the feature off rather than being ignored. | * **Type**: Boolean | * **Default**: `true` | After a claude.ai usage limit stops your session, wait in the open session and continue the task automatically after the reset. See Turn automatic continue off. Requires Claude Code v2.1.234 or later."
+      "excerpt": "Wait in the open session and continue the task automatically after a claude.ai usage limit resets | Requires Claude Code v2.1.234 or later. | * **Scope**: `User or managed`. Read from user settings, `--settings`, and managed settings only. When none of those sets the key, a project or local settings file that sets it turns the feature off rather than being ignored. | * **Type**: Boolean | * **Default**: `true` | After a claude.ai usage limit stops your session, wait in the open session and continue the task automatically after the reset. See Turn automatic continue off."
     },
     {
       "id": "setting:autoInstallIdeExtension",
@@ -759,7 +759,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#automode-classifyallshell"
       },
-      "excerpt": "Send every shell command through the auto mode classifier, even ones a narrow allow rule matches | * **Scope**: `User or managed`. Read wherever `autoMode` is read. | * **Type**: Boolean | * **Default**: `false` | Send every Bash and PowerShell command through the auto mode classifier while auto mode is active. By default, auto mode suspends only allow rules that could run arbitrary code: tool-wide and wildcard rules such as `Bash(*)`, and interpreter or shell-wrapper prefixes such as `Bash(python *)`. A command that any other allow rule matches, such as `Bash(npm test)`, skips the classifier unless it carries per-command allowed domains. When it skips, a destructive argument the rule's prefix didn't anticipate can get through unseen. Setting this key suspends every shell allow rule for the session so the classifier sees every command. Requires Claude Code v2.1.193 or later."
+      "excerpt": "Send every shell command through the auto mode classifier, even ones a narrow allow rule matches | Requires Claude Code v2.1.193 or later. | * **Scope**: `User or managed`. Read wherever `autoMode` is read. | * **Type**: Boolean | * **Default**: `false` | Send every Bash and PowerShell command through the auto mode classifier while auto mode is active. By default, auto mode suspends only allow rules that could run arbitrary code: tool-wide and wildcard rules such as `Bash(*)`, and interpreter or shell-wrapper prefixes such as `Bash(python *)`. A command that any other allow rule matches, such as `Bash(npm test)`, skips the classifier unless it carries per-command allowed domains. When it skips, a destructive argument the rule's prefix didn't anticipate can get through unseen. Setting this key suspends every shell allow rule for the session so the classifier sees every command."
     },
     {
       "id": "setting:autoMode.environment",
@@ -922,7 +922,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#availablemodelsmatch"
       },
-      "excerpt": "Make each `availableModels` model ID entry permit only the version it names | * **Scope**: `Managed`. Claude Code ignores the key in user, project, and local settings and in `--settings`, with a warning | * **Type**: string, one of: | * **Default**: `\"prefix\"` | Choose how `availableModels` entries match model IDs. By default a model ID entry also permits later versions that extend it, so `\"claude-opus-5\"` permits Opus 5.5. With `\"exact\"`, each model ID entry permits only the version it names, so a newer version of that model stays blocked until you list it. Requires Claude Code v2.1.283 or later."
+      "excerpt": "Make each `availableModels` model ID entry permit only the version it names | Requires Claude Code v2.1.283 or later. | * **Scope**: `Managed`. Claude Code ignores the key in user, project, and local settings and in `--settings`, with a warning | * **Type**: string, one of: | * **Default**: `\"prefix\"` | Choose how `availableModels` entries match model IDs. By default a model ID entry also permits later versions that extend it, so `\"claude-opus-5\"` permits Opus 5.5. With `\"exact\"`, each model ID entry permits only the version it names, so a newer version of that model stays blocked until you list it."
     },
     {
       "id": "setting:awaySummaryEnabled",
@@ -1043,7 +1043,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#basheditdiffenabled"
       },
-      "excerpt": "Record the files that changed while a Bash command ran in every permission mode | * **Scope**: `User or managed`. A `true` counts only from your user settings, JSON passed with `--settings`, or managed settings, so a `true` in a repository's `.claude/settings.json` or `.claude/settings.local.json` can't turn the recording on. A `false` in either repository file still turns it off unless a higher-precedence file sets `true`. | * **Type**: Boolean | * **Default**: unset, so Claude Code records changes in auto mode and `bypassPermissions` mode when it directs Claude to edit files through Bash | Set the key to `true` to record them in every permission mode. Requires Claude Code v2.1.269 or later. | * **Scope**: `User or managed`. A `true` counts only from your user settings, JSON passed with `--settings`, or managed settings, so a `true` in a repository's `.claude/settings.json` or `.claude/settings.local.json` can't turn the recording on. A `false` in either repository file still turns it"
+      "excerpt": "Record the files that changed while a Bash command ran in every permission mode | Requires Claude Code v2.1.269 or later. | * **Scope**: `User or managed`. A `true` counts only from your user settings, JSON passed with `--settings`, or managed settings, so a `true` in a repository's `.claude/settings.json` or `.claude/settings.local.json` can't turn the recording on. A `false` in either repository file still turns it off unless a higher-precedence file sets `true`. | * **Type**: Boolean | * **Default**: unset, so Claude Code records changes in auto mode and `bypassPermissions` mode when it directs Claude to edit files through Bash | Set the key to `true` to record them in every permission mode. | * **Scope**: `User or managed`. A `true` counts only from your user settings, JSON passed with `--settings`, or managed settings, so a `true` in a repository's `.claude/settings.json` or `.claude/settings.local.json` can't turn the recording on. A `false` in either repository file still turns "
     },
     {
       "id": "setting:bashOutputMaxChars",
@@ -1068,7 +1068,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#bashoutputmaxchars"
       },
-      "excerpt": "Set how much of a successful command's output Claude receives inline | * **Scope**: `Any file` | * **Type**: number of characters, a positive integer. Claude Code clamps the value into the range `4000` to `128000` | * **Default**: unset, so Claude receives up to 30,000 characters inline | Set how many characters of a successful Bash or PowerShell command's output Claude receives inline. When output passes the limit, Claude Code saves it to a file and Claude receives a short preview plus the file's path. Raise the limit when command output, such as a verbose build or a full test-suite log, routinely overflows the default and you want Claude to read it without opening the file. Requires Claude Code v2.1.261 or later."
+      "excerpt": "Set how much of a successful command's output Claude receives inline | Requires Claude Code v2.1.261 or later. | * **Scope**: `Any file` | * **Type**: number of characters, a positive integer. Claude Code clamps the value into the range `4000` to `128000` | * **Default**: unset, so Claude receives up to 30,000 characters inline | Set how many characters of a successful Bash or PowerShell command's output Claude receives inline. When output passes the limit, Claude Code saves it to a file and Claude receives a short preview plus the file's path. Raise the limit when command output, such as a verbose build or a full test-suite log, routinely overflows the default and you want Claude to read it without opening the file."
     },
     {
       "id": "setting:blockedMarketplaces",
@@ -1429,7 +1429,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#deniedmodels"
       },
-      "excerpt": "Block specific models, even ones `availableModels` permits | * **Scope**: `Managed`. Claude Code ignores the key in user, project, and local settings and in `--settings`, with a warning | * **Type**: array of model aliases or IDs | * **Default**: unset, so no model is blocked | Block specific models, with or without an `availableModels` allowlist and even when that list permits them. Claude Code hides a blocked model from the `/model` picker, and the model can't be selected anywhere `availableModels` is enforced. A session on the Default option doesn't run a blocked model either, as Block specific models or versions describes. Requires Claude Code v2.1.283 or later."
+      "excerpt": "Block specific models, even ones `availableModels` permits | Requires Claude Code v2.1.283 or later. | * **Scope**: `Managed`. Claude Code ignores the key in user, project, and local settings and in `--settings`, with a warning | * **Type**: array of model aliases or IDs | * **Default**: unset, so no model is blocked | Block specific models, with or without an `availableModels` allowlist and even when that list permits them. Claude Code hides a blocked model from the `/model` picker, and the model can't be selected anywhere `availableModels` is enforced. A session on the Default option doesn't run a blocked model either, as Block specific models or versions describes."
     },
     {
       "id": "setting:desktopSessionCleanupPeriodDays",
@@ -1454,7 +1454,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#desktopsessioncleanupperioddays"
       },
-      "excerpt": "Set an age limit in days for Claude Desktop and Cowork transcripts | * **Scope**: `User or managed`. Claude Code also reads the key from a file you pass with `--settings`, and ignores it in project and local settings. | * **Type**: number of days, a whole number, minimum `0` | * **Default**: `0`, which sets no age limit | Set an age limit in days for the transcripts of sessions you started or most recently continued in Claude Desktop or Cowork. Without this key, Claude Code keeps those transcripts at any age, except in cases such as a session you deleted in Claude Desktop. Requires Claude Code v2.1.248 or later."
+      "excerpt": "Set an age limit in days for Claude Desktop and Cowork transcripts | Requires Claude Code v2.1.248 or later. | * **Scope**: `User or managed`. Claude Code also reads the key from a file you pass with `--settings`, and ignores it in project and local settings. | * **Type**: number of days, a whole number, minimum `0` | * **Default**: `0`, which sets no age limit | Set an age limit in days for the transcripts of sessions you started or most recently continued in Claude Desktop or Cowork. Without this key, Claude Code keeps those transcripts at any age, except in cases such as a session you deleted in Claude Desktop."
     },
     {
       "id": "setting:dialogExpiry",
@@ -1479,7 +1479,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#dialogexpiry"
       },
-      "excerpt": "Set how long Claude Code waits for Remote Control or an SDK host to answer a forwarded dialog before it cancels the dialog | * **Scope**: `User or managed` | * **Type**: string, one of `\"60s\"`, `\"5m\"`, `\"10m\"`, or `\"never\"`, which disables the deadline | * **Default**: `\"5m\"` | Set the deadline for dialogs Claude Code forwards to a remote client, such as a Remote Control or SDK host, and for the approval dialog for a held cross-session message. On Claude Code v2.1.236 or later, the same deadline bounds the mid-session Fable usage-credits consent prompt in a session that may have nobody at the terminal. When no answer arrives before the deadline, Claude Code cancels the dialog and continues with its no-action default. Requires Claude Code v2.1.224 or later. | `CLAUDE_CODE_USER_DIALOG_TIMEOUT_MS` takes precedence over this key for one session"
+      "excerpt": "Set how long Claude Code waits for Remote Control or an SDK host to answer a forwarded dialog before it cancels the dialog | Requires Claude Code v2.1.224 or later. | * **Scope**: `User or managed` | * **Type**: string, one of `\"60s\"`, `\"5m\"`, `\"10m\"`, or `\"never\"`, which disables the deadline | * **Default**: `\"5m\"` | Set the deadline for dialogs Claude Code forwards to a remote client, such as a Remote Control or SDK host, and for the approval dialog for a held cross-session message. On Claude Code v2.1.236 or later, the same deadline bounds the mid-session Fable usage-credits consent prompt in a session that may have nobody at the terminal. When no answer arrives before the deadline, Claude Code cancels the dialog and continues with its no-action default. | `CLAUDE_CODE_USER_DIALOG_TIMEOUT_MS` takes precedence over this key for one session"
     },
     {
       "id": "setting:diffTool",
@@ -1697,7 +1697,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#disablecommandpluginsources"
       },
-      "excerpt": "Block plugins that install by running a marketplace-declared command | * **Scope**: `Managed` | * **Type**: Boolean | * **Default**: unset, so Claude Code follows `allowManagedHooksOnly`: an organization that restricts hook execution to managed settings gets command sources disabled too. An application that passes `disableAllHooks: true` in the Agent SDK's `managedSettings` option doesn't by itself disable command sources. | Block the `command` plugin source, which installs a plugin by running a marketplace-declared command on the user's machine. When you set it to `true`, Claude Code never runs the command, doesn't install or update command-sourced plugins, and stops loading the ones already installed. Set it to `false` to allow them explicitly. Whenever it blocks command sources, whether you set it to `true` or leave it unset under `allowManagedHooksOnly`, it also blocks marketplace `headersHelper` commands, except for a marketplace that managed settings themselves declare. Requires "
+      "excerpt": "Block plugins that install by running a marketplace-declared command | Requires Claude Code v2.1.229 or later, and the `headersHelper` block requires v2.1.238 or later. | * **Scope**: `Managed` | * **Type**: Boolean | * **Default**: unset, so Claude Code follows `allowManagedHooksOnly`: an organization that restricts hook execution to managed settings gets command sources disabled too. An application that passes `disableAllHooks: true` in the Agent SDK's `managedSettings` option doesn't by itself disable command sources. | Block the `command` plugin source, which installs a plugin by running a marketplace-declared command on the user's machine. When you set it to `true`, Claude Code never runs the command, doesn't install or update command-sourced plugins, and stops loading the ones already installed. Set it to `false` to allow them explicitly. Whenever it blocks command sources, whether you set it to `true` or leave it unset under `allowManagedHooksOnly`, it also blocks marketplace `h"
     },
     {
       "id": "setting:disableDeepLinkRegistration",
@@ -1842,7 +1842,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#disablesideloadflags"
       },
-      "excerpt": "Reject the CLI flags that sideload plugins, subagents, and MCP servers | * **Scope**: `Managed` | * **Type**: Boolean | * **Default**: `false` | Reject the `--plugin-dir`, `--plugin-url`, `--agents`, and `--mcp-config` CLI flags at startup, which users could otherwise pass to bypass `strictKnownMarketplaces` for a single run. Claude Code exits with an error naming the rejected flags. In cloud sessions, Claude Code instead starts the session and drops every server-delivered `--mcp-config` entry except in-process `type: \"sdk\"` entries and a Claude Tag session's Slack tools. Requires Claude Code v2.1.193 or later."
+      "excerpt": "Reject the CLI flags that sideload plugins, subagents, and MCP servers | Requires Claude Code v2.1.193 or later. | * **Scope**: `Managed` | * **Type**: Boolean | * **Default**: `false` | Reject the `--plugin-dir`, `--plugin-url`, `--agents`, and `--mcp-config` CLI flags at startup, which users could otherwise pass to bypass `strictKnownMarketplaces` for a single run. Claude Code exits with an error naming the rejected flags. In cloud sessions, Claude Code instead starts the session and drops every server-delivered `--mcp-config` entry except in-process `type: \"sdk\"` entries and a Claude Tag session's Slack tools."
     },
     {
       "id": "setting:disableSkillShellExecution",
@@ -2131,7 +2131,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#enforceavailablemodels"
       },
-      "excerpt": "Keep the `/model` Default choice inside your `availableModels` allowlist | * **Scope**: `Any file` | * **Type**: Boolean | * **Default**: `false` | The `/model` picker has a **Default** option, and `default` model setting describes the model it resolves to. An `availableModels` allowlist limits the models you can name, but with the default prefix matching it doesn't remap your account type's default, so **Default** can still resolve to a model outside the list. This key closes that gap. Requires Claude Code v2.1.175 or later."
+      "excerpt": "Keep the `/model` Default choice inside your `availableModels` allowlist | Requires Claude Code v2.1.175 or later. | * **Scope**: `Any file` | * **Type**: Boolean | * **Default**: `false` | The `/model` picker has a **Default** option, and `default` model setting describes the model it resolves to. An `availableModels` allowlist limits the models you can name, but with the default prefix matching it doesn't remap your account type's default, so **Default** can still resolve to a model outside the list. This key closes that gap."
     },
     {
       "id": "setting:env",
@@ -2560,7 +2560,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#gatewayinternalnetworks"
       },
-      "excerpt": "Let `/login` reach a cloud gateway on public IPv4 space your organization uses internally | * **Scope**: `Managed`. Read only from a source on the machine: `managed-settings.json`, the macOS plist or Windows HKLM registry, or a policy helper. Claude Code ignores it in HKCU and server-managed settings. | * **Type**: array of strings, at most four IPv4 CIDR blocks, each `/8` to `/32`, not overlapping one another, and none overlapping private space. | * **Default**: unset, so `/login` accepts only gateways on private addresses | Declare the public IPv4 blocks that your organization numbers its internal network from, so `/login` accepts a cloud gateway there. Requires Claude Code v2.1.268 or later."
+      "excerpt": "Let `/login` reach a cloud gateway on public IPv4 space your organization uses internally | Requires Claude Code v2.1.268 or later. | * **Scope**: `Managed`. Read only from a source on the machine: `managed-settings.json`, the macOS plist or Windows HKLM registry, or a policy helper. Claude Code ignores it in HKCU and server-managed settings. | * **Type**: array of strings, at most four IPv4 CIDR blocks, each `/8` to `/32`, not overlapping one another, and none overlapping private space. | * **Default**: unset, so `/login` accepts only gateways on private addresses | Declare the public IPv4 blocks that your organization numbers its internal network from, so `/login` accepts a cloud gateway there."
     },
     {
       "id": "setting:gcpAuthRefresh",
@@ -2850,7 +2850,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#managedmcpservers"
       },
-      "excerpt": "Provide remote MCP servers to every user alongside the ones they add | * **Scope**: `Managed`. Claude Code drops the key with a warning in user, project, and local settings, and doesn't read it in the Claude Desktop app's Code tab on a third-party deployment or in the app's Cowork sessions, where Claude Desktop supplies and locks those sessions' MCP servers itself. | * **Type**: object keyed by server name. Each entry has the `.mcp.json` shape for an `http` or `sse` server: a required `https://` `url`, and optionally `headers`, `oauth`, and the other HTTP and SSE options. Claude Code drops entries that fail validation, and What an entry can contain lists the conditions | * **Default**: unset, so managed settings provide no servers | Provide remote MCP servers to every user from managed settings. Users keep the servers they add themselves and can't edit or remove the ones you provide. Requires Claude Code v2.1.259 or later. | For precedence, how provided servers combine with `managed-mc"
+      "excerpt": "Provide remote MCP servers to every user alongside the ones they add | Requires Claude Code v2.1.259 or later. | * **Scope**: `Managed`. Claude Code drops the key with a warning in user, project, and local settings, and doesn't read it in the Claude Desktop app's Code tab on a third-party deployment or in the app's Cowork sessions, where Claude Desktop supplies and locks those sessions' MCP servers itself. | * **Type**: object keyed by server name. Each entry has the `.mcp.json` shape for an `http` or `sse` server: a required `https://` `url`, and optionally `headers`, `oauth`, and the other HTTP and SSE options. Claude Code drops entries that fail validation, and What an entry can contain lists the conditions | * **Default**: unset, so managed settings provide no servers | Provide remote MCP servers to every user from managed settings. Users keep the servers they add themselves and can't edit or remove the ones you provide. | For precedence, how provided servers combine with `managed-"
     },
     {
       "id": "setting:managedSourcesBehavior",
@@ -2875,7 +2875,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#managedsourcesbehavior"
       },
-      "excerpt": "Compose every managed source you deploy instead of using the highest-priority one alone | * **Scope**: `Managed`. Claude Code reads this key from the highest-priority source that carries either this key or a policy key, and ignores this key in every source ranked lower, so a lower source can't opt itself into combining with the source above it. Neither the Windows HKCU registry nor parent settings from an embedding host take part in the merge. | * **Type**: string, one of: | * **Default**: `\"first-wins\"` | Choose whether Claude Code applies only the highest-priority managed source your organization delivers, or combines every admin source it delivers. By default Claude Code takes the highest-priority source that carries a policy key and ignores the rest. A policy key is any settings key other than this one and `wslInheritsWindowsSettings`. Under that default, once server-managed settings or an MDM policy deliver a policy key, a `managed-settings.json` file contributes only the keys Cla"
+      "excerpt": "Compose every managed source you deploy instead of using the highest-priority one alone | Requires Claude Code v2.1.242 or later. | * **Scope**: `Managed`. Claude Code reads this key from the highest-priority source that carries either this key or a policy key, and ignores this key in every source ranked lower, so a lower source can't opt itself into combining with the source above it. Neither the Windows HKCU registry nor parent settings from an embedding host take part in the merge. | * **Type**: string, one of: | * **Default**: `\"first-wins\"` | Choose whether Claude Code applies only the highest-priority managed source your organization delivers, or combines every admin source it delivers. By default Claude Code takes the highest-priority source that carries a policy key and ignores the rest. A policy key is any settings key other than this one and `wslInheritsWindowsSettings`. Under that default, once server-managed settings or an MDM policy deliver a policy key, a `managed-setting"
     },
     {
       "id": "setting:maxEffortLevel",
@@ -2900,7 +2900,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#maxeffortlevel"
       },
-      "excerpt": "Cap the effort level for every model or per model, on every provider | * **Scope**: `Any file`. Deploy it in managed settings to enforce it for an organization. When several scopes set a cap, the lowest applies, so a cap set in one scope can't be raised from another | * **Type**: string, one of `\"low\"`, `\"medium\"`, `\"high\"`, `\"xhigh\"`, or `\"max\"`. A `\"max\"` value sets no cap | * **Default**: unset, so no cap applies | Cap the effort level a session can use, leaving lower levels available. Any higher level runs at the cap instead, including one from `/effort`, the `/model` picker, `--effort`, `CLAUDE_CODE_EFFORT_LEVEL`, a skill's or subagent's `effort` frontmatter, or the model's own default. Claude Code applies the cap itself before each request, so it holds on every provider, including Amazon Bedrock, Google Cloud's Agent Platform, and Microsoft Foundry. Requires Claude Code v2.1.267 or later."
+      "excerpt": "Cap the effort level for every model or per model, on every provider | Requires Claude Code v2.1.267 or later. | * **Scope**: `Any file`. Deploy it in managed settings to enforce it for an organization. When several scopes set a cap, the lowest applies, so a cap set in one scope can't be raised from another | * **Type**: string, one of `\"low\"`, `\"medium\"`, `\"high\"`, `\"xhigh\"`, or `\"max\"`. A `\"max\"` value sets no cap | * **Default**: unset, so no cap applies | Cap the effort level a session can use, leaving lower levels available. Any higher level runs at the cap instead, including one from `/effort`, the `/model` picker, `--effort`, `CLAUDE_CODE_EFFORT_LEVEL`, a skill's or subagent's `effort` frontmatter, or the model's own default. Claude Code applies the cap itself before each request, so it holds on every provider, including Amazon Bedrock, Google Cloud's Agent Platform, and Microsoft Foundry."
     },
     {
       "id": "setting:maxProseWidth",
@@ -2925,7 +2925,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#maxprosewidth"
       },
-      "excerpt": "Cap how wide the prose in Claude's responses runs in a wide terminal | * **Scope**: `Any file` | * **Type**: number of terminal columns, a whole number, minimum `40`. Claude Code ignores any other value | * **Default**: unset, so prose wraps at the terminal edge | Cap the width of the prose in Claude's responses so lines stay readable in a wide terminal. Paragraphs, headings, lists, and blockquotes wrap within this many columns, while tables and code blocks keep the full terminal width. Requires Claude Code v2.1.282 or later."
+      "excerpt": "Cap how wide the prose in Claude's responses runs in a wide terminal | Requires Claude Code v2.1.282 or later. | * **Scope**: `Any file` | * **Type**: number of terminal columns, a whole number, minimum `40`. Claude Code ignores any other value | * **Default**: unset, so prose wraps at the terminal edge | Cap the width of the prose in Claude's responses so lines stay readable in a wide terminal. Paragraphs, headings, lists, and blockquotes wrap within this many columns, while tables and code blocks keep the full terminal width."
     },
     {
       "id": "setting:minimumVersion",
@@ -3022,7 +3022,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#modelpicker"
       },
-      "excerpt": "Choose which models the `/model` picker lists, in your own order and with your own labels | * **Scope**: `User or managed`. Claude Code reads the key from managed settings, `--settings`, and user settings, and ignores it in project and local settings so a repository you clone can't relabel the picker. The highest of those three that sets the key supplies the whole lineup, and Claude Code never combines lineups from two sources. | * **Type**: object with an `options` array of rows and an optional `replaceBuiltInOptions` Boolean | * **Default**: unset, so the picker shows the built-in lineup | List the models the `/model` picker offers, in the order you write them and under labels you choose, so the picker lists the models your organization runs, after the built-in lineup or instead of it. Each row's `model` is taken verbatim, so it accepts anything `--model` accepts: an alias such as `opus`, an Anthropic model ID, or a provider-format ID for Amazon Bedrock, Google Cloud's Agent Platform"
+      "excerpt": "Choose which models the `/model` picker lists, in your own order and with your own labels | Requires Claude Code v2.1.242 or later. | * **Scope**: `User or managed`. Claude Code reads the key from managed settings, `--settings`, and user settings, and ignores it in project and local settings so a repository you clone can't relabel the picker. The highest of those three that sets the key supplies the whole lineup, and Claude Code never combines lineups from two sources. | * **Type**: object with an `options` array of rows and an optional `replaceBuiltInOptions` Boolean | * **Default**: unset, so the picker shows the built-in lineup | List the models the `/model` picker offers, in the order you write them and under labels you choose, so the picker lists the models your organization runs, after the built-in lineup or instead of it. Each row's `model` is taken verbatim, so it accepts anything `--model` accepts: an alias such as `opus`, an Anthropic model ID, or a provider-format ID for Ama"
     },
     {
       "id": "setting:modelPicker.options",
@@ -3047,7 +3047,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#modelpicker"
       },
-      "excerpt": "* **Type**: object with an `options` array of rows and an optional `replaceBuiltInOptions` Boolean | * **Scope**: `User or managed`. Claude Code reads the key from managed settings, `--settings`, and user settings, and ignores it in project and local settings so a repository you clone can't relabel the picker. The highest of those three that sets the key supplies the whole lineup, and Claude Code never combines lineups from two sources."
+      "excerpt": "Requires Claude Code v2.1.242 or later. | * **Type**: object with an `options` array of rows and an optional `replaceBuiltInOptions` Boolean | * **Scope**: `User or managed`. Claude Code reads the key from managed settings, `--settings`, and user settings, and ignores it in project and local settings so a repository you clone can't relabel the picker. The highest of those three that sets the key supplies the whole lineup, and Claude Code never combines lineups from two sources."
     },
     {
       "id": "setting:modelPicker.replaceBuiltInOptions",
@@ -3072,7 +3072,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#modelpicker"
       },
-      "excerpt": "* **Type**: object with an `options` array of rows and an optional `replaceBuiltInOptions` Boolean | * **Scope**: `User or managed`. Claude Code reads the key from managed settings, `--settings`, and user settings, and ignores it in project and local settings so a repository you clone can't relabel the picker. The highest of those three that sets the key supplies the whole lineup, and Claude Code never combines lineups from two sources."
+      "excerpt": "Requires Claude Code v2.1.242 or later. | * **Type**: object with an `options` array of rows and an optional `replaceBuiltInOptions` Boolean | * **Scope**: `User or managed`. Claude Code reads the key from managed settings, `--settings`, and user settings, and ignores it in project and local settings so a repository you clone can't relabel the picker. The highest of those three that sets the key supplies the whole lineup, and Claude Code never combines lineups from two sources."
     },
     {
       "id": "setting:modelPricing",
@@ -3097,7 +3097,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#modelpricing"
       },
-      "excerpt": "Report spend at your organization's contracted rates instead of list price | * **Scope**: `Managed`. Deploy the key through server-managed settings, an MDM policy, a `managed-settings.json` file, or a policy helper. Claude Code ignores it in user, project, and local settings, in `--settings`, and on Windows in the user-writable HKCU registry. With server-managed settings, each session reports costs at list price until that session's settings fetch has confirmed the setting. A host application that embeds Claude Code and sets `CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST` can supply a table of its own through the SDK `managedSettings` option, which Claude Code uses only when no managed source sets the key and only in Claude Code v2.1.246 or later. | * **Type**: object with an optional `multiplier` and an optional `overrides` map | * **Default**: unset, so Claude Code reports list price unless a host application supplies a table | Report spend at the rates your organization pays instead of list "
+      "excerpt": "Report spend at your organization's contracted rates instead of list price | Requires Claude Code v2.1.242 or later. | * **Scope**: `Managed`. Deploy the key through server-managed settings, an MDM policy, a `managed-settings.json` file, or a policy helper. Claude Code ignores it in user, project, and local settings, in `--settings`, and on Windows in the user-writable HKCU registry. With server-managed settings, each session reports costs at list price until that session's settings fetch has confirmed the setting. A host application that embeds Claude Code and sets `CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST` can supply a table of its own through the SDK `managedSettings` option, which Claude Code uses only when no managed source sets the key and only in Claude Code v2.1.246 or later. | * **Type**: object with an optional `multiplier` and an optional `overrides` map | * **Default**: unset, so Claude Code reports list price unless a host application supplies a table | Report spend at the rat"
     },
     {
       "id": "setting:modelPricing.multiplier",
@@ -3120,7 +3120,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#modelpricing"
       },
-      "excerpt": "* **Type**: object with an optional `multiplier` and an optional `overrides` map | * **Scope**: `Managed`. Deploy the key through server-managed settings, an MDM policy, a `managed-settings.json` file, or a policy helper. Claude Code ignores it in user, project, and local settings, in `--settings`, and on Windows in the user-writable HKCU registry. With server-managed settings, each session reports costs at list price until that session's settings fetch has confirmed the setting. A host application that embeds Claude Code and sets `CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST` can supply a table of its own through the SDK `managedSettings` option, which Claude Code uses only when no managed source sets the key and only in Claude Code v2.1.246 or later."
+      "excerpt": "Requires Claude Code v2.1.242 or later. | * **Type**: object with an optional `multiplier` and an optional `overrides` map | * **Scope**: `Managed`. Deploy the key through server-managed settings, an MDM policy, a `managed-settings.json` file, or a policy helper. Claude Code ignores it in user, project, and local settings, in `--settings`, and on Windows in the user-writable HKCU registry. With server-managed settings, each session reports costs at list price until that session's settings fetch has confirmed the setting. A host application that embeds Claude Code and sets `CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST` can supply a table of its own through the SDK `managedSettings` option, which Claude Code uses only when no managed source sets the key and only in Claude Code v2.1.246 or later."
     },
     {
       "id": "setting:modelPricing.overrides",
@@ -3143,7 +3143,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#modelpricing"
       },
-      "excerpt": "* **Type**: object with an optional `multiplier` and an optional `overrides` map | * **Scope**: `Managed`. Deploy the key through server-managed settings, an MDM policy, a `managed-settings.json` file, or a policy helper. Claude Code ignores it in user, project, and local settings, in `--settings`, and on Windows in the user-writable HKCU registry. With server-managed settings, each session reports costs at list price until that session's settings fetch has confirmed the setting. A host application that embeds Claude Code and sets `CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST` can supply a table of its own through the SDK `managedSettings` option, which Claude Code uses only when no managed source sets the key and only in Claude Code v2.1.246 or later."
+      "excerpt": "Requires Claude Code v2.1.242 or later. | * **Type**: object with an optional `multiplier` and an optional `overrides` map | * **Scope**: `Managed`. Deploy the key through server-managed settings, an MDM policy, a `managed-settings.json` file, or a policy helper. Claude Code ignores it in user, project, and local settings, in `--settings`, and on Windows in the user-writable HKCU registry. With server-managed settings, each session reports costs at list price until that session's settings fetch has confirmed the setting. A host application that embeds Claude Code and sets `CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST` can supply a table of its own through the SDK `managedSettings` option, which Claude Code uses only when no managed source sets the key and only in Claude Code v2.1.246 or later."
     },
     {
       "id": "setting:modelSettings",
@@ -3168,7 +3168,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#modelsettings"
       },
-      "excerpt": "Keep a saved effort level or auto-compact window per model, or cap one model's effort | * **Scope**: `Any file` | * **Type**: object mapping a model name to an object with any of these fields: | * **Default**: unset | Save an effort level for each model you use. Requires Claude Code v2.1.251 or later. | A model's `effortLevel` here takes precedence over the top-level `effortLevel` in the same settings file. Across files, Claude Code resolves each model separately: the highest-precedence settings file that sets either an `effortLevel` for that model or a top-level `effortLevel` that applies to that model decides, so an `effortLevel` in managed settings outranks a level you saved in user settings. Adjust effort level lists what else can override a saved level, such as `--effort` at launch. * `maxEffortLevel`: the highest effort level the model may run at * `autoCompactWindow`: a number of tokens from `100000` to `1000000`, or `\"auto\"` for the window tuned for the model. `/autocompact` sa"
+      "excerpt": "Keep a saved effort level or auto-compact window per model, or cap one model's effort | Requires Claude Code v2.1.251 or later. | * **Scope**: `Any file` | * **Type**: object mapping a model name to an object with any of these fields: | * **Default**: unset | Save an effort level for each model you use. | A model's `effortLevel` here takes precedence over the top-level `effortLevel` in the same settings file. Across files, Claude Code resolves each model separately: the highest-precedence settings file that sets either an `effortLevel` for that model or a top-level `effortLevel` that applies to that model decides, so an `effortLevel` in managed settings outranks a level you saved in user settings. Adjust effort level lists what else can override a saved level, such as `--effort` at launch. * `maxEffortLevel`: the highest effort level the model may run at * `autoCompactWindow`: a number of tokens from `100000` to `1000000`, or `\"auto\"` for the window tuned for the model. `/autocompact` "
     },
     {
       "id": "setting:otelHeadersHelper",
@@ -3385,7 +3385,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#permissions-blockreadsoutsideworkingdirectories"
       },
-      "excerpt": "Make the file tools refuse reads outside the working directories in every permission mode | * **Scope**: `Any file`. A `true` in any file applies, so a repository can turn the block on for itself but can't lift yours. | * **Type**: Boolean | * **Default**: unset, so reads outside the working directories follow your permission mode | Make Claude's file tools refuse reads outside your working directories in every permission mode, including `bypassPermissions`. Claude Code denies `Read`, `Grep`, `Glob`, and `LSP` calls on those paths and tells Claude to ask you to add the directory with `/add-dir`. Files Claude Code itself needs stay readable, such as your skills, plugins, rules, agents, commands, and the `CLAUDE.md` memory file under `~/.claude/`. Requires Claude Code v2.1.257 or later. | If a re-opened file holds a secret, such as an `http.extraHeader` token, add its path to `sandbox.filesystem.denyRead`. A `denyRead` entry that covers a file always takes precedence over this re-open."
+      "excerpt": "Make the file tools refuse reads outside the working directories in every permission mode | Requires Claude Code v2.1.257 or later. | * **Scope**: `Any file`. A `true` in any file applies, so a repository can turn the block on for itself but can't lift yours. | * **Type**: Boolean | * **Default**: unset, so reads outside the working directories follow your permission mode | Make Claude's file tools refuse reads outside your working directories in every permission mode, including `bypassPermissions`. Claude Code denies `Read`, `Grep`, `Glob`, and `LSP` calls on those paths and tells Claude to ask you to add the directory with `/add-dir`. Files Claude Code itself needs stay readable, such as your skills, plugins, rules, agents, commands, and the `CLAUDE.md` memory file under `~/.claude/`. | If a re-opened file holds a secret, such as an `http.extraHeader` token, add its path to `sandbox.filesystem.denyRead`. A `denyRead` entry that covers a file always takes precedence over this re-open."
     },
     {
       "id": "setting:permissions.blockWritesOutsideWorkingDirectories",
@@ -3411,7 +3411,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#permissions-blockwritesoutsideworkingdirectories"
       },
-      "excerpt": "Make the `Write`, `Edit`, and `NotebookEdit` tools refuse paths outside the working directories in every permission mode, apart from some of Claude Code's own files | * **Scope**: `Any file`. A `true` in any file the session loads applies, so a repository can turn the block on for itself but can't lift yours. In a cloud session, Claude Code might not apply the key, because the file tools run in a container that is itself the boundary. | * **Type**: Boolean | * **Default**: unset, so writes outside the working directories follow your permission mode. The block is also on while Claude Code can't read the `permissions` object in your managed settings. | Make the `Write`, `Edit`, and `NotebookEdit` tools refuse paths outside your working directories in every permission mode, including `bypassPermissions`, apart from some of Claude Code's own files. The key doesn't limit shell commands, MCP tools, or the programs hooks run. To limit where shell commands write, turn on sandboxing. Requires C"
+      "excerpt": "Make the `Write`, `Edit`, and `NotebookEdit` tools refuse paths outside the working directories in every permission mode, apart from some of Claude Code's own files | Requires Claude Code v2.1.314 or later. | * **Scope**: `Any file`. A `true` in any file the session loads applies, so a repository can turn the block on for itself but can't lift yours. In a cloud session, Claude Code might not apply the key, because the file tools run in a container that is itself the boundary. | * **Type**: Boolean | * **Default**: unset, so writes outside the working directories follow your permission mode. The block is also on while Claude Code can't read the `permissions` object in your managed settings. | Make the `Write`, `Edit`, and `NotebookEdit` tools refuse paths outside your working directories in every permission mode, including `bypassPermissions`, apart from some of Claude Code's own files. The key doesn't limit shell commands, MCP tools, or the programs hooks run. To limit where shell comm"
     },
     {
       "id": "setting:permissions.defaultMode",
@@ -3485,7 +3485,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#permissions-denyinsteadofprompting"
       },
-      "excerpt": "Deny tool calls that would wait on a permission prompt, so a session nobody is watching keeps working | * **Scope**: `User or managed`, and `--settings`. A repository can't set it for you. | * **Type**: Boolean | * **Default**: unset, so a call that needs approval prompts you | Set this to `true` to keep a session running when nobody is there to answer a permission prompt. Claude Code denies a tool call that would otherwise wait on a prompt, and the turn continues. Requires Claude Code v2.1.319 or later."
+      "excerpt": "Deny tool calls that would wait on a permission prompt, so a session nobody is watching keeps working | Requires Claude Code v2.1.319 or later. | * **Scope**: `User or managed`, and `--settings`. A repository can't set it for you. | * **Type**: Boolean | * **Default**: unset, so a call that needs approval prompts you | Set this to `true` to keep a session running when nobody is there to answer a permission prompt. Claude Code denies a tool call that would otherwise wait on a prompt, and the turn continues."
     },
     {
       "id": "setting:permissions.disableAutoMode",
@@ -3868,7 +3868,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#processwrapper"
       },
-      "excerpt": "Run Claude Code's background processes through a corporate launcher on macOS and Linux | * **Scope**: `User or managed` | * **Type**: string, the launcher command as an argv prefix, such as an absolute path with optional arguments | * **Default**: unset, so background processes start unwrapped | On macOS and Linux, place a corporate launcher command in front of the background processes Claude Code starts. Claude Code runs the launcher with its own command line appended, so the launcher must exec into Claude Code; see Run Claude Code behind a corporate launcher for the launcher contract. Requires Claude Code v2.1.210 or later. | `CLAUDE_CODE_PROCESS_WRAPPER` takes precedence over this key for one session"
+      "excerpt": "Run Claude Code's background processes through a corporate launcher on macOS and Linux | Requires Claude Code v2.1.210 or later. | * **Scope**: `User or managed` | * **Type**: string, the launcher command as an argv prefix, such as an absolute path with optional arguments | * **Default**: unset, so background processes start unwrapped | On macOS and Linux, place a corporate launcher command in front of the background processes Claude Code starts. Claude Code runs the launcher with its own command line appended, so the launcher must exec into Claude Code; see Run Claude Code behind a corporate launcher for the launcher contract. | `CLAUDE_CODE_PROCESS_WRAPPER` takes precedence over this key for one session"
     },
     {
       "id": "setting:promptCacheTtl",
@@ -3893,7 +3893,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#promptcachettl"
       },
-      "excerpt": "Choose the prompt cache lifetime for the main conversation | * **Scope**: `Any file` | * **Type**: string, one of: | * **Default**: unset, so each main-conversation request gets its default lifetime | Choose how long the prompt cache holds the main conversation. This key applies to your interactive, `-p`, and Agent SDK turns, together with the helpers Claude Code runs inline with them. The one-hour lifetime keeps the cache warm across longer breaks, and the API bills each cache write at a higher rate than at the five-minute lifetime. Requires Claude Code v2.1.242 or later. | `FORCE_PROMPT_CACHING_5M` takes precedence over everything else, then `CLAUDE_CODE_PROMPT_CACHE_TTL`, then this key, and last `ENABLE_PROMPT_CACHING_1H`"
+      "excerpt": "Choose the prompt cache lifetime for the main conversation | Requires Claude Code v2.1.242 or later. | * **Scope**: `Any file` | * **Type**: string, one of: | * **Default**: unset, so each main-conversation request gets its default lifetime | Choose how long the prompt cache holds the main conversation. This key applies to your interactive, `-p`, and Agent SDK turns, together with the helpers Claude Code runs inline with them. The one-hour lifetime keeps the cache warm across longer breaks, and the API bills each cache write at a higher rate than at the five-minute lifetime. | `FORCE_PROMPT_CACHING_5M` takes precedence over everything else, then `CLAUDE_CODE_PROMPT_CACHE_TTL`, then this key, and last `ENABLE_PROMPT_CACHING_1H`"
     },
     {
       "id": "setting:promptSuggestionEnabled",
@@ -3990,7 +3990,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#requiredmaximumversion"
       },
-      "excerpt": "Refuse to start on a version newer than your organization allows | * **Scope**: `Managed`. Claude Code gives no warning when it ignores the key elsewhere. | * **Type**: string, a version number such as `\"2.1.150\"`; a value that isn't a valid version is ignored | * **Default**: unset, so no ceiling applies | Set the newest Claude Code version your organization allows to start. When the running version is newer, Claude Code exits at startup and tells the user to install an approved version through your organization's approved method; `claude install <version>` may also work. Requires Claude Code v2.1.163 or later."
+      "excerpt": "Refuse to start on a version newer than your organization allows | Requires Claude Code v2.1.163 or later. | * **Scope**: `Managed`. Claude Code gives no warning when it ignores the key elsewhere. | * **Type**: string, a version number such as `\"2.1.150\"`; a value that isn't a valid version is ignored | * **Default**: unset, so no ceiling applies | Set the newest Claude Code version your organization allows to start. When the running version is newer, Claude Code exits at startup and tells the user to install an approved version through your organization's approved method; `claude install <version>` may also work."
     },
     {
       "id": "setting:requiredMinimumVersion",
@@ -4015,7 +4015,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#requiredminimumversion"
       },
-      "excerpt": "Refuse to start on a version older than your organization requires | * **Scope**: `Managed`. Claude Code gives no warning when it ignores the key elsewhere. | * **Type**: string, a version number such as `\"2.1.150\"`; a value that isn't a valid version is ignored | * **Default**: unset, so no floor applies | Set the oldest Claude Code version your organization allows to start. When the running version is older, Claude Code exits at startup and tells the user to update through your organization's approved method. The check runs at startup only, so a session that's already running continues. Requires Claude Code v2.1.163 or later."
+      "excerpt": "Refuse to start on a version older than your organization requires | Requires Claude Code v2.1.163 or later. | * **Scope**: `Managed`. Claude Code gives no warning when it ignores the key elsewhere. | * **Type**: string, a version number such as `\"2.1.150\"`; a value that isn't a valid version is ignored | * **Default**: unset, so no floor applies | Set the oldest Claude Code version your organization allows to start. When the running version is older, Claude Code exits at startup and tells the user to update through your organization's approved method. The check runs at startup only, so a session that's already running continues."
     },
     {
       "id": "setting:respectGitignore",
@@ -4136,7 +4136,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#sandbox-allownestedusernamespaces"
       },
-      "excerpt": "Let sandboxed commands create user namespaces on Linux and WSL2 | * **Scope**: `User or managed`. A `true` counts from `~/.claude/settings.json`, JSON passed with `--settings`, or managed settings. Claude Code ignores a `true` in a project's `.claude/settings.json` or `.claude/settings.local.json`. In a session with `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` set to `1`, Claude Code ignores a `true` from every source. A `false` counts from any file, by settings precedence. | * **Type**: Boolean | * **Default**: `false` | Let sandboxed commands on Linux and WSL2 create user namespaces, which Chromium's and Electron's own sandbox, a nested bubblewrap, and `unshare` need. If you set this key to `true`, you turn off a security boundary: code from a sandboxed command can end up running outside the sandbox. For rootless Podman or Buildah, use `excludedCommands` instead, because the sandbox stops them in other ways too. Requires Claude Code v2.1.305 or later. | * **Scope**: `User or managed`. A `true`"
+      "excerpt": "Let sandboxed commands create user namespaces on Linux and WSL2 | Requires Claude Code v2.1.305 or later. | * **Scope**: `User or managed`. A `true` counts from `~/.claude/settings.json`, JSON passed with `--settings`, or managed settings. Claude Code ignores a `true` in a project's `.claude/settings.json` or `.claude/settings.local.json`. In a session with `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` set to `1`, Claude Code ignores a `true` from every source. A `false` counts from any file, by settings precedence. | * **Type**: Boolean | * **Default**: `false` | Let sandboxed commands on Linux and WSL2 create user namespaces, which Chromium's and Electron's own sandbox, a nested bubblewrap, and `unshare` need. If you set this key to `true`, you turn off a security boundary: code from a sandboxed command can end up running outside the sandbox. For rootless Podman or Buildah, use `excludedCommands` instead, because the sandbox stops them in other ways too. | * **Scope**: `User or managed`. A `tru"
     },
     {
       "id": "setting:sandbox.allowUnsandboxedCommands",
@@ -4281,7 +4281,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#sandbox-credentials-awspairs"
       },
-      "excerpt": "Link custom-named AWS key variables into one credential for re-signing | * **Scope**: `User or managed` | * **Type**: array of objects, each with `accessKeyIdVar`, `secretAccessKeyVar`, and optionally `sessionTokenVar`, naming `sandbox.credentials.envVars` entries | * **Default**: unset, so only the conventional trio is paired | Group masked environment variables that form one AWS credential for SigV4 re-signing when your credential lives in variables with non-standard names. Claude Code links the conventional `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_SESSION_TOKEN` trio automatically when you mask their whole values, so you need this key only for other names. Requires Claude Code v2.1.224 or later."
+      "excerpt": "Link custom-named AWS key variables into one credential for re-signing | Requires Claude Code v2.1.224 or later. | * **Scope**: `User or managed` | * **Type**: array of objects, each with `accessKeyIdVar`, `secretAccessKeyVar`, and optionally `sessionTokenVar`, naming `sandbox.credentials.envVars` entries | * **Default**: unset, so only the conventional trio is paired | Group masked environment variables that form one AWS credential for SigV4 re-signing when your credential lives in variables with non-standard names. Claude Code links the conventional `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_SESSION_TOKEN` trio automatically when you mask their whole values, so you need this key only for other names."
     },
     {
       "id": "setting:sandbox.credentials.envVars",
@@ -4354,7 +4354,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#sandbox-credentials-sigv4"
       },
-      "excerpt": "Choose whether streaming, presigned, or SigV4A AWS requests fail or pass through | * **Scope**: `User or managed` | * **Type**: object with `streaming`, `presigned`, and `sigv4a`, each one of: | * **Default**: unset, so every form is `\"deny\"` | Choose what the sandbox proxy does with AWS request forms it can't re-sign: `streaming` for aws-chunked streaming uploads, `presigned` for presigned URLs, and `sigv4a` for SigV4A asymmetric signatures. This applies only to requests signed with a masked pair's placeholder access key ID. Requires Claude Code v2.1.224 or later."
+      "excerpt": "Choose whether streaming, presigned, or SigV4A AWS requests fail or pass through | Requires Claude Code v2.1.224 or later. | * **Scope**: `User or managed` | * **Type**: object with `streaming`, `presigned`, and `sigv4a`, each one of: | * **Default**: unset, so every form is `\"deny\"` | Choose what the sandbox proxy does with AWS request forms it can't re-sign: `streaming` for aws-chunked streaming uploads, `presigned` for presigned URLs, and `sigv4a` for SigV4A asymmetric signatures. This applies only to requests signed with a masked pair's placeholder access key ID."
     },
     {
       "id": "setting:sandbox.credentials.sigv4.presigned",
@@ -4377,7 +4377,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#sandbox-credentials-sigv4"
       },
-      "excerpt": "* **Type**: object with `streaming`, `presigned`, and `sigv4a`, each one of: | * **Scope**: `User or managed`"
+      "excerpt": "Requires Claude Code v2.1.224 or later. | * **Type**: object with `streaming`, `presigned`, and `sigv4a`, each one of: | * **Scope**: `User or managed`"
     },
     {
       "id": "setting:sandbox.credentials.sigv4.sigv4a",
@@ -4400,7 +4400,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#sandbox-credentials-sigv4"
       },
-      "excerpt": "* **Type**: object with `streaming`, `presigned`, and `sigv4a`, each one of: | * **Scope**: `User or managed`"
+      "excerpt": "Requires Claude Code v2.1.224 or later. | * **Type**: object with `streaming`, `presigned`, and `sigv4a`, each one of: | * **Scope**: `User or managed`"
     },
     {
       "id": "setting:sandbox.credentials.sigv4.streaming",
@@ -4423,7 +4423,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#sandbox-credentials-sigv4"
       },
-      "excerpt": "* **Type**: object with `streaming`, `presigned`, and `sigv4a`, each one of: | * **Scope**: `User or managed`"
+      "excerpt": "Requires Claude Code v2.1.224 or later. | * **Type**: object with `streaming`, `presigned`, and `sigv4a`, each one of: | * **Scope**: `User or managed`"
     },
     {
       "id": "setting:sandbox.enableWeakerNestedSandbox",
@@ -5000,7 +5000,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#sandbox-network-strictallowlist"
       },
-      "excerpt": "Deny hosts outside the allowlist instead of prompting | * **Scope**: `User or managed`. A repository can't turn it on or off. | * **Type**: Boolean | * **Default**: `false` | Deny sandboxed commands access to hosts outside the allowlist instead of prompting for approval. The allowlist is `allowedDomains` plus domains from `WebFetch(domain:...)` allow rules, or only the managed settings entries when `allowManagedDomainsOnly` is set. Locks that apply without an admin-required sandbox covers a repository's entries. Requires Claude Code v2.1.219 or later."
+      "excerpt": "Deny hosts outside the allowlist instead of prompting | Requires Claude Code v2.1.219 or later. | * **Scope**: `User or managed`. A repository can't turn it on or off. | * **Type**: Boolean | * **Default**: `false` | Deny sandboxed commands access to hosts outside the allowlist instead of prompting for approval. The allowlist is `allowedDomains` plus domains from `WebFetch(domain:...)` allow rules, or only the managed settings entries when `allowManagedDomainsOnly` is set. Locks that apply without an admin-required sandbox covers a repository's entries."
     },
     {
       "id": "setting:sandbox.network.tlsTerminate",
@@ -5403,7 +5403,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#spellcheck"
       },
-      "excerpt": "Underline misspelled words in the prompt input with a spell checker you install | * **Scope**: `User or managed`. The block from the highest tier that sets it applies as a whole. | * **Type**: object with `enabled` (Boolean), `checker` (`\"aspell\"`, `\"hunspell\"`, `\"ispell\"`, or `\"auto\"`), `language` (string, passed to the checker as its dictionary name), and `color` (string, a terminal color name, `#rrggbb`, `rgb(r,g,b)`, `ansi256(n)`, or `ansi:<name>`) | * **Default**: unset, so spell checking is off; `checker` defaults to `\"auto\"`, the first of the three found on `PATH`; `language` defaults to the checker's own dictionary; `color` defaults to the theme's error color | Underline misspelled words in the prompt input as you type, using a spell checker you install. Claude Code checks only the text in the input box. Check spelling as you type covers installing aspell, hunspell, or ispell and what the checker covers. Requires Claude Code v2.1.235 or later. | * **Scope**: `User or managed`. "
+      "excerpt": "Underline misspelled words in the prompt input with a spell checker you install | Requires Claude Code v2.1.235 or later. | * **Scope**: `User or managed`. The block from the highest tier that sets it applies as a whole. | * **Type**: object with `enabled` (Boolean), `checker` (`\"aspell\"`, `\"hunspell\"`, `\"ispell\"`, or `\"auto\"`), `language` (string, passed to the checker as its dictionary name), and `color` (string, a terminal color name, `#rrggbb`, `rgb(r,g,b)`, `ansi256(n)`, or `ansi:<name>`) | * **Default**: unset, so spell checking is off; `checker` defaults to `\"auto\"`, the first of the three found on `PATH`; `language` defaults to the checker's own dictionary; `color` defaults to the theme's error color | Underline misspelled words in the prompt input as you type, using a spell checker you install. Claude Code checks only the text in the input box. Check spelling as you type covers installing aspell, hunspell, or ispell and what the checker covers. | * **Scope**: `User or managed`"
     },
     {
       "id": "setting:spellcheck.checker",
@@ -5426,7 +5426,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#spellcheck"
       },
-      "excerpt": "* **Type**: object with `enabled` (Boolean), `checker` (`\"aspell\"`, `\"hunspell\"`, `\"ispell\"`, or `\"auto\"`), `language` (string, passed to the checker as its dictionary name), and `color` (string, a terminal color name, `#rrggbb`, `rgb(r,g,b)`, `ansi256(n)`, or `ansi:<name>`) | * **Scope**: `User or managed`. The block from the highest tier that sets it applies as a whole."
+      "excerpt": "Requires Claude Code v2.1.235 or later. | * **Type**: object with `enabled` (Boolean), `checker` (`\"aspell\"`, `\"hunspell\"`, `\"ispell\"`, or `\"auto\"`), `language` (string, passed to the checker as its dictionary name), and `color` (string, a terminal color name, `#rrggbb`, `rgb(r,g,b)`, `ansi256(n)`, or `ansi:<name>`) | * **Scope**: `User or managed`. The block from the highest tier that sets it applies as a whole."
     },
     {
       "id": "setting:spellcheck.color",
@@ -5451,7 +5451,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#spellcheck"
       },
-      "excerpt": "* **Type**: object with `enabled` (Boolean), `checker` (`\"aspell\"`, `\"hunspell\"`, `\"ispell\"`, or `\"auto\"`), `language` (string, passed to the checker as its dictionary name), and `color` (string, a terminal color name, `#rrggbb`, `rgb(r,g,b)`, `ansi256(n)`, or `ansi:<name>`) | * **Scope**: `User or managed`. The block from the highest tier that sets it applies as a whole."
+      "excerpt": "Requires Claude Code v2.1.235 or later. | * **Type**: object with `enabled` (Boolean), `checker` (`\"aspell\"`, `\"hunspell\"`, `\"ispell\"`, or `\"auto\"`), `language` (string, passed to the checker as its dictionary name), and `color` (string, a terminal color name, `#rrggbb`, `rgb(r,g,b)`, `ansi256(n)`, or `ansi:<name>`) | * **Scope**: `User or managed`. The block from the highest tier that sets it applies as a whole."
     },
     {
       "id": "setting:spellcheck.enabled",
@@ -5476,7 +5476,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#spellcheck"
       },
-      "excerpt": "* **Type**: object with `enabled` (Boolean), `checker` (`\"aspell\"`, `\"hunspell\"`, `\"ispell\"`, or `\"auto\"`), `language` (string, passed to the checker as its dictionary name), and `color` (string, a terminal color name, `#rrggbb`, `rgb(r,g,b)`, `ansi256(n)`, or `ansi:<name>`) | * **Scope**: `User or managed`. The block from the highest tier that sets it applies as a whole."
+      "excerpt": "Requires Claude Code v2.1.235 or later. | * **Type**: object with `enabled` (Boolean), `checker` (`\"aspell\"`, `\"hunspell\"`, `\"ispell\"`, or `\"auto\"`), `language` (string, passed to the checker as its dictionary name), and `color` (string, a terminal color name, `#rrggbb`, `rgb(r,g,b)`, `ansi256(n)`, or `ansi:<name>`) | * **Scope**: `User or managed`. The block from the highest tier that sets it applies as a whole."
     },
     {
       "id": "setting:spellcheck.language",
@@ -5501,7 +5501,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#spellcheck"
       },
-      "excerpt": "* **Type**: object with `enabled` (Boolean), `checker` (`\"aspell\"`, `\"hunspell\"`, `\"ispell\"`, or `\"auto\"`), `language` (string, passed to the checker as its dictionary name), and `color` (string, a terminal color name, `#rrggbb`, `rgb(r,g,b)`, `ansi256(n)`, or `ansi:<name>`) | * **Scope**: `User or managed`. The block from the highest tier that sets it applies as a whole."
+      "excerpt": "Requires Claude Code v2.1.235 or later. | * **Type**: object with `enabled` (Boolean), `checker` (`\"aspell\"`, `\"hunspell\"`, `\"ispell\"`, or `\"auto\"`), `language` (string, passed to the checker as its dictionary name), and `color` (string, a terminal color name, `#rrggbb`, `rgb(r,g,b)`, `ansi256(n)`, or `ansi:<name>`) | * **Scope**: `User or managed`. The block from the highest tier that sets it applies as a whole."
     },
     {
       "id": "setting:spinnerTipsEnabled",
@@ -6090,7 +6090,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#subagentpromptcachettl"
       },
-      "excerpt": "Choose the prompt cache lifetime for subagents and other requests outside the main conversation | * **Scope**: `Any file` | * **Type**: string, one of: | * **Default**: unset, so each of these requests gets its default lifetime | Choose how long the prompt cache holds the requests Claude Code makes outside the main conversation. This key applies to subagents, workflows, and Claude Code's own background and helper requests, such as compaction and session titles. The one-hour lifetime keeps the cache warm across longer breaks, and the API bills each cache write at a higher rate than at the five-minute lifetime. Requires Claude Code v2.1.242 or later. | `FORCE_PROMPT_CACHING_5M` takes precedence over everything else, then `CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL`, then this key, then `ENABLE_PROMPT_CACHING_1H`, which asks for the one-hour lifetime on every request. For where a subagent's own frontmatter value ranks, see Choose the TTL yourself"
+      "excerpt": "Choose the prompt cache lifetime for subagents and other requests outside the main conversation | Requires Claude Code v2.1.242 or later. | * **Scope**: `Any file` | * **Type**: string, one of: | * **Default**: unset, so each of these requests gets its default lifetime | Choose how long the prompt cache holds the requests Claude Code makes outside the main conversation. This key applies to subagents, workflows, and Claude Code's own background and helper requests, such as compaction and session titles. The one-hour lifetime keeps the cache warm across longer breaks, and the API bills each cache write at a higher rate than at the five-minute lifetime. | `FORCE_PROMPT_CACHING_5M` takes precedence over everything else, then `CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL`, then this key, then `ENABLE_PROMPT_CACHING_1H`, which asks for the one-hour lifetime on every request. For where a subagent's own frontmatter value ranks, see Choose the TTL yourself"
     },
     {
       "id": "setting:switchModelsOnFlag",
@@ -6139,7 +6139,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#syncclaudeaiplugins"
       },
-      "excerpt": "Stop loading the plugins enabled on your claude.ai account and stop downloading new ones | * **Scope**: `User, local, or managed`, and files passed with `--settings`. | * **Type**: Boolean | * **Default**: unset, so sessions signed in with your claude.ai account sync your plugins | Turn off the download of the plugins enabled for your claude.ai account. Claude Code downloads them into `~/.claude/plugins/synced/` at the start of terminal sessions where you sign in with your claude.ai account and in Cowork sessions, and loads each one as `<name>@synced`. Set `false` to stop that download and stop loading the plugins it already synced. Claude Code honors only `false`: `true` is the same as unset and doesn't turn syncing on where it's otherwise off. Requires Claude Code v2.1.273 or later."
+      "excerpt": "Stop loading the plugins enabled on your claude.ai account and stop downloading new ones | Requires Claude Code v2.1.273 or later. | * **Scope**: `User, local, or managed`, and files passed with `--settings`. | * **Type**: Boolean | * **Default**: unset, so sessions signed in with your claude.ai account sync your plugins | Turn off the download of the plugins enabled for your claude.ai account. Claude Code downloads them into `~/.claude/plugins/synced/` at the start of terminal sessions where you sign in with your claude.ai account and in Cowork sessions, and loads each one as `<name>@synced`. Set `false` to stop that download and stop loading the plugins it already synced. Claude Code honors only `false`: `true` is the same as unset and doesn't turn syncing on where it's otherwise off."
     },
     {
       "id": "setting:syncClaudeAiSkills",
@@ -6354,7 +6354,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#timeformat"
       },
-      "excerpt": "Show the times in the interface on a 12-hour or 24-hour clock, in UTC, or with a strftime pattern | * **Scope**: `Any file` | * **Type**: string, one of: | * **Default**: `\"auto\"` | Choose how Claude Code writes the times it shows in the interface, such as the `done 6:05 PM` at the end of each turn duration message and the timestamps in the transcript viewer. To pick a preset, run `/config` and set **Time format**. Requires Claude Code v2.1.257 or later."
+      "excerpt": "Show the times in the interface on a 12-hour or 24-hour clock, in UTC, or with a strftime pattern | Requires Claude Code v2.1.257 or later. | * **Scope**: `Any file` | * **Type**: string, one of: | * **Default**: `\"auto\"` | Choose how Claude Code writes the times it shows in the interface, such as the `done 6:05 PM` at the end of each turn duration message and the timestamps in the transcript viewer. To pick a preset, run `/config` and set **Time format**."
     },
     {
       "id": "setting:timeZone",
@@ -6379,7 +6379,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#timezone"
       },
-      "excerpt": "Show the times in the interface in a time zone other than your system's | * **Scope**: `Any file` | * **Type**: string, an IANA time zone name. When Claude Code doesn't recognize the name, it uses your system time zone | * **Default**: unset, so times show in your system time zone | Show the times in the interface in a time zone other than your system's. Set it to an IANA time zone name, such as `\"UTC\"` or `\"Europe/Dublin\"`. The times that `timeFormat` controls then show in this zone. If `timeFormat` is `\"24-hour-utc\"`, times stay in UTC and Claude Code ignores this key. `/config` has no row for this key, so set it in a settings file. Requires Claude Code v2.1.257 or later."
+      "excerpt": "Show the times in the interface in a time zone other than your system's | Requires Claude Code v2.1.257 or later. | * **Scope**: `Any file` | * **Type**: string, an IANA time zone name. When Claude Code doesn't recognize the name, it uses your system time zone | * **Default**: unset, so times show in your system time zone | Show the times in the interface in a time zone other than your system's. Set it to an IANA time zone name, such as `\"UTC\"` or `\"Europe/Dublin\"`. The times that `timeFormat` controls then show in this zone. If `timeFormat` is `\"24-hour-utc\"`, times stay in UTC and Claude Code ignores this key. `/config` has no row for this key, so set it in a settings file."
     },
     {
       "id": "setting:tui",
