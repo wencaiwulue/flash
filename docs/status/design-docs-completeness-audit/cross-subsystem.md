@@ -849,10 +849,10 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 | 变更范围 | 主责 batch | 状态 | 说明 |
 |----------|------------|------|------|
-| query-core (src/main.tsx 新增 smoke 模式) | batch-0 | ✅ 验证完成 | 无新增发现，仅 spec 需要补充说明测试入口 |
-| open-runner (tests/openBackends.test.ts 新增 retry) | batch-6 | ✅ 验证完成 | 无新增发现，仅测试层改进 |
-| build-feature-profile (build.ts/build-binary.ts/package.json) | batch-7 | ✅ 验证完成 | 无新增发现，仅 spec 需要补充说明 Playwright 内联插件和 smoke 测试框架 |
-| webbrowser-bundled-support (新 spec/coverage/实现) | batch-5 | ✅ 已完成 | 已在 batch-5.md 单独审计 |
+| query-core (src/main.tsx 新增 smoke 模式) | 00-core-query-sdk | ✅ 验证完成 | 无新增发现，仅 spec 需要补充说明测试入口 |
+| open-runner (tests/openBackends.test.ts 新增 retry) | 06-remote-background-platforms | ✅ 验证完成 | 无新增发现，仅测试层改进 |
+| build-feature-profile (build.ts/build-binary.ts/package.json) | 07-build-runtime-stubs | ✅ 验证完成 | 无新增发现，仅 spec 需要补充说明 Playwright 内联插件和 smoke 测试框架 |
+| webbrowser-bundled-support (新 spec/coverage/实现) | 05-agents-tasks-workflows | ✅ 已完成 | 已在 05-agents-tasks-workflows.md 单独审计 |
 
 **构建/功能边界矩阵更新**：
 - 新增 "Playwright inline plugin" 作为构建时转换步骤

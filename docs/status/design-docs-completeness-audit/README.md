@@ -19,75 +19,75 @@ Design docs: 0 errors, 73 warnings
 
 | Spec ID | Batch | Coverage groups | 文档完整性 | 实现一致性 | 上游一致性 | 验证状态 | 发现 | 报告 |
 |---|---:|---:|---|---|---|---|---:|---|
-| documentation-system | 0 | 2/2 | 完整 | 一致 | N/A | 充分 (离线测试) | 1 | [batch-0.md#documentation-system](batch-0.md#documentation-system) |
-| plugins | 0 | 14/14 | 完整 | 一致 | 部分一致 | 部分充分 (有测试，缺集成) | 2 | [batch-0.md#plugins](batch-0.md#plugins) |
-| query-core | 0 | 3/3 | 完整 | 一致 | 部分一致 | 部分充分 (有测试，缺端到端) | 2 | [batch-0.md#query-core](batch-0.md#query-core) |
-| sdk-query-sessions | 0 | 11/11 | 完整 | 一致 | 部分一致 | 充分 (核心模块覆盖) | 1 | [batch-0.md#sdk-query-sessions](batch-0.md#sdk-query-sessions) |
-| sdk-type-generation | 0 | 3/3 | 完整 | 一致 | N/A | 充分 | 1 | [batch-0.md#sdk-type-generation](batch-0.md#sdk-type-generation) |
-| cli-startup | 1 | 6/6 | 完整 | 一致 | 一致 | 部分充分 (无直接测试, spec 截断) | 1 | [batch-1.md#cli-startup](batch-1.md#cli-startup) |
-| context-compaction | 1 | 8/8 | 完整 | 一致 | 一致 | 部分充分 (核心有测试, 其他模块缺) | 3 | [batch-1.md#context-compaction](batch-1.md#context-compaction) |
-| model-api | 1 | 12/12 | 完整 | 一致 | 一致 | 部分充分 (测试覆盖有限) | 1 | [batch-1.md#model-api](batch-1.md#model-api) |
-| attachments | 2 | 6/6 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（无独立测试） | 3 | [batch-2.md#attachments](batch-2.md#attachments) |
-| bridge | 2 | 22/22 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（关键路径无测试） | 4 | [batch-2.md#bridge](batch-2.md#bridge) |
-| buddy | 2 | 3/3 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（UI交互无测试） | 3 | [batch-2.md#buddy](batch-2.md#buddy) |
-| computer-use | 2 | 3/3 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（真实桌面环境无验收） | 4 | [batch-2.md#computer-use](batch-2.md#computer-use) |
-| file-tools | 2 | 10/10 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（无独立测试） | 3 | [batch-2.md#file-tools](batch-2.md#file-tools) |
-| lsp | 2 | 8/8 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（关键路径无测试） | 3 | [batch-2.md#lsp](batch-2.md#lsp) |
-| mcp | 2 | 20/20 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（关键路径无测试） | 3 | [batch-2.md#mcp](batch-2.md#mcp) |
-| onboarding-ui | 2 | 1/1 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（关键路径无测试） | 3 | [batch-2.md#onboarding-ui](batch-2.md#onboarding-ui) |
-| permissions | 2 | 14/14 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（核心裁决路径无测试） | 3 | [batch-2.md#permissions](batch-2.md#permissions) |
-| session-persistence | 2 | 7/7 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（关键路径无测试） | 4 | [batch-2.md#session-persistence](batch-2.md#session-persistence) |
-| shell-tools | 2 | 13/13 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（关键路径无测试） | 4 | [batch-2.md#shell-tools](batch-2.md#shell-tools) |
-| tool-framework | 2 | 7/7 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（关键路径无测试） | 4 | [batch-2.md#tool-framework](batch-2.md#tool-framework) |
-| auth | 3 | 20/20 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（仅 oauthRefresh 和 linuxSecretStorage） | 2 | [batch-3.md#auth](batch-3.md#auth) |
-| commit-attribution | 3 | 6/6 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ✅ 充分（有完整测试） | 3 | [batch-3.md#commit-attribution](batch-3.md#commit-attribution) |
-| git-integration | 3 | 9/9 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（测试不完整） | 3 | [batch-3.md#git-integration](batch-3.md#git-integration) |
-| memory | 3 | 7/7 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（无测试） | 6 | [batch-3.md#memory](batch-3.md#memory) |
-| notifications | 3 | 7/7 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（测试不完整） | 1 | [batch-3.md#notifications](batch-3.md#notifications) |
-| session-search-recovery | 3 | 8/8 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（测试不完整） | 1 | [batch-3.md#session-search-recovery](batch-3.md#session-search-recovery) |
-| sessions-share | 3 | 6/6 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ✅ 充分（share/ccshare 有完整测试） | 1 | [batch-3.md#sessions-share](batch-3.md#sessions-share) |
-| settings | 3 | 21/21 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（无测试） | 3 | [batch-3.md#settings](batch-3.md#settings) |
-| skills | 3 | 17/17 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（测试不完整） | 6 | [batch-3.md#skills](batch-3.md#skills) |
-| app-state | 4 | 10/10 | ✅完整 | ✅一致（除循环更新防护功能未实现） | ⚠️不充分（仅源码） | ⚠️部分充分（无测试） | 2 | batch-4.md#app-state |
-| assistant-ui | 4 | 2/2 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（无测试） | 1 | batch-4.md#assistant-ui |
-| commands-framework | 4 | 3/3 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（测试不足） | 1 | batch-4.md#commands-framework |
-| cost-tracking | 4 | 10/10 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（无测试） | 1 | batch-4.md#cost-tracking |
-| ide-integration | 4 | 8/8 | ✅完整 | ✅一致（设计文档已明确指出 lockfile 并发与崩溃清理限制） | ⚠️不充分（仅源码） | ⚠️部分充分（无测试） | 3 | batch-4.md#ide-integration |
-| ink-platform | 4 | 20/20 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（测试不足） | 1 | batch-4.md#ink-platform |
-| repl-input | 4 | 9/9 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（测试不足） | 2 | batch-4.md#repl-input |
-| text-formatting | 4 | 12/12 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ❌无测试 | 1 | batch-4.md#text-formatting |
-| ui-rendering | 4 | 14/14 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ❌无测试 | 2 | batch-4.md#ui-rendering |
-| voice-assistant | 4 | 10/10 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ❌无测试 | 1 | batch-4.md#voice-assistant |
-| workspace-ui | 4 | 13/13 | ✅完整 | ✅一致（设计文档已明确指出沙箱刷新竞态权衡） | ⚠️不充分（仅源码） | ❌无测试 | 2 | batch-4.md#workspace-ui |
-| agent-swarms | 5 | 20/20 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（仅 agent-memory 测试） | 8 | batch-5.md#agent-swarms |
-| help-feedback | 5 | 2/2 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ❌无测试 | 2 | batch-5.md#help-feedback |
-| plan-worktree | 5 | 10/10 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（仅 plan-mode 测试） | 3 | batch-5.md#plan-worktree |
-| review-analysis | 5 | 5/5 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（仅 review-artifact 测试） | 3 | batch-5.md#review-analysis |
-| scheduling | 5 | 22/22 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（仅 cron-lifecycle 测试） | 6 | batch-5.md#scheduling |
-| task-system | 5 | 21/21 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ❌无测试 | 5 | batch-5.md#task-system |
-| workflow | 5 | 7/7 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（完整 workflow 测试） | 6 | batch-5.md#workflow |
-| webbrowser-bundled-support | 5 | 2/2 | ✅完整 | ✅一致 | 有边界搜索但未完整对齐 | ⚠️部分充分（有测试，缺集成） | 2 | [batch-5.md#webbrowser-bundled-support](batch-5.md#webbrowser-bundled-support) |
-| daemon-background | 6 | 10/10 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（有测试） | 3 | [batch-6.md#daemon-background](batch-6.md#daemon-background) |
-| deep-link | 6 | 7/7 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（无测试） | 4 | [batch-6.md#deep-link](batch-6.md#deep-link) |
-| open-runner | 6 | 7/7 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ✅ 充分（有完整测试） | 7 | [batch-6.md#open-runner](batch-6.md#open-runner) |
-| platform-integrations | 6 | 16/16 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（无完整测试） | 3 | [batch-6.md#platform-integrations](batch-6.md#platform-integrations) |
-| remote-control | 6 | 7/7 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（部分测试） | 3 | [batch-6.md#remote-control](batch-6.md#remote-control) |
-| ssh | 6 | 9/9 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ✅ 充分（有完整测试） | 3 | [batch-6.md#ssh](batch-6.md#ssh) |
-| teleport | 6 | 3/3 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ✅ 充分（有完整测试） | 8 | [batch-6.md#teleport](batch-6.md#teleport) |
-| build-feature-profile | 7 | 7/7 | 完整 | 一致 | N/A | 部分充分（有测试） | 1 | [batch-7.md#build-feature-profile](batch-7.md#build-feature-profile) |
-| data-structures | 7 | 15/15 | 完整 | 一致 | N/A | 部分充分（无测试） | 4 | [batch-7.md#data-structures](batch-7.md#data-structures) |
-| diagnostics | 7 | 2/2 | 完整 | 一致 | N/A | 部分充分（有测试） | 7 | [batch-7.md#diagnostics](batch-7.md#diagnostics) |
-| experimental-features | 7 | 2/2 | 完整 | 一致 | N/A | 部分充分（有测试） | 7 | [batch-7.md#experimental-features](batch-7.md#experimental-features) |
-| external-stubs | 7 | 5/5 | 完整 | 一致 | N/A | 部分充分（有测试） | 7 | [batch-7.md#external-stubs](batch-7.md#external-stubs) |
-| hooks-system | 7 | 4/4 | 完整 | 一致 | N/A | 部分充分（有测试） | 2 | [batch-7.md#hooks-system](batch-7.md#hooks-system) |
-| magic-docs | 7 | 4/4 | 完整 | 一致 | N/A | 部分充分（无测试） | 4 | [batch-7.md#magic-docs](batch-7.md#magic-docs) |
-| messaging-primitives | 7 | 11/11 | 完整 | 一致 | N/A | 部分充分（有测试） | 3 | [batch-7.md#messaging-primitives](batch-7.md#messaging-primitives) |
-| native-installer | 7 | 7/7 | 完整 | 一致 | N/A | 部分充分（无测试） | 4 | [batch-7.md#native-installer](batch-7.md#native-installer) |
-| network-security | 7 | 7/7 | 完整 | 一致 | N/A | 部分充分（有测试） | 6 | [batch-7.md#network-security](batch-7.md#network-security) |
-| runtime-lifecycle | 7 | 11/11 | 完整 | 一致 | N/A | 部分充分（无测试） | 6 | [batch-7.md#runtime-lifecycle](batch-7.md#runtime-lifecycle) |
-| telemetry | 7 | 1/1 | 完整 | 一致 | N/A | 部分充分（无测试） | 4 | [batch-7.md#telemetry](batch-7.md#telemetry) |
-| test-validation | 7 | 11/11 | 完整 | 一致 | N/A | 部分充分（有测试） | 6 | [batch-7.md#test-validation](batch-7.md#test-validation) |
-| web-tools | 7 | 9/9 | 完整 | 一致 | N/A | 部分充分（有测试） | 5 | [batch-7.md#web-tools](batch-7.md#web-tools) |
+| documentation-system | 0 | 2/2 | 完整 | 一致 | N/A | 充分 (离线测试) | 1 | [00-core-query-sdk.md#documentation-system](00-core-query-sdk.md#documentation-system) |
+| plugins | 0 | 14/14 | 完整 | 一致 | 部分一致 | 部分充分 (有测试，缺集成) | 2 | [00-core-query-sdk.md#plugins](00-core-query-sdk.md#plugins) |
+| query-core | 0 | 3/3 | 完整 | 一致 | 部分一致 | 部分充分 (有测试，缺端到端) | 2 | [00-core-query-sdk.md#query-core](00-core-query-sdk.md#query-core) |
+| sdk-query-sessions | 0 | 11/11 | 完整 | 一致 | 部分一致 | 充分 (核心模块覆盖) | 1 | [00-core-query-sdk.md#sdk-query-sessions](00-core-query-sdk.md#sdk-query-sessions) |
+| sdk-type-generation | 0 | 3/3 | 完整 | 一致 | N/A | 充分 | 1 | [00-core-query-sdk.md#sdk-type-generation](00-core-query-sdk.md#sdk-type-generation) |
+| cli-startup | 1 | 6/6 | 完整 | 一致 | 一致 | 部分充分 (无直接测试, spec 截断) | 1 | [01-startup-context-model.md#cli-startup](01-startup-context-model.md#cli-startup) |
+| context-compaction | 1 | 8/8 | 完整 | 一致 | 一致 | 部分充分 (核心有测试, 其他模块缺) | 3 | [01-startup-context-model.md#context-compaction](01-startup-context-model.md#context-compaction) |
+| model-api | 1 | 12/12 | 完整 | 一致 | 一致 | 部分充分 (测试覆盖有限) | 1 | [01-startup-context-model.md#model-api](01-startup-context-model.md#model-api) |
+| attachments | 2 | 6/6 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（无独立测试） | 3 | [02-tools-permissions-sessions.md#attachments](02-tools-permissions-sessions.md#attachments) |
+| bridge | 2 | 22/22 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（关键路径无测试） | 4 | [02-tools-permissions-sessions.md#bridge](02-tools-permissions-sessions.md#bridge) |
+| buddy | 2 | 3/3 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（UI交互无测试） | 3 | [02-tools-permissions-sessions.md#buddy](02-tools-permissions-sessions.md#buddy) |
+| computer-use | 2 | 3/3 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（真实桌面环境无验收） | 4 | [02-tools-permissions-sessions.md#computer-use](02-tools-permissions-sessions.md#computer-use) |
+| file-tools | 2 | 10/10 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（无独立测试） | 3 | [02-tools-permissions-sessions.md#file-tools](02-tools-permissions-sessions.md#file-tools) |
+| lsp | 2 | 8/8 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（关键路径无测试） | 3 | [02-tools-permissions-sessions.md#lsp](02-tools-permissions-sessions.md#lsp) |
+| mcp | 2 | 20/20 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（关键路径无测试） | 3 | [02-tools-permissions-sessions.md#mcp](02-tools-permissions-sessions.md#mcp) |
+| onboarding-ui | 2 | 1/1 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（关键路径无测试） | 3 | [02-tools-permissions-sessions.md#onboarding-ui](02-tools-permissions-sessions.md#onboarding-ui) |
+| permissions | 2 | 14/14 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（核心裁决路径无测试） | 3 | [02-tools-permissions-sessions.md#permissions](02-tools-permissions-sessions.md#permissions) |
+| session-persistence | 2 | 7/7 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（关键路径无测试） | 4 | [02-tools-permissions-sessions.md#session-persistence](02-tools-permissions-sessions.md#session-persistence) |
+| shell-tools | 2 | 13/13 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（关键路径无测试） | 4 | [02-tools-permissions-sessions.md#shell-tools](02-tools-permissions-sessions.md#shell-tools) |
+| tool-framework | 2 | 7/7 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（关键路径无测试） | 4 | [02-tools-permissions-sessions.md#tool-framework](02-tools-permissions-sessions.md#tool-framework) |
+| auth | 3 | 20/20 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（仅 oauthRefresh 和 linuxSecretStorage） | 2 | [03-memory-auth-settings.md#auth](03-memory-auth-settings.md#auth) |
+| commit-attribution | 3 | 6/6 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ✅ 充分（有完整测试） | 3 | [03-memory-auth-settings.md#commit-attribution](03-memory-auth-settings.md#commit-attribution) |
+| git-integration | 3 | 9/9 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（测试不完整） | 3 | [03-memory-auth-settings.md#git-integration](03-memory-auth-settings.md#git-integration) |
+| memory | 3 | 7/7 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（无测试） | 6 | [03-memory-auth-settings.md#memory](03-memory-auth-settings.md#memory) |
+| notifications | 3 | 7/7 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（测试不完整） | 1 | [03-memory-auth-settings.md#notifications](03-memory-auth-settings.md#notifications) |
+| session-search-recovery | 3 | 8/8 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（测试不完整） | 1 | [03-memory-auth-settings.md#session-search-recovery](03-memory-auth-settings.md#session-search-recovery) |
+| sessions-share | 3 | 6/6 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ✅ 充分（share/ccshare 有完整测试） | 1 | [03-memory-auth-settings.md#sessions-share](03-memory-auth-settings.md#sessions-share) |
+| settings | 3 | 21/21 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（无测试） | 3 | [03-memory-auth-settings.md#settings](03-memory-auth-settings.md#settings) |
+| skills | 3 | 17/17 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（测试不完整） | 6 | [03-memory-auth-settings.md#skills](03-memory-auth-settings.md#skills) |
+| app-state | 4 | 10/10 | ✅完整 | ✅一致（除循环更新防护功能未实现） | ⚠️不充分（仅源码） | ⚠️部分充分（无测试） | 2 | [04-app-state-terminal-ui.md#app-state](04-app-state-terminal-ui.md#app-state) |
+| assistant-ui | 4 | 2/2 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（无测试） | 1 | [04-app-state-terminal-ui.md#assistant-ui](04-app-state-terminal-ui.md#assistant-ui) |
+| commands-framework | 4 | 3/3 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（测试不足） | 1 | [04-app-state-terminal-ui.md#commands-framework](04-app-state-terminal-ui.md#commands-framework) |
+| cost-tracking | 4 | 10/10 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（无测试） | 1 | [04-app-state-terminal-ui.md#cost-tracking](04-app-state-terminal-ui.md#cost-tracking) |
+| ide-integration | 4 | 8/8 | ✅完整 | ✅一致（设计文档已明确指出 lockfile 并发与崩溃清理限制） | ⚠️不充分（仅源码） | ⚠️部分充分（无测试） | 3 | [04-app-state-terminal-ui.md#ide-integration](04-app-state-terminal-ui.md#ide-integration) |
+| ink-platform | 4 | 20/20 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（测试不足） | 1 | [04-app-state-terminal-ui.md#ink-platform](04-app-state-terminal-ui.md#ink-platform) |
+| repl-input | 4 | 9/9 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（测试不足） | 2 | [04-app-state-terminal-ui.md#repl-input](04-app-state-terminal-ui.md#repl-input) |
+| text-formatting | 4 | 12/12 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ❌无测试 | 1 | [04-app-state-terminal-ui.md#text-formatting](04-app-state-terminal-ui.md#text-formatting) |
+| ui-rendering | 4 | 14/14 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ❌无测试 | 2 | [04-app-state-terminal-ui.md#ui-rendering](04-app-state-terminal-ui.md#ui-rendering) |
+| voice-assistant | 4 | 10/10 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ❌无测试 | 1 | [04-app-state-terminal-ui.md#voice-assistant](04-app-state-terminal-ui.md#voice-assistant) |
+| workspace-ui | 4 | 13/13 | ✅完整 | ✅一致（设计文档已明确指出沙箱刷新竞态权衡） | ⚠️不充分（仅源码） | ❌无测试 | 2 | [04-app-state-terminal-ui.md#workspace-ui](04-app-state-terminal-ui.md#workspace-ui) |
+| agent-swarms | 5 | 20/20 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（仅 agent-memory 测试） | 8 | [05-agents-tasks-workflows.md#agent-swarms](05-agents-tasks-workflows.md#agent-swarms) |
+| help-feedback | 5 | 2/2 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ❌无测试 | 2 | [05-agents-tasks-workflows.md#help-feedback](05-agents-tasks-workflows.md#help-feedback) |
+| plan-worktree | 5 | 10/10 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（仅 plan-mode 测试） | 3 | [05-agents-tasks-workflows.md#plan-worktree](05-agents-tasks-workflows.md#plan-worktree) |
+| review-analysis | 5 | 5/5 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（仅 review-artifact 测试） | 3 | [05-agents-tasks-workflows.md#review-analysis](05-agents-tasks-workflows.md#review-analysis) |
+| scheduling | 5 | 22/22 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（仅 cron-lifecycle 测试） | 6 | [05-agents-tasks-workflows.md#scheduling](05-agents-tasks-workflows.md#scheduling) |
+| task-system | 5 | 21/21 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ❌无测试 | 5 | [05-agents-tasks-workflows.md#task-system](05-agents-tasks-workflows.md#task-system) |
+| workflow | 5 | 7/7 | ✅完整 | ✅一致 | ⚠️不充分（仅源码） | ⚠️部分充分（完整 workflow 测试） | 6 | [05-agents-tasks-workflows.md#workflow](05-agents-tasks-workflows.md#workflow) |
+| webbrowser-bundled-support | 5 | 2/2 | ✅完整 | ✅一致 | 有边界搜索但未完整对齐 | ⚠️部分充分（有测试，缺集成） | 2 | [05-agents-tasks-workflows.md#webbrowser-bundled-support](05-agents-tasks-workflows.md#webbrowser-bundled-support) |
+| daemon-background | 6 | 10/10 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（有测试） | 3 | [06-remote-background-platforms.md#daemon-background](06-remote-background-platforms.md#daemon-background) |
+| deep-link | 6 | 7/7 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（无测试） | 4 | [06-remote-background-platforms.md#deep-link](06-remote-background-platforms.md#deep-link) |
+| open-runner | 6 | 7/7 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ✅ 充分（有完整测试） | 7 | [06-remote-background-platforms.md#open-runner](06-remote-background-platforms.md#open-runner) |
+| platform-integrations | 6 | 16/16 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（无完整测试） | 3 | [06-remote-background-platforms.md#platform-integrations](06-remote-background-platforms.md#platform-integrations) |
+| remote-control | 6 | 7/7 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（部分测试） | 3 | [06-remote-background-platforms.md#remote-control](06-remote-background-platforms.md#remote-control) |
+| ssh | 6 | 9/9 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ✅ 充分（有完整测试） | 3 | [06-remote-background-platforms.md#ssh](06-remote-background-platforms.md#ssh) |
+| teleport | 6 | 3/3 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ✅ 充分（有完整测试） | 8 | [06-remote-background-platforms.md#teleport](06-remote-background-platforms.md#teleport) |
+| build-feature-profile | 7 | 7/7 | 完整 | 一致 | N/A | 部分充分（有测试） | 1 | [07-build-runtime-stubs.md#build-feature-profile](07-build-runtime-stubs.md#build-feature-profile) |
+| data-structures | 7 | 15/15 | 完整 | 一致 | N/A | 部分充分（无测试） | 4 | [07-build-runtime-stubs.md#data-structures](07-build-runtime-stubs.md#data-structures) |
+| diagnostics | 7 | 2/2 | 完整 | 一致 | N/A | 部分充分（有测试） | 7 | [07-build-runtime-stubs.md#diagnostics](07-build-runtime-stubs.md#diagnostics) |
+| experimental-features | 7 | 2/2 | 完整 | 一致 | N/A | 部分充分（有测试） | 7 | [07-build-runtime-stubs.md#experimental-features](07-build-runtime-stubs.md#experimental-features) |
+| external-stubs | 7 | 5/5 | 完整 | 一致 | N/A | 部分充分（有测试） | 7 | [07-build-runtime-stubs.md#external-stubs](07-build-runtime-stubs.md#external-stubs) |
+| hooks-system | 7 | 4/4 | 完整 | 一致 | N/A | 部分充分（有测试） | 2 | [07-build-runtime-stubs.md#hooks-system](07-build-runtime-stubs.md#hooks-system) |
+| magic-docs | 7 | 4/4 | 完整 | 一致 | N/A | 部分充分（无测试） | 4 | [07-build-runtime-stubs.md#magic-docs](07-build-runtime-stubs.md#magic-docs) |
+| messaging-primitives | 7 | 11/11 | 完整 | 一致 | N/A | 部分充分（有测试） | 3 | [07-build-runtime-stubs.md#messaging-primitives](07-build-runtime-stubs.md#messaging-primitives) |
+| native-installer | 7 | 7/7 | 完整 | 一致 | N/A | 部分充分（无测试） | 4 | [07-build-runtime-stubs.md#native-installer](07-build-runtime-stubs.md#native-installer) |
+| network-security | 7 | 7/7 | 完整 | 一致 | N/A | 部分充分（有测试） | 6 | [07-build-runtime-stubs.md#network-security](07-build-runtime-stubs.md#network-security) |
+| runtime-lifecycle | 7 | 11/11 | 完整 | 一致 | N/A | 部分充分（无测试） | 6 | [07-build-runtime-stubs.md#runtime-lifecycle](07-build-runtime-stubs.md#runtime-lifecycle) |
+| telemetry | 7 | 1/1 | 完整 | 一致 | N/A | 部分充分（无测试） | 4 | [07-build-runtime-stubs.md#telemetry](07-build-runtime-stubs.md#telemetry) |
+| test-validation | 7 | 11/11 | 完整 | 一致 | N/A | 部分充分（有测试） | 6 | [07-build-runtime-stubs.md#test-validation](07-build-runtime-stubs.md#test-validation) |
+| web-tools | 7 | 9/9 | 完整 | 一致 | N/A | 部分充分（有测试） | 5 | [07-build-runtime-stubs.md#web-tools](07-build-runtime-stubs.md#web-tools) |
 
 ## 分类统计与整改顺序
 
@@ -274,8 +274,8 @@ Design docs: 0 errors, 73 warnings
 
 | ID | 主责 | 说明 | 证据 | 依赖 | 验收条件 | 来源 |
 |----|------|------|------|------|----------|------|
-| B3-auth-01 | auth | Keychain 缓存 30 秒，跨进程刷新后另一个进程最多 30 秒才看到新 token | `src/utils/secureStorage/macOsKeychainHelpers.ts:69-91` | None | 每次读取 tokens 时检查磁盘 mtime 或 Keychain 自身修改时间，变更则立即清缓存 | [batch-3.md](batch-3.md) |
-| B7-test-validation-06 | test-validation | `scripts/live-model-validation.ts` 在 `enableConfigs()` 前检查凭据，standalone 脚本的 settings 初始化契约需要明确，凭据互斥检查需要集中处理 | `scripts/live-model-validation.ts:40-48` | None | 明确 standalone 脚本的 settings 初始化契约，集中处理凭据互斥检查 | [batch-7.md](batch-7.md) |
+| B3-auth-01 | auth | Keychain 缓存 30 秒，跨进程刷新后另一个进程最多 30 秒才看到新 token | `src/utils/secureStorage/macOsKeychainHelpers.ts:69-91` | None | 每次读取 tokens 时检查磁盘 mtime 或 Keychain 自身修改时间，变更则立即清缓存 | [03-memory-auth-settings.md](03-memory-auth-settings.md) |
+| B7-test-validation-06 | test-validation | `scripts/live-model-validation.ts` 在 `enableConfigs()` 前检查凭据，standalone 脚本的 settings 初始化契约需要明确，凭据互斥检查需要集中处理 | `scripts/live-model-validation.ts:40-48` | None | 明确 standalone 脚本的 settings 初始化契约，集中处理凭据互斥检查 | [07-build-runtime-stubs.md](07-build-runtime-stubs.md) |
 
 ---
 
@@ -288,14 +288,14 @@ Design docs: 0 errors, 73 warnings
    - 证据：`src/utils/secureStorage/macOsKeychainHelpers.ts:69-91`
    - 依赖：None
    - 验收：每次读取 tokens 时检查磁盘 mtime 或 Keychain 自身修改时间，变更则立即清缓存
-   - 来源：[batch-3.md](batch-3.md)
+   - 来源：[03-memory-auth-settings.md](03-memory-auth-settings.md)
 
 2. **B7-test-validation-06**：（主责：test-validation）
    - 描述：`scripts/live-model-validation.ts` 在 `enableConfigs()` 前检查凭据，standalone 脚本的 settings 初始化契约需要明确，凭据互斥检查需要集中处理
    - 证据：`scripts/live-model-validation.ts:40-48`
    - 依赖：None
    - 验收：明确 standalone 脚本的 settings 初始化契约，集中处理凭据互斥检查
-   - 来源：[batch-7.md](batch-7.md)
+   - 来源：[07-build-runtime-stubs.md](07-build-runtime-stubs.md)
 
 ### P2 问题（97 项，优先级排序）
 
@@ -342,7 +342,7 @@ Design docs: 0 errors, 73 warnings
 | Skills/Workflow/AppState/Session 契约 | X-state-01 | `docs/superpowers/specs/2026-11-12-app-state-design.md`, `docs/superpowers/specs/2026-11-12-session-persistence-design.md`, `docs/superpowers/specs/2026-11-12-workflow-design.md`, `docs/superpowers/specs/2026-11-12-skills-design.md` | ✅ verified (文档) | #16 |
 | Build/Diagnostics/Placeholder 边界 | X-boundary-01 | `docs/superpowers/specs/2026-11-12-build-feature-profile-design.md`, `docs/superpowers/specs/2026-11-12-diagnostics-design.md`, `docs/superpowers/specs/2026-11-12-external-stubs-design.md` | ✅ verified (文档) | #16 |
 | Protocol/Test-validation 契约 | B7-test-validation-06 | `docs/superpowers/specs/2026-11-12-test-validation-design.md`, `docs/superpowers/specs/2026-11-12-bridge-design.md`, `docs/superpowers/specs/2026-11-12-tool-framework-design.md` | ✅ verified (文档) | #16 |
-| WebBrowser smoke coverage verified | webbrowser-bundled-support batch 5 | `docs/superpowers/specs/2026-11-16-webbrowser-bundled-support-design.md`, `docs/status/design-docs-completeness-audit/batch-5.md` | ✅ verified (文档) | #16 |
+| WebBrowser smoke coverage verified | webbrowser-bundled-support batch 5 | `docs/superpowers/specs/2026-11-16-webbrowser-bundled-support-design.md`, `docs/status/design-docs-completeness-audit/05-agents-tasks-workflows.md` | ✅ verified (文档) | #16 |
 | 全量 69 注册 spec 三视图覆盖 | all 69 specs | `docs/superpowers/specs/` (all 69 registered spec files) | ✅ verified (文档) | #16 |
 
 **Rejected 发现保留：** B1-cli-startup-01 保持 rejected，有效发现 234 + rejected 1 口径不变。
