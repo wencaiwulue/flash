@@ -21,8 +21,8 @@ import {
   primeKeychainCacheFromPrefetch,
   touchKeychainCacheVersion,
   getKeychainCacheVersionPath
-} from './src/utils/secureStorage/macOsKeychainHelpers';
-import { macOsKeychainStorage } from './src/utils/secureStorage/macOsKeychainStorage';
+} from '{{PROJECT_ROOT}}/src/utils/secureStorage/macOsKeychainHelpers';
+import { macOsKeychainStorage } from '{{PROJECT_ROOT}}/src/utils/secureStorage/macOsKeychainStorage';
 
 const action = process.argv[2];
 const arg1 = process.argv[3];
@@ -84,7 +84,10 @@ describe('macOS Keychain Cross-Process Behavior', () => {
     clearKeychainCache();
 
     helperScriptPath = join(tempDir, 'helper.ts');
-    await writeFile(helperScriptPath, helperScriptContent);
+    // Replace placeholder with actual project root
+    const projectRoot = await realpath(join(__dirname, '..'));
+    const content = helperScriptContent.replaceAll('{{PROJECT_ROOT}}', projectRoot);
+    await writeFile(helperScriptPath, content);
   });
 
   afterEach(async () => {
@@ -294,7 +297,7 @@ describe('macOS Keychain Cross-Process Behavior', () => {
     if (arg1 !== undefined) args.push(arg1);
     if (arg2 !== undefined) args.push(arg2);
 
-    const process = spawn({
+    const child = spawn({
       cmd: ['bun', ...args],
       cwd: process.cwd(),
       env: { ...process.env, CLAUDE_CONFIG_DIR: tempDir },
@@ -302,9 +305,9 @@ describe('macOS Keychain Cross-Process Behavior', () => {
       stderr: 'pipe',
     });
 
-    const stdout = await new Response(process.stdout).text();
-    const stderr = await new Response(process.stderr).text();
-    const exitCode = await process.exited;
+    const stdout = await new Response(child.stdout).text();
+    const stderr = await new Response(child.stderr).text();
+    const exitCode = await child.exited;
 
     return {
       success: exitCode === 0,
