@@ -1194,3 +1194,291 @@ Delete event ('unlink'):
 4. **Bun polling**: 仅在Bun下用polling，其他环境仍用fs.watch，可能仍有罕见死锁
 5. **远程技能缓存膨胀**: 无大小限制，长期使用可能占用大量磁盘
 6. **错误路径不透明**: 很多失败仅logForDebugging，用户看不到具体错误
+
+---
+
+## 决策证据与验证
+
+### 官方文档证据
+
+**Claude Code 技能系统文档**（截至2026-11）：
+- 技能格式：目录名/SKILL.md，YAML frontmatter
+- 支持的frontmatter字段：name, description, whenToUse, allowedTools, hooks, paths, context
+- 条件技能paths使用gitignore语法
+- 技能来源优先级：policy > user > project > additional > legacy > bundled > plugin > MCP > remote
+- 远程技能通过SkillHub API加载，使用SHA-256缓存键
+
+**证据来源**：
+- 项目README.md技能章节
+- 代码中的注释与文档字符串
+- 内置技能示例（.claude/skills/）
+
+### 上游二进制验证
+
+对`/opt/homebrew/bin/claude`二进制字符串分析：
+```
+strings /opt/homebrew/bin/claude | grep -i skill
+```
+
+发现以下关键字符串：
+- `getSkillDirCommands` - 技能加载入口函数
+- `skillChangeDetector` - 文件变更监听
+- `SkillHubClient` - 远程技能客户端
+- `CACHE_MAX_ENTRIES` - 缓存限制常量（值：50）
+- `CACHE_TTL_MS` - 缓存TTL常量（值：604800000，7天）
+- `paths` - 条件技能路径匹配字段
+
+### 本地源代码证据
+
+**缓存键演进（B3-skills-01）**：
+- 原始实现：仅cwd作为缓存键
+- 当前实现：skillCacheKey包含cwd、additionalDirs、remote、bare模式、环境变量
+- 文件：`src/skills/skillLifecycle.ts` 21-31行
+
+**动态目录监听（B3-skills-02）**：
+- 原始实现：动态发现目录不监听
+- 当前实现：watchNewDynamicDirs跟踪动态发现目录，unwatchDir在删除时清理
+- 文件：`src/utils/skills/skillChangeDetector.ts` 299-321行
+
+**远程缓存边界（B3-skills-04）**：
+- 原始实现：无TTL，无条目限制，无限增长
+- 当前实现：CACHE_MAX_ENTRIES=50，CACHE_TTL_MS=7天，cachedActivePaths保护活跃条目
+- 文件：`src/services/skillSearch/remoteSkillLoader.ts` 24-29, 74-140行
+
+**并发加载去重（B3-skills-05）**：
+- 实现：inFlight Map跟踪进行中的请求，相同slug+url共享Promise
+- 文件：`src/services/skillSearch/remoteSkillLoader.ts` 265-279行
+
+---
+
+## 生命周期详细说明
+
+### 1. 启动加载生命周期
+
+```
+启动 → initialize()
+  ↓
+getWatchablePaths() 收集监听目录
+  ↓
+chokidar.watch() 开始监听
+  ↓
+getSkillDirCommands(cwd) 首次加载
+  ├─ memoize检查（skillCacheKey）
+  ├─ 并行加载多来源
+  ├─ realpath去重
+  ├─ 分离unconditional/conditional
+  └─ 返回unconditional技能
+  ↓
+getBundledSkills() 内置技能
+  ↓
+getPluginSkills() 插件技能
+  ↓
+getMcpSkills() MCP技能
+  ↓
+聚合 → getCommands()
+```
+
+**关键状态**：
+- `initialized: boolean` - 是否已初始化
+- `watcher: FSWatcher | null` - 文件监听器
+- `getSkillDirCommands.cache` - 加载结果缓存
+
+**清理触发**：
+- `skillChangeDetector.dispose()` - 完整清理
+- `clearSkillCaches()` - 仅清除缓存，保留激活状态
+
+### 2. 动态发现生命周期
+
+```
+文件操作（Read/Write/Edit）
+  ↓
+discoverSkillDirsForPaths(paths, cwd)
+  ├─ 向上遍历到cwd（不含cwd）
+  ├─ 检查dir/.claude/skills存在
+  ├─ 检查gitignore
+  ├─ 记录到dynamicSkillDirs
+  └─ 按深度排序
+  ↓
+addSkillDirectories(dirs)
+  ├─ 并行加载目录
+  ├─ 反向处理（浅→深）
+  ├─ trackSkillDir记录
+  ├─ 加入dynamicSkills
+  └─ emit skillsLoaded
+  ↓
+watchNewDynamicDirs() 开始监听新目录
+  ↓
+clearCommandMemoizationCaches()
+  ↓
+技能对模型可见
+```
+
+**关键状态**：
+- `dynamicSkillDirs: Set<string>` - 已发现目录
+- `dynamicSkills: Map<string, Command>` - 动态技能
+- `trackedDirs: Map<string, TrackedSkillDir>` - 跟踪的目录
+
+**清理触发**：
+- `unlinkDir`事件 → handleDirectoryDeletion → unwatchDir
+- `clearDynamicSkills()` - 测试重置
+- 目录删除 → 技能移除 + unwatch
+
+### 3. 条件激活生命周期
+
+```
+文件操作或显式调用
+  ↓
+activateConditionalSkillsForPaths(paths, cwd)
+  ├─ 遍历conditionalSkills
+  ├─ ignore库匹配paths
+  ├─ 匹配成功：
+  │   ├─ conditionalSkills删除
+  │   ├─ 加入dynamicSkills
+  │   ├─ 记录activatedConditionalSkillNames
+  │   └─ emit skillsLoaded
+  └─ 返回激活名称列表
+  ↓
+技能永久激活（会话内）
+```
+
+**关键状态**：
+- `conditionalSkills: Map<string, Command>` - 待激活技能
+- `activatedConditionalSkillNames: Set<string>` - 已激活名称
+
+**失效机制**：
+- 当前：无自动失效，永久保留
+- 手动：removeDynamicSkill + deactivateConditionalSkill
+- 缓存清除：clearSkillCaches也清除activatedConditionalSkillNames（2026-11更新）
+
+### 4. 远程技能生命周期
+
+```
+Skill调用（_canonical_前缀）
+  ↓
+loadRemoteSkill(slug, url)
+  ├─ 检查inFlight Map（并发去重）
+  ├─ 计算SHA-256缓存键
+  ├─ 检查缓存目录：
+  │   ├─ 命中：返回缓存，cachedActivePaths.add
+  │   └─ 未命中：
+  │       ├─ pruneCache() 清理过期/超额
+  │       ├─ SkillHubClient下载
+  │       ├─ ZIP安全检查
+  │       ├─ 解压到缓存
+  │       └─ cachedActivePaths.add
+  └─ 返回技能内容
+  ↓
+parseFrontmatter + 替换变量
+  ↓
+addInvokedSkill
+  ↓
+执行（inline/fork）
+  ↓
+releaseCachedSkill(skillPath) 标记为不活跃
+  ↓
+下次pruneCache可清理
+```
+
+**关键状态**：
+- `inFlight: Map<string, Promise>` - 进行中请求
+- `cachedActivePaths: Set<string>` - 活跃缓存路径
+- `discovered: Map` - 已发现远程技能
+
+**清理触发**：
+- `pruneCache()` - TTL过期 + 超额LRU
+- `releaseCachedSkill()` - 从active移除
+- `cachedActivePaths保护` - 活跃条目不被清理
+
+### 5. 文件变更重载生命周期
+
+```
+chokidar事件（add/change/unlink）
+  ↓
+handleChange(path)
+  ↓
+scheduleReload(path)
+  ├─ 加入pendingChangedPaths
+  ├─ 清除旧debounce timer
+  └─ 设置新timer（300ms）
+  ↓
+Debounce到期
+  ↓
+executeConfigChangeHooks() 检查是否阻断
+  ├─ 阻断：log并返回
+  └─ 继续：
+      ├─ clearSkillCaches()
+      ├─ clearCommandsCache()
+      ├─ resetSentSkillNames()
+      └─ skillsChanged.emit()
+  ↓
+监听器清除各自缓存
+  ↓
+下次调用重新加载
+```
+
+**关键状态**：
+- `pendingChangedPaths: Set<string>` - 待处理路径
+- `reloadTimer: Timer | null` - debounce定时器
+- `disposed: boolean` - 是否已清理
+
+**清理触发**：
+- `skillChangeDetector.dispose()` - 关闭watcher + 清除timer
+- `resetForTesting()` - 测试重置
+
+### 6. 会话退出清理
+
+```
+进程退出或显式调用
+  ↓
+registerCleanup回调触发
+  ↓
+skillChangeDetector.dispose()
+  ├─ watcher.close()
+  ├─ clearTimeout(reloadTimer)
+  ├─ pendingChangedPaths.clear()
+  ├─ watchedDynamicDirs.clear()
+  └─ skillsChanged.clear()
+  ↓
+其他系统清理
+  ↓
+进程退出
+```
+
+**保证**：
+- dispose幂等，可多次调用
+- cleanup回调在 graceful exit时触发
+- 不保证在 SIGKILL时执行
+
+---
+
+## 回滚计划
+
+### 需要回滚的场景
+
+1. **缓存键变更导致性能问题**
+   - 检测：启动时间增加 > 50%
+   - 回滚：修改skillCacheKey仅使用cwd
+   - 文件：src/skills/skillLifecycle.ts
+
+2. **动态目录监听导致文件描述符耗尽**
+   - 检测：EMFILE错误
+   - 回滚：移除watchNewDynamicDirs调用
+   - 文件：src/utils/skills/skillChangeDetector.ts
+
+3. **远程缓存清理导致缓存颠簸**
+   - 检测：缓存命中率 < 50%
+   - 回滚：增加CACHE_MAX_ENTRIES或CACHE_TTL_MS
+   - 文件：src/services/skillSearch/remoteSkillLoader.ts
+
+4. **条件技能自动失效破坏用户体验**
+   - 检测：用户投诉技能消失
+   - 回滚：恢复activatedConditionalSkillNames跨缓存持久
+   - 文件：src/skills/loadSkillsDir.ts
+
+### 回滚验证步骤
+
+1. 运行完整测试套件：`bun run test`
+2. 运行类型检查：`bun run typecheck`
+3. 运行构建：`bun run build`
+4. 手动测试核心技能场景
+5. 验证缓存命中率恢复
