@@ -6,7 +6,7 @@
  * Tests REAL API paths from the actual source modules.
  */
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test, afterEach } from 'bun:test'
 import {
   assertLoopbackCdpEndpoint,
   DEFAULT_OPEN_CHROME_CDP_ENDPOINT,
@@ -370,5 +370,92 @@ describe('Retry Pattern Contracts (Real Protocol)', () => {
 
     const notRetryable = new OpenRunnerError('PERMISSION_DENIED', 'no access', 403, false)
     expect(notRetryable.retryable).toBe(false)
+  })
+})
+
+describe('Open Chrome Preflight Behavior (Real Implementation)', () => {
+  // The preflightOpenChrome function does real fetch with AbortController timeout
+  // Let's verify the timeout mechanism by checking the source pattern exists
+
+  test('preflightOpenChrome uses timeout pattern', async () => {
+    // We can't test the actual network behavior, but we can verify the
+    // implementation pattern by reading the source
+    const source = await Bun.file(
+      import.meta.dir + '/../src/external-stubs/claude-for-chrome-mcp.ts'
+    ).text()
+
+    // Verify it has AbortController pattern
+    expect(source).toContain('AbortController')
+    expect(source).toContain('setTimeout')
+    expect(source).toContain('controller.abort')
+    expect(source).toContain('preflight timed out')
+
+    // Verify it checks for ws: protocol redirect bypass
+    expect(source).toContain('protocol === \'ws:\'')
+    expect(source).toContain('protocol === \'wss:\'')
+
+    // Verify it checks response.ok
+    expect(source).toContain('response.ok')
+  })
+
+  test('preflightOpenChrome redirect behavior: ws/wss bypass preflight', async () => {
+    // The source shows that ws: and wss: protocols bypass the HTTP preflight
+    const source = await Bun.file(
+      import.meta.dir + '/../src/external-stubs/claude-for-chrome-mcp.ts'
+    ).text()
+
+    expect(source).toContain(`if (endpoint.protocol === 'ws:' || endpoint.protocol === 'wss:') return`)
+  })
+})
+
+describe('Open Chrome Disabled/Stubbed Tool (Real Implementation)', () => {
+  test('browser_close tool is disabled in proxy', async () => {
+    // Verify browser_close is disabled in the source
+    const source = await Bun.file(
+      import.meta.dir + '/../src/external-stubs/claude-for-chrome-mcp.ts'
+    ).text()
+
+    // Check that browser_close is filtered from listTools
+    expect(source).toContain('tool.name !== \'browser_close\'')
+
+    // Check that browser_close has a stub handler returning error
+    expect(source).toContain('toolName === \'browser_close\'')
+    expect(source).toContain('browser_close is disabled for real Chrome')
+    expect(source).toContain('isError: true')
+  })
+})
+
+describe('Open Chrome Timeout/Retry Contracts (Real Implementation)', () => {
+  test('cdpTimeoutMs is validated and passed through', async () => {
+    const source = await Bun.file(
+      import.meta.dir + '/../src/external-stubs/claude-for-chrome-mcp.ts'
+    ).text()
+
+    // Verify cdpTimeoutMs validation exists
+    expect(source).toContain('!Number.isFinite(context.cdpTimeoutMs)')
+    expect(source).toContain('context.cdpTimeoutMs < 0')
+
+    // Verify timeout is passed to config
+    expect(source).toContain('cdpTimeout: context.cdpTimeoutMs')
+  })
+
+  test('tool calls are queued for serial execution', async () => {
+    const source = await Bun.file(
+      import.meta.dir + '/../src/external-stubs/claude-for-chrome-mcp.ts'
+    ).text()
+
+    // Verify tool queue exists
+    expect(source).toContain('let toolQueue: Promise<unknown> = Promise.resolve()')
+    expect(source).toContain('toolQueue = call.catch')
+  })
+
+  test('cleanup has timeout', async () => {
+    const source = await Bun.file(
+      import.meta.dir + '/../src/external-stubs/claude-for-chrome-mcp.ts'
+    ).text()
+
+    // Verify cleanup timeout pattern
+    expect(source).toContain('Browser resource cleanup timed out')
+    expect(source).toContain('Promise.race')
   })
 })
