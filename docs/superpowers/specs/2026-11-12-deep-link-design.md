@@ -592,6 +592,282 @@ Windows 注册表与路径：
 - **Main**：`main.tsx` 早期 CLI 处理阶段使用 `--handle-uri`，本文只描述调用点
 - **Desktop Deep Link**：`desktopDeepLink.ts` 用于反向 `claude://` 协议调用，本文描述
 
+---
+
+### 4.7 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        Deep Link 协议处理系统架构                           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ┌───────────────────────────────────────────────────────────────────────┐│
+│  │  外部链接触发                                                         ││
+│  │  ┌─────────────────────────────────────────────────────────────────┐││
+│  │  │ macOS: LaunchServices → Claude Code URL Handler.app          │││
+│  │  │ Linux: xdg-open → ~/.local/share/applications/...desktop     │││
+│  │  │ Windows: Registry → claude-cli:// protocol handler          │││
+│  │  └─────────────────────────────────────────────────────────────────┘││
+│  └───────────────────────────────────────────────────────────────────────┘│
+│                                    │                                        │
+│  ┌───────────────────────────────────────────────────────────────────────┐│
+│  │  协议解析与验证 (Protocol Parsing & Validation)                      ││
+│  │  ┌─────────────────────────────────────────────────────────────────┐││
+│  │  │ src/utils/deepLink/parseDeepLink.ts                           │││
+│  │  │ → parseDeepLink(uri): DeepLinkAction                       │││
+│  │  │ → 验证: 协议 claude-cli://, hostname=open               │││
+│  │  │ → 参数验证: cwd 绝对路径、repo slug 格式、q≤5000 字符、无控制字符│││
+│  │  └─────────────────────────────────────────────────────────────────┘││
+│  └───────────────────────────────────────────────────────────────────────┘│
+│                                    │                                        │
+│  ┌───────────────────────────────────────────────────────────────────────┐│
+│  │  协议处理主流程 (Protocol Handler)                                   ││
+│  │  ┌─────────────────────────────────────────────────────────────────┐││
+│  │  │ src/utils/deepLink/protocolHandler.ts                        │││
+│  │  │ → handleDeepLinkUri(uri) → resolveCwd()                   │││
+│  │  │ → cwd 参数: 直接使用 (已验证绝对路径)                      │││
+│  │  │ → repo 参数: 通过 githubRepoPaths 查找本地克隆 (MRU 顺序)  │││
+│  │  │ → 两者都不提供: 回退到 homedir()                          │││
+│  │  │ → readLastFetchTime(cwd) → 显示仓库 freshness            │││
+│  │  └─────────────────────────────────────────────────────────────────┘││
+│  └───────────────────────────────────────────────────────────────────────┘│
+│                                    │                                        │
+│  ┌───────────────────────────────────────────────────────────────────────┐│
+│  │  终端检测与启动 (Terminal Detection & Launch)                        ││
+│  │  ┌─────────────────────────────────────────────────────────────────┐││
+│  │  │ src/utils/deepLink/terminalLauncher.ts                      │││
+│  │  │ → detectTerminal(): 优先用户偏好 → 正在运行 → 已安装 → 默认│││
+│  │  │ → launchInTerminal(claudePath, action): boolean           │││
+│  │  │ → 纯 argv 优先 (Ghostty/Alacritty/Kitty/WezTerm/Windows Terminal)│││
+│  │  │ → shell 路径后备 (iTerm2/Terminal.app/PowerShell/cmd.exe)│││
+│  │  └─────────────────────────────────────────────────────────────────┘││
+│  └───────────────────────────────────────────────────────────────────────┘│
+│                                    │                                        │
+│  ┌───────────────────────────────────────────────────────────────────────┐│
+│  │  终端偏好持久化 (Terminal Preference Persistence)                   ││
+│  │  ┌─────────────────────────────────────────────────────────────────┐││
+│  │  │ src/utils/deepLink/terminalPreference.ts                    │││
+│  │  │ → updateDeepLinkTerminalPreference() → 写 config.deepLinkTerminal│││
+│  │  │ → 仅在交互式启动时执行 (TERM_PROGRAM 环境变量)            │││
+│  │  └─────────────────────────────────────────────────────────────────┘││
+│  └───────────────────────────────────────────────────────────────────────┘│
+│                                    │                                        │
+│  ┌───────────────────────────────────────────────────────────────────────┐│
+│  │  协议注册 (Protocol Registration)                                   ││
+│  │  ┌─────────────────────────────────────────────────────────────────┐││
+│  │  │ src/utils/deepLink/registerProtocol.ts                      │││
+│  │  │ → ensureDeepLinkProtocolRegistered() → backgroundHousekeeping│││
+│  │  │ → macOS: ~/Applications/Claude Code URL Handler.app         │││
+│  │  │ → Linux: ~/.local/share/applications/claude-code-url-handler.desktop│││
+│  │  │ → Windows: HKCU\Software\Classes\claude-cli               │││
+│  │  │ → 失败冷却: ~/.claude/.deep-link-register-failed (24h)     │││
+│  │  └─────────────────────────────────────────────────────────────────┘││
+│  └───────────────────────────────────────────────────────────────────────┘│
+│                                    │                                        │
+│  ┌───────────────────────────────────────────────────────────────────────┐│
+│  │  Banner 显示与交互 (Banner & UI)                                     ││
+│  │  ┌─────────────────────────────────────────────────────────────────┐││
+│  │  │ src/utils/deepLink/banner.ts                                  │││
+│  │  │ → buildDeepLinkBanner(info): string → 显示来源、仓库 freshness、超长警告│││
+│  │  │ → --deep-link-origin 标志 → 显示 banner → prefill 输入        │││
+│  │  └─────────────────────────────────────────────────────────────────┘││
+│  └───────────────────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**说明：**
+- 外部链接通过操作系统协议处理器触发，调用 `claude --handle-uri <uri>`
+- 协议解析严格验证安全性：无控制字符、cwd 绝对路径、repo slug 格式、q≤5000 字符
+- repo 参数通过 `githubRepoPaths` 间接查找本地克隆，不直接作为路径防止遍历
+- 终端启动优先纯 argv 路径安全，shell 路径后备兼容，各终端有不同引用规则
+- 协议注册静默失败，24h 冷却，不覆盖其他应用，仅在需要时更新
+- 每次 deep link 启动都显示 banner 告知来源，超长 q 警告需滚动查看
+
+---
+
+### 4.8 关键流程与失败路径
+
+#### 主流程：Deep Link 处理端到端
+
+```text
+[用户点击 claude-cli://open?q=...&cwd=...&repo=...]
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 操作系统协议处理器                                                    │
+│ → 调用 claude --handle-uri <uri>                                   │
+└─────────────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ parseDeepLink(uri)                                                  │
+│ 1. 协议前缀归一化 (补全 ://)                                         │
+│ 2. URL 解析: hostname 必须为 open                                   │
+│ 3. 参数验证:                                                         │
+│    - cwd: 必须绝对路径、无控制字符、≤4096 字符                       │
+│    - repo: 必须匹配 /^[\w.-]+\/[\w.-]+$/                              │
+│    - q: 去除隐藏 unicode、无控制字符、≤5000 字符                     │
+│ 4. 任何验证失败 → 显示错误、退出码 1                                 │
+└─────────────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ resolveCwd(action)                                                  │
+│ 1. cwd 提供 → 直接使用 (已验证绝对路径)                              │
+│ 2. repo 提供 → getKnownPathsForRepo(repo) → filterExistingPaths() │
+│    → 取第一个 (MRU 顺序) → 记录 resolvedRepo                      │
+│ 3. 两者都不提供 → 回退到 homedir()                                  │
+│ 4. repo 未找到 → 静默回退、仍启动                                  │
+└─────────────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ readLastFetchTime(cwd)                                              │
+│ 1. 检查 FETCH_HEAD mtime                                            │
+│ 2. 检查 common git dir (工作树情况)                                  │
+│ 3. 取较新的时间 → 用于 banner 显示 freshness                       │
+│ 4. 失败 → 忽略、不显示 freshness                                    │
+└─────────────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ launchInTerminal(claudePath, action)                                │
+│ 1. detectTerminal():                                                 │
+│    → 优先用户配置 (config.deepLinkTerminal)                        │
+│    → 其次检查正在运行的终端 (macOS: TERM_PROGRAM 或 ps)          │
+│    → 再次检查已安装 (macOS Spotlight / ls /Applications)            │
+│    → 最后回退到系统默认                                              │
+│ 2. 选择启动方式: 纯 argv 优先、shell 路径后备                      │
+│ 3. 构造启动参数: --deep-link-origin [--deep-link-repo repo]         │
+│    [--deep-link-last-fetch ms] [--prefill query]                   │
+│ 4. 启动终端 → 返回 boolean (成功/失败)                              │
+│ 5. 失败 → 显示错误、退出码 1                                       │
+└─────────────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 新终端中的 Claude CLI                                                │
+│ 1. 检测 --deep-link-origin 标志                                     │
+│ 2. 显示 deep link banner: 来源提示、仓库 freshness (如有)、超长警告 (如有)│
+│ 3. prefill 输入 (如有)                                               │
+│ 4. 等待用户交互 → 正常会话                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 主流程：协议注册
+
+```text
+[backgroundHousekeeping() 调用 ensureDeepLinkProtocolRegistered()]
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 前置检查                                                             │
+│ 1. feature flag tengu_lodestone_enabled? → 未启用则跳过           │
+│ 2. disableDeepLinkRegistration 设置? → 已设置则跳过             │
+│ 3. 检查 marker ~/.claude/.deep-link-register-failed → 存在且未过期 (24h) → 跳过│
+└─────────────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ isProtocolHandlerCurrent(claudePath)                               │
+│ → 直接读取平台注册 artifact:                                        │
+│   - macOS: 读取 symlink 目标是否指向当前 claude                    │
+│   - Linux: 读取 .desktop 文件 Exec 行                               │
+│   - Windows: 查询注册表值                                           │
+│ → 任何读取错误 → false → 重新注册                                  │
+│ → 已注册且指向当前 claude → 跳过 → 结束                          │
+└─────────────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 按平台注册                                                           │
+│                                                                       │
+│ macOS:                                                               │
+│ 1. 创建 ~/Applications/Claude Code URL Handler.app/Contents/Info.plist│
+│ 2. Info.plist 注册 claude-cli:// scheme                            │
+│ 3. 创建 symlink 到当前 claude 二进制                                │
+│ 4. 运行 lsregister 刷新 LaunchServices                             │
+│                                                                       │
+│ Linux:                                                               │
+│ 1. 创建 ~/.local/share/applications/claude-code-url-handler.desktop│
+│ 2. Exec 行: "claude" --handle-uri %u                              │
+│ 3. MIME: x-scheme-handler/claude-cli                                │
+│ 4. 运行 xdg-mime default (可选、失败不影响)                         │
+│                                                                       │
+│ Windows:                                                             │
+│ 1. 写入 HKCU\Software\Classes\claude-cli                           │
+│ 2. 默认值: URL:Claude Code Deep Link                                │
+│ 3. URL Protocol 空字符串                                            │
+│ 4. shell\open\command: "claude" --handle-uri "%1"                   │
+│ 5. 使用 reg add 命令                                                │
+└─────────────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 失败处理                                                             │
+│ 1. 确定性失败 (EACCES / ENOSPC) → 创建 marker ~/.claude/.deep-link-register-failed│
+│ 2. 静默失败、不影响主流程                                           │
+│ 3. 注册成功 → 删除 marker (如存在)                                  │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 失败路径：协议解析失败
+
+```text
+[URI 包含无效内容]
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ parseDeepLink() 验证失败                                             │
+│ → 协议不是 claude-cli:// → 错误                                      │
+│ → hostname 不是 open → 错误                                         │
+│ → cwd 不是绝对路径 → 错误                                           │
+│ → repo 不匹配 slug 格式 → 错误                                       │
+│ → q 包含控制字符 → 错误                                              │
+│ → q 超过 5000 字符 → 错误                                           │
+│ → 显示清晰错误信息 → 退出码 1 → 结束                               │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 失败路径：终端启动失败
+
+```text
+[launchInTerminal() 尝试首选终端失败]
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ macOS: 尝试下一个终端 → 最后回退到 Terminal.app                    │
+│ Linux: 尝试下一个终端 → 最后回退到 x-terminal-emulator 或 xterm    │
+│ Windows: 尝试下一个终端 → 最后回退到 cmd.exe                       │
+│                                                                       │
+│ 所有都失败 → 显示错误 → 退出码 1 → 结束                            │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 4.9 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| `DeepLinkAction` (解析结果) | parseDeepLink() 纯函数 | parseDeepLink(uri) → 验证参数 → 返回结构化对象 | 无状态、每次调用重新创建 | 否 | 函数返回后自动失效 | 无 |
+| `TerminalInfo` (终端检测结果) | terminalLauncher.ts detectTerminal() | detectTerminal() → 按优先级检查偏好/运行/已安装 → 返回 { name, command } | 隔离：每次调用重新检测 | 否 | 终端配置变化后下次检测更新 | 无 |
+| `config.deepLinkTerminal` (终端偏好) | terminalPreference.ts updateDeepLinkTerminalPreference() | 交互式启动时读取 TERM_PROGRAM → 查找映射表 → 写入 config | 共享：所有 deep link 共享同一偏好 | 是 (存储在 ~/.claude/settings.json) | 用户可修改配置覆盖 | 无 |
+| `Claude Code URL Handler.app` (macOS trampoline) | registerProtocol.ts registerMacos() | 创建 bundle 目录 → 写入 Info.plist → 创建 symlink 到 claude → lsregister 刷新 | 共享：系统级别注册 | 是 | claude 路径变化时重新注册覆盖 | 无 |
+| `claude-code-url-handler.desktop` (Linux) | registerProtocol.ts registerLinux() | 创建文件到 ~/.local/share/applications/ → 写入 Exec/MIME → xdg-mime default | 共享：系统级别注册 | 是 | claude 路径变化时重新注册覆盖 | 无 |
+| `HKCU\Software\Classes\claude-cli` (Windows 注册表) | registerProtocol.ts registerWindows() | 使用 reg add 写入注册表项 → 设置默认值/URL Protocol/shell\open\command | 共享：系统级别注册 | 是 | claude 路径变化时重新注册覆盖 | 无 |
+| `.deep-link-register-failed` (失败 marker) | registerProtocol.ts ensureDeepLinkProtocolRegistered() | 确定性失败 (EACCES/ENOSPC) 时创建到 ~/.claude/ | 隔离：单例 marker 文件 | 是 (24h 冷却) | 24h 后过期自动重试，或注册成功删除 | 注册成功 → 删除 marker |
+| `DeepLinkBanner` (UI 显示) | banner.ts buildDeepLinkBanner() | buildDeepLinkBanner(info) → 构造 banner 字符串 → 包含来源/freshness/超长警告 | 隔离：每次 deep link 重新构造 | 否 | 显示后自动失效 | 无 |
+
+**生命周期证据：**
+- src/utils/deepLink/parseDeepLink.ts
+- src/utils/deepLink/protocolHandler.ts
+- src/utils/deepLink/registerProtocol.ts
+- src/utils/deepLink/terminalLauncher.ts
+- src/utils/deepLink/terminalPreference.ts
+- src/utils/deepLink/banner.ts
+- src/utils/desktopDeepLink.ts
+- src/components/DesktopHandoff.tsx
+
 ## 5. 失败语义与工程取舍
 
 ### 6.1 失败语义
