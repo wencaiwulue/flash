@@ -737,15 +737,14 @@ const { done } = startWorkflowTask({ workflow, input: '', context, canUseTool })
 ```
 启动
   ↓
-ANTHROPIC_API_KEY && ANTHROPIC_AUTH_TOKEN?
-  Yes → throw "mutually exclusive"
-  No → 继续
+enableConfigs()
   ↓
-!ANTHROPIC_API_KEY && !ANTHROPIC_AUTH_TOKEN?
+source = validateCredentialSources(process.env)
+  ↓
+source === null?
   Yes → MODEL_LIVE_SKIPPED → return
   No → 继续
   ↓
-enableConfigs()
 model = getMainLoopModel()
 toolContext = context(model)
   ↓
