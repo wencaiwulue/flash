@@ -418,8 +418,13 @@ function versionMetadata(value: string): {
   introduced?: string
   afterBaseline?: boolean
 } {
-  const versions = [...value.matchAll(REQUIRES_PATTERN)].map(match => match[1]!)
+  const versions = [...new Set(
+    [...value.matchAll(REQUIRES_PATTERN)].map(match => match[1]!),
+  )]
   if (versions.length === 0) return {}
+  if (versions.length > 1) {
+    throw new Error(`multiple Requires versions are ambiguous: ${versions.join(', ')}`)
+  }
   const afterBaseline = versions.some(version => compareVersions(version, UPSTREAM_BASELINE_VERSION) > 0)
   return {
     introduced: versions[0],

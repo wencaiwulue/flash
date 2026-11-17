@@ -114,6 +114,53 @@ ${'Long prose prefix. '.repeat(80)}${requires}
     )).toBe('Requires Claude Code v2.1.319 or later')
   })
 
+  test('rejects ambiguous mixed-version Requires statements in every document kind', () => {
+    expect(() => parseSettingsReference(settingsMarkdown({
+      description: 'Requires Claude Code v2.1.300 or later. Requires Claude Code v2.1.319 or later.',
+    }), source)).toThrow('multiple Requires versions')
+    const splitSettings = settingsMarkdown({
+      description: 'Requires Claude Code v2.1.300 or later.',
+    }).replace(
+      '* **Scope**:',
+      'Requires Claude Code v2.1.319 or later.\n* **Scope**:',
+    )
+    expect(() => parseSettingsReference(splitSettings, source)).toThrow(
+      'multiple Requires versions',
+    )
+    expect(() => parseHooksReference(`
+| Event | When it fires |
+| :- | :- |
+| \`FutureEvent\` | Requires Claude Code v2.1.300 or later. Requires Claude Code v2.1.319 or later. |
+`, source)).toThrow('multiple Requires versions')
+    expect(() => parseEnvironmentReference(`
+| Variable | Purpose |
+| :- | :- |
+| \`FUTURE_ENV\` | Requires Claude Code v2.1.300 or later. Requires Claude Code v2.1.319 or later. |
+`, source)).toThrow('multiple Requires versions')
+  })
+
+  test('allows repeated statements for the same Requires version', () => {
+    const requires = 'Requires Claude Code v2.1.319 or later.'
+    const repeated = `${requires} ${requires}`
+    const entries = [
+      parseSettingsReference(settingsMarkdown({ description: requires }), source)[0]!,
+      parseHooksReference(`
+| Event | When it fires |
+| :- | :- |
+| \`FutureEvent\` | ${repeated} |
+`, source)[0]!,
+      parseEnvironmentReference(`
+| Variable | Purpose |
+| :- | :- |
+| \`FUTURE_ENV\` | ${repeated} |
+`, source)[0]!,
+    ]
+    for (const entry of entries) {
+      expect(entry).toMatchObject({ introduced: '2.1.319', afterBaseline: true })
+      expect(entry.excerpt).toContain(requires)
+    }
+  })
+
   test('rejects a Requires statement that is too long to preserve completely', () => {
     const markdown = `
 | Setting | Description | Category | Scope |
