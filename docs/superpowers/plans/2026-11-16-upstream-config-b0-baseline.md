@@ -178,7 +178,7 @@ Expected: FAIL，无法 import `scripts/upstreamConfigInventory.ts`；此时尚�
 3. 简单主类型 string/boolean/number/object/array 可规范化为小写主类型；带描述的复合 object/array 必须保留完整 Type 语义，绝不按反引号内或属性列表中的逗号/冒号切割。非主类型复合 Type 保留大小写及 code span/link 文本，只规范化已识别主类型术语。`UpstreamEntry.default` 始终表示固定 2.1.311 的有效默认值：对明确的 `Before vX, the default was \`literal\``，baseline<X 时通用解析历史 literal，baseline>=X 时使用当前 literal；当前文档 Default 原文完整保留在 excerpt，不新增平行默认值字段。Default 的反引号 `true/false/null`、有限数字在后接空白或 `, . ; : ! ?` 时仍转对应 JSON 值；unset 和描述性默认值保留 `default:null`，同时 `defaultDocumented:true`，原文进入 excerpt。
 4. 描述以 Deprecated 开头设 deprecated，以 Removed 开头设 removed；env 的 `\[DEPRECATED]`/`[DEPRECATED]` 前缀也设 deprecated。仅 deprecated/removed 生命周期可从 `use \`replacement\`` 提取 replacement，active 不得因普通示例中的 use 生成伪 replacement。详情警告实际驱动 deprecated/removed 时，把该警告原文纳入 excerpt，但不放宽 active replacement 提取。Requires 正则 `/Requires Claude Code v(\d+\.\d+\.\d+)/`；按数字三段比较 2.1.311。
 5. hooks 只解析 fenced code block 外 `| Event | When it fires |` 后的连续表行；env 只解析 `| Variable | Purpose |` 后的连续表行，避免把前置 fenced 示例表误登记，也不得被详情 code fence 中的伪标题截断。
-6. `stripMarkdown()` 去除 link 的 URL 但保留文本、反引号和 HTML；链接 destination 用最小平衡括号扫描，保留嵌套括号的正确边界，不扩展成完整 Markdown 引擎。`excerpt` 压成单行，最长 1000 字符。不得从配置示例采集任何值。
+6. `stripMarkdown()` 去除 link 的 URL 但保留文本、反引号和 HTML；链接 destination 用最小平衡括号扫描，保留嵌套括号的正确边界，不扩展成完整 Markdown 引擎。`excerpt` 压成单行，最长 1000 字符。完整 Requires 句紧随 description、优先于长 Scope/Type/Default/precedence；长前缀不得挤掉该原文，Requires 句异常超长或前序 description 使其无法完整保留时必须抛错，不能截断后假装完整。不得从配置示例采集任何值。
 7. `buildInventory()` 深检查重复 ID，按 `setting`、`hook`、`env` 再按 id 排序；拒绝空 source anchor；baseline.distTag 固定 `stable`，version 固定 `2.1.311`。
 8. CLI 参数为 `--settings-reference --settings --hooks-reference --env-vars --llms --binary --binary-commit --binary-platform --captured-at --output-dir`。使用 `createHash('sha256')` 计算文档和二进制哈希；`spawnSync(binary, ['--version'], { encoding:'utf8' })` 只获取版本，不运行 doctor。
 9. evidence.json 写 `schemaVersion:1`、`capturedAt`、五个文档的 URL/hash、`binary:{version,commit,platform,sha256}`、`probeDirectory` 不写本机路径。inventory.json 的 baseline 复用同一份数据。
@@ -233,7 +233,7 @@ bun scripts/upstreamConfigInventory.ts \
 - [ ] **Step 5: 验证解析与确定性**
 
 Run: `bun test ./tests/upstreamConfigInventory.test.ts`
-Expected: PASS；hook 数恰好 33，settings/env 数量打印但不硬编码早期 `99+22`。本次 Type-declared nested 补漏后的固定快照实测为 setting=285、hook=33、env=413（总计 731）；相对 Task 1 原快照新增 36 个 setting ID，原 695 ID 全部保留且原 entry 字段不变，evidence/probes 不变。真实快照测试登记全部 36 个新增 ID，合成测试覆盖普通/optional/直接类型子键、显式子节去重及字面量/fenced 示例排除；同输入两次独立采集的 evidence/inventory 必须逐字节 `cmp` 相等。
+Expected: PASS；hook 数恰好 33，settings/env 数量打印但不硬编码早期 `99+22`。本次 Type-declared nested 补漏后的固定快照实测为 setting=285、hook=33、env=413（总计 731）；相对 Task 1 原快照新增 36 个 setting ID，原 695 ID 全部保留且原 entry 字段不变，evidence/probes 不变。真实快照测试登记全部 36 个新增 ID，并逐条断言 8 个 afterBaseline 条目的完整 Requires 原文；合成测试覆盖普通/optional/直接类型子键、显式子节去重、字面量/fenced 示例排除，以及长前缀 Requires 保留和异常超长 Requires 拒止；同输入两次独立采集的 evidence/inventory 必须逐字节 `cmp` 相等。
 
 再次运行同一采集命令到临时输出目录并比较：
 
@@ -386,11 +386,11 @@ Expected: FAIL，checker 模块不存在。
 
 1. `resolveRef()` 只接受本地 `#/` 引用，按 `/` 遍历并解码 `~0/~1`；外部引用抛错。遍历 `properties` 时登记父路径，再递归对象子 schema；同时遍历 `anyOf/oneOf/allOf`。用当前递归分支的 `refStack` 防环：进入 ref 前若已在 stack 中则不再展开，退出该分支后删除；同一 def 在不同兄弟路径仍可遍历。动态 `additionalProperties` 不展开。
 2. `createInitialMatrix()` 为每个 inventory entry 创建六维状态，默认全 missing、`implementation:[]`、`tests:[]`、`evidence:[]`、`exclusion:null`。schema/hook 已存在时总状态 partial、path aligned，evidence 填 `generated schema diff` 或 `HOOK_EVENTS`。
-3. active 缺失项为 missing；afterBaseline 总状态为 blocked，且 `dimensions.runtime` 也为 blocked、evidence 指向 Requires 原文；deprecated/removed 缺失项为 excluded，exclusion 记录 upstream lifecycle、replacement 和来源 anchor。已有 deprecated schema 路径仍可 partial，不能自动删配置。
+3. active 缺失项为 missing；afterBaseline 总状态为 blocked，且 `dimensions.runtime` 也为 blocked、evidence 指向完整 Requires 原文；找不到完整原文必须抛错，不得由 introduced 合成 `(upstream inventory)` fallback。deprecated/removed 缺失项为 excluded，exclusion 记录 upstream lifecycle、replacement 和来源 anchor。已有 deprecated schema 路径仍可 partial，不能自动删配置。
 4. schema 独有路径在显式初始化时逐条写入 `schemaExclusions`，不用 `*`；reason 为 `flash-only or legacy schema path; review ownership in B2-B5`，evidence 为 `src/utils/settings/types.ts`。后续普通检查绝不自动增加排除。
-5. matrix entry 数与 inventory ID 必须完全一致。`aligned` 要求 implementation/tests 非空、六维全 aligned 且每维 evidence 非空。`different` 要求 notes 和 evidence；`excluded` 要求 exclusion.reason/evidence。
+5. matrix envelope 必须校验 `schemaVersion === 1`、`matrix.baseline === inventory.baseline.version === '2.1.311'`，错误或缺失给 `invalid-matrix-envelope`。matrix entry 数与 inventory ID 必须完全一致。每条 implementation/tests/evidence 必须为 string[]（空允许），notes 必须为 string（空允许），六维 evidence 必须为 string（非 aligned 空允许）；缺失或错类型给 `invalid-matrix-structure`。`aligned` 要求 implementation/tests 非空、六维全 aligned 且每维 evidence 非空。`different` 要求 notes 和 evidence；`excluded` 要求 exclusion.reason/evidence。
 6. 已记录 missing/partial/different/blocked/excluded 的缺失路径只打印统计；若 path aligned 但总状态不是 aligned，不报错；若 path aligned 而实际路径不存在，报 `missing-in-flash`。总状态 aligned 但任何维度不合格报 `invalid-aligned-evidence`。
-7. 额外诊断：`missing-matrix-entry`、`stale-matrix-entry`、`undocumented-schema-key`、`invalid-matrix-status`、`invalid-after-baseline`。afterBaseline 的 runtime aligned 必须失败。
+7. 额外诊断：`invalid-matrix-envelope`、`invalid-matrix-structure`、`missing-matrix-entry`、`stale-matrix-entry`、`undocumented-schema-key`、`invalid-matrix-status`、`invalid-after-baseline`。afterBaseline 的 runtime aligned 必须失败。合成测试覆盖 schemaVersion=2、baseline=2.1.310、删除 implementation、删除 dimensions.type.evidence 和错误数组元素类型；不得误要求非 aligned evidence 非空。
 8. 默认加载真实 fixture 和 `generateSettingsJSONSchema()`，输出每种 kind 的 total/aligned/partial/missing/different/blocked/excluded 数量及 diagnostics。诊断非空 `process.exitCode=1`。`--initialize-matrix` 只允许 matrix 不存在时创建，存在时拒绝覆盖，防止抹掉人工证据。
 
 - [ ] **Step 4: 生成真实 matrix 并审查排除项**

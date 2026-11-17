@@ -402,6 +402,19 @@ function replacementFromText(value: string): string | undefined {
   return value.match(/\buse\s+`([^`]+)`/i)?.[1]
 }
 
+export function completeRequiresStatement(value: string): string | undefined {
+  const start = /Requires Claude Code v\d+\.\d+\.\d+\b/.exec(value)
+  if (!start) return undefined
+  const remainder = value.slice(start.index).trim()
+  const afterVersion = remainder.slice(start[0].length)
+  const punctuation = /[.!?](?=\s|$|\|)/.exec(afterVersion)
+  if (punctuation) {
+    return remainder.slice(0, start[0].length + punctuation.index + 1)
+  }
+  const unpunctuated = remainder.split('|', 1)[0]!.trim()
+  return /\bor later$/.test(unpunctuated) ? unpunctuated : undefined
+}
+
 function versionMetadata(value: string): {
   introduced?: string
   afterBaseline?: boolean
@@ -451,14 +464,24 @@ function scopeNames(scopeValue: string | undefined, fallback: string): string[] 
   return cleaned ? [cleaned] : []
 }
 
-function makeExcerpt(parts: Array<string | undefined>): string {
-  return parts
+function makeExcerpt(
+  parts: Array<string | undefined>,
+  requiredRequiresStatement?: string,
+): string {
+  const combined = parts
     .filter((part): part is string => Boolean(part))
     .map(part => stripMarkdown(part!))
     .join(' | ')
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, 1000)
+  const excerpt = combined.slice(0, 1000)
+  if (requiredRequiresStatement) {
+    const required = stripMarkdown(requiredRequiresStatement).replace(/\s+/g, ' ').trim()
+    if (!excerpt.includes(required)) {
+      throw new Error('complete Requires statement does not fit in the 1000-character excerpt')
+    }
+  }
+  return excerpt
 }
 
 export function parseSettingsReference(
@@ -505,6 +528,19 @@ export function parseSettingsReference(
       ? undefined
       : replacementFromText(`${description}\n${prose.join('\n')}`)
     const sourceRules = scopeLine ? stripMarkdown(scopeLine) : ''
+    const requiresSource = primaryProse.find(line =>
+      /Requires Claude Code v\d+\.\d+\.\d+/.test(line),
+    ) ?? (/Requires Claude Code v\d+\.\d+\.\d+/.test(description) ? description : undefined)
+    const requiresStatement = requiresSource === undefined
+      ? undefined
+      : completeRequiresStatement(requiresSource)
+    if (requiresSource !== undefined && requiresStatement === undefined) {
+      throw new Error(`setting ${path} has an incomplete Requires statement`)
+    }
+    const requiresRemainder = requiresSource !== undefined &&
+      requiresSource !== description && requiresStatement !== undefined
+      ? requiresSource.replace(requiresStatement, '')
+      : undefined
 
     return {
       id: `setting:${path}`,
@@ -524,13 +560,14 @@ export function parseSettingsReference(
       source: { ...source, anchor: `#${anchor}` },
       excerpt: makeExcerpt([
         description,
+        requiresStatement,
         sourceRules,
         typeLine,
         defaultLine,
         lifecycle === 'active' ? detailLifecycleResult.warning : undefined,
-        primaryProse.find(line => /Requires Claude Code v\d+\.\d+\.\d+/.test(line)),
+        requiresRemainder,
         precedence,
-      ]),
+      ], requiresStatement),
     }
   })
 
@@ -543,6 +580,7 @@ export function parseSettingsReference(
       .filter(({ key }) => !explicitPaths.has(`${parent.path}.${key}`))
       .map(({ key, types }): UpstreamEntry => {
         const path = `${parent.path}.${key}`
+        const parentRequiresStatement = completeRequiresStatement(parent.excerpt)
         return {
           id: `setting:${path}`,
           kind: 'setting',
@@ -559,7 +597,10 @@ export function parseSettingsReference(
           ...(parent.introduced ? { introduced: parent.introduced } : {}),
           ...(parent.afterBaseline ? { afterBaseline: true } : {}),
           source: { ...parent.source },
-          excerpt: makeExcerpt([typeLine, parent.sourceRules]),
+          excerpt: makeExcerpt(
+            [parentRequiresStatement, typeLine, parent.sourceRules],
+            parentRequiresStatement,
+          ),
         }
       })
     return [parent, ...children]
