@@ -478,6 +478,183 @@ type ModelCosts = {
 - **telemetry/analytics**：成本数据上报，主归 telemetry spec
 - **model/config.ts**：模型上下文窗口、最大输出 token，主归 model spec
 
+---
+
+### 4.16 架构与资源边界图
+
+```text
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                      API Request Completion (Trigger)                         │
+│              Claude API returns BetaUsage object                             │
+└───────────────────────────────────────────────────────────────────────────────┘
+                                        │
+                                        ▼
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                   Cost Calculation Layer                                     │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │ calculateUSDCost(model, usage) → number                                 │  │
+│  │ • getCanonicalName(model) → ModelShortName                             │  │
+│  │ • Lookup MODEL_COSTS[shortName] → ModelCosts                           │  │
+│  │ • tokensToUSDCost(input/output/cache-read/cache-write/web-search)      │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │ modelCost.ts constants                                                  │  │
+│  │ • COST_TIER_3_15, COST_TIER_5_25, etc.                                 │  │
+│  │ • MODEL_COSTS map: full model name → tier                              │  │
+│  │ • Unknown model fallback: getDefaultMainLoopModelSetting()             │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────────────────────────────────────────────────────┘
+                                        │
+                                        ▼
+┌───────────────────────────────────────────────────────────────────────────────┐
+│               Cost Accumulation & State Management                            │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │ addToTotalSessionCost(cost, usage, model)                               │  │
+│  │ • Update STATE.totalCostUSD                                            │  │
+│  │ • Update STATE.modelUsage[model]                                       │  │
+│  │ • getAdvisorUsage(usage) → recursive child request processing          │  │
+│  │ • Report telemetry: costCounter, tokenCounter, advisor usage events    │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │ bootstrap/state.ts (Global STATE)                                      │  │
+│  │ • STATE.totalCostUSD: number                                           │  │
+│  │ • STATE.modelUsage: { [model]: ModelUsage }                            │  │
+│  │ • STATE.hasUnknownModelCost: boolean                                   │  │
+│  │ • STATE.totalAPIDuration, STATE.totalToolDuration, etc.                │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────────────────────────────────────────────────────┘
+                                        │
+                                        ▼
+┌───────────────────────────────────────────────────────────────────────────────┐
+│              Display & Persistence Layer                                      │
+│  ┌─────────────────────────────────┐  ┌─────────────────────────────────┐   │
+│  │ /cost command                   │  │ useCostSummary hook             │   │
+│  │ • formatTotalCost()             │  │ • process.on('exit') listener   │   │
+│  │ • formatModelUsage()            │  │ • Print cost summary            │   │
+│  │ • Checks hasConsoleBillingAccess│  │ • saveCurrentSessionCosts()    │   │
+│  └─────────────────────────────────┘  └─────────────────────────────────┘   │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │ saveCurrentSessionCosts() & restoreCostStateForSession()               │  │
+│  │ • Read/write project config: .lastCost, .lastModelUsage, etc.         │  │
+│  │ • validate sessionId match before restore                             │  │
+│  │ • Inject contextWindow/maxOutputTokens from model config on restore   │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────────────────────────────────────────────────────┘
+                                        │
+                                        ▼
+┌───────────────────────────────────────────────────────────────────────────────┐
+│             Quota & Usage Layer (Claude.ai Subscribers)                       │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │ claudeAiLimits.ts                                                      │  │
+│  │ • extractQuotaStatusFromHeaders(headers) → Update currentLimits       │  │
+│  │ • checkQuotaStatus() → Small API request to get headers               │  │
+│  │ • getHeaderBasedEarlyWarning() → Early warning thresholds             │  │
+│  │ • onQuotaStatusChange listeners → UI updates                          │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │ /extra-usage command (runExtraUsage)                                  │  │
+│  │ • hasClaudeAiBillingAccess()? → Open browser settings/usage          │  │
+│  │ • No access but team has unlimited? → Show notice                    │  │
+│  │ • No access? → createAdminRequest() to request enable                │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 4.17 关键流程与失败路径
+
+```text
+─── 主流程：API 请求完成后成本累加与显示 ──────────────────────────────────────────
+API 请求完成 → 返回 BetaUsage 对象
+    │
+    ▼
+调用 calculateUSDCost(resolvedModel, usage)
+    ├─ getCanonicalName() → 合并模型变体
+    ├─ 查找 MODEL_COSTS[shortName]
+    │   ├─ 找到 → 使用对应定价 tier
+    │   └─ 未找到 → fallback 到默认模型成本
+    │       └─ 设置 hasUnknownModelCost = true
+    │       └─ 记录 tengu_unknown_model_cost 事件
+    └─ tokensToUSDCost() 计算成本
+        ├─ inputTokens, outputTokens, cacheReadInputTokens, cacheCreationInputTokens
+        └─ webSearchRequests (如果有)
+    │
+    ▼
+调用 addToTotalSessionCost(cost, usage, model)
+    ├─ 更新 STATE.totalCostUSD
+    ├─ 更新 STATE.modelUsage[model]
+    │   ├─ inputTokens, outputTokens, cacheReadInputTokens, cacheCreationInputTokens
+    │   ├─ webSearchRequests
+    │   └─ costUSD
+    ├─ getAdvisorUsage(usage) → 递归处理 Advisor 子请求
+    │   └─ 为每个 Advisor 子请求调用 addToTotalSessionCost()
+    └─ 上报 telemetry: costCounter, tokenCounter, advisor usage events
+    │
+    ▼
+（可选）响应头包含 anthropic-ratelimit-unified-*
+    │
+    ▼
+extractQuotaStatusFromHeaders(headers)
+    ├─ 解析响应头字段
+    ├─ 检查 surpassed_threshold
+    ├─ 计算当前限额状态
+    ├─ 更新 currentLimits
+    ├─ 持久化 extra usage disabled reason (global config)
+    └─ emit status change 事件通知 UI
+    │
+    ▼
+用户输入 /cost 命令
+    │
+    ▼
+检查 hasConsoleBillingAccess() / hasClaudeAiBillingAccess()
+    │
+    ▼
+formatTotalCost() 生成显示文本
+    ├─ formatCost() → 根据金额动态调整小数位数（>0.5显示2位，否则4位）
+    ├─ formatModelUsage() → 按短名聚合显示各模型用量
+    └─ 包含 API duration、tool duration、代码行数变更
+    │
+    ▼
+显示给用户（仅有权限时）
+
+─── 失败路径：未知模型导致成本估算不准确 ───────────────────────────────────────────
+新模型发布，MODEL_COSTS 中未包含
+    │
+    ▼
+calculateUSDCost() 查找 MODEL_COSTS[shortName] → undefined
+    │
+    ▼
+fallback 到 getDefaultMainLoopModelSetting()
+    │
+    ▼
+设置 hasUnknownModelCost = true
+    │
+    ▼
+记录 tengu_unknown_model_cost 事件
+    │
+    ▼
+继续执行，使用默认模型成本估算
+    │
+    ▼
+用户看到警告："costs may be inaccurate"
+    │
+    ▼
+（改进建议）后台异步拉取最新定价缓存到本地
+```
+
+### 4.18 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|----------|--------|-------------|----------|--------|----------|-----------|
+| STATE.totalCostUSD (bootstrap) | bootstrap/state.ts 模块 | 模块加载时初始化为 0；restoreCostStateForSession() 从 project config 恢复 | 全局单例；跨所有子系统共享 | saveCurrentSessionCosts() 保存到 project config 作为 .lastCost | resetCostState() 重置为 0；新会话开始时重置 | 无取消；进程退出后丢失 |
+| STATE.modelUsage (bootstrap) | bootstrap/state.ts 模块 | 模块加载时初始化为 {}；restoreCostStateForSession() 重建（注入 contextWindow/maxOutputTokens） | 全局单例；每个模型一个 ModelUsage 条目 | saveCurrentSessionCosts() 保存到 project config 作为 .lastModelUsage（剔除 contextWindow/maxOutputTokens） | resetCostState() 重置为 {} | 无取消；不再引用后 GC |
+| RedactedGithubToken (remote-setup) | remote-setup API | `new RedactedGithubToken(raw)` 包装原始 token | 每个 token 一个实例；不共享 | 无（不持久化原始值） | reveal() 后丢弃实例；不再引用后 GC | reveal() 返回原始值；toString() 返回 [REDACTED:gh-token] 防止泄露 |
+| currentLimits (claudeAiLimits) | claudeAiLimits.ts 模块 | 初始化为默认状态；checkQuotaStatus() 或 extractQuotaStatusFromHeaders() 更新 | 全局单例；限额状态跨调用保持 | 仅 cachedExtraUsageDisabledReason 持久化到 global config；其他状态内存中 | 新会话开始时重新检查 | 无取消；statusListeners 可以通过 off 方法移除 |
+| ModelUsage 对象 | cost-tracker 模块 | addToTotalSessionCost() 中按需创建或更新 | 每个模型一个；通过 modelUsage[model] 访问 | 持久化到 project config（剔除 contextWindow/maxOutputTokens） | restoreCostStateForSession() 重建时注入 contextWindow/maxOutputTokens | 无取消；不再引用后 GC |
+
+生命周期证据：src/bootstrap/state.ts, src/cost-tracker.ts, src/utils/modelCost.ts, src/services/claudeAiLimits.ts, src/commands/remote-setup/api.ts
+
+---
+
 ## 5. 失败语义与工程取舍
 
 | 触发条件 | 检测位置 | 消息/异常如何传播 | 是否重试及上限 | 状态与资源清理 | 调用方可见结果 |

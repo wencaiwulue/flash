@@ -426,6 +426,131 @@ onChangeAppState 检测到 settings 变更
 | **Store 引用稳定性** | `useState(() => createStore(...))` 保证 Store 引用永远不变；Context 传递稳定引用 → Provider 本身不会触发子组件重渲染；子组件重渲染仅由 useSyncExternalStore 的 selector 结果变化触发 |
 | **源码测试证据** | `src/state/AppState.tsx:57-200`
 
+---
+
+### 4.10 架构与资源边界图
+
+```text
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                          External Callers                                      │
+│  ┌──────────────────────────┐  ┌──────────────────────────────────────────┐  │
+│  │   React Components       │  │    Non-React Code (commands, utils)     │  │
+│  │  useAppState(selector)   │  │  getState() / setState(updater)         │  │
+│  │  useSetAppState()        │  └──────────────────────────────────────────┘  │
+│  └──────────────────────────┘                                                 │
+└───────────────────────────────────────────────────────────────────────────────┘
+                                        │
+                                        ▼
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                         AppState Module (Internal)                            │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │ AppStateProvider (React Context)                                         │  │
+│  │ • HasAppStateContext (prevents nesting)                                  │  │
+│  │ • AppStoreContext (provides store)                                       │  │
+│  │ • Initializes store via useState(() => createStore(...))                 │  │
+│  │ • Registers useSettingsChange listener                                   │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+│                                        │                                        │
+│                                        ▼                                        │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │ AppStateStore (store instance)                                           │  │
+│  │ • Implements Store interface: getState(), setState(), subscribe()        │  │
+│  │ • Holds: state (DeepImmutable + mutable fields), listeners Set          │  │
+│  │ • Calls onChangeAppState on state changes                                │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+│                                        │                                        │
+│              ┌─────────────────────────┼─────────────────────────┐              │
+│              ▼                         ▼                         ▼              │
+│  ┌──────────────────────┐  ┌──────────────────────┐  ┌──────────────────────┐  │
+│  │ onChangeAppState     │  │ settingsChangeDetector│  │ selectors.ts         │  │
+│  │ handlers:            │  │ (external)            │  │ • getViewedTeammate- │  │
+│  │ • sync to CCR        │  │ • watches settings.json│  │   Task               │  │
+│  │ • update global config│  │ • fan-out on change   │  │ • getActiveAgentFor- │  │
+│  │ • clear auth cache   │  └──────────────────────┘  │   Input               │  │
+│  │ • apply env vars     │                          └──────────────────────┘  │
+│  └──────────────────────┘                                                     │
+└───────────────────────────────────────────────────────────────────────────────┘
+                                        │
+                                        ▼
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                        Bootstrap State (Separate)                             │
+│  • Global STATE variable in bootstrap/state.ts                               │
+│  • Independent from AppState, for pre-React init (sessionId, totalCostUSD)  │
+│  • No React subscription support                                             │
+└───────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 4.11 关键流程与失败路径
+
+```text
+─── 主流程：React 组件更新 AppState ─────────────────────────────────────────────
+用户操作（例如切换详细模式）
+    │
+    ▼
+React 组件调用 useSetAppState() → 获取稳定的 setState 函数
+    │
+    ▼
+setState(updater) 被调用：updater(prevState) 返回 newState
+    │
+    ▼
+Store.setState()：
+    ├─ Object.is(prevState, newState)? → 相同：直接返回，无通知
+    └─ 不同：
+        ├─ 更新内部 state 变量
+        ├─ 调用 onChangeAppState({ oldState, newState })
+        │   ├─ 同步到 CCR（如果相关）
+        │   ├─ 更新全局配置（saveGlobalConfig）
+        │   ├─ 清除 auth 缓存（如果设置改变）
+        │   ├─ 应用环境变量（如果 settings.env 改变）
+        │   └─ ... 其他处理
+        └─ 遍历 listeners Set → 调用每个 listener()
+    │
+    ▼
+React useSyncExternalStore 收到 listener 通知
+    ├─ 调用 selector(store.getState()) → selectedValue
+    ├─ Object.is(prevSelectedValue, selectedValue)? → 相同：不重新渲染
+    └─ 不同：重新渲染组件
+    │
+    ▼
+用户看到 UI 更新
+
+─── 失败路径：Selector 返回不稳定引用 ───────────────────────────────────────────
+React 组件使用错误的 selector：
+    const { verbose, settings } = useAppState(s => ({
+        verbose: s.verbose,
+        settings: s.settings
+    })); // 每次返回新对象！
+    │
+    ▼
+任何 AppState 更改触发 listener 通知
+    │
+    ▼
+useSyncExternalStore 调用 selector → 新对象引用
+    │
+    ▼
+Object.is(prev, new) → false → 组件重新渲染
+    │
+    ▼
+每次 AppState 更改都会重复 → 过度渲染，性能下降
+    │
+    ▼
+没有错误抛出，但用户体验到 UI 缓慢
+```
+
+### 4.12 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|----------|--------|-------------|----------|--------|----------|-----------|
+| Store Instance (AppStateStore) | AppStateProvider | `useState(() => createStore(initialState, onChangeAppState))` | 单例通过 AppStoreContext 共享；禁止嵌套 | 无（状态更改通过 onChangeAppState 同步） | Provider 卸载 → store 被 GC | Listeners 通过返回的函数 unsubscribe |
+| AppState Object | Store instance | `getDefaultAppState()` → 作为 initialState 传递给 createStore | 单个引用，不可变更新；可变字段就地修改 | 部分字段通过 onChangeAppState 同步到全局配置 | `setState()` 替换根对象；Provider 卸载 → GC | 无取消，只是不可变替换 |
+| Listeners Set (in Store) | Store instance | `new Set()` 在 createStore 闭包中 | 通过 store.subscribe() 共享；每个 listener 单独条目 | 无 | Store GC → listeners Set GC | 通过 subscribe() 返回的函数 unsubscribe |
+| useSettingsChange Subscription | AppStateProvider | `useEffect(() => settingsChangeDetector.subscribe(handleChange))` | 每个 Provider 一个订阅 | 无 | Provider 卸载 → cleanup 函数 unsubscribe | Cleanup 函数调用 unsubscribe() |
+| Bootstrap STATE Variable | bootstrap/state.ts 模块 | 加载时初始化的模块级变量 | 全局单例；通过 getter/setter 可变 | 部分字段保存到项目配置（totalCostUSD、modelUsage） | `resetCostState()`（成本相关）；进程退出 → 消失 | 无显式取消 |
+
+生命周期证据：src/state/AppState.tsx:72-78, src/state/store.ts:1-35, src/state/AppStateStore.ts:89-569, src/hooks/useSettingsChange.ts:1-25, src/bootstrap/state.ts:1-1763
+
+---
+
 ## 5. 失败语义与工程取舍
 
 | 触发条件 | 检测位置 | 消息/异常如何传播 | 是否重试及上限 | 状态与资源清理 | 调用方可见结果 |
