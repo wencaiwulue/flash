@@ -107,8 +107,12 @@ Memory 系统从多个来源组织上下文信息。
    - 使用 --resume 时加载
 
 3. **整理与失效**
-   - Auto-compaction 阈值可通过 `/autocompact <tokens>` 配置
-   - 会话持久化可通过 `--no-session-persistence` 禁用
+   - 自动提取与 autoDream 整理持久记忆
+   - 索引截断和缓存清理控制 prompt 占用并刷新已变更记忆
+
+4. **重启与恢复**
+   - 在已有持久化数据时恢复会话状态
+   - 仅保存在内存中的 cursor 可能导致重启后重复提取
 
 ---
 

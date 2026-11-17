@@ -105,8 +105,12 @@ The Memory system organizes contextual information from multiple sources.
    - Loaded on resume with --resume
 
 3. **Consolidate & Invalidate**
-   - Auto-compaction threshold configurable via `/autocompact <tokens>`
-   - Session persistence disableable via `--no-session-persistence`
+   - Automatic extraction and autoDream consolidate durable memories
+   - Index truncation and cache clearing bound prompt usage and refresh changed memory
+
+4. **Restart & Resume**
+   - Session state is restored from persisted data where available
+   - In-memory-only cursors can cause repeated extraction after restart
 
 ### Cross-Subsystem Boundaries & Primary Specs
 
