@@ -112,11 +112,16 @@ jobs:
         shell: bash
         run: |
           CHROME="/c/Program Files/Google/Chrome/Application/chrome.exe"
+          # Chrome.exe is a GUI-subsystem binary: bare `--version` can hang
+          # the step, and plain `timeout` resolves to Windows' pause utility
+          # in some shells. Always use the Git Bash GNU timeout by path.
+          T=/usr/bin/timeout
+          [[ -x $T ]] || T=""
           # Diagnose the runner's Chrome remote-debugging posture: Chrome's
           # UserDataDir enterprise policy overrides the --user-data-dir
           # command line, which would make --remote-debugging-pipe fail with
           # "requires a non-default data directory".
-          "$CHROME" --version || true
+          $T 20 "$CHROME" --version || true
           (reg query "HKLM\\SOFTWARE\\Policies\\Google\\Chrome" /v UserDataDir 2>/dev/null || echo "no HKLM UserDataDir policy")
           (reg query "HKCU\\SOFTWARE\\Policies\\Google\\Chrome" /v UserDataDir 2>/dev/null || echo "no HKCU UserDataDir policy")
           (reg query "HKLM\\SOFTWARE\\Policies\\Google\\Chrome" 2>/dev/null | head -30 || true)
@@ -131,7 +136,7 @@ jobs:
               START=$SECONDS
               # Per-launch timeout: a hung headless launch (seen on runner
               # VMs) must never stall the release build.
-              timeout 60 "$CHROME" --headless --disable-gpu --dump-dom about:blank >/dev/null 2>&1 || true
+              $T 60 "$CHROME" --headless --disable-gpu --dump-dom about:blank >/dev/null 2>&1 || true
               ELAPSED=$((SECONDS - START))
               echo "warm launch $i took ${ELAPSED}s"
               if [[ $ELAPSED -le 5 ]]; then
