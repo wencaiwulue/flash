@@ -798,6 +798,68 @@ type AuthTokenSource =
 - Keychain 预取与缓存 priming 测试
 - auth.ts 中 _apiKeyHelperEpoch 竞态避免测试
 
+## 附录 A：跨进程 Keychain 缓存失效机制
+
+### A.1 问题与动机
+在原始设计中，macOS Keychain 缓存仅依赖 30 秒 TTL 来处理跨进程变更，这导致：
+- 进程 A 刷新 token 后，进程 B 最多可能等待 30 秒才能看到新 token
+- 尽管有 401 错误处理机制作为补偿，但仍存在用户体验问题
+
+### A.2 设计解决方案：版本标记文件
+引入共享版本标记文件 `~/.claude/.keychain-cache-version.json`，其结构为：
+```json
+{ "version": "uuid-v4-random-string" }
+```
+
+### A.3 完整生命周期
+
+#### A.3.1 写入路径（标记更新）
+所有修改 Keychain 内容的操作都会先更新标记：
+1. `update()` → `clearKeychainCache()` → `touchKeychainCacheVersion()`
+2. `delete()` → `clearKeychainCache()` → `touchKeychainCacheVersion()`
+3. `clearOAuthTokenCache()` → `clearKeychainCache()` → `touchKeychainCacheVersion()`
+4. `handleOAuth401Error()` → `clearOAuthTokenCache()` → 间接调用
+
+`touchKeychainCacheVersion()` 的实现保证原子性：
+- 先写入临时文件 `{versionPath}.tmp-{pid}`
+- 然后重命名临时文件为目标路径（POSIX 原子操作）
+
+#### A.3.2 读取路径（双重检查）
+每次读取 Keychain 时都会检查两个条件：
+1. TTL 检查：`Date.now() - cachedAt < 30000`
+2. 版本检查：`isKeychainCacheVersionCurrent(cacheVersion)`
+
+只有两个条件都满足时才直接返回缓存，否则读取真实 Keychain。
+
+#### A.3.3 降级策略
+当版本标记出现以下情况时，系统安全降级：
+- 标记文件不存在 → 仅依赖 TTL
+- 标记文件内容无效 JSON → 仅依赖 TTL
+- 版本匹配但 TTL 过期 → 读取真实 Keychain
+
+降级时不影响 stale-while-error 行为（读取失败时仍返回旧缓存）。
+
+### A.4 三层证据对齐
+
+| 证据层 | 状态 | 说明/证据 |
+|---|---|---|
+| 1. 官方文档 | N/A | 此机制是 flash 仓库特有的本地优化，不涉及外部 API/协议，无官方文档参考 |
+| 2. 上游二进制 | 无匹配符号 | 检查 `/opt/homebrew/bin/claude` (v2.1.212 Claude Code) 后未发现对应机制，因为 flash 是教学研究快照，与上游产品独立演进 |
+| 3. 本地源码/契约 | 完整对齐 | 实现与 spec 完全一致，契约文件存在：<br>- 源码：`src/utils/secureStorage/macOsKeychainHelpers.ts:90-124` (版本标记)<br>- 源码：`src/utils/secureStorage/macOsKeychainStorage.ts:32-107` (双重检查)<br>- 测试：`tests/macOsKeychainHelpers.test.ts` (单元测试)<br>- 覆盖：`docs/architecture/coverage/auth.yaml` (注册分组) |
+
+### A.5 回滚策略
+如需回滚此修复：
+1. 移除 `macOsKeychainHelpers.ts` 中的版本标记相关代码（`getKeychainCacheVersionPath`/`touchKeychainCacheVersion`/`isKeychainCacheVersionCurrent`）
+2. 恢复 `keychainCacheState.cache` 结构，移除 `cacheVersion` 字段
+3. 恢复 `macOsKeychainStorage.ts` 中的读取逻辑，只保留 TTL 检查
+4. 版本标记文件可保留（自动忽略）或删除（不影响功能）
+
+### A.6 测试覆盖
+- ✅ 基本单元测试：版本标记创建/更新/验证
+- ✅ 降级场景：标记缺失/无效时的行为
+- ✅ 预取场景：无标记时的缓存初始化
+- ❌ 端到端跨进程测试（需多进程协调，暂未实现）
+
 ## A. 版本标记生命周期与跨进程失效（B3-auth-01 修复）
 
 ### A.1 标记文件格式
