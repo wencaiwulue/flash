@@ -337,7 +337,7 @@ export class MemoryPathValidator {
           throw new PathTraversalError(
             `Symlink loop detected in path: ${current}`,
           )
-        } else if (code !== 'ENOTDIR' && code !== 'ENAMETOOLONG') {
+        } else if (code && code !== 'ENOTDIR' && code !== 'ENAMETOOLONG') {
           throw new PathTraversalError(
             `Cannot verify path containment (${code}): ${current}`,
           )

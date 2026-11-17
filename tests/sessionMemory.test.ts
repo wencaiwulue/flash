@@ -127,6 +127,38 @@ describe('SessionMemoryCursorManager', () => {
     const freshManager = new SessionMemoryCursorManager(testDir)
     expect(freshManager.getCursor()).toBeUndefined()
   })
+
+  test('global functions work across restarts', () => {
+    // Set using global function
+    setLastSummarizedMessageId('global-test-id', 'test-session-id')
+
+    // Verify with global getter
+    expect(getLastSummarizedMessageId()).toBe('global-test-id')
+
+    // Reset and verify
+    resetSessionMemoryState()
+    expect(getLastSummarizedMessageId()).toBeUndefined()
+  })
+
+  test('checkAndInvalidateDeletedFiles on manager works', () => {
+    // Create a memory file
+    const memoryFile = join(testDir, 'test-file.md')
+    writeFileSync(memoryFile, 'test', 'utf-8')
+
+    // Set cursor with tracked file
+    manager.setCursor({
+      lastSummarizedMessageId: 'test-id',
+      trackedFiles: ['test-file.md'],
+      sessionId: 'session-1',
+    })
+
+    // Delete the file
+    rmSync(memoryFile)
+
+    // Check and invalidate using manager method
+    const invalidated = manager.checkAndInvalidateDeletedFiles()
+    expect(invalidated).toBe(true)
+  })
 })
 
 // ============================================================================
