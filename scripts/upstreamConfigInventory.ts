@@ -276,7 +276,7 @@ function normalizeType(value: string | undefined): string[] {
   if (!value) return []
   const cleaned = stripMarkdown(value).trim()
   const match = cleaned.match(/^(boolean|string|number|object|array)\b(.*)$/i)
-  if (!match) return [cleaned.toLowerCase()]
+  if (!match) return [cleaned]
   const primary = match[1]!.toLowerCase()
   if (primary === 'object' || primary === 'array') {
     return [`${primary}${match[2]!}`]
@@ -290,14 +290,21 @@ function parseDefault(value: string | undefined): {
 } {
   if (value === undefined) return { value: null, documented: false }
   const cleaned = stripMarkdown(value)
-  const literal = cleaned.match(/^`(true|false|null)`(?=$|[\s,.;:?!])/)
+  const previousDefault = cleaned.match(
+    /\bBefore v(\d+\.\d+\.\d+),\s+the default was\s+(`[^`]+`)/i,
+  )
+  const effectiveValue = previousDefault &&
+    compareVersions(UPSTREAM_BASELINE_VERSION, previousDefault[1]!) < 0
+    ? previousDefault[2]!
+    : cleaned
+  const literal = effectiveValue.match(/^`(true|false|null)`(?=$|[\s,.;:?!])/)
   if (literal) {
     return {
       value: literal[1] === 'null' ? null : literal[1] === 'true',
       documented: true,
     }
   }
-  const numeric = cleaned.match(/^`(-?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)`(?=$|[\s,.;:?!])/i)
+  const numeric = effectiveValue.match(/^`(-?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)`(?=$|[\s,.;:?!])/i)
   if (numeric) {
     const number = Number(numeric[1])
     if (Number.isFinite(number)) return { value: number, documented: true }
@@ -312,13 +319,16 @@ function lifecycleFromText(value: string): UpstreamEntry['lifecycle'] {
   return 'active'
 }
 
-function detailLifecycle(lines: string[]): UpstreamEntry['lifecycle'] {
+function detailLifecycle(lines: string[]): {
+  lifecycle: UpstreamEntry['lifecycle']
+  warning?: string
+} {
   for (const line of lines) {
     const cleaned = stripMarkdown(line).replace(/^\s*>\s*/, '')
-    if (/^Deprecated\b/i.test(cleaned)) return 'deprecated'
-    if (/^Removed\b/i.test(cleaned)) return 'removed'
+    if (/^Deprecated\b/i.test(cleaned)) return { lifecycle: 'deprecated', warning: line }
+    if (/^Removed\b/i.test(cleaned)) return { lifecycle: 'removed', warning: line }
   }
-  return 'active'
+  return { lifecycle: 'active' }
 }
 
 function replacementFromText(value: string): string | undefined {
@@ -420,7 +430,8 @@ export function parseSettingsReference(
     const parsedDefault = parseDefault(defaultValue)
     const precedence = settingsPrecedence(prose)
     const lifecycle = lifecycleFromText(description)
-    const resolvedLifecycle = lifecycle === 'active' ? detailLifecycle(prose) : lifecycle
+    const detailLifecycleResult = detailLifecycle(prose)
+    const resolvedLifecycle = lifecycle === 'active' ? detailLifecycleResult.lifecycle : lifecycle
     const requiresText = primaryProse.join('\n')
     const versions = versionMetadata(`${description}\n${requiresText}`)
     const replacement = resolvedLifecycle === 'active'
@@ -449,6 +460,7 @@ export function parseSettingsReference(
         sourceRules,
         typeLine,
         defaultLine,
+        lifecycle === 'active' ? detailLifecycleResult.warning : undefined,
         primaryProse.find(line => /Requires Claude Code v\d+\.\d+\.\d+/.test(line)),
         precedence,
       ]),

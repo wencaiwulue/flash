@@ -3920,7 +3920,7 @@
       "types": [
         "boolean"
       ],
-      "default": false,
+      "default": true,
       "defaultDocumented": true,
       "scopes": [
         "Any file"
@@ -5218,7 +5218,7 @@
       "path": "strictPluginOnlyCustomization.agents",
       "title": "strictPluginOnlyCustomization.agents",
       "types": [
-        "the string `\"agents\"` in the `strictpluginonlycustomization` array"
+        "the string `\"agents\"` in the `strictPluginOnlyCustomization` array"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -5242,7 +5242,7 @@
       "path": "strictPluginOnlyCustomization.hooks",
       "title": "strictPluginOnlyCustomization.hooks",
       "types": [
-        "the string `\"hooks\"` in the `strictpluginonlycustomization` array"
+        "the string `\"hooks\"` in the `strictPluginOnlyCustomization` array"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -5266,7 +5266,7 @@
       "path": "strictPluginOnlyCustomization.mcp",
       "title": "strictPluginOnlyCustomization.mcp",
       "types": [
-        "the string `\"mcp\"` in the `strictpluginonlycustomization` array"
+        "the string `\"mcp\"` in the `strictPluginOnlyCustomization` array"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -5290,7 +5290,7 @@
       "path": "strictPluginOnlyCustomization.skills",
       "title": "strictPluginOnlyCustomization.skills",
       "types": [
-        "the string `\"skills\"` in the `strictpluginonlycustomization` array"
+        "the string `\"skills\"` in the `strictPluginOnlyCustomization` array"
       ],
       "default": null,
       "defaultDocumented": true,
@@ -5812,7 +5812,7 @@
         "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
         "anchor": "#voiceenabled"
       },
-      "excerpt": "Turn on voice dictation with the older single-key form | * **Scope**: `Any file` | * **Type**: Boolean | * **Default**: unset"
+      "excerpt": "Turn on voice dictation with the older single-key form | * **Scope**: `Any file` | * **Type**: Boolean | * **Default**: unset | > Deprecated since v2.1.92, when the `voice` object replaced it. Claude Code still reads it so older settings files keep working, but new configurations should set `voice.enabled`."
     },
     {
       "id": "setting:wheelScrollAccelerationEnabled",
