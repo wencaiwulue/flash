@@ -3,307 +3,372 @@
  *
  * Tests sandbox/bridge/tool API offline contracts.
  * Does NOT test private service wire compatibility or credentials.
+ * Tests REAL API paths from the actual source modules.
  */
 
 import { describe, expect, test } from 'bun:test'
-import { assertLoopbackCdpEndpoint, DEFAULT_OPEN_CHROME_CDP_ENDPOINT } from '../src/external-stubs/claude-for-chrome-mcp.ts'
-import { setTimeout as sleep } from 'node:timers/promises'
+import {
+  assertLoopbackCdpEndpoint,
+  DEFAULT_OPEN_CHROME_CDP_ENDPOINT,
+  createIsolatedBrowserConfig,
+  createOpenChromeConfig,
+  type OpenChromeContext,
+} from '../src/external-stubs/claude-for-chrome-mcp.ts'
+import {
+  OpenRunnerError,
+  invalidRequest,
+  isUuid,
+  assertUuid,
+  assertInteger,
+  assertRfc3339,
+  validateRelativeCwd,
+  normalizeWorkInput,
+  errorResponse,
+  OPEN_RUNNER_PROTOCOL,
+  OPEN_RUNNER_API_PREFIX,
+  MAX_PROMPT_BYTES,
+  DEFAULT_LEASE_MS,
+  DEFAULT_HEARTBEAT_INTERVAL_MS,
+  PERMISSION_MODES,
+  WORK_STATES,
+  newId,
+  contentHash,
+  canonicalJson,
+} from '../src/open-runner/protocol.ts'
 
 describe('Open Chrome Protocol Contracts', () => {
-  test('assertLoopbackCdpEndpoint validates URLs correctly', async () => {
+  test('assertLoopbackCdpEndpoint validates URLs correctly', () => {
     // Valid loopback endpoints
     expect(() => assertLoopbackCdpEndpoint('http://127.0.0.1:9222')).not.toThrow()
     expect(() => assertLoopbackCdpEndpoint('http://[::1]:9222')).not.toThrow()
     expect(() => assertLoopbackCdpEndpoint('ws://127.0.0.1:9222')).not.toThrow()
-    expect(() => assertLoopbackCdpEndpoint('ws://[::1]:9222/')).not.toThrow()
+    expect(() => assertLoopbackCdpEndpoint('wss://[::1]:9222')).not.toThrow()
 
     // localhost is NOT allowed - only explicit loopback IPs
-    let threw = false
-    try {
-      assertLoopbackCdpEndpoint('http://localhost:9222')
-    } catch {
-      threw = true
-    }
-    expect(threw).toBe(true)
-
-    threw = false
-    try {
-      assertLoopbackCdpEndpoint('ws://localhost:9222/devtools/page/123')
-    } catch {
-      threw = true
-    }
-    expect(threw).toBe(true)
+    expect(() => assertLoopbackCdpEndpoint('http://localhost:9222')).toThrow()
+    expect(() => assertLoopbackCdpEndpoint('ws://localhost:9222/devtools/page/123')).toThrow()
 
     // Invalid non-loopback endpoints - should throw
-    threw = false
-    try {
-      assertLoopbackCdpEndpoint('http://0.0.0.0:9222')
-    } catch {
-      threw = true
-    }
-    expect(threw).toBe(true)
-
-    threw = false
-    try {
-      assertLoopbackCdpEndpoint('http://192.168.1.1:9222')
-    } catch {
-      threw = true
-    }
-    expect(threw).toBe(true)
+    expect(() => assertLoopbackCdpEndpoint('http://0.0.0.0:9222')).toThrow()
+    expect(() => assertLoopbackCdpEndpoint('http://192.168.1.1:9222')).toThrow()
 
     // Invalid with userinfo - should throw
-    threw = false
-    try {
-      assertLoopbackCdpEndpoint('http://user:pass@127.0.0.1:9222')
-    } catch {
-      threw = true
-    }
-    expect(threw).toBe(true)
+    expect(() => assertLoopbackCdpEndpoint('http://user:pass@127.0.0.1:9222')).toThrow()
 
     // Invalid protocol - should throw
-    threw = false
-    try {
-      assertLoopbackCdpEndpoint('file://127.0.0.1:9222')
-    } catch {
-      threw = true
-    }
-    expect(threw).toBe(true)
+    expect(() => assertLoopbackCdpEndpoint('file://127.0.0.1:9222')).toThrow()
 
     // Invalid with query params - should throw
-    threw = false
-    try {
-      assertLoopbackCdpEndpoint('http://127.0.0.1:9222?foo=bar')
-    } catch {
-      threw = true
-    }
-    expect(threw).toBe(true)
+    expect(() => assertLoopbackCdpEndpoint('http://127.0.0.1:9222?foo=bar')).toThrow()
   })
 
-  test('DEFAULT_OPEN_CHROME_CDP_ENDPOINT is valid', async () => {
+  test('DEFAULT_OPEN_CHROME_CDP_ENDPOINT is valid', () => {
     expect(DEFAULT_OPEN_CHROME_CDP_ENDPOINT).toBe('http://127.0.0.1:9222')
     expect(() => assertLoopbackCdpEndpoint(DEFAULT_OPEN_CHROME_CDP_ENDPOINT)).not.toThrow()
   })
 })
 
-describe('Sandbox API Contracts', () => {
-  test('external-stubs module exports expected public APIs', async () => {
-    const stubs = await import('../src/external-stubs/claude-for-chrome-mcp.ts')
-    expect(stubs.assertLoopbackCdpEndpoint).toBeDefined()
-    expect(stubs.DEFAULT_OPEN_CHROME_CDP_ENDPOINT).toBeDefined()
-    expect(stubs.createIsolatedBrowserConfig).toBeDefined()
-    expect(stubs.createOpenChromeConfig).toBeDefined()
-    expect(stubs.createClaudeForChromeMcpServer).toBeDefined()
-    expect(stubs.getOpenBrowserClient).toBeDefined()
-    expect(stubs.closeOpenBrowserClient).toBeDefined()
-    expect(stubs.getOpenChromeClient).toBeDefined()
-    expect(stubs.closeOpenChromeClient).toBeDefined()
-    expect(stubs.listBrowserTools).toBeDefined()
-    expect(stubs.listOpenChromeTools).toBeDefined()
-    expect(stubs.callOpenChromeTool).toBeDefined()
+describe('Sandbox/Bridge API Contracts (Real Exports)', () => {
+  test('createIsolatedBrowserConfig has correct shape', () => {
+    const config = createIsolatedBrowserConfig()
+    expect(config).toBeDefined()
+    expect(config.browser).toBeDefined()
+    expect(config.browser?.isolated).toBe(true)
   })
 
-  test('fs/promises module has expected contract', async () => {
-    const fs = await import('fs/promises')
-    expect(typeof fs.readFile).toBe('function')
-    expect(typeof fs.writeFile).toBe('function')
-    expect(typeof fs.appendFile).toBe('function')
-    expect(typeof fs.mkdir).toBe('function')
+  test('createIsolatedBrowserConfig accepts allowedOrigins', () => {
+    const config = createIsolatedBrowserConfig({ allowedOrigins: ['https://example.com'] })
+    expect(config.network?.allowedOrigins).toEqual(['https://example.com'])
   })
 
-  test('Error shape has expected contract', async () => {
-    const err = new Error('test error')
-    expect(err.message).toBeDefined()
-    expect(err.name).toBe('Error')
-    expect(typeof err.stack).toBe('string')
-
-    const cause = new Error('cause')
-    const wrapped = new Error('wrapped', { cause })
-    expect(wrapped.cause).toBe(cause)
-  })
-
-  test('error shapes include expected properties for API responses', async () => {
-    // Test standard error shapes used in API responses
-    const apiError = {
-      type: 'api_error',
-      code: 'NOT_FOUND',
-      message: 'Resource not found',
-      timestamp: new Date().toISOString(),
-    }
-
-    expect(apiError.type).toBe('api_error')
-    expect(apiError.code).toBe('NOT_FOUND')
-    expect(apiError.message).toBe('Resource not found')
-    expect(typeof apiError.timestamp).toBe('string')
-
-    // Test validation error shape
-    const validationError = {
-      type: 'validation_error',
-      field: 'url',
-      message: 'Invalid URL format',
-    }
-
-    expect(validationError.type).toBe('validation_error')
-    expect(validationError.field).toBe('url')
-    expect(validationError.message).toBe('Invalid URL format')
-  })
-})
-
-describe('Bridge API Contracts', () => {
-  test('Promise has expected contract for timeout/race patterns', async () => {
-    expect(typeof Promise).toBe('function')
-    expect(typeof Promise.race).toBe('function')
-    expect(typeof Promise.all).toBe('function')
-    expect(typeof Promise.allSettled).toBe('function')
-
-    const result = await Promise.race([
-      Promise.resolve('success'),
-      new Promise(resolve => setTimeout(resolve, 1000, 'timeout')),
-    ])
-    expect(result).toBe('success')
-  })
-
-  test('timeout pattern works correctly with Promise.race', async () => {
-    const timeout = (ms: number) => new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('TIMEOUT')), ms)
-    )
-
-    const fastOperation = Promise.resolve('fast')
-    const slowOperation = sleep(1000).then(() => 'slow')
-
-    // Fast operation should win
-    const result1 = await Promise.race([fastOperation, timeout(100)])
-    expect(result1).toBe('fast')
-
-    // Timeout should win against slow operation
-    let timedOut = false
-    try {
-      await Promise.race([slowOperation, timeout(50)])
-    } catch (e) {
-      if (e instanceof Error && e.message === 'TIMEOUT') {
-        timedOut = true
-      }
-    }
-    expect(timedOut).toBe(true)
-  })
-
-  test('redirect pattern preserves original request context', async () => {
-    // Simulate a redirect response shape
-    const redirectResponse = {
-      status: 302,
-      location: 'http://127.0.0.1:9222/new-endpoint',
-      originalRequest: {
-        method: 'GET',
-        url: 'http://127.0.0.1:9222/old-endpoint',
-        headers: { 'X-Request-ID': 'test-123' },
+  test('createOpenChromeConfig requires valid OpenChromeContext', () => {
+    const validContext: OpenChromeContext = {
+      kind: 'chrome-cdp',
+      serverName: 'test-server',
+      logger: {
+        silly: () => {},
+        debug: () => {},
+        info: () => {},
+        warn: () => {},
+        error: () => {},
       },
+      cdpEndpoint: 'http://127.0.0.1:9222',
+      cdpTimeoutMs: 30000,
+      initialPermissionMode: 'ask',
+      onToolCallDisconnected: () => 'disconnected',
+      trackEvent: () => {},
     }
 
-    expect(redirectResponse.status).toBe(302)
-    expect(redirectResponse.location).toBeDefined()
-    expect(redirectResponse.originalRequest).toBeDefined()
-    expect(redirectResponse.originalRequest.method).toBe('GET')
-    expect(redirectResponse.originalRequest.headers['X-Request-ID']).toBe('test-123')
+    // Valid context works
+    expect(() => createOpenChromeConfig(validContext)).not.toThrow()
+
+    // Invalid kind throws
+    expect(() => createOpenChromeConfig({ ...validContext, kind: 'invalid' as any })).toThrow()
+
+    // Non-loopback endpoint throws
+    expect(() =>
+      createOpenChromeConfig({ ...validContext, cdpEndpoint: 'http://localhost:9222' })
+    ).toThrow()
+
+    // Negative timeout throws
+    expect(() => createOpenChromeConfig({ ...validContext, cdpTimeoutMs: -1 })).toThrow()
+
+    // Private extension fields throw (socketPath)
+    expect(() =>
+      createOpenChromeConfig({ ...validContext, socketPath: '/tmp/socket' } as any)
+    ).toThrow()
+
+    // Private extension fields throw (bridgeConfig)
+    expect(() =>
+      createOpenChromeConfig({ ...validContext, bridgeConfig: {} } as any)
+    ).toThrow()
+  })
+
+  test('createOpenChromeConfig returns correct shape', () => {
+    const context: OpenChromeContext = {
+      kind: 'chrome-cdp',
+      serverName: 'test-server',
+      logger: {
+        silly: () => {},
+        debug: () => {},
+        info: () => {},
+        warn: () => {},
+        error: () => {},
+      },
+      cdpEndpoint: 'http://127.0.0.1:9222',
+      cdpTimeoutMs: 30000,
+      initialPermissionMode: 'ask',
+      onToolCallDisconnected: () => 'disconnected',
+      trackEvent: () => {},
+    }
+
+    const config = createOpenChromeConfig(context)
+    expect(config.browser?.browserName).toBe('chromium')
+    expect(config.browser?.isolated).toBe(false)
+    expect(config.browser?.cdpEndpoint).toBe('http://127.0.0.1:9222')
+    expect(config.browser?.cdpTimeout).toBe(30000)
   })
 })
 
-describe('Disabled/Stub Branch Contracts', () => {
-  test('external-stubs module does not export private APIs', async () => {
+describe('Open Runner Protocol Contracts (Real Exports)', () => {
+  test('constants have correct values', () => {
+    expect(OPEN_RUNNER_PROTOCOL).toBe('open-runner-v1')
+    expect(OPEN_RUNNER_API_PREFIX).toBe('/open-runner/v1')
+    expect(MAX_PROMPT_BYTES).toBe(256 * 1024)
+    expect(DEFAULT_LEASE_MS).toBe(30_000)
+    expect(DEFAULT_HEARTBEAT_INTERVAL_MS).toBe(10_000)
+  })
+
+  test('PERMISSION_MODES and WORK_STATES have expected values', () => {
+    expect(PERMISSION_MODES).toEqual(['default', 'acceptEdits', 'plan'])
+    expect(WORK_STATES).toEqual([
+      'queued',
+      'leased',
+      'running',
+      'retry_wait',
+      'succeeded',
+      'failed',
+      'cancelled',
+    ])
+  })
+
+  test('OpenRunnerError has correct shape', () => {
+    const err = new OpenRunnerError('INVALID_REQUEST', 'test message', 400, true, { foo: 'bar' })
+    expect(err.name).toBe('OpenRunnerError')
+    expect(err.code).toBe('INVALID_REQUEST')
+    expect(err.message).toBe('test message')
+    expect(err.status).toBe(400)
+    expect(err.retryable).toBe(true)
+    expect(err.details).toEqual({ foo: 'bar' })
+  })
+
+  test('invalidRequest creates correct OpenRunnerError', () => {
+    const err = invalidRequest('bad request')
+    expect(err instanceof OpenRunnerError).toBe(true)
+    expect(err.code).toBe('INVALID_REQUEST')
+    expect(err.message).toBe('bad request')
+    expect(err.status).toBe(400)
+  })
+
+  test('isUuid validates UUIDs correctly', () => {
+    expect(isUuid('550e8400-e29b-41d4-a716-446655440000')).toBe(true)
+    expect(isUuid('not-a-uuid')).toBe(false)
+    expect(isUuid('')).toBe(false)
+    expect(isUuid(null as any)).toBe(false)
+    expect(isUuid(undefined as any)).toBe(false)
+  })
+
+  test('assertUuid throws for invalid UUIDs', () => {
+    expect(() => assertUuid('550e8400-e29b-41d4-a716-446655440000', 'test')).not.toThrow()
+    expect(() => assertUuid('not-a-uuid', 'test')).toThrow()
+  })
+
+  test('assertInteger validates integers correctly', () => {
+    expect(assertInteger(42, 'test', 0, 100)).toBe(42)
+    expect(assertInteger(0, 'test', 0, 100)).toBe(0)
+    expect(assertInteger(100, 'test', 0, 100)).toBe(100)
+    expect(() => assertInteger(-1, 'test', 0, 100)).toThrow()
+    expect(() => assertInteger(101, 'test', 0, 100)).toThrow()
+    expect(() => assertInteger(3.14, 'test', 0, 100)).toThrow()
+    expect(() => assertInteger('not-a-number' as any, 'test', 0, 100)).toThrow()
+  })
+
+  test('assertRfc3339 validates timestamps correctly', () => {
+    expect(assertRfc3339('2024-01-01T00:00:00Z', 'test')).toBe('2024-01-01T00:00:00Z')
+    expect(() => assertRfc3339('not-a-timestamp', 'test')).toThrow()
+  })
+
+  test('validateRelativeCwd validates paths correctly', () => {
+    expect(validateRelativeCwd('.')).toBe('.')
+    expect(validateRelativeCwd('subdir')).toBe('subdir')
+    expect(validateRelativeCwd('./subdir')).toBe('subdir')
+    expect(validateRelativeCwd('subdir/')).toBe('subdir')
+
+    // Absolute paths rejected
+    expect(() => validateRelativeCwd('/absolute/path')).toThrow()
+
+    // Paths with .. rejected
+    expect(() => validateRelativeCwd('../parent')).toThrow()
+
+    // Windows paths rejected
+    expect(() => validateRelativeCwd('C:\\Windows')).toThrow()
+
+    // Empty string rejected
+    expect(() => validateRelativeCwd('')).toThrow()
+  })
+
+  test('normalizeWorkInput validates and normalizes input', () => {
+    // Valid minimal input
+    const input = normalizeWorkInput({
+      prompt: 'test prompt',
+      cwd: '.',
+    })
+    expect(input.prompt).toBe('test prompt')
+    expect(input.cwd).toBe('.')
+    expect(input.permission_mode).toBe('default')
+
+    // Valid full input
+    const fullInput = normalizeWorkInput({
+      prompt: 'test prompt',
+      cwd: 'subdir',
+      model: 'test-model',
+      permission_mode: 'acceptEdits',
+      session_id: '550e8400-e29b-41d4-a716-446655440000',
+    })
+    expect(fullInput.model).toBe('test-model')
+    expect(fullInput.permission_mode).toBe('acceptEdits')
+    expect(fullInput.session_id).toBe('550e8400-e29b-41d4-a716-446655440000')
+
+    // Prompt too long
+    expect(() =>
+      normalizeWorkInput({
+        prompt: 'x'.repeat(MAX_PROMPT_BYTES + 1),
+        cwd: '.',
+      })
+    ).toThrow()
+
+    // Invalid permission mode
+    expect(() =>
+      normalizeWorkInput({
+        prompt: 'test',
+        cwd: '.',
+        permission_mode: 'invalid',
+      })
+    ).toThrow()
+
+    // Invalid session ID
+    expect(() =>
+      normalizeWorkInput({
+        prompt: 'test',
+        cwd: '.',
+        session_id: 'not-a-uuid',
+      })
+    ).toThrow()
+  })
+
+  test('newId generates valid UUIDs', () => {
+    const id1 = newId()
+    const id2 = newId()
+    expect(isUuid(id1)).toBe(true)
+    expect(isUuid(id2)).toBe(true)
+    expect(id1).not.toBe(id2)
+  })
+
+  test('canonicalJson produces consistent output', () => {
+    const obj = { b: 2, a: 1 }
+    const json1 = canonicalJson(obj)
+    const json2 = canonicalJson({ a: 1, b: 2 })
+    expect(json1).toBe(json2)
+    expect(json1).toContain('"a":1')
+    expect(json1).toContain('"b":2')
+  })
+
+  test('contentHash produces deterministic hashes', () => {
+    const obj = { test: 'data' }
+    const hash1 = contentHash(obj)
+    const hash2 = contentHash({ test: 'data' })
+    expect(hash1).toBe(hash2)
+    expect(typeof hash1).toBe('string')
+    expect(hash1.length).toBe(64) // SHA-256 is 64 hex chars
+  })
+
+  test('errorResponse returns correct shape', () => {
+    const err = new OpenRunnerError('TEST_ERROR', 'test error', 400, true, { detail: 'value' })
+    const resp = errorResponse(err, 'test-request-id')
+    expect(resp.protocol).toBe('open-runner-v1')
+    expect(resp.error.code).toBe('TEST_ERROR')
+    expect(resp.error.message).toBe('test error')
+    expect(resp.error.retryable).toBe(true)
+    expect(resp.error.details).toEqual({ detail: 'value' })
+    expect(resp.request_id).toBe('test-request-id')
+  })
+
+  test('errorResponse wraps non-OpenRunnerErrors', () => {
+    const err = new Error('generic error')
+    const resp = errorResponse(err)
+    expect(resp.error.code).toBe('INTERNAL_ERROR')
+    expect(resp.error.retryable).toBe(true)
+  })
+})
+
+describe('Disabled/Stub Branch Contracts (Real API)', () => {
+  test('no private extension fields exported', async () => {
     const moduleExports = await import('../src/external-stubs/claude-for-chrome-mcp.ts')
     const exportKeys = Object.keys(moduleExports)
 
-    // Should NOT have any exports claiming private API compatibility
+    // Should NOT export any private APIs
     const privateClaims = exportKeys.filter(key =>
+      key.toLowerCase().includes('socket') ||
       key.toLowerCase().includes('private') ||
-      key.toLowerCase().includes('internal') ||
-      key.toLowerCase().includes('compatible')
+      key.toLowerCase().includes('native') ||
+      key.toLowerCase().includes('bridgeconfig')
     )
     expect(privateClaims).toHaveLength(0)
   })
+})
 
-  test('stub branches return consistent error shapes', async () => {
-    // Test that stubs follow the error contract
-    const stubError = {
-      error: {
-        code: 'FEATURE_DISABLED',
-        message: 'This feature is disabled in this build',
-        type: 'stub_error',
-      },
-    }
-
-    expect(stubError.error.code).toBe('FEATURE_DISABLED')
-    expect(stubError.error.message).toBeDefined()
-    expect(stubError.error.type).toBe('stub_error')
+describe('Tool API Error Shapes (Real Protocol)', () => {
+  test('OpenRunnerError supports retryAfterMs', () => {
+    const err = new OpenRunnerError(
+      'RATE_LIMITED',
+      'too many requests',
+      429,
+      true,
+      { retryAfter: '10s' },
+      'req-123',
+      10000
+    )
+    expect(err.retryAfterMs).toBe(10000)
+    expect(err.requestId).toBe('req-123')
   })
 })
 
-describe('Tool API Error Shapes', () => {
-  test('tool execution errors include expected fields', async () => {
-    const toolError = {
-      type: 'tool_error',
-      toolName: 'web_read',
-      code: 'PERMISSION_DENIED',
-      message: 'Access to this URL is not allowed',
-      details: {
-        url: 'http://example.com',
-        reason: 'Not in allowed domains',
-      },
-    }
+describe('Retry Pattern Contracts (Real Protocol)', () => {
+  test('OpenRunnerError retryable flag works correctly', () => {
+    const retryable = new OpenRunnerError('SERVICE_UNAVAILABLE', 'retry later', 503, true)
+    expect(retryable.retryable).toBe(true)
 
-    expect(toolError.type).toBe('tool_error')
-    expect(toolError.toolName).toBe('web_read')
-    expect(toolError.code).toBe('PERMISSION_DENIED')
-    expect(toolError.message).toBeDefined()
-    expect(toolError.details).toBeDefined()
-  })
-
-  test('tool result shape follows expected contract', async () => {
-    const toolResult = {
-      type: 'tool_result',
-      toolName: 'web_read',
-      result: {
-        content: 'Page content',
-        status: 200,
-        url: 'http://127.0.0.1:9222',
-      },
-      timestamp: new Date().toISOString(),
-    }
-
-    expect(toolResult.type).toBe('tool_result')
-    expect(toolResult.toolName).toBe('web_read')
-    expect(toolResult.result).toBeDefined()
-    expect(typeof toolResult.timestamp).toBe('string')
-  })
-})
-
-describe('Retry Pattern Contracts', () => {
-  test('retry state includes attempt count and backoff', async () => {
-    const retryState = {
-      attempt: 1,
-      maxAttempts: 3,
-      backoffMs: 100,
-      lastError: new Error('Temporary failure'),
-    }
-
-    expect(retryState.attempt).toBe(1)
-    expect(retryState.maxAttempts).toBe(3)
-    expect(retryState.backoffMs).toBe(100)
-    expect(retryState.lastError).toBeInstanceOf(Error)
-  })
-
-  test('retryable error codes are identifiable', async () => {
-    const retryableCodes = ['TIMEOUT', 'CONNECTION_RESET', 'SERVICE_UNAVAILABLE', 'RATE_LIMITED']
-    const nonRetryableCodes = ['PERMISSION_DENIED', 'NOT_FOUND', 'INVALID_ARGUMENT']
-
-    for (const code of retryableCodes) {
-      expect(retryableCodes.includes(code)).toBe(true)
-    }
-
-    for (const code of nonRetryableCodes) {
-      expect(nonRetryableCodes.includes(code)).toBe(true)
-    }
-
-    // Verify no overlap
-    const overlap = retryableCodes.filter(c => nonRetryableCodes.includes(c))
-    expect(overlap).toHaveLength(0)
+    const notRetryable = new OpenRunnerError('PERMISSION_DENIED', 'no access', 403, false)
+    expect(notRetryable.retryable).toBe(false)
   })
 })
