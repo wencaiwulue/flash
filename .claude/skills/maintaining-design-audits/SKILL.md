@@ -16,6 +16,7 @@ description: Use when committing or reviewing changes that affect design specs, 
 | 缺陷修复 | 源码与测试；主责 spec；PR 中的 Finding ID、验证和证据边界；整改台账 |
 | 行为/架构变化 | 先按上游三层证据更新 spec/plan；受影响 batch 与相邻契约 |
 | 新增/移动文件 | 唯一 coverage 主责；新子系统同步 manifest、coverage、INDEX 和审计矩阵 |
+| 新建/大幅修订 spec | 必须包含第 4 章的三个三级小节：架构与资源边界图、关键流程与失败路径、核心对象生命周期七列表 |
 | 仅修文档 | spec、链接与 `bun scripts/check-design-docs.ts`；对应整改台账 |
 | main 少量新增提交 | 合入后按变更文件 → coverage 主责 → 相邻契约做增量审查 |
 | 与审计范围无关 | 正常代码与测试，不强行修改审计报告 |
@@ -71,6 +72,7 @@ description: Use when committing or reviewing changes that affect design specs, 
 ## 验证
 
 - 结构：`bun scripts/check-design-docs.ts`，记录真实错误、警告和 uncovered 文件。
+- 新建/大幅修订 spec：验证包含第 4 章的三个三级小节（架构与资源边界图、关键流程与失败路径、核心对象生命周期七列表）。
 - 变更相关测试必须运行；完成后运行 `bun run test`、`bun run typecheck`、`bun run build`。
 - 检查 Finding ID 唯一、owner 属于 manifest、登记行 schema 和统计一致；确认无占位符、重复归属和失效链接。
 - 测试存在、通过、mock/offline、live 分开陈述；未运行不得写通过。
