@@ -361,6 +361,201 @@ interface LocalWorkflowTaskState extends TaskStateBase {
 | 下游 | WorkflowTool | 用户接口、workflow 发现 | 本文 |
 | 下游 | LocalWorkflowTask | 任务系统集成 | 本文 |
 
+---
+
+### 4.6 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          flash CLI                                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ┌───────────────────────────────────────────────────────────────────────┐│
+│  │  AppState                                                              ││
+│  │  ┌───────────────────────────────────────────────────────────────────┐││
+│  │  │  tasks: { [taskId]: LocalWorkflowTaskState }                   │││
+│  │  │  ┌─────────────────────────────────────────────────────────────┐│││
+│  │  │  │  workflowName, agentCount, agents, error ...              ││││
+│  │  │  └─────────────────────────────────────────────────────────────┘│││
+│  │  └───────────────────────────────────────────────────────────────────┘││
+│  └───────────────────────────────────────────────────────────────────────┘│
+│                                    │                                        │
+│  ┌───────────────────────────────────────────────────────────────────────┐│
+│  │  executions Map (src/tasks/LocalWorkflowTask.ts)                      ││
+│  │  ┌───────────────────────────────────────────────────────────────────┐││
+│  │  │ { taskId → WorkflowExecution instance }                           │││
+│  │  └───────────────────────────────────────────────────────────────────┘││
+│  └───────────────────────────────────────────────────────────────────────┘│
+│                                    │                                        │
+│  ┌───────────────────────────────────────────────────────────────────────┐│
+│  │  src/tools/WorkflowTool/                                              ││
+│  │  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐  ││
+│  │  │  schema.ts    │  │  executor.ts      │  │  runner.ts      │  ││
+│  │  │  parseWorkflow()│  │  WorkflowExecution  │  │  runWorkflowStep()│ ││
+│  │  │  buildStepPrompt│  │  start/skip/retry/│  │  (calls runAgent)│ ││
+│  │  │                  │  │  kill/loop      │  │                  │  ││
+│  │  └──────────────────┘  └──────────────────┘  └──────────────────┘  ││
+│  │  ┌──────────────────┐  ┌──────────────────┐                          ││
+│  │  │ discovery.ts   │  │ createWorkflow   │                          ││
+│  │  │ (reads .claude/ │  │  Command.ts    │                          ││
+│  │  │ workflows/*.json)│  │                  │                          ││
+│  │  └──────────────────┘  └──────────────────┘                          ││
+│  └───────────────────────────────────────────────────────────────────────┘│
+│                                    │                                        │
+│  ┌───────────────────────────────────────────────────────────────────────┐│
+│  │  WorkflowExecution 内部状态 (executor.ts)                             ││
+│  │  ┌───────────────────────────────────────────────────────────────────┐││
+│  │  │ state: { status, agents: { [stepId]: State }, results }     │││
+│  │  │ controllers: Map<stepId, AbortController>                    │││
+│  │  │ wake: () => void (唤醒 loop)                               │││
+│  │  │ done: Promise<WorkflowExecutionState>                         │││
+│  │  └───────────────────────────────────────────────────────────────────┘││
+│  └───────────────────────────────────────────────────────────────────────┘│
+│                                    │                                        │
+│  ┌───────────────────────────────────────────────────────────────────────┐│
+│  │                         输出文件系统                                   ││
+│  │  ┌───────────────────────────────────────────────────────────────────┐││
+│  │  │ getTaskOutputPath(taskId) → JSON with final state             │││
+│  │  │ { status, agents, results }                                  │││
+│  │  └───────────────────────────────────────────────────────────────────┘││
+│  └───────────────────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**说明：**
+- `executions` Map 在 LocalWorkflowTask 中全局保存活跃 WorkflowExecution 实例
+- WorkflowExecution 内部状态通过 getState() 返回快照，外部无法直接修改
+- 每个步骤有独立 AbortController，支持单步 skip 和整体 kill
+- 输出持久化仅在 workflow done 时写入 JSON 文件，无中间状态恢复
+- DAG 依赖在 executor 中通过 propagateSkips() 处理
+
+---
+
+### 4.7 关键流程与失败路径
+
+#### 主流程：Workflow 启动 → DAG 调度 → 完成/失败
+
+```text
+[用户调用 WorkflowTool / startWorkflowTask()]
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ parseWorkflowDefinition(userInput)                                │
+│  - Zod schema 验证                                               │
+│  - 检查重复 stepId                                              │
+│  - 检查依赖是否存在                                              │
+│  - DAG 循环检测 (DFS)                                             │
+└─────────────────────────────────────────────────────────────────────┘
+        │ (验证失败 → 抛错返回)
+        ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ 1. createTaskStateBase() → LocalWorkflowTaskState                │
+│ 2. registerTask() → 添加到 AppState.tasks                        │
+│ 3. new WorkflowExecution(workflow, input, runner, onUpdate)   │
+│    → 初始化 state: { status="running", agents: { [id]: "pending" }, │
+│      results: {} }                                              │
+│ 4. 加入 executions Map                                           │
+│ 5. execution.start() → 启动 loop() 异步函数                      │
+└─────────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ loop() (循环直到 workflow 终态且无 running steps)               │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │ propagateSkips()                                           │  │
+│  │  → 跳过依赖 failed/skipped 且未 continueOnError 的步骤        │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │ 计算 running = controllers.size, concurrency 限制           │  │
+│  │ 找出 ready = pending 且 dependenciesReady 的步骤               │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │ 启动 ready.slice(0, concurrency - running) 个步骤:          │  │
+│  │  → 创建 AbortController, 加入 controllers Map             │  │
+│  │  → 标记步骤为 "running"                                   │  │
+│  │  → runner(step, buildStepPrompt(...), signal)             │  │
+│  │    成功 → "completed", output 存入 results               │  │
+│  │    失败 → "failed", error 保存                          │  │
+│  │    finally → 从 controllers 删除, 调用 notify()          │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │ 检查是否还有 pending/running → 无则确定最终状态             │  │
+│  │ 有且 ready 为空 → wait for wake()                           │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ done Promise 解析 → 从 executions Map 删除                      │
+│ → 尝试写入输出文件 (JSON 完整 state)                              │
+│   成功 → hasOutput=true                                          │
+│   失败 → state.error=错误消息, 任务状态设为 failed                  │
+│ → 更新 AppState 任务状态为终态 (completed/failed/killed)          │
+│ → 发送 <task-notification>                                        │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+#### 失败路径 1：单步 skip → 传播跳过
+
+```text
+[用户调用 skipWorkflowAgent(taskId, stepId)]
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ execution.skip(stepId)                                             │
+│ 1. 验证 workflow status="running"                               │
+│ 2. 验证步骤未 completed                                           │
+│ 3. 标记步骤为 "skipped"                                         │
+│ 4. controllers.get(stepId)?.abort() (如正在运行则中止)         │
+│ 5. 调用 notify() → 唤醒 loop()                                   │
+└─────────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ loop() 继续 → propagateSkips()                                    │
+│ → 所有依赖该步骤且未 continueOnError 的步骤也标记为 skipped      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+#### 失败路径 2：整体 kill
+
+```text
+[用户调用 killWorkflowTask(taskId)]
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ execution.kill()                                                  │
+│ 1. 验证 workflow status="running"                               │
+│ 2. 标记 workflow status="killed"                                │
+│ 3. 所有 pending 步骤标记为 "skipped"                             │
+│ 4. abort 所有 controllers (中止所有 running steps)              │
+│ 5. notify() → 唤醒 loop()                                      │
+└─────────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ loop() 继续 → 等待所有 running 步骤结束 (被 abort)                │
+│ → 确定最终状态为 "killed"                                        │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 4.8 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| `WorkflowExecution` | executions Map (LocalWorkflowTask) | new WorkflowExecution(workflow, input, runner, onUpdate) | 隔离：每个 taskId 独立；Map 全局共享 | 仅最终 done 后写入输出文件 | workflow done 后从 executions Map 删除 | kill() → abort all controllers + mark killed + skip pending |
+| `WorkflowExecution.state` (内部) | WorkflowExecution | start() 初始化为 running + all steps pending | 隔离；外部通过 getState() 快照访问，不可直接修改 | 最终状态持久化到输出文件 JSON | retry(stepId) 可重置步骤状态为 pending | 无 |
+| `AbortController` (per step) | WorkflowExecution.controllers | launch(step) 时创建，加入 Map | 隔离：每个 step 一个 | 否 | 步骤完成 finally 时从 Map 删除 | skip(stepId) → abort 单个 controller; kill() → abort all controllers |
+| `WorkflowDefinition` (用户输入) | schema.ts | parseWorkflowDefinition() 验证并解析 | 隔离：每个 workflow 调用一个 | 否 (可从 JSON 重新解析) | 无 | 无 |
+| LocalWorkflowTaskState (AppState) | AppState | createTaskStateBase() + workflowName/agentCount/agents/agentId/error | 隔离：每个 taskId 一个 | 否 (任务系统不持久化，仅输出文件有最终结果) | 任务终态后被 task system 驱逐 | 无 |
+
+**生命周期证据：**
+- src/tools/WorkflowTool/schema.ts:1-67
+- src/tools/WorkflowTool/executor.ts:1-240
+- src/tools/WorkflowTool/runner.ts:1-55
+- src/tasks/LocalWorkflowTask/LocalWorkflowTask.ts:1-176
+
 ## 5. 失败语义与工程取舍
 
 | 触发条件 | 检测位置 | 消息/异常如何传播 | 是否重试及上限 | 状态与资源清理 | 调用方可见结果 |
