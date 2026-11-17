@@ -175,6 +175,16 @@ Details must not create a duplicate.
     expect(entry.precedence).toContain('Hooks merge across files')
   })
 
+  test('includes the detail warning that drives deprecated lifecycle in the excerpt', () => {
+    const entry = parseSettingsReference(settingsMarkdown({
+      detail: '> Deprecated since v2.1.92, when the [`voice`](#voice) object replaced it.',
+    }), source)[0]!
+    expect(entry.lifecycle).toBe('deprecated')
+    expect(entry.excerpt).toContain(
+      'Deprecated since v2.1.92, when the `voice` object replaced it.',
+    )
+  })
+
   test('does not invent replacements for active settings', () => {
     const entry = parseSettingsReference(settingsMarkdown({
       description: 'Use `serverName` to identify a server',
@@ -232,6 +242,10 @@ Prose after the table is not a malformed row.
         expected: 'array of `{ "matcher": string, "hooks": [] }` groups',
       },
       { type: 'String, a model alias or full model ID', expected: 'string' },
+      {
+        type: 'the string `"Agents"` in the `strictPluginOnlyCustomization` array; see [ManagedSettings](https://example.test/ManagedSettings)',
+        expected: 'the string `"Agents"` in the `strictPluginOnlyCustomization` array; see ManagedSettings',
+      },
     ]
     const actual = cases.map(({ type }) =>
       parseSettingsReference(settingsMarkdown({ type }), source)[0]!.types,
@@ -252,6 +266,31 @@ Prose after the table is not a malformed row.
       parseSettingsReference(settingsMarkdown({
         defaultValue: `\`${literal}\`${punctuation} explanation`,
       }), source)[0]!.default,
+    )
+    expect(actual).toEqual(cases.map(({ expected }) => expected))
+  })
+
+  test('uses the effective baseline default from explicit version history', () => {
+    const cases = [
+      {
+        defaultValue: '`false`. Before v2.1.324, the default was `true`',
+        expected: true,
+      },
+      {
+        defaultValue: '`false`. Before v2.1.311, the default was `true`',
+        expected: false,
+      },
+      {
+        defaultValue: '`false`. Before v2.1.310, the default was `true`',
+        expected: false,
+      },
+      {
+        defaultValue: '`0`. Before v2.1.324, the default was `42`',
+        expected: 42,
+      },
+    ]
+    const actual = cases.map(({ defaultValue }) =>
+      parseSettingsReference(settingsMarkdown({ defaultValue }), source)[0]!.default,
     )
     expect(actual).toEqual(cases.map(({ expected }) => expected))
   })
@@ -386,23 +425,47 @@ Set the model.
 
   test('real snapshot has no active pseudo-replacements and retains lifecycle replacements', async () => {
     const { inventory } = await readSnapshot()
-    const byId = new Map(inventory.entries.map(entry => [entry.id, entry]))
     expect(inventory.entries.filter(entry =>
       entry.lifecycle === 'active' && entry.replacement !== undefined,
     ).map(entry => entry.id)).toEqual([])
-    expect(byId.get('setting:disableArtifact')).toMatchObject({
-      lifecycle: 'deprecated', replacement: 'enableArtifact',
+    expect(Object.fromEntries(inventory.entries
+      .filter(entry => entry.replacement !== undefined)
+      .map(entry => [entry.id, {
+        lifecycle: entry.lifecycle,
+        replacement: entry.replacement,
+      }]))).toEqual({
+      'setting:disableArtifact': {
+        lifecycle: 'deprecated', replacement: 'enableArtifact',
+      },
+      'setting:includeCoAuthoredBy': {
+        lifecycle: 'deprecated', replacement: 'attribution',
+      },
+      'env:CLAUDE_CODE_AUTO_BACKGROUND_WORKER_CHECKIN_SECONDS': {
+        lifecycle: 'removed', replacement: 'CLAUDE_CODE_WORKER_CHECKIN_SCHEDULE',
+      },
+      'env:CLAUDE_CODE_CONNECT_TIMEOUT_MS': {
+        lifecycle: 'removed', replacement: 'API_TIMEOUT_MS',
+      },
+      'env:ENABLE_PROMPT_CACHING_1H_BEDROCK': {
+        lifecycle: 'deprecated', replacement: 'ENABLE_PROMPT_CACHING_1H',
+      },
     })
-    expect(byId.get('env:CLAUDE_CODE_CONNECT_TIMEOUT_MS')).toMatchObject({
-      lifecycle: 'removed', replacement: 'API_TIMEOUT_MS',
-    })
+  })
+
+  test('real snapshot retains the voiceEnabled lifecycle warning in its excerpt', async () => {
+    const { inventory } = await readSnapshot()
+    const entry = inventory.entries.find(entry => entry.id === 'setting:voiceEnabled')
+    expect(entry?.lifecycle).toBe('deprecated')
+    expect(entry?.excerpt).toContain(
+      'Deprecated since v2.1.92, when the `voice` object replaced it. Claude Code still reads it so older settings files keep working, but new configurations should set `voice.enabled`.',
+    )
   })
 
   test('real snapshot parses all nine punctuated literal defaults', async () => {
     const { inventory } = await readSnapshot()
     const byId = new Map(inventory.entries.map(entry => [entry.id, entry]))
     const expectedDefaults: Record<string, unknown> = {
-      'setting:sandbox.autoAllowBashIfSandboxed': false,
+      'setting:sandbox.autoAllowBashIfSandboxed': true,
       'setting:sandbox.filesystem.disabled': false,
       'setting:skillListingBudgetFraction': 0.01,
       'setting:allowAllClaudeAiMcps': false,
@@ -416,6 +479,9 @@ Set the model.
       expect(byId.get(id)?.default).toBe(value)
       expect(byId.get(id)?.defaultDocumented).toBe(true)
     }
+    expect(byId.get('setting:sandbox.autoAllowBashIfSandboxed')?.excerpt).toContain(
+      '* **Default**: `false`. Before v2.1.324, the default was `true`',
+    )
   })
 
   test('real snapshot preserves complete compound types', async () => {
@@ -430,24 +496,38 @@ Set the model.
     expect(byId.get('setting:sandbox.filesystem')?.types).toEqual([
       'object with `allowWrite`, `denyWrite`, `denyRead`, and `allowRead` arrays, plus the `allowManagedReadPathsOnly` and `disabled` Booleans',
     ])
+    for (const key of ['agents', 'hooks', 'mcp', 'skills']) {
+      expect(byId.get(`setting:strictPluginOnlyCustomization.${key}`)?.types).toEqual([
+        `the string \`"${key}"\` in the \`strictPluginOnlyCustomization\` array`,
+      ])
+    }
   })
 
-  test('real snapshot retains all nine Scope precedence passages', async () => {
+  test('real snapshot retains all sixteen Scope precedence passages and source rules', async () => {
     const { inventory } = await readSnapshot()
     const byId = new Map(inventory.entries.map(entry => [entry.id, entry]))
     const scopePrecedenceIds = [
       'setting:allowedHttpHookUrls',
+      'setting:allowedMcpServers',
+      'setting:bashEditDiffEnabled',
+      'setting:deniedMcpServers',
       'setting:disableAutoMode',
       'setting:forceRemoteSettingsRefresh',
       'setting:hooks',
       'setting:httpHookAllowedEnvVars',
+      'setting:managedSourcesBehavior',
       'setting:minimumVersion',
+      'setting:modelPicker',
+      'setting:parentSettingsBehavior',
+      'setting:policyHelper',
       'setting:sandbox.allowNestedUserNamespaces',
       'setting:spellcheck',
       'setting:workflowSizeGuideline',
     ]
     for (const id of scopePrecedenceIds) {
-      expect(byId.get(id)?.precedenceDocumented).toBe(true)
+      const entry = byId.get(id)!
+      expect(entry.precedenceDocumented).toBe(true)
+      expect(entry.precedence).toContain(entry.sourceRules)
     }
     expect(byId.get('setting:hooks')?.precedence).toContain('Hooks merge across files')
   })

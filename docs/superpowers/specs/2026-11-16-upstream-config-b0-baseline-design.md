@@ -52,7 +52,8 @@ status: approved
 | inventory 与 matrix 分离 | inventory 是上游事实；matrix 额外记录 flash 实现和验收 | 重采集不会覆盖人工验证结论 | 单一文件全部由生成器覆盖 | B0 需要可重生成与人工状态并存 |
 | 只自动 diff settings 与 hooks | settings 来自 JSON Schema，hooks 来自 `HOOK_EVENTS`；env 仍由矩阵证据约束 | 当前没有可信的全量 env 注册表，不能用 grep 冒充语义检查 | 对源码做字符串存在性检查即标记 aligned | 总路线“注入不算完成” |
 | 保留 deprecated/removed 标签 | 文档明确标记的项进入 inventory，再由 matrix 记录替代项或排除理由 | 防止悄悄漏项；区分不支持与故意迁移 | 解析时直接删除废弃行 | 总路线排除记录要求 |
-| 复合类型保留完整语义 | 仅规范化简单主类型；object/array 的属性、映射、union 与反引号 code span 全文保留 | 首个逗号/冒号可能属于属性列表或 code span，截断会伪造类型 | 按首个逗号/冒号切割全部类型 | 官方 settings reference 的 `hooks`、`permissions`、`sandbox.filesystem` Type 行；SHA-256 `7817edfb…6a6f2f` |
+| 复合类型保留完整语义 | 仅规范化简单主类型；object/array 的属性、映射、union 与反引号 code span 全文保留；非主类型复合描述保留大小写 | 首个逗号/冒号可能属于属性列表或 code span，截断或整体小写化会伪造类型 | 按首个逗号/冒号切割全部类型；对未识别复合 Type 整体小写化 | 官方 settings reference 的 `hooks`、`permissions`、`sandbox.filesystem`、`strictPluginOnlyCustomization.*` Type 行；SHA-256 `7817edfb…6a6f2f` |
+| 默认值对齐固定基线 | `default` 表示 2.1.311 有效值；明确 `Before vX` 历史语句按版本边界选择 literal，当前原文留在 excerpt | 实时文档可能已修改默认值，不能把当前文档值误记为 stable 基线值 | 另设平行默认值体系；针对单条路径硬编码 | `sandbox.autoAllowBashIfSandboxed` Default：`false`，Before v2.1.324 为 `true`；同文档 SHA-256 `7817edfb…6a6f2f` |
 | 未列出不等于 removed | 只有文档明确标记才设 lifecycle；重采集消失记为 upstream-disappeared 并人工复核 | 实时文档可能调整结构 | 将消失项自动删除或宣称上游移除 | 文档非版本化快照 |
 | hooks 三类局部清洗 | 非对象 hooks、未知事件、已知事件非数组分别删除并诊断 | 与 2.1.311 黑盒观测一致，保留有效兄弟配置 | 全字段通用容错；继续整文件失败 | doctor probe；官方 settings 文档 |
 | 不扩散容错 | 已知事件数组内部的坏 matcher 仍走 schema；`model` 等普通字段不变 | 这些行为未在本批完整测量 | 递归清洗任意 hook 内容 | 2.1.311 仅证明三类局部行为 |
@@ -124,7 +125,7 @@ type UpstreamEntry = {
   path: string           // setting 为点路径；hook/env 为自身名称
   title: string
   types: string[]
-  default: unknown       // 文档未说明时为 null，另设 defaultDocumented=false
+  default: unknown       // 固定 2.1.311 的有效默认值；未说明时为 null，另设 defaultDocumented=false
   defaultDocumented: boolean
   scopes: string[]
   sourceRules: string   // 完整 Scope 与来源限制原文；不从 scope 名称推断额外规则
@@ -143,8 +144,8 @@ type UpstreamEntry = {
 
 1. 读取 settings reference 的有效设置表和嵌套小节，保留点路径、scope、完整来源限制、优先级/合并原文、类型、默认值、deprecated/removed。表格索引和详情标题只识别 fenced code block 外的结构行；目标表连续非空块中的畸形数据行必须抛错，正常空行或新标题结束表格。表格 cell 按连续反引号 run 识别 code span，span 内的 `|` 不分列。
 2. Scope 行中的 precedence/override/merge/highest/outrank 原文同样进入 `precedence`。未找到优先级说明时 `precedenceDocumented:false`，不得把空串解释为固定优先级。
-3. 简单主类型 string/boolean/number/object/array 可规范化为小写主类型；带描述的复合 object/array 必须保留完整语义，不得按逗号/冒号截断属性列表或反引号 code span。Default 的反引号布尔、null、有限数字在后接空白或 `, . ; : ! ?` 时仍转 JSON 值；unset 和描述性默认值保留 `default:null`、`defaultDocumented:true`。
-4. 只有 lifecycle 为 deprecated/removed 时才从 `use \`replacement\`` 提取 replacement；active 条目的普通示例用语不得生成 replacement。
+3. 简单主类型 string/boolean/number/object/array 可规范化为小写主类型；带描述的复合 object/array 必须保留完整语义，不得按逗号/冒号截断属性列表或反引号 code span。非主类型复合 Type 保留原文大小写及 code span/link 文本，只对已识别的主类型术语做小写规范化。Default 的反引号布尔、null、有限数字在后接空白或 `, . ; : ! ?` 时仍转 JSON 值；unset 和描述性默认值保留 `default:null`、`defaultDocumented:true`。`UpstreamEntry.default` 始终表示固定 2.1.311 的有效默认值：对明确的 `Before vX, the default was \`literal\``，baseline<X 时通用解析该历史 literal，baseline>=X 时使用当前 literal；当前文档 Default 原文继续完整保留在 excerpt，不新增平行默认值字段。
+4. 只有 lifecycle 为 deprecated/removed 时才从 `use \`replacement\`` 提取 replacement；active 条目的普通示例用语不得生成 replacement。详情警告实际驱动 deprecated/removed 时，必须把该警告原文纳入 excerpt；不得因此放宽 active replacement 提取。
 5. 读取 hooks reference 的事件清单；二进制 doctor 列表用于交叉验证，不以文档缺行推断事件不存在。
 6. 读取 environment variables 的 Variables 表；包含 deprecated 项。
 7. 按 `kind`、`id` 稳定排序，拒绝重复 ID、空 path、非法 lifecycle、无来源或空 source anchor 条目。
