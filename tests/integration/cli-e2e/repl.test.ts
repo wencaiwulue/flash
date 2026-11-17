@@ -27,9 +27,11 @@ async function startRepl(): Promise<{ session: PtySession; sandbox: Sandbox; moc
   // Handle API key dialog - evidence-based: wait for dialog elements first
   try {
     await session.waitFor(/Detected|API key|Yes.*No/, 10000)
-    // Dialog confirmed present - select Yes (up arrow once from default No) and confirm
-    session.write('\x1b[A\r')
-    await new Promise(r => setTimeout(r, 3000))
+    // Dialog confirmed present - select Yes (up arrow once from default No) and confirm with two writes
+    session.write('\x1b[A')
+    await new Promise(r => setTimeout(r, 300))
+    session.write('\r')
+    await new Promise(r => setTimeout(r, 500))
   } catch {
     // No dialog appeared, continue
   }
