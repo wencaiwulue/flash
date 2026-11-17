@@ -670,6 +670,477 @@ async function loadCcshare(id: CcshareId): Promise<LogOption | null>
 4. **钩子执行阶段**：运行 `processSessionStartHooks('resume')`
 5. **返回结果阶段**：包含消息、中断状态、元数据等
 
+### 4.9 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         Claude Code User Session                            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │                        User Commands                                 │  │
+│  │  ┌────────────────────────────────────────────────────────────────┐ │  │
+│  │  │ /resume [sessionId|jsonl|ccshare]                              │ │  │
+│  │  │ /session list [--limit N] [--all-projects]                     │ │  │
+│  │  │ /session search [query] [--limit N]                            │ │  │
+│  │  │ /backfill-sessions [--dry-run] [--force]                       │ │  │
+│  │  └────────────────────────────────────────────────────────────────┘ │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│                                    │                                       │
+│                                    ▼                                       │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │                    Session Discovery Layer                          │  │
+│  │  ┌────────────────────────────────────────────────────────────────┐ │  │
+│  │  │ listSessionsImpl(limit?)                                       │ │  │
+│  │  │  ├─ scan: ~/.claude/projects/{sanitized}/*.jsonl              │ │  │
+│  │  │  ├─ stat: all files first (O(1) syscall, mtime/ctime/size)     │ │  │
+│  │  │  ├─ sort: by mtime descending                                  │ │  │
+│  │  │  ├─ read: only top N (with limit) OR all (no limit)            │ │  │
+│  │  │  │  └─ LITE READ: head 8KB + tail 8KB (not full file!)       │ │  │
+│  │  │  ├─ parse: parseSessionInfoFromLite()                         │ │  │
+│  │  │  │  ├─ extract: custom-title, tag, branch, first-prompt       │ │  │
+│  │  │  │  └─ extract: worktree-state (from tail)                    │ │  │
+│  │  │  └─ dedupe: by sessionId, keep latest                         │ │  │
+│  │  └────────────────────────────────────────────────────────────────┘ │  │
+│  │  ┌────────────────────────────────────────────────────────────────┐ │  │
+│  │  │ discoverAssistantSessions()                                    │ │  │
+│  │  │  └─ remote API call (internal-only)                            │ │  │
+│  │  └────────────────────────────────────────────────────────────────┘ │  │
+│  │  ┌────────────────────────────────────────────────────────────────┐ │  │
+│  │  │ getWorktreePathsPortable()                                     │ │  │
+│  │  │  └─ scan for other git worktrees in same repo                 │ │  │
+│  │  └────────────────────────────────────────────────────────────────┘ │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│                                    │                                       │
+│                                    ▼                                       │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │                      Session Search Layer                            │  │
+│  │  ┌────────────────────────────────────────────────────────────────┐ │  │
+│  │  │ logContainsQuery(log, query) [PRE-FILTER]                      │ │  │
+│  │  │  ├─ checks: title, tags, branch, summary                       │ │  │
+│  │  │  └─ fast: no full transcript load                              │ │  │
+│  │  └────────────────────────────────────────────────────────────────┘ │  │
+│  │  ┌────────────────────────────────────────────────────────────────┐ │  │
+│  │  │ agenticSessionSearch(query, logs) [AI RERANK]                  │ │  │
+│  │  │  ├─ load: full transcript via loadFullLog()                    │ │  │
+│  │  │  ├─ extract: transcript via extractTranscript()                │ │  │
+│  │  │  ├─ rerank: small model for relevance                          │ │  │
+│  │  │  └─ recall-over-precision: return more rather than less       │ │  │
+│  │  └────────────────────────────────────────────────────────────────┘ │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│                                    │                                       │
+│                                    ▼                                       │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │                    Session Recovery Layer                           │  │
+│  │  ┌────────────────────────────────────────────────────────────────┐ │  │
+│  │  │ loadConversationForResume()                                    │ │  │
+│  │  │  ├─ from: sessionId OR jsonl path OR recent                    │ │  │
+│  │  │  └─ deserialize: deserializeMessagesWithInterruptDetection()  │ │  │
+│  │  └────────────────────────────────────────────────────────────────┘ │  │
+│  │  ┌────────────────────────────────────────────────────────────────┐ │  │
+│  │  │ deserializeMessagesWithInterruptDetection()                   │ │  │
+│  │  │  ├─ detect: interrupted_prompt / interrupted_turn             │ │  │
+│  │  │  └─ restore: skill state, file history, todos, agent settings │ │  │
+│  │  └────────────────────────────────────────────────────────────────┘ │  │
+│  │  ┌────────────────────────────────────────────────────────────────┐ │  │
+│  │  │ checkCrossProjectResume(log)                                   │ │  │
+│  │  │  └─ compare: log.projectPath vs current cwd                   │ │  │
+│  │  └────────────────────────────────────────────────────────────────┘ │  │
+│  │  ┌────────────────────────────────────────────────────────────────┐ │  │
+│  │  │ restoreWorktreeForResume(worktreeSession)                      │ │  │
+│  │  │  ├─ try: chdir to worktreePath                                │ │  │
+│  │  │  ├─ fail: set worktreeState = null, continue                  │ │  │
+│  │  │  └─ set: sessionProjectDir for transcript path resolution     │ │  │
+│  │  └────────────────────────────────────────────────────────────────┘ │  │
+│  │  ┌────────────────────────────────────────────────────────────────┐ │  │
+│  │  │ switchSession(sessionId, projectDirOverride?)                 │ │  │
+│  │  │  ├─ update: bootstrap state                                   │ │  │
+│  │  │  ├─ set: sessionProjectDir                                   │ │  │
+│  │  │  └─ adopt: transcript file via adoptResumedSessionFile()      │ │  │
+│  │  └────────────────────────────────────────────────────────────────┘ │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│                                    │                                       │
+│                                    ▼                                       │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │                   Concurrent Sessions Layer                         │  │
+│  │  ┌────────────────────────────────────────────────────────────────┐ │  │
+│  │  │ registerSession(sessionId)                                     │ │  │
+│  │  │  ├─ write: ~/.claude/sessions/active/{pid}.json [ATOMIC]       │ │  │
+│  │  │  └─ contains: pid, sessionId, startTime, lastActivityTime      │ │  │
+│  │  └────────────────────────────────────────────────────────────────┘ │  │
+│  │  ┌────────────────────────────────────────────────────────────────┐ │  │
+│  │  │ updateSessionActivity(sessionId)                               │ │  │
+│  │  │  └─ update: lastActivityTime in pid.json                       │ │  │
+│  │  └────────────────────────────────────────────────────────────────┘ │  │
+│  │  ┌────────────────────────────────────────────────────────────────┐ │  │
+│  │  │ writeSessionTombstone(sessionId) [background sessions]         │ │  │
+│  │  │  └─ mark: session completed but not cleaned up                 │ │  │
+│  │  └────────────────────────────────────────────────────────────────┘ │  │
+│  │  ┌────────────────────────────────────────────────────────────────┐ │  │
+│  │  │ startSessionActivity(reason) / stopSessionActivity(reason)     │ │  │
+│  │  │  ├─ refcount: >0 means activity in progress                   │ │  │
+│  │  │  ├─ heartbeat: 30s interval when active (remote mode only)    │ │  │
+│  │  │  └─ idle: stop heartbeat when refcount reaches 0              │ │  │
+│  │  └────────────────────────────────────────────────────────────────┘ │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│                                    │                                       │
+│                                    ▼                                       │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │                  Historical Backfill Layer                         │  │
+│  │  ┌────────────────────────────────────────────────────────────────┐ │  │
+│  │  │ backfillSessionMetadata({ dryRun, force }, deps?)              │ │  │
+│  │  │  ├─ lock: withMetadataLock() [single global lock]             │ │  │
+│  │  │  ├─ scan: all projects, all sessions                          │ │  │
+│  │  │  ├─ check: loadCachedSessionMeta(sessionId)                   │ │  │
+│  │  │  ├─ skip: if exists AND !force                                │ │  │
+│  │  │  ├─ load: loadAllLogsFromSessionFile(path) [full file!]       │ │  │
+│  │  │  ├─ filter: hasValidDates()                                  │ │  │
+│  │  │  ├─ convert: logToSessionMeta(log)                           │ │  │
+│  │  │  ├─ dedupe: deduplicateSessionBranches() [keep best]         │ │  │
+│  │  │  ├─ save: saveSessionMeta(meta) [atomic rename]               │ │  │
+│  │  │  └─ report: { scanned, valid, rebuilt, wouldRebuild, ... }    │ │  │
+│  │  └────────────────────────────────────────────────────────────────┘ │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                          File System Storage                                │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │  ~/.claude/projects/{sanitized-git-root}/                           │  │
+│  │    └── *.jsonl [session transcripts, JSONL format]                  │  │
+│  │                                                                      │  │
+│  │  ~/.claude/usage-data/session-meta/                                 │  │
+│  │    └── {sessionId}.json [cached metadata, 0600 perms]               │  │
+│  │                                                                      │  │
+│  │  ~/.claude/sessions/active/                                         │  │
+│  │    └── {pid}.json [active session registrations, ATOMIC write]     │  │
+│  │                                                                      │  │
+│  │  [other project dirs]/                                              │  │
+│  │    └── *.jsonl [cross-project sessions accessible via full path]   │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                          ccshare Shared Sessions                           │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │  parseCcshareId(input) → ccshare_xxxx OR full URL                   │  │
+│  │  loadCcshare(id) → LogOption | null                                 │  │
+│  │   ├─ download: from remote service                                 │  │
+│  │   ├─ validate: size/line/timeout limits                            │  │
+│  │   ├─ check: cross-domain redirects (user confirm)                  │  │
+│  │   └─ SET: projectPath = UNDEFINED (SAFETY FIRST!)                 │  │
+│  │      └─ NO auto chdir, NO auto hook execution                     │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                          External Integrations                              │
+│  ┌──────────────────────────────────┐  ┌───────────────────────────────┐  │
+│  │  Remote Assistant Sessions API  │  │  ccshare Remote Service      │  │
+│  │  (internal-only, gated access)  │  │  (user-provided URLs/IDs)     │  │
+│  └──────────────────────────────────┘  └───────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 4.10 关键流程与失败路径
+
+#### 会话发现主流程（含 Lite 读取优化）
+```text
+/session list [--limit N] [--all-projects]
+│
+▼
+listSessionsImpl(limit?)
+│
+├─ scan: ~/.claude/projects/{sanitized-git-root}/
+│   └─ find all *.jsonl files
+│
+├─ [with worktree support]
+│   └─ getWorktreePathsPortable()
+│       └─ add sessions from other worktrees in same repo
+│
+├─ stat ALL files first (O(1) syscall per file)
+│   ├─ get mtime, ctime, size for each
+│   └─ NO content read yet!
+│
+├─ sort ALL by mtime descending (newest first)
+│
+├─ has limit?
+│   ├─ YES:
+│   │   ├─ READ ONLY TOP N files (not all!)
+│   │   └─ LITE READ: head 8KB + tail 8KB per file
+│   │
+│   └─ NO:
+│       └─ READ ALL files (still lite read head+tail)
+│
+├─ for each read file:
+│   └─ parseSessionInfoFromLite()
+│       ├─ from head: createdAt, firstPrompt
+│       ├─ from tail: custom-title, tag, branch, worktree-state
+│       └─ [may fail: skip file, continue]
+│
+├─ dedupe by sessionId:
+│   └─ multiple files with same sessionId → keep latest (mtime)
+│
+└─ return LogOption[] sorted by date
+```
+
+**失败路径：**
+- 目录不存在：返回空数组，无声失败
+- stat 失败：跳过该文件，继续其他
+- JSONL 头/尾解析失败：跳过该会话，继续其他
+- 文件 > MAX_TRANSCRIPT_READ_BYTES (50MB)：不读完整内容，仅 lite 模式
+- 远程 API 失败（discoverAssistantSessions）：返回空数组，不抛错，兼容新旧 API 响应格式
+
+---
+
+#### 会话搜索流程（含 AI 重排降级）
+```text
+/session search [query] [--limit N]
+│
+▼
+agenticSessionSearch(query, logs)
+│
+├─ PRE-FILTER: logContainsQuery(log, query)
+│   ├─ checks: title, tags, branch, summary
+│   ├─ fast: NO full transcript load
+│   └─ reduces candidate set
+│
+├─ for pre-filtered logs:
+│   └─ loadFullLog(log) → full transcript
+│       └─ [may fail: fall back to lite log]
+│
+├─ EXTRACT: extractTranscript(fullLog) → text for AI
+│
+├─ AI RERANK: small model for relevance
+│   ├─ recall-over-precision: return more rather than less
+│   └─ [may fail: fall back to pre-filtered order]
+│
+└─ return sorted results
+```
+
+**失败路径：**
+- `loadFullLog()` 失败：使用 lite log（无转录本），搜索质量下降
+- 模型调用失败：返回空数组或预过滤结果（无 AI 排序）
+- JSON 响应解析失败：返回空数组（无 AI 排序）
+- 超时：返回空数组（搜索失败）
+
+---
+
+#### 会话恢复流程（含跨项目/工作树）
+```text
+/resume [sessionId|jsonl|ccshare|recent]
+│
+▼
+loadConversationForResume(source)
+│
+├─ source type:
+│   ├─ sessionId: find via getTranscriptPathForSession()
+│   ├─ jsonl path: direct load
+│   ├─ ccshare: loadCcshare() → projectPath = undefined
+│   └─ recent: find most recent
+│
+├─ deserializeMessagesWithInterruptDetection()
+│   ├─ deserialize messages from JSONL
+│   ├─ detectTurnInterruption()
+│   │   ├─ interrupted_prompt (incomplete input)
+│   │   └─ interrupted_turn (incomplete assistant turn)
+│   └─ skip: system/progress/API-error messages
+│
+├─ checkCrossProjectResume(log)
+│   ├─ compare: log.projectPath vs current cwd
+│   ├─ mismatch: prompt user OR auto-switch (config)
+│   └─ ccshare: projectPath = undefined → NO auto-chdir
+│
+├─ restore worktree (if worktree-state exists)
+│   ├─ restoreWorktreeForResume(worktreeSession)
+│   │   ├─ try: chdir to worktreePath
+│   │   ├─ FAIL: set worktreeState = null, CONTINUE RESUME!
+│   │   └─ SUCCESS: set cwd, clear caches
+│   └─ adoptResumedSessionFile() → exit cleanup can append
+│
+├─ restore skill state, file history, todos, agent settings
+│
+├─ processSessionStartHooks('resume')
+│
+└─ return ResumeLoadResult
+```
+
+**失败路径：**
+- 会话文件不存在：返回 null，无法恢复
+- JSONL 解析失败：抛出错误，恢复失败
+- 权限模式无效：清除该字段，继续恢复
+- 工具调用配对失败：过滤未配对调用，部分历史丢失但可继续
+- 工作树目录不存在：catch chdir 错误，设置 worktreeState = null，继续恢复
+- 跨项目权限不足：提示用户，不自动切换目录
+
+---
+
+#### 并发会话注册与活动流程（含原子写入）
+```text
+Session startup
+│
+▼
+registerSession(sessionId)
+│
+├─ write: ~/.claude/sessions/active/{pid}.json
+│   ├─ ATOMIC write: tmp file + rename
+│   ├─ uses proper-lockfile for coordination
+│   └─ content: { pid, sessionId, startTime, lastActivityTime }
+│
+└─ [may fail: log debug, CONTINUE EXECUTION!]
+
+Activity starts (API call / tool execution)
+│
+▼
+startSessionActivity(reason)
+│
+├─ refcount++
+│
+├─ refcount was 0 → now 1?
+│   └─ YES: start heartbeat timer (30s interval)
+│       └─ CLAUDE_CODE_REMOTE_SEND_KEEPALIVES only!
+│
+└─ registerSessionActivityCallback() (if provided)
+
+Activity stops
+│
+▼
+stopSessionActivity(reason)
+│
+├─ refcount--
+│
+├─ refcount now 0?
+│   └─ YES: stop heartbeat timer, start idle logging
+│
+└─ updateSessionActivity(sessionId) [updates lastActivityTime]
+
+Session exit (background)
+│
+▼
+writeSessionTombstone(sessionId)
+│
+└─ mark: session completed but not cleaned up
+```
+
+**失败路径：**
+- 无法写入注册文件：记录 debug 日志，继续执行（核心功能正常）
+- 无法读取注册表：返回空数组（并发检测失效但功能正常）
+- 进程已退出但记录仍在：不计数，不删除（无害僵尸记录，下次启动清理）
+- 墓碑重写会话文件 > 50MB：跳过 tombstone 移除，记录警告
+
+---
+
+#### 历史回填流程（含去重与幂等）
+```text
+/backfill-sessions [--dry-run] [--force]
+│
+▼
+backfillSessionMetadata({ dryRun, force }, deps?)
+│
+├─ withMetadataLock() [single GLOBAL lock]
+│   └─ prevent concurrent backfills
+│
+├─ listSessions() → all projects, all sessions
+│
+├─ for each sessionId:
+│   │
+│   ├─ loadCachedSessionMeta(sessionId)
+│   │   ├─ exists AND !force → mark valid, SKIP
+│   │   └─ not exists OR force → continue
+│   │
+│   ├─ loadAllLogsFromSessionFile(path) → FULL transcript
+│   │
+│   ├─ hasValidDates()? → NO: mark failed, skip
+│   │
+│   ├─ logToSessionMeta(log) → SessionMeta
+│   │   ├─ counts: user messages, assistant messages, tool uses
+│   │   ├─ extract: languages, git commits/pushes, tokens
+│   │   ├─ detect: user interruptions, tool errors, response times
+│   │   └─ identify: uses task agent? uses MCP? uses web search?
+│   │
+│   ├─ deduplicateSessionBranches(entries)
+│   │   └─ same sessionId multiple branches → keep best:
+│   │       └─ most user messages (tie-break: duration)
+│   │
+│   ├─ dryRun? → YES: mark wouldRebuild
+│   │
+│   └─ NO: saveSessionMeta(meta)
+│       └─ ATOMIC: tmp file + rename, 0600 perms
+│
+└─ return BackfillReport { scanned, valid, rebuilt, wouldRebuild, duplicates, failed, dryRun }
+```
+
+**失败路径：**
+- 无法获取锁：抛错给用户，不执行
+- 单个会话解析失败：try/catch 包裹，标记 failed，继续其他
+- 元数据验证失败：不保存，标记 failed
+- 旧会话缺少新统计字段：字段设为 0/空数组/空对象（向后兼容）
+- 幂等保证：重复运行 --force 产生相同结果
+
+---
+
+#### ccshare 恢复流程（含安全边界）
+```text
+/resume ccshare_xxxx OR /resume https://...
+│
+▼
+parseCcshareId(input) → ccshareId | null
+│
+├─ input is full URL? → extract ccshareId
+│
+└─ invalid? → return null, prompt user
+│
+▼
+loadCcshare(ccshareId) → LogOption | null
+│
+├─ download from remote service
+│   ├─ timeout: error, prompt retry
+│   └─ size/line limits: reject, prompt user
+│
+├─ check: cross-domain redirects? → PAUSE, request user confirm
+│
+├─ validate format
+│   └─ old format: compatible parse, feature downgrade
+│
+├─ CRITICAL: set log.projectPath = UNDEFINED!
+│   └─ SAFETY FIRST: NO auto-chdir, NO auto-hooks!
+│
+└─ NO local caching of ccshare sessions
+│
+▼
+resume as normal (but projectPath = undefined)
+│
+├─ NO auto worktree restore
+├─ NO auto hook execution
+└─ user may manually cd or confirm tool execution paths
+```
+
+**失败路径：**
+- ccshare ID 无效：返回 null，提示用户
+- 下载超时：抛错，提示重试
+- 超过大小限制：拒绝加载，提示用户
+- 跨域重定向：暂停，请求用户确认
+- 旧格式 ccshare：兼容解析，功能降级
+
+### 4.11 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|-----------|--------|-------------|----------|--------|-----------|-----------|
+| LogOption 会话列表项 | listSessionsImpl | 扫描文件时通过 parseSessionInfoFromLite() 创建 | 隔离：每次列表独立 | 否，仅内存 | 重新扫描时重建 | lite 读取失败时跳过该会话 |
+| SessionMeta 元数据缓存 | backfillSessionMetadata | logToSessionMeta(log) 从完整转录本转换 | 隔离：每个 sessionId 独立 | 是，`~/.claude/usage-data/session-meta/{sessionId}.json` (0600 权限) | saveSessionMeta() 完全覆盖（不增量），--force 强制重建 | isValidSessionMeta() 验证失败时不保存 |
+| {pid}.json 活动会话注册 | concurrentSessions | registerSession(sessionId) 时创建 | 共享：文件系统级，所有进程可见 | 是，`~/.claude/sessions/active/{pid}.json` | 进程退出后保留（僵尸），不自动删除 | 原子写入：tmp + rename，防止并发损坏 |
+| worktree-state 工作树状态 | 会话恢复 | 从转录本尾部 JSON 行提取 | 隔离：每个会话独立 | 是，存储在 JSONL 转录本尾部 | restoreWorktreeForResume() chdir 失败时设为 null | 中途 resume 切换时 exitRestoredWorktree() 清理 |
+| sessionProjectDir 会话项目目录 | switchSession | switchSession(sessionId, projectDirOverride?) 时设置 | 隔离：每个恢复会话独立 | 否，仅内存 | 新 resume 覆盖，exitRestoredWorktree() 清除 | getTranscriptPathForSession() 优先使用 |
+| refcount (session activity) | sessionActivity | startSessionActivity() / stopSessionActivity() 增减 | 隔离：模块级，单进程内 | 否，仅内存 | 所有活动停止时归零 | 归零后停止心跳定时器 |
+| heartbeat timer | sessionActivity | refcount 0→1 时启动 30s 定时器 | 隔离：模块级，单进程内 | 否，仅内存 | refcount 1→0 时停止 | CLAUDE_CODE_REMOTE_SEND_KEEPALIVES 仅远程模式 |
+| ccshare LogOption | loadCcshare | 下载验证后设置 projectPath = undefined | 隔离：每次加载独立 | 否，不缓存本地 | 会话结束后丢弃 | 不自动 chdir，不自动执行 hooks |
+| metadataLock (backfill) | backfillSessionMetadata | withMetadataLock() 获取全局锁 | 共享：文件系统级锁 | 否，锁即时释放 | 进程崩溃后锁可能遗留，proper-lockfile 处理 | 单全局锁防止并发回填 |
+| JSONL 转录本文件 | 用户会话 | 会话启动时创建，追加写入 | 共享：文件系统级，可跨项目/工作树访问 | 是，`~/.claude/projects/{sanitized}/*.jsonl` | 会话删除时用户手动删除 | 墓碑重写保护：>50MB 跳过 |
+
+**生命周期证据：**
+- `src/sessions/list.ts` - parseSessionInfoFromLite、lite 读取（头 8KB + 尾 8KB）
+- `src/sessions/backfill.ts` - backfillSessionMetadata、全局锁、原子保存
+- `src/sessions/concurrent.ts` - registerSession、pid.json 原子写入、僵尸记录不删除
+- `src/utils/sessionRestore.ts:332-367` - restoreWorktreeForResume、chdir 失败继续
+- `src/utils/sessionUrl.ts` - parseCcshareId、loadCcshare、projectPath = undefined
+- `src/utils/sessionActivity.ts:92-133` - startSessionActivity/stopSessionActivity、refcount、心跳
+- `src/utils/sessionStorage.ts:64-76` - backfillSessionMetadata 锁；476-495 - saveSessionMeta 原子写入；872-951 - 墓碑重写保护
+
 ## 5. 失败语义与工程取舍
 
 ### 5.1 失败语义

@@ -1046,6 +1046,397 @@ async function rollbackConsolidationLock(priorMtime: number | null): Promise<voi
 - **Git spec**：getGithubRepo（团队记忆同步用）
 - **OAuth spec**：团队记忆同步身份验证
 
+### 4.6 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         Claude Code User Session                            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌──────────────────┐    ┌──────────────────────────────────────────────┐  │
+│  │   /remember     │    │         System Prompt Injection               │  │
+│  │   /dream        │───▶│                                              │  │
+│  │   /summary      │    │  loadMemoryPrompt() ──────────────────────┐  │  │
+│  └──────────────────┘    └──────────────────────────────────────────┼──┘  │
+│                             ▲                                        │     │
+│  ┌──────────────────┐       │                                        │     │
+│  │   Main Query     │───────┘                                        ▼     │
+│  │   Loop           │    ┌──────────────────────────────────────────────────┐│
+│  └──────────────────┘    │           memdir (Memory Core)                   ││
+│                          │  ┌────────────────────────────────────────────┐  ││
+│  ┌──────────────────┐    │  │ buildMemoryPrompt()                       │  ││
+│  │  Stop Hooks      │───▶│  │ truncateEntrypointContent()               │  ││
+│  └──────────────────┘    │  │ buildMemoryLines()                        │  ││
+│     │         │         │  └────────────────────────────────────────────┘  ││
+│     │         │         │  ┌────────────────────────────────────────────┐  ││
+│     │         └────────▶│  │              paths.ts                      │  ││
+│     │                   │  │ getAutoMemPath() [memoized]                │  ││
+│     │                   │  │ isAutoMemoryEnabled()                      │  ││
+│     │                   │  └────────────────────────────────────────────┘  ││
+│     │                   │  ┌────────────────────────────────────────────┐  ││
+│     │                   │  │         memoryTypes.ts                     │  ││
+│     │                   │  │ MEMORY_TYPES (user/feedback/...)           │  ││
+│     │                   │  └────────────────────────────────────────────┘  ││
+│     │                   └──────────────────────┬───────────────────────────┘│
+│     │                                          │                            │
+│     ▼                                          ▼                            │
+│  ┌──────────────────────────────────┐   ┌───────────────────────────────┐ │
+│  │    extractMemories Service       │   │      Session Memory           │ │
+│  │  ┌────────────────────────────┐ │   │  ┌─────────────────────────┐  │ │
+│  │  │ initExtractMemories()      │ │   │  │ initSessionMemory()      │  │ │
+│  │  │ executeExtractMemories()   │ │   │  │ shouldExtractMemory()    │  │ │
+│  │  │ drainPendingExtraction()   │ │   │  │ manuallyExtractSession() │  │ │
+│  │  │ createAutoMemCanUseTool()  │ │   │  │ createMemoryFileCanUse() │  │ │
+│  │  │                            │ │   │  └─────────────────────────┘  │ │
+│  │  │ State (closure-scoped):    │ │   │                               │ │
+│  │  │  - lastMemoryMessageUuid   │ │   │ State (module-level):        │ │
+│  │  │  - inProgress              │ │   │  - lastMemoryMessageUuid    │ │
+│  │  │  - pendingContext          │ │   │                               │ │
+│  │  │  - inFlightExtractions     │ │   │                               │ │
+│  │  └────────────────────────────┘ │   └───────────────────────────────┘ │
+│  └──────────────────────────────────┘              ▲                       │
+│          │                                        │                       │
+│          └────────────────────────────────────────┼───────────────────────┘
+│                                                   │
+│  ┌──────────────────────────────────┐            │
+│  │      autoDream Service           │            │
+│  │  ┌────────────────────────────┐ │            │
+│  │  │ initAutoDream()            │ │            │
+│  │  │ executeAutoDream()         │ │            │
+│  │  │                            │ │            │
+│  │  │ State (closure-scoped):    │ │            │
+│  │  │  - lastSessionScanAt       │ │            │
+│  │  │                            │ │            │
+│  │  └────────────────────────────┘ │            │
+│  └──────────────────────────────────┘            │
+│          │                                       │
+│          └───────────────────────────────────────┘
+│
+│                          Feature Gates:
+│                          - tengu_passport_quail
+│                          - tengu_onyx_plover
+│                          - tengu_bramble_lintel
+│                          - tengu_coral_fern
+│                          - tengu_moth_copse
+│                          - tengu_slate_thimble
+│                          - tengu_session_memory
+│
+├─────────────────────────────────────────────────────────────────────────────┤
+│                            File System Layer                                │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │  ~/.claude/projects/{sanitized-git-root}/memory/                      │  │
+│  │    ├── MEMORY.md [index, 200-line/25KB limit]                        │  │
+│  │    ├── *.md [topic memory files]                                     │  │
+│  │    ├── team/ [team memory subdir, TEAM_MEM only]                     │  │
+│  │    │   ├── MEMORY.md                                                 │  │
+│  │    │   └── *.md                                                      │  │
+│  │    ├── logs/ [KAIROS mode only]                                      │  │
+│  │    │   └── {YYYY}/{MM}/{YYYY-MM-DD}.md                              │  │
+│  │    ├── .auto-dream.lock                                              │  │
+│  │    └── .auto-dream-last                                              │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │  {projectDir}/.session-memory.md [per-project]                       │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                              External Services                               │
+│  ┌──────────────────────┐  ┌───────────────────────────────────────────┐  │
+│  │   Claude API         │  │      GitHub (team memory sync)           │  │
+│  │  (memory extraction, │  │      (repo slug, OAuth)                  │  │
+│  │   auto consolidation)│  │                                         │  │
+│  └──────────────────────┘  └───────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 4.7 关键流程与失败路径
+
+#### 记忆加载主流程
+```text
+系统提示加载
+│
+├─ check KAIROS mode? ──┬─ isAutoMemoryEnabled()?
+│                       │
+▼                       ▼
+buildAssistantDailyLogPrompt()  buildCombinedMemoryPrompt()?
+│                               │
+└──────────┬────────────────────┘
+           │
+           ▼
+loadMemoryPrompt()
+│
+├─ ensureMemoryDirExists()
+│   └─ mkdir -p ~/.claude/projects/.../memory
+│
+├─ logMemoryDirCounts()
+│   └─ async analytics event
+│
+├─ buildMemoryPrompt()
+│   ├─ load MEMORY.md
+│   ├─ truncateEntrypointContent()
+│   │   ├─ 200-line limit first
+│   │   └─ 25KB byte limit second
+│   │
+│   ├─ build type guidance
+│   ├─ build what-not-to-save guidance
+│   └─ build when-to-access guidance
+│
+└─ return prompt string
+    └─ injected into system prompt
+```
+
+**失败路径：**
+- `ensureMemoryDirExists()` 失败：吞 EACCES/EPERM/EROFS，继续返回提示（模型后续写入失败可见）
+- `truncateEntrypointContent()` 超长：追加警告，继续返回截断后的提示
+- MEMORY.md 不存在：继续返回提示（带空索引说明）
+
+---
+
+#### extractMemories 提取流程（含失败/取消）
+```text
+Stop Hook 触发
+│
+├─ gate checks (all must pass)
+│   ├─ tengu_passport_quail?
+│   ├─ isAutoMemoryEnabled()?
+│   ├─ isRemoteMode()? [NO]
+│   └─ has agentId()? [NO]
+│
+├─ inProgress check
+│   ├─ YES: set pendingContext, exit
+│   │     └─ [after current completes] recursive runExtraction()
+│   │
+│   └─ NO: continue
+│
+▼
+runExtraction()
+│
+├─ hasMemoryWritesSince(lastMemoryMessageUuid)?
+│   ├─ YES: advance cursor, skip extraction, exit
+│   │
+│   └─ NO: continue
+│
+├─ turnsSinceLastExtraction check (tengu_bramble_lintel)
+│   ├─ not reached: skip
+│   │
+│   └─ reached: continue
+│
+├─ scanMemoryFiles()
+│   └─ formatMemoryManifest()
+│
+├─ buildExtractAutoOnlyPrompt() OR buildExtractCombinedPrompt()
+│
+├─ runForkedAgent(extract_memories, skipTranscript=true, maxTurns=5)
+│   ├─ createAutoMemCanUseTool() [read-only Bash, memory-dir write only]
+│   ├─ [may fail, may be canceled]
+│   └─ extractWrittenPaths()
+│
+├─ advance cursor: lastMemoryMessageUuid = last message uuid
+│
+├─ append "Saved N memories" (if appendSystemMessage exists)
+│
+└─ process pendingContext (if exists)
+```
+
+**失败路径：**
+- `runForkedAgent()` 失败：捕获记录日志，cursor 不前进（下次重试），不传播到主循环
+- 用户取消：forked agent 终止，失败回滚，cursor 不前进
+- 并发调用：pendingContext 合并，等待当前完成后尾随提取
+
+---
+
+#### teamMemorySync 同步流程（含冲突处理）
+```text
+Watcher trigger OR manual command
+│
+▼
+syncTeamMemory()
+│
+├─ pullTeamMemory(skipEtagCache=true)
+│   ├─ check OAuth available? git repo exists?
+│   ├─ fetchTeamMemory() [ETag If-None-Match]
+│   │   ├─ 304 Not Modified: no write
+│   │   ├─ 404 Not Found: clear serverChecksums
+│   │   └─ [may fail with network error]
+│   │
+│   ├─ validateTeamMemKey() for each entry
+│   │   └─ [may throw PathTraversalError]
+│   │
+│   ├─ writeRemoteEntriesToLocal()
+│   │   ├─ validateTeamMemWritePath() for each path
+│   │   │   └─ symlink realpath check
+│   │   │
+│   │   └─ skip if content identical (preserve mtime)
+│   │
+│   ├─ refresh serverChecksums from response
+│   └─ clearMemoryFileCaches() [if files written]
+│
+▼
+pushTeamMemory()
+│
+├─ readLocalTeamMemory()
+│   ├─ scanForSecrets() [skip files with secrets]
+│   ├─ skip files > 250KB
+│   └─ truncate by serverMaxEntries (if known)
+│
+├─ calculate localHashes via hashContent()
+│
+├─ [conflict retry loop: MAX_CONFLICT_RETRIES=2]
+│   │
+│   ├─ calculate delta (localHash != serverChecksum)
+│   │   ├─ delta empty: return success
+│   │   └─ batchDeltaByBytes() [≤200KB per PUT]
+│   │
+│   ├─ uploadTeamMemory() [with If-Match]
+│   │   ├─ 200 OK: update serverChecksums + lastKnownChecksum
+│   │   ├─ 412 Precondition Failed:
+│   │   │   ├─ fetchTeamMemoryHashes() [only hashes, no content]
+│   │   │   ├─ refresh serverChecksums
+│   │   │   └─ retry loop
+│   │   ├─ 413 Payload Too Large:
+│   │   │   ├─ parse extra_details.max_entries
+│   │   │   ├─ cache to SyncState.serverMaxEntries
+│   │   │   └─ return error
+│   │   └─ [network errors: retry MAX_RETRIES=3 with backoff]
+│   │
+│   └─ return result (may include skippedSecrets)
+```
+
+**失败路径：**
+- `validateTeamMemWritePath()` 失败：抛 PathTraversalError，条目跳过
+- 网络错误：最多重试 3 次，失败返回 success=false
+- 412 冲突：探测 hashes 刷新后重试，最多 2 次
+- 413 超限：学习 serverMaxEntries，当前推送失败（下次截断）
+- 含 secrets 文件：跳过，记录 skippedSecrets，其他继续
+
+---
+
+#### autoDream 自动整理流程（含取消/禁用）
+```text
+Stop Hook 触发
+│
+▼
+executeAutoDream()
+│
+├─ gate checks (all must pass)
+│   ├─ KAIROS mode? [NO, skip]
+│   ├─ isRemoteMode()? [NO, skip]
+│   ├─ isAutoMemoryEnabled()?
+│   └─ tengu_onyx_plover?
+│
+├─ time gate: readLastConsolidatedAt()
+│   └─ hours since last ≥ minHours (default 24h)?
+│       └─ NO: skip
+│
+├─ scan throttle: lastSessionScanAt
+│   └─ < 10min ago? [YES: skip]
+│
+├─ sessions gate: listSessionsTouchedSince()
+│   └─ ≥ minSessions (default 5) [excluding current]?
+│       └─ NO: skip
+│
+├─ tryAcquireConsolidationLock()
+│   └─ FAILED: skip
+│
+▼
+runAutoDream()
+│
+├─ registerDreamTask() [UI progress visible]
+│
+├─ buildConsolidationPrompt() [with session list]
+│
+├─ runForkedAgent(auto_dream, skipTranscript=true)
+│   ├─ createAutoMemCanUseTool() [same as extractMemories]
+│   ├─ [with abortController (user may cancel)]
+│   └─ onMessage callback updates DreamTask progress
+│
+├─ completeDreamTask()
+│
+├─ append "Improved N memories" (if files changed + appendSystemMessage exists)
+│
+└─ [on failure/abort] rollbackConsolidationLock(priorMtime)
+    └─ rewinds .auto-dream-last mtime for fast retry
+```
+
+**失败路径：**
+- 用户取消（abortController）：DreamTask 标记 killed，无锁回滚（kill handler 已处理）
+- 其他错误：捕获记录日志，rollbackConsolidationLock() 回滚时间戳（时间门很快重试），不传播到主循环
+- 锁获取失败：跳过，下次重试
+
+---
+
+#### Session Memory 提取流程（含取消/禁用）
+```text
+postSamplingHook 触发
+│
+├─ gate checks (all must pass)
+│   ├─ querySource == repl_main_thread? [NO: skip]
+│   ├─ tengu_session_memory?
+│   ├─ isAutoCompactEnabled()?
+│   └─ isRemoteMode()? [NO: skip]
+│
+├─ shouldExtractMemory(messages)?
+│   ├─ initialization threshold: tokenCount ≥ minimumMessageTokensToInit
+│   │   OR
+│   ├─ update threshold: token growth ≥ minimumTokensBetweenUpdate
+│   │   OR toolCalls ≥ toolCallsBetweenUpdates
+│   │
+│   └─ AND last turn has NO tool calls [safe extraction point]
+│
+▼
+setupSessionMemoryFile()
+│
+├─ ensure directory exists
+│
+├─ file doesn't exist?
+│   └─ write template
+│
+├─ clearMemoryFileCaches()
+│
+└─ read current content
+│
+▼
+buildSessionMemoryUpdatePrompt()
+│
+├─ runForkedAgent(session_memory)
+│   ├─ createMemoryFileCanUseTool() [ONLY Edit the single file]
+│   ├─ NO Read/Write/Bash permissions
+│   └─ [may fail]
+│
+└─ update lastSummarizedMessageUuid [if safe (no pending tool calls)]
+```
+
+**失败路径：**
+- `setupSessionMemoryFile()` 失败：异常向上传播（用户可见）
+- `shouldExtractMemory()` 安全点未满足：跳过，下次再试
+- `runForkedAgent()` 失败：异常向上传播（用户可见）
+- lastSummarizedMessageUuid 未持久化：会话重启重置，可能重复提取
+
+### 4.8 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|-----------|--------|-------------|----------|--------|-----------|-----------|
+| `lastMemoryMessageUuid` (extractMemories) | extractMemories 服务 | `initExtractMemories()` 创建闭包时初始化为 undefined | 隔离：每个 initExtractMemories() 有自己的闭包 | 否，仅内存 | 调用 `initExtractMemories()` 重置为 undefined | 提取失败时不前进（下次重试） |
+| `inProgress` flag (extractMemories) | extractMemories 服务 | `initExtractMemories()` 创建闭包时初始化为 false | 隔离：闭包内私有 | 否，仅内存 | 提取完成/失败后重置为 false | pendingContext 合并，尾随提取跳过节流 |
+| `pendingContext` (extractMemories) | extractMemories 服务 | `initExtractMemories()` 创建闭包时初始化为 undefined | 隔离：闭包内私有 | 否，仅内存 | 尾随提取执行后清除 | 用户取消不影响，继续处理 |
+| `inFlightExtractions` Set (extractMemories) | extractMemories 服务 | `initExtractMemories()` 创建闭包时初始化为空 Set | 隔离：闭包内私有 | 否，仅内存 | 所有提取完成后清空 | `drainPendingExtraction(timeoutMs)` 等待超时 |
+| `lastMemoryMessageUuid` (Session Memory) | Session Memory 模块 | 模块加载时初始化为 undefined | 隔离：模块级单例 | 否，仅内存 | `resetLastMemoryMessageUuid()` (测试用) | 会话重启重置，可能重复提取 |
+| `SyncState` (teamMemorySync) | 调用方 | `createSyncState()` 创建 | 隔离：调用方拥有，多个 watcher 可独立同步 | 否，仅内存 | 重新创建新 SyncState 重置 | 412 冲突时刷新 serverChecksums 重试 |
+| `lastSessionScanAt` (autoDream) | autoDream 服务 | `initAutoDream()` 创建闭包时初始化为 undefined | 隔离：每个 initAutoDream() 有自己的闭包 | 否，仅内存 | 调用 `initAutoDream()` 重置 | 扫描节流 10 分钟内不重复扫描 |
+| `.auto-dream.lock` | autoDream 服务 | `tryAcquireConsolidationLock()` 时通过 mtime 原子获取 | 共享：文件系统级锁，防止多进程/实例并发整理 | 是，`{autoMemDir}/.auto-dream.lock` (mtime-based) | `rollbackConsolidationLock(priorMtime)` 回滚 mtime | 用户取消时 kill handler 已处理，无需额外回滚 |
+| `.auto-dream-last` | autoDream 服务 | 整理完成后写入时间戳 | 共享：文件系统级，所有实例读取相同时间 | 是，`{autoMemDir}/.auto-dream-last` | `rollbackConsolidationLock(priorMtime)` 回滚 | 失败时回滚 mtime 以便快速重试 |
+| `MEMORY.md` (index) | memdir 模块 | `ensureMemoryDirExists()` 时目录存在，文件按需创建 | 共享：项目级别，所有进程读取相同文件 | 是，`{autoMemDir}/MEMORY.md` | 无，用户可编辑，系统不主动失效 | `truncateEntrypointContent()` 仅在内存截断，不修改原文件 |
+| 记忆主题文件 (*.md) | 用户/模型 | 模型通过工具写入 | 共享：项目级别 | 是，`{autoMemDir}/*.md` | 用户可删除，删除后无追踪 | 删除后 extractMemories cursor 不追踪，重启可能重新提取 |
+| team/ 子目录文件 | teamMemorySync | 拉取时写入 | 共享：团队级别，通过 GitHub 同步 | 是，`{autoMemDir}/team/*.md` | 412 冲突时本地覆盖服务器 | 含 secrets 文件跳过不上传 |
+| `.session-memory.md` | Session Memory | `setupSessionMemoryFile()` 时写入模板（如不存在） | 隔离：每个项目一个 | 是，`{projectDir}/.session-memory.md` | 用户可编辑 | 无锁，通过 sequential 装饰器防止并发 |
+
+**生命周期证据：**
+- `src/services/extractMemories/extractMemories.ts:296-313,432-435` - cursor 不追踪已删除文件
+- `src/services/SessionMemory/sessionMemoryUtils.ts:44-69` - lastSummarizedMessageUuid 未持久化
+- `src/services/autoDream/autoDream.ts` - closure 状态、锁机制
+- `src/memdir/teamMemPaths.ts` - PathTraversalError、symlink 验证
+- `src/services/teamMemorySync/index.ts` - SyncState、乐观锁、冲突处理
+
 ## 5. 失败语义与工程取舍
 
 | 触发条件 | 检测位置 | 消息/异常如何传播 | 是否重试及上限 | 状态与资源清理 | 调用方可见结果 |

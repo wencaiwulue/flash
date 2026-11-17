@@ -538,6 +538,402 @@ collapseBackgroundBashNotifications(messages)
       └─ N 条任务（N>1）：合成为单条 "N background commands completed" 通知
 ```
 
+### 4.15 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         Claude Code User Session                            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │                     React UI Layer                                  │  │
+│  │  ┌────────────────────────────────────────────────────────────────┐ │  │
+│  │  │ Banner Notification (single, prioritized)                      │ │  │
+│  │  │   - immediate (preempts)                                       │ │  │
+│  │  │   - high/medium/low (queued)                                   │ │  │
+│  │  │   - timeout (default 8s, custom)                               │ │  │
+│  │  └────────────────────────────────────────────────────────────────┘ │  │
+│  │  ┌────────────────────────────────────────────────────────────────┐ │  │
+│  │  │ Task Notification (inline in conversation)                      │ │  │
+│  │  │   - background bash completion                                 │ │  │
+│  │  │   - may be collapsed (fullscreen + non-verbose)                │ │  │
+│  │  └────────────────────────────────────────────────────────────────┘ │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│                                    ▲                                       │
+│                                    │ useNotifications()                   │
+│                                    │                                       │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │               Notifications Context (src/context/)                   │  │
+│  │  ┌────────────────────────────────────────────────────────────────┐ │  │
+│  │  │ useNotifications() Hook                                        │ │  │
+│  │  │  ┌──────────────────────────────────────────────────────────┐ │  │  │
+│  │  │  │ addNotification(notification)                            │ │  │  │
+│  │  │  │  - key (unique, dedupe)                                  │ │  │  │
+│  │  │  │  - priority (immediate/high/medium/low)                  │ │  │  │
+│  │  │  │  - text/jsx (content)                                    │ │  │  │
+│  │  │  │  - timeoutMs (default 8000)                              │ │  │  │
+│  │  │  │  - invalidates (array of keys)                           │ │  │  │
+│  │  │  │  - fold (function for merging)                           │ │  │  │
+│  │  │  └──────────────────────────────────────────────────────────┘ │  │  │
+│  │  │  ┌──────────────────────────────────────────────────────────┐ │  │  │
+│  │  │  │ removeNotification(key)                                  │ │  │  │
+│  │  │  └──────────────────────────────────────────────────────────┘ │  │  │
+│  │  │                                                                  │ │  │
+│  │  │ Internal State:                                                │ │  │
+│  │  │  ┌──────────────────────────────────────────────────────────┐ │  │  │
+│  │  │  │ current: Notification | null (displayed now)             │ │  │  │
+│  │  │  │ queue: Notification[] (prioritized, FIFO same priority)  │ │  │  │
+│  │  │  │ currentTimeoutId: number | null (closure-scoped module)  │ │  │  │
+│  │  │  └──────────────────────────────────────────────────────────┘ │  │  │
+│  │  │                                                                  │ │  │
+│  │  │ Key Functions:                                                 │ │  │
+│  │  │  - processQueue() [select next, set timeout]                   │ │  │
+│  │  │  - getNext() [select highest priority, FIFO same priority]     │ │  │
+│  │  │  - immediate handling [preempt current, requeue non-immediate]│ │  │
+│  │  │  - fold handling [merge same key, reset timeout]              │ │  │
+│  │  │  - invalidates handling [remove specified keys]               │ │  │
+│  │  └────────────────────────────────────────────────────────────────┘ │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│                                    │                                       │
+│        ┌───────────────────────────┼───────────────────────────┐           │
+│        │                           │                           │           │
+│        ▼                           ▼                           ▼           │
+│  ┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐  │
+│  │ Notification Hooks│     │   OS Notifier    │     │PushNotification  │  │
+│  │ (src/hooks/notifs/)│    │ (src/services/)  │     │      Tool       │  │
+│  │                  │     │                  │     │                  │  │
+│  │ ┌──────────────┐ │     │ sendNotification()│     │ PushNotification │  │
+│  │ │useStartupNot│ │     │ sendToChannel()  │     │  Tool (webhook)  │  │
+│  │ │ification()  │ │     │ sendAuto()       │     │                  │  │
+│  │ └──────────────┘ │     │                  │     │ Input:           │  │
+│  │ ┌──────────────┐ │     │ Channels:        │     │  - message       │  │
+│  │ │useFastModeNot│ │     │  - auto          │     │  - title (opt)   │  │
+│  │ │ification()  │ │     │  - iterm2        │     │  - url (opt)     │  │
+│  │ └──────────────┘ │     │  - iterm2_with_  │     │                  │  │
+│  │ ┌──────────────┐ │     │    bell          │     │ Output:          │  │
+│  │ │useRateLimitW│ │     │  - kitty         │     │  - deliveredVia  │  │
+│  │ │arningNotif()│ │     │  - ghostty       │     │  - message       │  │
+│  │ └──────────────┘ │     │  - terminal_bell │     │                  │  │
+│  │ ┌──────────────┐ │     │  - notifications_│     │ Fail: throws, no│  │
+│  │ │useSettingsErr│ │     │    disabled      │     │ auto-degrade    │  │
+│  │ │orsNotif()   │ │     │                  │     │                  │  │
+│  │ └──────────────┘ │     │ Apple Terminal:  │     │ Environment:    │  │
+│  │ ...more hooks... │     │  check bell conf │     │ CLAUDE_NOTIFICA │  │
+│  │                  │     │  if disabled send│     │ TION_WEBHOOK_URL│  │
+│  │ ALL hooks check:│     │  bell (triggers  │     │ Timeout: 10s    │  │
+│  │ getIsRemoteMode()│    │  Dock badge!)    │     │                  │  │
+│  │ → YES: skip     │     │                  │     │                  │  │
+│  └──────────────────┘     └──────────────────┘     └──────────────────┘  │
+│                                    │                                       │
+│                                    ▼                                       │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │              Task Notification Collapsing                           │  │
+│  │              (src/utils/collapseBackgroundBashNotifications.ts)     │  │
+│  │  ┌────────────────────────────────────────────────────────────────┐ │  │
+│  │  │ collapseBackgroundBashNotifications(messages, verbose)         │ │  │
+│  │  │  - checks: isFullscreenEnvEnabled()? && !verbose?             │ │  │
+│  │  │  - identifies: continuous task-notification with status=compl │ │  │
+│  │  │  - single: passes through                                    │ │  │
+│  │  │  - N>1: synthesizes "N background commands completed"         │ │  │
+│  │  └────────────────────────────────────────────────────────────────┘ │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                              App State Store                                │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │ notifications: { current: Notification | null, queue: Notification[] }│  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                          Configuration & Gates                              │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │ - getIsRemoteMode() [disables banners]                              │  │
+│  │ - preferredNotifChannel (user config)                               │  │
+│  │ - CLAUDE_NOTIFICATION_WEBHOOK_URL (env var)                         │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                        External Integrations                                │
+│  ┌──────────────────────┐  ┌───────────────────────────────────────────┐  │
+│  │  Terminal (iTerm2/  │  │  Webhook Endpoint (if configured)        │  │
+│  │  Kitty/Ghostty/     │  │  (user-provided URL, POST JSON)           │  │
+│  │  Apple Terminal)    │  │                                           │  │
+│  │  - native notifs    │  │  Timeout: 10s                             │  │
+│  │  - bell             │  │  No auto-retry                           │  │
+│  │  - Dock badge       │  │  No auto-degrade (throws on fail)        │  │
+│  └──────────────────────┘  └───────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 4.16 关键流程与失败路径
+
+#### addNotification 主流程（含 immediate 抢占）
+```text
+addNotification(notification)
+│
+├─ Is priority == 'immediate'?
+│   ├─ YES:
+│   │   ├─ clear currentTimeoutId (if exists)
+│   │   ├─ save oldCurrent = current (if exists && oldCurrent.priority != 'immediate')
+│   │   ├─ set current = new notification
+│   │   ├─ set new timeout (notification.timeoutMs || 8000)
+│   │   ├─ filter queue: remove 'immediate' priority + remove invalidated keys
+│   │   ├─ if oldCurrent exists:
+│   │   │   └─ add oldCurrent to queue (front? back? FIFO)
+│   │   ├─ trigger processQueue()
+│   │   └─ exit
+│   │
+│   └─ NO: continue
+│
+├─ Does notification have a 'fold' function?
+│   ├─ YES:
+│   │   ├─ check if current.key == notification.key?
+│   │   │   ├─ YES:
+│   │   │   │   ├─ current = fold(current, notification)
+│   │   │   │   ├─ reset timeout (clear + set new)
+│   │   │   │   └─ exit
+│   │   │   │
+│   │   └─ check queue for any item.key == notification.key?
+│   │       ├─ YES:
+│   │       │   ├─ queueItem = fold(queueItem, notification)
+│   │       │   └─ exit
+│   │       │
+│   │       └─ NO: continue to dedupe
+│   │
+│   └─ NO: continue to dedupe
+│
+├─ Dedupe check:
+│   ├─ current.key == notification.key? → YES: skip, exit
+│   ├─ any queueItem.key == notification.key? → YES: skip, exit
+│   │
+│   └─ NO: continue
+│
+├─ Invalidates handling:
+│   ├─ notification.invalidates exists?
+│   │   ├─ YES:
+│   │   │   ├─ for each key in invalidates:
+│   │   │   │   ├─ remove from queue
+│   │   │   │   └─ if current.key == key:
+│   │   │   │       ├─ clear currentTimeoutId
+│   │   │   │       └─ set current = null
+│   │   │   │
+│   │   └─ NO: continue
+│
+├─ Add notification to queue (tail, FIFO same priority)
+│
+└─ trigger processQueue()
+```
+
+**失败路径：**
+- 所有分支静默处理，无异常抛出
+- currentTimeoutId 是模块级闭包变量，组件卸载后仍可能触发（防区检查 key 匹配）
+- 无效的 key 引用被静默跳过
+
+---
+
+#### processQueue 流程
+```text
+processQueue()
+│
+├─ current != null? → YES: exit (wait for timeout)
+│
+├─ queue is empty? → YES: exit
+│
+├─ nextNotification = getNext()
+│   └─ selects highest priority (immediate > high > medium > low)
+│      same priority: FIFO (first in queue first out)
+│
+├─ set current = nextNotification
+│
+├─ remove nextNotification from queue
+│
+├─ set currentTimeoutId = setTimeout(
+│   callback: () => {
+│       check if current.key == nextNotification.key?
+│       ├─ YES:
+│       │   ├─ current = null
+│       │   └─ recursive processQueue()
+│       └─ NO: do nothing (was replaced)
+│   },
+│   delay: notification.timeoutMs || 8000
+│ )
+│
+└─ exit
+```
+
+**失败路径：**
+- setTimeout 回调检查 key 匹配，防止操作已被替换的通知
+- 所有异常静默捕获（内部 try/catch）
+- 队列空时直接返回，无操作
+
+---
+
+#### sendAuto OS 通知流程（含 Apple Terminal 特殊处理）
+```text
+sendNotification(title, text)
+│
+├─ executeNotificationHooks() [user-configured hooks first]
+│
+▼
+sendToChannel(preferredNotifChannel || 'auto', title, text)
+│
+├─ channel == 'auto'?
+│   ├─ YES:
+│   │   ├─ detect terminal type from env.TERM_PROGRAM / env.TERM
+│   │   ├─ iTerm.app? → channel = 'iterm2'
+│   │   ├─ kitty? → channel = 'kitty'
+│   │   ├─ ghostty? → channel = 'ghostty'
+│   │   ├─ Apple_Terminal? →
+│   │   │   ├─ isAppleTerminalBellDisabled()?
+│   │   │   │   ├─ YES: channel = 'terminal_bell'
+│   │   │   │   │   (sends bell to trigger Dock badge!)
+│   │   │   │   └─ NO: channel = 'iterm2' (or other?)
+│   │   │   └─ [isAppleTerminalBellDisabled() may fail, returns false]
+│   │   │
+│   │   └─ [fallthrough to channel-specific handling]
+│   │
+│   └─ NO: use specified channel
+│
+▼
+Channel-specific handling:
+│
+├─ 'iterm2': use iTerm2 proprietary notification
+├─ 'iterm2_with_bell': iTerm2 notif + bell
+├─ 'kitty': use Kitty terminal notif
+├─ 'ghostty': use Ghostty terminal notif
+├─ 'terminal_bell': send bell character (\a)
+├─ 'notifications_disabled': do nothing
+└─ [unknown channel]: do nothing
+│
+└─ All wrapped in try/catch: any error → returns 'error' string, no throw
+```
+
+**失败路径：**
+- `isAppleTerminalBellDisabled()` 失败：catch 异常，返回 false，继续用默认通道
+- 终端通知失败：try/catch 包裹，返回 'error'，不抛给调用方
+- 远程模式：横幅通知被 hooks 跳过，但 OS 通知仍可发送
+
+---
+
+#### collapseBackgroundBashNotifications 流程（含降级）
+```text
+collapseBackgroundBashNotifications(messages, verbose)
+│
+├─ isFullscreenEnvEnabled()? → NO: return original messages
+│
+├─ verbose? → YES: return original messages
+│
+├─ scan messages to identify continuous runs:
+│   └─ for each message:
+│       ├─ is user message?
+│       ├─ content.text contains <task-notification>?
+│       ├─ extractTag(content.text, 'status') == 'completed'?
+│       ├─ extractTag(content.text, 'summary') starts with BACKGROUND_BASH_SUMMARY_PREFIX?
+│       ├─ [monitor events explicitly excluded]
+│       └─ [agent/workflow notifications excluded]
+│
+├─ process identified runs:
+│   ├─ single message: pass through unchanged
+│   └─ N messages (N>1):
+│       └─ synthesize single message:
+│           ├─ copy original message properties
+│           └─ replace content with:
+│              <task-notification><status>completed</status><summary>N background commands completed</summary></task-notification>
+│
+└─ return new messages array (original unchanged)
+```
+
+**失败路径：**
+- 类型守卫安全处理，无异常抛出
+- 非 fullscreen 或 verbose 直接返回原数组（降级）
+- 不匹配的消息原样保留
+
+---
+
+#### PushNotificationTool 流程（含失败处理）
+```text
+PushNotificationTool.call(input, context)
+│
+├─ input: { message (required), title (optional), url (optional) }
+│
+├─ process.env.CLAUDE_NOTIFICATION_WEBHOOK_URL exists?
+│   ├─ YES:
+│   │   ├─ prepare payload: { text, title?, url? }
+│   │   ├─ POST to webhook URL
+│   │   │   ├─ timeout: 10s
+│   │   │   ├─ supports context.abortController.signal
+│   │   │   └─ validateStatus: returns true always (we check HTTP status)
+│   │   │
+│   │   ├─ HTTP status <200 or >=300? → FAILURE
+│   │   │   ├─ THROW Error (no auto-degrade!)
+│   │   │   └─ prompt requires: "Delivery failures are reported and must not be described as sent"
+│   │   │
+│   │   └─ SUCCESS: return { message: "Notification delivered by webhook", deliveredVia: "webhook" }
+│   │
+│   └─ NO:
+│       ├─ context.sendOSNotification exists?
+│       │   ├─ YES:
+│       │   │   ├─ call context.sendOSNotification(title, message)
+│       │   │   └─ return { message: "Notification delivered by os", deliveredVia: "os" }
+│       │   │
+│       │   └─ NO:
+│       │       └─ THROW Error: "No notification adapter is configured"
+│
+└─ [tool renders no message in conversation: renderToolUseMessage() returns null]
+```
+
+**失败路径：**
+- Webhook 失败：显式抛出错误，不自动降级到 OS 通知（配置表示用户偏好 webhook）
+- 超时：10s 后抛出，不重试
+- 无适配器：显式抛出错误
+- 所有异常让调用方处理（不静默）
+
+---
+
+#### 通知 Hook 通用模式（含远程模式禁用）
+```text
+use[X]Notification()
+│
+├─ getIsRemoteMode()? → YES: return immediately (NO BANNERS IN REMOTE MODE!)
+│
+├─ [optional] useStartupNotification(compute) wrapper:
+│   ├─ mount → check getIsRemoteMode() → YES: skip
+│   ├─ hasRunRef? → YES: skip
+│   ├─ call compute() → may return Notification | Notification[] | null
+│   ├─ addNotification() for each
+│   └─ hasRunRef = true
+│
+└─ [or direct useEffect listening to state changes]
+    └─ when condition met → addNotification(...)
+```
+
+**失败路径：**
+- `useStartupNotification()` 中 compute() 抛错：catch 并记录日志，不传播
+- 远程模式：所有 hooks 跳过横幅通知（显式检查）
+- 重复触发：useStartupNotification() 通过 hasRunRef 防止
+
+### 4.17 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|-----------|--------|-------------|----------|--------|-----------|-----------|
+| `current` Notification | notifications 上下文 | `addNotification()` 设置或 `processQueue()` 从队列提取 | 共享：React context 全局单例 | 否，仅内存 | `null` 赋值、超时清除、`invalidates` 移除 | `removeNotification(key)` 直接移除，超时回调检查 key 匹配防止误操作 |
+| `queue` Notification[] | notifications 上下文 | 初始化为空数组 | 共享：React context 全局单例 | 否，仅内存 | `filter()` 移除 invalidated keys，取出时 `splice()` | `removeNotification(key)` 从队列删除，immediate 抢占时过滤 immediate 旧通知 |
+| `currentTimeoutId` | notifications 上下文模块 | 初始化为 null，`setTimeout()` 时赋值 | 隔离：模块级闭包变量，不暴露 | 否，仅内存 | `clearTimeout()` + 赋值 null | 组件卸载后回调仍检查 key 匹配防止操作已替换通知 |
+| `hasRunRef` (useStartupNotification) | useStartupNotification Hook | `useRef(false)` 在 Hook 初始化时创建 | 隔离：每个 Hook 实例自己的 ref | 否，仅内存 | 无（一次性设计） | 组件卸载后仍为 true，防止重新运行 |
+| `seenRunningRef`/`seenCompletedRef` (useTeammateLifecycle) | useTeammateLifecycleNotification Hook | `useRef(new Set())` 初始化 | 隔离：每个 Hook 实例自己的 ref | 否，仅内存 | 无（持久追踪避免重复通知） | 组件卸载后仍保留已见状态 |
+| Notification object (with fold) | 调用方 Hook | 调用方创建后传入 `addNotification()` | 共享：存入 context 的 current/queue | 否，仅内存 | `invalidates` 机制移除，或超时自动清除 | `fold()` 合并时重置 timeout，用户可继续看到更新 |
+| Notification object (with invalidates) | 调用方 Hook | 调用方创建后传入 `addNotification()` | 共享：存入 context 的 current/queue | 否，仅内存 | 添加时自动移除 invalidated keys，或超时清除 | `invalidates` 主动清除过时通知，无需等待超时 |
+| Webhook request (PushNotificationTool) | PushNotificationTool | `call()` 时创建 HTTP 请求 | 隔离：每次调用独立 | 否，仅内存 | `context.abortController.signal` 可取消 | 超时 10s 自动终止，失败抛出无重试 |
+| OS notification send | notifier.ts | `sendNotification()`/`sendToChannel()` 发送 | 共享：终端级通知系统 | 否，fire-and-forget | 无（发送后无法撤销） | try/catch 包裹所有错误，返回 'error' 字符串不抛出 |
+| Collapsed task notification messages | collapseBackgroundBashNotifications | 调用时创建新数组 | 隔离：纯函数，不修改原数组 | 否，仅内存 | 返回新数组，原数组不变 | 无（纯转换无副作用） |
+
+**生命周期证据：**
+- `src/context/notifications.tsx:54-93` - processQueue、timeout 处理
+- `src/context/notifications.tsx:98-151` - immediate 抢占、currentTimeoutId 模块级闭包
+- `src/hooks/notifs/useStartupNotification.ts:19-41` - hasRunRef 一次性设计
+- `src/hooks/notifs/useTeammateShutdownNotification.ts:1-78` - seenRunningRef/seenCompletedRef
+- `src/tools/PushNotificationTool/PushNotificationTool.ts:1-68` - webhook 超时、无降级
+- `src/utils/collapseBackgroundBashNotifications.ts:14-84` - 纯函数不修改原数组
+- `src/services/notifier.ts:1-161` - Apple Terminal bell 检测、try/catch 包裹
+
 ## 5. 失败语义与工程取舍
 
 | 触发条件 | 检测位置 | 消息/异常如何传播 | 是否重试及上限 | 状态与资源清理 | 调用方可见结果 |
