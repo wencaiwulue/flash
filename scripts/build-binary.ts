@@ -287,8 +287,10 @@ function smokeTestBinary(
       FLASH_SMOKE_INPUT: smokeInput,
     },
     // Windows runners cold-launch Chrome (Defender scans, first run) well
-    // beyond the default 30s — give the whole smoke 2 minutes.
-    timeoutMs: 120_000,
+    // beyond the default 30s, and the smoke channel's MCP request timeout is
+    // 180s — the spawn cap must exceed that or the process gets SIGTERMed
+    // mid-request with no result line.
+    timeoutMs: 300_000,
   })
   const smokeStdout = smoke.stdout.toString()
   const smokeStderr = smoke.stderr.toString()
@@ -305,7 +307,9 @@ function smokeTestBinary(
   }
   const verdict = classifyToolSmokeResult(smokeLine)
   if (verdict.startsWith('skip')) {
-    console.warn(`Smoke skip (${verdict.slice('skip:'.length)}): Chrome not available on this machine`)
+    console.warn(
+      `Smoke skip (${verdict.slice('skip:'.length)}): ${smokeLine.slice(0, 500)}`,
+    )
     return
   }
   if (verdict.startsWith('fail')) {
