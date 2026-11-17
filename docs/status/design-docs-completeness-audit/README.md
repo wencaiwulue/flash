@@ -39,7 +39,7 @@ Design docs: 0 errors, 73 warnings
 | session-persistence | 2 | 7/7 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（关键路径无测试） | 4 | [02-tools-permissions-sessions.md#session-persistence](02-tools-permissions-sessions.md#session-persistence) |
 | shell-tools | 2 | 13/13 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（关键路径无测试） | 4 | [02-tools-permissions-sessions.md#shell-tools](02-tools-permissions-sessions.md#shell-tools) |
 | tool-framework | 2 | 7/7 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（关键路径无测试） | 4 | [02-tools-permissions-sessions.md#tool-framework](02-tools-permissions-sessions.md#tool-framework) |
-| auth | 3 | 20/20 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（仅 oauthRefresh 和 linuxSecretStorage） | 2 | [03-memory-auth-settings.md#auth](03-memory-auth-settings.md#auth) |
+| auth | 3 | 20/20 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ✅ 充分（有完整测试，B3-auth-01 已修复） | 2 | [03-memory-auth-settings.md#auth](03-memory-auth-settings.md#auth) |
 | commit-attribution | 3 | 6/6 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ✅ 充分（有完整测试） | 3 | [03-memory-auth-settings.md#commit-attribution](03-memory-auth-settings.md#commit-attribution) |
 | git-integration | 3 | 9/9 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（测试不完整） | 3 | [03-memory-auth-settings.md#git-integration](03-memory-auth-settings.md#git-integration) |
 | memory | 3 | 7/7 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（无测试） | 6 | [03-memory-auth-settings.md#memory](03-memory-auth-settings.md#memory) |
@@ -149,7 +149,7 @@ Design docs: 0 errors, 73 warnings
 | 实现一致 | 9 |
 | 发现总数 | 26 |
 | P0 | 0 |
-| P1 | 1 |
+| P1 | 0 (1 已修复) |
 | P2 | 12 |
 | P3 | 13 |
 
