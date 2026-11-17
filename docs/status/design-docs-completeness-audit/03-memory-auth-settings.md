@@ -222,7 +222,17 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 - `OAuthService.startOAuthFlow()`：启动本地服务器 `AuthCodeListener`，生成 PKCE `codeVerifier`/`codeChallenge`/`state`，构建两条授权 URL，等待授权码（自动或手动），交换 tokens，获取 profile
 - 双路径设计：自动浏览器回调 + 手动代码输入 fallback
 
-**发现 B3-auth-01**：[已修复] Keychain 缓存 30 秒，跨进程刷新后另一个进程最多 30 秒才看到新 token。已修复为使用共享 cache-version 标记（~/.claude/.keychain-cache-version.json），每次写入时原子更新 UUID，读取前检查版本，变更则立即刷新缓存。严重度：P1→已修复，置信度：已证实（src/utils/secureStorage/macOsKeychainHelpers.ts:90-109, src/utils/secureStorage/macOsKeychainStorage.ts:26-199）。
+**发现 B3-auth-01**：Keychain 缓存 30 秒，跨进程刷新后另一个进程最多 30 秒才看到新 token。严重度：P1，置信度：已证实（src/utils/secureStorage/macOsKeychainHelpers.ts:69-91，无跨进程失效机制，仅 30 秒 TTL）。
+
+**修复证据 B3-auth-01**：已修复，使用共享 cache-version 标记（~/.claude/.keychain-cache-version.json）：
+- 每次写入（update/delete/clearKeychainCache）时原子更新 UUID（temp file + rename）
+- 读取前检查版本标记，变更则立即刷新缓存，无视 30 秒 TTL
+- 同时保留 TTL 作为降级策略（版本标记损坏时）
+- 证据：
+  - src/utils/secureStorage/macOsKeychainHelpers.ts:90-124（getKeychainCacheVersionPath/touchKeychainCacheVersion/isKeychainCacheVersionCurrent/clearKeychainCache）
+  - src/utils/secureStorage/macOsKeychainStorage.ts:32-84（read/readAsync 双重检查）
+  - tests/macOsKeychainHelpers.test.ts:33-96（跨进程行为测试）
+- 验证：测试覆盖完整，类型检查/构建通过
 
 **发现 B3-auth-02**：auth 子系统缺少专用测试文件，仅 `oauthRefresh.test.ts` 和 `linuxSecretStorage.test.ts`，大量核心逻辑无测试覆盖。严重度：P2，置信度：已证实（tests/ 目录扫描确认）。
 

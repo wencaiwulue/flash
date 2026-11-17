@@ -59,6 +59,7 @@ Claude Code 需要支持多种认证方式：OAuth 2.0（Claude.ai 用户）、A
 | refresh 时 scope 扩展：Claude.ai 用户不指定 scope，获取完整权限 | `refreshOAuthToken()` 中 Claude.ai 用户传 `undefined` 作为 scope，后端允许扩展 | 新增权限时无需用户重新登录，自动获得新 scope | 总是指定原始 scope：新增功能需要用户重新登录，体验差；强制重新登录：打扰用户 | 依赖后端的 scope 扩展策略 | `src/services/oauth/client.ts:146-273` |
 | API key 验证：保留用户原始文件，只在内存中验证 | `saveApiKey()` 不修改用户原始文件，只验证后保存到 Keychain/config | 避免破坏用户的自定义配置，只验证格式而不重写 | 修改用户原始文件：可能丢失用户注释或其他配置；不验证：无效 key 直到使用时才发现 | 需要正确的验证逻辑，同时保留用户原始文件 | `src/utils/auth.ts:1094-1160` |
 | 401 错误处理：对比 token + 并发去重 | `handleOAuth401Error()` 用 `pending401Handlers` Map 按 token 去重，先从安全存储重新读取看是否已被刷新 | 服务器返回 401 时，可能是本地缓存过期，也可能是真的需要刷新；并发 401 时只处理一次 | 每次 401 都刷新：可能与另一个进程的刷新冲突；不检查安全存储：错过另一个进程已刷新的 token | 需要处理并发和跨进程场景 | `src/utils/auth.ts:1339-1392` |
+| Keychain 跨进程失效：版本标记文件 + 原子 UUID 更新 | `~/.claude/.keychain-cache-version.json` 存储随机 UUID；`touchKeychainCacheVersion()` 原子更新（temp file + rename）；`read()`/`readAsync()` 双重检查（TTL AND 版本匹配） | 跨进程变更立即可见，无需等待 30 秒 TTL；原子写入避免竞态；双重检查保证降级路径 | 只依赖版本标记：标记损坏时无法读取；只用 TTL：跨进程延迟不可接受 | 需要维护标记文件，处理标记损坏的情况 | `src/utils/secureStorage/macOsKeychainHelpers.ts:90-124`, `tests/macOsKeychainCrossProcess.test.ts` |
 
 ## 3. 目标与非目标
 
@@ -796,6 +797,61 @@ type AuthTokenSource =
 - apiKeyHelper SWR（stale-while-revalidate）缓存行为测试
 - Keychain 预取与缓存 priming 测试
 - auth.ts 中 _apiKeyHelperEpoch 竞态避免测试
+
+## A. 版本标记生命周期与跨进程失效（B3-auth-01 修复）
+
+### A.1 标记文件格式
+```json
+{
+  "version": "uuid-v4-random-string"
+}
+```
+- 路径：`~/.claude/.keychain-cache-version.json`
+- 权限：`0o600`（仅用户可读）
+- 更新方式：原子写入（temp file → rename）
+
+### A.2 完整生命周期
+1. **写入路径**（所有修改触发）：
+   - `update()` → `clearKeychainCache()` → `touchKeychainCacheVersion()`
+   - `delete()` → `clearKeychainCache()` → `touchKeychainCacheVersion()`
+   - `clearOAuthTokenCache()` → `clearKeychainCache()` → `touchKeychainCacheVersion()`
+   - `handleOAuth401Error()` → `clearOAuthTokenCache()` → `clearKeychainCache()` → `touchKeychainCacheVersion()`
+
+2. **读取路径**（双重检查）：
+   - `read()` → 检查 `Date.now() - cachedAt < TTL AND isKeychainCacheVersionCurrent(cacheVersion)`
+   - `readAsync()` → 同样双重检查 + in-flight 去重
+
+3. **降级策略**：
+   - 版本标记不存在 → `isKeychainCacheVersionCurrent()` 返回 false → 真实读取
+   - 版本标记内容无效（非 JSON）→ 返回 false → 真实读取
+   - 版本读取失败 → 返回 false → 真实读取
+   - TTL 过期 → 真实读取（无论版本）
+
+### A.3 原子性与竞态防护
+- `touchKeychainCacheVersion()` 始终写入临时文件（`{path}.tmp-{pid}`）后重命名
+- 重命名操作在 POSIX 系统上是原子的
+- 多进程同时写入：最后写入的版本获胜
+
+### A.4 三层证据对齐
+
+| 证据层 | 状态 | 说明 | 位置 |
+|---|---|---|---|
+| 1. 官方文档 | N/A | 此机制是本地缓存优化，不涉及外部 API/协议 | - |
+| 2. 上游二进制 strings | ✅ N/A | 此仓库是上游（flash），无需外部比对 | - |
+| 3. 本地源码/契约 | ✅ 完整 | 实现与 spec 完全对齐，测试覆盖完整 | `src/utils/secureStorage/macOsKeychainHelpers.ts` |
+
+### A.5 关联覆盖
+- 缓存标记读写：`src/utils/secureStorage/macOsKeychainHelpers.ts:90-109`
+- 缓存双重检查：`src/utils/secureStorage/macOsKeychainStorage.ts:32-107`
+- 401 处理路径：`src/utils/auth.ts:1378`
+- 测试覆盖：`tests/macOsKeychainHelpers.test.ts` + `tests/macOsKeychainCrossProcess.test.ts`
+
+### A.6 回滚策略
+如需回滚此修复：
+1. 移除版本标记相关代码
+2. 恢复 `keychainCacheState.cache` 类型（移除 `cacheVersion`）
+3. 恢复 `read()`/`readAsync()` 仅检查 TTL
+4. 无需数据迁移（版本标记文件可自动重建或删除）
 
 ## 8. 文件覆盖与相关子系统
 
