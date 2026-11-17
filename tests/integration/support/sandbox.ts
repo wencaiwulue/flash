@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'path'
+import { realpathSync } from 'fs'
 
 export interface SandboxOptions {
   globalConfig?: Record<string, unknown>
@@ -40,10 +41,14 @@ export async function createSandbox(opts: SandboxOptions = {}): Promise<Sandbox>
   await mkdir(join(home, '.claude'), { recursive: true })
   await mkdir(join(project, '.claude'), { recursive: true })
 
+  const realProject = realpathSync(project)
   const globalConfig = {
     hasCompletedOnboarding: true,
     theme: 'dark',
-    projects: { [project]: { hasTrustDialogAccepted: true } },
+    projects: {
+      [project]: { hasTrustDialogAccepted: true },
+      [realProject]: { hasTrustDialogAccepted: true },
+    },
     ...opts.globalConfig,
   }
   await writeJsonIfPresent(join(home, '.claude.json'), globalConfig)
