@@ -172,3 +172,19 @@ bundled/独立二进制下 isolated 浏览器路径（WebBrowser 工具）已支
 - playwright 升级需确认 `tests/playwrightInlinePlugin.test.ts` 绊线仍通过。
 
 release 构建通过 `FLASH_SMOKE_TOOL` 冒烟在真实二进制内端到端验证该路径（崩溃类错误会挡发布；Chrome 缺失仅警告跳过）。
+
+## 10. 当前会话与协议生命周期证据补充
+
+- **官方文档**：[Agent SDK Sessions](https://code.claude.com/docs/en/agent-sdk/sessions.md) 仅用于核对 continue/resume/fork 语义。本文不把该语义解释为私有 Chrome 扩展协议，也不承诺 wire compatibility。
+- **上游二进制**：对 `/opt/homebrew/bin/claude` 执行 `strings` 可定位 `recordContextCollapseSnapshot`、`marble-origami-snapshot`、`marble-origami-commit`，说明上游存在快照/提交持久化记录；未据此推断私有扩展的锁或配对实现。
+- **本仓库实现**：`src/utils/sessionStorage.ts` 的 `appendToFile()` 使用 `src/utils/lockfile.ts` 的惰性 proper-lockfile 包装，锁只在实际追加时持有。`recordTranscript` 先物化 session 文件，随后 snapshot entry 才能写入；SDK fork 使用不同 session 文件，不能直接交错。
+
+### 当前生命周期与回滚
+
+| 对象/资源 | 创建与初始化 | 共享/隔离 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|
+| session 文件 | `recordTranscript` 首次消息链写入时创建 | 同 session 的 worker 共享，fork 独立 | 文件锁超过 10s 视为 stale 可清理；重试 5 次 | 崩溃或超时由 proper-lockfile stale 机制恢复；新写入先等待锁释放 |
+| snapshot entry | `recordContextCollapseSnapshot` 在物化后追加 | 同 session 的 entry 必须唯一，start/end UUID 区分 worker | 不完整或重复 JSON 行不得被当成有效 snapshot | 损坏尾行跳过，保留可解析 entry；回滚不删除旧 JSONL |
+| `concurrent-worker.ts` | 两个 `Bun.spawn` worker 各写 50 个 snapshot | 真实独立进程验证锁串行化 | 测试结束移除临时 session 文件与锁文件 | 超时或失败后强制清理 worker 和锁文件 |
+
+协议回滚只撤销锁和写入路径变化，不把 isolated browser 回退为真实 Chrome CDP，也不伪造 Chrome attach 成功。`tests/sessionConcurrency.test.ts` 的双进程测试用于验证完整 JSONL、UUID 去重、锁超时与恢复。
