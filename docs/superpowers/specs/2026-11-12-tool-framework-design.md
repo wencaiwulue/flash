@@ -753,6 +753,166 @@ runToolUse()
 
 **证据位置**：`src/tools.ts`、`src/utils/toolPool.ts`
 
+### 4.9 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      ToolUseContext (可变状态)                               │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │ options: {commands, tools, mcpClients, ...} (只读配置)                 │ │
+│  │ abortController: AbortController (可变)                                 │ │
+│  │ readFileState: Map (来自 file-tools，共享)                              │ │
+│  │ toolDecisions: Map<toolUseId, {source, decision, timestamp}> (缓存)    │ │
+│  │ localDenialTracking: DenialTrackingState (子 agent 隔离)               │ │
+│  │ contentReplacementState: ContentReplacementState (预算)                │ │
+│  │ getAppState() / setAppState() (父 agent 隔离时 no-op)                  │ │
+│  │ setAppStateForTasks() (总是更新根，后台任务注册用)                      │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+└───────────────────────────────────┬─────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      Tool Framework (本 spec)                               │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐             │
+│  │ buildTool()     │  │ assembleToolPool│  │ toolExecution   │ │
+│  │ (默认值填充)    │  │ (工具池组装)    │  │ (核心执行链)    │             │
+│  └────────┬────────┘  └────────┬────────┘  └────────┬────────┘             │
+│           │                    │                    │                       │
+│           └────────────────────┼────────────────────┘                       │
+│                                ▼                                            │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │ Tool Interface (20+ methods)                                            │ │
+│  │   • 必需: name, inputSchema, call(), description(), prompt()           │ │
+│  │   • 可选: isEnabled(), isConcurrencySafe(), checkPermissions(), ...    │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+└───────────────────────────────────┬─────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    External Dependencies / Services                         │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐             │
+│  │ toolHooks       │  │ permissions     │  │ mcp tools       │ │
+│  │ (Pre/Post hooks)│  │ (权限裁决)      │  │ (动态工具)      │ │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘             │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐             │
+│  │ Claude API      │  │ React UI        │  │ 各具体工具      │ │
+│  │ (tool_use)      │  │ (渲染/进度)     │  │ (Bash/File/...) │ │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**边界说明：**
+- ToolUseContext 可变状态，但子 agent 隔离 setAppState()
+- 工具池组装：内置优先，MCP 同名被遮蔽
+- 流式与批量路径等价，都委托 checkPermissionsAndCallTool()
+
+### 4.10 关键流程与失败路径
+
+#### 完整工具执行流程 (主路径)
+```text
+模型产出 tool_use (AssistantMessage)
+│
+▼
+runToolUse(toolUse, assistantMessage, canUseTool, toolUseContext)
+├─ 1. 查找工具 findToolByName(name, tools, getAllBaseTools())
+│   ├─ 先在 toolUseContext.options.tools 中找
+│   └─ 未找到则在 getAllBaseTools() 中找 (alias 兼容旧名)
+│   └─ 仍未找到 → yield tool_use_error
+├─ 2. 检查 abort
+│   └─ signal.aborted → yield synthetic interrupt result
+└─ 3. streamedCheckPermissionsAndCallTool() 或 checkPermissionsAndCallTool()
+    └─ 共同委托 checkPermissionsAndCallTool()
+```
+
+**checkPermissionsAndCallTool() 核心链：**
+```text
+1. Zod 输入验证
+   ├─ tool.inputSchema.safeParse(input)
+   └─ 失败 → yield tool_use_error + hint (延迟工具先调用 ToolSearch)
+
+2. 业务输入验证 (可选)
+   ├─ tool.validateInput(input, context)
+   └─ 失败 → yield tool_use_error
+
+3. PreToolUse hooks
+   ├─ runPreToolUseHooks()
+   ├─ 可修改输入 (hookUpdatedInput)
+   ├─ 可返回权限决策 (hookPermissionResult)
+   └─ 可阻止继续 (preventContinuation + stopReason)
+
+4. 权限检查
+   ├─ resolveHookPermissionDecision()
+   │   ├─ 优先 hookPermissionResult (如果有)
+   │   └─ 否则 canUseTool()
+   ├─ 结果存入 context.toolDecisions (缓存，避免重复询问)
+   ├─ 拒绝 → yield tool_result + PermissionDenied hooks
+   └─ 允许 → 继续，使用 permissionDecision.updatedInput (如果有)
+
+5. 工具执行
+   ├─ 启动工具 span (遥测)
+   ├─ 恢复 callInput 为模型原始值 (路径展开回写)
+   ├─ tool.call(input, context, onProgress)
+   │   └─ onProgress() → 产出 ProgressMessage
+   └─ 捕获异常 → 进入错误处理分支
+
+6. PostToolUse hooks
+   ├─ runPostToolUseHooks()
+   ├─ 可修改 MCP 工具输出 (updatedMCPToolOutput)
+   └─ 可产出附加消息
+
+7. 结果处理
+   ├─ tool.mapToolResultToToolResultBlockParam(content, toolUseId)
+   ├─ processToolResultBlock() 处理大输出持久化 (>64KB 写文件)
+   ├─ 添加 acceptFeedback (如果用户批准时有)
+   ├─ 应用 contextModifier (如果工具返回且非并发安全)
+   └─ 产出最终 tool_result 消息
+
+8. 错误边界 + finally 清理
+   ├─ McpAuthError → 更新客户端状态为 'needs-auth'
+   ├─ AbortError → 跳过错误日志 (用户中断)
+   ├─ 其他错误 → 格式化为 tool_result isError + PostToolUseFailure hooks
+   └─ finally
+       ├─ stopSessionActivity('tool_exec')
+       └─ toolDecisions.delete(toolUseId) (清理缓存)
+```
+
+#### 流式 vs 批量路径差异
+| 方面 | 流式路径 | 批量路径 |
+|------|---------|---------|
+| 返回类型 | AsyncIterable<MessageUpdateLazy> | Promise<MessageUpdateLazy[]> |
+| 进度消息 | 实时 yield | 收集到数组末尾一起返回 |
+| 消费者 | REPL UI (需要实时更新) | SDK/headless (批量处理) |
+| 核心实现 | 委托批量路径 | 实际 checkPermissionsAndCallTool() |
+
+**等价性保证**：两条路径的权限检查、工具执行、结果映射、错误处理完全相同。
+
+#### 失败路径：权限拒绝
+- **触发条件**：权限检查返回 deny behavior
+- **结果**：yield tool_result isError，运行 PermissionDenied hooks
+- **清理**：toolDecisions 缓存正常清理
+
+#### 失败路径：工具执行异常
+- **触发条件**：tool.call() 抛出异常
+- **结果**：捕获异常，格式化为 tool_result isError，运行 PostToolUseFailure hooks
+- **清理**：finally 块清理 toolDecisions 缓存
+
+### 4.11 核心对象生命周期表
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| Tool (实例) | 工具池 | buildTool(def) 构造，填充默认值 | 工具池共享 | 不持久化 (内存对象) | 无重置，工具池重建时重新创建 | 无取消操作 |
+| ToolUseContext | 调用方 (query-core) | 每次工具调用或子 agent 创建 | 根 agent 共享，子 agent 隔离 | 不持久化 (内存) | 子 agent 销毁时隔离状态丢弃 | abortController.abort() 取消当前调用 |
+| toolDecisions Map | ToolUseContext | 首次权限检查初始化 | 根 agent 共享，子 agent 可选隔离 | 不持久化 (缓存) | 工具完成后 finally 块 delete(toolUseId) | 无取消操作 |
+| ShellCommand (临时) | Shell.ts | exec() 或 wrapSpawn() 创建 | 独立，单次执行 | 不持久化 | 完成/超时/取消后 status 更新 | kill() 终止进程组 |
+| LocalShellTask (后台) | LocalShellTask | spawnShellTask() 初始化 | 独立，单个后台任务 | 不持久化 (状态内存) | 完成/停止后状态更新为 'completed'/'stopped' | killTask() 终止进程，保留输出文件 |
+
+**生命周期证据：**
+- Tool: `src/Tool.ts:727-792` (buildTool)
+- ToolUseContext: `src/Tool.ts:192-294` (类型定义)
+- toolDecisions: `src/services/tools/toolExecution.ts:337-1745`
+- ShellCommand: `src/utils/ShellCommand.ts:1-400`
+- LocalShellTask: `src/tasks/LocalShellTask/LocalShellTask.ts:1-400`
+
 ## 5. 失败语义与工程取舍
 
 ### 5.1 工具不存在/找不到的语义

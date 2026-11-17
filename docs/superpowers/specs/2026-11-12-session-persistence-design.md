@@ -1056,6 +1056,158 @@ type TranscriptMessage = {
 - **Settings**：读取 settings 但不写入，本文只描述读取接口
 - **Telemetry**：记录遥测事件，本文不涉及
 
+### 4.12 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          Project (单例)                                      │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │ writeQueues: Map<path, Array<{entry, resolve}>>                       │ │
+│  │ flushTimer: setTimeout (100ms)                                        │ │
+│  │ activeDrain: Promise<void> | null                                    │ │
+│  │ pendingEntries: Array<Entry> | null (惰性创建前缓存)                  │ │
+│  │ sessionFile: string | null (JSONL 路径)                              │ │
+│  └───────────────────────────────┬───────────────────────────────────────┘ │
+└───────────────────────────────────┼─────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    Filesystem Storage (实际 IO)                            │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │ ~/.claude/projects/<sanitized-path>/<session-id>.jsonl                │ │
+│  │   • 追加模式写入 (O_APPEND on POSIX, 'w' on Windows)                  │ │
+│  │   • 权限 0o600 (仅用户可读/写)                                         │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │ ~/.claude/file-history/<session-id>/                                  │ │
+│  │   • <hash>@v<version>: 文件备份 (硬链接共享 fork)                     │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    External Dependencies                                    │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐             │
+│  │ SDK Query Sess  │  │ File History    │  │ Settings (只读)│             │
+│  │ (共享 JSONL)    │  │ (快照/rewind)   │  │                 │             │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**边界说明：**
+- Project 单例在 CLI 中全局唯一，管理内存队列和 flush 时机
+- 大文件 (>5MB) 加载时仅读头尾 64KB (LITE_READ_BUF_SIZE)
+- SDK 与 CLI 共享 JSONL 格式，但各写各的，无协调
+
+### 4.13 关键流程与失败路径
+
+#### 完整写入-队列-flush 流程 (主路径)
+```text
+调用方 (insertMessageChain / recordTranscript)
+│
+▼
+appendEntry(entry)
+├─ sessionFile === null
+│   ├─ 是 → pendingEntries 缓存 (惰性创建)
+│   └─ 否 → 检查 messageSet 去重
+├─ 有重复 UUID (非 Agent sidechain) → 跳过
+└─ enqueueWrite(filePath, entry)
+    ├─ 推入 writeQueues[filePath]
+    ├─ Promise<void> 立即 resolve (队列化后)
+    └─ scheduleDrain() (启动 100ms 定时器)
+
+▼ (100ms 后或显式 flush)
+
+drainWriteQueue()
+├─ 暂停定时器
+├─ 遍历所有 file paths
+├─ 对每个 path：
+│   ├─ 收集队列所有 entries
+│   ├─ lazy jsonStringify (仅此时序列化)
+│   ├─ 检查大小 > MAX_CHUNK_BYTES (100MB) → 分块
+│   ├─ appendToFile():
+│   │   ├─ 尝试 fsAppendFile (0o600)
+│   │   ├─ ENOENT → mkdir -p 递归创建目录
+│   │   └─ 重试 fsAppendFile
+│   ├─ resolve 所有 Promise
+│   └─ 清空队列
+└─ 清理
+
+▼ (cleanup handler 退出时)
+
+flush() → reAppendSessionMetadata()
+├─ 先 drain 所有队列
+├─ readFileTailSync (读最后 64KB)
+├─ 提取 SDK 写入的最新 custom-title/tag
+├─ 追加最新元数据 (确保在 tail 窗口内)
+└─ 完成
+```
+
+#### 加载-恢复流程 (大文件)
+```text
+loadTranscriptFile(filePath)
+│
+▼
+stat(fileSize)
+├─ ≤ 5MB → 完整 readFile
+└─ > 5MB → readTranscriptForLoad()
+    ├─ 分块读取 1MB 前向扫描
+    ├─ 寻找最后一个 compact_boundary
+    ├─ 跳过边界前内容 (除非有 preservedSegment)
+    └─ 输出 postBoundaryBuf
+
+▼
+parseJSONL(postBoundaryBuf)
+├─ 逐行解析 JSON
+├─ 跳过无效行 (JSON.parse 失败)
+└─ 分类构建 Map/集合
+
+▼
+applyPreservedSegmentRelinks() (如果有)
+├─ 验证 tail → head 链完整
+├─ 修改 preserved 消息 parentUuid → anchor
+└─ anchor 其他子节点 → tail
+
+▼
+applySnipRemovals() (如果有)
+├─ 查找 snip boundary
+├─ 删除指定 UUID
+└─ 重链接 parentUuid 跨过删除区域
+
+▼
+findLatestMessage() (有可见用户内容)
+→ buildConversationChain(messages, leaf)
+→ recoverOrphanedParallelToolResults()
+→ progress bridge (旧会话兼容)
+```
+
+#### 失败路径：崩溃未 flush
+- **触发条件**：appendEntry 后、flush 前进程终止
+- **结果**：队列内存数据丢失，已刷盘消息保留
+- **恢复**：下次启动 loadTranscriptFile 时重建，丢失消息不可见
+
+#### 失败路径：部分写入行
+- **触发条件**：fsAppendFile 进行中崩溃
+- **结果**：JSONL 尾行可能损坏
+- **恢复**：loadTranscriptFile 跳过无效 JSON 行
+
+### 4.14 核心对象生命周期表
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| Project (单例) | CLI 全局 | 首次调用 appendEntry 时初始化 | 全局唯一 | 不持久化 (内存状态) | flush() 重置 flushTimer/activeDrain | 退出 cleanup 强制 flush，无取消操作 |
+| writeQueues | Project | Map 初始化空，按需添加 path | 全局唯一 | 不持久化 (内存队列) | drainWriteQueue() 后清空 path 队列 | flush() 强制 drain 所有队列 |
+| pendingEntries | Project | 空数组初始化 | 全局唯一 | 不持久化 (惰性缓存) | materializeSessionFile() 后清空 | 无取消操作，直接写入 |
+| sessionFile | Project | materializeSessionFile() 创建目录和文件 | 全局唯一 | JSONL 持久化到磁盘 | removeMessageByUuid() 可能 truncate 或标记 tombstone | 无取消操作 |
+| FileHistoryState | 工具调用上下文 | 首次 fileHistoryMakeSnapshot 初始化 | 会话内共享 | 备份文件持久化，状态不持久化 | snapshots > 100 时 slice(-100) 裁剪 | 无取消操作 |
+| DenialTrackingState (临时) | 加载会话 | createDenialTrackingState() 初始化 | 会话内共享 | 不持久化 | recordSuccess() 重置连续计数 | 无取消操作 |
+
+**生命周期证据：**
+- Project: `src/utils/sessionStorage.ts:533-687`
+- writeQueues: `src/utils/sessionStorage.ts:533-687`
+- pendingEntries: `src/utils/sessionStorage.ts:1129-1264`
+- FileHistoryState: `src/utils/fileHistory.ts:1-1118`
+
 ## 5. 失败语义与工程取舍
 
 ### 失败语义

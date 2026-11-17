@@ -1056,6 +1056,132 @@ type DenialTrackingState = {
 - **Hooks**：`executePermissionRequestHooks` 允许外部介入权限决策；hooks 机制由独立 spec 负责
 - **Settings**：存储和加载权限规则与模式；settings spec 负责持久化机制
 
+### 4.6 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          ToolUseContext                                 │
+│  ┌───────────────────────────────────────────────────────────────────┐ │
+│  │ ToolPermissionContext: {mode, rules, additionalWorkingDirectories}│ │
+│  │ DenialTrackingState: {consecutiveDenials, totalDenials}            │ │
+│  └───────────────────────────────┬───────────────────────────────────┘ │
+└───────────────────────────────────┼─────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                   Permissions Core (本 spec)                            │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐         │
+│  │ hasPermissions  │  │ PermissionUpdate│  │ permissionSetup │         │
+│  │ ToUseTool      │  │ apply/persist   │  │ (危险规则检测)  │         │
+│  └────────┬────────┘  └────────┬────────┘  └────────┬────────┘         │
+│           │                    │                    │                   │
+│           └────────────────────┼────────────────────┘                   │
+│                                │                                        │
+│                                ▼                                        │
+│  ┌───────────────────────────────────────────────────────────────────┐ │
+│  │ Optional: Auto Classifier (YOLO)                                   │ │
+│  └───────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    External Dependencies                                │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐         │
+│  │ Query Core      │  │ Settings        │  │ Hooks           │         │
+│  │ (调用入口)      │  │ (规则/模式存储) │  │ (权限请求钩子)  │         │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘         │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐         │
+│  │ React UI (Hook)│  │各工具checkPerms │  │ Classifier API  │         │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**边界说明：**
+- ToolPermissionContext 从 Settings 重建，不持久化拒绝计数
+- 权限裁决核心与 UI 分离，支持 headless（hooks 优先）
+- 分类器是可选的外部依赖，失败时回退到用户确认
+
+### 4.7 关键流程与失败路径
+
+#### 完整权限裁决流程（主路径）
+```text
+模型请求工具调用
+│
+▼
+hasPermissionsToUseToolInner (阶段1)
+├─ 0. 检查 bypassPermissions → 可用直接返回 allow
+├─ 1. 按优先级收集 deny/ask/allow 规则
+├─ 2. 检查 deny 规则匹配 → 匹配返回 deny
+├─ 3. 检查 ask 规则匹配 → 匹配返回 ask
+├─ 4. 调用 tool.checkPermissions
+│   ├─ 返回 deny → 最终 deny
+│   ├─ 返回 ask → 继续处理
+│   └─ 返回 allow → 继续
+├─ 5. 检查 allow 规则匹配 → 匹配返回 allow
+└─ 6. 默认 ask
+│
+▼
+模式转换层 (阶段2)
+├─ 结果 allow → 直接返回
+├─ 结果 deny → 直接返回
+└─ 结果 ask
+    ├─ mode = dontAsk → ask → deny
+    ├─ mode = auto (或 plan + auto)
+    │   ├─ safetyCheck.classifierApprovable = false → 保留 ask
+    │   ├─ 工具 requiresUserInteraction → 保留 ask
+    │   ├─ PowerShell 且禁用 → 保留 ask
+    │   ├─ acceptEdits 快速路径 → 模拟通过 → allow
+    │   ├─ 安全工具列表 → allow
+    │   └─ 调用 YOLO 分类器
+    │       ├─ 分类器 unavailable
+    │       │   ├─ iron_gate_closed → deny
+    │       │   └─ iron_gate_open → ask
+    │       ├─ transcriptTooLong → ask
+    │       ├─ 分类器拒绝
+    │       │   ├─ 记录拒绝计数
+    │       │   ├─ 超限 → ask (回退用户)
+    │       │   └─ 未超限 → deny
+    │       └─ 分类器批准 → allow
+    └─ asyncAgent
+        ├─ 执行 PermissionRequest hooks
+        │   ├─ hook allow → allow
+        │   └─ hook deny → deny
+        └─ 无 hook → deny
+
+├─ 用户确认路径 (useCanUseTool)
+│   ├─ ToolUseConfirm 队列
+│   ├─ UI 弹窗
+│   ├─ 用户允许/拒绝
+│   └─ 可能持久化规则
+└─ 分类器投机执行 (后台)
+```
+
+#### 失败路径：分类器不可用
+- **触发条件**：分类器 API 调用失败、超时、transcript 过长
+- **结果**：根据 `iron_gate_closed` 决定 fail-closed (deny) 或 fail-open (ask)
+- **恢复**：自动回退到用户确认，用户体验中断但安全
+
+#### 失败路径：连续拒绝超限
+- **触发条件**：连续 3 次/累计 20 次拒绝
+- **结果**：回退到用户确认，重置连续计数
+- **恢复**：用户手动批准后重置
+
+### 4.8 核心对象生命周期表
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| ToolPermissionContext | ToolUseContext | permissionSetup.createToolPermissionContext，从 settings 加载规则 | 父 Agent 共享 | 规则/模式持久化到 settings | applyPermissionUpdates 替换 | 无，无超时机制 |
+| DenialTrackingState | AppState (或 localDenialTracking) | denialTracking.createDenialTrackingState() | 子 Agent 独立 (localDenialTracking) | 不持久化 | recordSuccess 重置连续计数，回退用户后重置总计数 | 无，无超时机制 |
+| ToolUseConfirm 队列 | React useState | 首次 ask 时初始化 | 独立，UI 组件本地 | 不持久化 | 用户操作后移除队列，resolve Promise | 无，无超时机制 |
+| classifierChecking 标记 | 全局状态 | setClassifierChecking | 全局共享 | 不持久化 | clearClassifierChecking | 分类器完成后清除，finally 保证 |
+| PermissionDecision | 工具调用 | hasPermissionsToUseTool 返回 | 独立，单次调用 | 不持久化 | toolDecisions 缓存 (临时) | 取消后清除缓存 |
+
+**生命周期证据：**
+- ToolPermissionContext: `src/utils/permissions/permissionSetup.ts:1-145`
+- DenialTrackingState: `src/utils/permissions/denialTracking.ts:1-45`
+- ToolUseConfirm: `src/hooks/useCanUseTool.tsx:55-363`
+- classifierChecking: `src/utils/permissions/permissions.ts:689-927`
+
 ## 5. 失败语义与工程取舍
 
 | 触发条件 | 检测位置 | 消息/异常如何传播 | 是否重试及上限 | 状态与资源清理 | 调用方可见结果 |
