@@ -16,6 +16,9 @@ flash：Claude Code 的教学/研究快照（Bun + React/Ink 的 agentic CLI 与
 5. 设计文档：`docs/superpowers/specs|plans/YYYY-MM-DD-<topic>.md`，中文 + 决策表带证据。
 6. README 与 docs 改动必须双语成对提交。
 7. 提交信息以 `Co-Authored-By: Claude <noreply@anthropic.com>` 结尾。
+8. 审计整改：PR 关联 Finding ID 与主责 spec；原发现只追加整改台账，不删除；
+   默认增量审计，新/移动文件先确定 coverage 主责，spec 经用户审阅才可 approved
+   → 详见 maintaining-design-audits skill。
 
 其余工程惯例（bundled 形态、stubs 契约、发布命名单点、环境陷阱）：
 调用 flash-coding skill。
