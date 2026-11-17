@@ -405,14 +405,13 @@ function replacementFromText(value: string): string | undefined {
 export function completeRequiresStatement(value: string): string | undefined {
   const start = /Requires Claude Code v\d+\.\d+\.\d+\b/.exec(value)
   if (!start) return undefined
-  const remainder = value.slice(start.index).trim()
-  const afterVersion = remainder.slice(start[0].length)
-  const punctuation = /[.!?](?=\s|$|\|)/.exec(afterVersion)
+  const statement = value.slice(start.index).split('|', 1)[0]!.trim()
+  const afterVersion = statement.slice(start[0].length)
+  const punctuation = /[.!?](?=\s|$)/.exec(afterVersion)
   if (punctuation) {
-    return remainder.slice(0, start[0].length + punctuation.index + 1)
+    return statement.slice(0, start[0].length + punctuation.index + 1)
   }
-  const unpunctuated = remainder.split('|', 1)[0]!.trim()
-  return /\bor later$/.test(unpunctuated) ? unpunctuated : undefined
+  return /\bor later$/.test(statement) ? statement : undefined
 }
 
 function versionMetadata(value: string): {
@@ -618,6 +617,13 @@ export function parseHooksReference(
     const lifecycle = lifecycleFromText(description)
     const versions = versionMetadata(description)
     const replacement = lifecycle === 'active' ? undefined : replacementFromText(description)
+    const requiresStatement = completeRequiresStatement(description)
+    if (
+      /Requires Claude Code v\d+\.\d+\.\d+/.test(description) &&
+      requiresStatement === undefined
+    ) {
+      throw new Error(`hook ${path} has an incomplete Requires statement`)
+    }
     return {
       id: `hook:${path}`,
       kind: 'hook',
@@ -634,7 +640,7 @@ export function parseHooksReference(
       ...versions,
       ...(replacement ? { replacement } : {}),
       source: { ...source, anchor: `#${path.toLowerCase()}` },
-      excerpt: makeExcerpt([description]),
+      excerpt: makeExcerpt([description], requiresStatement),
     }
   })
 }
@@ -652,6 +658,13 @@ export function parseEnvironmentReference(
     const versions = versionMetadata(description)
     const replacement = lifecycle === 'active' ? undefined : replacementFromText(description)
     const precedence = PRECEDENCE_PATTERN.test(description) ? description : ''
+    const requiresStatement = completeRequiresStatement(description)
+    if (
+      /Requires Claude Code v\d+\.\d+\.\d+/.test(description) &&
+      requiresStatement === undefined
+    ) {
+      throw new Error(`environment variable ${path} has an incomplete Requires statement`)
+    }
     return {
       id: `env:${path}`,
       kind: 'env',
@@ -668,7 +681,7 @@ export function parseEnvironmentReference(
       ...versions,
       ...(replacement ? { replacement } : {}),
       source: { ...source, anchor: '#variables' },
-      excerpt: makeExcerpt([description]),
+      excerpt: makeExcerpt([description], requiresStatement),
     }
   })
 }
