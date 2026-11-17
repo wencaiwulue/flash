@@ -332,10 +332,26 @@ Design docs: 0 errors, 73 warnings
 
 ---
 
+## 文档整改台账（Task 17A/B）
+
+**状态：仅文档层面 verified，未修改源码或修复代码问题**
+
+| 整改项 | 关联 Finding ID | 文档更新 | 状态 | PR/Commit |
+|--------|----------------|---------|------|-----------|
+| Context/Memory spec 澄清 | X-context-01, X-memory-02/03/04 | `docs/superpowers/specs/2026-11-12-context-compaction-design.md`, `docs/superpowers/specs/2026-11-12-memory-design.md` | ✅ verified (文档) | #16 |
+| Skills/Workflow/AppState/Session 契约 | X-state-01 | `docs/superpowers/specs/2026-11-12-app-state-design.md`, `docs/superpowers/specs/2026-11-12-session-persistence-design.md`, `docs/superpowers/specs/2026-11-12-workflow-design.md`, `docs/superpowers/specs/2026-11-12-skills-design.md` | ✅ verified (文档) | #16 |
+| Build/Diagnostics/Placeholder 边界 | X-boundary-01 | `docs/superpowers/specs/2026-11-12-build-feature-profile-design.md`, `docs/superpowers/specs/2026-11-12-diagnostics-design.md`, `docs/superpowers/specs/2026-11-12-external-stubs-design.md` | ✅ verified (文档) | #16 |
+| Protocol/Test-validation 契约 | B7-test-validation-06 | `docs/superpowers/specs/2026-11-12-test-validation-design.md`, `docs/superpowers/specs/2026-11-12-bridge-design.md`, `docs/superpowers/specs/2026-11-12-tool-framework-design.md` | ✅ verified (文档) | #16 |
+| WebBrowser smoke coverage verified | webbrowser-bundled-support batch 5 | `docs/superpowers/specs/2026-11-16-webbrowser-bundled-support-design.md`, `docs/status/design-docs-completeness-audit/batch-5.md` | ✅ verified (文档) | #16 |
+
+**Rejected 发现保留：** B1-cli-startup-01 保持 rejected，有效发现 234 + rejected 1 口径不变。
+
+---
+
 ## 验证与测试结果
 
 #### `bun scripts/check-design-docs.ts`
-✅ Passed - 0 errors, 73 warnings (expected - 69 DRAFT_SPEC + 4 UNCOVERED_FILE)
+✅ Passed - 0 errors, 72 warnings (expected - 69 DRAFT_SPEC + 3 UNCOVERED_FILE: scripts/install.sh, tests/claudeInChromeWiring.test.ts, tests/installScript.test.ts)
 
 #### `git diff --check`
 ✅ Passed - no whitespace errors
