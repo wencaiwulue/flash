@@ -1290,6 +1290,146 @@ Live 验证边界决策：
 - `scripts/live-model-validation.ts:40-47`：互斥检查
 - `tests/buildArtifacts.test.ts:6-32`：典型离线测试
 
+### 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────┐
+│                        测试与验证分层架构                            │
+├─────────────────────────────────────────────────────────────────────┤
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │  Live 验证层 (可选)                                           │  │
+│  │  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐         │  │
+│  │  │Cloud 验证    │ │Desktop 验证  │ │Model 验证    │         │  │
+│  │  │OAuth Token   │ │屏幕权限      │ │API Key/Auth │         │  │
+│  │  │              │ │              │ │Token 互斥    │         │  │
+│  │  └──────────────┘ └──────────────┘ └──────────────┘         │  │
+│  │  ┌──────────────────┐                                        │  │
+│  │  │SkillHub 验证     │                                        │  │
+│  │  │Registry URL      │                                        │  │
+│  │  └──────────────────┘                                        │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│                              ↑ 可选 (无凭据时 SKIPPED)              │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │  跨领域验收层 (必需)                                           │  │
+│  │  ┌──────────────────┐ ┌──────────────────┐                  │  │
+│  │  │Enabled Features  │ │Public Commands   │                  │  │
+│  │  │工具数量/注册     │ │/summary, /autofix│                  │  │
+│  │  └──────────────────┘ └──────────────────┘                  │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│                              ↑ 必需                                 │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │  Smoke 测试层 (必需)                                           │  │
+│  │  ┌──────────────────────────────────────────────────────┐  │  │
+│  │  │CLI 可执行 + SDK 可导入 + 类型声明存在                 │  │  │
+│  │  └──────────────────────────────────────────────────────┘  │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│                              ↑ 必需                                 │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │  测试运行器 (scripts/test.ts)                                 │  │
+│  │  ┌──────────────────────────────────────────────────────┐  │  │
+│  │  │逐文件 spawn Bun test                               │  │  │
+│  │  │注入 EXTERNAL_FEATURES feature flags                │  │  │
+│  │  │stdio inherit (实时输出, 无缓冲)                    │  │  │
+│  │  │收集 failures[] 汇总报告                             │  │  │
+│  │  └──────────────────────────────────────────────────────┘  │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────┘
+
+资源边界：
+• 测试进程：每个测试文件独立子进程隔离，无共享状态
+• 环境变量：完整透传，包含凭据（由测试自行决定使用）
+• 临时目录：live-cloud-validation 使用 mkdtemp，finally 清理
+• URL 缓存：web-tools 模块的缓存，测试不负责清理
+```
+
+### 关键流程与失败路径
+
+```text
+主测试流程
+=========
+scripts/test.ts 启动
+  ↓
+参数解析：requestedFiles vs options
+  ↓
+testFiles 赋值
+  ├─ 有请求文件 → 过滤验证 → 使用
+  └─ 无请求文件 → discoverTestFiles() → glob + Set + sort
+  ↓
+testFiles.length === 0?
+  ├─ Yes → throw Error('No test files found')
+  └─ No → 进入逐文件执行
+  ↓
+循环：每个 file in testFiles
+  ├─ 构造 cmd：bun --feature=... --feature=... test [...options] file
+  ├─ Bun.spawn：cwd=root, stdio=inherit, env=process.env
+  ├─ await child.exited
+  ├─ exitCode !== 0? → failures.push(file)
+  └─ 继续下一个文件
+  ↓
+failures.length > 0?
+  ├─ Yes → console.error('Failed test files:', ...) → process.exit(1)
+  └─ No → process.exit(0)
+
+Live Cloud 验证流程
+==================
+scripts/live-cloud-validation.ts
+  ↓
+mkdtemp(/tmp/flash-cloud-live-XXXXXX)
+  ↓
+token = getClaudeAIOAuthTokens()?.accessToken
+  ↓
+token 存在?
+  ├─ No → console.log('CLOUD_LIVE_SKIPPED') → cleanup → exit 0
+  └─ Yes → orgUUID = CLAUDE_CODE_ORG_UUID ?? await getOrganizationUUID()
+         ↓
+      orgUUID 存在?
+        ├─ No → throw → cleanup → exit 非零
+        └─ Yes → enableConfigs() → initEnvLessBridgeCore()
+               ↓
+            验证 session 创建 + resume + 文件持久化
+               ↓
+            console.log('CLOUD_LIVE_OK') → cleanup → exit 0
+
+Live Model 验证流程
+==================
+scripts/live-model-validation.ts
+  ↓
+互斥检查：ANTHROPIC_API_KEY && ANTHROPIC_AUTH_TOKEN?
+  ├─ Yes → throw Error('mutually exclusive') → exit 非零
+  └─ No → 两者都不存在?
+         ├─ Yes → console.log('MODEL_LIVE_SKIPPED') → exit 0
+         └─ No → enableConfigs()
+               ↓
+            验证 workflow → proactive → context collapse → reactive compact
+               ↓
+            console.log('WORKFLOW_LIVE_OK', 'PROACTIVE_LIVE_OK', ...) → exit 0
+
+失败路径汇总
+============
+• 测试发现：无测试文件 → throw Error
+• 单个测试：任何子进程 exitCode !== 0 → 记录 failures[]
+• Live 验证无凭据 → SKIPPED (exit 0)
+• Live 验证有凭据但失败 → throw (exit 非零)
+• Model 验证两者凭据同时设置 → 立即 throw
+• Smoke 测试任何 expect 失败 → test 失败
+• 跨领域验收任何 expect 失败 → test 失败
+```
+
+### 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| `testFiles` 数组 | `scripts/test.ts` | 参数解析或 `discoverTestFiles()` 赋值 | 单次运行隔离 | 仅内存 | 进程退出 GC 回收 | N/A (同步执行) |
+| `failures` 数组 | `scripts/test.ts` | `const failures: string[] = []` 初始化为空 | 单次运行隔离 | 仅内存 | 进程退出 GC 回收 | N/A (同步执行) |
+| `EXTERNAL_FEATURES` | `externalFeatureProfile.ts` | `export const EXTERNAL_FEATURES = [...] as const` | build.ts 与测试共享 | 仅编译时（嵌入构建） | 定义后不可变 | N/A（常量） |
+| Bun 子进程 | `scripts/test.ts` | `Bun.spawn()` 每次循环创建 | 每个测试文件完全隔离 | 仅内存 | 子进程 exited 后释放 | stdio inherit, 无手动 kill |
+| 临时目录 | `live-cloud-validation.ts` | `mkdtemp(/tmp/flash-cloud-live-XXXXXX)` | 单次运行隔离 | 磁盘目录 | 进程退出前 `fs.rm(recursive)` | finally 块强制清理 |
+| OAuth Token | `live-cloud-validation.ts` | `getClaudeAIOAuthTokens()?.accessToken` | 仅内存读取 | 不持久化 | 进程退出释放 | 不修改 token 存储 |
+| API Key/Auth Token | `live-model-validation.ts` | 直接读取 `process.env` | 仅内存读取 | 不持久化 | 进程退出释放 | 互斥检查，不修改环境 |
+| 测试状态 | Bun test | Bun test 框架管理 | 每个测试文件隔离 | 仅内存 | 进程退出释放 | 由 Bun test 处理 |
+
+生命周期证据：`scripts/test.ts:1-74`、`scripts/externalFeatureProfile.ts:1-41`、`scripts/live-cloud-validation.ts:13-63`、`scripts/live-model-validation.ts:40-85`
+
 ## 5. 失败语义与工程取舍
 
 | 失败场景 | 处理方式 |
