@@ -1086,6 +1086,13 @@ export function clearDynamicSkills(): void {
 }
 
 /**
+ * Removes a directory from dynamicSkillDirs (for testing or when directory is deleted).
+ */
+export function removeDynamicSkillDir(dir: string): void {
+  dynamicSkillDirs.delete(dir)
+}
+
+/**
  * Remove a specific dynamic skill by name (e.g., when its directory is deleted)
  * Returns true if the skill was found and removed
  */

@@ -128,6 +128,7 @@ export async function initialize(): Promise<void> {
   watcher.on('unlinkDir', (dirPath) => {
     logForDebugging(`[skills] Detected directory deletion: ${dirPath}`)
     handleDirectoryDeletion(dirPath)
+    unwatchDir(dirPath)
   })
 
   // Register callback for when dynamic skills are loaded (watch new dirs too)
