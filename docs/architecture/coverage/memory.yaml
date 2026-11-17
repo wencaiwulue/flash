@@ -68,3 +68,11 @@ groups:
       - src/services/autoDream/config.ts
       - src/services/autoDream/consolidationLock.ts
       - src/services/autoDream/consolidationPrompt.ts
+  - id: memory-tests
+    kind: test
+    section: 7
+    summary: Memory subsystem tests
+    owner:
+    files:
+      - tests/sessionMemory.test.ts
+      - tests/memoryPaths.test.ts
