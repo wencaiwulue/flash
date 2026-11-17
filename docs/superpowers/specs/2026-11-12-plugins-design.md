@@ -1071,6 +1071,141 @@ installed_plugins.json V2格式：
 - **MCP系统**：`mcpPluginIntegration.ts`处理MCP服务器配置
 - **LSP系统**：`lspPluginIntegration.ts`处理LSP服务器配置
 
+### 4.7 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────┐
+│                    调用方 (CLI/SDK/UI)                            │
+└────────────────────────┬────────────────────────────────────────────┘
+                         │
+         ┌───────────────┼───────────────┐
+         ▼               ▼               ▼
+┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+│  loadAllPlugins()│ │  /plugin UI    │ │  installPlugin()│
+│  (主入口)      │ │  (交互)        │ │  (显式安装)    │
+└────────┬────────┘ └────────┬────────┘ └────────┬────────┘
+         │                   │                   │
+         └───────────────────┼───────────────────┘
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                   src/utils/plugins/                              │
+│  ┌───────────────────────────────────────────────────────────────┐ │
+│  │  pluginLoader.ts (协调层)                                    │ │
+│  │  marketplaceManager.ts (市场源管理)                          │ │
+│  │  installedPluginsManager.ts (已安装插件元数据)              │ │
+│  │  dependencyResolver.ts (依赖解析与降级)                    │ │
+│  │  schemas.ts (manifest/schema验证)                          │ │
+│  └───────────────────────────────────────────────────────────────┘ │
+└────────────────────────┬────────────────────────────────────────────┘
+                         │
+         ┌───────────────┼───────────────┐
+         ▼               ▼               ▼
+┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+│  ~/.claude/     │ │  Git/GitHub/   │ │  其他子系统     │
+│  plugins/       │ │  npm/URL源     │ │  (commands/     │
+│  ├─ cache/      │ │                │ │   agents/       │
+│  ├─ marketplaces/│ │                │ │   skills/MCP) │
+│  ├─ known_marketplaces.json│ │ │               │
+│  └─ installed_plugins.json│ │ │               │
+└─────────────────┘ └─────────────────┘ └─────────────────┘
+```
+
+**边界说明**：
+- 插件缓存根目录在 `~/.claude/plugins/`，版本化隔离避免冲突
+- 外部网络请求（Git/GitHub/npm/URL）由 `marketplaceManager.ts` 集中管理
+- 插件代码在隔离目录中运行，通过定义好的契约与主系统交互
+- 企业策略通过 settings 注入，不在插件代码中硬编码
+
+### 4.8 关键流程与失败路径
+
+```text
+启动 loadAllPlugins()
+       │
+       ▼
+┌─────────────────────────┐
+│  Memoization检查       │
+└────────┬────────────────┘
+         ├─► 命中缓存：直接返回上次结果
+         │
+         └─► 未命中：继续加载
+                │
+                ▼
+┌───────────────────────────────────┐
+│  loadPluginsFromMarketplaces()  │
+│  ├─► 读取 enabledPlugins 设置  │
+│  ├─► 企业策略检查              │
+│  └─► [并行] 加载每个插件       │
+└────────┬──────────────────────────┘
+         │
+         ▼
+┌────────────────────────────────────────┐
+│  单个插件加载流程                    │
+│  ├─► calculatePluginVersion()         │
+│  ├─► 检查版本化缓存是否存在          │
+│  ├─► 缓存不存在：cachePlugin()        │
+│  │         ├─► Git clone/npm install  │
+│  │         ├─► 失败：记录错误，继续   │
+│  │         └─► copyPluginToVersionedCache() │
+│  └─► finishLoadingPluginFromPath()    │
+│         ├─► loadPluginManifest()      │
+│         └─► createPluginFromPath()   │
+└────────┬───────────────────────────────┘
+         │
+         ▼
+┌───────────────────────────────┐
+│  loadSessionOnlyPlugins()   │
+│  loadBuiltinPlugins()       │
+└────────┬──────────────────────┘
+         │
+         ▼
+┌───────────────────────────────┐
+│  mergePluginSources()        │
+└────────┬──────────────────────┘
+         │
+         ▼
+┌───────────────────────────────┐
+│  verifyAndDemote() (定点)   │
+│  ├─► 检查依赖是否满足       │
+│  ├─► 不满足：降级插件       │
+│  └─► 有变更：继续固定点迭代 │
+└────────┬──────────────────────┘
+         │
+         ▼
+┌───────────────────────────────┐
+│  cachePluginSettings()       │
+└────────┬──────────────────────┘
+         │
+         ▼
+┌───────────────────────────────┐
+│  返回 PluginLoadResult      │
+│  { enabled, disabled, errors }│
+└───────────────────────────────┘
+```
+
+**关键失败分支**：
+- 缓存缺失（cacheOnly模式）：生成 `plugin-cache-miss` 错误，跳过插件
+- Git clone失败：删除临时目录，记录 `git-auth-failed`/`git-timeout` 错误
+- Manifest无效：记录 `manifest-parse-error`，跳过插件
+- 依赖不满足：插件降级到 `disabled`，不修改 settings
+- 单个插件失败：不影响其他插件加载，错误收集到 `errors` 数组
+
+### 4.9 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| `PluginLoadResult` | `loadAllPlugins()` | 初始空，逐步添加 `enabled`/`disabled`/`errors` | 单次调用隔离，memoized 缓存 | 不持久化 | memoization 清除（`clearPluginCache()`） | 无（无状态修改） |
+| `LoadedPlugin` | `createPluginFromPath()` | 从插件目录构建，包含 manifest、组件路径、settings | 单次调用隔离 | 不持久化 | 调用结束后 GC | 无（只读对象） |
+| `InstalledPluginsFileV2` | `installedPluginsManager.ts` | `loadInstalledPluginsV2()` 从 `~/.claude/plugins/installed_plugins.json` 读取 | 模块级单例，带内存快照（`inMemoryInstalledPlugins`） | 持久化到 JSON 文件 | `clearInstalledPluginsCache()` 清除内存缓存 | 写入时原子替换文件 |
+| `KnownMarketplacesFile` | `marketplaceManager.ts` | `loadKnownMarketplacesConfig()` 从 `~/.claude/plugins/known_marketplaces.json` 读取 | 模块级单例 | 持久化到 JSON 文件 | 无明确重置，每次修改重写 | 写入时原子替换文件 |
+| `PluginManifest` | `schemas.ts` / `loadPluginManifest()` | Zod schema 验证解析 | 单次调用隔离 | 不持久化（每次重新解析） | 调用结束后 GC | 无（只读对象） |
+| `AbortController` | 调用方（可选注入） | 调用方创建，注入到 `loadAllPlugins()` 等 | 单次调用隔离 | 不持久化 | `abort()` 调用后失效 | `abort()` 中断进行中的 Git/网络操作 |
+
+生命周期证据：
+- `src/utils/plugins/pluginLoader.ts` 的 `memoize(loadAllPlugins)`：同一 session 多次调用返回相同结果
+- `src/utils/plugins/installedPluginsManager.ts` 的 `inMemoryInstalledPlugins`：启动时读取一次，会话期间不变
+- `src/utils/plugins/marketplaceManager.ts` 的 memoized `getMarketplace()`：市场 catalog 缓存到内存
+- 所有 JSON 写入使用原子替换，避免文件损坏
+
 ## 5. 失败语义与工程取舍
 
 | 触发条件 | 检测位置 | 消息/异常如何传播 | 是否重试及上限 | 状态与资源清理 | 调用方可见结果 |
