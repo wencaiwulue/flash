@@ -6,12 +6,16 @@ import { jsonParse, jsonStringify } from '../slowOperations.js'
 import {
   CREDENTIALS_SERVICE_SUFFIX,
   clearKeychainCache,
+  getKeychainCacheVersionPath,
   getMacOsKeychainStorageServiceName,
   getUsername,
+  isKeychainCacheVersionCurrent,
   KEYCHAIN_CACHE_TTL_MS,
   keychainCacheState,
+  touchKeychainCacheVersion,
 } from './macOsKeychainHelpers.js'
 import type { SecureStorage, SecureStorageData } from './types.js'
+import { readFileSync } from 'fs'
 
 // `security -i` reads stdin with a 4096-byte fgets() buffer (BUFSIZ on darwin).
 // A command line longer than this is truncated mid-argument: the first 4096
@@ -27,8 +31,22 @@ export const macOsKeychainStorage = {
   name: 'keychain',
   read(): SecureStorageData | null {
     const prev = keychainCacheState.cache
-    if (Date.now() - prev.cachedAt < KEYCHAIN_CACHE_TTL_MS) {
+
+    // Check both TTL and cache version marker
+    const ttlValid = Date.now() - prev.cachedAt < KEYCHAIN_CACHE_TTL_MS
+    const versionValid = isKeychainCacheVersionCurrent(prev.cacheVersion)
+
+    if (ttlValid && versionValid) {
       return prev.data
+    }
+
+    // Get current version before reading from keychain
+    let currentVersion: string | null = null
+    try {
+      const marker = JSON.parse(readFileSync(getKeychainCacheVersionPath(), 'utf8'))
+      currentVersion = marker.version
+    } catch {
+      // If no version marker yet, we'll create one when storing the cache
     }
 
     try {
@@ -41,7 +59,7 @@ export const macOsKeychainStorage = {
       )
       if (result) {
         const data = jsonParse(result)
-        keychainCacheState.cache = { data, cachedAt: Date.now() }
+        keychainCacheState.cache = { data, cachedAt: Date.now(), cacheVersion: currentVersion }
         return data
       }
     } catch (_e) {
@@ -58,19 +76,33 @@ export const macOsKeychainStorage = {
       logForDebugging('[keychain] read failed; serving stale cache', {
         level: 'warn',
       })
-      keychainCacheState.cache = { data: prev.data, cachedAt: Date.now() }
+      keychainCacheState.cache = { data: prev.data, cachedAt: Date.now(), cacheVersion: currentVersion }
       return prev.data
     }
-    keychainCacheState.cache = { data: null, cachedAt: Date.now() }
+    keychainCacheState.cache = { data: null, cachedAt: Date.now(), cacheVersion: currentVersion }
     return null
   },
   async readAsync(): Promise<SecureStorageData | null> {
     const prev = keychainCacheState.cache
-    if (Date.now() - prev.cachedAt < KEYCHAIN_CACHE_TTL_MS) {
+
+    // Check both TTL and cache version marker
+    const ttlValid = Date.now() - prev.cachedAt < KEYCHAIN_CACHE_TTL_MS
+    const versionValid = isKeychainCacheVersionCurrent(prev.cacheVersion)
+
+    if (ttlValid && versionValid) {
       return prev.data
     }
     if (keychainCacheState.readInFlight) {
       return keychainCacheState.readInFlight
+    }
+
+    // Get current version before reading from keychain
+    let currentVersion: string | null = null
+    try {
+      const marker = JSON.parse(readFileSync(getKeychainCacheVersionPath(), 'utf8'))
+      currentVersion = marker.version
+    } catch {
+      // If no version marker yet, we'll create one when storing the cache
     }
 
     const gen = keychainCacheState.generation
@@ -85,7 +117,7 @@ export const macOsKeychainStorage = {
           })
         }
         const next = data ?? prev.data
-        keychainCacheState.cache = { data: next, cachedAt: Date.now() }
+        keychainCacheState.cache = { data: next, cachedAt: Date.now(), cacheVersion: currentVersion }
         keychainCacheState.readInFlight = null
         return next
       }
@@ -149,8 +181,24 @@ export const macOsKeychainStorage = {
         return { success: false }
       }
 
+      // Get the new version after clearKeychainCache() touched it
+      let currentVersion: string | null = null
+      try {
+        const marker = JSON.parse(readFileSync(getKeychainCacheVersionPath(), 'utf8'))
+        currentVersion = marker.version
+      } catch {
+        // Fall back to touching again if needed
+        touchKeychainCacheVersion()
+        try {
+          const marker = JSON.parse(readFileSync(getKeychainCacheVersionPath(), 'utf8'))
+          currentVersion = marker.version
+        } catch {
+          // If we still can't read it, proceed without version
+        }
+      }
+
       // Update cache with new data on success
-      keychainCacheState.cache = { data, cachedAt: Date.now() }
+      keychainCacheState.cache = { data, cachedAt: Date.now(), cacheVersion: currentVersion }
       return { success: true }
     } catch (_e) {
       return { success: false }
