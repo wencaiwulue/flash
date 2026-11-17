@@ -461,6 +461,170 @@ type PackageManager =
 - **lockfile**：提供 mtime 锁实现，作为 PID 锁的 fallback
 - **analytics**：记录安装/更新/清理事件（tengu_native_install_package_success、tengu_native_update_complete、tengu_native_version_cleanup 等）
 
+### 4.7 架构与资源边界图
+
+```text
+┌──────────────────────────────────────────────────────────────────────────┐
+│                           CLI (main.tsx / update.ts)                      │
+│  ┌───────────────────────────────────────────────────────────────────┐ │
+│  │  claude install / claude update                                    │ │
+│  └────────────────────────────┬──────────────────────────────────────┘ │
+└───────────────────────────────┼──────────────────────────────────────────┘
+                                │
+                                ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                    installer.ts (src/utils/nativeInstaller/)            │
+│  ┌──────────────────┐  ┌──────────────────┐  ┌───────────────────────┐ │
+│  │installLatest()   │  │lockCurrentVersion()│ │cleanupOldVersions()   │ │
+│  │  - de-duplicate  │  │  - PID lock       │ │  - version retention  │ │
+│  │  - maxVersion    │  │  - mtime fallback │ │  - stale lock cleanup │ │
+│  └────────┬─────────┘  └──────────────────┘  └───────────────────────┘ │
+└───────────┼──────────────────────────────────────────────────────────────┘
+            │
+    ┌───────┴─────────────┐
+    │                     │
+    ▼                     ▼
+┌──────────────────┐  ┌───────────────────────────────────────────┐
+│  download.ts     │  │        pidLock.ts                         │
+│  - Artifactory   │  │  - acquire/release PID lock               │
+│  - GCS           │  │  - isLockActive()                         │
+│  - checksum      │  │  - VersionLockContent JSON                │
+│  - stall retry   │  └───────────────────────────────────────────┘
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                           FILESYSTEM RESOURCES                            │
+│                                                                          │
+│  ~/.local/share/claude/versions/                                        │
+│    └── <version> (binary executable)                                    │
+│                                                                          │
+│  ~/.local/bin/                                                           │
+│    └── claude -> <version> (symlink, or direct copy on Windows)         │
+│                                                                          │
+│  ~/.cache/claude/staging/                                                │
+│    └── <version>/ (temporary download location)                         │
+│                                                                          │
+│  ~/.local/state/claude/locks/                                           │
+│    └── <version>.lock (JSON lock file)                                  │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+### 4.8 关键流程与失败路径
+
+**主流程：安装/更新版本**
+```text
+用户调用 claude update
+    │
+    ▼
+check package manager install → 是 → 提示用户用包管理器
+    │ 否
+    ▼
+installLatest(channel, forceReinstall?)
+    │
+    ▼
+check inFlightInstall → 已存在 → 复用
+    │ 不存在 → 创建新
+    ▼
+getLatestVersion()
+    │
+    ▼
+check maxVersion → 目标 > maxVersion → 降级到 maxVersion
+    │ 目标 ≤ maxVersion → 继续
+    ▼
+check if already running and installed → 是 → 跳过下载，仅更新 symlink
+    │ 否 → 继续
+    ▼
+tryWithVersionLock()
+    │
+    ├─ 获取锁失败 → 返回 lockFailed=true
+    │       │
+    │       ▼
+    │   inform user another process is running
+    │
+    └─ 获取锁成功
+            │
+            ▼
+    performVersionUpdate()
+            │
+            ├─ need download?
+            │       ├─ 是 → downloadVersion()
+            │       │       │
+            │       │       ├─ 下载 stall → 重试最多3次
+            │       │       │       │
+            │       │       │       └─ 失败超过3次 → 抛错退出
+            │       │       │
+            │       │       └─ checksum 不匹配 → 抛错退出
+            │       │
+            │       └─ 否 → 跳过下载
+            │
+            ├─ installVersion()
+            ├─ atomicMoveToInstallPath()
+            │       │
+            │       └─ 失败 (磁盘满等) → 清理临时文件，抛错
+            │
+            └─ updateSymlink()
+                    │
+                    ├─ Windows → 复制，旧文件重命名为 .old
+                    └─ Unix → 临时 symlink 原子 rename
+                            │
+                            └─ 验证失败 → 保留旧版本，抛错
+    │
+    ▼
+cleanup staging directory
+    │
+    ▼
+后台 cleanupOldVersions()
+    │
+    ├─ 清理 >1 小时的 staging
+    ├─ 清理 stale 锁
+    ├─ 清理 Windows .old 文件
+    └─ 删除 > 2 个未锁定版本
+```
+
+**失败路径：锁被另一个进程持有**
+```text
+tryWithVersionLock()
+    │
+    ▼
+isLockActive() → 是
+    │
+    ▼
+读取锁文件内容
+    │
+    ▼
+检查进程是否存活
+    │
+    ├─ PID 不存在 → 清理锁文件，重新尝试
+    │
+    └─ PID 存在且是 Claude 进程
+            │
+            ▼
+等待指数退避 (min 1s, max 5s)
+            │
+            ▼
+重试最多 3 次
+            │
+            ├─ 成功 → 继续
+            │
+            └─ 全部失败 → 返回 lockFailed=true
+                    │
+                    ▼
+                inform user: "另一个 Claude 进程正在运行"
+```
+
+### 4.9 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|-----------|--------|--------------|-----------|---------|-----------|-----------|
+| `VersionLockContent` (PID 锁文件) | `pidLock.ts` | `tryAcquireLock()` 写入临时文件，然后原子 rename | 跨进程共享（通过文件系统） | `~/.local/state/claude/locks/<version>.lock` | 进程退出时删除；另一个进程检测到 PID 不存在时删除 | `release()` 检查仍持有锁时才删除 |
+| `inFlightInstall` Promise | `installer.ts` 模块级 | `installLatest()` 首次调用时创建 | 同进程内共享（同一模块闭包） | 不持久化（内存中） | 成功/失败后清除闭包中的引用 | Promise 完成后自动清理，无需显式取消 |
+| staging 目录 (`~/.cache/claude/staging/<version>`) | `installer.ts` | `downloadVersion()` 清空并创建目录 | 可配置为隔离（lockless 模式时带 pid/timestamp 后缀） | 持久化直到清理 | `performVersionUpdate()` 成功后删除；`cleanupOldVersions()` 删除 >1 小时的目录 | 下载失败时立即删除，成功后原子移动后清理 |
+| 版本二进制 (`~/.local/share/claude/versions/<version>`) | `installer.ts` | `atomicMoveToInstallPath()` 复制/重命名 | 跨进程共享（文件系统） | 持久化直到清理 | `cleanupOldVersions()` 删除超过 2 个未锁定版本，跳过当前运行的和有锁的版本 | 删除前尝试获取锁，锁失败则跳过该版本 |
+| symlink/可执行文件 (`~/.local/bin/claude`) | `installer.ts` | `updateSymlink()` 先创建临时 symlink/copy，然后原子 rename | 跨进程共享（文件系统） | 持久化 | 更新时被原子替换；Windows 旧副本重命名为 .old 后下次启动清理 | 更新失败时保留旧版本有效 |
+
+生命周期证据：`src/utils/nativeInstaller/pidLock.ts:148-251` (PID 锁文件写入/读取/删除), `src/utils/nativeInstaller/installer.ts:448-513` (staging 目录处理), `src/utils/nativeInstaller/installer.ts:1207-1267` (旧版本清理逻辑)
+
 ## 5. 失败语义与工程取舍
 
 | 触发条件 | 检测位置 | 消息/异常如何传播 | 是否重试及上限 | 状态与资源清理 | 调用方可见结果 |

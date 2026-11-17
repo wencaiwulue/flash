@@ -581,6 +581,158 @@ failsafe 定时器触发
     void gracefulShutdown(129)
 ```
 
+### 4.8 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         Application Layer                                    │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │  Business Logic (tools, hooks, etc.)                                    │ │
+│  └────────────────────────────┬──────────────────────────────────────────┘ │
+└───────────────────────────────┼──────────────────────────────────────────────┘
+                                │
+        ┌───────────────────────┼───────────────────────┐
+        │                       │                       │
+        ▼                       ▼                       ▼
+┌───────────────────┐  ┌───────────────────┐  ┌───────────────────────┐
+│  AbortController  │  │  ActivityManager  │  │  IdleTimeoutManager   │
+│    Hierarchy      │  │                   │  │                       │
+│  - createChild()  │  │  - User Activity  │  │  - idle timeout       │
+│  - WeakRef       │  │  - CLI Activity   │  │  - auto-exit (SDK)    │
+└────────┬──────────┘  └────────┬──────────┘  └───────────┬───────────┘
+         │                      │                         │
+         └──────────────────────┼─────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    Cleanup Registry (cleanupRegistry.ts)                    │
+│              ┌───────────────────────────────────────┐                    │
+│              │  Set<() => Promise<void>>            │                    │
+│              └───────────────────────────────────────┘                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    Graceful Shutdown (gracefulShutdown.ts)                  │
+│  ┌──────────────────┐ ┌──────────────────┐ ┌───────────────────────────┐  │
+│  │  SIGINT Handler  │ │  SIGTERM Handler │ │  SIGHUP (macOS orphan)   │  │
+│  └────────┬─────────┘ └────────┬─────────┘ └─────────────┬─────────────┘  │
+│           │                    │                          │                │
+│  ┌────────▼────────┐ ┌─────────▼──────────┐ ┌───────────▼────────────┐ │
+│  │ cleanupTerminal │ │ runCleanupFunctions│ │ executeSessionEndHooks │ │
+│  │ Modes & Resume  │ │ (Set parallel)     │ │ (with timeouts)        │ │
+│  └────────┬────────┘ └─────────┬──────────┘ └───────────┬────────────┘ │
+│           │                    │                          │                │
+│  ┌────────▼────────┐ ┌─────────▼──────────┐ ┌───────────▼────────────┐ │
+│  │  failsafeTimer  │ │  analytics.flush() │ │  performance.report()  │ │
+│  │  (max budget)    │ │  (500ms timeout)   │ │                        │ │
+│  └────────┬────────┘ └─────────┬──────────┘ └───────────┬────────────┘ │
+└───────────┼────────────────────┼──────────────────────────┼────────────────┘
+            │                    │                          │
+            └────────────────────┼──────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      forceExit() (process exit / SIGKILL)                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 4.9 关键流程与失败路径
+
+**主流程：Graceful Shutdown (优雅退出)**
+```text
+信号触发 (SIGINT/SIGTERM/SIGHUP) 或显式调用
+    │
+    ▼
+幂等检查 shutdownInProgress → 已在进行? ── 是 → 静默忽略
+    │ 否
+    ▼
+解析 SessionEnd hooks 超时预算
+    │
+    ▼
+安装 failsafeTimer (max(5s, hook预算+3.5s))
+    │
+    └─ [失败路径] failsafeTimer 触发
+    │       │
+    │       ▼
+    │   先 cleanupTerminalModes() + printResumeHint()
+    │       │
+    │       └─ 然后强制退出 (优先保证终端恢复)
+    │
+    ▼
+cleanupTerminalModes() (同步执行，最先)
+    │
+    ├─ disable mouse tracking
+    ├─ Ink inst.unmount() (避免双重 EXIT_ALT_SCREEN)
+    ├─ detachForShutdown() (标记 unmounted)
+    └─ 发送所有 disable 序列 (无条件)
+    │
+    ▼
+printResumeHint() (同步，仅交互+持久化启用)
+    │
+    ▼
+runCleanupFunctions() (Set 并行，2s 超时)
+    │
+    └─ 单个清理函数抛错? ── 是 → 静默继续，不中断整体
+    │
+    ▼
+executeSessionEndHooks() (总体预算控制)
+    │
+    └─ hook 超时? ── 是 → 超时后继续后续，不阻塞
+    │
+    ▼
+performance.report()
+    │
+    ▼
+analytics.flush() (500ms 超时)
+    │
+    ▼
+可选 finalMessage (writeSync to stderr)
+    │
+    ▼
+forceExit()
+    │
+    ├─ clearTimeout(failsafeTimer)
+    ├─ drainStdin() (最后一次，捕获清理期间鼠标事件)
+    ├─ try process.exit(exitCode)
+    │
+    └─ dead PTY 抛 EPERM/EIO? ── 是 → process.kill(pid, SIGKILL) (不 flush)
+```
+
+**失败路径：孤儿检测 (macOS 终端关闭)**
+```text
+进程启动，platform !== 'win32' 且 stdin.isTTY
+    │
+    ▼
+设置 orphanCheckInterval (30s 间隔，unref())
+    │
+    ▼
+每 30s 检测:
+    │
+    ├─ getIsScrollDraining()? ── 是 → 跳过本次检测
+    │
+    └─ !stdout.writable || !stdin.readable?
+        │
+        └─ 是
+            │
+            ├─ clearInterval(orphanCheckInterval)
+            │
+            └─ 触发 gracefulShutdown(129)
+```
+
+### 4.10 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|-----------|--------|--------------|-----------|---------|-----------|-----------|
+| `ActivityManager` singleton | `activityManager.ts` | `getInstance()` 懒创建 | 单例共享，进程级 | 不持久化 (内存) | `resetInstance()` (测试用) | `endCLIActivity(operationId)` 从 activeOperations Set 移除 |
+| `cleanupFunctions` Set | `cleanupRegistry.ts` | 模块级初始化为 `Set<() => Promise<void>>` | 单例共享，进程级 | 不持久化 (内存) | 反注册函数调用 `Set.delete()` | gracefulShutdown 后 Set 保留，进程退出清理 |
+| `shutdownInProgress` flag | `gracefulShutdown.ts` | 模块级初始化为 false | 单例共享，进程级 | 不持久化 (内存) | `resetShutdownState()` (测试用) | 第一次 gracefulShutdown 后设为 true |
+| `failsafeTimer` | `gracefulShutdown.ts` | `setTimeout()` 在 gracefulShutdown 时创建 | 单例，一次一个 | 不持久化 (内存) | `clearTimeout()` 在 forceExit 时 | 回调优先恢复终端再强制退出 |
+| `orphanCheckInterval` | `gracefulShutdown.ts` | `setInterval()` 在 setupGracefulShutdown 时创建 (macOS/TTY only) | 单例共享，进程级 | 不持久化 (内存) | `clearInterval()` 检测到孤儿时 | 进程退出自动清理 |
+| 父子 AbortController 关系 | `abortController.ts` | `createChildAbortController(parent)` 创建 WeakRef 双向绑定 | 父不持有子，子不持有父 (WeakRef) | 不持久化 (内存) | 子 abort 时自动 `removeAbortHandler()` | WeakRef + {once:true} 自动清理，防止内存泄漏 |
+
+生命周期证据：`src/utils/activityManager.ts:18-81` (singleton + activeOperations Set), `src/utils/cleanupRegistry.ts:1-26` (Set 自动去重 + 反注册), `src/utils/gracefulShutdown.ts:1-530` (shutdownInProgress flag + failsafeTimer + orphanCheckInterval), `src/utils/abortController.ts:1-100` (WeakRef 父子关系)
+
 ## 5. 失败语义与工程取舍
 
 | 失败场景 | 处理方式 | 工程取舍 |

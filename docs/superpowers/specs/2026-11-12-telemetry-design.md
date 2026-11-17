@@ -823,6 +823,143 @@ const DEFAULT_FLUSH_INTERVAL_MS = 15000 // 默认刷新间隔
 | 下游 | config.ts | 获取用户 ID、信任状态 | settings |
 | 下游 | bootstrap/state.ts | 存储 OpenTelemetry 提供者 | （核心）|
 
+### 4.6 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    Application Components (Event Producers)                  │
+│  ┌──────────────────┐ ┌──────────────────┐ ┌───────────────────────────┐  │
+│  │  Tool Calls      │ │  GrowthBook     │ │  Other Features           │  │
+│  └────────┬─────────┘ └────────┬─────────┘ └─────────────┬─────────────┘  │
+└───────────┼────────────────────┼──────────────────────────┼────────────────┘
+            │                    │                          │
+            └────────────────────┼──────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                   analytics/index.ts (Entry Point)                           │
+│              ┌───────────────────────────────────────┐                    │
+│              │  logEvent() / logEventAsync()         │                    │
+│              │  - Type-safe metadata                 │                    │
+│              │  - Queue if sink not attached         │                    │
+│              └───────────────────┬───────────────────┘                    │
+└──────────────────────────────────┼──────────────────────────────────────────┘
+                                   │
+                      ┌────────────┴────────────┐
+                      │                         │
+                      ▼                         ▼
+┌──────────────────────────────────┐  ┌───────────────────────────────────────┐
+│   analytics/sink.ts (Router)     │  │  telemetry/instrumentation.ts (OTel)  │
+│  - Sampling logic                │  │  - bootstrapTelemetry()               │
+│  - Route to Datadog / 1P sink    │  │  - initializeTelemetry()              │
+│  - Datadog gate (GrowthBook)     │  │  - flushTelemetry()                  │
+└─────────────────┬────────────────┘  └───────────────────────────────────────┘
+                  │
+      ┌───────────┴───────────┐
+      │                       │
+      ▼                       ▼
+┌──────────────────┐  ┌────────────────────────────────────────────┐
+│  analytics/datadog.ts  │  │ analytics/firstPartyEventLoggingExporter.ts │
+│  - Batch log sending   │  │  - Export logs to 1P event logging API   │
+│  - Allowlist filtering │  │  - Retry with quadratic backoff          │
+│  - Strip _PROTO_ fields│  │  - Persist failed events to disk        │
+│  - Periodic flush      │  │  - Extract _PROTO_ fields to proto      │
+└──────────────────┘  └────────────────────────────────────────────┘
+```
+
+### 4.7 关键流程与失败路径
+
+**主流程：事件记录 + 队列 + 发送**
+```text
+调用 logEvent(eventName, metadata)
+    │
+    ├─ 类型检查 ── 未验证字符串直接传入? ── 是 → 编译错误
+    │
+    ▼
+sink 已附加?
+    │
+    ├─ 否 → push 到 eventQueue (标记 sync/async)
+    │
+    └─ 是 → sink.logEvent() / logEventAsync()
+        │
+        ▼
+    initializeAnalyticsSink() (路由 sink)
+        │
+        ▼
+    shouldSampleEvent(eventName)?
+        │
+        ├─ 0 → 丢弃
+        │
+        └─ >0 → 继续，添加 sample_rate 元数据
+            │
+            ├─ 并行:
+            │   ├─ shouldTrackDatadog()? ── 是 → trackDatadogEvent()
+            │   │   │
+            │   │   ├─ stripProtoFields()
+            │   │   ├─ 添加到 logBatch
+            │   │   │
+            │   │   └─ logBatch 满或 flushTimer → flushLogs()
+            │   │       │
+            │   │       └─ [失败路径] 发送失败 → 记录警告，不重试，清空 batch
+            │   │
+            │   └─ logEventTo1P() → 通过 OpenTelemetry Logger 发送
+            │
+            └─ 继续
+```
+
+**失败路径：FirstParty 事件持久化 + 重试**
+```text
+FirstPartyEventLoggingExporter.export(logs)
+    │
+    ▼
+transformLogsToEvents()
+    │
+    ├─ 提取 _PROTO_skill_name/_PROTO_plugin_name/_PROTO_marketplace_name
+    │   提升到 proto 特定字段
+    │
+    └─ stripProtoFields() 从 additional_metadata 防御性清理剩余
+    │
+    ▼
+sendEventsInBatches()
+    │
+    ├─ isKilled()? ── 是 → 抛错中止
+    │
+    ├─ 每批发送:
+    │   │
+    │   ├─ hasTrust() + token 有效? ── 否 → 跳过认证
+    │   │
+    │   ├─ 尝试带认证发送 → 401? ── 是 → 重试无认证
+    │   │
+    │   └─ [失败路径] 失败 → 短路剩余块
+    │
+    └─ 全部成功?
+        │
+        ├─ 是 → resetBackoff() → retryFailedEvents() (立即)
+        │
+        └─ 否
+            │
+            ├─ appendEventsToFile() → ~/.claude/telemetry/1p_failed_events.<sessionId>.<batchUuid>.json (JSONL)
+            │
+            └─ scheduleBackoffRetry() → base * attempts^2, max 30s, max 8 attempts
+                │
+                ├─ [失败路径] attempts >= maxAttempts? ── 是 → 删除文件，不再重试
+                │
+                └─ 等待下次触发或启动时 retryPreviousBatches()
+```
+
+### 4.8 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|-----------|--------|--------------|-----------|---------|-----------|-----------|
+| `eventQueue` | `analytics/index.ts` | 模块级初始化为 `QueuedEvent[]` | 单例共享，进程级 | 不持久化 (内存) | sink 附加后 queueMicrotask() 重放，然后清空 | 无显式取消，重放后自动清空 |
+| global `sink` | `analytics/index.ts` | 模块级初始化为 `null` | 单例共享，进程级 | 不持久化 (内存) | `attachAnalyticsSink()` 替换 (幂等) | 无显式取消，进程退出自动清理 |
+| `logBatch` + `flushTimer` | `analytics/datadog.ts` | `logBatch` = `[]`, `flushTimer` = `null` | 单例共享，进程级 | 不持久化 (内存) | `initializeDatadog()` 启动 timer; `shutdownDatadog()` 清理 | `flushLogs()` 清空 batch; `shutdownDatadog()` clearTimeout + 最终 flush |
+| `FirstPartyEventLoggingExporter` | `analytics/firstPartyEventLoggingExporter.ts` | 构造函数创建 (timeout, maxBatchSize, backoff config) | 单例共享，进程级 | 失败事件持久化到磁盘 | `shutdown()` 停止重试; `forceFlush()` 等待 pendingExports | `cancelBackoff()` 清除重试定时器 |
+| OTel `LoggerProvider`/`MeterProvider`/`TracerProvider` | `telemetry/bootstrap/state.ts` | `initializeTelemetry()` 懒创建 | 单例共享，进程级 | 不持久化 (内存) | `shutdownTelemetry()` (cleanup 回调) 关闭 | 超时保护 `CLAUDE_CODE_OTEL_SHUTDOWN_TIMEOUT_MS` (默认 2000ms) |
+| 失败事件文件 | `FirstPartyEventLoggingExporter` | `appendEventsToFile()` 创建 | sessionId 隔离 (文件名包含 sessionId, batchUuid) | `~/.claude/telemetry/1p_failed_events.<sessionId>.<batchUuid>.json` (JSONL) | 发送成功删除; maxAttempts 到达删除 | 无显式取消，进程退出保留文件供下次重试 |
+
+生命周期证据：`src/services/analytics/index.ts:68-123` (eventQueue + sink), `src/services/analytics/datadog.ts:19-317` (logBatch + flushTimer), `src/services/analytics/firstPartyEventLoggingExporter.ts:38-517` (exporter + 重试 + 文件持久化), `src/utils/telemetry/instrumentation.ts:1-400` (OTel bootstrap + shutdown)
+
 ## 5. 失败语义与工程取舍
 
 ### 失败语义
