@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from 'crypto'
-import { mkdir, readFile, rename, rm, writeFile } from 'fs/promises'
+import { mkdir, readFile, rename, rm, writeFile, readdir, stat } from 'fs/promises'
 import { dirname, join } from 'path'
 import { unzipSync } from 'fflate'
 import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
+import { logForDebugging } from '../../utils/debug.js'
 import { SkillHubClient } from './skillhubClient.js'
 
 export type RemoteSkillLoadResult = {
@@ -23,7 +24,10 @@ type LoaderOptions = {
 
 const MAX_FILES = 100
 const MAX_TOTAL_BYTES = 5 * 1024 * 1024
+const CACHE_MAX_ENTRIES = 50 // Max cached skills
+const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 const inFlight = new Map<string, Promise<RemoteSkillLoadResult>>()
+const cachedActivePaths = new Set<string>() // Track currently used cache paths
 
 function parseSkillLocation(slug: string, url: string): {
   baseUrl: string
@@ -37,7 +41,7 @@ function parseSkillLocation(slug: string, url: string): {
   const baseUrl = `${parsed.origin}${parsed.pathname.slice(0, index)}`.replace(/\/$/, '')
   const parts = slug.split('/')
   if (parts.length >= 2 && parts[0] && parts[1]) {
-    return { baseUrl, namespace: parts[0]!, slug: parts.slice(1).join('/') }
+    return { baseUrl, namespace: parts[0], slug: parts.slice(1).join('/') }
   }
   const pathSlug = parsed.pathname.slice(index + marker.length)
   const [namespace, name] = pathSlug.split('/')
@@ -65,6 +69,76 @@ function assertSafePath(path: string): void {
     parts.some(part => part === '..' || part === '.')
   ) {
     throw new Error(`Unsafe path in skill package: ${path}`)
+  }
+}
+
+/**
+ * Cache cleanup - removes expired and excess cache entries
+ * Always keeps currently active (in use) paths
+ */
+async function pruneCache(cacheRoot: string): Promise<void> {
+  try {
+    const entries = await readdir(cacheRoot, { withFileTypes: true })
+    const now = Date.now()
+    const cacheEntries: { path: string; mtimeMs: number; size: number }[] = []
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      const cachePath = join(cacheRoot, entry.name)
+      // Skip any paths that are currently active
+      if (cachedActivePaths.has(cachePath)) continue
+      try {
+        const stats = await stat(cachePath)
+        cacheEntries.push({
+          path: cachePath,
+          mtimeMs: stats.mtimeMs,
+          size: stats.size,
+        })
+      } catch {
+        // Skip if we can't stat
+      }
+    }
+
+    // First, remove expired entries
+    const remaining: typeof cacheEntries = []
+    let removed = 0
+    let freedBytes = 0
+    for (const entry of cacheEntries) {
+      if (now - entry.mtimeMs > CACHE_TTL_MS) {
+        try {
+          await rm(entry.path, { recursive: true, force: true })
+          removed++
+          freedBytes += entry.size
+        } catch {
+          // Ignore removal errors
+        }
+      } else {
+        remaining.push(entry)
+      }
+    }
+
+    // Then, remove oldest entries if we still have too many
+    if (remaining.length > CACHE_MAX_ENTRIES) {
+      // Sort by mtime, oldest first
+      remaining.sort((a, b) => a.mtimeMs - b.mtimeMs)
+      const toRemove = remaining.slice(0, remaining.length - CACHE_MAX_ENTRIES)
+      for (const entry of toRemove) {
+        if (cachedActivePaths.has(entry.path)) continue // Double-check
+        try {
+          await rm(entry.path, { recursive: true, force: true })
+          removed++
+          freedBytes += entry.size
+        } catch {
+          // Ignore removal errors
+        }
+      }
+    }
+
+    if (removed > 0) {
+      logForDebugging(`[skills] Pruned cache: removed ${removed} entries, freed ${freedBytes} bytes`)
+    }
+  } catch {
+    // Cache dir might not exist yet
   }
 }
 
@@ -98,11 +172,21 @@ async function load(
   const manifestPath = join(destination, 'SKILL.md')
   const metadataPath = join(destination, '.skillhub.json')
 
+  // Try cache first
   try {
     const [content, metadata] = await Promise.all([
       readFile(manifestPath, 'utf8'),
       readFile(metadataPath, 'utf8').then(JSON.parse),
     ])
+    // Mark this path as active while in use
+    cachedActivePaths.add(destination)
+    // Touch the cache entry to update mtime
+    try {
+      await mkdir(cacheRoot, { recursive: true, mode: 0o700 })
+      await writeFile(metadataPath, JSON.stringify(metadata), { mode: 0o600 })
+    } catch {
+      // Ignore touch error
+    }
     return {
       cacheHit: true,
       latencyMs: Date.now() - started,
@@ -116,10 +200,12 @@ async function load(
     // Cache miss or incomplete extraction.
   }
 
+  // Prune cache before adding new entry
+  await pruneCache(cacheRoot)
+
   const bytes = await client.download(
     location.namespace,
-    location.slug,
-    version,
+    location.slug, version,
     options.signal,
   )
   assertNoZipSymlinks(bytes)
@@ -162,6 +248,9 @@ async function load(
     throw error
   }
 
+  // Mark this path as active
+  cachedActivePaths.add(destination)
+
   return {
     cacheHit: false,
     latencyMs: Date.now() - started,
@@ -187,4 +276,11 @@ export async function loadRemoteSkill(
     inFlight.set(key, pending)
   }
   return pending
+}
+
+/**
+ * Release a cached skill path (mark as no longer active)
+ */
+export function releaseCachedSkill(skillPath: string): void {
+  cachedActivePaths.delete(skillPath)
 }
