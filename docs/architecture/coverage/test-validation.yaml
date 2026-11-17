@@ -84,3 +84,9 @@ groups:
     files:
       - tests/snapshotUpdateDialog.test.tsx
       - tests/snip.test.ts
+  - id: live-model-validation-tests
+    kind: test
+    section: 7
+    summary: Live Model Validation 凭据验证测试，验证初始化顺序和互斥规则
+    files:
+      - tests/liveModelValidation.test.ts

@@ -86,7 +86,7 @@ Design docs: 0 errors, 73 warnings
 | network-security | 7 | 7/7 | 完整 | 一致 | N/A | 部分充分（有测试） | 6 | [07-build-runtime-stubs.md#network-security](07-build-runtime-stubs.md#network-security) |
 | runtime-lifecycle | 7 | 11/11 | 完整 | 一致 | N/A | 部分充分（无测试） | 6 | [07-build-runtime-stubs.md#runtime-lifecycle](07-build-runtime-stubs.md#runtime-lifecycle) |
 | telemetry | 7 | 1/1 | 完整 | 一致 | N/A | 部分充分（无测试） | 4 | [07-build-runtime-stubs.md#telemetry](07-build-runtime-stubs.md#telemetry) |
-| test-validation | 7 | 11/11 | 完整 | 一致 | N/A | 部分充分（有测试） | 6 | [07-build-runtime-stubs.md#test-validation](07-build-runtime-stubs.md#test-validation) |
+| test-validation | 7 | 11/11 | 完整 | 一致 | N/A | ✅ 充分（有完整测试，B7-test-validation-06 已修复） | 6 | [07-build-runtime-stubs.md#test-validation](07-build-runtime-stubs.md#test-validation) |
 | web-tools | 7 | 9/9 | 完整 | 一致 | N/A | 部分充分（有测试） | 5 | [07-build-runtime-stubs.md#web-tools](07-build-runtime-stubs.md#web-tools) |
 
 ## 分类统计与整改顺序
@@ -275,13 +275,13 @@ Design docs: 0 errors, 73 warnings
 | ID | 主责 | 说明 | 证据 | 依赖 | 验收条件 | 来源 |
 |----|------|------|------|------|----------|------|
 | B3-auth-01 ✅ | auth | [已修复] Keychain 缓存 30 秒，跨进程刷新后另一个进程最多 30 秒才看到新 token | `src/utils/secureStorage/macOsKeychainHelpers.ts:90-109` | None | 使用共享 cache-version 标记（~/.claude/.keychain-cache-version.json），每次写入时原子更新 UUID，读取前检查版本，变更则立即刷新缓存 | [03-memory-auth-settings.md](03-memory-auth-settings.md) |
-| B7-test-validation-06 | test-validation | `scripts/live-model-validation.ts` 在 `enableConfigs()` 前检查凭据，standalone 脚本的 settings 初始化契约需要明确，凭据互斥检查需要集中处理 | `scripts/live-model-validation.ts:40-48` | None | 明确 standalone 脚本的 settings 初始化契约，集中处理凭据互斥检查 | [07-build-runtime-stubs.md](07-build-runtime-stubs.md) |
+| B7-test-validation-06 ✅ | test-validation | [已修复] `scripts/live-model-validation.ts` 在 `enableConfigs()` 前检查凭据，standalone 脚本的 settings 初始化契约需要明确，凭据互斥检查需要集中处理 | `scripts/live-model-validation.ts:40-48` | None | 明确 standalone 脚本的 settings 初始化契约，集中处理凭据互斥检查 | [07-build-runtime-stubs.md](07-build-runtime-stubs.md) |
 
 ---
 
 ## 完整整改优先级
 
-### P1 问题（1 项，1 项已修复）
+### P1 问题（0 项，2 项已修复）
 
 1. **B3-auth-01 ✅ 已修复**：（主责：auth）
    - 描述：[已修复] Keychain 缓存 30 秒，跨进程刷新后另一个进程最多 30 秒才看到新 token
@@ -289,11 +289,11 @@ Design docs: 0 errors, 73 warnings
    - 修复方案：使用共享 cache-version 标记（~/.claude/.keychain-cache-version.json），每次写入时原子更新 UUID，读取前检查版本，变更则立即刷新缓存
    - 来源：[03-memory-auth-settings.md](03-memory-auth-settings.md)
 
-2. **B7-test-validation-06**：（主责：test-validation）
-   - 描述：`scripts/live-model-validation.ts` 在 `enableConfigs()` 前检查凭据，standalone 脚本的 settings 初始化契约需要明确，凭据互斥检查需要集中处理
-   - 证据：`scripts/live-model-validation.ts:40-48`
-   - 依赖：None
-   - 验收：明确 standalone 脚本的 settings 初始化契约，集中处理凭据互斥检查
+2. **B7-test-validation-06 ✅ 已修复**：（主责：test-validation）
+   - 描述：[已修复] `scripts/live-model-validation.ts` 在 `enableConfigs()` 前检查凭据，standalone 脚本的 settings 初始化契约需要明确，凭据互斥检查需要集中处理
+   - 证据：`scripts/live-model-validation.ts:40-48`（修复前）
+   - 修复方案：将 `enableConfigs()` 移至凭据检查之前，提取纯函数 `validateCredentialSources()` 便于测试，添加 `import.meta.main` 保护，创建完整测试覆盖四种凭据场景
+   - 验收：测试覆盖无凭据/仅 API Key/仅 Bearer Token/两者都有四种场景，错误信息不包含实际凭据，settings 初始化优先于凭据检查
    - 来源：[07-build-runtime-stubs.md](07-build-runtime-stubs.md)
 
 ### P2 问题（97 项，优先级排序）
