@@ -46,17 +46,15 @@ describe('print mode with mock API', () => {
     const mock = await createMockAnthropic()
     const sandbox = await createSandbox()
     toClose.push({ sandbox, mock })
-    // Enqueue multiple errors for retry logic
-    mock.enqueue(
-      { type: 'error', status: 500, body: { type: 'error', error: { type: 'api_error', message: 'MOCK_BOOM_500' } } },
-      { type: 'error', status: 500, body: { type: 'error', error: { type: 'api_error', message: 'MOCK_BOOM_500' } } },
-      { type: 'error', status: 500, body: { type: 'error', error: { type: 'api_error', message: 'MOCK_BOOM_500' } } }
-    )
+    // 4xx 不可重试（5xx 会触发约 10 次指数退避重试，实测 >3 分钟）；单次 400 即终态
+    mock.enqueue({
+      type: 'error',
+      status: 400,
+      body: { type: 'error', error: { type: 'invalid_request_error', message: 'MOCK_BOOM_400' } },
+    })
     const { out, err, code } = await runPrint(['-p', 'hi'], sandbox, mock.url)
     expect(code).not.toBe(0)
-    // Check that at least one error request was made
-    const messageRequests = mock.requests.filter(r => r.path === '/v1/messages')
-    expect(messageRequests.length).toBeGreaterThan(0)
+    expect(out + err).toContain('MOCK_BOOM_400')
   })
 
   test('count_tokens requests reach the mock', async () => {

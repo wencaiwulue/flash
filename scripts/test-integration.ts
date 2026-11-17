@@ -36,7 +36,7 @@ async function discoverIntegrationFiles(): Promise<string[]> {
 const testFiles = requestedFiles.length > 0
   ? requestedFiles
   : (await discoverIntegrationFiles()).filter(
-      file => !suite || file.includes(`/tests/integration/${suite}/`),
+      file => !suite || file.startsWith(`tests/integration/${suite}/`),
     )
 
 if (testFiles.length === 0) {

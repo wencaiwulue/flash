@@ -37,10 +37,15 @@ describe('createSandbox', () => {
     sandboxes.push(sandbox)
     expect(sandbox.env.HOME).toBe(sandbox.home)
     expect(sandbox.env.USERPROFILE).toBe(sandbox.home)
+    // 沙箱自身注入的 CLAUDE_ 前缀变量（离线开关）是唯一允许的例外
+    const allowedClaudeKeys = new Set(['CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'])
     for (const key of Object.keys(sandbox.env)) {
       expect(key.startsWith('ANTHROPIC_')).toBe(false)
-      expect(key.startsWith('CLAUDE_')).toBe(false)
+      if (key.startsWith('CLAUDE_')) {
+        expect(allowedClaudeKeys.has(key)).toBe(true)
+      }
     }
+    expect(sandbox.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC).toBe('1')
   })
 
   test('cleanup removes sandbox directory', async () => {

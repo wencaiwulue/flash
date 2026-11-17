@@ -32,6 +32,9 @@ export function baseEnv(home: string): Record<string, string> {
   }
   env.HOME = home
   env.USERPROFILE = home
+  // 禁用非必要流量（GrowthBook 动态配置/遥测走真实 api.anthropic.com，不走 ANTHROPIC_BASE_URL）
+  // — 关闭后 assertMinVersion 的 tengu_version_config 落回默认 minVersion=0.0.0，版本门禁不再触发
+  env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1'
   return env
 }
 
