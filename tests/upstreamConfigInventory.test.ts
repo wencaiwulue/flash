@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   buildInventory,
+  completeRequiresStatement,
   parseEnvironmentReference,
   parseHooksReference,
   parseSettingsReference,
@@ -107,6 +108,12 @@ ${'Long prose prefix. '.repeat(80)}${requires}
     expect(entry.excerpt).not.toContain('\n')
   })
 
+  test('stops an unpunctuated Requires statement at excerpt metadata', () => {
+    expect(completeRequiresStatement(
+      'Requires Claude Code v2.1.319 or later | * **Type**: string.',
+    )).toBe('Requires Claude Code v2.1.319 or later')
+  })
+
   test('rejects a Requires statement that is too long to preserve completely', () => {
     const markdown = `
 | Setting | Description | Category | Scope |
@@ -167,6 +174,21 @@ Details must not create a duplicate.
       'env:API_TIMEOUT_MS', 'env:ANTHROPIC_SMALL_FAST_MODEL',
     ])
     expect(entries[1]?.lifecycle).toBe('deprecated')
+  })
+
+  test('refuses to truncate Requires evidence in hook and env excerpts', () => {
+    const requires = 'Requires Claude Code v2.1.319 or later'
+    const longPrefix = 'x'.repeat(1000)
+    expect(() => parseHooksReference(`
+| Event | When it fires |
+| :- | :- |
+| \`FutureEvent\` | ${longPrefix} ${requires} |
+`, source)).toThrow('complete Requires statement')
+    expect(() => parseEnvironmentReference(`
+| Variable | Purpose |
+| :- | :- |
+| \`FUTURE_ENV\` | ${longPrefix} ${requires} |
+`, source)).toThrow('complete Requires statement')
   })
 
   test('rejects duplicate IDs', () => {

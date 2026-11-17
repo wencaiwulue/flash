@@ -268,6 +268,19 @@ describe('compatibility diagnostics', () => {
     expect(checkSynthetic(missingEnvelope).map(diagnostic => diagnostic.code)).toContain(
       'invalid-matrix-envelope',
     )
+
+    const wrongFixedInventory = {
+      ...inventory,
+      baseline: { version: '2.1.310' },
+    }
+    const matchingWrongBaseline = syntheticMatrix()
+    matchingWrongBaseline.baseline = '2.1.310'
+    expect(checkCompatibility({
+      inventory: wrongFixedInventory,
+      matrix: matchingWrongBaseline,
+      schemaPaths: collectSchemaPaths(syntheticSchema),
+      hookEvents: ['Stop'],
+    }).map(diagnostic => diagnostic.code)).toContain('invalid-matrix-envelope')
   })
 
   test('rejects a false path claim and false total aligned evidence', () => {
@@ -299,6 +312,28 @@ describe('compatibility diagnostics', () => {
     const diagnosticCodes = codes(matrix)
     expect(diagnosticCodes).toContain('missing-matrix-entry')
     expect(diagnosticCodes).toContain('stale-matrix-entry')
+  })
+
+  test('groups diagnostics deterministically independent of matrix entry order', () => {
+    const matrix = syntheticMatrix()
+    matrix.entries.reverse()
+    matrix.entries = matrix.entries.filter(entry => entry.id !== 'setting:model')
+    matrix.entries.push({
+      ...structuredClone(matrix.entries[0]!),
+      id: 'setting:stale',
+    })
+    matrix.schemaExclusions = []
+    const missing = matrix.entries.find(entry => entry.id === 'setting:missingKey')!
+    markAligned(missing)
+    missing.tests = []
+    expect(checkSynthetic(matrix).map(diagnostic => diagnostic.code)).toEqual([
+      'missing-in-flash',
+      'undocumented-schema-key',
+      'undocumented-schema-key',
+      'missing-matrix-entry',
+      'stale-matrix-entry',
+      'invalid-aligned-evidence',
+    ])
   })
 
   test('rejects undocumented schema keys, wildcard exclusions and hook drift', () => {
@@ -337,6 +372,20 @@ describe('compatibility diagnostics', () => {
     const missingNotes = syntheticMatrix()
     Reflect.deleteProperty(missingNotes.entries[0]!, 'notes')
     expect(codes(missingNotes)).toContain('invalid-matrix-structure')
+
+    for (const value of [[null], null]) {
+      const malformedEntries = syntheticMatrix()
+      Reflect.set(malformedEntries, 'entries', value)
+      expect(codes(malformedEntries)).toContain('invalid-matrix-structure')
+    }
+
+    const nullSchemaExclusion = syntheticMatrix()
+    Reflect.set(nullSchemaExclusion, 'schemaExclusions', [null])
+    expect(codes(nullSchemaExclusion)).toContain('invalid-schema-exclusion')
+
+    const missingSchemaExclusions = syntheticMatrix()
+    Reflect.deleteProperty(missingSchemaExclusions, 'schemaExclusions')
+    expect(codes(missingSchemaExclusions)).toContain('invalid-matrix-structure')
   })
 
   test('rejects invalid total and dimension statuses', () => {
@@ -409,6 +458,12 @@ describe('compatibility diagnostics', () => {
     }).map(diagnostic => diagnostic.code)).toContain('invalid-after-baseline')
     future.dimensions.runtime.status = 'blocked'
     future.status = 'partial'
+    expect(checkCompatibility({
+      inventory: lifecycleInventory, matrix,
+      schemaPaths: collectSchemaPaths(syntheticSchema), hookEvents: ['Stop'],
+    }).map(diagnostic => diagnostic.code)).toContain('invalid-after-baseline')
+    future.status = 'blocked'
+    future.dimensions.runtime.evidence = 'fabricated'
     expect(checkCompatibility({
       inventory: lifecycleInventory, matrix,
       schemaPaths: collectSchemaPaths(syntheticSchema), hookEvents: ['Stop'],

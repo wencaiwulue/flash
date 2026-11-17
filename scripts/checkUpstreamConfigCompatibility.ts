@@ -120,6 +120,14 @@ const DIMENSION_NAMES: readonly CompatibilityDimensionName[] = [
   'runtime',
 ]
 
+const DIAGNOSTIC_OUTPUT_ORDER: Partial<Record<Diagnostic['code'], number>> = {
+  'missing-in-flash': 0,
+  'undocumented-schema-key': 1,
+  'missing-matrix-entry': 2,
+  'stale-matrix-entry': 3,
+  'invalid-aligned-evidence': 4,
+}
+
 const DEFAULT_FIXTURE_DIRECTORY = fileURLToPath(
   new URL('../fixtures/upstream-config/2.1.311/', import.meta.url),
 )
@@ -317,9 +325,30 @@ export function checkCompatibility({
       message: `matrix envelope requires schemaVersion 1 and baseline ${UPSTREAM_BASELINE_VERSION} matching the inventory; received schemaVersion ${String(matrix.schemaVersion)} and baseline ${String(matrix.baseline)} (inventory ${String(inventory.baseline.version)})`,
     })
   }
+  const rawMatrixEntries: unknown[] = Array.isArray(matrix.entries) ? matrix.entries : []
+  if (!Array.isArray(matrix.entries)) {
+    diagnostics.push({
+      code: 'invalid-matrix-structure',
+      message: 'matrix entries must be an array of mappings',
+    })
+  }
+  const matrixEntries: CompatibilityMatrixEntry[] = []
+  for (const [index, entry] of rawMatrixEntries.entries()) {
+    if (!isRecord(entry)) {
+      diagnostics.push({
+        code: 'invalid-matrix-structure',
+        id: `entries[${index}]`,
+        message: 'matrix entries must contain only mappings',
+      })
+      continue
+    }
+    matrixEntries.push(entry as CompatibilityMatrixEntry)
+  }
+
   const inventoryById = new Map(inventory.entries.map(entry => [entry.id, entry]))
   const matrixEntriesById = new Map<string, CompatibilityMatrixEntry[]>()
-  for (const entry of matrix.entries) {
+  for (const entry of matrixEntries) {
+    if (typeof entry.id !== 'string') continue
     const entries = matrixEntriesById.get(entry.id) ?? []
     entries.push(entry)
     matrixEntriesById.set(entry.id, entries)
@@ -355,15 +384,31 @@ export function checkCompatibility({
     inventory.entries.filter(entry => entry.kind === 'setting').map(entry => entry.path),
   )
   const schemaExclusionPaths = new Set<string>()
-  for (const exclusion of matrix.schemaExclusions) {
-    schemaExclusionPaths.add(exclusion.path)
+  const schemaExclusions: unknown[] = Array.isArray(matrix.schemaExclusions)
+    ? matrix.schemaExclusions
+    : []
+  if (!Array.isArray(matrix.schemaExclusions)) {
+    diagnostics.push({
+      code: 'invalid-matrix-structure',
+      message: 'matrix schemaExclusions must be an array of mappings',
+    })
+  }
+  for (const exclusion of schemaExclusions) {
+    if (!isRecord(exclusion)) {
+      diagnostics.push({
+        code: 'invalid-schema-exclusion',
+        message: 'schema exclusions must contain only mappings',
+      })
+      continue
+    }
+    if (typeof exclusion.path === 'string') schemaExclusionPaths.add(exclusion.path)
     if (
       !hasText(exclusion.path) || exclusion.path.includes('*') ||
       !hasText(exclusion.reason) || !hasText(exclusion.evidence)
     ) {
       diagnostics.push({
         code: 'invalid-schema-exclusion',
-        path: exclusion.path,
+        path: typeof exclusion.path === 'string' ? exclusion.path : undefined,
         message: 'schema exclusions require an exact path, reason and evidence',
       })
     }
@@ -392,10 +437,11 @@ export function checkCompatibility({
     }
   }
 
-  for (const matrixEntry of matrix.entries) {
+  for (const matrixEntry of matrixEntries) {
     const inventoryEntry = inventoryById.get(matrixEntry.id)
     const id = matrixEntry.id
     const invalidStructure: string[] = []
+    if (!hasText(id)) invalidStructure.push('id')
     for (const field of ['implementation', 'tests', 'evidence'] as const) {
       if (!isStringArray(matrixEntry[field])) invalidStructure.push(field)
     }
@@ -478,14 +524,18 @@ export function checkCompatibility({
     if (!inventoryEntry) continue
     const pathDimension = matrixEntry.dimensions?.path
     const runtimeDimension = matrixEntry.dimensions?.runtime
-    if (inventoryEntry.afterBaseline && (
-      matrixEntry.status !== 'blocked' || runtimeDimension?.status !== 'blocked'
-    )) {
-      diagnostics.push({
-        code: 'invalid-after-baseline',
-        id,
-        message: `after-baseline entry ${id} must have blocked total and runtime statuses`,
-      })
+    if (inventoryEntry.afterBaseline) {
+      const expectedEvidence = completeRequiresStatement(inventoryEntry.excerpt ?? '')
+      if (
+        matrixEntry.status !== 'blocked' || runtimeDimension?.status !== 'blocked' ||
+        !expectedEvidence || runtimeDimension.evidence !== expectedEvidence
+      ) {
+        diagnostics.push({
+          code: 'invalid-after-baseline',
+          id,
+          message: `after-baseline entry ${id} must have blocked total and runtime statuses and quote the complete original Requires statement`,
+        })
+      }
     }
 
     const present = inventoryEntry.kind === 'setting'
@@ -505,11 +555,24 @@ export function checkCompatibility({
     }
   }
 
-  return diagnostics
+  return diagnostics.sort((left, right) => {
+    const groupDifference =
+      (DIAGNOSTIC_OUTPUT_ORDER[left.code] ?? Number.MAX_SAFE_INTEGER) -
+      (DIAGNOSTIC_OUTPUT_ORDER[right.code] ?? Number.MAX_SAFE_INTEGER)
+    if (groupDifference !== 0) return groupDifference
+    const leftKey = [left.code, left.id, left.path, left.message]
+      .map(value => value ?? '').join('\0')
+    const rightKey = [right.code, right.id, right.path, right.message]
+      .map(value => value ?? '').join('\0')
+    return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0
+  })
 }
 
 function printReport(inventory: CompatibilityInventory, matrix: CompatibilityMatrix, diagnostics: Diagnostic[]) {
-  const matrixById = new Map(matrix.entries.map(entry => [entry.id, entry]))
+  const matrixEntries = Array.isArray(matrix.entries)
+    ? matrix.entries.filter(entry => isRecord(entry) && typeof entry.id === 'string')
+    : []
+  const matrixById = new Map(matrixEntries.map(entry => [entry.id, entry]))
   for (const kind of ['setting', 'hook', 'env'] as const) {
     const entries = inventory.entries.filter(entry => entry.kind === kind)
     const counts = Object.fromEntries(COMPATIBILITY_STATUSES.map(status => [status, 0])) as Record<CompatibilityStatus, number>
