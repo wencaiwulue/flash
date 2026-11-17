@@ -51,6 +51,7 @@ Claude Code 需要管理应用级别的共享状态（设置、权限模式、�
 | 计算选择器：纯函数无状态 | `selectors.ts` 中的 `getViewedTeammateTask`、`getActiveAgentForInput` 是纯函数，接收 AppState 参数返回计算结果 | 简单、可测试、无缓存一致性问题；由 React 组件调用时配合 useAppState 自动重新计算 | 带缓存的选择器（Reselect）：需要维护缓存 key，当前场景下计算简单，收益不高 | 每次调用都重新计算，计算复杂时可能有性能问题（当前实现下可接受） | `src/state/selectors.ts:1-76` |
 | Teammate 视图逻辑集中在 teammateViewHelpers | `enterTeammateView`、`exitTeammateView`、`stopOrDismissAgent` 等辅助函数封装任务状态的复杂转换逻辑 | 避免组件中散落重复的状态转换代码；集中管理任务 retain/release、evictAfter 设置、viewSelectionMode 切换等 | 直接在组件中修改 AppState：代码重复，容易遗漏某个字段的更新 | 辅助函数需传入 setAppState，依赖 AppState 的类型定义 | `src/state/teammateViewHelpers.ts:46-141` |
 | **无订阅者过滤/去重** | `setState` 无条件调用所有 listeners，包括触发更新的模块本身 | 简单、可预测；调用链清晰，没有隐式行为 | 跟踪调用栈/订阅者身份并过滤：增加复杂度，容易出错；延迟通知批处理：引入更多状态，难以推理 | 订阅者必须自己处理可能的循环更新；比较 oldState/newState 或使用标志位避免递归 | `src/state/store.ts:26` [B4-app-state-01] |
+| **FIFO 通知队列与嵌套更新防护** | `setState` 检测是否正在通知 (`isNotifying`)，如果是则将更新加入队列 (`updateQueue`)，当前通知完成后按顺序处理队列；调用 listeners 时使用展开的 `[...listeners]` 避免通知期间 unsubscribe 导致的问题 | 防止嵌套 setState 调用导致栈溢出；确保所有更新按顺序处理；通知期间 unsubscribe 不影响当前迭代 | 同步处理所有嵌套更新：导致栈溢出风险；不处理队列：可能丢失更新或顺序不一致 | 增加少量状态管理；队列处理确保顺序；测试覆盖嵌套场景 | `src/state/store.ts:14-35` [Remediation] |
 
 ## 3. 目标与非目标
 

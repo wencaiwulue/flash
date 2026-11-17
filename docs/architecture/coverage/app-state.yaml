@@ -15,6 +15,12 @@ groups:
     summary: 基础 Store 实现（getState、setState、subscribe），无 React 依赖
     files:
       - src/state/store.ts
+  - id: app-state-store-tests
+    kind: test
+    section: 4
+    summary: Store 实现的测试，包括 FIFO 通知队列、嵌套 setState、unsubscribe 等
+    files:
+      - tests/appStateStore.test.ts
   - id: app-state-react
     kind: source
     section: 4
