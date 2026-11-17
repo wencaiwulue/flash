@@ -285,6 +285,7 @@ function smokeTestBinary(
       ...env,
       FLASH_SMOKE_TOOL: 'WebBrowser',
       FLASH_SMOKE_INPUT: smokeInput,
+      FLASH_SMOKE_CHANNEL: 'chrome',
       // Playwright's debug log goes to stderr and reveals where a launch
       // stalls (pipe transport, CDP handshake) on platforms where the full
       // flow exceeds the MCP request timeout (Windows runners).

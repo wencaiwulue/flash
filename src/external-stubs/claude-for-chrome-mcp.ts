@@ -84,7 +84,16 @@ export function createIsolatedBrowserConfig(options?: {
   return {
     browser: {
       isolated: true,
-      launchOptions: { headless: true },
+      launchOptions: {
+        headless: true,
+        // FLASH_SMOKE_CHANNEL pins the channel for the release-smoke channel:
+        // on Windows runners @playwright/mcp's default-browser resolution can
+        // land on msedge (whose compat-layer relaunch drops --user-data-dir
+        // and breaks --remote-debugging-pipe). Explicit chrome bypasses it.
+        ...(process.env.FLASH_SMOKE_CHANNEL
+          ? { channel: process.env.FLASH_SMOKE_CHANNEL }
+          : {}),
+      },
     },
     ...(allowedOrigins ? { network: { allowedOrigins } } : {}),
   }
