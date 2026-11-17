@@ -101,6 +101,364 @@ Bridge 系统解决的核心问题是让 claude.ai 网页能安全地控制本�
 
 ## 4. 架构、模块与数据流
 
+### 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          claude.ai (Server)                                │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │  - /v1/environments/bridge (register)                                │ │
+│  │  - /v1/environments/{id}/work/poll (polling)                        │ │
+│  │  - /v1/environments/{id}/work/{id}/ack (acknowledge)               │ │
+│  │  - /v1/environments/{id}/bridge/reconnect (reconnect)               │ │
+│  │  - /v1/code/sessions/{id}/events (SSE for v2)                      │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    ↑ HTTPS / WebSocket
+                                    ↓
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     Claude Code CLI / REPL (Local)                         │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │                         Bridge Main Loop                               │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐│ │
+│  │  │ bridgeApi (HTTP Client)         │  - OAuth access token          ││ │
+│  │  │                                │  - environment secret JWT      ││ │
+│  │  │ registerBridgeEnvironment()   │  - session ingress token        ││ │
+│  │  │ pollForWork()                 │  - X-Trusted-Device-Token       ││ │
+│  │  │ acknowledgeWork()             │  - 10s-10min poll (load based)  ││ │
+│  │  │ reconnectSession()            │  - heartbeat (when at capacity)  ││ │
+│  │  └────────────────┬─────────────────────────────────────────────────┘│ │
+│  │                   ↓                                                   │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐│ │
+│  │  │  Session Spawner (sessionRunner)              │                  ││ │
+│  │  │  - createSessionSpawner()                    │                  ││ │
+│  │  │  - spawn child process: claude --print       │                  ││ │
+│  │  │    --sdk-url=<url> --session-id=<id>        │                  ││ │
+│  │  │  - NDJSON stdin/stdout pipe                  │                  ││ │
+│  │  │  - 24hr timeout watchdog                     │                  ││ │
+│  │  │  - activity ring buffer (last 10)            │                  ││ │
+│  │  └────────────────┬─────────────────────────────────────────────────┘│ │
+│  │                   ↓                                                   │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐│ │
+│  │  │  Permissions (bridgePermissionCallbacks)       │                  ││ │
+│  │  │  - forward control_request → server           │                  ││ │
+│  │  │  - forward control_response ← server          │                  ││ │
+│  │  │  - transparent routing (no inspection)       │                  ││ │
+│  │  └────────────────┬─────────────────────────────────────────────────┘│ │
+│  │                   ↓                                                   │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐│ │
+│  │  │  Worktree (createAgentWorktree)              │                  ││ │
+│  │  │  - isolate per-session git worktree         │                  ││ │
+│  │  │  - hook-based fallback                       │                  ││ │
+│  │  │  - best-effort cleanup on exit               │                  ││ │
+│  │  └────────────────┬─────────────────────────────────────────────────┘│ │
+│  │                   ↓                                                   │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐│ │
+│  │  │  State Tracking & Cleanup                      │                  ││ │
+│  │  │  - activeSessions: Map<id, SessionHandle>   │                  ││ │
+│  │  │  - sessionWorktrees: Map<id, path>          │                  ││ │
+│  │  │  - capacityWake (AbortController)            │                  ││ │
+│  │  │  - shutdownFlag: boolean                      │                  ││ │
+│  │  └──────────────────────────────────────────────────────────────────┘│ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+│                                                                             │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │  Persistence (Local)                                                   │ │
+│  │  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐  │ │
+│  │  │ bridge-pointer.  │  │env-less-bridge-  │  │ ~/.claude/      │  │ │
+│  │  │ json (v1)       │  │pointer.json (v2) │  │ (config home)   │  │ │
+│  │  │ 0o600           │  │ 0o600             │  │                 │  │ │
+│  │  │ - sessionId     │  │ - sessionId       │  │                 │  │ │
+│  │  │ - environmentId │  │ - environmentId   │  │                 │  │ │
+│  │  │ - source        │  │ - source          │  │                 │  │ │
+│  │  │ - lastSequenceNum│ │ - lastSequenceNum │  │                 │  │ │
+│  │  │ - timestamp (TTL│ │ - timestamp (TTL  │  │                 │  │ │
+│  │  │   4hrs)         │  │   4hrs)           │  │                 │  │ │
+│  │  └──────────────────┘  └──────────────────┘  └──────────────────┘  │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    ↑
+                                    │ spawn
+                                    ↓
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      Claude Code Child (Worker)                            │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │  - CLAUDE_CODE_ENVIRONMENT_KIND=bridge                               │ │
+│  │  - CLAUDE_CODE_SESSION_ACCESS_TOKEN=<JWT>                           │ │
+│  │  - NO OAuth token (security boundary)                              │ │
+│  │  - NDJSON stdin: events, update_environment_variables              │ │
+│  │  - NDJSON stdout: control_request, assistant output              │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 关键流程与失败路径
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                  Standalone Bridge Initialization Flow                      │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │ 1. Parse CLI Args                          ┌─────────────────────┐  │ │
+│  │    ├─→ --session-id=<id>                   │ --continue:        │  │ │
+│  │    ├─→ --continue                          │  scan sibling      │  │ │
+│  │    ├─→ --capacity=<N> (default:32)        │  worktrees for     │  │ │
+│  │    ├─→ --spawn-mode=<mode> (single/       │  pointer file      │  │ │
+│  │    │   same-dir/worktree)                  └─────────┬───────────┘  │ │
+│  │    └─→ --verbose, --debug-file                      ↓               │ │
+│  │                                                    │               │ │
+│  │ 2. Check isBridgeEnabled()                        │               │ │
+│  │    ├─→ feature(CHICAGO)?                         │               │ │
+│  │    ├─→ has OAuth token with correct scope?      │               │ │
+│  │    ├─→ has org UUID?                            │               │ │
+│  │    ├─→ No → getBridgeDisabledReason()           │               │ │
+│  │    │         → show user → EXIT                │               │ │
+│  │    └─→ Yes → Continue                           ↓               │ │
+│  │                                                 │               │ │
+│  │ 3. Read Bridge Pointer (if --continue or        │               │ │
+│  │    pointer exists)                             │               │ │
+│  │    ├─→ readBridgePointerAcrossWorktrees()     │               │ │
+│  │    ├─→ parse JSON, validate TTL (<4hrs)        │               │ │
+│  │    ├─→ check PID (if present and running)      │               │ │
+│  │    ├─→ if valid: reuseEnvironmentId, sessionId │               │ │
+│  │    └─→ if invalid/stale: delete pointer → fresh│               │ │
+│  │                                                ↓               │ │
+│  │ 4. Generate IDs (if not reusing)               │               │ │
+│  │    ├─→ bridgeId: UUID.v4()                    │               │ │
+│  │    ├─→ environmentId: UUID.v4()                │               │ │
+│  │    └─→ collect git info (repo URL, branch,     │               │ │
+│  │         machine name)                          ↓               │ │
+│  │                                                 │               │ │
+│  │ 5. Register Environment                       │               │ │
+│  │    ├─→ POST /v1/environments/bridge           │               │ │
+│  │    ├─→ body: { bridgeId, environmentId, git,  │               │ │
+│  │    │           workerType, maxSessions,        │               │ │
+│  │    │           spawnMode, ... }               │               │ │
+│  │    ├─→ headers: Authorization, anthropic-beta│               │ │
+│  │    ├─→ retries: exponential backoff (conn)    │               │ │
+│  │    ├─→ 2s→4s→8s→…→120s cap, give up after 10min│               │ │
+│  │    ├─→ sleep detection: gap > 2×cap → reset budget│               │ │
+│  │    ├─→ onAuth401: refresh token → retry once │               │ │
+│  │    ├─→ 403/404/410: show user → EXIT          │               │ │
+│  │    └─→ success: { environmentId, environmentSecret }│               │ │
+│  │                                                ↓               │ │
+│  │ 6. Reconnect Session (if restoring)          │               │ │
+│  │    ├─→ POST /v1/environments/{id}/bridge/reconnect│               │ │
+│  │    │       body: { sessionId }                │               │ │
+│  │    └─→ forces stale worker termination       │               │ │
+│  │                                                ↓               │ │
+│  │ 7. Initialize State                          │               │ │
+│  │    ├─→ activeSessions: Map = new Map()       │               │ │
+│  │    ├─→ capacityWake = createCapacityWake()  │               │ │
+│  │    ├─→ shutdownFlag = false                   │               │ │
+│  │    ├─→ registerCleanup: SIGINT/SIGTERM/abort│               │ │
+│  │    └─→ write pointer file (0o600, TTL 4hrs) │               │ │
+│  │                                                ↓               │ │
+│  │ 8. Enter Main Poll Loop                     │               │ │
+│  │    ├─→ display status UI                    │               │ │
+│  │    └─→ wait for work or shutdown            │               │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      Main Poll Loop (v1 Protocol)                           │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │ Loop Forever:                                                         │ │
+│  │                                                                       │ │
+│  │ 1. Check Capacity: activeSessions.size < maxSessions?              │ │
+│  │    ├─→ No (at capacity):                                           │ │
+│  │    │   ├─→ pollInterval = poll_interval_ms_at_capacity (default: 10min)│ │
+│  │    │   ├─→ heartbeat enabled? → start heartbeat loop (parallel)  │ │
+│  │    │   └─→ wait: pollInterval OR capacityWake OR shutdown          │ │
+│  │    └─→ Yes (has capacity):                                          │ │
+│  │        ├─→ pollInterval = poll_interval_ms_not_at_capacity (default: 2s)│ │
+│  │        └─→ wait: pollInterval OR capacityWake OR shutdown          │ │
+│  │                                                                       │ │
+│  │ 2. Poll for Work:                                                    │ │
+│  │    ├─→ GET /v1/environments/{id}/work/poll                         │ │
+│  │    │   auth: environment secret JWT                               │ │
+│  │    │   query: reclaim_older_than_ms (default: 5000)                │ │
+│  │    ├─→ Error Handling:                                             │ │
+│  │    │   ├─→ 401 → refresh OAuth → retry once → fail → fatal        │ │
+│  │    │   ├─→ 403 → check error_type (expired?) → show user → fatal  │ │
+│  │    │   ├─→ 404/410 → show user → fatal                           │ │
+│  │    │   ├─→ network error → exponential backoff (conn or general) │ │
+│  │    │   ├─→ 10min give up window → EXIT                           │ │
+│  │    │   └─→ sleep detection: reset budget after long gaps          │ │
+│  │    └─→ Success:                                                   │ │
+│  │        ├─→ no work → back to loop start                          │ │
+│  │        └─→ work item → process it (below)                        │ │
+│  │                                                                       │ │
+│  │ 3. Process Work Item:                                              │ │
+│  │    ├─→ decodeWorkSecret(base64url string):                       │ │
+│  │    │   ├─→ validate version == 1                                │ │
+│  │    │   ├─→ validate sessionIngressToken exists                  │ │
+│  │    │   ├─→ validate apiBaseUrl exists                          │ │
+│  │    │   ├─→ parse sources, auth, claudeCodeArgs, mcpConfig, env │ │
+│  │    │   ├─→ check useCodeSessions flag for v2 vs v1            │ │
+│  │    │   ├─→ buildSdkUrl() or buildCCRv2SdkUrl()                │ │
+│  │    │   └─→ sameSessionId(): ignore prefix (session_ vs cse_)  │ │
+│  │    ├─→ check for existing session (duplicate):                  │ │
+│  │    │   └─→ already exists → skip (do not re-spawn)             │ │
+│  │    ├─→ create worktree (if spawnMode == worktree):              │ │
+│  │    │   ├─→ createAgentWorktree()                              │ │
+│  │    │   ├─→ fallback: hook-based → same-dir                    │ │
+│  │    │   └─→ store in sessionWorktrees Map                      │ │
+│  │    ├─→ spawn child process:                                      │ │
+│  │    │   ├─→ createSessionSpawner()                              │ │
+│  │    │   ├─→ strip parent OAuth token (security boundary)        │ │
+│  │    │   ├─→ set CLAUDE_CODE_ENVIRONMENT_KIND=bridge           │ │
+│  │    │   ├─→ set CLAUDE_CODE_SESSION_ACCESS_TOKEN               │ │
+│  │    │   ├─→ set v1/v2 specific env vars                       │ │
+│  │    │   ├─→ args: --print --sdk-url=<url> --session-id=<id>   │ │
+│  │    │   ├─→ pipe stdout/stderr (NDJSON parse)                  │ │
+│  │    │   ├─→ start 24hr timeout watchdog                         │ │
+│  │    │   ├─→ register onPermissionRequest callback               │ │
+│  │    │   ├─→ track activity (ring buffer, verb mapping)        │ │
+│  │    │   └─→ SessionHandle: kill(), writeStdin(), updateToken()│ │
+│  │    ├─→ acknowledge work (after spawn success):                │ │
+│  │    │   └─→ POST /v1/environments/{id}/work/{id}/ack           │ │
+│  │    ├─→ add to activeSessions Map                               │ │
+│  │    ├─→ set sessionStartTimes, sessionWorkIds, sessionIngressTokens,│ │
+│  │    │   sessionCompatIds, sessionTimers                        │ │
+│  │    ├─→ start token refresh scheduler (JWT expiry - 5min):      │ │
+│  │    │   ├─→ createTokenRefreshScheduler()                     │ │
+│  │    │   ├─→ generation counter to avoid stale refresh          │ │
+│  │    │   ├─→ max 3 consecutive failures, 60s retry interval     │ │
+│  │    │   ├─→ v1: update child via stdin update_environment_variables│ │
+│  │    │   └─→ v2: call reconnectSession()                        │ │
+│  │    ├─→ start heartbeat (if at capacity):                       │ │
+│  │    │   ├─→ POST /v1/environments/{id}/work/{id}/heartbeat    │ │
+│  │    │   ├─→ auth: session ingress token (no DB hit)           │ │
+│  │    │   ├─→ interval: non_exclusive_heartbeat_interval_ms     │ │
+│  │    │   ├─→ 401/403 → reconnectSession() → force reschedule   │ │
+│  │    │   └─→ 404/410 → fatal                                   │ │
+│  │    └─→ derive session title (first real user message):        │ │
+│  │        └─→ skip tool-result, synthetic messages               │ │
+│  │                                                                       │ │
+│  │ 4. Session Completion/Error Cleanup:                              │ │
+│  │    ├─→ wait for child exit or timeout or shutdown               │ │
+│  │    ├─→ delete from activeSessions                                │ │
+│  │    ├─→ cleanup worktree (best effort):                           │ │
+│  │    │   └─→ removeAgentWorktree() → catch/log failures          │ │
+│  │    ├─→ archive session (idempotent):                             │ │
+│  │    │   └─→ POST /v1/environments/{id}/archive → catch/log 409 Conflict│ │
+│  │    ├─→ clear timers, remove from all tracking Maps              │ │
+│  │    ├─→ capacityWake.wake() (if now below capacity)               │ │
+│  │    └─→ back to loop start                                         │ │
+│  │                                                                       │ │
+│  │ 5. Permission Request Forwarding (Parallel):                       │ │
+│  │    ├─→ child emits NDJSON: { type: "control_request",          │ │
+│  │    │                             subtype: "can_use_tool", ... }  │ │
+│  │    ├─→ sessionRunner detects it → calls onPermissionRequest     │ │
+│  │    ├─→ bridgeMain calls bridgeApi.sendPermissionResponseEvent()│ │
+│  │    ├─→ POST /v1/sessions/{sessionId}/events                     │ │
+│  │    │   auth: session ingress token                              │ │
+│  │    │   body: { events: [{ type: "control_response", ... }] }  │ │
+│  │    ├─→ network error: retry indefinitely until session ends     │ │
+│  │    ├─→ server returns control_response (via poll):             │ │
+│  │    │   └─→ bridgeMain writes to child stdin as NDJSON         │ │
+│  │    └─→ transparent: no inspection, no modification               │ │
+│  │                                                                       │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    Clean Shutdown / Crash Recovery                          │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │ Clean Shutdown (SIGINT/SIGTERM/abort):                                │ │
+│  │                                                                       │ │
+│  │ 1. Set shutdownFlag = true (stop accepting new work)               │ │
+│  │                                                                       │ │
+│  │ 2. Signal all active sessions:                                       │ │
+│  │    ├─→ for each session in activeSessions:                         │ │
+│  │    │   └─→ session.kill(SIGTERM) (gentle)                         │ │
+│  │    └─→ wait up to shutdownGraceMs (default: 30s)                  │ │
+│  │                                                                       │ │
+│  │ 3. Force-kill stragglers:                                           │ │
+│  │    ├─→ for each session still running after grace period:           │ │
+│  │    │   └─→ session.forceKill() (SIGKILL)                          │ │
+│  │    └─→ no more waiting                                             │ │
+│  │                                                                       │ │
+│  │ 4. Stop Work (best effort, retries):                                │ │
+│  │    ├─→ for each active work item:                                  │ │
+│  │    │   ├─→ POST /v1/environments/{id}/work/{id}/stop            │ │
+│  │    │   ├─→ retry up to 3 times, exponential backoff (1s/2s/4s)  │ │
+│  │    │   └─→ catch/log all failures (don't block)                 │ │
+│  │    └─→ wait for all stop requests to resolve                     │ │
+│  │                                                                       │ │
+│  │ 5. Archive All Sessions (idempotent):                               │ │
+│  │    ├─→ for each session:                                           │ │
+│  │    │   ├─→ POST /v1/environments/{id}/archive                  │ │
+│  │    │   └─→ catch/log 409 Conflict (already archived)            │ │
+│  │    └─→ don't wait for each, just initiate all                    │ │
+│  │                                                                       │ │
+│  │ 6. Deregister Environment (best effort):                           │ │
+│  │    ├─→ DELETE /v1/environments/bridge/{id}                       │ │
+│  │    └─→ catch/log failures (don't block exit)                     │ │
+│  │                                                                       │ │
+│  │ 7. Cleanup Pointer (non-perpetual mode only):                     │ │
+│  │    ├─→ if NOT perpetual:                                         │ │
+│  │    │   ├─→ delete bridge-pointer.json (v1)                      │ │
+│  │    │   └─→ delete env-less-bridge-pointer.json (v2)            │ │
+│  │    └─→ catch/log failures (don't block exit)                     │ │
+│  │                                                                       │ │
+│  │ 8. Wait for Worktree Cleanup:                                      │ │
+│  │    └─→ Promise.all() all pending worktree removals             │ │
+│  │                                                                       │ │
+│  │ 9. Exit:                                                          │ │
+│  │    └─→ process.exit(0) or resolve promise                       │ │
+│  │                                                                       │ │
+│  │ Crash Recovery (--continue, pointer exists):                      │ │
+│  │                                                                       │ │
+│  │ 1. Read pointer (current dir first, then sibling worktrees):     │ │
+│  │    ├─→ readBridgePointerAcrossWorktrees()                      │ │
+│  │    ├─→ MAX_WORKTREE_FANOUT=50 (limit scan)                     │ │
+│  │    ├─→ choose pointer with youngest timestamp                   │ │
+│  │    ├─→ validate TTL <4hrs, check PID (if present)              │ │
+│  │    ├─→ if PID still running: warn user (let user decide)      │ │
+│  │    └─→ if invalid/expired: delete pointer → fresh start         │ │
+│  │                                                                       │ │
+│  │ 2. Register with reuseEnvironmentId:                           │ │
+│  │    ├─→ BridgeConfig.reuseEnvironmentId = pointer.environmentId│ │
+│  │    └─→ server will try to reconnect to the existing environment│ │
+│  │                                                                       │ │
+│  │ 3. Call reconnectSession():                                     │ │
+│  │    └─→ forces termination of any stale worker on server side  │ │
+│  │                                                                       │ │
+│  │ 4. For v2: replay events from lastSequenceNum:               │ │
+│  │    └─→ flushGate.holdWrites() → replay → releaseWrites()   │ │
+│  │                                                                       │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| `BridgeApiClient` | `bridgeMain` / `replBridge` | `createBridgeApiClient({ baseUrl, getAccessToken, runnerVersion, getTrustedDeviceToken })` | 单例共享（整个进程一个） | 否（内存仅） | 进程退出，`deregisterEnvironment()` 后失效 | 无显式关闭（HTTP 连接自动 GC） |
+| `EnvironmentSecret` JWT | `bridgeMain` / `replBridge` | `registerBridgeEnvironment()` 返回，从响应体解析 | 单例共享 | 否（内存仅，JWT 自带 expiry） | `deregisterEnvironment()` 后不再使用 | 无 |
+| `SessionIngressToken` JWT | 每个会话 | 从 `WorkSecret` 解析，`decodeWorkSecret()` 提取 | 每个会话隔离 | 否（内存仅，JWT 自带 expiry） | 会话结束，`archiveSession()` 后丢弃 | 无 |
+| `SessionHandle` | `activeSessions` Map | `sessionSpawner.spawn({ sessionId, sdkUrl, accessToken, useCcrV2, workerEpoch })` | 每个会话隔离 | 否（内存仅） | 子进程 exit 或超时或 shutdown | `kill()` (SIGTERM), `forceKill()` (SIGKILL), `writeStdin()`, `updateToken()` |
+| `ChildProcess` (Claude worker) | `SessionHandle` | `child_process.spawn()` 或 `spawnSync()` 包装，NDJSON stdin/stdout/stderr pipe | 每个会话隔离 | 否（内存仅，进程 OS 资源） | 进程 exit (natural/error) 或 24hr timeout 或 shutdown | `child.kill()` (SIGTERM), `child.kill("SIGKILL")` (force), stdin.end(), cleanup pipes |
+| `activeSessions` Map | `bridgeMain` loop | `new Map<string, SessionHandle>()`，初始为空 | 单例共享（全局状态） | 否（内存仅） | 进程退出，shutdown 清空 | Shutdown: `session.kill()` for all, wait up to 30s, force kill stragglers |
+| `sessionWorktrees` Map | `bridgeMain` loop | `new Map<string, { worktreePath, worktreeBranch, gitRoot, hookBased }>()` | 单例共享 | 否（内存仅，path 指向实际 FS） | 会话结束删除 entry，shutdown 清空 | `removeAgentWorktree()` (best effort, catch/log failures) |
+| `capacityWake` (`CapacityWake`) | `bridgeMain` loop | `createCapacityWake(outerSignal: AbortSignal)`，内部双 `AbortController` | 单例共享 | 否（内存仅） | 进程退出，shutdown 触发 outer abort | `wake()` (abort current controller, create fresh one), `signal()` (get merged signal) |
+| `BridgePointer` / `EnvLessBridgePointer` | 文件系统 | `writeBridgePointer()`, `writeEnvLessBridgePointer()` 在启动和恢复时写入 | 每个 worktree 隔离（指针在该 worktree 的 ~/.claude/ 中） | **是**，持久化到 `~/.claude/bridge-pointer.json` 或 `env-less-bridge-pointer.json`，权限 `0o600`，TTL 4hrs | 4hr TTL expiry (timestamp 检查)，clean shutdown 删除（非 perpetual 模式），`clearBridgePointer()` / `clearEnvLessBridgePointer()` 手动删除 | Shutdown: delete file (非 perpetual 模式)；Recovery: delete if invalid/stale |
+| `PollConfig` | `bridgeMain` / `pollConfig.ts` | `getPollIntervalConfig()`，从环境或 server 返回或默认值，Zod schema 验证 + refine 最小间隔 ≥100ms | 单例共享（全局配置） | 否（内存仅） | 进程退出，配置变更时刷新 | 无 |
+| `BackoffConfig` | `bridgeMain` loop | `DEFAULT_BACKOFF` (conn: 2s→120s, general: 500ms→30s, give up: 10min)，可自定义 | 单例共享（全局配置） | 否（内存仅） | 进程退出 | 无（重试计数器局部变量） |
+| `TokenRefreshScheduler` | 每个会话 | `createTokenRefreshScheduler({ getNewToken, onTokenUpdate, onError, expiryOffsetMs = TOKEN_REFRESH_BUFFER_MS (5min) })`，generation counter 防竞态 | 每个会话隔离 | 否（内存仅） | 会话结束 clearTimeout，generation counter 使旧 refresh 无效 | `clearTimeout()` on cleanup, generation counter ignores stale callbacks |
+| `NativeHelperClient` (computer-use, not bridge) | `nativeHelper.ts` | 注意：这是 computer-use 模块，不是 bridge 模块，但共享类似 JSON Lines 设计 | 单例共享 | 否（内存仅，子进程 OS 资源） | `closeComputerUseHelper()` | `close()`: stdin.end(), 250ms wait, then SIGKILL if needed |
+
+生命周期证据：
+- `src/bridge/bridgeApi.ts` (`BridgeApiClient` 注册/轮询/ack/reconnect/deregister)
+- `src/bridge/sessionRunner.ts` (`SessionHandle`, `createSessionSpawner`, `kill`/`forceKill`/`writeStdin`/`updateToken`)
+- `src/bridge/workSecret.ts` (`decodeWorkSecret`, `buildSdkUrl`, `buildCCRv2SdkUrl`, `sameSessionId`)
+- `src/bridge/bridgePointer.ts`, `envLessBridgePointer.ts` (`writeBridgePointer`, `readBridgePointerAcrossWorktrees`, `clearBridgePointer`, TTL 4hrs, `0o600`)
+- `src/bridge/capacityWake.ts` (`createCapacityWake`, `wake()`, `signal()`, double `AbortController`)
+- `src/bridge/jwtUtils.ts` (`createTokenRefreshScheduler`, generation counter, TOKEN_REFRESH_BUFFER_MS=5min)
+- `src/bridge/bridgeMain.ts` (2435-2600+ lines: shutdown flow, `activeSessions`, `sessionWorktrees`, `capacityWake`)
+
 ### 4.1 入口与公共契约
 
 Standalone 入口：`claude remote-control`
