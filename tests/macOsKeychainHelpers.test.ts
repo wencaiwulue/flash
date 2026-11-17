@@ -7,6 +7,7 @@ import {
   getKeychainCacheVersionPath,
   isKeychainCacheVersionCurrent,
   keychainCacheState,
+  primeKeychainCacheFromPrefetch,
   touchKeychainCacheVersion,
 } from '../src/utils/secureStorage/macOsKeychainHelpers.ts'
 
@@ -93,5 +94,17 @@ describe('macOS Keychain helpers', () => {
 
     // Verify cache state has the new version
     expect(keychainCacheState.cache.cacheVersion).toBe(secondVersion)
+  })
+
+  test('prefetch with existing marker initializes cacheVersion to marker value', () => {
+    // Marker is already created by beforeEach -> clearKeychainCache()
+    const testData = JSON.stringify({
+      claudeAiOauth: { accessToken: 'test-token-123' }
+    })
+    primeKeychainCacheFromPrefetch(testData)
+    expect(keychainCacheState.cache.data?.claudeAiOauth?.accessToken).toBe('test-token-123')
+    expect(keychainCacheState.cache.cacheVersion).not.toBeNull()
+    expect(typeof keychainCacheState.cache.cacheVersion).toBe('string')
+    expect(keychainCacheState.cache.cachedAt).toBeGreaterThan(0)
   })
 })
