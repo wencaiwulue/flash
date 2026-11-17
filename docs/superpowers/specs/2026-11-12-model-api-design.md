@@ -1195,6 +1195,263 @@ type APIProvider = 'firstParty' | 'bedrock' | 'vertex' | 'foundry'
 | `betas.ts` | Beta 头部 |
 | `modelCost.ts` | 成本计算 |
 
+### 4.6 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        调用方 (query.ts / SDK)                          │
+│  ┌─────────────────────────────────────────────────────────────────────┐ │
+│  │  模型选择入口：getMainLoopModel() / parseUserSpecifiedModel()       │ │
+│  │  API 调用入口：queryModel() / queryModelWithStreaming() /           │ │
+│  │               queryModelWithoutStreaming()                         │ │
+│  └─────────────────────────────────────────────────────────────────────┘ │
+└────────────────────────────┬──────────────────────────────────────────────┘
+                             │
+         ┌───────────────────┼───────────────────┐
+         ▼                   ▼                   ▼
+┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐
+│  model/          │ │  (其他入口)      │ │  (其他入口)      │
+│  model.ts        │ │                  │ │                  │
+│  (模型选择)      │ │                  │ │                  │
+└────────┬─────────┘ └──────────────────┘ └──────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  model/providers.ts → getAPIProvider() (确定提供商)                    │
+│  model/configs.ts → ALL_MODEL_CONFIGS (提供商特定模型 ID 映射)         │
+│  model/bedrock.ts (Bedrock 特定适配)                                   │
+└────────────────────────────┬──────────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  services/api/client.ts → getAnthropicClient() (创建对应提供商客户端)    │
+│  ┌─────────────────────────────────────────────────────────────────────┐ │
+│  │  firstParty: @anthropic-ai/sdk Anthropic client                    │ │
+│  │  bedrock: @anthropic-ai/bedrock-sdk AnthropicBedrock client        │ │
+│  │  vertex: @anthropic-ai/vertex-sdk AnthropicVertex client           │ │
+│  │  foundry: @anthropic-ai/sdk Anthropic client (自定义 baseURL)      │ │
+│  └─────────────────────────────────────────────────────────────────────┘ │
+└────────────────────────────┬──────────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  services/api/withRetry.ts → withRetry() (重试装饰器)                  │
+│  ┌─────────────────────────────────────────────────────────────────────┐ │
+│  │  重试策略：529 前台重试/后台丢弃，Opus 连续 3 次降级，401 刷新凭证   │ │
+│  │  重试上限：默认最多 10 次，指数退避 (BASE_DELAY_MS=500ms, max 32s) │ │
+│  └─────────────────────────────────────────────────────────────────────┘ │
+└────────────────────────────┬──────────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  services/api/claude.ts → queryModelWithStreaming() /                   │
+│                           queryModelWithoutStreaming()                   │
+│  ┌─────────────────────────────────────────────────────────────────────┐ │
+│  │  请求构造：paramsFromContext() → Beta headers → prompt caching →     │ │
+│  │             thinking → fast mode → cache edits → ...                │ │
+│  │  流式处理：message_start → content_block_start → content_block_delta │ │
+│  │            → content_block_stop → message_delta → message_stop     │ │
+│  │  流式失败：内部捕获 → 降级到非流式重试                              │ │
+│  └─────────────────────────────────────────────────────────────────────┘ │
+└────────────────────────────┬──────────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  services/api/errors.ts → getAssistantMessageFromError() (错误转换)    │
+│  ┌─────────────────────────────────────────────────────────────────────┐ │
+│  │  错误分类：401/403 → auth，429 → rate limit，529 → overload，       │ │
+│  │              400 → prompt too long / media size / ...               │ │
+│  │  用户友好消息：添加指导 ("/login"，降级建议，等等)                  │ │
+│  └─────────────────────────────────────────────────────────────────────┘ │
+└────────────────────────────┬──────────────────────────────────────────────┘
+                             │
+                             ▼
+                    ┌──────────────────┐
+                    │  外部 API        │
+                    │  (Anthropic /   │
+                    │   Bedrock /     │
+                    │   Vertex /      │
+                    │   Foundry)      │
+                    └──────────────────┘
+
+────────────────────────────────────────────────────────────────────────────
+
+模块级状态持有者（非传入状态）：
+├─ model/validateModel.ts: validModelCache (模块级 Map，缓存验证结果)
+├─ model/bedrock.ts: getBedrockInferenceProfiles() (lodash-es/memoize 缓存)
+└─ (其他模块：无模块级可变状态，纯函数或环境变量驱动)
+
+────────────────────────────────────────────────────────────────────────────
+
+主要数据流向：
+1. 用户配置 → getUserSpecifiedModelSetting() → parseUserSpecifiedModel() → 完整模型 ID
+2. 完整模型 ID → normalizeModelStringForAPI() → API 调用 ID (去除 [1m])
+3. API 调用 ID + getAPIProvider() → ALL_MODEL_CONFIGS → 提供商特定模型 ID
+4. queryModel(options) → getAnthropicClient() → withRetry() 装饰 → 调用模型 API
+5. API 响应 → 流式处理 / 非流式返回 → (错误时) getAssistantMessageFromError()
+```
+
+边界说明：
+- **提供商配置启动后不可变**：环境变量决定提供商，运行时不能切换
+- **客户端创建按需进行**：getAnthropicClient() 每次调用时创建（或认证错误后重建）
+- **withRetry() 是装饰器**：不拥有状态，仅在闭包中维护 retryContext 和 consecutive529Errors
+- **validModelCache 是内存缓存**：避免重复验证调用
+- **流式失败降级到非流式是内部实现**：调用方不感知，仅看到最终结果
+- **query-core 处理降级后的对话适配**：model-api 仅抛出 FallbackTriggeredError
+
+### 4.7 关键流程与失败/取消/禁用路径
+
+```text
+模型选择流程
+┌─────────────────────────────────────────────────────────────────────┐
+│  getMainLoopModel():                                               │
+│  ├─ 检查会话覆盖：getMainLoopModelOverride() → 有则返回 ✅        │
+│  ├─ 检查环境变量：ANTHROPIC_MODEL → 有则 parseUserSpecifiedModel() 返回 ✅ │
+│  ├─ 检查设置：settings.model → 有则 parseUserSpecifiedModel() 返回 ✅ │
+│  └─ 否则返回默认模型（Max/Team Premium→Opus，其他→Sonnet）✅       │
+│                                                                      │
+│  parseUserSpecifiedModel(modelInput):                              │
+│  ├─ 识别别名：opus/sonnet/haiku/best/opusplan → 展开为完整 ID     │
+│  ├─ 识别 [1m] 后缀 → 保留在返回值中 (API 调用前 normalize 去除)   │
+│  ├─ 应用提供商特定默认模型（第三方稍旧版本）                        │
+│  ├─ 旧版模型重定向（Opus 4.0/4.1 → 当前版本）✅                   │
+│  └─ 返回完整模型 ID ✅                                            │
+└─────────────────────────────────────────────────────────────────────┘
+
+────────────────────────────────────────────────────────────────────────────
+API 调用完整流程（queryModel）
+┌─────────────────────────────────────────────────────────────────────┐
+│  queryModel(options):                                              │
+│  ├─ 先尝试流式：queryModelWithStreaming(options)                  │
+│  │  ├─ 构造请求参数：paramsFromContext() → Beta headers → thinking → │
+│  │  │                  prompt caching → fast mode → cache edits → ... │
+│  │  ├─ 获取客户端：withRetry(getClient, operation, retryOptions)  │
+│  │  ├─ 发起流式请求 → 逐个 yield 事件：                           │
+│  │  │  message_start → content_block_start → content_block_delta →   │
+│  │  │  content_block_stop → message_delta → message_stop          │
+│  │  ├─ 看门狗超时（STREAM_IDLE_TIMEOUT_MS）→ 中断 + 重试         │
+│  │  └─ 流式失败 → 内部捕获 → 降级到非流式重试 ✅                  │
+│  │                                                                 │
+│  └─ 流式失败或禁用 → 非流式：queryModelWithoutStreaming(options)  │
+│     ├─ 构造请求参数（同流式）                                      │
+│     ├─ 获取客户端：withRetry(getClient, operation, retryOptions)  │
+│     ├─ 发起非流式请求 → 返回完整响应 ✅                            │
+│     └─ 非流式也失败 → 抛出异常 ❌                                │
+└─────────────────────────────────────────────────────────────────────┘
+
+────────────────────────────────────────────────────────────────────────────
+withRetry() 重试装饰器核心流程
+┌─────────────────────────────────────────────────────────────────────┐
+│  初始化：                                                          │
+│  ├─ 确定 maxRetries（默认 DEFAULT_MAX_RETRIES=10，环境变量覆盖）  │
+│  ├─ 初始化 retryContext（maxTokensOverride, model, thinkingConfig, fastMode） │
+│  ├─ 初始化 consecutive529Errors（来自 initialConsecutive529Errors） │
+│  └─ client = null（首次获取）                                      │
+│                                                                      │
+│  尝试循环（attempt from 0 to maxRetries）：                          │
+│  ├─ 检查 signal.aborted → 是则抛出 ❌                              │
+│  ├─ 检查 mock 限流 → 是则模拟限流响应 ❌                            │
+│  ├─ 获取客户端：client = null 时调用 getClient()；认证错误后重建    │
+│  ├─ 执行 operation(client, attempt, retryContext) → 成功则返回 ✅ │
+│  └─ 失败 → 错误处理分支：                                          │
+│                                                                      │
+│     错误处理分支：                                                  │
+│     ├─ Fast Mode 处理：                                             │
+│     │  ├─ 429/529 且 retry-after 短 → 重试（保持 fast mode）     │
+│     │  ├─ 429/529 且 retry-after 长 → 进入 cooldown（禁用 fast mode） │
+│     │  └─ fast mode 不支持 → 禁用 + 重试                          │
+│     ├─ 529 处理：                                                  │
+│     │  ├─ querySource 在后台列表（非 FOREGROUND_529_RETRY_SOURCES）→ 直接抛出 ❌（CannotRetryError） │
+│     │  ├─ 否则 → consecutive529Errors++                           │
+│     │  ├─ Opus 且 consecutive529Errors >= 3 且 fallbackModel 已提供 → 抛出 FallbackTriggeredError ❌ │
+│     │  └─ 否则 → 继续重试流程                                    │
+│     ├─ 检查是否可重试：                                           │
+│     │  ├─ Persistent 模式：429/529 始终重试（无限，心跳）        │
+│     │  ├─ x-should-retry: true → 非订阅/企业版重试               │
+│     │  ├─ x-should-retry: false → 仅 ANT 且 5xx 重试             │
+│     │  ├─ 401 → 清除缓存 + 刷新凭证 + 重试                        │
+│     │  ├─ 403 OAuth revoked → 刷新 token + 重试                   │
+│     │  ├─ 连接错误（ECONNRESET/EPIPE）→ 禁用 keep-alive + 重试   │
+│     │  ├─ 408/409 → 重试                                         │
+│     │  ├─ 5xx → 重试                                             │
+│     │  └─ 其他 → 不可重试 → 抛出 CannotRetryError ❌              │
+│     ├─ Max tokens 溢出调整：                                     │
+│     │  ├─ 解析 error 获取 inputTokens/contextLimit               │
+│     │  ├─ 计算 adjustedMaxTokens（预留 safety buffer + thinking budget） │
+│     │  ├─ 设置 retryContext.maxTokensOverride → 继续重试         │
+│     ├─ 指数退避等待：                                             │
+│     │  ├─ 读取 Retry-After header（优先）                         │
+│     │  ├─ 否则：BASE_DELAY_MS * 2^(attempt-1)，上限 maxDelayMs   │
+│     │  ├─ 加随机抖动                                            │
+│     │  ├─ Persistent 模式：429 可等待到 reset time，上限 6h      │
+│     │  ├─ Persistent 模式且延迟 > 60s → 每 30s yield SystemAPIErrorMessage（心跳） │
+│     └─ 超过 maxRetries → 抛出 CannotRetryError ❌                 │
+└─────────────────────────────────────────────────────────────────────┘
+
+────────────────────────────────────────────────────────────────────────────
+错误转换流程（getAssistantMessageFromError）
+┌─────────────────────────────────────────────────────────────────────┐
+│  输入：error (unknown) + model + options (messages/messagesForAPI)  │
+│  ├─ 分类错误：                                                      │
+│  │  ├─ 401/403 → authentication_failed → 用户友好消息（"/login" 指导） │
+│  │  ├─ 404 → invalid_request → 模型不存在 + 3P 降级建议           │
+│  │  ├─ 429 → rate_limit → 配额重置时间 + 升级提示                 │
+│  │  ├─ 529 → rate_limit → Opus 过载建议切换 Sonnet                │
+│  │  ├─ 400 "Prompt is too long" → invalid_request + errorDetails (token counts) │
+│  │  ├─ 400 media size → invalid_request → PDF/Image 尺寸限制消息  │
+│  │  └─ 其他 → api_error → 通用错误消息                            │
+│  ├─ 生成 AssistantMessage：                                         │
+│  │  ├─ content: 用户友好消息 + 原始错误（可选）                     │
+│  │  ├─ isApiErrorMessage: true                                    │
+│  │  ├─ error: 错误分类字符串                                       │
+│  │  ├─ errorDetails: 原始错误详情（可选）                          │
+│  │  └─ requestId: 请求 ID（可选）                                  │
+│  └─ 返回 AssistantMessage ✅                                      │
+└─────────────────────────────────────────────────────────────────────┘
+
+────────────────────────────────────────────────────────────────────────────
+模型验证流程（validateModel）
+┌─────────────────────────────────────────────────────────────────────┐
+│  检查 validModelCache 缓存 → 命中则直接返回 ✅                      │
+│  → 检查 allowlist：isModelAllowed() → 不允许则返回 {valid: false, error} ❌ │
+│  → 检查已知别名：MODEL_ALIASES → 识别则验证对应模型 ✅              │
+│  → 检查自定义模型：ANTHROPIC_CUSTOM_MODEL_OPTION → 识别则跳过 API 验证 ✅ │
+│  → 实际 API 调用验证：sideQuery(max_tokens=1) → 成功则缓存返回 ✅ │
+│  → 失败则返回 {valid: false, error} ❌                            │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+禁用路径总结：
+| 禁用机制 | 触发位置 | 行为 | 证据 |
+|---------|---------|------|------|
+| 环境变量提供商选择 | getAPIProvider() | CLAUDE_CODE_USE_BEDROCK/VERTEX/FOUNDRY 选择对应提供商 | 见 4.2.3 模块设计卡 |
+| 529 后台源不重试 | withRetry() 529 处理 | querySource 不在 FOREGROUND_529_RETRY_SOURCES → 直接抛出 CannotRetryError | 见 4.2.8 模块设计卡 |
+| Fast Mode cooldown | withRetry() Fast Mode 处理 | 429/529 retry-after 长 → 禁用 Fast Mode + 重试 | 见 4.2.8 模块设计卡 |
+| 旧版模型重定向禁用 | parseUserSpecifiedModel() | CLAUDE_CODE_DISABLE_LEGACY_MODEL_REMAP 禁用重定向 | 见 4.2.1 模块设计卡 |
+| Bedrock 推理配置文件缓存 | getBedrockInferenceProfiles() | lodash-es/memoize 缓存结果（可选禁用） | 见 4.2.5 模块设计卡 |
+| 模型验证缓存 | validateModel() | validModelCache 缓存验证结果（可选禁用） | 见 4.2.4 模块设计卡 |
+
+### 4.8 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| `Anthropic` / `AnthropicBedrock` / `AnthropicVertex` client | getAnthropicClient() | 每次调用时创建（或认证错误后重建） | 单次调用隔离（每次创建新实例） | 不持久化 | 调用后 GC；认证错误后重建 | 无（无取消机制，由 signal.abort 中断请求） |
+| `retryContext` (重试上下文) | withRetry() 闭包 | 每次 withRetry() 调用时创建，初始：{maxTokensOverride:undefined, model, thinkingConfig, fastMode} | 单次 withRetry() 调用隔离（闭包中） | 不持久化 | 重试成功或失败后 GC | max tokens 溢出时更新 retryContext.maxTokensOverride；Fast Mode cooldown 时更新 fastMode |
+| `consecutive529Errors` (529 计数器) | withRetry() 闭包 | 每次 withRetry() 调用时初始化（来自 initialConsecutive529Errors） | 单次 withRetry() 调用隔离（闭包中） | 不持久化 | 重试成功或失败后 GC | 529 时递增；Opus 连续 3 次且 fallbackModel 已提供时抛出 FallbackTriggeredError |
+| `validModelCache` (验证缓存) | validateModel.ts 模块级 | 模块加载时初始化为 Map() | 进程单例全局共享 | 不持久化 | 无明确重置（进程退出后清空） | 无（无取消机制，仅内存缓存） |
+| `getBedrockInferenceProfiles()` 缓存 | bedrock.ts 模块级 | lodash-es/memoize 缓存，首次调用时执行，后续返回缓存 | 进程单例全局共享 | 不持久化 | 无明确重置（进程退出后清空） | 无（无取消机制，仅内存缓存） |
+| `FallbackTriggeredError` (降级信号) | withRetry() | Opus 连续 3 次 529 且 fallbackModel 已提供时抛出 | 单次调用隔离 | 不持久化 | 抛出后被调用方捕获 | 无（仅错误信号，调用方处理降级后的对话适配） |
+| `CannotRetryError` (不可重试信号) | withRetry() | 超过 maxRetries 或不可重试错误时抛出 | 单次调用隔离 | 不持久化 | 抛出后被调用方捕获 | 无（仅错误信号，调用方处理） |
+| `signal.aborted` (用户取消) | 调用方传入 | 调用方创建 AbortController，传入 signal | 单次调用隔离 | 不持久化 | 调用方 controller.abort() 设置 | withRetry() 循环开始时检查 signal.aborted，抛出错误；模型请求通过 SDK 传递 signal |
+
+生命周期证据：
+- `src/services/api/client.ts`: getAnthropicClient() 每次创建新客户端，无模块级缓存
+- `src/services/api/withRetry.ts`: retryContext 和 consecutive529Errors 在闭包中，单次调用隔离
+- `src/utils/model/validateModel.ts`: validModelCache 模块级 Map，无明确重置
+- `src/utils/model/bedrock.ts`: getBedrockInferenceProfiles() lodash-es/memoize 缓存
+- `src/services/api/withRetry.ts`: FallbackTriggeredError/CannotRetryError 仅错误信号，无状态
+- `src/services/api/claude.ts`: signal 透传给 SDK，中断请求
+
 ## 5. 失败语义与工程取舍
 
 ### 5.1 失败表
