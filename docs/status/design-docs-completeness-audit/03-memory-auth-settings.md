@@ -1327,6 +1327,13 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 
 ✅ **Git 仓库发现**：findGitRoot 向上遍历搜索 .git → LRU 缓存 50 条目 → 支持普通仓库/子模块/工作树 → resolveCanonicalRoot 双向验证
 
+## 整改台账（2026-11-18 追加，不改变原发现与历史统计）
+
+- **关联 Finding**：`B3-memory-02`；主责 spec：`docs/superpowers/specs/2026-11-12-memory-design.md`。
+- **测试补全**：新增 `tests/memory.test.ts`，覆盖 cursor 重启恢复、原子 sidecar、删除失效、提取等待，以及真实文件系统上的内部/逃逸 symlink。`tests/contextCompaction.test.ts` 同时补齐 PTL、附件恢复与长会话可观察不变量。
+- **整改中发现并修复**：Session Memory `MemoryPathValidator` 错用 `FsOperations` 不存在的异步 `realpath`/`lstat`，异常被 deepest-ancestor 循环吞掉后可能接受逃逸路径。RED：`bun test tests/contextCompaction.test.ts tests/memory.test.ts --timeout 60000` 退出 1，文件与目录 symlink 逃逸用例均实际失败；改用契约内 `realpathSync`/`lstatSync` 后，四文件 focused 命令退出 0（61 pass，0 fail）。
+- **边界**：全部为本地临时目录/offline 验证；未执行模型提取、远程同步或私有协议验证。原 Finding ID、原发现和历史统计均保留。
+
 ✅ **Git 元数据读取**：readGitHead 直接读取 .git/HEAD → resolveRef 验证 ref 名称白名单 → 优先松散 ref → packed-refs → commonDir 回退 → getCommonDir 获取共享 git 目录
 
 ✅ **Git 状态获取**：getGitState 并行获取 → getBranch/getHead/getRemote/getRemoteUrl/getStatus/getWorktreeCount → GitFileWatcher 缓存分支/HEAD/远程URL/默认分支

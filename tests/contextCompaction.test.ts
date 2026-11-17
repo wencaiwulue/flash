@@ -1,60 +1,75 @@
-/**
- * Context Compaction Regression Tests
- *
- * Tests for PTL recovery, attachment restoration, and long session behavior.
- */
-
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { feature } from 'bun:bundle'
 import { randomUUID } from 'crypto'
-import { mkdtemp, writeFile, readFile, rm } from 'fs/promises'
-import { join } from 'path'
+import { mkdtemp, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
+import { join } from 'path'
+import { getEmptyToolPermissionContext, type ToolUseContext } from '../src/Tool.ts'
 import {
+  createPostCompactFileAttachments,
   stripImagesFromMessages,
   stripReinjectedAttachments,
   truncateHeadForPTLRetry,
-  POST_COMPACT_MAX_FILES_TO_RESTORE,
-  POST_COMPACT_TOKEN_BUDGET,
-  POST_COMPACT_MAX_TOKENS_PER_FILE,
-  POST_COMPACT_MAX_TOKENS_PER_SKILL,
-  POST_COMPACT_SKILLS_TOKEN_BUDGET,
 } from '../src/services/compact/compact.ts'
-import { createAssistantMessage, createUserMessage } from '../src/utils/messages.ts'
-import { groupMessagesByApiRound } from '../src/services/compact/grouping.ts'
-import type { Message, AssistantMessage } from '../src/types/message.ts'
+import type {
+  AttachmentMessage,
+  Message,
+} from '../src/types/message.ts'
+import { createFileStateCacheWithSizeLimit } from '../src/utils/fileStateCache.ts'
+import {
+  createAssistantMessage,
+  createUserMessage,
+} from '../src/utils/messages.ts'
 
-// PTL_RETRY_MARKER is not exported, define locally for testing
 const PTL_RETRY_MARKER = '[earlier conversation truncated for compaction retry]'
 
-describe('context compaction - truncateHeadForPTLRetry', () => {
-  test('can be called with valid inputs without throwing', () => {
-    // Create conversation with multiple API rounds
+function ptlResponse() {
+  return createAssistantMessage({
+    content: 'prompt is too long',
+    isApiErrorMessage: true,
+  })
+}
+
+function messageText(message: Message): unknown {
+  if (!('message' in message)) return undefined
+  const content = message.message.content
+  if (message.type === 'assistant' && Array.isArray(content)) {
+    return content.map(block => block.type === 'text' ? block.text : '').join('')
+  }
+  return content
+}
+
+describe('context compaction - PTL recovery', () => {
+  test('drops the oldest API round and preserves the remaining tail', () => {
     const messages: Message[] = []
     for (let i = 0; i < 6; i++) {
-      const userMsg = createUserMessage({ content: `user-${i}` })
-      const assnMsg = createAssistantMessage({ content: `assistant-${i}` })
-      messages.push(userMsg, assnMsg)
+      messages.push(
+        createUserMessage({ content: `user-${i}` }),
+        createAssistantMessage({ content: `assistant-${i}` }),
+      )
     }
+    const finalUuid = messages.at(-1)!.uuid
 
-    const ptlResponse = createAssistantMessage({
-      content: 'prompt is too long',
-      isApiErrorMessage: true,
+    const result = truncateHeadForPTLRetry(messages, ptlResponse())
+
+    expect(result).not.toBeNull()
+    expect(result![0]).toMatchObject({
+      type: 'user',
+      isMeta: true,
+      message: { content: PTL_RETRY_MARKER },
     })
-
-    // Just verify it doesn't throw
-    const result = truncateHeadForPTLRetry(messages, ptlResponse)
-    expect(result !== undefined).toBe(true)
+    expect(result!.at(-1)!.uuid).toBe(finalUuid)
+    expect(result!.some(message => messageText(message) === 'user-0')).toBe(false)
+    expect(result!.some(message => messageText(message) === 'assistant-0')).toBe(true)
+    expect(result!.some(message => messageText(message) === 'assistant-1')).toBe(true)
+    expect(result!.some(message => messageText(message) === 'assistant-5')).toBe(true)
+    expect(messages).toHaveLength(12)
   })
 
-  test('strips existing retry marker before truncating', () => {
-    // Create messages with an existing retry marker at front
-    const existingMarker = createUserMessage({
-      content: PTL_RETRY_MARKER,
-      isMeta: true,
-    })
-    const messages: Message[] = [existingMarker]
-
-    // Add API rounds after the marker
+  test('removes an earlier retry marker and still makes truncation progress', () => {
+    const messages: Message[] = [
+      createUserMessage({ content: PTL_RETRY_MARKER, isMeta: true }),
+    ]
     for (let i = 0; i < 4; i++) {
       messages.push(
         createUserMessage({ content: `user-${i}` }),
@@ -62,316 +77,198 @@ describe('context compaction - truncateHeadForPTLRetry', () => {
       )
     }
 
-    const ptlResponse = createAssistantMessage({
-      content: 'prompt is too long',
-      isApiErrorMessage: true,
-    })
+    const result = truncateHeadForPTLRetry(messages, ptlResponse())
 
-    // Just verify it doesn't throw
-    const result = truncateHeadForPTLRetry(messages, ptlResponse)
-    expect(result !== undefined).toBe(true)
+    expect(result).not.toBeNull()
+    expect(result!.filter(message => messageText(message) === PTL_RETRY_MARKER)).toHaveLength(1)
+    expect(result!.some(message => messageText(message) === 'user-0')).toBe(false)
+    expect(result!.some(message => messageText(message) === 'assistant-1')).toBe(true)
+    expect(result!.at(-1)).toBe(messages.at(-1))
   })
 
-  test('works with PTL error that has no token gap', () => {
-    const messages: Message[] = [
-      createUserMessage({ content: 'Hello' }),
-      createAssistantMessage({ content: 'Hi' }),
-      createUserMessage({ content: 'How are you?' }),
-      createAssistantMessage({ content: 'Good' }),
-    ]
-
-    const ptlResponse = createAssistantMessage({
-      content: 'prompt is too long',
-      isApiErrorMessage: true,
-    })
-
-    // Should not throw - will fall back to dropping 20% when no token gap
-    const result = truncateHeadForPTLRetry(messages, ptlResponse)
-    expect(result !== undefined).toBe(true)
-  })
-
-  test('handles edge cases without throwing', () => {
-    const messages: Message[] = [
-      createUserMessage({ content: 'user-0' }),
-      createAssistantMessage({ content: 'assistant-0' }),
-      createUserMessage({ content: 'user-1' }),
-      createAssistantMessage({ content: 'assistant-1' }),
-    ]
-
-    const ptlResponse = createAssistantMessage({
-      content: 'prompt is too long',
-      isApiErrorMessage: true,
-    })
-
-    // Should not throw
-    const result = truncateHeadForPTLRetry(messages, ptlResponse)
-    // Just verify it didn't crash
-    expect(true).toBe(true)
+  test('returns null when no round can be dropped without emptying input', () => {
+    const messages = [createUserMessage({ content: 'only one round' })]
+    expect(truncateHeadForPTLRetry(messages, ptlResponse())).toBeNull()
   })
 })
 
-describe('context compaction - stripReinjectedAttachments', () => {
-  test('preserves regular messages unchanged', () => {
-    const messages: Message[] = [
-      createUserMessage({ content: 'hello' }),
-      createAssistantMessage({ content: 'hi there' }),
-    ]
+describe('context compaction - reinjected attachments', () => {
+  test('filters reinjected skill attachments only when skill search is enabled', () => {
+    const discovery = {
+      type: 'attachment',
+      uuid: randomUUID(),
+      timestamp: new Date().toISOString(),
+      attachment: { type: 'skill_discovery', skills: [] },
+    } as unknown as AttachmentMessage
+    const listing = {
+      ...discovery,
+      uuid: randomUUID(),
+      attachment: { type: 'skill_listing', skills: [] },
+    } as unknown as AttachmentMessage
+    const messages: Message[] = [createUserMessage({ content: 'control' }), discovery, listing]
 
     const result = stripReinjectedAttachments(messages)
-    expect(result.length).toBe(2)
-    expect(result[0].uuid).toBe(messages[0].uuid)
-    expect(result[1].uuid).toBe(messages[1].uuid)
-  })
 
-  test('does not mutate input array', () => {
-    const original = [createUserMessage({ content: 'original' })]
-    const input = [...original]
-
-    stripReinjectedAttachments(input)
-
-    // Verify input wasn't modified
-    expect(input.length).toBe(original.length)
-    expect(input[0].uuid).toBe(original[0].uuid)
-  })
-
-  test('handles empty input gracefully', () => {
-    const result = stripReinjectedAttachments([])
-    expect(result.length).toBe(0)
+    // The focused runner uses the external default; scripts/test.ts enables
+    // the same feature profile as the full build. Verify the active gate's
+    // behavior in both environments without changing the input.
+    if (feature('EXPERIMENTAL_SKILL_SEARCH')) {
+      expect(result.map(message => message.uuid)).toEqual([messages[0].uuid])
+    } else {
+      expect(result).toBe(messages)
+      expect(result.map(message => message.uuid)).toEqual(messages.map(message => message.uuid))
+    }
+    expect(messages).toHaveLength(3)
   })
 })
 
-describe('context compaction - stripImagesFromMessages', () => {
-  test('replaces image blocks with [image] marker in user messages', () => {
+describe('context compaction - media stripping and long sessions', () => {
+  test('replaces image and document blocks without mutating the input', () => {
     const messages: Message[] = [
       createUserMessage({
         content: [
-          { type: 'text', text: 'Look at this' },
-          {
-            type: 'image',
-            source: { type: 'base64', media_type: 'image/png', data: 'abc123' },
-          },
+          { type: 'text', text: 'before' },
+          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'image-data' } },
+          { type: 'document', source: { type: 'base64', media_type: 'text/plain', data: 'doc-data' } },
+          { type: 'text', text: 'after' },
         ],
       }),
-      createAssistantMessage({ content: 'Nice image' }),
     ]
+    const original = structuredClone(messages)
 
     const result = stripImagesFromMessages(messages)
+    const content = (result[0] as any).message.content
 
-    expect(result.length).toBe(2)
-    const userMsg = result[0] as any
-    const content = userMsg.message.content as any[]
-    expect(content.length).toBe(2)
-    expect(content[0].type).toBe('text')
-    expect(content[0].text).toBe('Look at this')
-    expect(content[1].type).toBe('text')
-    expect(content[1].text).toBe('[image]')
+    expect(content.map((block: any) => block.type)).toEqual(['text', 'text', 'text', 'text'])
+    expect(content.map((block: any) => block.text)).toEqual(['before', '[image]', '[document]', 'after'])
+    expect(messages).toEqual(original)
+    expect(stripImagesFromMessages(result)).toEqual(result)
   })
 
-  test('replaces document blocks with [document] marker', () => {
+  test('replaces nested tool_result media and preserves tool metadata', () => {
     const messages: Message[] = [
       createUserMessage({
-        content: [
-          { type: 'text', text: 'Check this doc' },
-          {
-            type: 'document',
-            source: { type: 'base64', media_type: 'text/plain', data: 'abc123' },
-          },
-        ],
+        content: [{
+          type: 'tool_result',
+          tool_use_id: 'tool-1',
+          content: [
+            { type: 'text', text: 'result' },
+            { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'image-data' } },
+          ],
+        }],
       }),
     ]
 
     const result = stripImagesFromMessages(messages)
+    const toolResult = (result[0] as any).message.content[0]
 
-    const userMsg = result[0] as any
-    const content = userMsg.message.content as any[]
-    expect(content[1].type).toBe('text')
-    expect(content[1].text).toBe('[document]')
+    expect(toolResult.tool_use_id).toBe('tool-1')
+    expect(toolResult.content[0]).toEqual({ type: 'text', text: 'result' })
+    expect(toolResult.content[1]).toEqual({ type: 'text', text: '[image]' })
   })
 
-  test('replaces nested images in tool_result content', () => {
-    const messages: Message[] = [
-      createUserMessage({
-        content: [
-          {
-            type: 'tool_result',
-            tool_use_id: 'tool-1',
-            content: [
-              { type: 'text', text: 'Result with image' },
-              {
-                type: 'image',
-                source: { type: 'base64', media_type: 'image/png', data: 'abc123' },
-              },
-            ],
-          },
-        ],
-      }),
-    ]
+  test('retains order, text and the final message across a long session', () => {
+    const messages: Message[] = []
+    for (let i = 0; i < 100; i++) {
+      messages.push(
+        createUserMessage({
+          content: i % 10 === 0
+            ? [
+                { type: 'text', text: `Message ${i}` },
+                { type: 'image', source: { type: 'base64', media_type: 'image/png', data: `image-${i}` } },
+              ]
+            : `Message ${i}`,
+        }),
+        createAssistantMessage({ content: `Response ${i}` }),
+      )
+    }
+    const original = structuredClone(messages)
 
     const result = stripImagesFromMessages(messages)
 
-    const userMsg = result[0] as any
-    const content = userMsg.message.content as any[]
-    const toolContent = content[0].content as any[]
-    expect(toolContent[1].type).toBe('text')
-    expect(toolContent[1].text).toBe('[image]')
+    expect(result).toHaveLength(200)
+    expect(result.map(message => message.uuid)).toEqual(messages.map(message => message.uuid))
+    expect(messageText(result.at(-1)!)).toBe('Response 99')
+    for (const message of result) {
+      if (message.type !== 'user' || !Array.isArray(message.message.content)) continue
+      for (const block of message.message.content) {
+        expect(block.type).not.toBe('image')
+        expect(block.type).not.toBe('document')
+      }
+    }
+    expect(messages).toEqual(original)
+  })
+})
+
+describe('context compaction - post-compact file restoration', () => {
+  let testDir: string
+  let context: ToolUseContext
+
+  beforeEach(async () => {
+    testDir = await mkdtemp(join(tmpdir(), 'flash-compact-files-'))
+    context = {
+      abortController: new AbortController(),
+      readFileState: createFileStateCacheWithSizeLimit(),
+      getAppState: () => ({ toolPermissionContext: getEmptyToolPermissionContext() }),
+      options: { tools: [] },
+    } as unknown as ToolUseContext
   })
 
-  test('leaves non-image messages unchanged', () => {
-    const originalUuid = randomUUID()
-    const messages: Message[] = [
-      createUserMessage({ content: 'Hello world', uuid: originalUuid }),
-      createAssistantMessage({ content: 'Hi there' }),
-    ]
-
-    const result = stripImagesFromMessages(messages)
-
-    expect(result.length).toBe(2)
-    const userMsg = result[0] as any
-    expect(userMsg.uuid).toBe(originalUuid)
-    expect(userMsg.message.content).toBe('Hello world')
+  afterEach(async () => {
+    await rm(testDir, { recursive: true, force: true })
   })
 
-  test('preserves assistant messages content', () => {
-    const messages: Message[] = [
-      createUserMessage({
-        content: [
-          {
-            type: 'image',
-            source: { type: 'base64', media_type: 'image/png', data: 'abc123' },
-          },
-        ],
-      }),
-      createAssistantMessage({
-        content: 'Response with tool use',
-      }),
-    ]
+  test('restores fresh content for the most recent files up to maxFiles', async () => {
+    const files = ['old.ts', 'middle.ts', 'new.ts'].map(name => join(testDir, name))
+    for (const [index, file] of files.entries()) {
+      await writeFile(file, `fresh-content-${index}`)
+    }
+    const readFileState = Object.fromEntries(files.map((file, index) => [file, {
+      content: `stale-content-${index}`,
+      timestamp: index + 1,
+    }]))
 
-    const result = stripImagesFromMessages(messages)
+    const result = await createPostCompactFileAttachments(readFileState, context, 2)
 
-    const assistantMsg = result[1] as any
-    // Content can be a string or an array with a text block
-    if (typeof assistantMsg.message.content === 'string') {
-      expect(assistantMsg.message.content).toBe('Response with tool use')
-    } else {
-      expect(assistantMsg.message.content[0].text).toBe('Response with tool use')
+    expect(result).toHaveLength(2)
+    expect(result.map(message => (message.attachment as any).filename)).toEqual([files[2], files[1]])
+    for (const [index, message] of result.entries()) {
+      const attachment = message.attachment as any
+      expect(attachment.type).toBe('file')
+      expect(attachment.content.file.content).toContain(`fresh-content-${2 - index}`)
+      expect(attachment.content.file.content).not.toContain('stale-content')
     }
   })
 
-  test('does not mutate input array', () => {
-    const imageBlock = {
-      type: 'image',
-      source: { type: 'base64', media_type: 'image/png', data: 'abc123' },
-    } as const
-    const original = [
-      createUserMessage({
-        content: [{ type: 'text', text: 'test' }, imageBlock],
-      }),
-    ]
-    const input = [...original]
-
-    stripImagesFromMessages(input)
-
-    // Verify input wasn't modified
-    expect(input.length).toBe(original.length)
-    const inputMsg = input[0] as any
-    expect(Array.isArray(inputMsg.message.content)).toBe(true)
-    expect(inputMsg.message.content.length).toBe(2)
-    expect(inputMsg.message.content[1]).toBe(imageBlock)
-  })
-
-  test('is idempotent - applying twice gives same result', () => {
-    const messages: Message[] = [
-      createUserMessage({
-        content: [
-          { type: 'text', text: 'Hello' },
-          {
-            type: 'image',
-            source: { type: 'base64', media_type: 'image/png', data: 'abc123' },
-          },
-        ],
+  test('skips files already visible in preserved Read tool calls', async () => {
+    const preservedFile = join(testDir, 'preserved.ts')
+    const restoreFile = join(testDir, 'restore.ts')
+    await writeFile(preservedFile, 'already visible')
+    await writeFile(restoreFile, 'needs restoration')
+    const readFileState = {
+      [preservedFile]: { content: 'stale preserved', timestamp: 2 },
+      [restoreFile]: { content: 'stale restore', timestamp: 1 },
+    }
+    const preservedMessages: Message[] = [
+      createAssistantMessage({
+        content: [{
+          type: 'tool_use',
+          id: 'read-preserved',
+          name: 'Read',
+          input: { file_path: preservedFile },
+        }],
       }),
     ]
 
-    const firstPass = stripImagesFromMessages(messages)
-    const secondPass = stripImagesFromMessages(firstPass)
+    const result = await createPostCompactFileAttachments(
+      readFileState,
+      context,
+      5,
+      preservedMessages,
+    )
 
-    // Both passes should produce equivalent results
-    expect(JSON.stringify(secondPass)).toEqual(JSON.stringify(firstPass))
-  })
-
-  test('handles mixed content with multiple media blocks', () => {
-    const messages: Message[] = [
-      createUserMessage({
-        content: [
-          { type: 'text', text: 'First image' },
-          {
-            type: 'image',
-            source: { type: 'base64', media_type: 'image/png', data: 'img1' },
-          },
-          { type: 'text', text: 'Then a document' },
-          {
-            type: 'document',
-            source: { type: 'base64', media_type: 'text/plain', data: 'doc1' },
-          },
-        ],
-      }),
-    ]
-
-    const result = stripImagesFromMessages(messages)
-    const userMsg = result[0] as any
-    const content = userMsg.message.content as any[]
-
-    expect(content.length).toBe(4)
-    expect(content[1].text).toBe('[image]')
-    expect(content[3].text).toBe('[document]')
-  })
-})
-
-describe('context compaction - constants', () => {
-  test('POST_COMPACT_MAX_FILES_TO_RESTORE has reasonable value', () => {
-    expect(typeof POST_COMPACT_MAX_FILES_TO_RESTORE).toBe('number')
-    expect(POST_COMPACT_MAX_FILES_TO_RESTORE).toBeGreaterThan(0)
-  })
-
-  test('POST_COMPACT_TOKEN_BUDGET is sufficient', () => {
-    expect(typeof POST_COMPACT_TOKEN_BUDGET).toBe('number')
-    expect(POST_COMPACT_TOKEN_BUDGET).toBeGreaterThan(1000)
-  })
-
-  test('POST_COMPACT_MAX_TOKENS_PER_FILE is less than total budget', () => {
-    expect(typeof POST_COMPACT_MAX_TOKENS_PER_FILE).toBe('number')
-    expect(POST_COMPACT_MAX_TOKENS_PER_FILE).toBeLessThan(POST_COMPACT_TOKEN_BUDGET)
-  })
-
-  test('POST_COMPACT_SKILLS_TOKEN_BUDGET is reasonable', () => {
-    expect(typeof POST_COMPACT_SKILLS_TOKEN_BUDGET).toBe('number')
-    expect(typeof POST_COMPACT_MAX_TOKENS_PER_SKILL).toBe('number')
-    expect(POST_COMPACT_MAX_TOKENS_PER_SKILL).toBeLessThan(POST_COMPACT_SKILLS_TOKEN_BUDGET)
-  })
-})
-
-describe('context compaction - grouping utility', () => {
-  test('groupMessagesByApiRound can be called without throwing', () => {
-    const messages: Message[] = [
-      createUserMessage({ content: 'user-1' }),
-      createAssistantMessage({ content: 'assistant-1' }),
-      createUserMessage({ content: 'user-2' }),
-      createAssistantMessage({ content: 'assistant-2' }),
-    ]
-
-    const groups = groupMessagesByApiRound(messages)
-    expect(Array.isArray(groups)).toBe(true)
-  })
-
-  test('groupMessagesByApiRound handles empty input', () => {
-    const groups = groupMessagesByApiRound([])
-    expect(groups.length).toBe(0)
-  })
-
-  test('groupMessagesByApiRound handles single user message', () => {
-    const messages: Message[] = [createUserMessage({ content: 'hello' })]
-    const groups = groupMessagesByApiRound(messages)
-    expect(groups.length).toBe(1)
-    expect(groups[0].length).toBe(1)
+    expect(result).toHaveLength(1)
+    expect((result[0].attachment as any).filename).toBe(restoreFile)
+    expect((result[0].attachment as any).content.file.content).toContain('needs restoration')
   })
 })

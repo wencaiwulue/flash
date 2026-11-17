@@ -285,7 +285,7 @@ export class MemoryPathValidator {
    */
   private async getRealMemoryDir(fs: any): Promise<string> {
     try {
-      return await fs.realpath(this.memoryDir)
+      return fs.realpathSync(this.memoryDir)
     } catch {
       // If memory dir doesn't exist yet, containment is trivially true
       // (no symlinks to escape through)
@@ -310,7 +310,7 @@ export class MemoryPathValidator {
       parent = dirname(current)
     ) {
       try {
-        const realCurrent = await fs.realpath(current)
+        const realCurrent = fs.realpathSync(current)
         // Rejoin the non-existing tail in reverse order (deepest popped first)
         return tail.length === 0
           ? realCurrent
@@ -321,7 +321,7 @@ export class MemoryPathValidator {
           // Could be truly non-existent (safe to walk up) OR a dangling symlink
           // whose target doesn't exist. Check if it's a symlink.
           try {
-            const stats = await fs.lstat(current)
+            const stats = fs.lstatSync(current)
             if (stats.isSymbolicLink()) {
               throw new PathTraversalError(
                 `Dangling symlink detected: ${current}`,
