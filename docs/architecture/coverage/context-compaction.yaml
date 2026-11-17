@@ -61,7 +61,8 @@ groups:
   - id: compact-test
     kind: test
     section: 7
-    summary: 专门测试 - contextCollapse.test.ts/reactiveCompact.test.ts
+    summary: 专门测试 - contextCollapse.test.ts/reactiveCompact.test.ts/compactionSessionIsolation.test.ts
     files:
       - tests/contextCollapse.test.ts
       - tests/reactiveCompact.test.ts
+      - tests/compactionSessionIsolation.test.ts
