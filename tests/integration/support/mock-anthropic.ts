@@ -14,6 +14,9 @@ export interface MockAnthropic {
   url: string
   requests: RecordedRequest[]
   enqueue(...responses: ScriptedResponse[]): void
+  // 按请求路由（优先于队列）：返回 null 则回落到队列。
+  // 用途：haiku 辅助请求是否发生不确定，按 body.model 路由可彻底确定化。
+  setRouter(router: ((request: RecordedRequest) => ScriptedResponse | null) | null): void
   stop(): Promise<void>
 }
 
@@ -30,6 +33,7 @@ function sse(event: string, data: unknown): string {
 export async function createMockAnthropic(): Promise<MockAnthropic> {
   const requests: RecordedRequest[] = []
   const queue: ScriptedResponse[] = []
+  let router: ((request: RecordedRequest) => ScriptedResponse | null) | null = null
   let idCounter = 0
 
   const server = Bun.serve({
@@ -55,7 +59,9 @@ export async function createMockAnthropic(): Promise<MockAnthropic> {
         )
       }
 
-      const scripted = queue.shift() ?? { type: 'text' as const, text: 'mock-anthropic: response queue is empty' }
+      const lastRecorded = requests.at(-1)!
+      const routed = router ? router(lastRecorded) : null
+      const scripted = routed ?? queue.shift() ?? { type: 'text' as const, text: 'mock-anthropic: response queue is empty' }
       if (scripted.type === 'error') {
         return Response.json(scripted.body, { status: scripted.status })
       }
@@ -103,6 +109,9 @@ export async function createMockAnthropic(): Promise<MockAnthropic> {
     requests,
     enqueue(...responses: ScriptedResponse[]) {
       queue.push(...responses)
+    },
+    setRouter(newRouter) {
+      router = newRouter
     },
     async stop() {
       server.stop(true)
