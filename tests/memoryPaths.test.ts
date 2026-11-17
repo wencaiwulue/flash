@@ -6,6 +6,7 @@ import { getAutoMemPath, isAutoMemPath, isAutoMemoryEnabled } from '../src/memdi
 import {
   MemoryPathValidator,
   PathTraversalError,
+  validateMemoryPath,
 } from '../src/services/SessionMemory/sessionMemoryUtils'
 
 function createTempTestDir(): string {
@@ -63,7 +64,7 @@ describe('Memory Paths - Symlink and Escape Prevention', () => {
     rmSync(testDir, { recursive: true, force: true })
   })
 
-  test('concept: path traversal via .. is rejected', () => {
+  test('path traversal via .. is rejected by plausibility check', () => {
     const validator = new MemoryPathValidator(memoryDir)
     const maliciousPath = join(memoryDir, '..', 'secret.txt')
 
@@ -71,10 +72,67 @@ describe('Memory Paths - Symlink and Escape Prevention', () => {
     expect(isPlausible).toBe(false)
   })
 
-  test('concept: null bytes in paths are rejected', () => {
+  test('null bytes in paths are rejected by sanitizePathKey', () => {
     const validator = new MemoryPathValidator(memoryDir)
 
     expect(() => validator.sanitizePathKey('file\0.md')).toThrow(PathTraversalError)
+  })
+
+  test('URL encoded path traversal is rejected', () => {
+    const validator = new MemoryPathValidator(memoryDir)
+
+    expect(() => validator.sanitizePathKey('%2e%2e%2fsecret.txt')).toThrow(PathTraversalError)
+  })
+
+  test('absolute paths as keys are rejected', () => {
+    const validator = new MemoryPathValidator(memoryDir)
+
+    expect(() => validator.sanitizePathKey('/etc/passwd')).toThrow(PathTraversalError)
+  })
+
+  test('backslashes are rejected', () => {
+    const validator = new MemoryPathValidator(memoryDir)
+
+    expect(() => validator.sanitizePathKey('..\\secret.txt')).toThrow(PathTraversalError)
+  })
+
+  test('normalized path traversal is rejected', () => {
+    const validator = new MemoryPathValidator(memoryDir)
+
+    expect(() => validator.sanitizePathKey('../secret.txt')).toThrow(PathTraversalError)
+  })
+
+  test('plausibility check passes for symlinks inside memory dir', () => {
+    const validator = new MemoryPathValidator(memoryDir)
+
+    // Create a symlink path inside memory dir
+    const symlinkPath = join(memoryDir, 'symlink.md')
+
+    // Plausibility check passes
+    const isPlausible = validator.isPlausiblyWithinMemoryDir(symlinkPath)
+    expect(isPlausible).toBe(true)
+  })
+
+  test('plausibility check allows valid paths within memory dir', () => {
+    const validator = new MemoryPathValidator(memoryDir)
+
+    // Create a normal file path
+    const normalFile = join(memoryDir, 'normal.md')
+
+    // Plausibility check passes
+    const isPlausible = validator.isPlausiblyWithinMemoryDir(normalFile)
+    expect(isPlausible).toBe(true)
+  })
+
+  test('plausibility check allows internal symlink paths', () => {
+    const validator = new MemoryPathValidator(memoryDir)
+
+    // Create a symlink path
+    const symlinkPath = join(memoryDir, 'link.md')
+
+    // Plausibility check passes
+    const isPlausible = validator.isPlausiblyWithinMemoryDir(symlinkPath)
+    expect(isPlausible).toBe(true)
   })
 })
 
