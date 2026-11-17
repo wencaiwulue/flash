@@ -72,7 +72,7 @@ groups:
     kind: test
     section: 7
     summary: Memory subsystem tests
-    owner:
     files:
       - tests/sessionMemory.test.ts
       - tests/memoryPaths.test.ts
+      - tests/memory.test.ts

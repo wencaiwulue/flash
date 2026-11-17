@@ -24,8 +24,7 @@ groups:
   - id: native-installer-package-managers
     kind: source
     section: 4
-    summary: 包管理器检测，支持 Homebrew/winget/pacman/deb/rpm/apk/mise/asdf，Linux distro
-      检测（通过 /etc/os-release）
+    summary: 包管理器检测，支持 Homebrew/winget/pacman/deb/rpm/apk/mise/asdf，Linux distro 检测（通过 /etc/os-release）
     files:
       - src/utils/nativeInstaller/packageManagers.ts
   - id: native-installer-index
@@ -43,7 +42,18 @@ groups:
   - id: native-installer-shared-autoupdater
     kind: source
     section: 4
-    summary: 共享的自动更新逻辑（getMaxVersion、shouldSkipVersion、assertMinVersion），与
-      nativeInstaller 配合使用
+    summary: 共享的自动更新逻辑（getMaxVersion、shouldSkipVersion、assertMinVersion），与 nativeInstaller 配合使用
     files:
       - src/utils/autoUpdater.ts
+  - id: native-installer-script
+    kind: script
+    section: 4
+    summary: 原生安装脚本，支持 macOS/Linux，版本检测与下载，PATH symlink 管理，自动更新触发
+    files:
+      - scripts/install.sh
+  - id: native-installer-tests
+    kind: test
+    section: 4
+    summary: 安装脚本测试，验证权限边界、路径处理、版本检测逻辑
+    files:
+      - tests/installScript.test.ts
