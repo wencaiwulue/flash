@@ -41,6 +41,7 @@ export function setCachedSettingsForSource(
 type ParsedSettings = {
   settings: SettingsJson | null
   errors: ValidationError[]
+  allowHookEntryRecovery: boolean
 }
 const parseFileCache = new Map<string, ParsedSettings>()
 
