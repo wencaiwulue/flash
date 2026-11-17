@@ -62,6 +62,7 @@ import { getManagedFilePath } from '../utils/settings/managedPath.js'
 import { isRestrictedToPluginOnly } from '../utils/settings/pluginOnlyPolicy.js'
 import { HooksSchema, type HooksSettings } from '../utils/settings/types.js'
 import { createSignal } from '../utils/signal.js'
+import { skillCacheKey } from './skillLifecycle.js'
 import { registerMCPSkillBuilders } from './mcpSkillBuilders.js'
 
 export type LoadedFrom =
@@ -800,6 +801,10 @@ export const getSkillDirCommands = memoize(
     )
 
     return unconditionalSkills
+  },
+  (cwd: string) => {
+    const additionalDirs = getAdditionalDirectoriesForClaudeMd()
+    return skillCacheKey({ cwd, additionalDirs, remote: false })
   },
 )
 
