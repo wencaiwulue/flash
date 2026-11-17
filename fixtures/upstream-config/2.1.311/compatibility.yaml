@@ -19086,7 +19086,22 @@ schemaExclusions:
   - path: $schema
     reason: flash-only or legacy schema path; review ownership in B2-B5
     evidence: src/utils/settings/types.ts
+  - path: assistant
+    reason: flash-only or legacy schema path; review ownership in B2-B5
+    evidence: src/utils/settings/types.ts
+  - path: assistantName
+    reason: flash-only or legacy schema path; review ownership in B2-B5
+    evidence: src/utils/settings/types.ts
   - path: autoDreamEnabled
+    reason: flash-only or legacy schema path; review ownership in B2-B5
+    evidence: src/utils/settings/types.ts
+  - path: defaultView
+    reason: flash-only or legacy schema path; review ownership in B2-B5
+    evidence: src/utils/settings/types.ts
+  - path: maxSleepDurationMs
+    reason: flash-only or legacy schema path; review ownership in B2-B5
+    evidence: src/utils/settings/types.ts
+  - path: minSleepDurationMs
     reason: flash-only or legacy schema path; review ownership in B2-B5
     evidence: src/utils/settings/types.ts
   - path: modelCatalog
