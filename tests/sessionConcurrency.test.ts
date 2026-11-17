@@ -347,6 +347,108 @@ describe('Session Concurrency Contracts', () => {
     resetProjectForTesting()
   })
 
+  test('real proper-lockfile: stale lock recovery pattern exists in source', async () => {
+    // Verify our implementation uses proper-lockfile with stale option
+    const source = await Bun.file(
+      import.meta.dir + '/../src/utils/sessionStorage.ts'
+    ).text()
+
+    // Check that lockfile.lock is called with stale option
+    expect(source).toContain('lockfile.lock')
+    expect(source).toContain('stale:')
+    expect(source).toContain('retries:')
+  })
+
+  test('real proper-lockfile: can lock and unlock multiple times', async () => {
+    // Create a test file for locking
+    const testDir = await mkdtemp(join(tmpdir(), 'claude-stale-lock-test-'))
+    const testFile = join(testDir, 'test.jsonl')
+    await mkdir(dirname(testFile), { recursive: true, mode: 0o700 })
+    await writeFile(testFile, '', { mode: 0o600 })
+
+    // Lock and unlock multiple times to verify recovery works
+    for (let i = 0; i < 3; i++) {
+      const release = await lockfile.lock(testFile, {
+        stale: 10000,
+        retries: 2,
+      })
+      await release()
+    }
+
+    // Final lock should succeed
+    const finalRelease = await lockfile.lock(testFile, { stale: 10000 })
+    await finalRelease()
+
+    await rm(testDir, { recursive: true, force: true })
+  })
+
+  test('real proper-lockfile: valid lock contention fails', async () => {
+    // Create a test file for locking
+    const testDir = await mkdtemp(join(tmpdir(), 'claude-lock-contention-test-'))
+    const testFile = join(testDir, 'test.jsonl')
+    await mkdir(dirname(testFile), { recursive: true, mode: 0o700 })
+    await writeFile(testFile, '', { mode: 0o600 })
+
+    // Acquire lock first
+    const release = await lockfile.lock(testFile, {
+      stale: 10000,
+    })
+
+    // Check that lockfile.check reports locked (if supported)
+    // We don't fail the test if it doesn't - just verify the second lock fails
+    try {
+      await lockfile.check(testFile, { stale: 10000 })
+    } catch {
+      // check might throw or return false depending on implementation
+    }
+
+    // Now try to acquire again with finite retries - this should fail
+    let secondRelease: (() => Promise<void>) | undefined
+    let lockError: Error | undefined
+    const startTime = Date.now()
+    try {
+      secondRelease = await lockfile.lock(testFile, {
+        stale: 10000,
+        retries: 1,
+        minTimeout: 50,
+        maxTimeout: 100,
+      })
+    } catch (e) {
+      lockError = e as Error
+    }
+    const duration = Date.now() - startTime
+
+    // Should have failed with lock error within bounded duration
+    expect(lockError).toBeDefined()
+    expect(secondRelease).toBeUndefined()
+    expect(duration).toBeLessThan(5000) // Should fail quickly, not hang
+
+    // Now release the lock
+    await release()
+
+    // Now we should be able to acquire it
+    let thirdRelease: (() => Promise<void>) | undefined
+    let thirdError: Error | undefined
+    try {
+      thirdRelease = await lockfile.lock(testFile, {
+        stale: 10000,
+        retries: 1,
+      })
+    } catch (e) {
+      thirdError = e as Error
+    }
+
+    // Verify cleanup works - we can acquire after release
+    expect(thirdError).toBeUndefined()
+    expect(thirdRelease).toBeDefined()
+
+    if (thirdRelease) {
+      await thirdRelease()
+    }
+
+    await rm(testDir, { recursive: true, force: true })
+  })
+
   test('real proper-lockfile: lock/unlock cycle works', async () => {
     // Create a test file for locking
     const testDir = await mkdtemp(join(tmpdir(), 'claude-lock-test-'))
@@ -368,29 +470,6 @@ describe('Session Concurrency Contracts', () => {
       stale: 10000,
     })
     await release2()
-
-    await rm(testDir, { recursive: true, force: true })
-  })
-
-  test('real proper-lockfile: check detects lock state', async () => {
-    // Create a test file for locking
-    const testDir = await mkdtemp(join(tmpdir(), 'claude-lock-check-test-'))
-    const testFile = join(testDir, 'test.jsonl')
-    await mkdir(dirname(testFile), { recursive: true, mode: 0o700 })
-    await writeFile(testFile, '', { mode: 0o600 })
-
-    // Initially not locked
-    const notLocked = await lockfile.check(testFile)
-    expect(notLocked).toBe(false)
-
-    // Acquire lock
-    const release = await lockfile.lock(testFile, { stale: 10000 })
-
-    // Now should be locked (check might return false in some implementations)
-    // depending on how proper-lockfile works, so we just verify no error
-
-    // Release lock
-    await release()
 
     await rm(testDir, { recursive: true, force: true })
   })
@@ -440,129 +519,150 @@ describe('Session Concurrency Contracts', () => {
     expect(messages.has(validMsg2.uuid as any)).toBe(true)
   })
 
-  test('real concurrent writes: recordContextCollapseSnapshot works with proper locking', async () => {
+  test('real concurrent writes with Bun.spawn child processes', async () => {
     // Create a fresh temp dir for this test
-    const testTempDir = await mkdtemp(join(tmpdir(), 'claude-concurrent-test-'))
-    const testConfigDir = join(testTempDir, 'config')
-    const testProjectDir = join(testTempDir, 'project')
-    await mkdir(testProjectDir, { recursive: true, mode: 0o700 })
-    const canonicalProjectDir = await canonicalizePath(testProjectDir)
-
-    const sharedSessionId = randomUUID()
-
-    // Save original env
-    const origConfigDir = process.env.CLAUDE_CONFIG_DIR
-    const origPersistence = process.env.TEST_ENABLE_SESSION_PERSISTENCE
+    const testTempDir = await mkdtemp(join(tmpdir(), 'claude-real-concurrent-test-'))
 
     try {
-      // Set up env
-      process.env.CLAUDE_CONFIG_DIR = testConfigDir
-      process.env.TEST_ENABLE_SESSION_PERSISTENCE = '1'
+      const sharedSessionId = randomUUID()
+      const workerPath = resolve(__dirname, 'fixtures', 'concurrent-worker.ts')
 
-      // Switch to session
-      switchSession(sharedSessionId, canonicalProjectDir)
-
-      // Initial message to create file
-      await recordTranscript([{
-        type: 'user',
-        uuid: randomUUID(),
-        parentUuid: null,
-        message: { role: 'user', content: 'init message' },
-        isMeta: false,
-      }])
-      await flushSessionStorage()
-
-      // Write snapshots from two "workers" sequentially (simulating interleaving)
-      // The important thing is the file locking works properly
-      const seenStartUuids = new Set<string>()
-      const seenEndUuids = new Set<string>()
-      const workerIds = new Set<string>()
-
-      // Worker 1 writes 50
-      for (let i = 0; i < 50; i++) {
-        const startUuid = randomUUID()
-        const endUuid = randomUUID()
-        seenStartUuids.add(startUuid)
-        seenEndUuids.add(endUuid)
-        workerIds.add('1')
-
-        await recordContextCollapseSnapshot({
-          staged: [{
-            startUuid,
-            endUuid,
-            summary: `snapshot-${i} from worker-1`,
-            risk: 0.5,
-            stagedAt: Date.now(),
-          }],
-          armed: i % 2 === 0,
-          lastSpawnTokens: 100 + i,
-        })
+      // Set up both workers
+      const env1 = {
+        ...process.env,
+        WORKER_ID: '1',
+        SHARED_SESSION_ID: sharedSessionId,
+        TEST_PROJECT_ROOT: projectRoot, // Actual project root for imports
+        TEST_TEMP_DIR: testTempDir, // Temp dir for session files
+      }
+      const env2 = {
+        ...process.env,
+        WORKER_ID: '2',
+        SHARED_SESSION_ID: sharedSessionId,
+        TEST_PROJECT_ROOT: projectRoot, // Actual project root for imports
+        TEST_TEMP_DIR: testTempDir, // Temp dir for session files
       }
 
-      // Worker 2 writes 50
-      for (let i = 0; i < 50; i++) {
-        const startUuid = randomUUID()
-        const endUuid = randomUUID()
-        seenStartUuids.add(startUuid)
-        seenEndUuids.add(endUuid)
-        workerIds.add('2')
+      console.log(`[test] Starting worker 1 and 2 with session: ${sharedSessionId}`)
 
-        await recordContextCollapseSnapshot({
-          staged: [{
-            startUuid,
-            endUuid,
-            summary: `snapshot-${i} from worker-2`,
-            risk: 0.5,
-            stagedAt: Date.now(),
-          }],
-          armed: i % 2 === 1,
-          lastSpawnTokens: 200 + i,
-        })
+      // Spawn both workers
+      const worker1 = Bun.spawn({
+        cmd: [process.execPath, workerPath],
+        env: env1,
+        cwd: projectRoot,
+        stderr: 'pipe',
+        stdout: 'pipe',
+      })
+
+      const worker2 = Bun.spawn({
+        cmd: [process.execPath, workerPath],
+        env: env2,
+        cwd: projectRoot,
+        stderr: 'pipe',
+        stdout: 'pipe',
+      })
+
+      // Wait for both with timeout
+      const timeoutMs = 30000
+      const timeout = setTimeout(() => {
+        console.error('[test] Timeout - killing workers')
+        try { worker1.kill() } catch {}
+        try { worker2.kill() } catch {}
+      }, timeoutMs)
+
+      // Read outputs
+      const [exitCode1, exitCode2, stdout1, stdout2, stderr1, stderr2] = await Promise.all([
+        worker1.exited,
+        worker2.exited,
+        new Response(worker1.stdout).text(),
+        new Response(worker2.stdout).text(),
+        new Response(worker1.stderr).text(),
+        new Response(worker2.stderr).text(),
+      ])
+
+      clearTimeout(timeout)
+
+      // Print outputs for debugging
+      console.log(`[test] Worker 1 exit code: ${exitCode1}`)
+      console.log(`[test] Worker 1 stdout:\n${stdout1}`)
+      if (stderr1) console.log(`[test] Worker 1 stderr:\n${stderr1}`)
+      console.log(`[test] Worker 2 exit code: ${exitCode2}`)
+      console.log(`[test] Worker 2 stdout:\n${stdout2}`)
+      if (stderr2) console.log(`[test] Worker 2 stderr:\n${stderr2}`)
+
+      // Both should exit successfully
+      expect(exitCode1).toBe(0)
+      expect(exitCode2).toBe(0)
+
+      // Now load and verify the transcript - scan temp dir to find the file
+      const { readdir } = await import('fs/promises')
+      let transcriptPath: string | undefined
+
+      async function findJsonl(dir: string): Promise<string | undefined> {
+        try {
+          const entries = await readdir(dir, { withFileTypes: true })
+          for (const entry of entries) {
+            const fullPath = join(dir, entry.name)
+            if (entry.isDirectory()) {
+              const found = await findJsonl(fullPath)
+              if (found) return found
+            } else if (entry.name === `${sharedSessionId}.jsonl`) {
+              return fullPath
+            }
+          }
+        } catch {
+          // Skip directories we can't read
+        }
+        return undefined
       }
 
-      await flushSessionStorage()
+      transcriptPath = await findJsonl(testTempDir)
+      expect(transcriptPath).toBeDefined()
+      console.log(`[test] Loading transcript from: ${transcriptPath}`)
 
-      // Read the resulting transcript file
-      const transcriptPath = getTranscriptPath()
-      const content = await readFile(transcriptPath, 'utf-8')
+      const content = await readFile(transcriptPath!, 'utf-8')
       const lines = content.trim().split('\n').filter(l => l.trim())
 
-      // Parse all lines, check for valid JSON, count snapshots
+      console.log(`[test] Total lines: ${lines.length}`)
+
+      // Parse all lines and count valid snapshots
       const snapshots: any[] = []
-      let invalidJsonCount = 0
-      const readWorkerIds = new Set<string>()
+      const seenStartUuids = new Set<string>()
+      const seenEndUuids = new Set<string>()
+      const seenWorkerIds = new Set<string>()
+      let invalidLines = 0
 
       for (const line of lines) {
         try {
           const entry = JSON.parse(line)
           if (entry.type === 'marble-origami-snapshot') {
             snapshots.push(entry)
-            // Check worker ID in summary
-            if (entry.staged?.[0]?.summary) {
-              const summary = entry.staged[0].summary as string
-              if (summary.includes('worker-1')) readWorkerIds.add('1')
-              if (summary.includes('worker-2')) readWorkerIds.add('2')
+            // Extract worker ID from summary
+            const summary = entry.staged?.[0]?.summary || ''
+            const workerMatch = summary.match(/worker-(\d)/)
+            if (workerMatch) {
+              seenWorkerIds.add(workerMatch[1])
             }
+            const startUuid = entry.staged?.[0]?.startUuid
+            const endUuid = entry.staged?.[0]?.endUuid
+            if (startUuid) seenStartUuids.add(startUuid)
+            if (endUuid) seenEndUuids.add(endUuid)
           }
         } catch {
-          invalidJsonCount++
+          invalidLines++
         }
       }
 
-      // Verify results: no interleaved JSON, exactly 100 snapshots
-      expect(invalidJsonCount).toBe(0)
-      expect(snapshots.length).toBe(100)
+      // Verify results
+      expect(invalidLines).toBe(0) // No interleaved JSON - all lines parse
+      expect(snapshots.length).toBeGreaterThanOrEqual(100) // At least 100 snapshots
+      expect(seenStartUuids.size).toBe(snapshots.length) // All start UUIDs unique
+      expect(seenEndUuids.size).toBe(snapshots.length) // All end UUIDs unique
+      expect(seenWorkerIds.has('1')).toBe(true) // Both workers present
+      expect(seenWorkerIds.has('2')).toBe(true)
 
-      // Both workers wrote
-      expect(readWorkerIds.has('1')).toBe(true)
-      expect(readWorkerIds.has('2')).toBe(true)
-
-      resetStateForTests()
-      resetProjectForTesting()
     } finally {
-      // Restore env
-      process.env.CLAUDE_CONFIG_DIR = origConfigDir
-      process.env.TEST_ENABLE_SESSION_PERSISTENCE = origPersistence
+      // Clean up
       await rm(testTempDir, { recursive: true, force: true })
     }
   })

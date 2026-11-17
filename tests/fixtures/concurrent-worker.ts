@@ -6,35 +6,42 @@
  * context collapse snapshots to a shared session.
  */
 
-// IMPORTANT: This worker MUST be spawned with cwd set to project root!
-
-import { setInterval } from 'node:timers'
 import { randomUUID } from 'node:crypto'
+import { join, resolve } from 'node:path'
 
 // Load environment from the parent process
 const workerId = process.env.WORKER_ID || 'unknown'
 const sharedSessionId = process.env.SHARED_SESSION_ID || randomUUID()
-const tempDir = process.env.TEST_TEMP_DIR
+const testProjectRoot = process.env.TEST_PROJECT_ROOT
+const testTempDir = process.env.TEST_TEMP_DIR
+
+if (!testProjectRoot) {
+  console.error(`[worker-${workerId}] TEST_PROJECT_ROOT is required`)
+  process.exit(1)
+}
+
+if (!testTempDir) {
+  console.error(`[worker-${workerId}] TEST_TEMP_DIR is required`)
+  process.exit(1)
+}
 
 console.log(`[worker-${workerId}] Starting with session: ${sharedSessionId}`)
 
-// Set up environment
-if (tempDir) {
-  process.env.CLAUDE_CONFIG_DIR = require('node:path').join(tempDir, 'config')
-  process.env.TEST_ENABLE_SESSION_PERSISTENCE = '1'
-  process.env.NODE_ENV = 'test'
-}
+// Set up environment - use temp dir for session files
+process.env.CLAUDE_CONFIG_DIR = join(testTempDir, 'config')
+process.env.TEST_ENABLE_SESSION_PERSISTENCE = '1'
+process.env.NODE_ENV = 'test'
 
-// Import modules from the project using relative paths (cwd must be project root)
-const { switchSession } = require('./src/bootstrap/state.ts')
+// Import modules from the project using absolute paths
+const { switchSession } = require(join(testProjectRoot, 'src/bootstrap/state.ts'))
 const {
   recordTranscript,
   recordContextCollapseSnapshot,
   flushSessionStorage,
-} = require('./src/utils/sessionStorage.ts')
+} = require(join(testProjectRoot, 'src/utils/sessionStorage.ts'))
 
-// Switch to the shared session
-switchSession(sharedSessionId as any, tempDir ? require('node:path').join(tempDir, 'project') : undefined)
+// Switch to the shared session - use temp dir for project
+switchSession(sharedSessionId as any, join(testTempDir, 'project'))
 
 let writeCount = 0
 const maxWrites = 50
@@ -56,7 +63,7 @@ async function runWorker() {
     await flushSessionStorage()
 
     // Wait a bit for the other worker to also initialize
-    await new Promise(r => setTimeout(r, 50))
+    await new Promise(r => setTimeout(r, Math.random() * 30))
 
     // Now write the context collapse snapshots
     for (let i = 0; i < maxWrites; i++) {
@@ -86,8 +93,8 @@ async function runWorker() {
         endUuid,
       })
 
-      // Very short delay to increase chance of interleaving
-      await new Promise(r => setTimeout(r, 1))
+      // Short random delay to increase chance of interleaving
+      await new Promise(r => setTimeout(r, Math.random() * 2))
     }
 
     await flushSessionStorage()
