@@ -33,6 +33,85 @@ export type StagedCollapse = {
   messages: Message[]
 }
 
+/**
+ * Session-scoped context collapse state.
+ * This replaces the module-level mutable state while maintaining backward compatibility.
+ */
+export class ContextCollapseState {
+  committed: CommittedCollapse[] = []
+  staged: StagedCollapse[] = []
+  nextId = 1
+  armed = false
+  lastSpawnTokens = 0
+  health = {
+    totalSpawns: 0,
+    totalErrors: 0,
+    totalEmptySpawns: 0,
+    emptySpawnWarningEmitted: false,
+    lastError: undefined as string | undefined,
+  }
+
+  private listeners = new Set<() => void>()
+
+  notifyListeners(): void {
+    for (const listener of this.listeners) listener()
+  }
+
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener)
+    return () => {
+      this.listeners.delete(listener)
+    }
+  }
+
+  reset(): void {
+    this.committed = []
+    this.staged = []
+    this.nextId = 1
+    this.armed = false
+    this.lastSpawnTokens = 0
+    this.health = {
+      totalSpawns: 0,
+      totalErrors: 0,
+      totalEmptySpawns: 0,
+      emptySpawnWarningEmitted: false,
+      lastError: undefined,
+    }
+    this.notifyListeners()
+  }
+
+  getStats(): ContextCollapseStats {
+    return {
+      collapsedSpans: this.committed.length,
+      collapsedMessages: this.committed.reduce(
+        (total, commit) => total + (commit.archived?.length ?? 0),
+        0,
+      ),
+      stagedSpans: this.staged.length,
+      health: { ...this.health },
+    }
+  }
+
+  snapshot() {
+    return {
+      staged: this.staged.map(stage => ({
+        startUuid: stage.startUuid,
+        endUuid: stage.endUuid,
+        summary: stage.summary,
+        risk: stage.risk,
+        stagedAt: stage.stagedAt,
+      })),
+      armed: this.armed,
+      lastSpawnTokens: this.lastSpawnTokens,
+    }
+  }
+}
+
+// ============================================================================
+// Legacy compatibility layer (for backward compatibility)
+// DEPRECATED: Use ContextCollapseState class instead
+// ============================================================================
+
 export const collapseStore = {
   committed: [] as CommittedCollapse[],
   staged: [] as StagedCollapse[],
@@ -48,16 +127,16 @@ export const collapseStore = {
   },
 }
 
-const listeners = new Set<() => void>()
+const legacyListeners = new Set<() => void>()
 
 export function notifyCollapseListeners(): void {
-  for (const listener of listeners) listener()
+  for (const listener of legacyListeners) listener()
 }
 
 export function subscribeToCollapses(listener: () => void): () => void {
-  listeners.add(listener)
+  legacyListeners.add(listener)
   return () => {
-    listeners.delete(listener)
+    legacyListeners.delete(listener)
   }
 }
 
@@ -81,7 +160,7 @@ export function getCollapseStats(): ContextCollapseStats {
   return {
     collapsedSpans: collapseStore.committed.length,
     collapsedMessages: collapseStore.committed.reduce(
-      (total, commit) => total + commit.archived.length,
+      (total, commit) => total + (commit.archived?.length ?? 0),
       0,
     ),
     stagedSpans: collapseStore.staged.length,
