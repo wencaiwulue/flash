@@ -20,6 +20,8 @@ export function InvalidSettingsDialog({
   onContinue,
   onExit,
 }: Props): React.ReactNode {
+  const hasErrors = settingsErrors.some(error => error.severity !== 'warning')
+
   function handleSelect(value: string): void {
     if (value === 'exit') {
       onExit()
@@ -29,20 +31,29 @@ export function InvalidSettingsDialog({
   }
 
   return (
-    <Dialog title="Settings Error" onCancel={onExit} color="warning">
+    <Dialog
+      title={hasErrors ? 'Settings Error' : 'Settings Warning'}
+      onCancel={hasErrors ? onExit : onContinue}
+      color="warning"
+    >
       <ValidationErrorsList errors={settingsErrors} />
       <Text dimColor>
-        Files with errors are skipped entirely, not just the invalid settings.
+        {hasErrors
+          ? 'Files with errors are skipped entirely, not just the invalid settings.'
+          : 'Invalid entries were skipped; valid settings remain active.'}
       </Text>
       <Select
-        options={[
-          { label: 'Exit and fix manually', value: 'exit' },
-          {
-            label: 'Continue without these settings',
-            value: 'continue',
-          },
-        ]}
+        options={hasErrors
+          ? [
+              { label: 'Exit and fix manually', value: 'exit' },
+              {
+                label: 'Continue without these settings',
+                value: 'continue',
+              },
+            ]
+          : [{ label: 'Continue', value: 'continue' }]}
         onChange={handleSelect}
+        onCancel={hasErrors ? onExit : onContinue}
       />
     </Dialog>
   )
