@@ -56,69 +56,61 @@
 
 禁用的模块可能返回 `false`、空集合或显式不可用错误。它们有意与完成的实现不同。验证状态属于 `docs/STATUS.md`；发布历史属于 `docs/RELEASE.md`。
 
+---
+
 ## Context 与 Memory 生命周期总览
 
-本节提供 Context（对话上下文）与 Memory（记忆系统）的产品级架构总览，详细设计请参考各子系统 spec。
+本节提供 Context（对话历史）与 Memory 系统的产品级架构总览。详细设计请参考各子系统 spec。
+
+---
 
 ### Context 生命周期：Prompt → Token → Compaction → PTL → Boundary → QueryEngine → Session Restore
 
 Context 系统负责管理发送给模型的对话历史，在 Token 限制和用户体验之间取得平衡。
 
 1. **请求前：Micro-Compaction**
-   - 每轮请求发送前，先执行 `microCompactMessages()`
-   - 有两条路径：time-based（优先）和 cached
-   - Time-based：当距上次 micro-compact 超过阈值时，清理旧工具结果
-   - Cached：当 prompt caching 启用且模型支持时，保留缓存前缀
-   - 证据：`src/services/compact/microCompact.ts:1-535`
+   - 两条路径：time-based（优先）和 cached
+   - 达到阈值时清理旧工具结果
 
 2. **请求中：Context Collapse**
-   - 每轮 query 开始时调用 `applyCollapsesIfNeeded()`
-   - 计算 Token 占比：ratio = 当前 Token / 有效上下文窗口
-   - ratio < 0.9：直接返回，应用已 commit 的 collapse
-   - 0.9 ≤ ratio < 0.95 且无 active spawn：启动异步 summarization
-   - ratio ≥ 0.95：等待异步 summarization 完成
-   - 证据：`src/services/contextCollapse/index.ts:1-346`
+   - 在上下文窗口阈值处触发异步摘要
+   - 已应用的 collapse 跨会话持久化
 
-3. **PTL 触发：Reactive Compact**
-   - 当模型返回 "Prompt too long"（PTL）错误时触发
-   - 先执行 `stripImagesFromMessages()` 移除图片
-   - 再调用 `compactConversation()` 执行完整压缩
-   - 单次尝试，失败后映射错误原因
-   - 证据：`src/services/compact/reactiveCompact.ts:1-188`
+3. **PTL 恢复：Reactive Compact**
+   - 处理"Prompt too long"错误
+   - 移除媒体，应用完整压缩，重试一次
 
 4. **Compact Boundary：QueryEngine 裁剪**
-   - 当遇到 compact boundary 消息时，QueryEngine 裁剪 mutableMessages 数组
-   - 仅保留 boundary 之后的内容
-   - Preserved segment UUID 链保持完整
-   - 会话恢复时从 storage 重建
-   - 证据：[batch-1.md 证据链](status/design-docs-completeness-audit/batch-1.md#证据链请求前--请求中--ptl--boundary--queryengine--session-restore)
+   - 在边界标记后截断历史
+   - 保持保留段的 UUID 链
 
-5. **会话恢复：Session Restore**
-   - 从 storage 加载 commits 和 snapshot
-   - 重建 collapseStore（committed、staged、generation、armed、lastSpawnTokens）
-   - `projectView()` 应用已 commit 的 collapse 到当前消息
-   - 证据：`src/services/contextCollapse/store.ts:1-90`
+5. **会话恢复**
+   - 从存储重建状态
+   - 应用持久化的 collapse
 
-### Memory 加载与失效：Auto → Team → Session → CLAUDE.md → Daily Log
+---
 
-Memory 系统负责从多个来源加载和组织上下文信息。
+### Memory 生命周期：Source → Load → Extract → Consolidate → Invalidate → Restart
 
-1. **来源优先级**
-   - Auto-memory：自动提取的会话摘要
-   - Team memory：团队共享记忆（仅内部用户）
+Memory 系统从多个来源组织上下文信息。
+
+1. **来源**
+   - Auto-memory：自动会话摘要
+   - Team memory：团队共享上下文（仅内部用户）
    - Session memory：当前会话恢复
-   - CLAUDE.md：项目根目录的项目文档
-   - Daily log：用户日记（如有）
+   - 项目文档：项目根目录的 CLAUDE.md
+   - 每日日志：KAIROS 每日日志（仅内部用户）
 
-2. **加载时机**
-   - `initSessionMemory()`：在 setup() 阶段加载（非 bare 模式）
-   - `loadConversationForResume()`：当使用 --resume 时
-   - 动态：技能执行过程中按需加载
+2. **加载与提取**
+   - 在 setup() 阶段加载
+   - 在技能执行期间动态提取
+   - 使用 --resume 时加载
 
-3. **失效与整理**
-   - Auto-memory 阈值可配置：`/autocompact <tokens>`
-   - Session persistence 可禁用：`--no-session-persistence`
-   - 证据：[memory spec](superpowers/specs/2026-11-12-memory-design.md)
+3. **整理与失效**
+   - Auto-compaction 阈值可通过 `/autocompact <tokens>` 配置
+   - 会话持久化可通过 `--no-session-persistence` 禁用
+
+---
 
 ### 跨子系统边界与主责 Spec
 
@@ -128,6 +120,8 @@ Memory 系统负责从多个来源加载和组织上下文信息。
 | Query Engine | query-core | [query-core spec](superpowers/specs/2026-11-12-query-core-design.md) | [coverage](architecture/coverage/query-core.yaml) |
 | Session Persistence | session-persistence | [session-persistence spec](superpowers/specs/2026-11-12-session-persistence-design.md) | [coverage](architecture/coverage/session-persistence.yaml) |
 | Memory System | memory | [memory spec](superpowers/specs/2026-11-12-memory-design.md) | [coverage](architecture/coverage/memory.yaml) |
+
+---
 
 ## 子系统设计规格
 
