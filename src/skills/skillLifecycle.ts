@@ -1,185 +1,106 @@
-import { createHash } from "crypto";
-import type { Command } from "../types/command";
-import { getAdditionalDirectoriesForClaudeMd } from "../bootstrap/state";
-import { logForDebugging } from "../utils/debug";
-import { isBareMode, isEnvTruthy } from "../utils/envUtils";
+import { createHash } from 'crypto'
+import type { Command } from '../types/command.js'
+import { getAdditionalDirectoriesForClaudeMd } from '../bootstrap/state.js'
+import { logForDebugging } from '../utils/debug.js'
+import { isBareMode, isEnvTruthy } from '../utils/envUtils.js'
+import * as loadSkillsDir from './loadSkillsDir.js'
 
 // Types
 export interface SkillCacheKeyOptions {
-  cwd: string;
-  additionalDirs: string[];
-  remote: boolean;
+  cwd: string
+  additionalDirs: string[]
+  remote: boolean
 }
 
 export interface BoundedSkillCacheOptions {
-  ttlMs: number;
-  maxEntries: number;
-}
-
-export interface SkillLifecycleControllerOptions {
-  watcherFactory?: () => SkillWatcher;
-  loadSkillsFn?: (dir: string) => Promise<Command[]>;
-}
-
-export interface SkillWatcher {
-  on: (event: string, callback: (path: string) => void) => void;
-  off: (event: string, callback: (path: string) => void) => void;
-  close: () => void | Promise<void>;
-  emit?: (event: string, path: string) => void; // For testing
-}
-
-interface CacheEntry {
-  skill: Command;
-  timestamp: number;
+  ttlMs: number
+  maxEntries: number
 }
 
 // Cache key implementation
 export function skillCacheKey(options: SkillCacheKeyOptions): string {
-  const { cwd, additionalDirs, remote } = options;
-  // Create a stable string representation
+  const { cwd, additionalDirs, remote } = options
   const keyString = JSON.stringify({
     cwd,
     additionalDirs: [...additionalDirs].sort(),
     remote,
     bare: isBareMode(),
     disablePolicySkills: isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_POLICY_SKILLS),
-  });
-  // Hash for stable and concise key
-  return createHash("sha256").update(keyString).digest("hex");
+  })
+  return createHash('sha256').update(keyString).digest('hex')
 }
 
-// Bounded skill cache with TTL
-export function createBoundedSkillCache(options: BoundedSkillCacheOptions) {
-  const { ttlMs, maxEntries } = options;
-  const cache = new Map<string, CacheEntry>();
-
-  const evictExpired = () => {
-    const now = Date.now();
-    for (const [key, entry] of cache.entries()) {
-      if (now - entry.timestamp > ttlMs) {
-        cache.delete(key);
-      }
-    }
-  };
-
-  const evictOverflow = () => {
-    while (cache.size > maxEntries) {
-      // Remove oldest entry
-      const oldestKey = cache.keys().next().value;
-      if (oldestKey) {
-        cache.delete(oldestKey);
-      } else {
-        break;
-      }
-    }
-  };
-
-  return {
-    async put(key: string, skill: Command) {
-      evictExpired();
-      cache.set(key, { skill, timestamp: Date.now() });
-      evictOverflow();
-    },
-    async get(key: string): Promise<Command | undefined> {
-      evictExpired();
-      const entry = cache.get(key);
-      return entry?.skill;
-    },
-    async delete(key: string): Promise<boolean> {
-      return cache.delete(key);
-    },
-    async dispose() {
-      cache.clear();
-    },
-    get size() {
-      return cache.size;
-    },
-    // For testing
-    _evictExpired: evictExpired,
-    _cache: cache,
-  };
+// Track dynamically discovered directories and their skills
+interface TrackedSkillDir {
+  dir: string
+  skills: string[] // skill names from this dir
 }
 
-// Skill lifecycle controller
-export function createSkillLifecycleController(options: SkillLifecycleControllerOptions = {}) {
-  const { watcherFactory, loadSkillsFn } = options;
+const trackedDirs = new Map<string, TrackedSkillDir>()
 
-  // Active conditional skills
-  const activeConditionalNames = new Set<string>();
-  // Track directories and their watchers
-  const watchedDirs = new Map<string, SkillWatcher>();
-  // Cache for loaded skills
-  const loadedSkills = new Map<string, Command[]>();
+/**
+ * Register a dynamically discovered skill directory for tracking
+ * Called when addSkillDirectories is invoked
+ */
+export function trackSkillDir(dir: string, skills: Command[]): void {
+  const skillNames = skills.map((s) => s.name)
+  trackedDirs.set(dir, { dir, skills: skillNames })
+}
 
-  const activate = async (name: string) => {
-    activeConditionalNames.add(name);
-  };
+/**
+ * Handle directory deletion - removes any skills from the deleted directory
+ * Called by skillChangeDetector when unlinkDir is detected
+ */
+export function handleDirectoryDeletion(dirPath: string): void {
+  logForDebugging(`[skills] Handling directory deletion: ${dirPath}`)
 
-  const deactivate = async (name: string) => {
-    activeConditionalNames.delete(name);
-  };
-
-  const watchDirectory = (dir: string, watcher: SkillWatcher) => {
-    if (watchedDirs.has(dir)) {
-      return; // Already watching
+  // Find all tracked dirs that are under the deleted path
+  const deletedDirs: string[] = []
+  for (const [dir] of trackedDirs) {
+    if (dir === dirPath || dir.startsWith(dirPath + '/')) {
+      deletedDirs.push(dir)
     }
+  }
 
-    watchedDirs.set(dir, watcher);
+  for (const deletedDir of deletedDirs) {
+    const tracked = trackedDirs.get(deletedDir)
+    if (!tracked) continue
 
-    watcher.on("unlinkDir", (path: string) => {
-      if (path === dir || path.startsWith(dir + "/")) {
-        // Directory removed - invalidate skills from this directory
-        logForDebugging(`Skill directory removed: ${path}`);
-        // Remove any skills that came from this directory
-        for (const [key, skills] of loadedSkills.entries()) {
-          const filteredSkills = skills.filter((skill) => {
-            return !skill.skillRoot?.startsWith(path);
-          });
-          if (filteredSkills.length !== skills.length) {
-            if (filteredSkills.length > 0) {
-              loadedSkills.set(key, filteredSkills);
-            } else {
-              loadedSkills.delete(key);
-            }
-          }
-        }
-        // Deactivate any conditional skills associated with this path
-        for (const name of activeConditionalNames) {
-          if (name.includes(path) || path.includes(name)) {
-            deactivate(name);
-          }
-        }
+    // Remove skills from dynamicSkills
+    for (const skillName of tracked.skills) {
+      const removed = loadSkillsDir.removeDynamicSkill(skillName)
+      if (removed) {
+        logForDebugging(`[skills] Removed dynamic skill ${skillName} from deleted dir ${deletedDir}`)
       }
-    });
-  };
-
-  const unwatchDirectory = async (dir: string) => {
-    const watcher = watchedDirs.get(dir);
-    if (watcher) {
-      await watcher.close();
-      watchedDirs.delete(dir);
+      // Also remove from activated conditional skills
+      loadSkillsDir.deactivateConditionalSkill(skillName)
     }
-  };
+    trackedDirs.delete(deletedDir)
+  }
 
-  const dispose = async () => {
-    // Close all watchers
-    for (const watcher of watchedDirs.values()) {
-      await watcher.close();
-    }
-    watchedDirs.clear();
-    activeConditionalNames.clear();
-    loadedSkills.clear();
-  };
+  // If any skills were removed, emit the signal
+  if (deletedDirs.length > 0) {
+    loadSkillsDir.emitSkillsLoaded()
+  }
+}
 
-  return {
-    activate,
-    deactivate,
-    watchDirectory,
-    unwatchDirectory,
-    dispose,
-    activeConditionalNames,
-    // Expose for testing
-    _watchedDirs: watchedDirs,
-    _loadedSkills: loadedSkills,
-  };
+/**
+ * Unregister a skill directory when it's removed
+ */
+export function untrackSkillDir(dir: string): void {
+  trackedDirs.delete(dir)
+}
+
+/**
+ * Check if a directory is tracked
+ */
+export function isTrackedDir(dir: string): boolean {
+  return trackedDirs.has(dir)
+}
+
+/**
+ * Get all tracked directories
+ */
+export function getTrackedDirs(): string[] {
+  return [...trackedDirs.keys()]
 }

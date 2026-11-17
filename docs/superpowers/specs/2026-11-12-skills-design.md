@@ -3,7 +3,7 @@ id: skills
 batch: 3
 title: Skills 技能发现、加载与执行设计
 date: 2026-11-12
-status: implemented
+status: draft
 ---
 
 # Skills 技能发现、加载与执行设计
@@ -25,12 +25,12 @@ status: implemented
 
 ### 1.2 边界约束
 
-- **条件技能可失效**: 条件技能激活后，当技能目录被删除时，相关条件技能会被自动移除
-- **远程缓存有界**: 远程技能缓存支持TTL和最大条目限制，可自动清理过期条目
-- **动态发现目录可监听**: 支持动态发现目录的监听和生命周期管理
-- **getSkillDirCommands缓存键完善**: 缓存键包含cwd、additional dirs、bare mode和policy skills禁用状态，环境变更会正确失效缓存
+- **条件技能无自动失效**: 条件技能一旦激活，会保留在动态技能中，即使后续文件变更不再匹配paths也不会自动移除
+- **远程缓存无清理**: 远程技能缓存无限增长，没有LRU或大小限制清理机制
+- **动态发现目录不监听**: 动态发现的技能目录不会被chokidar监听，变更不会自动重载
+- **getSkillDirCommands缓存键单一**: 仅以cwd为缓存键，环境变量、设置变更不会自动失效缓存
 
-### 1.2 关键约束
+### 1.3 关键约束
 
 | 约束 | 值 | 说明 |
 |------|-----|------|
@@ -45,13 +45,13 @@ status: implemented
 | 裸模式 | --bare跳过自动发现 | 只加载显式--add-dir |
 | 企业策略 | skillsLocked时只加载企业策略 | policySettings优先级最高 |
 
-### 1.3 来源优先级
+### 1.4 来源优先级
 
 ```
 policySettings (企业) > userSettings (用户) > projectSettings (项目，从cwd向上) > additional dirs (--add-dir) > legacy commands > bundled skills > plugin skills > MCP skills > remote skills
 ```
 
-### 1.4 边界疑虑
+### 1.5 边界疑虑
 
 - 符号链接重复: 使用realpath去重，但注意不同路径指向同一文件的情况
 - gitignored技能目录: 动态发现时跳过gitignored目录，但启动加载时不检查

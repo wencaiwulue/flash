@@ -153,7 +153,7 @@ specs:
     spec: docs/superpowers/specs/2026-11-12-skills-design.md
     coverage: docs/architecture/coverage/skills.yaml
     batch: 3
-    status: implemented
+    status: draft
   - id: app-state
     spec: docs/superpowers/specs/2026-11-12-app-state-design.md
     coverage: docs/architecture/coverage/app-state.yaml
