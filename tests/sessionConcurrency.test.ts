@@ -7,7 +7,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { randomUUID } from 'crypto'
-import { mkdtemp, rm, writeFile, readFile, mkdir } from 'fs/promises'
+import { mkdtemp, rm, writeFile, readFile, mkdir, utimes } from 'fs/promises'
 import { join, resolve, dirname } from 'path'
 import { tmpdir } from 'os'
 import {
@@ -347,16 +347,44 @@ describe('Session Concurrency Contracts', () => {
     resetProjectForTesting()
   })
 
-  test('real proper-lockfile: stale lock recovery pattern exists in source', async () => {
-    // Verify our implementation uses proper-lockfile with stale option
-    const source = await Bun.file(
-      import.meta.dir + '/../src/utils/sessionStorage.ts'
-    ).text()
+  test('real proper-lockfile: stale lock is cleaned up', async () => {
+    // Create a test file for locking
+    const testDir = await mkdtemp(join(tmpdir(), 'claude-stale-lock-test-'))
+    const testFile = join(testDir, 'test.jsonl')
+    await mkdir(dirname(testFile), { recursive: true, mode: 0o700 })
+    await writeFile(testFile, '', { mode: 0o600 })
 
-    // Check that lockfile.lock is called with stale option
-    expect(source).toContain('lockfile.lock')
-    expect(source).toContain('stale:')
-    expect(source).toContain('retries:')
+    // Manually create a lock directory to simulate a stale lock
+    // proper-lockfile creates directories named ${filename}.lock
+    const lockDir = testFile + '.lock'
+    await mkdir(lockDir, { mode: 0o700 })
+
+    // Age the lock by setting its mtime to 1 hour ago
+    const oneHourAgo = Date.now() - 60 * 60 * 1000
+    await utimes(lockDir, new Date(oneHourAgo), new Date(oneHourAgo))
+
+    try {
+      // Now try to acquire the lock with a short stale threshold (1 second)
+      // This should succeed because the manual lock is stale
+      const release = await lockfile.lock(testFile, {
+        stale: 1000,
+        retries: 0,
+      })
+
+      // Verify we can check the lock status and it shows as locked
+      const isLocked = await lockfile.check(testFile, { stale: 10000 })
+      expect(isLocked).toBe(true)
+
+      // Release the lock
+      await release()
+
+      // Verify check shows as not locked
+      const isLockedAfterRelease = await lockfile.check(testFile, { stale: 10000 })
+      expect(isLockedAfterRelease).toBe(false)
+    } finally {
+      // Clean up
+      await rm(testDir, { recursive: true, force: true })
+    }
   })
 
   test('real proper-lockfile: can lock and unlock multiple times', async () => {
@@ -389,61 +417,47 @@ describe('Session Concurrency Contracts', () => {
     await mkdir(dirname(testFile), { recursive: true, mode: 0o700 })
     await writeFile(testFile, '', { mode: 0o600 })
 
-    // Acquire lock first
-    const release = await lockfile.lock(testFile, {
-      stale: 10000,
-    })
-
-    // Check that lockfile.check reports locked (if supported)
-    // We don't fail the test if it doesn't - just verify the second lock fails
+    let release: (() => Promise<void>) | undefined
     try {
-      await lockfile.check(testFile, { stale: 10000 })
-    } catch {
-      // check might throw or return false depending on implementation
-    }
-
-    // Now try to acquire again with finite retries - this should fail
-    let secondRelease: (() => Promise<void>) | undefined
-    let lockError: Error | undefined
-    const startTime = Date.now()
-    try {
-      secondRelease = await lockfile.lock(testFile, {
+      // Acquire lock first
+      release = await lockfile.lock(testFile, {
         stale: 10000,
-        retries: 1,
-        minTimeout: 50,
-        maxTimeout: 100,
       })
-    } catch (e) {
-      lockError = e as Error
-    }
-    const duration = Date.now() - startTime
 
-    // Should have failed with lock error within bounded duration
-    expect(lockError).toBeDefined()
-    expect(secondRelease).toBeUndefined()
-    expect(duration).toBeLessThan(5000) // Should fail quickly, not hang
+      // Assert that lockfile.check reports exactly true while held
+      const isLockedWhileHeld = await lockfile.check(testFile, { stale: 10000 })
+      expect(isLockedWhileHeld).toBe(true)
 
-    // Now release the lock
-    await release()
+      // Now try to acquire again with finite retries - this should fail
+      let secondRelease: (() => Promise<void>) | undefined
+      let lockError: Error & { code?: string } | undefined
+      const startTime = Date.now()
+      try {
+        secondRelease = await lockfile.lock(testFile, {
+          stale: 10000,
+          retries: 1,
+          minTimeout: 50,
+          maxTimeout: 100,
+        })
+      } catch (e) {
+        lockError = e as Error & { code?: string }
+      }
+      const duration = Date.now() - startTime
 
-    // Now we should be able to acquire it
-    let thirdRelease: (() => Promise<void>) | undefined
-    let thirdError: Error | undefined
-    try {
-      thirdRelease = await lockfile.lock(testFile, {
-        stale: 10000,
-        retries: 1,
-      })
-    } catch (e) {
-      thirdError = e as Error
-    }
+      // Should have failed with lock error within bounded duration
+      expect(lockError).toBeDefined()
+      expect(lockError?.code).toBe('ELOCKED')
+      expect(secondRelease).toBeUndefined()
+      expect(duration).toBeLessThan(5000) // Should fail quickly, not hang
+    } finally {
+      // Now release the lock
+      if (release) {
+        await release()
+      }
 
-    // Verify cleanup works - we can acquire after release
-    expect(thirdError).toBeUndefined()
-    expect(thirdRelease).toBeDefined()
-
-    if (thirdRelease) {
-      await thirdRelease()
+      // Assert check is false after release
+      const isLockedAfterRelease = await lockfile.check(testFile, { stale: 10000 })
+      expect(isLockedAfterRelease).toBe(false)
     }
 
     await rm(testDir, { recursive: true, force: true })
@@ -655,9 +669,9 @@ describe('Session Concurrency Contracts', () => {
 
       // Verify results
       expect(invalidLines).toBe(0) // No interleaved JSON - all lines parse
-      expect(snapshots.length).toBeGreaterThanOrEqual(100) // At least 100 snapshots
-      expect(seenStartUuids.size).toBe(snapshots.length) // All start UUIDs unique
-      expect(seenEndUuids.size).toBe(snapshots.length) // All end UUIDs unique
+      expect(snapshots.length).toBe(100) // Exactly 100 snapshots
+      expect(seenStartUuids.size).toBe(100) // All start UUIDs unique
+      expect(seenEndUuids.size).toBe(100) // All end UUIDs unique
       expect(seenWorkerIds.has('1')).toBe(true) // Both workers present
       expect(seenWorkerIds.has('2')).toBe(true)
 
