@@ -183,6 +183,7 @@ Expected: FAIL，无法 import `scripts/upstreamConfigInventory.ts`；此时尚�
 8. CLI 参数为 `--settings-reference --settings --hooks-reference --env-vars --llms --binary --binary-commit --binary-platform --captured-at --output-dir`。使用 `createHash('sha256')` 计算文档和二进制哈希；`spawnSync(binary, ['--version'], { encoding:'utf8' })` 只获取版本，不运行 doctor。
 9. evidence.json 写 `schemaVersion:1`、`capturedAt`、五个文档的 URL/hash、`binary:{version,commit,platform,sha256}`、`probeDirectory` 不写本机路径。inventory.json 的 baseline 复用同一份数据。
 10. 所有未知参数、缺失参数、重复 ID、空 entries 均非零退出。二进制版本开头必须是完整 semver `2.1.311` 并以空白或字符串结尾为边界；不得用 substring includes 接受 2.1.3110 或 12.1.311。
+11. 父设置非 fenced Type 以 `object with` 开头时，通用提取同一行顶层 code span 中的静态子键；支持普通、optional 及直接声明的 array/Boolean/string/number/object 类型。排除括号内值、字符串/数字/类型词/布尔字面量、已有 index/detail 路径和所有配置示例。`object mapping ... to an object with`、hooks 动态 event/matcher 不生成伪静态路径。子 entry 使用父 anchor/excerpt，继承明确 Scope/sourceRules/lifecycle/introduced/afterBaseline；default 未记录、precedence 不独立推断，类型只有直接无歧义声明才填写。完整契约见 spec 4.1.2。
 
 - [ ] **Step 4: 运行真实采集并保存脱敏 probe**
 
@@ -232,7 +233,7 @@ bun scripts/upstreamConfigInventory.ts \
 - [ ] **Step 5: 验证解析与确定性**
 
 Run: `bun test ./tests/upstreamConfigInventory.test.ts`
-Expected: PASS；hook 数恰好 33，settings/env 数量打印但不硬编码早期 `99+22`。
+Expected: PASS；hook 数恰好 33，settings/env 数量打印但不硬编码早期 `99+22`。本次 Type-declared nested 补漏后的固定快照实测为 setting=285、hook=33、env=413（总计 731）；相对 Task 1 原快照新增 36 个 setting ID，原 695 ID 全部保留且原 entry 字段不变，evidence/probes 不变。真实快照测试登记全部 36 个新增 ID，合成测试覆盖普通/optional/直接类型子键、显式子节去重及字面量/fenced 示例排除；同输入两次独立采集的 evidence/inventory 必须逐字节 `cmp` 相等。
 
 再次运行同一采集命令到临时输出目录并比较：
 

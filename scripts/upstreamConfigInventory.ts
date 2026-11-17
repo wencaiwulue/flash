@@ -284,6 +284,73 @@ function normalizeType(value: string | undefined): string[] {
   return [primary]
 }
 
+const NESTED_SETTING_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_-]*$/
+const NON_KEY_CODE_SPANS = new Set([
+  'array',
+  'boolean',
+  'false',
+  'integer',
+  'map',
+  'null',
+  'number',
+  'object',
+  'record',
+  'string',
+  'true',
+  'undefined',
+])
+
+type ObjectWithChild = {
+  key: string
+  types: string[]
+}
+
+function directlyDeclaredChildType(trailingText: string): string[] {
+  const match = trailingText.match(
+    /^\s*(?:\(\s*|,\s*)?(?:as\s+)?(?:an?\s+)?(boolean|string|number|object|array)\b/i,
+  )
+  return match ? [match[1]!.toLowerCase()] : []
+}
+
+function objectWithChildren(typeValue: string | undefined): ObjectWithChild[] {
+  if (!typeValue) return []
+  const cleaned = stripMarkdown(typeValue)
+  if (!/^object\s+with\b/i.test(cleaned)) return []
+
+  const spans = [...cleaned.matchAll(/`([^`\r\n]+)`/g)]
+  const children: ObjectWithChild[] = []
+  const seen = new Set<string>()
+  let parenthesisDepth = 0
+  let cursor = 0
+
+  for (let index = 0; index < spans.length; index++) {
+    const span = spans[index]!
+    const spanStart = span.index!
+    const precedingText = cleaned.slice(cursor, spanStart)
+    for (const character of precedingText) {
+      if (character === '(') parenthesisDepth++
+      if (character === ')') parenthesisDepth = Math.max(0, parenthesisDepth - 1)
+    }
+    cursor = spanStart + span[0].length
+
+    const key = span[1]!.trim()
+    if (
+      parenthesisDepth === 0 &&
+      NESTED_SETTING_KEY_PATTERN.test(key) &&
+      !NON_KEY_CODE_SPANS.has(key.toLowerCase()) &&
+      !seen.has(key)
+    ) {
+      const nextSpanStart = spans[index + 1]?.index ?? cleaned.length
+      children.push({
+        key,
+        types: directlyDeclaredChildType(cleaned.slice(cursor, nextSpanStart)),
+      })
+      seen.add(key)
+    }
+  }
+  return children
+}
+
 function parseDefault(value: string | undefined): {
   value: unknown
   documented: boolean
@@ -410,7 +477,7 @@ export function parseSettingsReference(
   if (rows.length === 0) throw new Error('settings index table not found')
   const details = indexDetailSections(markdown)
 
-  return rows.map(({ cells, lineNumber }) => {
+  const parents = rows.map(({ cells, lineNumber }) => {
     const key = cells[0]!.match(/^\[\s*`([^`]+)`\s*\]\(#([^)]+)\)$/)
     if (!key) throw new Error(`malformed settings index key at line ${lineNumber}`)
     const [, path, anchor] = key
@@ -465,6 +532,37 @@ export function parseSettingsReference(
         precedence,
       ]),
     }
+  })
+
+  const explicitPaths = new Set<string>([...details.keys(), ...parents.map(entry => entry.path)])
+  return parents.flatMap(parent => {
+    const prose = withoutCodeBlocks(details.get(parent.path)?.lines ?? [])
+    const typeValue = metadataValue(prose, 'Type')
+    const typeLine = metadataLine(prose, 'Type')
+    const children = objectWithChildren(typeValue)
+      .filter(({ key }) => !explicitPaths.has(`${parent.path}.${key}`))
+      .map(({ key, types }): UpstreamEntry => {
+        const path = `${parent.path}.${key}`
+        return {
+          id: `setting:${path}`,
+          kind: 'setting',
+          path,
+          title: path,
+          types,
+          default: null,
+          defaultDocumented: false,
+          scopes: [...parent.scopes],
+          sourceRules: parent.sourceRules,
+          precedence: '',
+          precedenceDocumented: false,
+          lifecycle: parent.lifecycle,
+          ...(parent.introduced ? { introduced: parent.introduced } : {}),
+          ...(parent.afterBaseline ? { afterBaseline: true } : {}),
+          source: { ...parent.source },
+          excerpt: makeExcerpt([typeLine, parent.sourceRules]),
+        }
+      })
+    return [parent, ...children]
   })
 }
 
