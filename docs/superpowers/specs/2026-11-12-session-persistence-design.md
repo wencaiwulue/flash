@@ -52,6 +52,20 @@ status: draft
 | **队列化写入与 flush 时机** | `appendEntry()` 队列化后立即 resolve，不等待刷盘；100ms 定时器批量 flush；`flush()` 等待 active drain 和 pending writes | 不阻塞调用方 UI；批量写入减少 I/O 次数 | 同步等待刷盘：用户体验卡顿；每写入立即 flush：I/O 次数过多，性能差 | 崩溃时未 flush 的数据丢失；调用方必须调用 `flush()` 确保持久化 | `src/utils/sessionStorage.ts:533-687` [B2-session-persistence-03] |
 | **跨进程短锁机制** | `appendToFile()` 使用 proper-lockfile；锁仅在文件写入期间持有；锁超时 5 次重试（10-100ms 退避）；锁 10s 后视为 stale 可清理；写入前确保文件存在 | 防止 SDK/CLI 同时写入导致交错；锁粒度小，不阻塞模型调用；stale lock 自动清理避免死锁 | 无锁：写入交错损坏 JSONL；粗粒度锁：阻塞模型调用性能差；数据库：复杂度太高 | 轻微写入延迟增加；极端情况下仍可能时序问题（但不会损坏） | `src/utils/sessionStorage.ts:635-687` [B2-session-persistence-03] |
 
+### 三层证据与锁生命周期（当前实现）
+
+- **官方文档**：[Agent SDK Sessions](https://code.claude.com/docs/en/agent-sdk/sessions.md) 用于核对 continue/resume/fork 语义；本文不把这些会话语义扩展为跨进程写锁协议。
+- **上游二进制**：对 `/opt/homebrew/bin/claude` 执行 `strings` 可定位 `recordContextCollapseSnapshot`、`marble-origami-snapshot`、`marble-origami-commit` 等持久化符号，证明上游也存在快照/提交记录，但不能据此推断其锁实现。
+- **本仓库契约**：`src/utils/lockfile.ts` 是 proper-lockfile 的惰性包装，`appendToFile()` 在获取锁后才追加，释放发生在 `finally`。锁只覆盖单次文件写入，不覆盖模型调用、读取或 session discovery。
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| session `.lock` | 当前 session 文件 | 首次追加时创建锁文件 | 同一路径锁互斥；不同 session 文件锁隔离 | 锁文件由 proper-lockfile 管理 | 超过 10s 的 stale lock 可清理；重试 5 次、10-100ms 退避 | `finally` 释放；进程崩溃由 stale 检测恢复 |
+| JSONL append queue | 当前 Project/session | `recordTranscript` 物化 session 文件后写入 | 同 session 并发写经锁串行化；fork 使用独立文件 | 每条 JSONL 完整一行，损坏尾行单独恢复 | 重复 UUID 不重复落盘，非法行跳过 | `loadTranscriptFile` 按有效 entry 恢复，保留可解析链 |
+| `concurrent-worker.ts` | session-persistence 测试 | 两个独立 `Bun.spawn` worker 共享 `switchSession(sharedId)` | 真实独立进程，验证锁与原子追加 | 100 个有效 snapshot entry，两个 worker ID 均存在 | 无交叉 JSON、无丢失 entry | worker 完成后释放锁与临时目录 |
+
+回滚时先停止新写入并释放当前锁，再回退 `appendToFile()` 的锁逻辑；旧 JSONL 不删除。回滚验证必须重新运行双进程写入、stale lock、超时、partial/corrupt tail 和 SDK fork 测试。
+
 ## 3. 目标与非目标
 
 ### 目标
