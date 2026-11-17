@@ -860,6 +860,303 @@ showDiffInIDE 中 IDE 断开
 | 通知系统 | useIDEStatusIndicator 调用 addNotification/removeNotification | 本文只添加/移除通知，不定义通知显示和优先级 | notifications |
 | 分析事件 | logEvent('tengu_ext_installed')、logEvent('tengu_ext_will_show_diff')、logEvent('tengu_ext_diff_accepted')、logEvent('tengu_ext_diff_rejected')、logEvent('tengu_ext_ide_command') | 本文只发送事件，不定义事件收集和传输 | telemetry |
 
+---
+
+### 4.7 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│                        Claude Code CLI                          │
+├─────────────────────────────────────────────────────────────────┤
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │          AppState (Dynamic MCP Config)                  │   │
+│  │  ┌───────────────────────────────────────────────────┐  │   │
+│  │  │ mcp.clients[name='ide'] (connected/failed)        │  │   │
+│  │  └───────────────────────────────────────────────────┘  │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                              │                                  │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │              useIDEIntegration Hook                      │  │
+│  │  initializeIdeIntegration()                              │  │
+│  │  ├─ findAvailableIDE() (up to 30s)                      │  │
+│  │  └─ setDynamicMcpConfig()                               │  │
+│  └─────────────────────────────────────────────────────────┘  │
+│                              │                                  │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │              useDiffInIDE Hook                           │  │
+│  │  showDiffInIDE() ────────────────────────┐               │  │
+│  │  callIdeRpc('openDiff')                  │               │  │
+│  │  └─ cleanup() ───────────────────────────┘               │  │
+│  └─────────────────────────────────────────────────────────┘  │
+│                              │                                  │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │         src/utils/ide.ts (Core Module)                  │  │
+│  │  ┌───────────────────────────────────────────────────┐  │  │
+│  │  │ detectIDEs() → scan ~/.claude/ide/*.lock       │  │  │
+│  │  │ findAvailableIDE() → poll with sleep          │  │  │
+│  │  │ cleanupStaleIdeLockfiles()                     │  │  │
+│  │  │ maybeInstallIDEExtension()                     │  │  │
+│  │  │ getConnectedIdeClient()                        │  │  │
+│  │  │ callIdeRpc()                                   │  │  │
+│  │  └───────────────────────────────────────────────────┘  │  │
+│  │  ┌───────────────────────────────────────────────────┐  │  │
+│  │  │ Caches & State:                              │  │  │
+│  │  │ • currentIDESearch: AbortController|null    │  │  │
+│  │  │ • cachedRunningIDEs: IdeType[]|null         │  │  │
+│  │  │ • ancestor PID lookup (single call)         │  │  │
+│  │  └───────────────────────────────────────────────────┘  │  │
+│  └─────────────────────────────────────────────────────────┘  │
+│                              │                                  │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │     src/utils/idePathConversion.ts                      │  │
+│  │  WindowsToWSLConverter:                                  │  │
+│  │  ├─ toLocalPath(windowsPath)                            │  │
+│  │  └─ toIDEPath(wslPath)                                   │  │
+│  └─────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              │  SSE/WebSocket (MCP protocol)
+                              │
+┌───────────────────────────────│─────────────────────────────────┐
+│  ┌────────────────────────────▼───────────────────────────────┐ │
+│  │               IDE (VS Code / JetBrains)                    │ │
+│  │  ┌───────────────────────────────────────────────────────┐ │ │
+│  │  │  Extension Plugin                                    │ │ │
+│  │  │  • Writes ~/.claude/ide/<port>.lock                 │ │ │
+│  │  │  • Handles openDiff RPC                             │ │ │
+│  │  │  • Sends FILE_SAVED / TAB_CLOSED / DIFF_REJECTED    │ │ │
+│  │  └───────────────────────────────────────────────────────┘ │ │
+│  │  ┌───────────────────────────────────────────────────────┐ │ │
+│  │  │  Diff Tab (per file edit)                             │ │ │
+│  │  │  Format: ✻ [Claude Code] <basename> (<uuid>) ⧉     │ │ │
+│  │  └───────────────────────────────────────────────────────┘ │ │
+│  └───────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              │  File System
+                              │
+┌───────────────────────────────│─────────────────────────────────┐
+│  ┌────────────────────────────▼───────────────────────────────┐ │
+│  │              ~/.claude/ide/ Directory                      │ │
+│  │  ┌───────────────────────────────────────────────────────┐ │ │
+│  │  │  <port>.lock files (JSON format)                   │ │ │
+│  │  │  • workspaceFolders: string[]                       │ │ │
+│  │  │  • pid: number                                      │ │ │
+│  │  │  • ideName: string                                  │ │ │
+│  │  │  • transport: 'sse'|'ws'                          │ │ │
+│  │  │  • authToken: string (optional)                    │ │ │
+│  │  └───────────────────────────────────────────────────────┘ │ │
+│  └───────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              │  Global Config
+                              │
+┌───────────────────────────────│─────────────────────────────────┐
+│  ┌────────────────────────────▼───────────────────────────────┐ │
+│  │        ~/.claude/claude_config.json (Settings)             │ │
+│  │  ┌───────────────────────────────────────────────────────┐ │ │
+│  │  │  • diffTool: 'auto'|'ide'|'terminal'               │ │ │
+│  │  │  • autoConnectIde: boolean                          │ │ │
+│  │  │  • autoInstallIdeExtension: boolean                 │ │ │
+│  │  │  • ideHintShownCount: number (0-5)                  │ │ │
+│  │  └───────────────────────────────────────────────────────┘ │ │
+│  └───────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**证据来源**: `src/utils/ide.ts:298-433` (detectIDEs/lockfile scanning), `src/utils/ide.ts:522-581` (lockfile cleanup), `src/hooks/useDiffInIDE.ts:216-327` (diff tab management), `src/hooks/notifs/useIDEStatusIndicator.tsx:24-159` (notification management)
+
+---
+
+### 4.8 关键流程与失败路径
+
+```text
+[主流程 1: 启动时 IDE 自动发现与连接]
+
+启动
+  │
+  ├─> useIDEIntegration calls initializeIdeIntegration()
+  │       │
+  │       ├─> Parallel execution:
+  │       │   │
+  │       │   ├─> findAvailableIDE() ────────────────────┐
+  │       │   │   └─ cleanupStaleIdeLockfiles()           │
+  │       │   │       └─ detectIDEs(false)                │
+  │       │   │           └─ getSortedIdeLockfiles()     │
+  │       │   │               └─ read each lockfile      │
+  │       │   │                   └─ validate workspace  │
+  │       │   │                       └─ ancestor PID?   │
+  │       │   │                           └─ valid IDE   │
+  │       │   │                               │           │
+  │       │   │                               │ exactly one?
+  │       │   │                               │ yes       │
+  │       │   │                               └─ onIdeDetected(ide)
+  │       │   │                                   └─ setDynamicMcpConfig()
+  │       │   │                                       └─ MCP client connects
+  │       │   │                                           └─ connected ✓
+  │       │   │                               │ no
+  │       │   │                               └─ sleep(1000)
+  │       │   │                                   └─ repeat (max 30s)
+  │       │   │
+  │       │   └─> isSupportedTerminal()? ──┐
+  │       │       ├─ yes: isIDEExtensionInstalled()?
+  │       │       │   ├─ no: maybeInstallIDEExtension()
+  │       │       │   │   └─ VS Code: exec code --install-extension
+  │       │       │   │   └─ JetBrains: show hint only
+  │       │       │   │
+  │       │       │   ├─ success: saveGlobalConfig(diffTool='auto')
+  │       │       │   └─ onInstallationComplete(status)
+  │       │       │       └─ first time? onShowIdeOnboarding()
+  │       │       │
+  │       │       └─ no: skip extension install
+  │       │
+  │       └─> MCP client connects to IDE
+  │           └─ AppState.mcp.clients shows name='ide', type='connected'
+  │
+  └─> process continues
+
+
+[失败分支 1: 无可用 IDE]
+  ├─ findAvailableIDE() times out at 30s
+  ├─ onIdeDetected(null) called
+  ├─ no auto connection
+  └─ user can use /ide command later
+
+[失败分支 2: IDE 连接超时]
+  ├─ /ide command selects IDE
+  ├─ setDynamicMcpConfig() called
+  ├─ wait for MCP connection (max 35s)
+  ├─ timeout triggered
+  ├─ connectingIDE state cleared
+  └─ user sees "Connection to <ideName> timed out"
+
+[失败分支 3: 扩展安装失败]
+  ├─ maybeInstallIDEExtension() throws
+  ├─ error caught and stored in IDEExtensionInstallationStatus
+  ├─ status passed to onInstallationComplete()
+  └─ useIDEStatusIndicator shows install error notification
+
+
+[主流程 2: IDE diff 同步]
+
+FileEditTool requests confirmation
+  │
+  ├─> useDiffInIDE checks:
+  │       ├─ hasAccessToIDEExtensionDiffFeature()?
+  │       └─ diffTool === 'auto'?
+  │
+  ├─> both yes:
+  │       │
+  │       ├─ show ShowInIDEPrompt UI
+  │       ├─ call showDiffInIDE()
+  │       │
+  │       ├─ read oldContent from file
+  │       ├─ register cleanup callbacks:
+  │       │   ├─ abortController.signal 'abort' → cleanup()
+  │       │   └─ process 'beforeExit' → cleanup()
+  │       │
+  │       ├─ getPatchForEdits() → updatedFile
+  │       ├─ check ideRunningInWindows (WSL)
+  │       │   └─ yes: convert paths with WindowsToWSLConverter
+  │       │
+  │       ├─ callIdeRpc('openDiff', {
+  │       │       old_file_path,
+  │       │       new_file_path,
+  │       │       new_file_contents,
+  │       │       tab_name: "✻ [Claude Code] <basename> (<uuid>) ⧉"
+  │       │   })
+  │       │
+  │       ├─ wait for RPC result:
+  │       │   │
+  │       │   ├─ FILE_SAVED:
+  │       │   │   ├─ newContent from IDE
+  │       │   │   ├─ computeEditsFromContents(oldContent, newContent)
+  │       │   │   ├─ onChange(accept-once, {file_path, edits: newEdits})
+  │       │   │   └─ cleanup()
+  │       │   │
+  │       │   ├─ TAB_CLOSED:
+  │       │   │   ├─ newContent = updatedFile (accept original)
+  │       │   │   ├─ onChange(accept-once, {file_path, edits})
+  │       │   │   └─ cleanup()
+  │       │   │
+  │       │   └─ DIFF_REJECTED:
+  │       │       ├─ newContent = oldContent (no changes)
+  │       │       ├─ computeEditsFromContents() → empty array
+  │       │       ├─ onChange(reject, {file_path, edits})
+  │       │       └─ cleanup()
+  │       │
+  │       └─ cleanup():
+  │           └─ callIdeRpc('close_tab', {tab_name})
+  │               └─ remove event listeners
+  │
+  └─> otherwise: show terminal diff
+
+
+[失败分支: IDE 断开期间 diff]
+  ├─ showDiffInIDE() in progress
+  ├─ IDE disconnects
+  ├─ callIdeRpc() throws error
+  ├─ caught and setHasError(true)
+  ├─ fallback to terminal diff
+  └─ cleanup() attempts (may fail but ignores)
+
+
+[主流程 3: /ide 命令]
+
+用户输入 /ide
+  │
+  ├─> call function in ide.tsx
+  │       │
+  │       ├─ detectIDEs(true) → list all IDEs
+  │       ├─ no IDEs and not in supported terminal?
+  │       │   └─ detectRunningIDEs() and show install hint
+  │       │
+  │       ├─ show IDEScreen UI
+  │       ├─ user selects:
+  │       │   │
+  │       │   ├─ 'None':
+  │       │   │   ├─ ideClient.client.onclose = () => {}
+  │       │   │   ├─ clearServerCache('ide')
+  │       │   │   ├─ remove from AppState.mcp.clients
+  │       │   │   └─ onChangeDynamicMcpConfig(delete ide)
+  │       │   │
+  │       │   └─ specific IDE:
+  │       │       ├─ onChangeDynamicMcpConfig(ide)
+  │       │       ├─ wait for MCP connection (max 35s)
+  │       │       └─ show result
+  │       │
+  │       └─ user inputs /ide open:
+  │           ├─ detectIDEs(true)
+  │           ├─ show IDEOpenSelection
+  │           ├─ user selects IDE
+  │           ├─ VS Code: exec code <cwd>
+  │           └─ JetBrains: show manual open hint
+  │
+  └─> process continues
+```
+
+**证据来源**: `src/utils/ide.ts:626-657` (findAvailableIDE polling), `src/hooks/useDiffInIDE.ts:216-327` (diff flow), `src/commands/ide/ide.tsx:315-580` (/ide command flow), `src/hooks/notifs/useIDEStatusIndicator.tsx:24-159` (notification flow)
+
+---
+
+### 4.9 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| `~/.claude/ide/<port>.lock` | IDE 插件 | 插件启动时写入 JSON：workspaceFolders/pid/ideName/transport/authToken | 多实例共享目录，每个 lockfile 独立 | 文件系统持久化 | ① IDE 退出时删除；② cleanupStaleIdeLockfiles() 检测到 dead pid/port 不响应则删除 | N/A (文件由 IDE 管理) |
+| `currentIDESearch: AbortController` | `src/utils/ide.ts` (顶层) | `findAvailableIDE()` 被调用时 `new AbortController()` | 全局单例，新调用覆盖旧调用 | 无（内存状态） | ① 新 `findAvailableIDE()` 调用时 `abort()` 旧的；② 30s 超时后自动失效 | `abort()` 停止 polling 循环，signal 触发 sleep 中断 |
+| `cachedRunningIDEs: IdeType[]` | `src/utils/ide.ts` (顶层) | `detectRunningIDEs()` 首次调用时查询并缓存 | 全局单例，跨调用共享 | 无（内存状态） | `resetDetectRunningIDEs()` 清空缓存（测试用） | N/A（只读缓存） |
+| `ancestor PID lookup cache` | `makeAncestorPidLookup()` 闭包 | `detectIDEs()` 内调用 `makeAncestorPidLookup()` 时创建 | 单次 `detectIDEs()` 调用内共享，闭包私有 | 无（内存状态） | `detectIDEs()` 返回后闭包释放，缓存自动失效 | N/A（自动 GC） |
+| `diff tab: "✻ [Claude Code] <basename> (<uuid>) ⧉"` | IDE | `showDiffInIDE()` 调用 `openDiff` RPC 时创建，UUID 来自 `randomUUID().slice(0,6)` | 每个文件编辑独立 tab，UUID 避免冲突 | 无（仅 IDE 内存） | 用户关闭 tab 或 `close_tab` RPC 调用时删除 | `cleanup()` 函数调用 `callIdeRpc('close_tab', {tab_name})`（幂等），崩溃后遗留但不影响新会话（新 UUID） |
+| `ideHintShownCount: number` | 全局配置 | 用户首次启动时默认为 0 | 全局单例，跨会话共享 | `~/.claude/claude_config.json` 持久化 | 达到 5 后不再增加，但不重置 | N/A（计数是单向的） |
+| `connectingIDE: DetectedIDEInfo|null` | `/ide` 命令组件 | 用户选择 IDE 后设置 | 组件本地状态，隔离 | 无（内存状态） | 连接成功/超时后清空为 null | 超时或用户取消时清理状态 |
+| `isUnmounted: MutableRefObject<boolean>` | `useDiffInIDE` Hook | Hook 初始化时 `{current: false}` | 组件实例私有，隔离 | 无（内存状态） | 组件 unmount 时设为 `true`，避免后续 setState | 用于防止 unmount 后调用 setState（不抛异常） |
+| `hasShownHintRef: MutableRefObject<boolean>` | `useIDEStatusIndicator` Hook | Hook 初始化时 `{current: false}` | 单次会话内共享，组件私有 | 无（内存状态） | 会话结束时自动释放 | N/A（仅防止重复显示） |
+
+**生命周期证据**: `src/utils/ide.ts:298-433` (lockfile handling), `src/utils/ide.ts:522-581` (stale cleanup), `src/utils/ide.ts:626-657` (currentIDESearch management), `src/hooks/useDiffInIDE.ts:216-327` (diff tab cleanup), `src/hooks/notifs/useIDEStatusIndicator.tsx:24-159` (hint count management)
+
+---
+
 ## 5. 失败语义与工程取舍
 
 | 触发条件 | 检测位置 | 消息/异常如何传播 | 是否重试及上限 | 状态与资源清理 | 调用方可见结果 |

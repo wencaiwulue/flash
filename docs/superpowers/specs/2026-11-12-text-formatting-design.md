@@ -826,6 +826,343 @@ highlightMatch(text, query)
 - key 使用 idx（位置稳定）
 - 如果没有匹配，直接返回 text（不是数组）
 
+---
+
+### 4.4 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        Public API Layer (Entry Points)                     │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │  applyMarkdown(content, theme, highlight) → string               │  │
+│  │  truncateToWidth(text, width, options) → string                 │  │
+│  │  truncatePathMiddle(path, width) → string                     │  │
+│  │  highlightMatch(text, query) → React.ReactNode               │  │
+│  │  stripDisplayTags(text) → string                             │  │
+│  │  stripDisplayTagsAllowEmpty(text) → string                  │  │
+│  │  stripIdeContextTags(text) → string                         │  │
+│  │  createHyperlink(url, content, options) → string            │  │
+│  │  getCliHighlightPromise() → Promise<CliHighlight|null>         │  │
+│  │  getLanguageName(filePath) → string|undefined                │  │
+│  │  generateHeatmap(dailyActivity, options) → string          │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                     │
+                                     ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        Core Formatting Modules                             │
+│  ┌─────────────────────────┐  ┌─────────────────────────┐  ┌────────────────┐  │
+│  │ markdown.ts          │  │ truncate.ts          │  │ displayTags.ts │  │
+│  │  • configureMarked() │  │  • truncateToWidth() │  │  • XML_TAG_BLOCK_PATTERN │ │
+│  │  • applyMarkdown()   │  │  • truncatePathMiddle() │ │  • stripDisplayTags() │  │
+│  │  • formatToken()     │  │  • truncateStartToWidth() │ │  • stripIdeContextTags() │  │
+│  │  • padAligned()      │  │  • truncateToWidthNoEllipsis() │ │  • IDE_CONTEXT_TAGS_PATTERN │  │
+│  │  • linkifyIssueReferences() │ │  • stripPromptXMLTags() │  │
+│  │  • ISSUE_REF_PATTERN │  │                     │  │                     │  │
+│  └─────────────────────────┘  └─────────────────────────┘  └────────────────┘  │
+│  ┌─────────────────────────┐  ┌─────────────────────────┐  ┌────────────────┐  │
+│  │ hyperlink.ts         │  │ cliHighlight.ts      │  │ highlightMatch.tsx │  │
+│  │  • OSC8_START       │  │  • cliHighlightPromise (cached) │ │  • highlightMatch() │  │
+│  │  • OSC8_END         │  │  • loadCliHighlight() │  │  • <Text inverse> │  │
+│  │  • supportsHyperlinks() │ │  • getLanguageName() │  │                     │  │
+│  │  • createHyperlink() │  │                     │  │                     │  │
+│  └─────────────────────────┘  └─────────────────────────┘  └────────────────┘  │
+│  ┌─────────────────────────┐  ┌─────────────────────────┐                        │
+│  │ heatmap.ts           │  │ logoV2Utils.ts      │                        │
+│  │  • generateHeatmap() │  │  • getLayoutMode()   │                        │
+│  │  • calculatePercentiles() │ │  • calculateLayoutDimensions() │  │
+│  │  • getIntensity()    │  │  • calculateOptimalLeftWidth() │  │
+│  │  • getHeatmapChar()  │  │  • formatWelcomeMessage() │  │
+│  │  • claudeOrange      │  │  • truncatePath()      │                        │
+│  │                     │  │  • getRecentActivity() │                        │
+│  └─────────────────────────┘  └─────────────────────────┘                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                     │
+                                     ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                   Ink Platform Utilities (Shared Dependencies)              │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │  stringWidth (from ink/stringWidth.ts)                          │ │
+│  │  • Bun.stringWidth (preferred, with ambiguousIsNarrow: true)      │  │
+│  │  • stringWidthJavaScript fallback (GraphemeSegmenter + emojiRegex) │ │
+│  │  • isZeroWidth() predicate (control chars, combining marks, etc.) │ │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │  sliceAnsi (from utils/sliceAnsi.ts)                             │ │
+│  │  • @alcalzone/ansi-tokenizer for tokenizing ANSI/OSC 8 sequences │ │
+│  │  • tracks active ANSI state, reconstructs at slice start        │ │
+│  │  • properly handles zero-width characters (combining marks)      │ │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │  supports-hyperlinks (from ink/supports-hyperlinks.ts)           │ │
+│  │  • checks stdout.isTTY, TERM_PROGRAM (ghostty/kitty/alacritty/...) │ │
+│  │  • checks LC_TERMINAL (tmux), TERM (xterm-kitty)                 │ │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │  marked (external library, configured in markdown.ts)              │ │
+│  │  • marked.use({ tokenizer: { del: () => undefined } }) (disable strikethrough) │ │
+│  │  • marked.lexer() for tokenizing markdown without full render        │ │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │  cli-highlight + highlight.js (lazy loaded)                     │ │
+│  │  • dynamically imported on first use, not at startup                │ │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │  chalk (for coloring hyperlinks)                                  │ │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │  React (only for highlightMatch.tsx JSX output)                  │ │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                     │
+                                     ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                   Cached State & Global Constants                          │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │  Global Caches (Module-level)                                       │ │
+│  │  • cliHighlightPromise: Promise<CliHighlight|null> (shared singleton) │ │
+│  │  • cachedActivity: LogOption[] (logoV2Utils)                       │ │
+│  │  • cachePromise: Promise<LogOption[]>|null (logoV2Utils)           │ │
+│  │  • markedConfigured: boolean (tracks configureMarked() already called) │ │
+│  │  • StylePool/CharPool/HyperlinkPool are from ink.tsx (not here)    │ │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │  Constants (Module-level, immutable)                               │ │
+│  │  • XML_TAG_BLOCK_PATTERN: RegExp (matches <lower-case-tag>...</lower-case-tag>) │ │
+│  │  • IDE_CONTEXT_TAGS_PATTERN: RegExp (matches <ide_opened_file>, <ide_selection>) │ │
+│  │  • ISSUE_REF_PATTERN: RegExp (matches owner/repo#123)             │ │
+│  │  • OSC8_START: '\x1b]8;;'                                          │ │
+│  │  • OSC8_END: '\x07' (BEL, more compatible than ST '\x1b\\')        │ │
+│  │  • claudeOrange: '#da7756' (heatmap color)                        │ │
+│  │  • PASTE_THRESHOLD: 10000 (from repl-input spec, shared const)      │ │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │  Filesystem Paths (Read-only references)                         │ │
+│  │  • ~/.claude/ (reference to config directory, not used here)      │ │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**证据来源**: `src/utils/markdown.ts` (markdown核心), `src/utils/truncate.ts` (截断), `src/utils/displayTags.ts` (标签剥离), `src/utils/hyperlink.ts` (超链接), `src/utils/cliHighlight.ts` (代码高亮), `src/utils/highlightMatch.tsx` (搜索高亮), `src/utils/heatmap.ts` (热图), `src/utils/logoV2Utils.ts` (Logo布局)
+
+---
+
+### 4.5 关键流程与失败路径
+
+```text
+[主流程 1: Markdown渲染流程]
+
+调用方调用 applyMarkdown(content, theme, highlight)
+  │
+  ├─> configureMarked() (首次调用时)
+  │       └─> marked.use({ tokenizer: { del: () => undefined } })
+  │           └─> 禁用 strikethrough tokenizer (模型常用 ~ 表示"大约")
+  │
+  ├─> stripPromptXMLTags(content) → 先剥离系统标签 (来自 messages.ts)
+  │
+  ├─> marked.lexer(strippedContent) → token数组 (heading/code/paragraph/...)
+  │
+  ├─> tokens.map(formatToken(token, theme, highlight, listDepth, orderedListNumber, parent))
+  │       │
+  │       ├─> heading token → format with bold/underline + 2 newlines
+  │       ├─> code token:
+  │       │   ├─> if highlight available → cliHighlight.highlight(code, lang)
+  │       │   └─> else → use code as-is + 2 newlines
+  │       ├─> codespan token → color with permission theme color
+  │       ├─> link token:
+  │       │   ├─> if mailto: → show email only, no hyperlink
+  │       │   └─> else → createHyperlink(url, content)
+  │       ├─> list token → recurse on list items with listDepth+1
+  │       ├─> list_item token → indent + bullet/number + format child
+  │       ├─> table token:
+  │       │   ├─> calculate max width per column
+  │       │   ├─> padAligned() for each cell alignment
+  │       │   └─> add border lines
+  │       ├─> blockquote token → prefix each line with dim "│" + italic content
+  │       ├─> text token (parent not link):
+  │       │   └─> linkifyIssueReferences() → replace owner/repo#123 with OSC 8 link
+  │       ├─> escape/def/del/html tokens → ignore/return empty
+  │       └─> unknown token type → return empty string (fail safe)
+  │
+  └─> join formatted tokens with '' → trim() → return rendered ANSI string
+
+
+[失败分支: cli-highlight加载失败]
+  ├─ loadCliHighlight() tries dynamic import('cli-highlight') + import('highlight.js')
+  ├─ if import fails (network? bundle issue?) → catch error → return null
+  ├─ applyMarkdown() receives highlight: null
+  ├─ code blocks render without syntax highlighting (raw code)
+  └─ no error thrown, graceful degradation to plain code display
+
+
+[失败分支: 未知token类型]
+  ├─ marked.lexer() returns token.type we don't handle
+  ├─ formatToken() switch hits default case
+  ├─ return empty string '' instead of throwing
+  └─ that token is omitted from output, no crash
+
+
+[主流程 2: 字符串宽度计算与截断]
+
+调用方调用 truncateToWidth(text, maxWidth, { ellipsis = '…' } = {})
+  │
+  ├─> stringWidth(text) → calculate visible width
+  │       │
+  │       ├─> try Bun.stringWidth(text, { ambiguousIsNarrow: true }) (fastest)
+  │       └─> fall back to stringWidthJavaScript(text) if Bun not available
+  │           ├─> strip ANSI first
+  │           ├─> GraphemeSegmenter for Unicode grapheme clusters
+  │           ├─> emojiRegex for emoji sequences
+  │           ├─> isZeroWidth() skips control chars/combining marks/ZWNJ/etc.
+  │           └─> counts CJK/emoji as 2, others as 1
+  │
+  ├─> if stringWidth(text) ≤ maxWidth → return text as-is
+  │
+  ├─> if maxWidth ≤ 1 → return '…' (always enough space for ellipsis)
+  │
+  └─> else (need truncation):
+      ├─> targetWidth = maxWidth - stringWidth(ellipsis) (reserve space)
+      ├─> iterate graphemes, accumulate until targetWidth reached
+      │   └─> sliceAnsi() used internally to safely truncate with ANSI
+      └─> return truncatedText + ellipsis
+
+
+[失败分支: sliceAnsi半开序列]
+  ├─ sliceAnsi() implementation tracks active ANSI state at slice boundaries
+  ├─ reconstructs necessary ANSI codes at start of sliced string
+  ├─ ensures no half-open sequences in output
+  └─ very unlikely to fail, but if it does, minor visual glitches only
+
+
+[主流程 3: 搜索高亮 (React输出)]
+
+调用方调用 highlightMatch(text, query)
+  │
+  ├─> if !query (empty/undefined) → return text as-is (no array)
+  │
+  ├─> queryLower = query.toLowerCase(), textLower = text.toLowerCase()
+  │
+  ├─> offset = 0
+  │
+  └─> loop:
+      ├─> idx = textLower.indexOf(queryLower, offset)
+      ├─> if idx === -1 → break loop
+      ├─> if idx > offset → push text.slice(offset, idx) (plain string)
+      ├─> push <Text inverse key={idx}>{text.slice(idx, idx+query.length)}</Text>
+      ├─> offset = idx + query.length
+      └─> repeat loop
+  │
+  ├─> if offset < text.length → push text.slice(offset) (remaining)
+  │
+  └─> return <>{parts}</> if multiple parts, else single string/node
+
+
+[失败分支: query包含正则特殊字符]
+  ├─ NOT a problem: we use indexOf(), not regex
+  ├─ so searching for "file.txt" just searches for literal string
+  └─ no escaping needed, safe and predictable
+
+
+[主流程 4: 标签剥离]
+
+调用方调用 stripDisplayTags(text)
+  │
+  ├─> text.replace(XML_TAG_BLOCK_PATTERN, '') → remove lowercase tags
+  │       │
+  │       └─> XML_TAG_BLOCK_PATTERN: /<([a-z][\w-]*)(?:\s[^>]*)?>[\s\S]*?<\/\1>\n?/g
+  │           ├─> only matches tag names starting with [a-z] (lower-case only)
+  │           ├─> non-greedy [\s\S]*? for content
+  │           └─> \1 back-reference to match closing tag
+  │
+  ├─> trim() result
+  │
+  └─> if result is empty string → return original text instead
+      └─> prevents empty output when entire content is tags
+
+
+[失败分支: 标签未闭合]
+  ├─ regex doesn't match unclosed tags
+  ├─ tags are left in output (leak)
+  └─> but better than accidentally stripping user content
+  └─> system tags in practice are always properly closed by design
+
+
+[成功分支: stripDisplayTagsAllowEmpty(text)]
+  ├─ same replace logic, but returns empty string if result is empty
+  └─> used for detecting if content is all tags
+
+
+[主流程 5: 超链接创建]
+
+调用方调用 createHyperlink(url, content = url, options = {})
+  │
+  ├─> check supportsHyperlinks(options):
+  │       ├─> checks stdout.isTTY
+  │       ├─> checks TERM_PROGRAM (ghostty/kitty/alacritty/iterm/...)
+  │       ├─> checks LC_TERMINAL (tmux)
+  │       └─> checks TERM (xterm-kitty)
+  │
+  ├─> if NOT supported → return content (fallback: plain text only)
+  │
+  └─> if supported:
+      ├─> coloredContent = chalk.blue(content)
+      └─> return `${OSC8_START}${url}${OSC8_END}${coloredContent}${OSC8_START}${OSC8_END}`
+
+
+[失败分支: 终端误判支持]
+  ├─ rare, can happen if terminal lies about capabilities
+  ├─> if claims support but doesn't: user sees OSC 8 raw sequences (garbage)
+  ├─> if claims no support but does: user sees plain URLs instead of clickable links
+  └─> no crash, just degraded UX
+
+
+[主流程 6: 热图生成]
+
+调用方调用 generateHeatmap(dailyActivity, options)
+  │
+  ├─> calculatePercentiles(dailyActivity) → p25/p50/p75
+  │
+  ├─> determine date range:
+  │       ├─> end = today (00:00:00)
+  │       ├─> start = this week's Sunday minus (width-1) weeks
+  │       └─> width = min(52, max(10, availableWidth)) (10 weeks min, 52 weeks max)
+  │
+  ├─> build grid: 7 rows (Sun-Sat) × width columns
+  │       ├─> for each date:
+  │       │   ├─> if future date → ' '
+  │       │   ├─> else intensity = getIntensity(count, percentiles) (0-4)
+  │       │   └─> char = getHeatmapChar(intensity) (·/░/▒/▓/█)
+  │       └─> track month starts for optional month labels
+  │
+  └─> assemble output:
+      ├─> optional month labels line (spaced evenly)
+      ├─> day labels (Mon/Wed/Fri only) + grid rows
+      └─> legend line: "Less ░ ▒ ▓ █ More"
+```
+
+**证据来源**: `src/utils/markdown.ts:21-280` (Markdown流程), `src/utils/truncate.ts` (截断), `src/utils/displayTags.ts` (标签剥离), `src/utils/hyperlink.ts` (超链接), `src/utils/heatmap.ts` (热图)
+
+---
+
+### 4.6 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| `cliHighlightPromise: Promise<CliHighlight|null>` | cliHighlight.ts (模块级) | 首次调用 `getCliHighlightPromise()` 时通过 dynamic import 创建 | 全局单例 Promise，所有调用方共享 await | 无（内存状态） | 已 resolved 的 Promise 永远不会失效/重置，模块卸载时 GC | N/A（懒加载只读，无需取消） |
+| `markedConfigured: boolean` | markdown.ts (模块级) | 初始化为 false，`configureMarked()` 首次调用时设为 true | 全局单例标志 | 无（内存状态） | 永久 true，除非进程重启 | N/A（单向转换，无需撤销） |
+| `cachedActivity: LogOption[]` | logoV2Utils.ts (模块级) | `getRecentActivity()` 首次加载后设置，存储过滤后的会话列表 | 全局单例缓存 | 无（内存状态） | 模块卸载时 GC，对话轮次间通常不重置（除非代码重载） | N/A（只读缓存，无取消） |
+| `cachePromise: Promise<LogOption[]>\|null` | logoV2Utils.ts (模块级) | `getRecentActivity()` 首次调用时创建 Promise，加载中存储 | 全局单例 Promise，共享给并发调用 | 无（内存状态） | Promise resolve/reject 后不再需要，GC | N/A（无取消机制，加载完成即结束） |
+| `XML_TAG_BLOCK_PATTERN: RegExp` | displayTags.ts (模块级) | 模块初始化时通过正则字面量创建一次 | 全局单例常量，只读 | 无（模块代码中的常量） | 永久有效，模块卸载时 GC | N/A（常量，无状态） |
+| `IDE_CONTEXT_TAGS_PATTERN: RegExp` | displayTags.ts (模块级) | 模块初始化时通过正则字面量创建一次 | 全局单例常量，只读 | 无（模块代码中的常量） | 永久有效，模块卸载时 GC | N/A（常量，无状态） |
+| `ISSUE_REF_PATTERN: RegExp` | markdown.ts (模块级) | 模块初始化时通过正则字面量创建一次 | 全局单例常量，只读 | 无（模块代码中的常量） | 永久有效，模块卸载时 GC | N/A（常量，无状态） |
+| `OSC8_START/OSC8_END: string` | hyperlink.ts (模块级) | 模块初始化时通过字符串字面量创建一次 | 全局单例常量，只读 | 无（模块代码中的常量） | 永久有效，模块卸载时 GC | N/A（常量，无状态） |
+| `claudeOrange: string` | heatmap.ts (模块级) | 模块初始化时通过字符串字面量创建一次 | 全局单例常量，只读 | 无（模块代码中的常量） | 永久有效，模块卸载时 GC | N/A（常量，无状态） |
+| `GraphemeSegmenter` (隐式) | stringWidthJavaScript (函数内) | 调用 `Intl.Segmenter(undefined, { granularity: 'grapheme' })` 创建，可能 JS 引擎内部缓存 | 每个 stringWidthJavaScript 调用时可能创建，或引擎共享 | 无（内存状态） | 函数返回后丢弃，GC | N/A（临时对象） |
+
+**生命周期证据**: `src/utils/cliHighlight.ts:20-42` (懒加载 Promise), `src/utils/markdown.ts:21-33` (marked配置), `src/utils/logoV2Utils.ts:183-219` (活动缓存), `src/utils/displayTags.ts:16-51` (正则常量), `src/utils/hyperlink.ts:7-8` (OSC常量), `src/ink/stringWidth.ts:20-203` (GraphemeSegmenter使用)
+
+---
+
 ## 5. 失败语义与工程取舍
 
 | 触发条件 | 检测位置 | 消息/异常如何传播 | 是否重试及上限 | 状态与资源清理 | 调用方可见结果 |
