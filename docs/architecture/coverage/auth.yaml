@@ -142,7 +142,9 @@ groups:
   - id: test-auth
     kind: test
     section: 7
-    summary: 认证相关测试（oauthRefresh.test.ts、linuxSecretStorage.test.ts）
+    summary: 认证相关测试（oauthRefresh.test.ts、linuxSecretStorage.test.ts、macOsKeychainHelpers.test.ts、macOsKeychainCrossProcess.test.ts）
     files:
       - tests/oauthRefresh.test.ts
       - tests/linuxSecretStorage.test.ts
+      - tests/macOsKeychainHelpers.test.ts
+      - tests/macOsKeychainCrossProcess.test.ts
