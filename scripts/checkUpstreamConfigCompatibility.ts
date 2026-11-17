@@ -315,6 +315,12 @@ export function checkCompatibility({
   hookEvents,
 }: CheckCompatibilityInput): Diagnostic[] {
   const diagnostics: Diagnostic[] = []
+  if (!isRecord(matrix)) {
+    return [{
+      code: 'invalid-matrix-envelope',
+      message: 'compatibility matrix must be a mapping',
+    }]
+  }
   if (
     matrix.schemaVersion !== 1 ||
     inventory.baseline.version !== UPSTREAM_BASELINE_VERSION ||
@@ -569,7 +575,7 @@ export function checkCompatibility({
 }
 
 function printReport(inventory: CompatibilityInventory, matrix: CompatibilityMatrix, diagnostics: Diagnostic[]) {
-  const matrixEntries = Array.isArray(matrix.entries)
+  const matrixEntries = isRecord(matrix) && Array.isArray(matrix.entries)
     ? matrix.entries.filter(entry => isRecord(entry) && typeof entry.id === 'string')
     : []
   const matrixById = new Map(matrixEntries.map(entry => [entry.id, entry]))

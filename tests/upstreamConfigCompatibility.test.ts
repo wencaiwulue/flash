@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { copyFile, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { copyFile, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parse } from 'yaml'
@@ -485,6 +485,21 @@ describe('compatibility CLI and real baseline', () => {
       await expect(runCli(['--initialize-matrix'], directory)).rejects.toThrow('refusing to overwrite')
       await expect(runCli(['--unknown'], directory)).rejects.toThrow('unknown argument')
       expect(await readFile(matrixPath, 'utf8')).toBe(initialized)
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
+  test('empty matrix returns structured diagnostics instead of throwing', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'flash-compatibility-'))
+    try {
+      const fixture = new URL('../fixtures/upstream-config/2.1.311/', import.meta.url)
+      await copyFile(new URL('inventory.json', fixture), join(directory, 'inventory.json'))
+      await writeFile(join(directory, 'compatibility.yaml'), '')
+      const diagnostics = await runCli([], directory)
+      expect(diagnostics).toEqual([
+        expect.objectContaining({ code: 'invalid-matrix-envelope' }),
+      ])
     } finally {
       await rm(directory, { recursive: true, force: true })
     }
