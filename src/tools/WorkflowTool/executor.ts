@@ -11,6 +11,7 @@ export type WorkflowAgentState = {
   status: WorkflowAgentStatus
   output?: string
   error?: string
+  skipCause?: 'user' | 'dependency'
 }
 
 export type WorkflowExecutionStatus =
@@ -70,7 +71,7 @@ export class WorkflowExecution {
     if (this.state.status !== 'running') return false
     const agent = this.state.agents[stepId]
     if (!agent || agent.status === 'completed') return false
-    this.state.agents[stepId] = { status: 'skipped' }
+    this.state.agents[stepId] = { status: 'skipped', skipCause: 'user' }
     this.controllers.get(stepId)?.abort()
     this.notify()
     return true
@@ -89,7 +90,7 @@ export class WorkflowExecution {
         const dependent = this.state.agents[step.id]
         if (
           dependent?.status === 'skipped' &&
-          dependent.error === 'Skipped because a dependency did not complete'
+          dependent.skipCause === 'dependency'
         ) {
           this.state.agents[step.id] = { status: 'pending' }
           resetDependents(step.id)
@@ -150,6 +151,7 @@ export class WorkflowExecution {
         this.state.agents[step.id] = {
           status: 'skipped',
           error: 'Skipped because a dependency did not complete',
+          skipCause: 'dependency',
         }
         changed = true
       }
