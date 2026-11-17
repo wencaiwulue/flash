@@ -284,3 +284,24 @@ export async function loadRemoteSkill(
 export function releaseCachedSkill(skillPath: string): void {
   cachedActivePaths.delete(skillPath)
 }
+
+/**
+ * Clear all active paths (for testing/reset)
+ */
+export function clearActivePathsForTesting(): void {
+  cachedActivePaths.clear()
+}
+
+/**
+ * Get current active paths count (for monitoring/testing)
+ */
+export function getActivePathsCount(): number {
+  return cachedActivePaths.size
+}
+
+/**
+ * Check if a path is currently active
+ */
+export function isPathActive(skillPath: string): boolean {
+  return cachedActivePaths.has(skillPath)
+}
