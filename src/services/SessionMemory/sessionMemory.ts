@@ -186,6 +186,8 @@ async function setupSessionMemoryFile(
   await fs.mkdir(sessionMemoryDir, { mode: 0o700 })
 
   const memoryPath = getSessionMemoryPath()
+  const pathValidator = new MemoryPathValidator()
+  await pathValidator.validateRealPathContainment(memoryPath)
 
   // Create the memory file if it doesn't exist (wx = O_CREAT|O_EXCL)
   try {
