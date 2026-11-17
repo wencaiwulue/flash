@@ -343,6 +343,7 @@ Design docs: 0 errors, 73 warnings
 | Build/Diagnostics/Placeholder 边界 | X-boundary-01 | `docs/superpowers/specs/2026-11-12-build-feature-profile-design.md`, `docs/superpowers/specs/2026-11-12-diagnostics-design.md`, `docs/superpowers/specs/2026-11-12-external-stubs-design.md` | ✅ verified (文档) | #16 |
 | Protocol/Test-validation 契约 | B7-test-validation-06 | `docs/superpowers/specs/2026-11-12-test-validation-design.md`, `docs/superpowers/specs/2026-11-12-bridge-design.md`, `docs/superpowers/specs/2026-11-12-tool-framework-design.md` | ✅ verified (文档) | #16 |
 | WebBrowser smoke coverage verified | webbrowser-bundled-support batch 5 | `docs/superpowers/specs/2026-11-16-webbrowser-bundled-support-design.md`, `docs/status/design-docs-completeness-audit/batch-5.md` | ✅ verified (文档) | #16 |
+| 全量 69 注册 spec 三视图覆盖 | all 69 specs | `docs/superpowers/specs/` (all 69 registered spec files) | ✅ verified (文档) | #16 |
 
 **Rejected 发现保留：** B1-cli-startup-01 保持 rejected，有效发现 234 + rejected 1 口径不变。
 
