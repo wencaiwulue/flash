@@ -384,3 +384,55 @@ Design docs: 0 errors, 73 warnings
 | cross-subsystem | ✅ 已完成 | 横向契约审查，9 项发现 |
 
 **总体状态**：✅ **审计完成** - 所有 69 个子系统已覆盖（含新增 webbrowser-bundled-support），发现已登记，无 P0 问题，2 项 P1 问题待修复。完整报告请参考各 batch 文件及 [cross-subsystem.md](cross-subsystem.md)。注：总计 234 项有效发现，另有 1 项误报（B1-cli-startup-01）已标记 rejected。
+
+---
+
+## Task 4 整改验证报告
+
+### 整改项
+1. **Workflow skipCause 实现**：添加 `skipCause?: 'user' | 'dependency'` 到 `WorkflowAgentState`
+   - `skip()` 设置 `skipCause: 'user'`
+   - `propagateSkips()` 设置 `skipCause: 'dependency'`
+   - `retry()` 仅重置 `status === 'skipped' && skipCause === 'dependency'`，保留手动跳过节点
+   - **证据**：`src/tools/WorkflowTool/executor.ts:10-15, 69-77, 79-102, 141-158`
+
+2. **AppState FIFO 通知队列**：添加 `isNotifying` 和 `updateQueue` 到 `createStore`
+   - 检测通知期间的嵌套更新并入队
+   - 当前通知完成后按 FIFO 顺序处理队列
+   - 使用 `[...listeners]` 复制 listeners，避免通知期间 unsubscribe 导致问题
+   - **证据**：`src/state/store.ts:14-35`
+
+3. **测试覆盖**：
+   - 添加 `tests/appStateStore.test.ts`：覆盖嵌套更新、FIFO 顺序、unsubscribe 等场景
+   - 扩展 `tests/workflow.test.ts`：添加 skipCause 相关测试
+   - **证据**：`tests/appStateStore.test.ts:1-101`, `tests/workflow.test.ts:207-292`
+
+4. **Coverage 清单更新**：添加 `app-state-store-tests` 到 `docs/architecture/coverage/app-state.yaml`
+   - **证据**：`docs/architecture/coverage/app-state.yaml:17-22`
+
+5. **Spec 更新**：在 app-state 和 workflow 设计文档中添加整改证据标记 [Remediation]
+   - **证据**：
+     - `docs/superpowers/specs/2026-11-12-app-state-design.md:54`
+     - `docs/superpowers/specs/2026-11-12-workflow-design.md:38-41`
+
+### 验证结果
+- ✅ **聚焦测试**：16 个测试全部通过（`tests/workflow.test.ts` + `tests/appStateStore.test.ts`）
+- ✅ **类型检查**：`bun run typecheck` 无错误
+- ✅ **构建**：`bun run build` 成功
+
+### 提交信息
+```
+commit <SHA>
+Author: ...
+Date:   ...
+
+    Complete workflow and app-state evidence
+
+    - Add skipCause to WorkflowAgentState
+    - Implement FIFO notification queue in createStore
+    - Add tests for both changes
+    - Update design specs with evidence
+    - Update coverage manifest
+
+    Co-authored-by: Claude <noreply@anthropic.com>
+```
