@@ -377,7 +377,7 @@ describe('Retry Pattern Contracts (Real Protocol)', () => {
 describe('OpenRunnerClient Retry Behavior (Real API Execution)', () => {
   test('retries on 503 and eventually succeeds', async () => {
     let requestCount = 0
-    let lastDelay = 0
+    const delays: number[] = []
 
     // Create a fake fetch that first returns 503 twice, then succeeds
     const fakeFetch = async (url: string, options?: RequestInit) => {
@@ -407,7 +407,7 @@ describe('OpenRunnerClient Retry Behavior (Real API Execution)', () => {
 
     // Track sleep to verify backoff
     const fakeSleep = async (ms: number) => {
-      lastDelay = ms
+      delays.push(ms)
     }
 
     const client = new OpenRunnerClient({
@@ -424,6 +424,7 @@ describe('OpenRunnerClient Retry Behavior (Real API Execution)', () => {
 
     // Verify retry behavior
     expect(requestCount).toBe(3) // 2 retries + 1 success
+    expect(delays).toEqual([100, 200])
     expect(result.runner_id).toBe('test-runner')
     expect(result.worker_epoch).toBe(1)
   })
