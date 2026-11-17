@@ -22,7 +22,8 @@
     "build:types": "tsc --emitDeclarationOnly --noEmit false --outDir dist/types",
     "generate:sdk-types": "bun scripts/generate-sdk-types.ts",
     "typecheck": "tsc --noEmit",
-    "test": "bun scripts/test.ts"
+    "test": "bun scripts/test.ts",
+    "test:integration": "bun scripts/test-integration.ts"
   },
   "dependencies": {
     "@alcalzone/ansi-tokenize": "^0.3.0",

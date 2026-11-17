@@ -12,6 +12,7 @@ async function discoverTestFiles(): Promise<string[]> {
   for (const extension of ['ts', 'tsx']) {
     const glob = new Bun.Glob(`tests/**/*.test.${extension}`)
     for await (const file of glob.scan({ cwd: root, onlyFiles: true })) {
+      if (file.startsWith('tests/integration/')) continue
       files.add(file)
     }
   }
