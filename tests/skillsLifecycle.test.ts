@@ -2,10 +2,13 @@ import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from
 import { mkdir, writeFile, rm, realpath, utimes, stat } from 'fs/promises'
 import { join, dirname } from 'path'
 import { tmpdir } from 'os'
+import { zlibSync } from 'zlib'
+import { zipSync } from 'fflate'
 import { skillCacheKey, trackSkillDir, handleDirectoryDeletion, getTrackedDirs, untrackSkillDir } from '../src/skills/skillLifecycle'
 import { addSkillDirectories, getDynamicSkills, activateConditionalSkillsForPaths, clearDynamicSkills, removeDynamicSkill, deactivateConditionalSkill, emitSkillsLoaded, getConditionalSkillCount, discoverSkillDirsForPaths, removeDynamicSkillDir } from '../src/skills/loadSkillsDir'
 import { skillChangeDetector } from '../src/utils/skills/skillChangeDetector'
 import { loadRemoteSkill, releaseCachedSkill, pruneCache, clearActivePathsForTesting, getActivePathsCount, isPathActive } from '../src/services/skillSearch/remoteSkillLoader'
+import { SkillHubClient, type SkillHubResolveResult } from '../src/services/skillSearch/skillhubClient'
 import { getAdditionalDirectoriesForClaudeMd } from '../src/bootstrap/state'
 
 // Test utilities
@@ -363,6 +366,158 @@ Test skill content updated
     it('clears active paths with clearActivePathsForTesting', async () => {
       clearActivePathsForTesting()
       expect(getActivePathsCount()).toBe(0)
+    })
+
+    it('only performs one download for concurrent loadRemoteSkill calls and releases active path exactly once', async () => {
+      clearActivePathsForTesting()
+
+      // Create temporary cache directory
+      const tempCacheDir = await realpath(await mkdir(join(tmpdir(), `flash-concurrent-test-${Date.now()}`), { recursive: true }))
+
+      // Track how many times resolve and download are called
+      let resolveCallCount = 0
+      let downloadCallCount = 0
+
+      // Create test skill content
+      const skillContent = `---
+name: Test Skill
+description: A test skill
+---
+Test content
+`
+
+      // Create a valid zip file using fflate (same library as production)
+      const skillZip = zipSync({
+        'SKILL.md': new TextEncoder().encode(skillContent)
+      }, { level: 6 })
+
+      // Create mock client that resolves immediately but tracks calls
+      const mockClient = {
+        async resolve(namespace: string, slug: string, options?: { version?: string, signal?: AbortSignal }): Promise<SkillHubResolveResult> {
+          resolveCallCount++
+          return { version: '1.0.0', latestVersion: '1.0.0' }
+        },
+        async download(namespace: string, slug: string, version?: string, signal?: AbortSignal): Promise<Uint8Array> {
+          downloadCallCount++
+          // Add a tiny delay to ensure concurrent requests can happen
+          await new Promise(resolve => setTimeout(resolve, 10))
+          return skillZip
+        }
+      } as unknown as SkillHubClient
+
+      const testSlug = 'test/test-skill'
+      const testUrl = 'https://skillhub.example.com/api/v1/skills/test/test-skill'
+
+      // Start both loads concurrently - critical that they start at the same time
+      const [result1, result2] = await Promise.all([
+        loadRemoteSkill(testSlug, testUrl, {
+          cacheDir: tempCacheDir,
+          client: mockClient
+        }),
+        loadRemoteSkill(testSlug, testUrl, {
+          cacheDir: tempCacheDir,
+          client: mockClient
+        })
+      ])
+
+      // Verify both got the same result
+      expect(result1.skillPath).toBe(result2.skillPath)
+      expect(result1.cacheHit).toBe(false)
+      expect(result2.cacheHit).toBe(false)
+      expect(result1.content).toContain('Test Skill')
+      expect(result1.content).toBe(result2.content)
+
+      // THE KEY TEST: only one resolve and download should have been called
+      expect(resolveCallCount).toBe(1)
+      expect(downloadCallCount).toBe(1)
+
+      // Verify active path tracking (production uses a Set, not reference counting)
+      expect(isPathActive(result1.skillPath)).toBe(true)
+      expect(getActivePathsCount()).toBe(1)
+
+      // Release once - since it's a Set (not refcounted), it should clear completely
+      releaseCachedSkill(result1.skillPath)
+      expect(isPathActive(result1.skillPath)).toBe(false)
+      expect(getActivePathsCount()).toBe(0)
+
+      // Verify the inFlight map was cleaned up by checking call counts on next load
+      // First, reset counts to check what happens on next load
+      const initialResolveCount = resolveCallCount
+      const initialDownloadCount = downloadCallCount
+
+      const result3 = await loadRemoteSkill(testSlug, testUrl, {
+        cacheDir: tempCacheDir,
+        client: mockClient
+      })
+
+      // This should be a cache hit now (no download)
+      expect(result3.cacheHit).toBe(true)
+      expect(downloadCallCount).toBe(initialDownloadCount) // No new download!
+
+      // Cleanup
+      await rm(tempCacheDir, { recursive: true, force: true })
+    })
+
+    it('verifies in-flight deduplication works by tracking call counts', async () => {
+      clearActivePathsForTesting()
+
+      // Create temporary cache directory
+      const tempCacheDir = await realpath(await mkdir(join(tmpdir(), `flash-promise-test-${Date.now()}`), { recursive: true }))
+
+      // Track when download starts and block it
+      let downloadStarted = false
+      let releaseDownload: (() => void) | undefined
+      const downloadBlocker = new Promise<void>(resolve => {
+        releaseDownload = resolve
+      })
+
+      let resolveCallCount = 0
+      let downloadCallCount = 0
+
+      const hangingClient = {
+        async resolve(namespace: string, slug: string, options?: { version?: string, signal?: AbortSignal }): Promise<SkillHubResolveResult> {
+          resolveCallCount++
+          return { version: '1.0.0' }
+        },
+        async download(namespace: string, slug: string, version?: string, signal?: AbortSignal): Promise<Uint8Array> {
+          downloadCallCount++
+          downloadStarted = true
+          await downloadBlocker // Wait until we release
+          return zipSync({ 'SKILL.md': new TextEncoder().encode('test') }, { level: 6 })
+        }
+      } as unknown as SkillHubClient
+
+      const testSlug = 'test/test-skill'
+      const testUrl = 'https://skillhub.example.com/api/v1/skills/test/test-skill'
+
+      // Start multiple loads - use Promise.all to start them at the same time
+      const loadPromise = Promise.all([
+        loadRemoteSkill(testSlug, testUrl, { cacheDir: tempCacheDir, client: hangingClient }),
+        loadRemoteSkill(testSlug, testUrl, { cacheDir: tempCacheDir, client: hangingClient }),
+        loadRemoteSkill(testSlug, testUrl, { cacheDir: tempCacheDir, client: hangingClient })
+      ])
+
+      // Wait until download has definitely started
+      while (!downloadStarted) {
+        await new Promise(resolve => setTimeout(resolve, 5))
+      }
+
+      // Verify only one call to each method even though we started 3 loads
+      expect(resolveCallCount).toBe(1)
+      expect(downloadCallCount).toBe(1)
+
+      // Now allow downloads to complete
+      releaseDownload!()
+
+      // Wait for all loads to finish
+      const results = await loadPromise
+
+      // All should have the same result
+      expect(results[0].skillPath).toBe(results[1].skillPath)
+      expect(results[1].skillPath).toBe(results[2].skillPath)
+
+      // Cleanup
+      await rm(tempCacheDir, { recursive: true, force: true })
     })
   })
 })
