@@ -30,8 +30,8 @@ status: draft
 |-----|--------------|--------------|
 | JSONL 格式与 UUID/parentUuid | 每条消息携带 `uuid`、`parentUuid`、`sessionId`；`uuid` 唯一，`parentUuid` 指向前驱，`sessionId` 每条重复 | Fork 时重新生成所有 UUID；并行分支通过 API message ID 关联恢复 |
 | 写入等待与队列 | `appendEntry()` 返回 Promise<void>，但 resolve 发生在**队列化后、刷盘前**；100ms 定时器批量 flush；支持显式 `flush()` 等待 | 进程崩溃时未 flush 的队列数据丢失；调用方不能假设 append 返回后数据已持久化 |
-| 跨进程并发写入 | **无锁机制**；SDK 与 CLI 可同时写入同一 JSONL；最后写入获胜；元数据通过 `reAppendSessionMetadata` 先读后追加刷新 | 同时写入可能出现交错元数据；加载时取最后一个有效；没有原子性保证的批量操作 |
-| 原子性与锁 | 单条 JSONL 行追加（≤ PIPE_BUF）在大多数文件系统上原子；批量多行追加不原子；没有文件锁；没有事务 | 崩溃时可能出现部分写入的行；`loadTranscriptFile()` 跳过无效 JSON；多条消息可能部分写入 |
+| 跨进程并发写入 | **使用 proper-lockfile 短锁**；每次批量追加前获取锁，追加后立即释放；锁只覆盖文件写入阶段，不覆盖队列/模型调用；SDK 与 CLI 使用相同锁协议；元数据通过 `reAppendSessionMetadata` 先读后追加刷新 | 并发写入安全无交错；批量追加原子性由锁保证；锁超时 10s 后自动清理 stale lock；不同进程写入顺序取决于锁获取顺序 |
+| 原子性与锁 | 单条 JSONL 行追加（≤ PIPE_BUF）原子；批量多行追加在锁保护下原子；使用 proper-lockfile 协调跨进程写入；无跨进程事务 | 崩溃时可能出现部分写入的行；`loadTranscriptFile()` 跳过无效 JSON；锁确保不会出现写入交错；崩溃时锁文件会自动过期清理 |
 | 恢复机制 | 加载时通过 `extractLastJsonStringField` 取最后一个元数据；通过 `recoverOrphanedParallelToolResults` 恢复并行分支；通过 `progress bridge` 兼容旧会话 | 截断历史通过 `compact_boundary`；部分崩溃场景需手动干预 |
 | SDK 格式边界 | CLI 与 SDK 共享 JSONL schema（通过 `sessionStoragePortable.ts`）；但 CLI 独有 `Project` 队列/flush 机制；SDK 直接写入无缓冲 | SDK 写入的元数据 CLI 可读取，反之亦然；但 CLI 的队列数据 SDK 看不到 |
 
@@ -50,6 +50,7 @@ status: draft
 | removeMessageByUuid 对不在末尾的消息，仅在文件 ≤ 50MB 时才重写 | `MAX_TOMBSTONE_REWRITE_BYTES = 50 * 1024 * 1024`，超过该大小只标记 tombstone 不重写 | 大文件重写慢且占用 I/O；通过 tombstone 标记在加载时过滤 | 总是重写整个文件：大文件卡顿；永不重写只 tombstone：需解析器支持过滤，文件会越来越大 | 大文件删除非末尾消息后，文件不会立即变小 | `src/utils/sessionStorage.ts:124` |
 | 文件历史快照按 messageId 关联，不是按 UUID | fileHistoryMakeSnapshot(messageId) 关联到 messageId；fork 时不复制文件历史快照 | fork 时重新 UUID 导致快照孤立；按 messageId 关联可以在 fork 后继续访问 | 按 UUID 关联：fork 时快照孤立；按时间戳关联：难以与会话历史对齐 | 需要消息同时携带 UUID 和 messageId | `src/utils/fileHistory.ts` |
 | **队列化写入与 flush 时机** | `appendEntry()` 队列化后立即 resolve，不等待刷盘；100ms 定时器批量 flush；`flush()` 等待 active drain 和 pending writes | 不阻塞调用方 UI；批量写入减少 I/O 次数 | 同步等待刷盘：用户体验卡顿；每写入立即 flush：I/O 次数过多，性能差 | 崩溃时未 flush 的数据丢失；调用方必须调用 `flush()` 确保持久化 | `src/utils/sessionStorage.ts:533-687` [B2-session-persistence-03] |
+| **跨进程短锁机制** | `appendToFile()` 使用 proper-lockfile；锁仅在文件写入期间持有；锁超时 5 次重试（10-100ms 退避）；锁 10s 后视为 stale 可清理；写入前确保文件存在 | 防止 SDK/CLI 同时写入导致交错；锁粒度小，不阻塞模型调用；stale lock 自动清理避免死锁 | 无锁：写入交错损坏 JSONL；粗粒度锁：阻塞模型调用性能差；数据库：复杂度太高 | 轻微写入延迟增加；极端情况下仍可能时序问题（但不会损坏） | `src/utils/sessionStorage.ts:635-687` [B2-session-persistence-03] |
 
 ## 3. 目标与非目标
 
