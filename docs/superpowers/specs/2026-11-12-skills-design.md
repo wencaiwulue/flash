@@ -533,6 +533,525 @@ interface SkillIndexEntry {
 | Fuse.js | 模糊搜索 | (external dep) | 使用方式 |
 | chokidar | 文件监听 | (external dep) | 使用方式 |
 
+---
+
+### 4.7 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          Claude Code Skills System                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │                     Skill Sources (Priority Order)                       │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │ 1. Policy Settings (HIGHEST) - policySkills from managed       │ │ │
+│  │  │    settings                                                        │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │ 2. User Settings - ~/.claude/skills/ directory                   │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │ 3. Project Settings - cwd/.claude/skills/ directory             │ │ │
+│  │  │    (scanned from cwd upwards at startup)                        │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │ 4. Additional Directories - --add-dir flag                      │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │ 5. Legacy Commands - ~/.claude/commands/, cwd/.claude/commands/ │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │ 6. Bundled Skills - built-in, registered at startup             │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │ 7. Plugin Skills - getPluginSkills(), getBuiltinPluginSkill()   │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │ 8. MCP Skills - from MCP servers (mcp.ts)                       │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │ 9. Remote Skills (LOWEST) - SkillHub, _canonical_ prefix        │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                                        │                                      │
+│                                        ▼                                      │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │                  Core Skill Loading Layer (loadSkillsDir.ts)            │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │  Directory Scanning & Parsing                                    │ │ │
+│  │  │  • loadSkillsFromSkillsDir() - scan dir/SKILL.md                │ │ │
+│  │  │  • parseSkillFrontmatterFields() - YAML frontmatter            │ │ │
+│  │  │  • createSkillCommand() - build PromptCommand object           │ │ │
+│  │  │  • getFileIdentity() - realpath for deduplication              │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │  Skill Separation & Caching                                     │ │ │
+│  │  │  • unconditionalSkills - available immediately                │ │ │
+│  │  │  • conditionalSkills Map - paths match required               │ │ │
+│  │  │  • dynamicSkills Map - activated conditionals + discovered   │ │ │
+│  │  │  • memoize(getSkillDirCommands) - cwd as cache key ONLY      │ │ │
+│  │  │  • activatedConditionalSkillNames Set - survives cache clear │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │  Dynamic Discovery                                              │ │ │
+│  │  │  • discoverSkillDirsForPaths() - scan upwards from file path  │ │ │
+│  │  │  • isPathGitIgnored() - skip gitignored dirs                 │ │ │
+│  │  │  • addSkillDirectories() - load discovered skills             │ │ │
+│  │  │  • dynamicSkillDirs Set - track already discovered          │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │  Conditional Activation                                          │ │ │
+│  │  │  • parseSkillPaths() - process paths frontmatter             │ │ │
+│  │  │  • ignore library for pattern matching                      │ │ │
+│  │  │  • activateConditionalSkillsForPaths() - move to dynamicSkills ││ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                                        │                                      │
+│                                        ▼                                      │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │                   Skill Search Layer (skillSearch/)                     │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │  Local Search (localSearch.ts)                                   │ │ │
+│  │  │  • Fuse.js fuzzy search (name:0.3, description:0.5, whenToUse:0.2)││ │
+│  │  │  • threshold: 0.4                                              │ │ │
+│  │  │  • stopword removal fallback (remove about/after/before/check/  │ │ │
+│  │  │    could/from/have/into/please/should/that/this/with/would)    │ │ │
+│  │  │  • getVisibleSkillNames() - avoid repeat recommendations      │ │ │
+│  │  │  • indexCache Map - cwd → Promise<SkillIndexEntry[]>          │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │  Remote Search (remoteSearch.ts)                                │ │ │
+│  │  │  • SkillHubClient search                                       │ │ │
+│  │  │  • _canonical_${namespace}/${slug} naming to avoid conflict    │ │ │
+│  │  │  • discovered Map - track found remote skills                │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │  Prefetch (prefetch.ts)                                          │ │ │
+│  │  │  • startSkillDiscoveryPrefetch() - signal: user_input/          │ │ │
+│  │  │    write_pivot/subagent_spawn                                  │ │ │
+│  │  │  • buildDiscoveryQuery() - construct search query             │ │ │
+│  │  │  • collectSkillDiscoveryPrefetch() - await and return attachment ││ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                                        │                                      │
+│                                        ▼                                      │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │                   Skill Execution Layer (SkillTool.ts)                 │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │  Input Validation (validateInput)                               │ │ │
+│  │  │  • Check skill exists                                          │ │ │
+│  │  │  • Check disableModelInvocation is false                      │ │ │
+│  │  │  • Check is prompt-type skill                                │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │  Permission Check (checkPermissions)                            │ │ │
+│  │  │  • Check deny rules first                                     │ │ │
+│  │  │  • Check allow rules                                          │ │ │
+│  │  │  • SAFE_SKILL_PROPERTIES allowlist - auto-allow if safe      │ │ │
+│  │  │  • Otherwise ask user                                        │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │  Inline Execution (context !== 'fork')                         │ │ │
+│  │  │  • processPromptSlashCommand() - expand prompt                │ │ │
+│  │  │  • Replace ${CLAUDE_SKILL_DIR}, ${CLAUDE_SESSION_ID}         │ │ │
+│  │  │  • Execute shell !`...` injection (NOT for MCP skills!)      │ │ │
+│  │  │  • addInvokedSkill() - track invoked skills                │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │  Fork Execution (context === 'fork')                           │ │ │
+│  │  │  • prepareForkedCommandContext()                              │ │ │
+│  │  │  • Create new agentId                                        │ │ │
+│  │  │  • runAgent() - isolated execution with own token budget    │ │ │
+│  │  │  • extractResultText() - get output                          │ │ │
+│  │  │  • clearInvokedSkillsForAgent() - cleanup                   │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                                        │                                      │
+│                                        ▼                                      │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │              Remote Skill Loading (remoteSkillLoader.ts)               │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │  Caching & Deduplication                                         │ │ │
+│  │  │  • SHA-256 hash of baseUrl + namespace + slug + version       │ │ │
+│  │  │  • Cache dir: ~/.claude/skill-cache/${hash}/                  │ │ │
+│  │  │  • inFlight Map - dedupe concurrent requests for same skill  │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │  ZIP Security Checks                                             │ │ │
+│  │  │  • assertNoZipSymlinks() - no symlinks allowed                │ │ │
+│  │  │  • assertSafePath() - no ../, no absolute, no backslashes      │ │ │
+│  │  │  • Max 100 files, 5MB uncompressed                           │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                                        │                                      │
+│                                        ▼                                      │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │              Change Detection Layer (skillChangeDetector.ts)          │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │  File Watching                                                  │ │ │
+│  │  │  • chokidar watcher - ~/.claude/skills/, ~/.claude/commands/, │ │ │
+│  │  │    cwd/.claude/skills/, cwd/.claude/commands/, additional dirs ││ │
+│  │  │  • Bun: usePolling=true, 2s interval (avoids deadlock)        │ │ │
+│  │  │  • awaitWriteFinish: 1000ms stability, 500ms poll             │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │  Debounce & Reload                                             │ │ │
+│  │  │  • 300ms debounce - batch multiple changes                  │ │ │
+│  │  │  • clearSkillCaches() - clear memoize, conditionalSkills    │ │ │
+│  │  │  • clearCommandsCache() - clear commands cache               │ │ │
+│  │  │  • skillsChanged signal - notify subscribers                │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  │  NOTE: Dynamic discovered directories are NOT watched!              │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 4.8 关键流程与失败路径
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      Startup Skill Loading Flow                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Startup → getSkillDirCommands(cwd)
+   │
+   ├─→ Check memoize cache (cwd as key ONLY) → HIT? Return cached
+   │
+   └─→ MISS: Load sources in parallel (Promise.all):
+         │
+         ├─→ Policy skills (policySettings)
+         ├─→ User skills (~/.claude/skills/)
+         ├─→ Project skills (cwd/.claude/skills/ + parent dirs up)
+         ├─→ Additional dirs (--add-dir)
+         ├─→ Legacy commands (~/.claude/commands/ + cwd/.claude/commands/)
+         │
+         ├─→ For EACH source directory:
+         │     │
+         │     └─→ loadSkillsFromSkillsDir(dir):
+         │           │
+         │           ├─→ Scan for SKILL.md files
+         │           │
+         │           ├─→ For EACH skill:
+         │           │     │
+         │           │     ├─→ Parse YAML frontmatter
+         │           │     │
+         │           │     ├─→ getFileIdentity(filePath) → realpath for dedupe
+         │           │     │
+         │           │     ├─→ parseSkillPaths() if paths frontmatter exists
+         │           │     │
+         │           │     └─→ createSkillCommand() → PromptCommand object
+         │           │
+         │           └─→ Separate:
+         │                 ├─→ unconditionalSkills → available immediately
+         │                 └─→ conditionalSkills → stored in Map, needs activation
+         │
+         ├─→ Deduplicate by realpath: higher priority source wins for same skill
+         │
+         ├─→ Return unconditionalSkills
+         │
+         └─→ Store conditionalSkills in Map, activatedConditionalSkillNames persists
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                   Dynamic Skill Discovery Flow                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Trigger: File operation (Read/Write/Edit) on file at path
+   │
+   ▼
+discoverSkillDirsForPaths([path], cwd)
+   │
+   ├─→ For each path:
+   │     │
+   │     ├─→ Traverse UPWARDS from file's dir to cwd (EXCLUDE cwd, already loaded)
+   │     │
+   │     ├─→ For each ancestor dir:
+   │     │     │
+   │     │     ├─→ Check if dir/.claude/skills exists
+   │     │     │
+   │     │     ├─→ Check if already in dynamicSkillDirs Set → YES: Skip
+   │     │     │
+   │     │     ├─→ isPathGitIgnored(dir)? → YES: Skip
+   │     │     │
+   │     │     └─→ Add to results
+   │     │
+   │     └─→ Sort results by depth (DEEPER FIRST)
+   │
+   ▼
+addSkillDirectories(dirs)
+   │
+   ├─→ Load each discovered directory (similar to startup loading)
+   │
+   ├─→ Add to dynamicSkills Map (reverse order: shallower dirs first, deeper can override)
+   │
+   ├─→ Add to dynamicSkillDirs Set
+   │
+   ├─→ emit skillsLoaded signal
+   │
+   └─→ clearCommandMemoizationCaches()
+   │
+   ▼
+Skills now visible to model
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                   Conditional Skill Activation Flow                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Trigger: File operation OR explicit call
+   │
+   ▼
+activateConditionalSkillsForPaths(paths, cwd)
+   │
+   ├─→ Iterate through conditionalSkills Map
+   │
+   ├─→ For EACH conditional skill:
+   │     │
+   │     ├─→ Get paths patterns from skill.paths
+   │     │
+   │     ├─→ For EACH pattern:
+   │     │     │
+   │     │     ├─→ Create ignore library matcher
+   │     │     │
+   │     │     └─→ Test against relative paths from paths array
+   │     │
+   │     ├─→ ANY match? → ACTIVATE:
+   │     │     │
+   │     │     ├─→ Remove from conditionalSkills Map
+   │     │     │
+   │     │     ├─→ Add to dynamicSkills Map
+   │     │     │
+   │     │     ├─→ Add to activatedConditionalSkillNames Set
+   │     │     │
+   │     │     └─→ Add to activation results
+   │     │
+   │     └─→ NO match? → Stay in conditionalSkills
+   │
+   ├─→ Any activations? → emit skillsLoaded signal
+   │
+   └─→ Return activated skill names
+   │
+   NOTE: Activated skills NEVER auto-deactivate! They stay in dynamicSkills permanently.
+   NOTE: activatedConditionalSkillNames Set survives clearSkillCaches()!
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                   Skill Execution Flow (Inline + Fork)                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+SkillTool.call({skill: name, args?: args}, context, canUseTool, parentMessage, onProgress)
+   │
+   ▼
+validateInput()
+   │
+   ├─→ Strip leading '/' from skill name
+   │
+   ├─→ Check for _canonical_ prefix → remote skill handling
+   │
+   ├─→ Check skill exists in getAllCommands() → NO → Error, STOP
+   │
+   ├─→ Check skill.disableModelInvocation → true? → Error, STOP
+   │
+   └─→ Check skill.type === 'prompt' → NO → Error, STOP
+   │
+   ▼
+checkPermissions()
+   │
+   ├─→ Check deny rules first → match? → DENY, STOP
+   │
+   ├─→ Check allow rules → match? → ALLOW, continue
+   │
+   ├─→ Check if skill uses ONLY SAFE_SKILL_PROPERTIES → YES → ALLOW, continue
+   │
+   └─→ Otherwise: ask user
+   │
+   ▼
+recordSkillUsage()
+   │
+   ▼
+Check skill.context:
+   │
+   ├─→ 'fork'? → Execute Forked:
+   │     │
+   │     ├─→ prepareForkedCommandContext()
+   │     │
+   │     ├─→ Create new agentId
+   │     │
+   │     ├─→ runAgent() - isolated execution with own token budget
+   │     │     │
+   │     │     └─→ SUCCESS/ERROR → Continue
+   │     │
+   │     ├─→ extractResultText()
+   │     │
+   │     ├─→ clearInvokedSkillsForAgent(agentId)
+   │     │
+   │     └─→ Return tool result with status 'forked'
+   │
+   └─→ NOT 'fork'? → Execute Inline:
+         │
+         ├─→ processPromptSlashCommand(skill, args, context)
+         │     │
+         │     ├─→ Parse and validate arguments
+         │     │
+         │     ├─→ Replace ${CLAUDE_SKILL_DIR} and ${CLAUDE_SESSION_ID}
+         │     │
+         │     ├─→ Execute shell !`...` injection?
+         │     │     │
+         │     │     ├─→ skill.loadedFrom === 'mcp'? → SKIP (security!)
+         │     │     │
+         │     │     └─→ Otherwise: execute and interpolate result
+         │     │
+         │     ├─→ addInvokedSkill(skill, context)
+         │     │
+         │     └─→ Return processed prompt
+         │
+         ├─→ Tag message with toolUseId
+         │
+         └─→ Return newMessages for model to continue
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                   Remote Skill Loading & Execution Flow                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Skill({skill: '_canonical_namespace/slug', args: ...})
+   │
+   ▼
+validateInput()
+   │
+   ├─→ stripCanonicalPrefix() → 'namespace/slug'
+   │
+   ├─→ getDiscoveredRemoteSkill(slug) → MUST exist in discovered Map
+   │
+   └─→ Get SkillHub URL from discovered entry
+   │
+   ▼
+loadRemoteSkill(slug, url)
+   │
+   ├─→ Compute SHA-256 hash of baseUrl + namespace + slug + version
+   │
+   ├─→ Check cache dir ~/.claude/skill-cache/${hash}/
+   │     │
+   │     ├─→ EXISTS and has SKILL.md → CACHE HIT → Return from cache
+   │     │
+   │     └─→ NOT exists → DOWNLOAD:
+   │           │
+   │           ├─→ Check inFlight Map → same request pending? → Share promise
+   │           │
+   │           ├─→ SkillHubClient.downloadSkill(url)
+   │           │
+   │           ├─→ Security checks:
+   │           │     │
+   │           │     ├─→ assertNoZipSymlinks() - NO symlinks allowed! → FAIL? Throw, STOP
+   │           │     │
+   │           │     ├─→ assertSafePath() - NO ../, NO absolute, NO backslashes → FAIL? Throw, STOP
+   │           │     │
+   │           │     ├─→ Max 100 files → OVER? Throw, STOP
+   │           │     │
+   │           │     └─→ Max 5MB uncompressed → OVER? Throw, STOP
+   │           │
+   │           ├─→ Extract to cache dir
+   │           │
+   │           └─→ Return SKILL.md content
+   │
+   ├─→ logRemoteSkillLoaded()
+   │
+   ├─→ parseFrontmatter() - strip YAML frontmatter
+   │
+   ├─→ Replace ${CLAUDE_SKILL_DIR} and ${CLAUDE_SESSION_ID}
+   │
+   ├─→ addInvokedSkill()
+   │
+   └─→ Wrap as user message, return
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                   Skill Change Detection & Reload Flow                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+skillChangeDetector.initialize()
+   │
+   ├─→ Collect watch targets:
+   │     ├─→ ~/.claude/skills/
+   │     ├─→ ~/.claude/commands/
+   │     ├─→ cwd/.claude/skills/
+   │     ├─→ cwd/.claude/commands/
+   │     └─→ --add-dir directories
+   │
+   ├─→ Start chokidar:
+   │     ├─→ Bun: usePolling=true, interval=2000ms (avoids PathWatcherManager deadlock!)
+   │     └─→ awaitWriteFinish: stabilityThreshold=1000ms, pollInterval=500ms
+   │
+   └─→ Ready!
+
+
+File change detected (chokidar 'change'/'add' event):
+   │
+   ├─→ Add path to pendingChangedPaths Set
+   │
+   ├─→ Start/Restart 300ms debounce timer
+   │
+   └─→ After 300ms quiet:
+         │
+         ├─→ clearSkillCaches()
+         │     │
+         │     ├─→ Clear getSkillDirCommands memoize cache
+         │     │
+         │     ├─→ Clear loadMarkdownFilesForSubdir memoize cache
+         │     │
+         │     ├─→ Clear conditionalSkills Map
+         │     │
+         │     └─→ NO: activatedConditionalSkillNames Set survives!
+         │
+         ├─→ clearCommandsCache()
+         │
+         └─→ skillsChanged.emit() → notify subscribers to reload
+
+
+Delete event ('unlink'):
+   │
+   ├─→ Special handling: vim etc. use delete-rebuild pattern
+   │
+   ├─→ Create pendingDeletion timer for 6.5s
+   │
+   ├─→ If 'add'/'change' arrives within window → Cancel timer, treat as normal change
+   │
+   └─→ Timer expires → Treat as real deletion, reload
+```
+
+### 4.9 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| getSkillDirCommands缓存 | loadSkillsDir.ts | 首次调用时memoize缓存，仅以cwd为键 | 进程级共享 | 不持久化 | clearSkillCaches()清空，或变更检测时清空 | 无特殊清理 |
+| unconditionalSkills | loadSkillsDir.ts | 启动时从目录加载，立即可用 | 进程级共享 | 不持久化 | 缓存清空时重建 | 无特殊清理 |
+| conditionalSkills Map | loadSkillsDir.ts | 启动时从目录加载paths条件的技能 | 进程级共享 | 不持久化 | clearSkillCaches()清空 | 激活后从Map移除 |
+| dynamicSkills Map | loadSkillsDir.ts | 存储已激活的条件技能+动态发现的技能 | 进程级共享 | 不持久化 | 缓存清空时重建 | 无自动失效 |
+| activatedConditionalSkillNames Set | loadSkillsDir.ts | 记录已激活的条件技能名称 | 进程级共享 | 不持久化 | 永不清空（即使clearSkillCaches()也保留！） | 无自动清理 |
+| dynamicSkillDirs Set | loadSkillsDir.ts | 记录已动态发现的技能目录 | 进程级共享 | 不持久化 | 缓存清空时不清空（避免重复发现） | 无自动清理 |
+| skillsLoaded signal | loadSkillsDir.ts | 模块级信号，通知技能变化 | 进程级广播 | 不持久化 | 无重置 | 无特殊清理 |
+| indexCache Map | localSearch.ts | 缓存本地技能索引，键为cwd | 进程级共享 | 不持久化 | 技能重载时隐式失效 | 无特殊清理 |
+| discovered Map | remoteSearch.ts | 记录已发现的远程技能，键为slug | 进程级共享 | 不持久化 | 无自动清理 | 无特殊清理 |
+| inFlight Map | remoteSkillLoader.ts | 记录进行中的远程技能下载请求 | 进程级共享 | 不持久化 | 请求完成自动移除 | 无特殊清理 |
+| 远程技能缓存目录 | remoteSkillLoader.ts | ~/.claude/skill-cache/${sha256}/，存储下载的技能 | 用户级共享 | 持久化，无限增长！ | 无LRU，无大小限制，需手动清理 | 无自动清理 |
+| chokidar监听器 | skillChangeDetector.ts | initialize()时创建，监听初始技能目录（不包括动态发现的目录！） | 进程级单例 | 不持久化 | dispose()关闭 | dispose()完整清理 |
+| pendingChangedPaths Set | skillChangeDetector.ts | 记录待处理的变更路径 | 进程级共享 | 不持久化 | 每次重载后清空 | 无特殊清理 |
+| debounce定时器 | skillChangeDetector.ts | 变更时创建/重启，300ms | 进程级单例 | 不持久化 | 新变更取消旧定时器 | clearTimeout取消 |
+| pendingDeletion定时器 | skillChangeDetector.ts | 'unlink'事件时创建，6.5s | 每个删除路径一个 | 不持久化 | 'add'/'change'事件取消定时器，或超时后自然清理 | clearTimeout取消 |
+| PromptCommand对象 | loadSkillsDir.ts | createSkillCommand()从SKILL.md创建 | 进程级共享 | 不持久化 | 技能重载时重建 | 无特殊清理 |
+| invokedSkills记录 | SkillTool.ts | addInvokedSkill()记录调用的技能 | 按agentId隔离 | 不持久化 | clearInvokedSkillsForAgent(agentId)清理 | fork执行后自动清理 |
+
+**生命周期证据：**
+- 缓存与条件激活：`src/skills/loadSkillsDir.ts:638-1058`
+- 变更检测：`src/utils/skills/skillChangeDetector.ts:66-280`
+- 远程技能缓存：`src/services/skillSearch/remoteSkillLoader.ts:93-190`
+- 权限检查与执行：`src/tools/SkillTool/SkillTool.ts:354-933`
+- 本地搜索：`src/services/skillSearch/localSearch.ts:68-150`
+
+---
+
 ## 5. 失败语义与工程取舍
 
 ### 5.1 失败表

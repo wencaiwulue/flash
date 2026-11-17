@@ -879,6 +879,230 @@ https://<origin>/ccshare/<id>
 {"type":"assistant","uuid":"...","parentUuid":"...","timestamp":"2026-01-02T03:04:06.000Z","sessionId":"...","cwd":"/path","userType":"external","version":"1.0.0","message":{"role":"assistant","content":"..."}}
 ```
 
+---
+
+### 4.7 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          Claude Code CLI                                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │                          User Input/UI                                 │ │
+│  │  /share, /export, ccshare commands + dialogs (ShareDialog.tsx)         │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                                    │                                         │
+│                                    ▼                                         │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │                     Command Layer                                       │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │ /share Command (index.tsx)                                        │ │ │
+│  │  │  → shareHtml.ts: HTML generation + path validation               │ │ │
+│  │  │  → resolveShareOutputPath: dual path checks (lexical + real)     │ │ │
+│  │  │  → writeSharedHtml: wx flag (never overwrite)                    │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │ /export Command                                                  │ │ │
+│  │  │  → exportRenderer.tsx: streamRenderedMessages + Messages component││ │
+│  │  │  → chunkSize = 40 for memory optimization                        │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │ ccshare Resume (ccshareResume.ts)                                │ │ │
+│  │  │  → parseCcshareId: validate URL/ID format                       │ │ │
+│  │  │  → loadCcshare: download transcript + validate permissions      │ │ │
+│  │  │  → fetchTranscript: manual redirect handling (max 5)            │ │ │
+│  │  │  → writeBoundedResponse: byte/line limits (10MB / 20k)          │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                                    │                                         │
+│                                    ▼                                         │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │                     External Dependencies                                │ │
+│  │  ┌──────────────────────┐  ┌──────────────────────┐                    │ │
+│  │  │ ccshare Server       │  │ Credential File      │                    │ │
+│  │  │ (HTTPS only)         │  │ ~/.claude/ccshare-   │                    │ │
+│  │  │ origin configurable  │  │ credentials.json     │                    │ │
+│  │  │ via CLAUDE_CODE_     │  │ (0600, ≤4KB, no     │                    │ │
+│  │  │ CCSHARE_ORIGIN       │  │ symlink)             │                    │ │
+│  │  └──────────────────────┘  └──────────────────────┘                    │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                                    │                                         │
+│                                    ▼                                         │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │                      File Output Layer                                  │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │ Output Files (cwd only)                                           │ │ │
+│  │  │  → .html file (share) - static, self-contained                   │ │ │
+│  │  │  → .txt file (export) - plain text                               │ │ │
+│  │  │  → temp JSONL (ccshare) - 0600 permissions, auto-cleaned         │ │ │
+│  │  │  NO ../ escape, NO overwrite, NO auto-mkdir                       │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 4.8 关键流程与失败路径
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         /share Command - Main Flow                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+User Input: /share output.html
+       │
+       ▼
+resolveShareOutputPath(filename, cwd)
+       │
+       ├─→ Validate non-null, ends with .html ──┐
+       │                                        │
+       ├─→ Lexical check (no ../, no absolute)  │
+       │                                        ├─── ANY FAIL → Show error, STOP
+       ├─→ Real path check (after symlink) ─────┘
+       │
+       ▼
+Show ShareDialog
+       │
+       ├─→ getSharePreview() - ALWAYS hides tool output
+       ├─→ Show privacy warning
+       └─→ includeToolOutput toggle (default: false)
+       │
+       ▼
+User Confirmation
+       │
+       ▼
+renderConversationToHtml(messages, {includeToolOutput})
+       │
+       ├─→ messageText() - filter tool output per flag
+       └─→ escapeHtml() - escape &, <, >, ", '
+       │
+       ▼
+writeSharedHtml(destination, html)
+       │
+       ├─→ flag: wx (never overwrite) ──→ FILE EXISTS → Error, STOP
+       └─→ Write HTML to disk
+       │
+       ▼
+Show success message with path
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      ccshare Resume - Main + Failure Paths                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+User Input: ccshare <id> or ccshare <url>
+       │
+       ▼
+parseCcshareId(input)
+       │
+       ├─→ If URL: validate https only, no userinfo/search/hash
+       ├─→ Match origin, extract ID
+       └─→ Validate ID pattern: /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
+       │
+       ├─── INVALID → Return null, STOP
+       │
+       ▼
+loadCcshare(id, options)
+       │
+       ▼
+readCredential() [optional]
+       │
+       ├─→ Check file exists (if not, skip)
+       ├─→ Check regular file (not symlink)
+       ├─→ Check permissions 0600
+       ├─→ Check size ≤4KB
+       └─→ Parse JSON, extract token
+       │
+       ├─── ANY FAIL → Throw, STOP
+       │
+       ▼
+fetchTranscript(id, options)
+       │
+       ├─→ Set timeout (default 15s)
+       ├─→ Manual redirect handling (max 5)
+       │     │
+       │     ├─→ Each redirect: validate https only
+       │     ├─→ Cross-origin: confirmCrossOrigin()
+       │     │     │
+       │     │     ├──→ USER REJECTS → Throw, STOP
+       │     │     └──→ USER CONFIRMS → Continue, NO Authorization header
+       │     │
+       │     └─→ Same-origin: continue with Authorization (if any)
+       │
+       ├─── TIMEOUT → Cleanup, STOP
+       ├─── TOO MANY REDIRECTS → Cleanup, STOP
+       ├─── NON-200 STATUS → Cleanup, STOP
+       ├─── BAD CONTENT-TYPE → Cleanup, STOP
+       │
+       ▼
+writeBoundedResponse(response, tempPath, maxBytes, maxLines)
+       │
+       ├─→ Open with wx + 0600 permissions
+       ├─→ Stream download
+       ├─→ Count bytes (max 10MB)
+       ├─→ Count lines (max 20,000)
+       │
+       ├─── OVER LIMIT → Delete temp file, Throw, STOP
+       │
+       ▼
+loadTranscriptFromFile(tempPath)
+       │
+       ▼
+Return { ...log, projectPath: undefined }
+       │
+       ▼
+Cleanup: AbortController, discard response, delete temp file (if error)
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         /export Command - Main Flow                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+User Input: /export [filename]
+       │
+       ▼
+Similar path validation to /share (safe filename, no overwrite)
+       │
+       ▼
+streamRenderedMessages(messages, tools, sink)
+       │
+       ├─→ chunkSize = 40 messages per chunk
+       ├─→ Uses same Messages component as UI
+       ├─→ Calls sink(ansiChunk) for each chunk
+       └─→ Optional stripAnsi
+       │
+       ├─── MEMORY OPTIMIZATION: Reduces peak memory usage vs full render
+       │
+       ▼
+Write file (same as /share: wx flag, no auto-mkdir)
+       │
+       ▼
+Show success message
+```
+
+### 4.9 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| HTML输出文件 | writeSharedHtml() | 用户指定路径，验证安全后创建 | 隔离（单次会话） | 持久保存到cwd，权限0o644 | 无（手动删除） | 已存在则失败（wx），不覆盖 |
+| 导出文本文件 | /export command | 类似HTML创建流程 | 隔离（单次会话） | 持久保存到cwd | 无（手动删除） | 已存在则失败，不覆盖 |
+| ccshare临时JSONL | loadCcshare() | tempDir/ccshare-{hex}.jsonl，权限0o600 | 隔离（单次会话） | 临时文件 | 自动删除 | finally块unlink()，失败时必删 |
+| ccshare凭证 | readCredential() | ~/.claude/ccshare-credentials.json或环境变量指定路径 | 用户级共享 | 持久，权限必须0o600 | 无（用户手动管理） | 验证失败不修改 |
+| ccshare AbortController | fetchTranscript() | 超时时创建，关联fetch请求 | 隔离（单次请求） | 不持久化 | 超时触发abort() | finally块清理定时器和response |
+| ShareDialog UI | /share command | React组件，渲染预览和选项 | 隔离（单次交互） | 不持久化 | 用户确认或取消后关闭 | includeToolOutput默认false |
+| HTML渲染结果 | renderConversationToHtml() | 内存中构建，escapeHtml转义 | 隔离（单次导出） | 不持久化（除非写入文件） | 下一次导出覆盖 | 无特殊清理 |
+| 分块渲染状态 | streamRenderedMessages() | offset从0开始，chunkSize=40 | 隔离（单次导出） | 不持久化 | 渲染完成自动清理 | 无特殊清理 |
+
+**生命周期证据：**
+- 文件权限与wx标志：`src/commands/share/shareHtml.ts:writeSharedHtml`
+- 临时文件清理：`src/utils/ccshareResume.ts:loadCcshare`的finally块
+- 凭证验证：`src/utils/ccshareResume.ts:readCredential`
+- 分块渲染：`src/utils/exportRenderer.tsx:streamRenderedMessages`
+- HTML转义：`src/commands/share/shareHtml.ts:escapeHtml`
+
+---
+
 ## 5. 失败语义与工程取舍
 
 ### 5.1 失败语义
