@@ -1253,3 +1253,37 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/02-tools-permis
 **spec 更新**：保持 draft；第 7 节记录真实测试、三层证据、未覆盖项和回滚计划。
 
 **原 Finding 状态**：B2-mcp-01 和 B2-mcp-03 保持 open，不修改历史统计。
+
+---
+
+## 整改台账：B2-session-persistence-01 / B2-session-persistence-02 / B2-session-persistence-04（2026-11-18 追加）
+
+**Finding ID**：B2-session-persistence-01 / B2-session-persistence-02 / B2-session-persistence-04
+
+**整改内容**：新增 `tests/sessionPersistenceRecovery.test.ts` 并唯一登记 session-persistence coverage，覆盖以下关键场景：
+
+1. **崩溃恢复与截断处理**：
+   - 模拟进程崩溃导致最后一行 JSONL 被截断（部分写入）
+   - 验证 loadTranscriptFile 自动跳过无效行，保留有效历史
+   - 验证完全无效的 JSON 行被正确忽略
+
+2. **惰性文件创建**：
+   - 验证在第一条 user/assistant 消息写入前，会话文件不创建
+   - 验证 adoptResumedSessionFile 在恢复会话时正确工作
+
+3. **Tombstone 与 removeMessageByUuid**：
+   - 验证删除最后一条消息时文件被正确 truncate
+   - 验证大文件阈值（50MB）行为（跳过重写，保留 tombstone 处理）
+
+4. **Compact Boundary + Preserved Segment**：
+   - 验证 preserved segment 的 head/tail/anchor 正确解析
+   - 验证消息 parentUuid 重链接逻辑
+   - 验证预压缩内容的跳过逻辑
+
+**验证结果**：focused 7 pass、0 fail；无生产代码变更。全部测试使用临时文件，无真实模型/凭据/网络调用。
+
+**证据边界**：崩溃恢复测试模拟截断文件，未使用真实进程退出；大文件测试跳过 50MB 以上重写，未实际生成 1GB 会话；跨进程并发写入已在 sessionConcurrency.test.ts 有覆盖。
+
+**spec 更新**：保持 approved（原状态已批准），新增第 10 节整改记录，更新第 7 节测试证据表格。
+
+**原 Finding 状态**：B2-session-persistence-01/02/04 保持 open，不修改历史统计。

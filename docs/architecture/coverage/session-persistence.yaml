@@ -66,4 +66,5 @@ groups:
     files:
       - tests/sessionChainRecovery.test.ts
       - tests/sessionConcurrency.test.ts
+      - tests/sessionPersistenceRecovery.test.ts
       - tests/fixtures/concurrent-worker.ts

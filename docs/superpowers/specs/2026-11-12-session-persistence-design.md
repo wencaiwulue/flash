@@ -1264,14 +1264,14 @@ findLatestMessage() (有可见用户内容)
 
 | 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
 |---|---|---|---|
-| JSONL 追加写入，无原地改写 | `src/utils/sessionStorage.ts:1-999` | `tests/sessionChainRecovery.test.ts` | 未找到直接测试覆盖 |
-| 大文件启动时仅读头尾 64KB | `src/utils/sessionStoragePortable.ts:1-999` | `tests/sessionChainRecovery.test.ts` | 未找到直接测试覆盖 |
+| JSONL 追加写入，无原地改写 | `src/utils/sessionStorage.ts:1-999` | `tests/sessionPersistenceRecovery.test.ts` | `tests/sessionPersistenceRecovery.test.ts` 验证崩溃恢复截断场景 |
+| 大文件启动时仅读头尾 64KB | `src/utils/sessionStoragePortable.ts:1-999` | `tests/sessionConcurrency.test.ts` | 已有头尾读取测试，但大文件（>1GB）性能仍未覆盖 |
 | 元数据追加不覆盖，读取取最后一个 | `src/utils/sessionStorage.ts:1-999` + `extractLastJsonStringField` | 需查找相关测试 | 未找到直接测试覆盖 |
 | 并行工具调用通过 recoverOrphanedParallelToolResults 恢复 | `src/utils/sessionChainRecovery.ts:1-999` | `tests/sessionChainRecovery.test.ts` | `tests/sessionChainRecovery.test.ts` 验证恢复顺序与无关联分支排除 |
-| 会话文件惰性创建 | `src/utils/sessionStorage.ts:1-999` + `pendingEntries` + `materializeSessionFile` | 需查找相关测试 | 未找到直接测试覆盖 |
-| compact_boundary 截断历史，但保留 preservedSegment | `src/utils/sessionStorage.ts:1-999` | 需查找相关测试 | 未找到直接测试覆盖 |
-| removeMessageByUuid 对不在末尾的消息，仅在 ≤ 50MB 时才重写 | `src/utils/sessionStorage.ts:1-999` + `MAX_TOMBSTONE_REWRITE_BYTES` | 需查找相关测试 | 未找到直接测试覆盖 |
-| 文件历史快照按 messageId 关联 | `src/utils/fileHistory.ts:1-999` | 需查找相关测试 | 未找到直接测试覆盖 |
+| 会话文件惰性创建 | `src/utils/sessionStorage.ts:1-999` + `pendingEntries` + `materializeSessionFile` | `tests/sessionPersistenceRecovery.test.ts` | `tests/sessionPersistenceRecovery.test.ts` 验证文件在第一条 user/assistant 消息前不创建 |
+| compact_boundary 截断历史，但保留 preservedSegment | `src/utils/sessionStorage.ts:1-999` | `tests/sessionPersistenceRecovery.test.ts` | `tests/sessionPersistenceRecovery.test.ts` 验证 preserved segment 恢复与重链接 |
+| removeMessageByUuid 对不在末尾的消息，仅在 ≤ 50MB 时才重写 | `src/utils/sessionStorage.ts:1-999` + `MAX_TOMBSTONE_REWRITE_BYTES` | `tests/sessionPersistenceRecovery.test.ts` | `tests/sessionPersistenceRecovery.test.ts` 验证末尾消息 truncate 行为；大文件非末尾仍需实机验证 |
+| 文件历史快照按 messageId 关联 | `src/utils/fileHistory.ts:1-999` | `tests/fileHistory.test.ts` | 已有基本快照测试 |
 
 ### 7.1 核心模块
 
@@ -1323,3 +1323,30 @@ findLatestMessage() (有可见用户内容)
 | P2 | removeMessageByUuid 对大文件的非末尾消息无操作，用户可能期望删除历史消息后文件变小，但当前只对小文件重写 | 增加后台压缩机制；或提供显式的"清理会话历史"命令 | 低（新增功能，不改变现有行为） | 用户可以触发压缩，大文件删除历史后变小 | M | 设计推断 |
 | P2 | progress 消息在旧会话中的处理，当前通过 progressBridge 跨越，但如果 progress 消息非常多，加载时仍会解析它们 | 在 compact 时完全移除 progress 消息 | 低（只影响旧会话） | compact 后 progress 消息被清理 | S | 设计推断 |
 | P3 | subagent 会话的存储位置，当前放在 `<session-id>/subagents/<agent-id>.jsonl`，但 sessionId 改变时（如 fork），子会话路径不会更新 | 在 fork 时复制或重链接子会话；或使用相对路径 | 低（影响有限） | fork 后子会话仍可访问 | M | 设计推断 |
+
+## 10. 整改记录（2026-11-18）
+
+### 10.1 已完成整改
+
+| Finding | 类型 | 内容 |
+|---|---|---|
+| B2-session-persistence-01/02/04 | 测试补充 | 新增 `tests/sessionPersistenceRecovery.test.ts`，覆盖崩溃恢复截断处理、惰性文件创建、tombstone 末尾删除、compact boundary + preserved segment 恢复 |
+
+### 10.2 测试覆盖
+
+- ✅ `sessionPersistenceRecovery.test.ts` 包含：
+  - 崩溃恢复：截断 JSONL 的最后一行、完全无效的 JSON 行处理
+  - 惰性创建：文件在第一条 user/assistant 消息前不创建
+  - adoptResumedSessionFile 行为验证
+  - removeMessageByUuid：末尾消息 truncate、大文件阈值行为验证
+  - compact boundary 与 preserved segment 恢复流程
+
+### 10.3 证据边界
+
+本整改**未**修改生产代码，仅补充测试覆盖，因此**无**代码回滚风险。
+
+### 10.4 剩余缺口（待后续迭代）
+
+- 多进程并发写入元数据竞争场景（已在 sessionConcurrency.test.ts 有基本覆盖）
+- 大文件（>1GB）启动加载性能
+- reAppendSessionMetadata 的定期执行机制
