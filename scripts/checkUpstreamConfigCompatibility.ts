@@ -22,6 +22,8 @@ export const COMPATIBILITY_STATUSES = [
   'ignored-by-design',
 ] as const
 
+const VALID_OWNER_BATCHES: ReadonlyArray<1 | 2 | 3 | 4 | 5 | 'final'> = [1, 2, 3, 4, 5, 'final']
+
 export type CheckMode = 'drift' | 'batch' | 'final'
 
 export type MatrixEntryV2 = CompatibilityMatrixEntry & {
@@ -479,7 +481,7 @@ export function createInitialMatrix(
     if (present) {
       dimensions.path = {
         status: 'aligned',
-        evidence: 'generated schema diff',
+        evidence: entry.kind === 'setting' ? 'generated schema diff' : 'HOOK_EVENTS',
       }
     }
 
@@ -861,12 +863,18 @@ export async function checkCompatibilityV2(
       const isInSelectedBatch = !batches || batches.length === 0 || batches.includes(ownerBatch as 1|2|3|4|5)
       if (!isInSelectedBatch) continue
 
-      // OwnerBatch 验证
-      if (!v2Entry.ownerBatch) {
+      // OwnerBatch 验证：必须存在且为合法枚举值（1-5 或 'final'），仅 truthy 检查不够
+      if (v2Entry.ownerBatch === undefined || v2Entry.ownerBatch === null) {
         diagnostics.push({
           code: 'invalid-owner-batch',
           id: entry.id,
           message: `Entry ${entry.id} requires an ownerBatch`,
+        })
+      } else if (!VALID_OWNER_BATCHES.includes(v2Entry.ownerBatch)) {
+        diagnostics.push({
+          code: 'invalid-owner-batch',
+          id: entry.id,
+          message: `Entry ${entry.id} has invalid ownerBatch ${String(v2Entry.ownerBatch)}; must be 1-5 or 'final'`,
         })
       }
 
@@ -1014,18 +1022,20 @@ export async function checkCompatibilityV2(
           }
         }
 
-        // ignored-by-design 状态验证：必须有证据
+        // ignored-by-design 状态验证：必须有结构化证据。
+        // 自由文本 notes 不算证据（否则随便写一句 notes 即可绕过门禁）；
+        // evidence 必须含非空字符串，或提供 exclusion.reason + exclusion.evidence。
         if (entry.status === 'ignored-by-design') {
-          const v2Entry = entry as MatrixEntryV2
-          const hasEvidence = entry.evidence.length > 0 ||
-            (entry.exclusion?.reason && entry.exclusion?.evidence) ||
-            entry.notes.length > 0
+          const hasExclusionEvidence = Boolean(
+            entry.exclusion && hasText(entry.exclusion.reason) && hasText(entry.exclusion.evidence)
+          )
+          const hasAnyEvidence = hasEvidence(entry.evidence) || hasExclusionEvidence
 
-          if (!hasEvidence) {
+          if (!hasAnyEvidence) {
             diagnostics.push({
               code: 'invalid-exclusion-evidence',
               id: entry.id,
-              message: `ignored-by-design entry ${entry.id} requires explicit evidence/reason for exclusion`,
+              message: `ignored-by-design entry ${entry.id} requires explicit evidence (non-empty evidence[] or exclusion.reason+exclusion.evidence); free-text notes alone are not sufficient`,
             })
           }
         }
