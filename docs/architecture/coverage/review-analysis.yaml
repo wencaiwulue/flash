@@ -36,3 +36,4 @@ groups:
     summary: 审查测试 - 审查工具相关测试
     files:
       - tests/reviewArtifact.test.ts
+      - tests/insightsFacetCache.test.ts
