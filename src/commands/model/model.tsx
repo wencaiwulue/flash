@@ -33,6 +33,7 @@ import {
   executePostModelSwitchHooks,
   executePreModelSwitchHooks,
 } from '../../utils/hooks.js'
+import { getPromptCache1hEligible } from '../../bootstrap/state.js'
 
 function ModelPickerWrapper({
   onDone,
@@ -213,10 +214,10 @@ function SetModelAndClose({
 
     async function setModel(modelValue: string | null): Promise<void> {
       // PreModelSwitch (upstream 2.1.311): deny/block/timeout cancels the
-      // switch (fail-closed). GAP: context_tokens / prompt_cache_warm /
-      // cache_ttl / estimated_cache_write_usd / pricing are not available at
-      // the UI layer and use defaults; real values need query-layer
-      // integration (tracked in the B1 spec decision table).
+      // switch (fail-closed). cache_ttl is real (1h prompt-cache eligibility).
+      // GAP: context_tokens / prompt_cache_warm / estimated_cache_write_usd /
+      // pricing need a query-layer last-response usage + pricing subsystem
+      // (tracked in the B1 spec decision table).
       const switchFields = {
         from_model: currentModel ?? getDefaultMainLoopModelSetting(),
         to_model: modelValue ?? getDefaultMainLoopModelSetting(),
@@ -224,7 +225,7 @@ function SetModelAndClose({
         source: 'command' as const,
         context_tokens: 0,
         prompt_cache_warm: false,
-        cache_ttl: '5m' as const,
+        cache_ttl: (getPromptCache1hEligible() ? '1h' : '5m') as '1h' | '5m',
         estimated_cache_write_usd: 0,
         pricing: 'default' as const,
       }
