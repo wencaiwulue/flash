@@ -25,7 +25,7 @@ export const COMPATIBILITY_STATUSES = [
 export type CheckMode = 'drift' | 'batch' | 'final'
 
 export type MatrixEntryV2 = CompatibilityMatrixEntry & {
-  ownerBatch?: 1 | 2 | 3 | 4 | 5
+  ownerBatch?: 1 | 2 | 3 | 4 | 5 | 'final'
   spec?: string
   verifiedVersion?: string
   currentReview?: {
@@ -276,6 +276,7 @@ export type Diagnostic = {
     | 'invalid-verified-version'
     | 'invalid-current-review'
     | 'invalid-deprecated-effective-excluded'
+    | 'entry-not-aligned'
   id?: string
   path?: string
   message: string
@@ -918,6 +919,25 @@ export async function checkCompatibilityV2(
       for (const entry of entries) {
         const v2Entry = entry as MatrixEntryV2
         const inventoryEntry = inventoryById.get(entry.id)
+
+        // Final 严格门禁：每个 active 条目必须处于终态。
+        // 终态 = aligned，或合法 excluded（lifecycle=removed），或有证据的 ignored-by-design，
+        // 或 afterBaseline 的 blocked（上游文档领先于基线，允许保留）。
+        // 其余 missing/partial/different/blocked 一律视为未完成，必须报错。
+        const isAfterBaselineBlocked = Boolean(inventoryEntry?.afterBaseline) && entry.status === 'blocked'
+        const isRemovedExcluded = entry.status === 'excluded' && inventoryEntry?.lifecycle === 'removed'
+        const isTerminal =
+          entry.status === 'aligned' ||
+          entry.status === 'ignored-by-design' ||
+          isRemovedExcluded ||
+          isAfterBaselineBlocked
+        if (!isTerminal) {
+          diagnostics.push({
+            code: 'entry-not-aligned',
+            id: entry.id,
+            message: `Final mode requires entry ${entry.id} to reach a terminal state (aligned, removed-excluded, or evidenced ignored-by-design); current status: ${entry.status}`,
+          })
+        }
 
         if (entry.status === 'aligned') {
           // 所有六维必须 aligned 且有证据

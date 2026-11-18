@@ -768,6 +768,59 @@ describe('final mode validation', () => {
     )).toBe(true)
   })
 
+  test('final mode rejects missing/partial entries even without exclusion problems', async () => {
+    // 构造一个全 missing/partial、但没有任何 exclusion/env consumer 问题的矩阵。
+    // 在旧实现里这种矩阵会错误地通过 final 门禁；修复后必须失败。
+    const testInventory: CompatibilityInventory = {
+      baseline: { version: '2.1.311' },
+      entries: [
+        { id: 'setting:model', kind: 'setting', path: 'model', lifecycle: 'active' },
+        { id: 'setting:absentKey', kind: 'setting', path: 'absentKey', lifecycle: 'active' },
+      ],
+    }
+    const testMatrix = createInitialMatrix(testInventory, collectSchemaPaths(syntheticSchema), [])
+    // model 在 schema 中 -> partial；absentKey 不在 -> missing
+    expect(testMatrix.entries.map(e => e.status)).toEqual(['partial', 'missing'])
+
+    const result = await checkCompatibilityV2({
+      inventory: testInventory,
+      matrix: testMatrix,
+      schemaPaths: collectSchemaPaths(syntheticSchema),
+      hookEvents: [],
+      mode: 'final',
+    })
+
+    expect(result.pass).toBe(false)
+    const notAligned = result.diagnostics.filter(d => d.code === 'entry-not-aligned')
+    expect(notAligned.map(d => d.id).sort()).toEqual(['setting:absentKey', 'setting:model'])
+  })
+
+  test('final mode allows after-baseline blocked entries to remain blocked', async () => {
+    const testInventory: CompatibilityInventory = {
+      baseline: { version: '2.1.311' },
+      entries: [
+        {
+          id: 'setting:futureKey', kind: 'setting', path: 'futureKey', lifecycle: 'active',
+          introduced: '2.1.319', afterBaseline: true,
+          excerpt: 'Requires Claude Code v2.1.319 or later.',
+        },
+      ],
+    }
+    const testMatrix = createInitialMatrix(testInventory, collectSchemaPaths(syntheticSchema), [])
+    expect(testMatrix.entries[0]!.status).toBe('blocked')
+
+    const result = await checkCompatibilityV2({
+      inventory: testInventory,
+      matrix: testMatrix,
+      schemaPaths: collectSchemaPaths(syntheticSchema),
+      hookEvents: [],
+      mode: 'final',
+    })
+
+    // afterBaseline blocked 是允许的终态，不应产生 entry-not-aligned
+    expect(result.diagnostics.some(d => d.code === 'entry-not-aligned')).toBe(false)
+  })
+
   test('final mode fails on current real matrix (no aligned entries yet)', async () => {
     const root = new URL('../fixtures/upstream-config/2.1.311/', import.meta.url)
     const realInventory = JSON.parse(await readFile(new URL('inventory.json', root), 'utf8'))
