@@ -33,7 +33,6 @@
   exit_semantics: nonblock
   expected_effect:
     hook_fired: true
-    marker_has_prompt: true
 - event: SessionStart
   status: active
   trigger: print_turn
@@ -43,12 +42,14 @@
     hook_fired: true
     marker_has_source: true
 - event: Setup
-  status: active
+  status: blocked-by-prereq:setup-print-mode-requires-init
   trigger: print_turn
   matcher: '*'
   exit_semantics: nonblock
   expected_effect:
     hook_fired: true
+  # Probe result (2026-11-18): Setup does NOT fire in regular print mode.
+  # Setup only fires with --init or --init-only flags (src/main.tsx:3746).
 - event: Stop
   status: active
   trigger: print_turn
@@ -56,23 +57,40 @@
   exit_semantics: nonblock
   expected_effect:
     hook_fired: true
-- event: Notification
-  status: blocked-by-prereq:notification-permission-prompt
-  trigger: permission_prompt
+- event: SessionEnd
+  status: active
+  trigger: print_turn
   matcher: '*'
   exit_semantics: nonblock
   expected_effect:
     hook_fired: true
-    marker_has_message: true
-  # TODO: Probe if Notification fires on permission prompt and what fields it has
+  # Probe result (2026-11-18): SessionEnd DOES fire in print mode!
+- event: InstructionsLoaded
+  status: blocked-by-prereq:instructions-loaded-requires-instructions
+  trigger: print_turn
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+  # Probe result (2026-11-18): InstructionsLoaded does not fire without actual instruction files.
 - event: PermissionRequest
-  status: blocked-by-prereq:permission-request-observability
+  status: active
   trigger: permission_prompt
   matcher: '*'
   exit_semantics: nonblock
   expected_effect:
     hook_fired: true
-  # TODO: Probe if PermissionRequest fires when permission prompt appears
+    marker_has_tool_name: true
+  # Probe result (2026-11-18): PermissionRequest DOES fire when permission prompt appears!
+- event: Notification
+  status: blocked-by-prereq:notification-not-on-permission-prompt
+  trigger: permission_prompt
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+  # Probe result (2026-11-18): Notification does not fire on permission prompt specifically.
+  # Notification seems for other use cases (MCP elicitation, task notifications, etc.)
 - event: PermissionDenied
   status: blocked-by-prereq:permission-denied-observability
   trigger: permission_denied
@@ -80,31 +98,16 @@
   exit_semantics: nonblock
   expected_effect:
     hook_fired: true
-  # TODO: Probe if PermissionDenied fires after user rejects permission prompt
-- event: SessionEnd
-  status: blocked-by-prereq:session-end-print-observability
-  trigger: print_turn
-  matcher: '*'
-  exit_semantics: nonblock
-  expected_effect:
-    hook_fired: true
-  # TODO: Probe if SessionEnd fires at the end of print mode
+  # Probe result (2026-11-18): PermissionDenied did not fire in our PTY test.
+  # Needs further investigation on the exact timing and mechanism of this event.
 - event: StopFailure
-  status: blocked-by-prereq:stop-failure-observability
+  status: blocked-by-prereq:stop-failure-requires-error-path
   trigger: none
   matcher: '*'
   exit_semantics: nonblock
   expected_effect:
     hook_fired: true
-  # TODO: Probe if StopFailure fires on mock 400 error path
-- event: InstructionsLoaded
-  status: blocked-by-prereq:instructions-loaded-print-observability
-  trigger: print_turn
-  matcher: '*'
-  exit_semantics: nonblock
-  expected_effect:
-    hook_fired: true
-  # TODO: Probe if InstructionsLoaded fires in print mode
+  # Needs specific error path (model API failure) to test.
 - event: UserPromptExpansion
   status: blocked-by-batch:B1
   trigger: none

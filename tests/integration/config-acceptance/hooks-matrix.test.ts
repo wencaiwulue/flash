@@ -47,7 +47,12 @@ async function runEntry(entry: HookEntry): Promise<void> {
   const mock = await createMockAnthropic()
 
   // 按要求实现：先创建沙箱（此时有 home 路径），然后立即配置 hook（在运行前完成）
-  const sandbox = await createSandbox()
+  const sandbox = await createSandbox({
+    // For permission_prompt/permission_denied scenarios, we need to pre-approve the API key
+    globalConfig: entry.trigger === 'permission_prompt' || entry.trigger === 'permission_denied'
+      ? { customApiKeyResponses: { approved: [MOCK_API_KEY] } }
+      : undefined
+  })
   const settings = hookSettingsFor(entry.event, sandbox.home, entry.exit_semantics === 'block')
   await writeFile(join(sandbox.home, '.claude', 'settings.json'), JSON.stringify(settings))
 
