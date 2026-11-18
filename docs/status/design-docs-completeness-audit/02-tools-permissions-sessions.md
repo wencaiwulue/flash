@@ -1157,3 +1157,12 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/02-tools-permis
 - 验证原实现：tengu_read_dedup_killswitch 在 `FileReadTool.ts:536-539` 正确实现，getFeatureValue_CACHED_MAY_BE_STALE 检查；writeTextContent 使用 temp file 原子写 + 回退机制；findActualString 引号规范化完整。
 - **无新增缺陷**：原实现完整符合 spec，无需代码改动。仅补充测试覆盖。
 - spec 保持 draft 状态；原 Finding 行与历史统计保持 open。全部离线/本地验证，无凭据或模型调用。
+
+---
+
+## 整改台账：B2-shell-tools-01 / B2-shell-tools-04（2026-11-18 追加）
+
+- 新增 `tests/shell-tools.test.ts` 并唯一登记 shell-tools coverage：EndTruncatingAccumulator 输出截断、TaskOutput 文件管理、Shell 基本命令执行、AbortController 进程清理、超时行为、状态跟踪、文件 I/O 安全、复合命令安全、工作目录跟踪、大输出处理、清理与资源释放、回归测试边缘情况。
+- 验证原实现完整流程：argv/command 解析通过 tree-sitter AST + legacy regex fallback；foreground/background 转换通过 registerForeground + backgroundExistingForegroundTask + LocalShellTask；输出截断通过 EndTruncatingAccumulator 保留开头和结尾；沙箱行为通过 SandboxManager.wrapWithSandbox + convertToSandboxRuntimeConfig + Git 裸仓库防护；失败/超时清理通过 ShellCommand.kill + treeKill 进程树终止。
+- **无新增缺陷**：原实现完整符合 spec，无需代码改动。仅补充测试覆盖。
+- spec 保持 draft 状态；原 Finding 行与历史统计保持 open。全部使用无害本地命令（echo/sleep/cat），无凭据、无网络、无破坏性命令、无真实模型调用；测试验证可观测行为（输出内容、退出码、状态转换、清理安全性），而非 mock 调用计数或源码文本。
