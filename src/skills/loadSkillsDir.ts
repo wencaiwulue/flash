@@ -62,6 +62,7 @@ import { getManagedFilePath } from '../utils/settings/managedPath.js'
 import { isRestrictedToPluginOnly } from '../utils/settings/pluginOnlyPolicy.js'
 import { HooksSchema, type HooksSettings } from '../utils/settings/types.js'
 import { createSignal } from '../utils/signal.js'
+import { skillCacheKey, trackSkillDir } from './skillLifecycle.js'
 import { registerMCPSkillBuilders } from './mcpSkillBuilders.js'
 
 export type LoadedFrom =
@@ -801,6 +802,10 @@ export const getSkillDirCommands = memoize(
 
     return unconditionalSkills
   },
+  (cwd: string) => {
+    const additionalDirs = getAdditionalDirectoriesForClaudeMd()
+    return skillCacheKey({ cwd, additionalDirs, remote: false })
+  },
 )
 
 export function clearSkillCaches() {
@@ -943,7 +948,13 @@ export async function addSkillDirectories(dirs: string[]): Promise<void> {
 
   // Process in reverse order (shallower first) so deeper paths override
   for (let i = loadedSkills.length - 1; i >= 0; i--) {
-    for (const { skill } of loadedSkills[i] ?? []) {
+    const dirSkills = loadedSkills[i] ?? []
+    const dir = dirs[i]
+    if (dir) {
+      // Track this directory and its skills
+      trackSkillDir(dir, dirSkills.map((s) => s.skill))
+    }
+    for (const { skill } of dirSkills) {
       if (skill.type === 'prompt') {
         dynamicSkills.set(skill.name, skill)
       }
@@ -1072,6 +1083,42 @@ export function clearDynamicSkills(): void {
   dynamicSkills.clear()
   conditionalSkills.clear()
   activatedConditionalSkillNames.clear()
+}
+
+/**
+ * Removes a directory from dynamicSkillDirs (for testing or when directory is deleted).
+ */
+export function removeDynamicSkillDir(dir: string): void {
+  dynamicSkillDirs.delete(dir)
+}
+
+/**
+ * Remove a specific dynamic skill by name (e.g., when its directory is deleted)
+ * Returns true if the skill was found and removed
+ */
+export function removeDynamicSkill(name: string): boolean {
+  const existed = dynamicSkills.has(name)
+  dynamicSkills.delete(name)
+  activatedConditionalSkillNames.delete(name)
+  return existed
+}
+
+/**
+ * Deactivate a conditional skill (remove from activated set and dynamicSkills)
+ */
+export function deactivateConditionalSkill(name: string): boolean {
+  const existed = activatedConditionalSkillNames.has(name)
+  activatedConditionalSkillNames.delete(name)
+  // Note: We don't remove from dynamicSkills immediately, that's done
+  // by removeDynamicSkill. This just clears the activation record.
+  return existed
+}
+
+/**
+ * Emit the skillsLoaded signal (called when skills are removed)
+ */
+export function emitSkillsLoaded(): void {
+  skillsLoaded.emit()
 }
 
 // Expose createSkillCommand + parseSkillFrontmatterFields to MCP skill

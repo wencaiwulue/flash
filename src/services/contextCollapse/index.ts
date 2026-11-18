@@ -14,15 +14,21 @@ import { getEffectiveContextWindowSize } from '../compact/autoCompact.js'
 import { projectView, selectCollapseSpan } from './operations.js'
 import {
   collapseStore,
+  ContextCollapseState,
   getCollapseStats,
   notifyCollapseListeners,
   resetCollapseStore,
   subscribeToCollapses,
   type StagedCollapse,
+  type CommittedCollapse,
 } from './store.js'
 
 export type { ContextCollapseStats } from './store.js'
 import type { ContextCollapseStats } from './store.js'
+
+// ============================================================================
+// Session-scoped Context Collapse API (NEW)
+// ============================================================================
 
 export type ContextCollapseDependencies = {
   tokenCount(messages: Message[]): number
@@ -48,6 +54,220 @@ export type ContextCollapseDependencies = {
     lastSpawnTokens: number
   }): Promise<void>
 }
+
+/**
+ * Session-scoped context collapse.
+ * Each instance maintains its own independent state, allowing multiple sessions
+ * to coexist without sharing mutable state.
+ */
+export class ContextCollapseSession {
+  readonly state: ContextCollapseState
+  readonly dependencies: ContextCollapseDependencies
+  private generation = 0
+  private activeSpawn: Promise<void> | undefined
+
+  constructor(dependencies?: Partial<ContextCollapseDependencies>) {
+    this.state = new ContextCollapseState()
+    this.dependencies = { ...defaults, ...dependencies }
+  }
+
+  get stats(): ContextCollapseStats {
+    return this.state.getStats()
+  }
+
+  subscribe(listener: () => void): () => void {
+    return this.state.subscribe(listener)
+  }
+
+  reset(): void {
+    this.generation++
+    this.activeSpawn = undefined
+    this.state.reset()
+  }
+
+  async applyCollapsesIfNeeded(
+    messages: Message[],
+    context: ToolUseContext,
+    querySource: QuerySource,
+  ): Promise<{ messages: Message[] }> {
+    if (!isContextCollapseEnabled() || querySource === 'marble_origami') {
+      return { messages }
+    }
+    const projected = projectView(messages, this.state)
+    if (querySource === 'compact' || querySource === 'session_memory') {
+      return { messages: projected }
+    }
+    const tokens = this.dependencies.tokenCount(projected)
+    const window = this.dependencies.contextWindow(
+      context.options.mainLoopModel,
+    )
+    const ratio = tokens / window
+    if (
+      ratio < 0.9 ||
+      (this.state.lastSpawnTokens > 0 &&
+        tokens < this.state.lastSpawnTokens + 5_000)
+    ) {
+      return { messages: projected }
+    }
+    if (this.activeSpawn) {
+      if (ratio >= 0.95) await this.activeSpawn
+      return { messages: projectView(projected, this.state) }
+    }
+    const span = selectCollapseSpan(projected)
+    if (!span) return { messages: projected }
+    const spawn = this.startSpawn(span, context, tokens, Math.min(1, ratio))
+    if (ratio >= 0.95) await spawn
+    return { messages: projectView(projected, this.state) }
+  }
+
+  isWithheldPromptTooLong(
+    message: AssistantMessage | SystemAPIErrorMessage | StreamEvent,
+    isPromptTooLongMessage: (message: AssistantMessage) => boolean,
+    querySource: QuerySource,
+  ): boolean {
+    return (
+      isContextCollapseEnabled() &&
+      querySource !== 'marble_origami' &&
+      message.type === 'assistant' &&
+      message.isApiErrorMessage === true &&
+      isPromptTooLongMessage(message)
+    )
+  }
+
+  recoverFromOverflow(
+    messages: Message[],
+    querySource: QuerySource,
+  ): { messages: Message[]; committed: number } {
+    if (!isContextCollapseEnabled() || querySource === 'marble_origami') {
+      return { messages, committed: 0 }
+    }
+    const staged = [...this.state.staged]
+    const previousCount = this.state.committed.length
+    for (const stage of staged) {
+      void this.commitStaged(stage)
+    }
+    return {
+      messages: projectView(messages, this.state),
+      committed: this.state.committed.length - previousCount,
+    }
+  }
+
+  private async commitStaged(stage: StagedCollapse): Promise<void> {
+    const collapseId = String(this.state.nextId++).padStart(16, '0')
+    const summaryUuid = randomUUID()
+    const summaryContent = `<collapsed id="${collapseId}">${stage.summary
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')}</collapsed>`
+    const summaryMessage = createUserMessage({
+      content: summaryContent,
+      uuid: summaryUuid,
+      isMeta: true,
+    })
+    this.state.committed.push({
+      collapseId,
+      summaryUuid,
+      summaryContent,
+      summary: stage.summary,
+      firstArchivedUuid: stage.startUuid,
+      lastArchivedUuid: stage.endUuid,
+      summaryMessage,
+      archived: stage.messages,
+    })
+    this.state.staged = this.state.staged.filter(item => item !== stage)
+    this.state.notifyListeners()
+    try {
+      await this.dependencies.recordCommit({
+        collapseId,
+        summaryUuid,
+        summaryContent,
+        summary: stage.summary,
+        firstArchivedUuid: stage.startUuid,
+        lastArchivedUuid: stage.endUuid,
+      })
+    } catch (error) {
+      this.state.health.totalErrors++
+      this.state.health.lastError =
+        error instanceof Error ? error.message : String(error)
+      this.state.notifyListeners()
+    }
+    await this.persistSnapshot()
+  }
+
+  private startSpawn(
+    span: Message[],
+    context: ToolUseContext,
+    tokens: number,
+    risk: number,
+  ): Promise<void> {
+    const currentGeneration = ++this.generation
+    this.state.armed = true
+    this.state.health.totalSpawns++
+    this.state.notifyListeners()
+    const promise = (async () => {
+      try {
+        const summary = (
+          await this.dependencies.summarize(span, context)
+        ).trim()
+        if (currentGeneration !== this.generation) return
+        if (!summary) {
+          this.state.health.totalEmptySpawns++
+          this.state.health.emptySpawnWarningEmitted = true
+          this.state.health.lastError = 'Summarizer returned an empty summary'
+          return
+        }
+        const startUuid = 'uuid' in span[0]! ? span[0]!.uuid : undefined
+        const endUuid = 'uuid' in span.at(-1)! ? span.at(-1)!.uuid : undefined
+        if (!startUuid || !endUuid) {
+          throw new Error('Collapse span boundaries require message UUIDs')
+        }
+        await this.commitStaged({
+          startUuid,
+          endUuid,
+          summary,
+          risk,
+          stagedAt: Date.now(),
+          messages: span,
+        })
+      } catch (error) {
+        if (currentGeneration === this.generation) {
+          this.state.health.totalErrors++
+          this.state.health.lastError =
+            error instanceof Error ? error.message : String(error)
+        }
+      } finally {
+        if (currentGeneration === this.generation) {
+          this.state.armed = false
+          this.state.lastSpawnTokens = tokens
+          await this.persistSnapshot()
+          this.state.notifyListeners()
+        }
+      }
+    })()
+    this.activeSpawn = promise
+    void promise.finally(() => {
+      if (this.activeSpawn === promise) {
+        this.activeSpawn = undefined
+      }
+    })
+    return promise
+  }
+
+  private async persistSnapshot(): Promise<void> {
+    try {
+      await this.dependencies.recordSnapshot(this.state.snapshot())
+    } catch (error) {
+      this.state.health.totalErrors++
+      this.state.health.lastError =
+        error instanceof Error ? error.message : String(error)
+      this.state.notifyListeners()
+    }
+  }
+}
+
+// ============================================================================
+// Default implementation for summarize
+// ============================================================================
 
 async function defaultSummarize(
   messages: Message[],
@@ -130,9 +350,24 @@ const defaults: ContextCollapseDependencies = {
   },
 }
 
+// ============================================================================
+// Legacy compatibility layer (backward compatibility)
+// DEPRECATED: Use ContextCollapseSession class instead
+// ============================================================================
+
 let dependencies = defaults
 let generation = 0
 let activeSpawn: Promise<void> | undefined
+
+// Singleton legacy session for backward compatibility
+let legacySession: ContextCollapseSession | undefined
+
+function getLegacySession(): ContextCollapseSession {
+  if (!legacySession) {
+    legacySession = new ContextCollapseSession(dependencies)
+  }
+  return legacySession
+}
 
 export function isContextCollapseEnabled(): boolean {
   return process.env.CLAUDE_CONTEXT_COLLAPSE === undefined
@@ -144,6 +379,7 @@ export function initContextCollapse(
   overrides: Partial<ContextCollapseDependencies> = {},
 ): void {
   dependencies = { ...defaults, ...overrides }
+  legacySession = new ContextCollapseSession(dependencies)
 }
 
 export function resetContextCollapse(): void {

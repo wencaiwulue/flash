@@ -18,6 +18,8 @@ import { accumulateUsage, updateUsage } from 'src/services/api/claude.js'
 import type { NonNullableUsage } from 'src/services/api/logging.js'
 import { EMPTY_USAGE } from 'src/services/api/logging.js'
 import stripAnsi from 'strip-ansi'
+import { ContextCollapseSession } from './services/contextCollapse/index.js'
+import { MicrocompactSession } from './services/compact/microCompact.js'
 import type { Command } from './commands.js'
 import { getSlashCommandToolSkills } from './commands.js'
 import {
@@ -196,6 +198,9 @@ export class QueryEngine {
   // many turns in SDK mode.
   private discoveredSkillNames = new Set<string>()
   private loadedNestedMemoryPaths = new Set<string>()
+  // Session-scoped state isolation
+  private readonly contextCollapseSession: ContextCollapseSession
+  private readonly microcompactSession: MicrocompactSession
 
   constructor(config: QueryEngineConfig) {
     this.config = config
@@ -204,6 +209,8 @@ export class QueryEngine {
     this.permissionDenials = []
     this.readFileState = config.readFileCache
     this.totalUsage = EMPTY_USAGE
+    this.contextCollapseSession = new ContextCollapseSession()
+    this.microcompactSession = new MicrocompactSession(config.userSpecifiedModel)
   }
 
   async *submitMessage(
@@ -392,6 +399,8 @@ export class QueryEngine {
         })
       },
       setSDKStatus,
+      contextCollapseSession: this.contextCollapseSession,
+      microcompactSession: this.microcompactSession,
     }
 
     // Handle orphaned permission (only once per engine lifetime)
@@ -524,6 +533,8 @@ export class QueryEngine {
       updateFileHistoryState: processUserInputContext.updateFileHistoryState,
       updateAttributionState: processUserInputContext.updateAttributionState,
       setSDKStatus,
+      contextCollapseSession: this.contextCollapseSession,
+      microcompactSession: this.microcompactSession,
     }
 
     headlessProfilerCheckpoint('before_skills_plugins')

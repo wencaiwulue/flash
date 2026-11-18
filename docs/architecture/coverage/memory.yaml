@@ -1,7 +1,7 @@
 schema_version: 1
 spec_id: memory
 spec: ../../superpowers/specs/2026-11-12-memory-design.md
-status: draft
+status: approved
 groups:
   - id: additional-files
     kind: source
@@ -68,3 +68,11 @@ groups:
       - src/services/autoDream/config.ts
       - src/services/autoDream/consolidationLock.ts
       - src/services/autoDream/consolidationPrompt.ts
+  - id: memory-tests
+    kind: test
+    section: 7
+    summary: Memory subsystem tests
+    files:
+      - tests/sessionMemory.test.ts
+      - tests/memoryPaths.test.ts
+      - tests/memory.test.ts

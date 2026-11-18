@@ -222,7 +222,17 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 - `OAuthService.startOAuthFlow()`：启动本地服务器 `AuthCodeListener`，生成 PKCE `codeVerifier`/`codeChallenge`/`state`，构建两条授权 URL，等待授权码（自动或手动），交换 tokens，获取 profile
 - 双路径设计：自动浏览器回调 + 手动代码输入 fallback
 
-**发现 B3-auth-01**：Keychain 缓存 30 秒，跨进程刷新后另一个进程最多 30 秒才看到新 token（spec 中已记录为改进建议，P1）。严重度：P1，置信度：已证实（src/utils/secureStorage/macOsKeychainHelpers.ts:69-91）。
+**发现 B3-auth-01**：Keychain 缓存 30 秒，跨进程刷新后另一个进程最多 30 秒才看到新 token。严重度：P1，置信度：已证实（src/utils/secureStorage/macOsKeychainHelpers.ts:69-91，无跨进程失效机制，仅 30 秒 TTL）。
+
+**修复证据 B3-auth-01**：已修复，使用共享 cache-version 标记（~/.claude/.keychain-cache-version.json）：
+- 每次写入（update/delete/clearKeychainCache）时原子更新 UUID（temp file + rename）
+- 读取前检查版本标记，变更则立即刷新缓存，无视 30 秒 TTL
+- 同时保留 TTL 作为降级策略（版本标记损坏时）
+- 证据：
+  - src/utils/secureStorage/macOsKeychainHelpers.ts:90-124（getKeychainCacheVersionPath/touchKeychainCacheVersion/isKeychainCacheVersionCurrent/clearKeychainCache）
+  - src/utils/secureStorage/macOsKeychainStorage.ts:32-84（read/readAsync 双重检查）
+  - tests/macOsKeychainHelpers.test.ts:33-96（跨进程行为测试）
+- 验证：测试覆盖完整，类型检查/构建通过
 
 **发现 B3-auth-02**：auth 子系统缺少专用测试文件，仅 `oauthRefresh.test.ts` 和 `linuxSecretStorage.test.ts`，大量核心逻辑无测试覆盖。严重度：P2，置信度：已证实（tests/ 目录扫描确认）。
 
@@ -1316,6 +1326,13 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 ### git-integration 生命周期证据链确认
 
 ✅ **Git 仓库发现**：findGitRoot 向上遍历搜索 .git → LRU 缓存 50 条目 → 支持普通仓库/子模块/工作树 → resolveCanonicalRoot 双向验证
+
+## 整改台账（2026-11-18 追加，不改变原发现与历史统计）
+
+- **关联 Finding**：`B3-memory-02`；主责 spec：`docs/superpowers/specs/2026-11-12-memory-design.md`。
+- **测试补全**：新增 `tests/memory.test.ts`，覆盖 cursor 重启恢复、原子 sidecar、删除失效、提取等待，以及真实文件系统上的内部/逃逸 symlink。`tests/contextCompaction.test.ts` 同时补齐 PTL、附件恢复与长会话可观察不变量。
+- **整改中发现并修复**：Session Memory `MemoryPathValidator` 错用 `FsOperations` 不存在的异步 `realpath`/`lstat`，异常被 deepest-ancestor 循环吞掉后可能接受逃逸路径。RED：`bun test tests/contextCompaction.test.ts tests/memory.test.ts --timeout 60000` 退出 1，文件与目录 symlink 逃逸用例均实际失败；改用契约内 `realpathSync`/`lstatSync` 后，四文件 focused 命令退出 0（61 pass，0 fail）。
+- **边界**：全部为本地临时目录/offline 验证；未执行模型提取、远程同步或私有协议验证。原 Finding ID、原发现和历史统计均保留。
 
 ✅ **Git 元数据读取**：readGitHead 直接读取 .git/HEAD → resolveRef 验证 ref 名称白名单 → 优先松散 ref → packed-refs → commonDir 回退 → getCommonDir 获取共享 git 目录
 

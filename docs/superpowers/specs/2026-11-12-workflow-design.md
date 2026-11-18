@@ -3,7 +3,7 @@ id: workflow
 batch: 5
 title: Workflow DAG 编排与失败传播设计
 date: 2026-11-12
-status: draft
+status: approved
 ---
 
 # Workflow DAG 编排与失败传播设计
@@ -35,9 +35,10 @@ status: draft
 | 步骤提示用简单正则替换 | `buildStepPrompt()` 用 `/\{\{([^}]+)\}\}/g` 正则替换 `{{input}}` 和 `{{steps.<id>.output}}` | 简单直接，满足当前需求 | 模板引擎（如 Mustache）：过度设计，增加依赖；更复杂语法：YAGNI | 不支持转义 `{{`，不支持复杂表达式 | `src/tools/WorkflowTool/schema.ts:54-67` |
 | WorkflowExecution 用 wake/loop 模式 | `WorkflowExecution` 内部有 `loop()` 异步函数，通过 `wake()` 函数唤醒，`controllers` Map 管理正在运行的步骤 | 简洁的异步协调模式，不需要复杂的事件发射器 | Promise.all + 依赖追踪：难以处理动态 retry/skip；RxJS：过度设计 | 需要手动管理 wake 调用，避免遗漏 | `src/tools/WorkflowTool/executor.ts:35-240` |
 | 步骤状态机：pending→running→terminal | `WorkflowAgentStatus` 包括 pending/running/completed/failed/skipped | 清晰的状态转换，便于判断下一步该做什么 | 更细粒度状态（如 retrying）：增加复杂度 | 需要处理状态转换的合法性 | `src/tools/WorkflowTool/executor.ts:3-26` |
-| 失败传播：跳过依赖失败且未 continueOnError 的步骤 | `propagateSkips()` 检查每个 pending 步骤的依赖，如有 skipped 或（failed 且 !continueOnError）则标记为 skipped，设置固定错误消息 `'Skipped because a dependency did not complete'` | 符合直觉：依赖没完成，当前步骤也没法做 | 更复杂的策略（如基于条件的跳过）：YAGNI | 需要在 propagateSkips 中遍历所有步骤，O(n) 复杂度 | `src/tools/WorkflowTool/executor.ts:141-158` |
+| 失败传播：跳过依赖失败且未 continueOnError 的步骤 | `propagateSkips()` 检查每个 pending 步骤的依赖，如有 skipped 或（failed 且 !continueOnError）则标记为 skipped，设置错误消息 `'Skipped because a dependency did not complete'` 和 `skipCause='dependency'` | 符合直觉：依赖没完成，当前步骤也没法做；skipCause 区分跳过来源 | 更复杂的策略（如基于条件的跳过）：YAGNI | 需要在 propagateSkips 中遍历所有步骤，O(n) 复杂度 | `src/tools/WorkflowTool/executor.ts:141-158` [Remediation] |
 | 并发控制：按 concurrency 限制同时运行的步骤数 | `loop()` 中计算 `running = controllers.size`，取 `ready.slice(0, concurrency - running)` 启动 | 简单的并发限制，避免资源耗尽 | 更复杂的调度（如优先级队列）：YAGNI | 不支持优先级，所有就绪步骤平等 | `src/tools/WorkflowTool/executor.ts:209-211` |
-| 重试时重置 skipped 的依赖步骤（基于精确错误消息） | `retry(stepId)` 重置该步骤为 pending，然后递归重置所有依赖它且状态为 `'skipped'` 且错误消息**精确等于** `'Skipped because a dependency did not complete'` 的步骤为 pending | 合理的重试语义：重试一个步骤，应该让依赖它的步骤也有机会重新执行；精确错误匹配避免误重置 | 只重置被重试的步骤：依赖它的步骤可能仍处于 skipped 状态，导致 workflow 卡住；或重置所有 skipped 依赖：可能误重置手动跳过的步骤 | 需要递归遍历步骤依赖图，且依赖精确字符串匹配 | `src/tools/WorkflowTool/executor.ts:79-102` |
+| 重试时重置 skipped 的依赖步骤（基于 skipCause） | `retry(stepId)` 重置该步骤为 pending，然后递归重置所有依赖它且状态为 `'skipped'` 且 `skipCause='dependency'` 的步骤为 pending；保留 `skipCause='user'` 的手动跳过步骤 | 合理的重试语义：重试一个步骤，应该让依赖它的步骤也有机会重新执行；skipCause 区分跳过来源，避免误重置手动跳过的步骤 | 只重置被重试的步骤：依赖它的步骤可能仍处于 skipped 状态，导致 workflow 卡住；或重置所有 skipped 依赖：可能误重置手动跳过的步骤 | 需要递归遍历步骤依赖图，使用 skipCause 字段判断 | `src/tools/WorkflowTool/executor.ts:79-102` [Remediation] |
+| 手动 skip 设置 skipCause='user' | `skip(stepId)` 标记步骤为 skipped，设置 `skipCause='user'`，abort 该步骤 controller（如果运行中） | 明确区分手动跳过和依赖传播跳过，便于重试时保留手动跳过状态 | 不设置 skipCause：无法区分跳过来源，重试时可能误重置 | 需要在 skip 方法中设置 skipCause 字段 | `src/tools/WorkflowTool/executor.ts:69-77` [Remediation] |
 | 每个步骤用独立 AbortController | `controllers` Map 保存 stepId → AbortController，kill() 时 abort 所有，skip(stepId) 时 abort 单个 | 精确控制单个步骤的生命周期 | 单个 AbortController 控制整个 workflow：无法单独跳过某个步骤 | 需要管理多个 AbortController，确保都被清理 | `src/tools/WorkflowTool/executor.ts:38,104-113,161-163` |
 | 执行结果持久化到 JSON 文件 | LocalWorkflowTask 完成时，将 `WorkflowExecutionState` 写入 `outputFile` | 持久化完整结果，便于后续查询 | 仅内存：进程退出丢失；数据库：过度设计 | 需要处理文件写入失败 | `src/tasks/LocalWorkflowTask/LocalWorkflowTask.ts:99-113` |
 | WorkflowTool 用 discovery 查找项目 workflows | `getWorkflowCommands()` 读取 `.claude/workflows/*.json`，解析为 workflow 定义，创建工具命令 | 让用户可以在项目中定义自己的 workflow | 硬编码 workflows：不灵活；远程 workflow：过度设计 | 需要处理 JSON 解析失败 | `src/tools/WorkflowTool/discovery.ts` + `createWorkflowCommand.ts` |

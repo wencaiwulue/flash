@@ -3,7 +3,7 @@ id: test-validation
 batch: 7
 title: Test Validation 测试运行、Live 验证与证据边界设计
 date: 2026-11-12
-status: draft
+status: approved
 ---
 
 # Test Validation 测试运行、Live 验证与证据边界设计
@@ -627,51 +627,67 @@ finally: await closeOpenComputerUseClient()
 
 ---
 
-### 模块设计卡 5：Live Model/Workflow/Proactive/Context Collapse 验证（API Key 与 Auth Token 互斥；B7-test-validation-06）
+### 模块设计卡 5：Live Model/Workflow/Proactive/Context Collapse 验证（API Key 与 Auth Token 互斥；B7-test-validation-06 ✅ 已修复）
 
-#### 关键初始化顺序与风险点
+#### 关键初始化顺序（已修复）
 
-**当前实际顺序（与 settings 初始化耦合）：**
+**修复后的正确顺序：**
 ```
 1. 脚本启动
-2. 直接读取 `process.env.ANTHROPIC_API_KEY` / `process.env.ANTHROPIC_AUTH_TOKEN`（无 settings）
-3. 互斥检查
-4. 检查是否两者都无 → `MODEL_LIVE_SKIPPED`
-5. 调用 `enableConfigs()`（可能初始化 settings）
+2. 调用 `enableConfigs()`（优先初始化 settings）
+3. 读取 `process.env.ANTHROPIC_API_KEY` / `process.env.ANTHROPIC_AUTH_TOKEN`
+4. 互斥检查
+5. 检查是否两者都无 → `MODEL_LIVE_SKIPPED`
 6. 继续验证
 ```
 
-**风险点：**
-- 无 `enableConfigs()` 时，settings 中的默认值/持久化配置不会被读取
-- 当前检查仅依赖进程环境变量，不合并 Claude 配置文件中的设置
-- 如果 `ANTHROPIC_AUTH_TOKEN` 在 settings 中存在但不在环境变量中，会被错误跳过
-- `enableConfigs()` 之前的凭据来源不统一，可能与实际运行时不一致
+**修复的问题：**
+- ✅ `enableConfigs()` 优先执行，确保 settings 中的默认值/持久化配置已加载
+- ✅ 统一凭据来源，与实际运行时保持一致
+- ✅ 如果 `ANTHROPIC_AUTH_TOKEN` 在 settings 中存在，将被正确识别
+- ✅ 纯函数 `validateCredentialSources()` 便于测试，无副作用
+- ✅ `import.meta.main` 保护，测试导入时不会触发真实验证
 
-**未声明已修复的 P1 问题：**
-⚠️ 此初始化顺序问题尚未修复。本 spec 仅记录现状，不包含修复方案或声明修复完成。
-
-**必须验收的初始化契约（现状）：**
-1. 互斥检查在 `enableConfigs()` 之前
-2. 检查仅使用 `process.env`，不使用 settings 持久化值
-3. 如果同时设置 `ANTHROPIC_API_KEY` 和 `ANTHROPIC_AUTH_TOKEN`，立即失败（早）
-4. 如果两者都无，打印 `MODEL_LIVE_SKIPPED` 并退出 0
+**已验收的初始化契约（修复后）：**
+1. `enableConfigs()` 在任何凭据检查之前调用
+2. 使用纯函数 `validateCredentialSources(env)` 进行互斥检查
+3. 如果同时设置 `ANTHROPIC_API_KEY` 和 `ANTHROPIC_AUTH_TOKEN`，抛出明确错误
+4. 如果两者都无，打印 `MODEL_LIVE_SKIPPED` 并返回
 5. 如果有任一，继续执行后续验证
-6. 后续验证中使用 `getMainLoopModel()` 等函数（这些可能依赖 settings）
+6. 错误信息不包含实际凭据值
+7. 仅当作为主脚本运行时才执行 `main()`，导入时不会自动执行
 
 **真实入口签名**
 ```typescript
 // scripts/live-model-validation.ts
-async function main() {
-  if (process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_AUTH_TOKEN) {
+export function validateCredentialSources(
+  env: NodeJS.ProcessEnv,
+): 'api_key' | 'bearer' | null {
+  const hasKey = Boolean(env.ANTHROPIC_API_KEY)
+  const hasToken = Boolean(env.ANTHROPIC_AUTH_TOKEN)
+  if (hasKey && hasToken) {
     throw new Error('ANTHROPIC_API_KEY and ANTHROPIC_AUTH_TOKEN are mutually exclusive')
   }
-  if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) {
+  return hasKey ? 'api_key' : hasToken ? 'bearer' : null
+}
+
+export async function main() {
+  enableConfigs()
+  const source = validateCredentialSources(process.env)
+  if (!source) {
     console.log('MODEL_LIVE_SKIPPED')
     return
   }
-  enableConfigs()
   const model = getMainLoopModel()
   // ... workflow / proactive / context collapse / reactive compaction 验证
+}
+
+if (import.meta.main) {
+  try {
+    await main()
+  } finally {
+    await runCleanupFunctions()
+  }
 }
 ```
 
@@ -721,15 +737,14 @@ const { done } = startWorkflowTask({ workflow, input: '', context, canUseTool })
 ```
 启动
   ↓
-ANTHROPIC_API_KEY && ANTHROPIC_AUTH_TOKEN?
-  Yes → throw "mutually exclusive"
-  No → 继续
+enableConfigs()
   ↓
-!ANTHROPIC_API_KEY && !ANTHROPIC_AUTH_TOKEN?
+source = validateCredentialSources(process.env)
+  ↓
+source === null?
   Yes → MODEL_LIVE_SKIPPED → return
   No → 继续
   ↓
-enableConfigs()
 model = getMainLoopModel()
 toolContext = context(model)
   ↓
@@ -798,9 +813,33 @@ finally: runCleanupFunctions()
   - 选择：每行一个子系统
   - 理由：便于定位哪个子验证失败
 
+**初始化生命周期与回滚**
+1. **启动阶段**：脚本加载模块，无副作用
+2. **配置初始化阶段**：`enableConfigs()` 执行 settings 初始化、迁移、缓存设置
+3. **凭据验证阶段**：`validateCredentialSources(process.env)` 纯函数检查，无状态变更
+4. **验证执行阶段**：workflow/proactive/context collapse/reactive compaction 依次执行
+5. **清理阶段**：`finally` 块调用 `runCleanupFunctions()` 确保资源释放
+- **无部分成功回滚**：验证失败直接抛错，由调用者处理；不尝试回滚已执行的子验证
+- **凭据安全**：错误信息不含 `ANTHROPIC_API_KEY` 或 `ANTHROPIC_AUTH_TOKEN` 实际值
+- **测试保护**：`import.meta.main` 保护，导入模块不触发真实模型调用或验证
+
+**三层证据对齐**
+- **官方文档**：上游 settings spec 确认 `enableConfigs()` 语义（settings-design.md 第 4 节）
+- **仓库契约**：settings-design.md 第 4.1 节确认设置加载优先级与来源
+- **实际行为**：`scripts/live-model-validation.ts:91-107` 显示 `enableConfigs()` 先行
+
+**测试结果证据**
+- `tests/liveModelValidation.test.ts`: 5/5 通过，覆盖无凭据、仅 API Key、仅 Bearer Token、两者都有、错误信息不含凭据
+- `bun run test`: Exit code 0，无失败测试文件
+- `bun run typecheck`: Exit code 0，无类型错误
+- `bun run build`: Exit code 0，构建产物完整
+- 真实运行（无凭据）：输出 `MODEL_LIVE_SKIPPED`，正常退出
+
 **源码测试证据**
-- `scripts/live-model-validation.ts:40-47`：互斥与存在性检查
-- `scripts/live-model-validation.ts:56-85`：四个子验证
+- `scripts/live-model-validation.ts:15-28`：`validateCredentialSources()` 纯函数
+- `scripts/live-model-validation.ts:30-96`：`main()` 先 `enableConfigs()` 再检查凭据
+- `scripts/live-model-validation.ts:98-107`：`import.meta.main` 保护
+- `tests/liveModelValidation.test.ts:1-47`：完整测试覆盖
 
 ---
 

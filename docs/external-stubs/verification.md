@@ -158,3 +158,27 @@ Workflow 测试初次组合暴露 partial `mock.module` 污染其他文件，已
 真实 OAuth、可信 webhook producer、Google Chrome 登录态、交互桌面输入/截图/Escape、授权 Linux SSH、真实模型和外部 runner live 均为 **skipped**。Open CDP、Open Runner、公开 macOS helper 和其他新公开实现不声称私有扩展、WorkerService、Swift/Enigo ABI 或内部协议兼容。
 
 最终 `bun run docs:generate -- --next` 生成 192 份 commit SPEC/PLAN 与索引，`bun run docs:check -- --next` 全部通过结构、引用、证据和重复检查。一次生成后的 self 引用更新导致 expected outdated，重新生成后通过；语义审查仍与自动结构检查分开。
+
+## Task 0: 稳定真实浏览器 CI 基线
+
+日期：2026-11-17。
+
+环境：macOS Darwin 24.6.0，Bun 1.3.14，工作目录 `/Users/fengcaiwen/GolandProjects/claude-code/.claude/worktrees/design-docs-audit`。
+
+| 命令 | 结果 | 证据与限制 |
+|---|---|---|
+| `bun test tests/openBackends.test.ts` | **Passed：10 pass，1 skip，91 expect() calls** | 真实浏览器测试已通过，skipped 为需要手动运行 Chrome 的 live 测试。 |
+| `bun run test` | **Passed：87 files，483 pass，0 fail，1 skip，2415 assertions** | 完整测试套件通过。 |
+| `bun run typecheck` | Passed | 退出码 0。 |
+| `bun run build` | Passed | 退出码 0；生成 CLI、SDK 与 declarations。 |
+
+### 分析
+
+浏览器清理实现已在 commit `fee91d4 Fix Playwright Chrome process leaks (#6)` 中修复。此修复包含：
+- 带超时处理（10s）的 `closeResources` 函数
+- 显式的 per-generation 浏览器所有权跟踪
+- 协调的 client/server/browser 释放
+- 可重试的关闭注册表
+- 真实 CDP 保持为独立的仅分离路径
+
+无需额外代码修改。

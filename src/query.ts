@@ -411,11 +411,21 @@ async function* queryLoop(
 
     // Apply microcompact before autocompact
     queryCheckpoint('query_microcompact_start')
-    const microcompactResult = await deps.microcompact(
-      messagesForQuery,
-      toolUseContext,
-      querySource,
-    )
+    let microcompactResult: Awaited<ReturnType<typeof deps.microcompact>>
+    if (toolUseContext.microcompactSession) {
+      microcompactResult =
+        await toolUseContext.microcompactSession.microcompactMessages(
+          messagesForQuery,
+          toolUseContext,
+          querySource,
+        )
+    } else {
+      microcompactResult = await deps.microcompact(
+        messagesForQuery,
+        toolUseContext,
+        querySource,
+      )
+    }
     messagesForQuery = microcompactResult.messages
     // For cached microcompact (cache editing), defer boundary message until after
     // the API response so we can use actual cache_deleted_input_tokens.
@@ -437,12 +447,28 @@ async function* queryLoop(
     // Within a turn, the view flows forward via state.messages at the
     // continue site (query.ts:1192), and the next projectView() no-ops
     // because the archived messages are already gone from its input.
-    if (feature('CONTEXT_COLLAPSE') && contextCollapse) {
-      const collapseResult = await contextCollapse.applyCollapsesIfNeeded(
-        messagesForQuery,
-        toolUseContext,
-        querySource,
-      )
+    if (feature('CONTEXT_COLLAPSE')) {
+      let collapseResult: Awaited<
+        ReturnType<
+          NonNullable<ToolUseContext['contextCollapseSession']>['applyCollapsesIfNeeded']
+        >
+      >
+      if (toolUseContext.contextCollapseSession) {
+        collapseResult =
+          await toolUseContext.contextCollapseSession.applyCollapsesIfNeeded(
+            messagesForQuery,
+            toolUseContext,
+            querySource,
+          )
+      } else if (contextCollapse) {
+        collapseResult = await contextCollapse.applyCollapsesIfNeeded(
+          messagesForQuery,
+          toolUseContext,
+          querySource,
+        )
+      } else {
+        collapseResult = { messages: messagesForQuery }
+      }
       messagesForQuery = collapseResult.messages
     }
 
@@ -799,13 +825,22 @@ async function* queryLoop(
             let withheld = false
             if (message.type !== 'stream_event') {
               if (feature('CONTEXT_COLLAPSE')) {
-                if (
-                  contextCollapse?.isWithheldPromptTooLong(
+                let withheldByCollapse = false
+                if (toolUseContext.contextCollapseSession) {
+                  withheldByCollapse =
+                    toolUseContext.contextCollapseSession.isWithheldPromptTooLong(
+                      message,
+                      isPromptTooLongMessage,
+                      querySource,
+                    )
+                } else if (contextCollapse) {
+                  withheldByCollapse = contextCollapse.isWithheldPromptTooLong(
                     message,
                     isPromptTooLongMessage,
                     querySource,
                   )
-                ) {
+                }
+                if (withheldByCollapse) {
                   withheld = true
                 }
               }
@@ -1090,13 +1125,23 @@ async function* queryLoop(
         // and the retry still 413'd, fall through to reactive compact.
         if (
           feature('CONTEXT_COLLAPSE') &&
-          contextCollapse &&
           state.transition?.reason !== 'collapse_drain_retry'
         ) {
-          const drained = contextCollapse.recoverFromOverflow(
-            messagesForQuery,
-            querySource,
-          )
+          let drained: ReturnType<
+            NonNullable<ToolUseContext['contextCollapseSession']>['recoverFromOverflow']
+          > = { messages: messagesForQuery, committed: 0 }
+          if (toolUseContext.contextCollapseSession) {
+            drained =
+              toolUseContext.contextCollapseSession.recoverFromOverflow(
+                messagesForQuery,
+                querySource,
+              )
+          } else if (contextCollapse) {
+            drained = contextCollapse.recoverFromOverflow(
+              messagesForQuery,
+              querySource,
+            )
+          }
           if (drained.committed > 0) {
             const next: State = {
               messages: drained.messages,
