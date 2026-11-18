@@ -1506,6 +1506,85 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 
 ---
 
+## 修复台账：B3-settings-01
+
+### 修复概述
+
+针对 settings 子系统的测试缺口进行了补全，新增 `tests/settings.test.ts` 覆盖核心行为。
+
+### 发现 B3-settings-01：settings 子系统无专用测试文件
+
+**问题**：settings 子系统 14 个 coverage 分组均无对应独立测试，仅有 envCommand/envLessPerpetual 间接覆盖。
+
+**修复**：
+- 新增 `tests/settings.test.ts`，覆盖：
+  - settings core/cache：多来源优先级合并、数组 concat+dedupe、对象深度合并、undefined 删除语义、resetSettingsCache 缓存失效
+  - validation/write recovery：parseSettingsFile 安全解析、filterInvalidPermissionRules 预过滤、schema 验证
+  - internal writes：markInternalWrite/consumeInternalWrite/clearInternalWrites 窗口机制
+  - managed settings：loadManagedFileSettings 基础+drop-in 合并、排序优先级
+  - migrations：migrateAutoUpdatesToSettings 迁移流程
+- 更新 `docs/architecture/coverage/settings.yaml`，添加 `tests/settings.test.ts` 到 `additional-files-test` 分组
+
+**证据**：
+- `tests/settings.test.ts`：新增测试文件
+- `docs/architecture/coverage/settings.yaml`：更新测试注册
+
+### 修复决策表
+
+| 维度 | 选择 | 说明 |
+|------|------|------|
+| 测试深度 | 真实文件系统临时目录 | 避免 mock，确保与生产行为一致 |
+| 覆盖范围 | core/cache/validation/internal-writes/managed/migrations | 覆盖 14 个分组中的 6 个核心分组，其余分组（remote-managed/policy-limits/settings-sync）需要真实网络/认证，暂不覆盖 |
+| 边界策略 | 严格不访问用户真实配置、不执行网络请求 | 隔离测试环境 |
+| 向后兼容 | 所有测试均调用生产函数，不修改源码行为 | 无行为变更，仅补全测试 |
+
+### 三层证据收集
+
+#### 1. 官方文档边界
+
+查阅官方 Claude Code 文档关于 settings 系统的说明：
+- settings 优先级（user < project < local < flag < policy）
+- managed settings 加载（managed-settings.json + managed-settings.d/*.json）
+- 配置变更检测（文件监听 + internal writes）
+- 没有找到关于测试覆盖的具体文档
+
+#### 2. 上游 CLI strings 边界
+
+对 `/opt/homebrew/bin/claude` 执行 strings 搜索：
+- `settingsMergeCustomizer`、`parseSettingsFile`、`resetSettingsCache` 均无匹配（`rg` 退出 1）
+- 不据此推断上游实现，也不把本地测试补全描述为上游 wire 契约
+
+#### 3. 本地源码/契约边界
+
+**测试覆盖与现有实现契约一致**：
+- 测试直接调用 `settingsMergeCustomizer`，验证数组 concat+dedupe、对象深度合并、undefined 删除语义
+- 测试直接调用 `parseSettingsFile`，验证 schema 验证、权限规则过滤
+- 测试直接调用 internal writes 函数，验证窗口机制
+- 测试直接调用 `loadManagedFileSettings`，验证基础+drop-in 合并
+- 测试直接调用迁移函数，验证迁移流程
+
+### RED/GREEN 测试验证
+
+#### RED（旧实现对照）
+- 旧 `tests/` 目录下无 `settings.test.ts`，B3-settings-01 原 Finding 成立。
+
+#### GREEN（最终修复后）
+- `bun test tests/settings.test.ts --timeout 60000`：退出 0，20+ pass，0 fail
+- `bun scripts/check-design-docs.ts`：退出 0，无 errors，62 DRAFT_SPEC
+- `bun run build`、`bun run typecheck`：均通过
+- `bun test --timeout 60000`：全量测试通过
+
+### 测试覆盖
+
+新增测试：
+- `tests/settings.test.ts`：覆盖核心 settings 行为
+
+### 说明
+
+本次完成 settings 子系统的核心测试补全，B3-settings-02/03（internalWrite/删除-重建窗口硬编码）为 P3 可配置性建议，本次暂不新增环境变量/设置，仅验证当前窗口行为并保留设计取舍到后续 P3 审阅；remote-managed-settings/policy-limits/settings-sync 需要真实网络/认证，本次不覆盖并明确记录缺口，不伪造“已覆盖”。所有测试均为 offline/本地临时目录验证，未修改任何生产源码行为。原 Finding ID、原发现和历史统计均保留。
+
+---
+
 ### 说明
 
 本次完成所有 9 个子系统的深度生命周期审计，README 已统一更新。

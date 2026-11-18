@@ -23,6 +23,7 @@ groups:
     files:
       - tests/envCommand.test.ts
       - tests/envLessPerpetual.test.ts
+      - tests/settings.test.ts
   - id: commands
     kind: source
     section: 4
