@@ -27,6 +27,7 @@ function createMinimalQueryEngineConfig(
 ): ConstructorParameters<typeof QueryEngine>[0] {
   return {
     cwd: process.cwd(),
+    userSpecifiedModel: 'test-model',
     tools: [] as Tools,
     commands: [],
     mcpClients: [],

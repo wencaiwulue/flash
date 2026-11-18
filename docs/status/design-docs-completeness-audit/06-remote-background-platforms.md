@@ -1012,3 +1012,10 @@
 
 **审计完成时间**：2026-11-16
 **审计者**：Claude Code Audit Agent
+
+## 增量整改台账（2026-11-18 追加，不改变上述历史统计）
+
+- **新增 Finding `B6-remote-control-04`（P2，fixed）**：PR #19 Linux CI 发现 direct-connect `attach()` 未等待 `runtime.eventChain`，可能在事件写入/轮转完成前发送 ready，导致 `replay_reset` 缺失。主责 spec：`2026-11-12-remote-control-design.md`。
+- **RED**：原 CI `tests/directConnect.test.ts` 的 rotation 用例实际失败；增加受控 eventChain 后，本地 `bun test tests/directConnect.test.ts --timeout 60000` 退出 1，证明 gate 未释放前已错误发送 ready。
+- **GREEN**：`attach()` 仅增加一次 `await runtime.eventChain`，新到事件继续由 replay buffer 承接；同一 focused 命令退出 0（14 pass，0 fail）。
+- **证据边界**：本地 loopback/offline 验证，不表示 CCR 私有协议兼容；官方文档和 upstream strings 边界见主责 spec。原 3 个 remote-control Finding 与历史统计不变。

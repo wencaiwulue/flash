@@ -752,6 +752,9 @@ export class SessionManager {
     runtime.connections.add(connection)
     runtime.info.status = 'running'
     runtime.info.lastActiveAt = Date.now()
+    // Reads must observe completed writes and rotation. Events published while
+    // waiting are buffered on this connection and replayed after the snapshot.
+    await runtime.eventChain
     let events: Record<string, unknown>[] = []
     let replayReset = false
     try {
