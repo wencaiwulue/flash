@@ -1135,6 +1135,14 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/02-tools-permis
 
 ---
 
+## 整改台账：B2-permissions-01 / B2-permissions-03（2026-11-18 追加）
+
+- 新增 `tests/permissions.test.ts` 并唯一登记 permissions coverage：拒绝跟踪状态机、PermissionMode 工具函数、权限规则解析、危险规则检测、权限结果工厂、空权限上下文、规则优先级逻辑、dontAsk 模式决策逻辑、auto mode 安全门、bypass permissions 模式、完整权限决策流模型。
+- **无新增缺陷**：原实现完整符合 spec，无需代码改动。仅补充测试覆盖。
+- spec 已更新实际测试证据；原 Finding 行与历史统计保持 open。全部本地 fake transport/offline，无真实 classifier、模型或凭据调用。
+
+---
+
 ## 整改台账：B2-attachments-01 / B2-attachments-03（2026-11-18 追加）
 
 - 新增 `tests/attachments.test.ts` 并唯一登记 attachments coverage：mention 去重、错误隔离、nested memory 去重、PDF reference、日期与 queued command。

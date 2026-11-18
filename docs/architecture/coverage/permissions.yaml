@@ -2,6 +2,8 @@ schema_version: 1
 spec_id: permissions
 spec: ../../superpowers/specs/2026-11-12-permissions-design.md
 status: draft
+additional_files:
+  - tests/permissions.test.ts
 groups:
   - id: additional-files
     kind: source

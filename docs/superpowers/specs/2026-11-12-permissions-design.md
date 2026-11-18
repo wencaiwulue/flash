@@ -1221,12 +1221,12 @@ hasPermissionsToUseToolInner (阶段1)
 
 | 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
 |---|---|---|---|
-| 分层裁决流：规则 → 工具检查 → 模式转换 | `src/utils/permissions/permissions.ts:473-501` | 需查找相关测试 | 未找到直接测试覆盖 |
-| dontAsk 只在 ask 时转 deny | `src/utils/permissions/permissions.ts:505-517` | 需查找相关测试 | 未找到直接测试覆盖 |
-| auto mode 快速路径：acceptEdits → allowlist → classifier | `src/utils/permissions/permissions.ts:593-686` | 需查找相关测试 | 未找到直接测试覆盖 |
+| 分层裁决流：规则 → 工具检查 → 模式转换 | `src/utils/permissions/permissions.ts:473-501` | `tests/permissions.test.ts`：概念模型验证 | 概念模型验证，非完整集成测试 |
+| dontAsk 只在 ask 时转 deny | `src/utils/permissions/permissions.ts:505-517` | `tests/permissions.test.ts`：概念模型验证 | 概念模型验证，非完整集成测试 |
+| auto mode 快速路径：acceptEdits → allowlist → classifier | `src/utils/permissions/permissions.ts:593-686` | `tests/permissions.test.ts`：概念模型验证 | 概念模型验证，非完整集成测试 |
 | safetyCheck classifierApprovable 控制 auto-approve | `src/utils/permissions/permissions.ts:532-548` | 需查找相关测试 | 未找到直接测试覆盖 |
-| 拒绝跟踪：连续 3 次 / 总 20 次回退 | `src/utils/permissions/denialTracking.ts:1-45` | 需查找相关测试 | 未找到直接测试覆盖 |
-| 危险规则检测：Bash(*)、python:* 等 | `src/utils/permissions/permissionSetup.ts:87-145` | 需查找相关测试 | 未找到直接测试覆盖 |
+| 拒绝跟踪：连续 3 次 / 总 20 次回退 | `src/utils/permissions/denialTracking.ts:1-45` | `tests/permissions.test.ts`：完整验证 | 完整单元测试覆盖 |
+| 危险规则检测：Bash(*)、python:* 等 | `src/utils/permissions/permissionSetup.ts:87-145` | `tests/permissions.test.ts`：部分验证 | 部分单元测试覆盖 |
 | async Agent 权限处理：hooks 优先 | `src/utils/permissions/permissions.ts:400-471` | 需查找相关测试 | 未找到直接测试覆盖 |
 
 ### 7.1 核心模块
