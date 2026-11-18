@@ -243,7 +243,10 @@ import {
   runElicitationHooks,
   runElicitationResultHooks,
 } from 'src/services/mcp/elicitationHandler.js'
-import { executeNotificationHooks } from 'src/utils/hooks.js'
+import {
+  executeMessageDisplayHooks,
+  executeNotificationHooks,
+} from 'src/utils/hooks.js'
 import {
   ElicitRequestSchema,
   ElicitationCompleteNotificationSchema,
@@ -952,13 +955,28 @@ export async function runHeadless(
         throw new Error('No messages returned')
       }
       switch (lastMessage.subtype) {
-        case 'success':
+        case 'success': {
+          // MessageDisplay (upstream 2.1.311): headless emits a single display
+          // event (index=0, final=true, delta=full text). displayContent
+          // replaces the rendered text only; exit 2 / failure shows the
+          // original. GAP: REPL streaming deltas not wired (needs turn/message
+          // tracking in the streaming layer).
+          let displayResult = lastMessage.result
+          const messageId = crypto.randomUUID()
+          for await (const r of executeMessageDisplayHooks({
+            turn_id: messageId,
+            message_id: messageId,
+            index: 0,
+            final: true,
+            delta: lastMessage.result,
+          })) {
+            if (r.displayContent) displayResult = r.displayContent
+          }
           writeToStdout(
-            lastMessage.result.endsWith('\n')
-              ? lastMessage.result
-              : lastMessage.result + '\n',
+            displayResult.endsWith('\n') ? displayResult : displayResult + '\n',
           )
           break
+        }
         case 'error_during_execution':
           writeToStdout(`Execution error`)
           break
