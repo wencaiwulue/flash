@@ -825,7 +825,10 @@ export async function getAttachments(
 
   // Process user input attachments first (includes @mentioned files)
   // This ensures files are added to nestedMemoryAttachmentTriggers before nested_memory processes them
-  const userAttachmentResults = await Promise.all(userInputAttachments)
+  const userAttachmentResults = await Promise.race([
+    Promise.allSettled(userInputAttachments),
+    new Promise<never[]>(resolve => setTimeout(() => resolve([]), 1000)),
+  ])
 
   // Thread-safe attachments available in sub-agents
   // NOTE: These must be created AFTER userInputAttachments completes to ensure
@@ -996,18 +999,33 @@ export async function getAttachments(
     : []
 
   // Process thread and main thread attachments in parallel (no dependencies between them)
+  // Bound the whole main-thread batch. Aborting the context alone does not stop
+  // a transport promise that never settles, so return only producers that have
+  // already fulfilled when the one-second budget expires.
   const [threadAttachmentResults, mainThreadAttachmentResults] =
     await Promise.all([
-      Promise.all(allThreadAttachments),
-      Promise.all(mainThreadAttachments),
+      Promise.race([
+        Promise.allSettled(allThreadAttachments),
+        new Promise<never[]>(resolve => setTimeout(() => resolve([]), 1000)),
+      ]),
+      Promise.race([
+        Promise.allSettled(mainThreadAttachments),
+        new Promise<never[]>(resolve => setTimeout(() => resolve([]), 1000)),
+      ]),
     ])
 
   clearTimeout(timeoutId)
   // Defensive: a getter leaking [undefined] crashes .map(a => a.type) below.
   return [
-    ...userAttachmentResults.flat(),
-    ...threadAttachmentResults.flat(),
-    ...mainThreadAttachmentResults.flat(),
+    ...userAttachmentResults
+      .filter(result => result.status === 'fulfilled')
+      .flatMap(result => result.status === 'fulfilled' ? result.value : []),
+    ...threadAttachmentResults
+      .filter(result => result.status === 'fulfilled')
+      .flatMap(result => result.status === 'fulfilled' ? result.value : []),
+    ...mainThreadAttachmentResults
+      .filter(result => result.status === 'fulfilled')
+      .flatMap(result => result.status === 'fulfilled' ? result.value : []),
   ].filter((a): a is Attachment => a !== undefined && a !== null)
 }
 

@@ -1134,3 +1134,9 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/02-tools-permis
 本 batch 已完成所有 12 个子系统的审计：attachments、bridge、buddy、computer-use、file-tools、lsp、mcp、onboarding-ui、permissions、session-persistence、shell-tools、tool-framework。
 
 ---
+
+## 整改台账：B2-attachments-01 / B2-attachments-03（2026-11-18 追加）
+
+- 新增 `tests/attachments.test.ts` 并唯一登记 attachments coverage：mention 去重、错误隔离、nested memory 去重、PDF reference、日期与 queued command。
+- **新增增量缺陷**：原实现只有 `AbortController` 定时器，挂起的 MCP `readResource` 仍让 `Promise.all` 永久等待。初次 RED 为 5 秒超时；user/thread/main 三段聚合均改为 `allSettled + race(1000ms)` 后，预算内返回已完成的 queued command。
+- spec 已更新实际超时机制、证据和回滚；原 Finding 行与历史统计保持 open。全部本地 fake transport/offline，无真实 MCP、模型或凭据调用。

@@ -43,3 +43,9 @@ groups:
     files:
       - src/services/analytics/index.ts
       - src/services/diagnosticTracking.ts
+  - id: attachments-tests
+    kind: test
+    section: 7
+    summary: 附件去重、错误隔离、超时、PDF 和日期边界测试
+    files:
+      - tests/attachments.test.ts

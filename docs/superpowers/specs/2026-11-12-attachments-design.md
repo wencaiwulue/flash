@@ -47,7 +47,7 @@ Claude Code 需要将多种非结构化上下文注入对话，面临以下约�
 
 ### 决策 2.2：1 秒全局超时限制
 
-**实际机制：** `getAttachments()` 创建 `AbortController`，设置 1 秒超时，所有附件处理共享此超时。超时后放弃剩余未完成的附件。
+**实际机制：** `getAttachments()` 创建 `AbortController`，同时在 user-input、thread 和 main-thread 三个聚合阶段分别使用 `Promise.allSettled + Promise.race(1000ms)`。超时后只返回已 fulfilled 的附件，不再等待忽略 abort 的传输 Promise；快速 queued command 等附件不因单个 MCP read 挂起而丢失。
 
 **为什么采用：**
 - 避免慢速附件阻塞主交互流程（用户可察觉延迟）
@@ -60,7 +60,7 @@ Claude Code 需要将多种非结构化上下文注入对话，面临以下约�
 
 **代价：** 某些慢速附件（如大目录列表）可能偶尔缺失
 
-**证据：** `src/utils/attachments.ts: AbortController + setTimeout(1000)`
+**证据：** `src/utils/attachments.ts` 的三段 `allSettled + race` 聚合；`tests/attachments.test.ts` 用永不 resolve 的 MCP `readResource` 证明调用在预算内返回 queued command。官方 [MCP](https://code.claude.com/docs/en/mcp.md) 的 tool timeout/idle timeout 不是附件 1 秒契约；本机 `/opt/homebrew/bin/claude` `strings` 仍只有 `setTimeout(...,1000)`，不能据此证明挂起传输会被等待侧释放。回滚不得恢复仅 `Promise.all` 的无限等待；spec 保持 draft。
 
 ---
 
@@ -1652,7 +1652,7 @@ interface HistoryEntry {
 | 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
 |---------|---------|----------------|---------|
 | 单个附件类型失败不阻塞整体 | `src/utils/attachments.ts: maybe() 函数` | 无专门测试 | 仅检查代码实现 |
-| 1 秒全局超时限制 | `src/utils/attachments.ts: AbortController + setTimeout(1000)` | 无专门测试 | 仅检查代码实现 |
+| 1 秒全局超时限制 | `src/utils/attachments.ts: AbortController + setTimeout(1000)` | `tests/attachments.test.ts`：挂起 MCP read 不阻塞快速附件；三段 allSettled/race | 本地 fake transport，未执行真实 MCP 服务 |
 | 双重缓存去重（nested memory） | `src/utils/attachments.ts: memoryFilesToAttachments() 检查` | 无专门测试 | 仅检查代码实现 |
 | 仅 ENOENT 从 readFileState 驱逐 | `src/utils/attachments.ts: getChangedFiles() 错误处理` | 无专门测试 | 仅检查代码实现 |
 | 相关记忆异步预取 | `src/utils/attachments.ts: startRelevantMemoryPrefetch()、MemoryPrefetch 类型` | 无专门测试 | 仅检查代码实现 |
@@ -1677,7 +1677,7 @@ interface HistoryEntry {
 
 - 附件系统无专门独立测试文件
 - 单个附件失败不阻塞整体的错误隔离测试缺失
-- 1 秒全局超时的边界测试缺失
+- 分层超时/后台续传仍需单独设计，当前仅保证 1 秒预算内返回已完成附件
 - 双重缓存去重的竞态条件测试缺失
 - 相关记忆异步预取的并发测试缺失
 - PDF 引用阈值的边界测试缺失
