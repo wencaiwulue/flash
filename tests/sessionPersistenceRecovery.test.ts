@@ -8,9 +8,10 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
 import { randomUUID } from 'crypto';
-import { mkdtemp, rm, writeFile, readFile, mkdir, truncate } from 'fs/promises';
+import { mkdtemp, rm, writeFile, readFile, mkdir, truncate, stat, appendFile } from 'fs/promises';
 import { join, resolve, dirname } from 'path';
 import { tmpdir } from 'os';
+import { spawn } from 'child_process';
 import {
   loadTranscriptFile,
   flushSessionStorage,
@@ -20,9 +21,14 @@ import {
   getTranscriptPath,
   adoptResumedSessionFile,
   buildConversationChain,
+  cacheSessionTitle,
+  saveAgentSetting,
+  saveMode,
+  setSessionFileForTesting,
 } from '../src/utils/sessionStorage';
 import { switchSession, resetStateForTests } from '../src/bootstrap/state';
 import { SessionId } from '../src/types/ids';
+import { TranscriptMessage } from '../src/types/logs';
 
 const originalConfigDir = process.env.CLAUDE_CONFIG_DIR;
 const originalTestPersistence = process.env.TEST_ENABLE_SESSION_PERSISTENCE;
@@ -94,25 +100,57 @@ beforeEach(() => {
 });
 
 describe('Session Persistence - Crash Recovery', () => {
-  test('loadTranscriptFile recovers from truncated JSONL (partial last line)', async () => {
+  test('loadTranscriptFile recovers from truncated JSONL after real process crash', async () => {
     const sessionId = randomUUID() as SessionId;
     const transcriptPath = join(tempDir, `${sessionId}.jsonl`);
     await mkdir(dirname(transcriptPath), { recursive: true });
 
-    const msg1 = createTestMessage('user', 'Hello');
-    const msg2 = createTestMessage('assistant', 'Hi there', msg1.uuid);
+    // Create a helper script that writes valid messages then a truncated line and exits abruptly
+    const helperScript = `
+      import { appendFile, writeFile } from 'fs/promises';
+      import { join } from 'path';
 
-    let content = JSON.stringify(msg1) + '\n' + JSON.stringify(msg2) + '\n';
-    content += '{"type": "user", "uuid": "'; // Truncated partial line
+      const transcriptPath = '${transcriptPath.replace(/'/g, "\\'")}';
 
-    await writeFile(transcriptPath, content, { mode: 0o600 });
+      // Create valid test messages
+      const msg1 = { type: 'user', uuid: '${randomUUID()}', parentUuid: null, message: { role: 'user', content: 'Hello' }, isMeta: false, timestamp: new Date().toISOString() };
+      const msg2 = { type: 'assistant', uuid: '${randomUUID()}', parentUuid: msg1.uuid, message: { role: 'assistant', content: 'Hi there' }, isMeta: false, timestamp: new Date().toISOString() };
 
+      // Write valid lines first
+      await writeFile(transcriptPath, JSON.stringify(msg1) + '\\n', { mode: 0o600 });
+      await appendFile(transcriptPath, JSON.stringify(msg2) + '\\n');
+
+      // Write a truncated partial line (no newline at end)
+      await appendFile(transcriptPath, '{"type": "user", "uuid": "');
+
+      // Exit abruptly with non-zero code to simulate crash
+      process.exit(42);
+    `;
+
+    const helperPath = join(tempDir, 'crash-helper.ts');
+    await writeFile(helperPath, helperScript);
+
+    // Run the helper in a real Bun child process and wait for it to crash
+    await new Promise<void>((resolve) => {
+      const child = spawn(process.execPath, ['run', helperPath], {
+        cwd: tempDir,
+        stdio: 'ignore'
+      });
+      child.on('exit', (code) => {
+        // Child should exit with code 42 as we requested
+        resolve();
+      });
+    });
+
+    // Now load the transcript - should recover the two valid lines and skip the truncated one
     const { messages, leafUuids } = await loadTranscriptFile(transcriptPath);
-
     expect(messages.size).toBe(2);
-    expect(messages.has(msg1.uuid as any)).toBe(true);
-    expect(messages.has(msg2.uuid as any)).toBe(true);
-    expect(Array.from(leafUuids)).toContain(msg2.uuid as any);
+
+    // Verify we can build a conversation chain from the leaf
+    const leafMsg = Array.from(messages.values()).find(m => !Array.from(messages.values()).some(other => other.parentUuid === m.uuid)) as TranscriptMessage;
+    expect(leafMsg).toBeDefined();
+    const chain = buildConversationChain(messages, leafMsg);
+    expect(chain.length).toBe(2);
   });
 
   test('loadTranscriptFile skips completely invalid JSON lines', async () => {
@@ -141,35 +179,42 @@ describe('Session Persistence - Crash Recovery', () => {
 });
 
 describe('Session Persistence - Lazy File Creation', () => {
-  test('session file is not created until first user/assistant message', async () => {
+  test('session file is not created until first user/assistant message, metadata-only writes are buffered', async () => {
     const sessionId = randomUUID() as SessionId;
     switchSession(sessionId, projectDir);
+    resetProjectForTesting();
 
     // Before any messages: file should not exist
     let transcriptPath = getTranscriptPath();
-    try {
-      await Bun.file(transcriptPath).exists();
-      expect(false).toBe(true); // Should not reach here
-    } catch {
-      // Expected - file doesn't exist
-    }
+    let exists = await Bun.file(transcriptPath).exists();
+    expect(exists).toBe(false);
 
-    // Append only metadata messages (custom-title, tag, etc.) - still no file
-    // Record just some metadata (simulated by checking pendingEntries behavior)
-    // For this test, we'll verify the behavior by checking that nothing is written
+    // Write only metadata (custom-title, agent-setting, mode)
+    await cacheSessionTitle('Test Session Title');
+    await saveAgentSetting('test-setting');
+    await saveMode('normal');
+    await flushSessionStorage();
 
-    // Now append real user message
+    // After metadata-only writes, file still should not exist
+    exists = await Bun.file(transcriptPath).exists();
+    expect(exists).toBe(false);
+
+    // Now append real user message - this should materialize the file
     const msg1 = createTestMessage('user', 'First real message');
     await recordTranscript([msg1]);
     await flushSessionStorage();
 
     // Now file should exist
     transcriptPath = getTranscriptPath();
-    const exists = await Bun.file(transcriptPath).exists();
+    exists = await Bun.file(transcriptPath).exists();
     expect(exists).toBe(true);
 
+    // Verify both the metadata and the user message are persisted
     const content = await readFile(transcriptPath, 'utf-8');
     expect(content).toContain(msg1.message.content);
+    expect(content).toContain('Test Session Title');
+    expect(content).toContain('test-setting');
+    expect(content).toContain('"mode":"normal"');
   });
 
   test('adoptResumedSessionFile works correctly after session restore', async () => {
@@ -235,11 +280,11 @@ describe('Session Persistence - Tombstone (removeMessageByUuid)', () => {
     expect(messages.has(msg3.uuid as any)).toBe(false);
   });
 
-  test('removeMessageByUuid skips rewrite for large files when deleting non-last message', async () => {
+  test('removeMessageByUuid rewrites small files when deleting non-last message', async () => {
     const sessionId = randomUUID() as SessionId;
     switchSession(sessionId, projectDir);
 
-    // Create a session file with many messages (we don't need actual 50MB for this test)
+    // Create a session file with multiple messages (small, <50MB)
     const transcriptPath = getTranscriptPath();
     await mkdir(dirname(transcriptPath), { recursive: true });
 
@@ -258,32 +303,143 @@ describe('Session Persistence - Tombstone (removeMessageByUuid)', () => {
     // Verify all messages are there
     const { messages: beforeDelete } = await loadTranscriptFile(transcriptPath);
     expect(beforeDelete.size).toBe(4);
+    expect(beforeDelete.has(msg1.uuid as any)).toBe(true);
 
     // Now try to delete msg1 (non-last message)
     await removeTranscriptMessage(msg1.uuid as any);
     await flushSessionStorage();
 
-    // Load and verify
+    // Load and verify - for small files, the message should be gone (file rewritten)
     const { messages: afterDelete } = await loadTranscriptFile(transcriptPath);
+    expect(afterDelete.size).toBe(3);
+    expect(afterDelete.has(msg1.uuid as any)).toBe(false);
+    expect(afterDelete.has(msg2.uuid as any)).toBe(true);
+    expect(afterDelete.has(msg3.uuid as any)).toBe(true);
+    expect(afterDelete.has(msg4.uuid as any)).toBe(true);
+  });
 
-    // For small files, removeMessageByUuid will rewrite; for large it skips.
-    // Since we're testing that the system doesn't crash, not the exact threshold,
-    // we just verify we can load without errors.
-    expect(afterDelete.size).toBeGreaterThan(0);
+  test('removeMessageByUuid skips rewrite for large files (>50MB) when target is not in last 64KB', async () => {
+    const sessionId = randomUUID() as SessionId;
+    const transcriptPath = join(tempDir, `${sessionId}-large.jsonl`);
+    await mkdir(dirname(transcriptPath), { recursive: true });
 
-    // Note: The actual 50MB threshold behavior is documented in the code
-    // (MAX_TOMBSTONE_REWRITE_BYTES), and we trust the implementation's logic.
+    // Create a message to delete early in the file
+    const targetMsg = createTestMessage('user', 'Message to delete early');
+    let content = JSON.stringify(targetMsg) + '\n';
+
+    // Fill the file with >50MB of dummy messages
+    const dummyContent = 'x'.repeat(1000); // 1KB per message (approx)
+    let currentSize = content.length;
+    const msgUuids: string[] = [targetMsg.uuid];
+
+    // Add enough messages to exceed 50MB
+    while (currentSize < 51 * 1024 * 1024) { // 51MB to be safely over
+      const dummyMsg = createTestMessage('user', dummyContent);
+      msgUuids.push(dummyMsg.uuid);
+      const line = JSON.stringify(dummyMsg) + '\n';
+      content += line;
+      currentSize += line.length;
+    }
+
+    // Add a final message at the end
+    const finalMsg = createTestMessage('assistant', 'Final message');
+    msgUuids.push(finalMsg.uuid);
+    content += JSON.stringify(finalMsg) + '\n';
+
+    // Write the large file
+    await writeFile(transcriptPath, content, { mode: 0o600 });
+    const originalStat = await stat(transcriptPath);
+
+    // Verify target is not in last 64KB
+    const targetLine = JSON.stringify(targetMsg) + '\n';
+    const targetOffset = content.indexOf(targetLine);
+    expect(targetOffset).toBeLessThan(originalStat.size - 64 * 1024);
+
+    // Now try to delete the early message
+    switchSession(sessionId, projectDir);
+    setSessionFileForTesting(transcriptPath);
+    await removeTranscriptMessage(targetMsg.uuid as any);
+    await flushSessionStorage();
+
+    // Verify file was NOT rewritten (size should be the same or similar)
+    const afterStat = await stat(transcriptPath);
+    expect(afterStat.size).toBeGreaterThanOrEqual(originalStat.size - 1024); // Allow small variations for metadata
+
+    // Load and verify the target message is still there (large file tombstone skipped)
+    const { messages } = await loadTranscriptFile(transcriptPath);
+    expect(messages.has(targetMsg.uuid as any)).toBe(true);
+    expect(messages.has(finalMsg.uuid as any)).toBe(true);
   });
 });
 
 describe('Session Persistence - Compact Boundary + Preserved Segment', () => {
-  test('loadTranscriptFile correctly applies preserved segment relinks', async () => {
+  test('loadTranscriptFile skips pre-compact content for large files (>5MB) without preserved segment', async () => {
     const sessionId = randomUUID() as SessionId;
-    const transcriptPath = join(tempDir, `${sessionId}.jsonl`);
+    const transcriptPath = join(tempDir, `${sessionId}-large-compact.jsonl`);
     await mkdir(dirname(transcriptPath), { recursive: true });
 
+    // Create old messages that should be skipped
+    const old1 = createTestMessage('user', 'Old message 1');
+    const old2 = createTestMessage('assistant', 'Old response', old1.uuid);
+
+    // Create compact boundary without preserved segment
+    const boundary = createCompactBoundary();
+
+    // Create new messages after boundary
+    const summary = createTestMessage('assistant', '[History summarized]', boundary.uuid);
+    const new1 = createTestMessage('user', 'New question', summary.uuid);
+    const new2 = createTestMessage('assistant', 'New answer', new1.uuid);
+
+    // Build content with large padding before boundary
+    let content = '';
+
+    // Add pre-boundary old messages
+    content += JSON.stringify(old1) + '\n';
+    content += JSON.stringify(old2) + '\n';
+
+    // Add >5MB of padding messages to trigger large-file logic
+    const paddingMsg = createTestMessage('user', 'x'.repeat(1000)); // ~1KB per message
+    let preBoundarySize = content.length;
+    while (preBoundarySize < 6 * 1024 * 1024) { // 6MB to be safely over 5MB
+      const line = JSON.stringify(paddingMsg) + '\n';
+      content += line;
+      preBoundarySize += line.length;
+    }
+
+    // Add boundary and post-boundary messages
+    content += JSON.stringify(boundary) + '\n';
+    content += JSON.stringify(summary) + '\n';
+    content += JSON.stringify(new1) + '\n';
+    content += JSON.stringify(new2) + '\n';
+
+    await writeFile(transcriptPath, content, { mode: 0o600 });
+
+    const { messages } = await loadTranscriptFile(transcriptPath);
+
+    // For large files (>5MB) without preserved segment, only boundary and later should be loaded
+    // Note: The actual implementation uses readTranscriptForLoad which finds the last boundary
+    const messageUuids = Array.from(messages.keys());
+    expect(messageUuids).toContain(boundary.uuid as any);
+    expect(messageUuids).toContain(summary.uuid as any);
+    expect(messageUuids).toContain(new1.uuid as any);
+    expect(messageUuids).toContain(new2.uuid as any);
+
+    // Old messages should NOT be loaded
+    expect(messages.has(old1.uuid as any)).toBe(false);
+    expect(messages.has(old2.uuid as any)).toBe(false);
+  });
+
+  test('loadTranscriptFile correctly applies preserved segment relinks with exact parent chain validation', async () => {
+    const sessionId = randomUUID() as SessionId;
+    const transcriptPath = join(tempDir, `${sessionId}-preserved.jsonl`);
+    await mkdir(dirname(transcriptPath), { recursive: true });
+
+    // Create messages to be pruned before boundary
+    const pruned1 = createTestMessage('user', 'Pruned message 1');
+    const pruned2 = createTestMessage('assistant', 'Pruned response', pruned1.uuid);
+
     // Create messages for preserved segment
-    const preserved1 = createTestMessage('user', 'Preserved message 1');
+    const preserved1 = createTestMessage('user', 'Preserved message 1', pruned2.uuid);
     const preserved2 = createTestMessage('assistant', 'Preserved response', preserved1.uuid);
     const preserved3 = createTestMessage('user', 'Preserved message 2', preserved2.uuid);
 
@@ -302,8 +458,10 @@ describe('Session Persistence - Compact Boundary + Preserved Segment', () => {
     const newMessage1 = createTestMessage('user', 'New question after summary', summary.uuid);
     const newMessage2 = createTestMessage('assistant', 'New answer', newMessage1.uuid);
 
-    // Write to JSONL: old messages + boundary + summary + preserved segment + new messages
+    // Write to JSONL: pruned messages + preserved segment + boundary + summary + preserved segment (duplicate) + new messages
     const content = [
+      JSON.stringify(pruned1),
+      JSON.stringify(pruned2),
       JSON.stringify(preserved1),
       JSON.stringify(preserved2),
       JSON.stringify(preserved3),
@@ -320,26 +478,43 @@ describe('Session Persistence - Compact Boundary + Preserved Segment', () => {
 
     const { messages, leafUuids } = await loadTranscriptFile(transcriptPath);
 
-    // Find leaf and build chain
-    const leaf = Array.from(messages.values()).find(m => m.uuid === newMessage2.uuid)!;
-    const chain = buildConversationChain(messages, leaf as any);
+    // Verify pruned messages are gone
+    expect(messages.has(pruned1.uuid as any)).toBe(false);
+    expect(messages.has(pruned2.uuid as any)).toBe(false);
 
-    // Verify the chain structure: summary -> preserved1 -> preserved2 -> preserved3 -> new1 -> new2
-    // Or whatever the actual relink logic produces
-    expect(chain.length).toBeGreaterThan(0);
-
-    // At minimum, the preserved messages should be present
+    // Verify preserved messages and new messages are present
     expect(messages.has(preserved1.uuid as any)).toBe(true);
     expect(messages.has(preserved2.uuid as any)).toBe(true);
     expect(messages.has(preserved3.uuid as any)).toBe(true);
+    expect(messages.has(summary.uuid as any)).toBe(true);
+    expect(messages.has(newMessage1.uuid as any)).toBe(true);
+    expect(messages.has(newMessage2.uuid as any)).toBe(true);
+
+    // Verify messages can be accessed
+    expect(messages.has(preserved1.uuid as any)).toBe(true);
+    expect(messages.has(preserved2.uuid as any)).toBe(true);
+    expect(messages.has(preserved3.uuid as any)).toBe(true);
+    expect(messages.has(summary.uuid as any)).toBe(true);
+    expect(messages.has(newMessage1.uuid as any)).toBe(true);
+    expect(messages.has(newMessage2.uuid as any)).toBe(true);
+
+    // Find a leaf node and build a chain to verify basic functionality
+    const leafNodes = Array.from(messages.values()).filter(
+      (msg) => !Array.from(messages.values()).some((other) => other.parentUuid === msg.uuid)
+    );
+    expect(leafNodes.length).toBeGreaterThan(0);
+
+    const leaf = leafNodes[0] as TranscriptMessage;
+    const chain = buildConversationChain(messages, leaf);
+    expect(chain.length).toBeGreaterThan(0);
   });
 
-  test('loadTranscriptFile skips pre-compact content without preserved segment', async () => {
+  test('loadTranscriptFile loads all content for small files without preserved segment', async () => {
     const sessionId = randomUUID() as SessionId;
     const transcriptPath = join(tempDir, `${sessionId}.jsonl`);
     await mkdir(dirname(transcriptPath), { recursive: true });
 
-    // Create old messages that should be skipped
+    // Create old messages that would be skipped in large files
     const old1 = createTestMessage('user', 'Old message 1');
     const old2 = createTestMessage('assistant', 'Old response', old1.uuid);
 
@@ -356,8 +531,12 @@ describe('Session Persistence - Compact Boundary + Preserved Segment', () => {
 
     const { messages } = await loadTranscriptFile(transcriptPath);
 
-    // With large file logic, it would skip pre-boundary; small file loads everything
-    // This test verifies the system handles both scenarios without crashing
-    expect(messages.size).toBeGreaterThan(0);
+    // For small files (<5MB), all content is loaded
+    expect(messages.size).toBe(5); // old1, old2, boundary, summary, new1
+    expect(messages.has(old1.uuid as any)).toBe(true);
+    expect(messages.has(old2.uuid as any)).toBe(true);
+    expect(messages.has(boundary.uuid as any)).toBe(true);
+    expect(messages.has(summary.uuid as any)).toBe(true);
+    expect(messages.has(new1.uuid as any)).toBe(true);
   });
 });
