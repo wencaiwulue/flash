@@ -496,7 +496,7 @@ function parseHttpHookOutput(body: string): {
   }
 }
 
-function processHookJSONOutput({
+export function processHookJSONOutput({
   json,
   command,
   hookName,
@@ -3740,6 +3740,7 @@ export async function* executeDirectoryAddedHooks(
   yield* executeHooks({
     hookInput,
     toolUseID: `directory-added-${directory}`,
+    matchQuery: source,
     signal,
     timeoutMs,
   })
@@ -3748,7 +3749,10 @@ export async function* executeDirectoryAddedHooks(
 /**
  * PreModelSwitch (upstream 2.1.311): fires before a model switch. deny/block/
  * timeout cancels the switch (fail-closed); ask on a non-warm cache switches
- * directly. Default timeout 30s. No matcher.
+ * directly. Default timeout 30s. Upstream matches on the canonical to_model
+ * (alias/date/provider normalized, [1m] stripped); canonicalization is not yet
+ * implemented, so per the upstream fallback we run ALL hooks and let each hook
+ * inspect to_model itself (fail-safe).
  */
 export async function* executePreModelSwitchHooks(
   fields: Omit<PreModelSwitchHookInput, BaseHookFields | 'hook_event_name'>,
