@@ -41,6 +41,7 @@ status: draft
 | 决策 | 实际机制 | 为什么采用 | 备选方案及不采用原因 | 代价 | 证据 |
 |---|---|---|---|---|---|
 | 序列号重放机制 | 每条事件附加单调递增 `seq`；重连时通过 `after=N` 重放 | 确保重连时不丢失不重复；允许从任意点恢复 | 仅重连后新消息：会丢失断线期间的会话进展；完全从头重放：对于长会话太慢 | 服务器需要存储和读取事件日志；客户端需要跟踪 last_seq | `src/server/sessionManager.ts:674-704` |
+| attach 在读取事件快照前等待既有写入与轮转 | 连接先登记为 replaying，再 `await runtime.eventChain`；等待期间的新事件进入 buffered，随后按 seq 重放 | 防止 ready 在 rotation 前发出而漏掉 `replay_reset`，或在旧快照后重复/遗漏事件 | 直接 readFile：存在已完成 emit 尚未落盘的竞态；等待全部未来事件：会永久阻塞 | attach 需要等待既有 I/O；通过 connection buffer 限制等待边界 | 官方 [Remote Control](https://code.claude.com/docs/en/remote-control.md) 只承诺多端同步与断线重连，不公开此私有实现；本机 `/opt/homebrew/bin/claude` `strings` 未命中 `replay_reset/replayed_from/eventChain`，不据此推断上游；本仓库 `direct-connect-v1` 要求 ready 首帧、事件 append 后发送，`tests/directConnect.test.ts` 受控 eventChain RED→GREEN |
 | WebSocket 消息采用 NDJSON 帧 | 每条消息单独一行 JSON；支持批量发送 | 避免帧边界解析复杂性；允许简单地缓冲和重发 | 二进制协议：增加实现复杂度；单消息连接：过于低效 | 每行需要是完整 JSON；需要过滤空行 | `src/server/server.ts:242-251` |
 | 权限响应 ID 幂等去重 | 每个 `control_response` 包含 `request_id`；记录已处理 ID 哈希；冲突时发送错误并忽略 | 避免重复执行权限决策；网络重发不会导致不一致 | 依赖 TCP 可靠传输：WebSocket 重连时仍可能重发；客户端自行去重：服务器无法保护后端 | 内存占用与未完成权限请求数成正比；需要持久化请求哈希 | `src/server/sessionManager.ts:827-841` |
 | 会话状态分离：starting/running/detached/stopping/stopped | WebSocket attach 时转为 running；detach 后进入 detached；可自动回收 idle detached | 允许会话在无客户端时继续运行；可安全重启服务器 | 无状态：每次都重新创建会话；单运行态：无法区分有/无客户端 | 状态转换复杂度增加；需要 idle sweep 机制 | `src/server/types.ts:31-39` |

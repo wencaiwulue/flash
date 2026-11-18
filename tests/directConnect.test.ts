@@ -420,9 +420,23 @@ test('event rotation advertises replay reset instead of hiding gaps', async () =
   for (let index = 0; index < 10; index++) {
     backend.emit(created.session_id, { type: 'system', subtype: 'tick', index })
   }
-  await new Promise(resolve => setTimeout(resolve, 100))
+
+  // Hold the real event chain after its queued writes. attach() must not read
+  // the log or emit ready until those writes and rotation have completed.
+  const runtime = (manager as any).sessions.get(created.session_id)
+  const pendingWrites = runtime.eventChain
+  let releaseWrites!: () => void
+  runtime.eventChain = (async () => {
+    await pendingWrites
+    await new Promise<void>(resolve => { releaseWrites = resolve })
+  })()
+
   const socket = new WsInbox(created.ws_url, token)
   await socket.opened
+  await new Promise(resolve => setTimeout(resolve, 50))
+  expect(socket.records.some(record => record.subtype === 'ready')).toBe(false)
+
+  releaseWrites()
   const ready = await socket.next(0)
   expect(ready.replay_reset).toBe(true)
   expect(ready.last_seq).toBe(10)
