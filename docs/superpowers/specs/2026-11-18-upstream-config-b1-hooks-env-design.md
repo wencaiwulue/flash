@@ -234,7 +234,7 @@ coverage：[upstream-config-b1-hooks-env.yaml](../../architecture/coverage/upstr
 - Pre/PostModelSwitch 的 `cache_ttl` 已真实（`getPromptCache1hEligible()` → `1h`/`5m`，`bootstrap/state.ts:1704`）；context_tokens/prompt_cache_warm/estimated_cache_write_usd/pricing 仍取默认值——真实值需 query 层 last-response usage 追踪 + 模型定价表两个子系统（当前 `STATE.modelUsage` 为按模型累计值、无 last-response 追踪，且无定价表），超出 B1 接线范围。
 - PostModelSwitch additionalContext 下一请求投递未接（当前 drain 丢弃）。
 - MessageDisplay REPL streaming delta 已接（`1613419`）：`text_delta` await MessageDisplay，displayContent 仅替换渲染文本，稳定 turn/message UUID + per-message delta index。
-- ModelPicker 的 picker 路径（source=picker）未接 Pre/PostModelSwitch。
+- ModelPicker 的 picker 路径（source=picker）已接 Pre/PostModelSwitch：`handleSelect` 拆为同步包装 + `handleSelectAsync`，先 await Pre（deny/block/timeout 取消并 `onDone` 显示），通过后 setAppState 切换，Post 异步 drain。`requested_model` 取 picker 原始选择值（无 picker probe 实测，按 source 语义推断）。
 - prompt_id 已接入 `createBaseHookInput`：复用既有 per-turn `getPromptId()`（`bootstrap/state.ts:1755`，turn 边界 `processTextPrompt`/`processSlashCommand` 用 `randomUUID()` 设置），非 prompt hook 携带最近 turn id，对齐上游实测 payload。
 - 27 hooks 审计、真实矩阵 --batch 1 未在本轮跑。字段提取行为测试（`tests/b1HookEvents.test.ts` 10 pass，`1a1e865`）与触发点集成测试（`tests/b1HookTriggers.test.ts` 8 pass，真实 command hook 验证触发→解析→结果链，`1b6393d`）已补。
 - DirectoryAdded matcher 已接 source（`1a1e865`）；UserPromptExpansion matcher 接 command_name、DirectoryAdded 接 source（getMatchingHooks switch，`1b6393d`）；Pre/PostModelSwitch matcher 的 canonical to_model 未实现，按上游 fail-safe 运行全部。

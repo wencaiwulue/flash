@@ -63,6 +63,13 @@ function ModelPickerWrapper({
     model: string | null,
     effort: EffortLevel | undefined,
   ): void {
+    void handleSelectAsync(model, effort)
+  }
+
+  async function handleSelectAsync(
+    model: string | null,
+    effort: EffortLevel | undefined,
+  ): Promise<void> {
     logEvent('tengu_model_command_menu', {
       action:
         model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -71,6 +78,30 @@ function ModelPickerWrapper({
       to_model:
         model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     })
+
+    // PreModelSwitch (upstream 2.1.311): picker source. deny/block/timeout
+    // cancels the switch (fail-closed). cache_ttl is real; remaining cache
+    // fields use defaults pending query-layer usage + pricing (B1 spec).
+    const switchFields = {
+      from_model: mainLoopModel ?? getDefaultMainLoopModelSetting(),
+      to_model: model ?? getDefaultMainLoopModelSetting(),
+      requested_model: model,
+      source: 'picker' as const,
+      context_tokens: 0,
+      prompt_cache_warm: false,
+      cache_ttl: (getPromptCache1hEligible() ? '1h' : '5m') as '1h' | '5m',
+      estimated_cache_write_usd: 0,
+      pricing: 'default' as const,
+    }
+    let switchBlocked: string | undefined
+    for await (const r of executePreModelSwitchHooks(switchFields)) {
+      if (r.blockingError) switchBlocked = r.blockingError.blockingError
+    }
+    if (switchBlocked) {
+      onDone(switchBlocked, { display: 'system' })
+      return
+    }
+
     setAppState(prev => ({
       ...prev,
       mainLoopModel: model,
@@ -119,6 +150,18 @@ function ModelPickerWrapper({
     }
 
     onDone(message)
+
+    // PostModelSwitch (upstream 2.1.311): async, non-cancellable, waits at most
+    // 5s. GAP: additionalContext delivery to the next request needs query-layer
+    // integration; results are drained here.
+    void (async () => {
+      for await (const r of executePostModelSwitchHooks({
+        ...switchFields,
+        source: 'picker' as const,
+      })) {
+        void r
+      }
+    })()
   }
 
   return (
