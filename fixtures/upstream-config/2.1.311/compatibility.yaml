@@ -7781,30 +7781,37 @@ entries:
     exclusion: null
     ownerBatch: 1
   - id: hook:DirectoryAdded
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: partial
+    spec: upstream-config-b1-hooks-env
+    implementation:
+      - src/utils/hooks.ts
+      - src/commands/add-dir/add-dir.tsx
+      - src/entrypoints/sdk/coreSchemas.ts
+    tests:
+      - tests/b1HookEvents.test.ts
+      - tests/b1HookTriggers.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/probes/b1-DirectoryAdded.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "DirectoryAdded in HOOK_EVENTS; executeDirectoryAddedHooks wired in add-dir.tsx"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "directory (abs path) + source enum slash_command/register_repo_root"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "background, non-blocking after sandbox/permission refresh"
       source:
-        status: missing
-        evidence: ""
+        status: partial
+        evidence: "slash_command wired; register_repo_root has no flash implementation (gap)"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "matcher on source via getMatchingHooks switch"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "fires in background, results drained; cannot cancel the addition"
+    notes: "register_repo_root source not implemented in flash (single remaining gap)."
     exclusion: null
     ownerBatch: 1
   - id: hook:Elicitation
@@ -7916,30 +7923,37 @@ entries:
     exclusion: null
     ownerBatch: 1
   - id: hook:MessageDisplay
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: partial
+    spec: upstream-config-b1-hooks-env
+    implementation:
+      - src/utils/hooks.ts
+      - src/cli/print.ts
+      - src/entrypoints/sdk/coreSchemas.ts
+    tests:
+      - tests/b1HookEvents.test.ts
+      - tests/b1HookTriggers.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/probes/b1-MessageDisplay.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "MessageDisplay in HOOK_EVENTS; executeMessageDisplayHooks wired in print.ts headless success"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "turn_id/message_id (UUID) + index/final/delta"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "headless emits single event index=0 final=true delta=full text; default 10s forceSync"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "command hook via executeHooks"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "no matcher (upstream: MessageDisplay has none)"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: partial
+        evidence: "displayContent replaces rendered result in headless; REPL streaming deltas not wired (gap)"
+    notes: "REPL interactive streaming display not wired; headless single-shot only."
     exclusion: null
     ownerBatch: 1
   - id: hook:Notification
@@ -8051,56 +8065,70 @@ entries:
     exclusion: null
     ownerBatch: 1
   - id: hook:PostModelSwitch
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: partial
+    spec: upstream-config-b1-hooks-env
+    implementation:
+      - src/utils/hooks.ts
+      - src/commands/model/model.tsx
+      - src/entrypoints/sdk/coreSchemas.ts
+    tests:
+      - tests/b1HookEvents.test.ts
+      - tests/b1HookTriggers.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/probes/b1-PostModelSwitch.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "PostModelSwitch in HOOK_EVENTS; executePostModelSwitchHooks wired after /model switch"
       type:
-        status: missing
-        evidence: ""
+        status: partial
+        evidence: "from/to/requested/source real; context_tokens/cache fields use UI-layer defaults (query-layer gap)"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "async, non-cancellable, waits at most 5s"
       source:
-        status: missing
-        evidence: ""
+        status: partial
+        evidence: "command wired; auto/resume/picker/sdk sources not wired (gap)"
       precedence:
-        status: missing
-        evidence: ""
+        status: partial
+        evidence: "canonical to_model matcher not implemented; runs all hooks (upstream fail-safe)"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: partial
+        evidence: "fires async after switch; additionalContext next-request delivery not wired (gap)"
+    notes: "additionalContext delivery, auto/resume sources, and cache/token fields need query-layer integration."
     exclusion: null
     ownerBatch: 1
   - id: hook:PostToolBatch
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b1-hooks-env
+    implementation:
+      - src/utils/hooks.ts
+      - src/query.ts
+      - src/entrypoints/sdk/coreSchemas.ts
+    tests:
+      - tests/b1HookEvents.test.ts
+      - tests/b1HookTriggers.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/probes/b1-PostToolBatch.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "PostToolBatch in HOOK_EVENTS; executePostToolBatchHooks wired after query_tool_execution_end in query.ts"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "tool_calls[] (not tool_uses) with tool_name/tool_input/tool_use_id/tool_response; failed tools carry serialized content only"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "fires once after the whole parallel tool batch resolves, before next model request; no matcher"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "command/http/prompt/agent/callback hook kinds supported via executeHooks"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "no matcher (upstream: PostToolBatch has no matcher)"
       runtime:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "additionalContext injected as hook_additional_context; decision block / continue:false stops the loop; 8 trigger tests"
     notes: ""
     exclusion: null
     ownerBatch: 1
@@ -8186,30 +8214,37 @@ entries:
     exclusion: null
     ownerBatch: 1
   - id: hook:PreModelSwitch
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: partial
+    spec: upstream-config-b1-hooks-env
+    implementation:
+      - src/utils/hooks.ts
+      - src/commands/model/model.tsx
+      - src/entrypoints/sdk/coreSchemas.ts
+    tests:
+      - tests/b1HookEvents.test.ts
+      - tests/b1HookTriggers.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/probes/b1-PreModelSwitch.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "PreModelSwitch in HOOK_EVENTS; executePreModelSwitchHooks wired before /model switch"
       type:
-        status: missing
-        evidence: ""
+        status: partial
+        evidence: "from/to/requested/source real; context_tokens/cache fields use UI-layer defaults (query-layer gap)"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "default 30s; deny/block/timeout cancels switch (fail-closed)"
       source:
-        status: missing
-        evidence: ""
+        status: partial
+        evidence: "command wired; picker/sdk sources not wired (gap)"
       precedence:
-        status: missing
-        evidence: ""
+        status: partial
+        evidence: "canonical to_model matcher not implemented; runs all hooks (upstream fail-safe)"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: partial
+        evidence: "deny cancels switch (wired); ask interactive prompt not implemented (gap)"
+    notes: "ask-prompt, picker/sdk sources, and cache/token fields need query-layer integration."
     exclusion: null
     ownerBatch: 1
   - id: hook:PreToolUse
@@ -8510,30 +8545,37 @@ entries:
     exclusion: null
     ownerBatch: 1
   - id: hook:UserPromptExpansion
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: partial
+    spec: upstream-config-b1-hooks-env
+    implementation:
+      - src/utils/hooks.ts
+      - src/utils/processUserInput/processSlashCommand.tsx
+      - src/entrypoints/sdk/coreSchemas.ts
+    tests:
+      - tests/b1HookEvents.test.ts
+      - tests/b1HookTriggers.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/probes/b1-UserPromptExpansion.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "UserPromptExpansion in HOOK_EVENTS; wired in processSlashCommand after getPromptForCommand"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "expansion_type/command_name/command_args/command_source/prompt; prompt is the raw input"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "fires after slash-command expansion, before the model; exit 2 blocks expansion"
       source:
-        status: missing
-        evidence: ""
+        status: partial
+        evidence: "slash_command wired; mcp_prompt expansion path not wired (gap)"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "matcher on command_name via getMatchingHooks switch"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "additionalContext appended; suppressOriginalPrompt drops expansion; block aborts; 8 trigger tests"
+    notes: "mcp_prompt expansion source not wired."
     exclusion: null
     ownerBatch: 1
   - id: hook:UserPromptSubmit
@@ -13930,29 +13972,35 @@ entries:
     exclusion: null
     ownerBatch: final
   - id: env:CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b1-hooks-env
+    implementation:
+      - src/utils/subagentLimits.ts
+      - src/tools/AgentTool/runAgent.ts
+      - src/tools/AgentTool/AgentTool.tsx
+    tests:
+      - tests/subagentLimits.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "process.env.CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS read in subagentLimits.ts"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "integer concurrency count; non-numeric/<=0 fall back to default"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "default 20 (upstream 2.1.311)"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "environment variable"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env override beats built-in default 20"
       runtime:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "acquireSubagentSlot refuses spawn at cap; released in runAgent finally; 7 tests in subagentLimits.test.ts"
     notes: ""
     exclusion: null
     ownerBatch: 1
@@ -14097,29 +14145,36 @@ entries:
       sourceAnchor: "#variables"
     ownerBatch: 1
   - id: env:CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b1-hooks-env
+    implementation:
+      - src/utils/subagentLimits.ts
+      - src/tools/AgentTool/AgentTool.tsx
+      - src/tools/AgentTool/runAgent.ts
+      - src/utils/agentContext.ts
+    tests:
+      - tests/subagentLimits.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "process.env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH read in subagentLimits.ts"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "integer nesting depth; non-numeric/<=0 fall back to default"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "default 3 (upstream 2.1.311)"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "environment variable"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env override beats built-in default 3"
       runtime:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "depth stamped on agent context at spawn; acquireSubagentSlot rejects depth>cap; 7 tests in subagentLimits.test.ts"
     notes: ""
     exclusion: null
     ownerBatch: 1
