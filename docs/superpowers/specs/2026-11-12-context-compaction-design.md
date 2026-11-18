@@ -3,7 +3,7 @@ id: context-compaction
 batch: 1
 title: Context Compaction 历史压缩与溢出恢复设计
 date: 2026-11-12
-status: draft
+status: approved
 ---
 
 # Context Compaction 历史压缩与溢出恢复设计

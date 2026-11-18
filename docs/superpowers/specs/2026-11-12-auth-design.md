@@ -3,7 +3,7 @@ id: auth
 batch: 3
 title: Auth OAuth 与安全凭据存储设计
 date: 2026-11-12
-status: draft
+status: approved
 ---
 
 # Auth OAuth 与安全凭据存储设计

@@ -436,3 +436,64 @@ Date:   ...
 
     Co-authored-by: Claude <noreply@anthropic.com>
 ```
+
+---
+
+## Task 8 Spec 审阅与最终门禁报告
+
+### 批准的 Spec 清单（8 个）
+
+| Spec ID | Batch | 设计文档 | 主责 Finding |
+|---------|-------|----------|-------------|
+| `auth` | 3 | [Auth OAuth 与安全凭据存储设计](../../superpowers/specs/2026-11-12-auth-design.md) | B3-auth-01 ✅ 已修复 |
+| `test-validation` | 7 | [Test Validation 测试运行、Live 验证与证据边界设计](../../superpowers/specs/2026-11-12-test-validation-design.md) | B7-test-validation-06 ✅ 已修复 |
+| `skills` | 3 | [Skills 技能发现、加载与执行设计](../../superpowers/specs/2026-11-12-skills-design.md) | B3-skills-01, B3-skills-02, B3-skills-03, B3-skills-04, B3-skills-05, B3-skills-06 |
+| `workflow` | 5 | [Workflow DAG 编排与失败传播设计](../../superpowers/specs/2026-11-12-workflow-design.md) | B5-workflow-01, B5-workflow-02, B5-workflow-03, B5-workflow-04, B5-workflow-05, B5-workflow-06 |
+| `app-state` | 4 | [App State 应用状态、订阅与生命周期设计](../../superpowers/specs/2026-11-12-app-state-design.md) | B4-app-state-01, B4-app-state-02 |
+| `context-compaction` | 1 | [Context Compaction 历史压缩与溢出恢复设计](../../superpowers/specs/2026-11-12-context-compaction-design.md) | B1-context-compaction-01, B1-context-compaction-02, B1-context-compaction-03 |
+| `memory` | 3 | [Memory 记忆加载、提取与同步设计](../../superpowers/specs/2026-11-12-memory-design.md) | B3-memory-01, B3-memory-02, B3-memory-03, B3-memory-04, B3-memory-05, B3-memory-06 |
+| `session-persistence` | 2 | [Session Persistence 会话记录、恢复与文件历史设计](../../superpowers/specs/2026-11-12-session-persistence-design.md) | B2-session-persistence-01, B2-session-persistence-02, B2-session-persistence-03, B2-session-persistence-04 |
+
+### 证据边界与最终门禁
+
+**设计文档检查**：
+- ✅ 8 个批准的 spec 均包含完整的 9 个章节
+- ✅ 所有 spec 均包含「三视图」（架构与资源边界图、关键流程与失败路径、核心对象生命周期七列表）
+- ✅ 所有 spec 的 frontmatter、manifest、coverage YAML、INDEX.md 状态已同步更新为 `approved`
+
+**验证结果**：
+- ✅ `bun scripts/check-design-docs.ts`：0 错误，62 警告（预期：62 DRAFT_SPEC，0 UNCOVERED_FILE）
+- ✅ `bun scripts/check-design-docs.ts --require-approved`：通过批准 spec 的严格检查
+- ✅ `bun run test`：通过
+- ✅ `bun run typecheck`：通过
+- ✅ `bun run build`：通过
+- ✅ `git diff --check`：无空白错误
+
+**剩余未批准 Spec**：
+- 62 个 spec 保持 `draft` 状态，待后续用户审阅后逐批批准
+- 原始发现、rejected 记录、历史统计均保持不变，无降级或删除
+
+### 增量审计约定
+
+后续 PR 遵循以下增量审计约定：
+
+1. **仅审计变更**：仅审计变更文件归属的 spec，不重新审计所有 70 个 spec
+2. **主责 Spec 明确**：每个变更文件通过 manifest/coverage 明确唯一主责 spec
+3. **证据更新要求**：若变更影响设计，需同步更新对应 spec 的「代码与测试证据」章节
+4. **状态保持谨慎**：仅在用户明确批准时才将 spec 状态从 `draft` 改为 `approved`
+5. **重新全审计触发条件**：
+   - 核心 context/query/session/memory 模型重大变更
+   - 上游 Claude Code 重大版本更新
+   - 广泛的文件归属重组
+   - 定期复审（每季度）
+
+### 总体状态
+
+✅ **Task 8 完成**：8 个 spec 已批准，门禁全绿，剩余 62 spec 保持 draft 状态待后续审阅。
+
+**当前清单统计**：
+- 总计：70 个注册 spec
+- 已批准：8 个
+- 草稿：62 个
+- 计划：0 个
+- 未覆盖文件：0 个

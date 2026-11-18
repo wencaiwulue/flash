@@ -3,7 +3,7 @@ id: memory
 batch: 3
 title: Memory 记忆加载、提取与同步设计
 date: 2026-11-12
-status: draft
+status: approved
 ---
 
 # Memory 记忆加载、提取与同步设计

@@ -1,7 +1,7 @@
 schema_version: 1
 spec_id: context-compaction
 spec: ../../superpowers/specs/2026-11-12-context-compaction-design.md
-status: draft
+status: approved
 groups:
   - id: commands
     kind: source

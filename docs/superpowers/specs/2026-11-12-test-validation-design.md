@@ -3,7 +3,7 @@ id: test-validation
 batch: 7
 title: Test Validation 测试运行、Live 验证与证据边界设计
 date: 2026-11-12
-status: draft
+status: approved
 ---
 
 # Test Validation 测试运行、Live 验证与证据边界设计
