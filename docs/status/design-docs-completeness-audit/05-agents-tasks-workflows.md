@@ -1622,3 +1622,11 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 - **实现**：`saveFacets` 使用独立 UUID 临时文件（`wx`、0600）→ JSON + fsync → close → 原子 rename → 目录 fsync；失败清理临时文件并保留旧缓存。`loadCachedFacets` 对语法损坏缓存也删除以便重新提取。
 - **GREEN**：`tests/insightsFacetCache.test.ts` 4/4，覆盖普通读写、40 路并发、序列化失败保留旧内容、无临时残留和损坏恢复。测试已唯一登记 review-analysis coverage。
 - **证据边界**：本地临时目录/offline；未执行真实模型提取。官方 Code Review 文档无此缓存公开契约，upstream strings 对 facet cache 名称无匹配，不推断私有实现。spec 保持 draft，待用户审阅。
+
+## Phase A.4 Scheduled Tasks 权限与原子写（2026-11-18 追加）
+
+- **Finding**：B5-scheduling-06；主责 spec：`2026-11-12-scheduling-design.md`。原 Finding 行和历史统计保持 open。
+- **RED**：从 `3fdff56` 临时恢复旧 `writeCronTasks`，新文件权限为 0644 而非要求的 0600，退出 1；临时源码已删除。
+- **实现**：独立 UUID 临时文件（`wx`、0600）→ JSON + fsync → close → 原子 rename → 目录 fsync；`.claude` 目录 0700，失败清理并保留旧任务。
+- **GREEN**：`tests/cronTaskFilePermissions.test.ts` 与 `tests/cronLifecycle.test.ts` 合计 6/6；覆盖 0600、40 路并发、序列化失败保留旧任务和无临时残留。新测试唯一登记 scheduling coverage。
+- **证据边界**：官方调度文档不公开 scheduled_tasks.json 权限/原子写契约；upstream strings 命中文件名但不证明实现。全部本地临时目录/offline，spec 保持 draft。

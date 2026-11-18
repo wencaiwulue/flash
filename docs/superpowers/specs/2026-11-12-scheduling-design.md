@@ -33,6 +33,8 @@ status: draft
 | --- | --- | --- | --- | --- | --- |
 | cron任务持久化到`.claude/scheduled_tasks.json` | 每个任务带8字符ID，包含cron、prompt、createdAt、lastFiredAt、recurring、permanent | 文件简单可见，不依赖外部数据库；支持手动编辑/备份 | SQLite：过度设计；纯内存：进程退出丢失任务 | 文件读写需加锁，防并发损坏 | src/utils/cronTasks.ts:74-182 |
 | 使用PID锁文件防多会话重复触发 | `.claude/scheduled_tasks.lock`包含sessionId、pid、acquiredAt；持有锁的会话才执行check() | 简单可靠，无需分布式协调；崩溃的会话会被其他会话检测到并接管 | 基于共享内存：跨进程复杂；单实例强制：多会话场景不便 | 锁文件需在退出时清理，防死锁 | src/utils/cronTasksLock.ts:1-196 |
+
+**scheduled_tasks.json 权限与原子写（B5-scheduling-06 整改）**：写入使用独立 UUID 临时文件（`wx`、0600）→ JSON + fsync → close → 原子 rename → 目录 fsync；`.claude` 目录以 0700 创建，失败清理临时文件并保留旧任务。官方 [Run prompts on a schedule](https://code.claude.com/docs/en/scheduled-tasks.md) 只约束调度行为，不公开该文件的权限/原子写契约；本机 `/opt/homebrew/bin/claude` `strings` 命中 `scheduled_tasks.json`，但不能证明上游写入实现。`tests/cronTaskFilePermissions.test.ts` 验证 0600、40 路并发、序列化失败保留旧任务和无临时残留。回滚不得恢复无权限的直接覆盖，spec 保持 draft。
 | cron抖动（Jitter）避峰 | 周期性任务：`next + jitterFrac * interval`（默认cap 15分钟）；一次性任务：若落在mod 30分钟，提前`0-90秒` | 防止所有用户选"0 9 * * *"导致inference峰值 | 无抖动：会有惊群效应；完全随机：破坏用户"准时"预期 | 一次性任务最多提前90秒，对体验影响有限 | src/utils/cronTasks.ts:313-445 |
 | 模板作业使用双进程监督者模式 | supervisor进程detached启动，持有pid锁；spawn子进程执行实际任务，监控其stdout/stderr/exit | supervisor独立存活，可监控任务；子进程崩溃不影响supervisor；detached可跨会话 | 单进程：崩溃丢失任务；多线程：状态同步复杂 | 需管理两个进程的生命周期，增加复杂度 | src/jobs/supervisor.ts:1-442 |
 | 主动唤醒作为功能开关，非默认行为 | `activateProactive('command')`启动，`deactivateProactive()`停止；状态跟踪active/paused/contextBlocked | 默认安全，用户需显式启用；防止意外后台运行 | 默认开启：隐私/资源风险；全局配置：不灵活 | 用户需记住启用/停用 | src/proactive/index.ts:1-96 |

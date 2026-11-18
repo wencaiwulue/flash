@@ -139,3 +139,9 @@ groups:
     summary: 模板作业测试
     files:
       - tests/templateJobs.test.ts
+  - id: cron-file-permissions-tests
+    kind: test
+    section: 7
+    summary: scheduled_tasks.json 权限、原子写与失败恢复测试
+    files:
+      - tests/cronTaskFilePermissions.test.ts
