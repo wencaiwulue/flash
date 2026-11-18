@@ -9,6 +9,7 @@ groups:
     summary: Additional files
     files:
       - tests/npmMarketplace.test.ts
+      - tests/plugins.integration.test.ts
   - id: types
     kind: source
     section: 4

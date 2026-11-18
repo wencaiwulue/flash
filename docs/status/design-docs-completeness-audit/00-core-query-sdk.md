@@ -590,6 +590,11 @@ bun run test
 
 门禁执行结果：Design docs: 0 errors, 71 warnings（符合预期，基线状态）
 
+## 整改台账：B0-plugins-01（2026-11-18 追加）
+
+- 新增 `tests/plugins.integration.test.ts` 并唯一登记 plugins coverage：覆盖 createPluginFromPath 加载、copyPluginToVersionedCache 版本缓存、loadAllPluginsCacheOnly 无插件启动、marketplace 本地目录源添加、invalid manifest 隔离、依赖降级验证等完整插件集成场景。
+- 证据边界：全部使用临时本地目录，无网络/真实 npm/github 依赖，完整离线测试。原 Finding 历史统计不变，spec 保持 draft。
+
 ## 整改台账：B0-query-core-01（2026-11-18 追加）
 
 - 新增 `tests/queryCore.integration.test.ts` 并唯一登记 query-core coverage：真实 QueryEngine + 离线 fake model 的两轮持久化、重载、session 隔离、parent/UUID 链与 compact boundary 顺序/去重。
