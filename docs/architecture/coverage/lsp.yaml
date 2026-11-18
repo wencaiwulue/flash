@@ -16,6 +16,7 @@ groups:
     summary: "LSP服务器实例实现（启动/停止、健康检查、请求发送、通知处理、重启策略）"
     files:
       - src/services/lsp/LSPServerInstance.ts
+      - src/services/lsp/types.ts
   - id: lsp-client
     kind: source
     section: 4
