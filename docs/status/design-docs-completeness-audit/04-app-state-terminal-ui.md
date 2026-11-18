@@ -1465,3 +1465,21 @@
 既有 `appStateStore.test.ts` 继续证明 FIFO 嵌套更新和 unsubscribe，不重复实施。auth/settings/managedEnv/sessionState 只替换外部边界，无真实凭据、浏览器、桌面或 CCR live。无生产代码变更。
 
 **原 Finding 状态**：B4-app-state-01/02 保持 open；spec 保持原 approved 状态，第 7.3/7.4 节记录实际证据、三层边界和回滚。
+
+---
+
+## 整改台账：B4-assistant-ui-01（2026-11-19 追加）
+
+**Finding ID**：B4-assistant-ui-01；主责 spec：assistant-ui。
+
+新增 `tests/assistantUi.test.tsx` 并唯一登记 coverage，4 个测试、14 个断言：
+
+- 会话发现 id/session_id 归一化、无效过滤、machine_name/时间映射、lastActiveAt 降序。
+- latest anchor_to_latest 与 older before_id 分页、events/firstId/hasMore、非 200 返回 null。
+- 真实 Ink + AppStateProvider + KeybindingSetup 的空列表、Enter 选择、Escape 取消。
+
+既有 `tests/daemonBridge.test.ts` 继续覆盖 core 注入、队列和 teardown，归 bridge 主责，不重复登记。spec 同步修正已不存在的 `src/components`/`src/hooks/useAssistantHistory` 路径为当前实现，并明确 chooser 不等同完整远程 viewer。
+
+全部 axios/core 边界离线，无真实远程、OAuth、滚动 viewer、桌面或私有 WebSocket 验证。无生产代码变更。
+
+**原 Finding 状态**：B4-assistant-ui-01 保持 open，spec 保持 draft。
