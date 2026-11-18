@@ -228,26 +228,33 @@ const BROWSER_MISSING_PATTERN =
   /Executable doesn't exist|not found|doesn't exist|No such file/i
 const BROWSER_CONTEXT_PATTERN = /chrome|chromium|channel/i
 
-export function classifyToolSmokeResult(
-  smokeLine: string,
-): 'pass' | 'skip' | 'fail' {
-  if (CRASH_PATTERN.test(smokeLine)) return 'fail'
-  if (PERF_TIMEOUT_PATTERN.test(smokeLine)) return 'skip'
+export type ToolSmokeVerdict =
+  | 'pass'
+  | 'skip:browser-missing'
+  | 'skip:perf-timeout'
+  | 'fail:crash-pattern'
+  | 'fail:tool-error'
+  | 'fail:title-marker'
+  | 'fail:unparsable'
+
+export function classifyToolSmokeResult(smokeLine: string): ToolSmokeVerdict {
+  if (CRASH_PATTERN.test(smokeLine)) return 'fail:crash-pattern'
+  if (PERF_TIMEOUT_PATTERN.test(smokeLine)) return 'skip:perf-timeout'
   if (
     /Executable doesn't exist/i.test(smokeLine) ||
     (BROWSER_CONTEXT_PATTERN.test(smokeLine) &&
       BROWSER_MISSING_PATTERN.test(smokeLine))
   ) {
-    return 'skip'
+    return 'skip:browser-missing'
   }
   let parsed: { ok?: boolean }
   try {
     parsed = JSON.parse(smokeLine) as { ok?: boolean }
   } catch {
-    return 'fail'
+    return 'fail:unparsable'
   }
-  if (!parsed.ok) return 'fail'
-  return smokeLine.includes(SMOKE_TITLE_MARKER) ? 'pass' : 'fail'
+  if (!parsed.ok) return 'fail:tool-error'
+  return smokeLine.includes(SMOKE_TITLE_MARKER) ? 'pass' : 'fail:title-marker'
 }
 
 function smokeTestBinary(
@@ -278,10 +285,17 @@ function smokeTestBinary(
       ...env,
       FLASH_SMOKE_TOOL: 'WebBrowser',
       FLASH_SMOKE_INPUT: smokeInput,
+      FLASH_SMOKE_CHANNEL: 'chrome',
+      // Playwright's debug log goes to stderr and reveals where a launch
+      // stalls (pipe transport, CDP handshake) on platforms where the full
+      // flow exceeds the MCP request timeout (Windows runners).
+      DEBUG: 'pw:browser,pw:channel',
     },
     // Windows runners cold-launch Chrome (Defender scans, first run) well
-    // beyond the default 30s — give the whole smoke 2 minutes.
-    timeoutMs: 120_000,
+    // beyond the default 30s, and the smoke channel's MCP request timeout is
+    // 180s — the spawn cap must exceed that or the process gets SIGTERMed
+    // mid-request with no result line.
+    timeoutMs: 300_000,
   })
   const smokeStdout = smoke.stdout.toString()
   const smokeStderr = smoke.stderr.toString()
@@ -297,12 +311,15 @@ function smokeTestBinary(
     )
   }
   const verdict = classifyToolSmokeResult(smokeLine)
-  if (verdict === 'skip') {
-    console.warn('Smoke skip: Chrome not available on this machine')
+  const stderrTail = smoke.stderr.toString().slice(-1500)
+  if (verdict.startsWith('skip')) {
+    console.warn(
+      `Smoke skip (${verdict.slice('skip:'.length)}): ${smokeLine.slice(0, 500)}\nstderr tail:\n${stderrTail}`,
+    )
     return
   }
-  if (verdict === 'fail') {
-    throw new Error(`Tool smoke failed: ${smokeLine.slice(0, 2000)}`)
+  if (verdict.startsWith('fail')) {
+    throw new Error(`Tool smoke failed (${verdict}): ${smokeLine.slice(0, 2000)}`)
   }
 }
 

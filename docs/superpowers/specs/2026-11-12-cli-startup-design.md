@@ -2259,6 +2259,233 @@ type CleanupFunction = () => void | Promise<void>
 - **Skills**：技能由 skills spec 负责，本文只描述技能加载作为 deferred prefetch 的一部分
 - **MCP**：MCP 由 mcp spec 负责，本文只描述 MCP 快速路径和配置加载
 
+### 4.9 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         进程入口点                                     │
+│                    node cli.js (process.argv)                         │
+└──────────────────────────────────┬──────────────────────────────────────┘
+                                   │
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  src/entrypoints/cli.tsx (单一入口)                                   │
+│  ┌───────────────────────────────────────────────────────────────────┐ │
+│  │  顶部副作用：设置 COREPACK_ENABLE_AUTO_PIN=0，应用环境变量     │ │
+│  │  (仅环境准备，无 I/O)                                            │ │
+│  ├───────────────────────────────────────────────────────────────────┤ │
+│  │  快速路径判断（优先级从高到低）：                               │ │
+│  │  --internal-prepare-commit-msg-attribution → --version → ...   │ │
+│  │  (匹配则直接处理/动态 import 并 exit，不加载 main.tsx)        │ │
+│  └───────────────────────────────────────────────────────────────────┘ │
+└────────────────────┬──────────────────────────────────────────────────────┘
+                     │  快速路径
+                     │  不匹配
+                     ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  startCapturingEarlyInput() 启动早期输入捕获                       │
+│  profileCheckpoint() 记录 checkpoint                                 │
+│  动态 import('../main.js') (首次加载 heavy 模块)                  │
+└────────────────────┬──────────────────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  src/main.tsx (主运行逻辑)                                           │
+│  ┌───────────────────────────────────────────────────────────────────┐ │
+│  │  顶部预取启动（并行）：startMdmRawRead() + startKeychainPrefetch() │ │
+│  ├───────────────────────────────────────────────────────────────────┤ │
+│  │  main() → 处理 --bare → 设置 CLAUDE_CODE_SIMPLE=1               │ │
+│  │  → 设置 graceful shutdown 监听 → 处理深度链接 → 判断交互式/非交互式 │ │
+│  │  → setIsInteractive() + setClientType()                       │ │
+│  ├───────────────────────────────────────────────────────────────────┤ │
+│  │  run() → 创建 commander program → 定义命令 → program.parseAsync() │ │
+│  │  → preAction hook 触发                                           │ │
+│  └───────────────────────────────────────────────────────────────────┘ │
+└────────────────────┬──────────────────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  preAction hook                                                      │
+│  ┌───────────────────────────────────────────────────────────────────┐ │
+│  │  await Promise.all([ensureMdmSettingsLoaded(), ensureKeychainPrefetchCompleted()]) │ │
+│  │  → await init() (memoized，仅执行一次)                            │ │
+│  └───────────────────────────────────────────────────────────────────┘ │
+└────────────────────┬──────────────────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  src/entrypoints/init.ts (初始化序列)                                │
+│  ┌───────────────────────────────────────────────────────────────────┐ │
+│  │  1. enableConfigs() (配置系统启用)                               │ │
+│  │  2. applySafeConfigEnvironmentVariables() (安全 env)             │ │
+│  │  3. setupGracefulShutdown() (优雅关闭监听)                       │ │
+│  │  4. 并行 fire-and-forget：1P 日志 + OAuth + JetBrains + GitHub   │ │
+│  │  5. configureGlobalMTLS() → configureGlobalAgents()              │ │
+│  │  6. preconnectAnthropicApi() (fire-and-forget)                   │ │
+│  │  7. 其他步骤：Windows shell、cleanup 注册、scratchpad           │ │
+│  └───────────────────────────────────────────────────────────────────┘ │
+└────────────────────┬──────────────────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  回到 preAction → runMigrations() → initSinks()                    │
+└────────────────────┬──────────────────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  action handler (默认 interactive REPL 路径)                         │
+│  ┌───────────────────────────────────────────────────────────────────┐ │
+│  │  → await setup() (src/setup.ts)                                  │ │
+│  │  → startDeferredPrefetches() (REPL 渲染后启动，不 await)         │ │
+│  │  → await launchRepl() (Ink UI 渲染)                              │ │
+│  └───────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────┘
+
+────────────────────────────────────────────────────────────────────────────
+
+模块级状态持有者（非传入状态）：
+├─ startupProfiler.ts: checkpoints[] (模块级数组)
+├─ gracefulShutdown.ts: shutdownInProgress, failsafeTimer, orphanCheckInterval
+├─ cleanupRegistry.ts: cleanupFunctions Set (模块级)
+├─ earlyInput.ts: capturedInput, isCapturing (模块级)
+├─ bootstrap/state.ts: STATE (模块级全局对象)
+├─ settings/mdm/rawRead.ts: rawReadPromise (模块级)
+└─ secureStorage/keychainPrefetch.ts: prefetchPromise, legacyApiKeyPrefetch (模块级)
+```
+
+边界说明：
+- cli.tsx 顶部**无 I/O**，仅设置环境变量，确保快速路径真正快速
+- 快速路径不加载 main.tsx 及其依赖树
+- 预取 Promise 封装在对应模块内部，调用方仅需 start/ensure
+- bootstrap/state.ts 是全局单例，跨模块共享
+- graceful shutdown 监听在 init 早期设置，确保后续分配的资源都能被清理
+
+### 4.10 关键流程与失败路径
+
+```text
+完整 CLI 启动流程（交互式 REPL 路径）
+┌─────────────────────────────────────────────────────────────────────┐
+│  node cli.js → cli.tsx 模块加载 → 顶部环境变量设置                │
+│  → void main() 调用                                               │
+└──────────────────────────────────┬──────────────────────────────────┘
+                                   │
+                                   ├─ 快速路径匹配（见 4.8 节）
+                                   │   ├─ 匹配 --version → 直接输出，return exit ✅
+                                   │   ├─ 匹配 --internal-prepare-commit-msg-attribution → 处理后 return ✅
+                                   │   ├─ 匹配其他快速路径 → 动态 import + 处理后 return ✅
+                                   │   └─ 快速路径中动态 import 失败 → 抛出异常，Node 默认打印堆栈 ❌
+                                   │
+                                   ▼ 不匹配
+┌─────────────────────────────────────────────────────────────────────┐
+│  --bare 检查 → 匹配则设置 CLAUDE_CODE_SIMPLE=1                       │
+│  startCapturingEarlyInput() 启动早期输入捕获                        │
+│  profileCheckpoint('cli_before_main_import')                        │
+│  动态 import('../main.js') → profileCheckpoint('cli_after_main_import') │
+│  (动态 import 失败 → 抛出异常 ❌)                                  │
+└──────────────────────────────────┬──────────────────────────────────┘
+                                   │
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  main.tsx 模块加载 → 顶部预取启动：startMdmRawRead() + startKeychainPrefetch() │
+│  main() 开始 → 设置 process.env.NoDefaultCurrentDirectoryInExePath=1 │
+│  → initializeWarningHandler() → process.on('exit', ...) + SIGINT/SIGTERM 监听 │
+│  → 处理深度链接 → 处理 --assistant → 处理 ssh 命令 → 判断 isNonInteractiveSession() │
+│  → 非交互式则 stopCapturingEarlyInput() → setIsInteractive() + setClientType() │
+│  → eagerLoadSettings() → profileCheckpoint('main_before_run') → 调用 run() │
+└──────────────────────────────────┬──────────────────────────────────┘
+                                   │
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  run() → 创建 commander program → 配置 help → 定义命令 → program.parseAsync() │
+│  → preAction hook 触发：                                            │
+│    ├─ profileCheckpoint('preAction_start')                        │
+│    ├─ await Promise.all([ensureMdmSettingsLoaded(), ensureKeychainPrefetchCompleted()]) │
+│    │  (预取失败 → 抛出异常 ❌)                                    │
+│    ├─ await init() (memoized，仅执行一次)                          │
+│    │  └─ init() 内部见 4.7 节                                      │
+│    │     ├─ ConfigParseError → 捕获 → non-interactive: gracefulShutdownSync(1) ❌ │
+│    │     │                              interactive: 显示 InvalidConfigDialog ✅ │
+│    │     └─ 其他错误 → 重新抛出 ❌                                 │
+│    ├─ profileCheckpoint('preAction_after_init')                   │
+│    ├─ initSinks() → profileCheckpoint('preAction_after_sinks')    │
+│    ├─ 处理 --plugin-dir → setInlinePlugins() + clearPluginCache() │
+│    ├─ runMigrations() → profileCheckpoint('preAction_after_migrations') │
+│    └─ void loadRemoteManagedSettings() + void loadPolicyLimits() (后台) │
+└──────────────────────────────────┬──────────────────────────────────┘
+                                   │
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  action handler (默认 interactive REPL)：                          │
+│  ├─ 处理 --bare → 设置 CLAUDE_CODE_SIMPLE=1 (重复)                │
+│  ├─ 处理 --assistant → kairosEnabled, stash assistantTeamContext  │
+│  ├─ 提取各种 options                                              │
+│  ├─ await setup() (见 4.7 节)                                    │
+│  │  ├─ 检查 Node.js 版本 >= 18 → 不满足则 process.exit(1) ❌    │
+│  │  ├─ 检查 --dangerously-skip-permissions → root/sudo 且非 sandbox → exit(1) ❌ │
+│  │  ├─ ... (其他 setup 步骤)                                      │
+│  │  └─ process.env.NODE_ENV === 'test' → 提前 return ✅          │
+│  ├─ startDeferredPrefetches() (不 await，后台启动)                 │
+│  ├─ await launchRepl() → profileCheckpoint('cli_after_main_complete') │
+│  └─ REPL 渲染前出错 → 抛出异常，已 register 的 cleanup 执行 ❌  │
+└──────────────────────────────────┬──────────────────────────────────┘
+                                   │
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  用户使用 REPL → 正常对话 → 退出（SIGINT/SIGTERM/正常 exit）        │
+│  → gracefulShutdown() 触发 → 清理终端模式 → printResumeHint() (如果适用) │
+│  → await runCleanupFunctions() (注册逆序) → executeSessionEndHooks() │
+│  → profileReport() → flush analytics → forceExit() ✅               │
+└─────────────────────────────────────────────────────────────────────┘
+
+────────────────────────────────────────────────────────────────────────────
+
+关键分支：
+- --bare 模式：禁用 prefetch、hooks、LSP、plugin sync、归因、自动记忆、钥匙串读取等
+- 非交互式：不显示 Ink UI，不启动 REPL，不启动 deferred prefetches
+- test 环境：setup() 在权限检查前提前返回
+- graceful shutdown 可被 SIGINT/SIGTERM/process.exit() 触发
+```
+
+失败/取消/禁用路径总结：
+| 路径 | 触发位置 | 行为 | 清理 | 调用方可见结果 |
+|------|---------|------|------|--------------|
+| 快速路径 import 失败 | cli.tsx 各快速路径 | 抛出异常 | 无（快速路径通常不分配资源） | 进程异常退出，非零码 |
+| init() ConfigParseError | init.ts catch 块 | non-interactive: gracefulShutdownSync(1); interactive: 显示 InvalidConfigDialog | 已 register 的 cleanup 不执行（setupGracefulShutdown 已调用，但 process.exit 前不触发） | non-interactive: 写入 stderr + exit(1); interactive: 显示对话框 |
+| init() 其他错误 | init.ts catch 块 | 重新抛出 | 已 register 的 cleanup 执行 | 进程异常退出 |
+| Node.js < 18 | setup.ts 开头 | process.exit(1) | 无（太早） | process.exit(1) |
+| --dangerously-skip-permissions (root) | setup.ts | process.exit(1) | 无 | process.exit(1) |
+| preAction prefetch 失败 | preAction hook | 抛出异常 | 已 register 的 cleanup 执行 | 进程异常退出 |
+| REPL 渲染前出错 | action handler | 抛出异常 | 已 register 的 cleanup 执行 | 进程异常退出 |
+| SIGINT/SIGTERM | gracefulShutdown.ts signal listeners | 触发 gracefulShutdown() | 所有 register 的 cleanup 按逆序执行 | 进程退出，默认 0 或指定 code |
+
+### 4.11 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| `cli.tsx` 入口流程 | Node.js 模块系统 | 模块加载时顶部副作用执行，main() 调用触发 | 进程单例 | 不持久化 | 进程退出后消失 | 快速路径直接 exit 无清理；完整路径由 graceful shutdown 清理 |
+| `bootstrap/state.ts` STATE | 模块级全局 | 模块加载时 `getInitialState()` 创建，初始化为默认值 | 进程单例，全局共享 | 不持久化 | 无明确重置，仅进程退出后消失 | 无（纯内存对象） |
+| `startupProfiler.ts` checkpoints | 模块级数组 | 模块加载时决定 `DETAILED_PROFILING`/`SHOULD_PROFILE`，数组初始为空 | 进程单例，全局共享 | 不持久化 | 无明确重置，仅进程退出后消失 | `profileReport()` 在 graceful shutdown 时调用，输出报告 |
+| `cleanupRegistry.ts` cleanupFunctions | 模块级 Set | 模块加载时 Set 初始化为空 | 进程单例，全局共享 | 不持久化 | 无明确重置，仅进程退出后消失 | `registerCleanup()` 添加函数；`runCleanups()` 并行执行所有函数（graceful shutdown 调用） |
+| `gracefulShutdown.ts` 内部状态 | 模块级变量 | 模块加载时 `shutdownInProgress=false`，其他变量 `undefined` | 进程单例，全局共享 | 不持久化 | `resetShutdownState()` 仅测试使用 | `setupGracefulShutdown()` 注册监听；`gracefulShutdown()`/`gracefulShutdownSync()` 执行清理；孤儿检测 interval 被 clear |
+| `earlyInput.ts` capturedInput | 模块级变量 | `startCapturingEarlyInput()` 初始化捕获状态 | 进程单例，全局共享 | 不持久化 | `stopCapturingEarlyInput()` 返回捕获内容并停止 | `stopCapturingEarlyInput()` 停止捕获并返回；非交互式路径显式调用 |
+| `mdm/rawRead.ts` rawReadPromise | 模块级 Promise | `startMdmRawRead()` 启动异步读取并存储 Promise | 进程单例，全局共享 | 不持久化 | 无明确重置，仅进程退出后消失 | `ensureMdmSettingsLoaded()` await Promise；Promise 内部处理失败（记录 health，不抛异常） |
+| `keychainPrefetch.ts` prefetchPromise | 模块级 Promise | `startKeychainPrefetch()` 启动异步读取并存储 Promise（非 bare、darwin 时） | 进程单例，全局共享 | 不持久化 | `clearLegacyApiKeyPrefetch()` 清除 prefetch 结果 | `ensureKeychainPrefetchCompleted()` await Promise；超时不抛异常，仅不 prime 缓存 |
+| `init()` memoized 执行状态 | `lodash-es/memoize` 内部 | 首次 `init()` 调用时开始执行，后续调用返回同一 Promise | 进程单例，全局共享 | 不持久化 | 无（memoize 无重置机制） | 无（memoized 函数确保仅执行一次） |
+| `setupGracefulShutdown()` 监听状态 | 模块级 | `setupGracefulShutdown()` 首次调用时注册 signal handlers，固定空 onExit hook | 进程单例，全局共享 | 不持久化 | 无明确重置，仅进程退出后消失 | signal handlers 注册后不移除；`shutdownInProgress` 防止重入 |
+| `commander.js` program | main.tsx 模块级 | `run()` 中创建并配置 | 进程单例，全局共享 | 不持久化 | 进程退出后消失 | 无（commander 内部状态） |
+| `deferred prefetches` 后台任务 | startDeferredPrefetches() | REPL 渲染前启动，不 await | 进程单例，全局共享 | 不持久化 | 无明确重置，仅进程退出后消失 | 无（fire-and-forget，无取消机制） |
+
+生命周期证据：
+- `src/entrypoints/cli.tsx`: 模块加载即执行顶部副作用，main() 触发流程
+- `src/bootstrap/state.ts`: 模块级 STATE 对象，`getInitialState()` 仅在模块加载时调用一次
+- `src/utils/startupProfiler.ts`: 模块级 checkpoints 数组，无重置机制
+- `src/utils/cleanupRegistry.ts`: 模块级 Set，无重置机制
+- `src/utils/gracefulShutdown.ts`: 模块级状态变量，`resetShutdownState()` 仅测试使用
+- `src/utils/earlyInput.ts`: 模块级捕获状态
+- `src/utils/settings/mdm/rawRead.ts`: 模块级 rawReadPromise
+- `src/utils/secureStorage/keychainPrefetch.ts`: 模块级 prefetchPromise
+- `src/entrypoints/init.ts`: `init()` 被 lodash-es/memoize 包裹，确保仅执行一次
+
 ## 5. 失败语义与工程取舍
 
 | 触发场景 | 检测位置 | 消息/异常如何传播 | 是否重试及上限 | 状态与资源清理 | 调用方可见结果 |

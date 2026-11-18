@@ -187,6 +187,135 @@ Claude Code 需要支持跨多个平台的集成，提供一致的用户体验�
 
 ## 4. 架构、模块与数据流
 
+### 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          Claude CLI (Main Process)                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │  Commands                                                              │  │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐             │  │
+│  │  │ /desktop     │  │ /mobile      │  │ /chrome          │             │  │
+│  │  │ /install-    │  │              │  │                  │             │  │
+│  │  │ slack-app    │  │              │  │                  │             │  │
+│  │  └──────────────┘  └──────────────┘  └──────────────────┘             │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│                                    │                                         │
+│                                    ▼                                         │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │  Platform Integration Utils                                          │  │
+│  │  ┌───────────────────────────────────────────────────────────────┐ │  │
+│  │  │ desktopDeepLink.ts         (纯函数，无状态)                    │ │  │
+│  │  │ - buildDesktopDeepLink()                                       │ │  │
+│  │  │ - getDesktopInstallStatus()                                    │ │  │
+│  │  │ - openCurrentSessionInDesktop()                                │ │  │
+│  │  └───────────────────────────────────────────────────────────────┘ │  │
+│  │  ┌───────────────────────────────────────────────────────────────┐ │  │
+│  │  │ claudeInChrome/common.ts   (内存状态: trackedTabIds Set)     │ │  │
+│  │  │ - detectAvailableBrowser()  (按优先级: Chrome > Brave > Arc)  │ │  │
+│  │  │ - openInChrome()                                               │ │  │
+│  │  │ - getSecureSocketPath()     (Unix: /tmp/...  Windows: \\.\pipe\...)│ │  │
+│  │  └───────────────────────────────────────────────────────────────┘ │  │
+│  │  ┌───────────────────────────────────────────────────────────────┐ │  │
+│  │  │ claudeDesktop.ts           (纯函数，无状态)                    │ │  │
+│  │  │ - getClaudeDesktopConfigPath()  (macOS/WSL路径探测)            │ │  │
+│  │  │ - readClaudeDesktopMcpServers()                               │ │  │
+│  │  └───────────────────────────────────────────────────────────────┘ │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│                                    │                                         │
+│        ┌───────────────────────────┼───────────────────────────┐             │
+│        │                           │                           │             │
+│        ▼                           ▼                           ▼             │
+│  ┌──────────────┐           ┌──────────────┐           ┌──────────────────┐ │
+│  │Desktop App   │           │Mobile App    │           │Chrome Browser    │ │
+│  │(deep link)   │           │(QR code)     │           │(Native Messaging│ │
+│  │              │           │              │           │ / WebSocket)     │ │
+│  └──────────────┘           └──────────────┘           └──────────────────┘ │
+│                                                                              │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │  External Resources                                                  │  │
+│  │  ┌───────────────────────────────────────────────────────────────┐ │  │
+│  │  │ /Applications/Claude.app          (macOS Desktop Path)         │ │  │
+│  │  │ ~/Library/Application Support/Claude/claude_desktop_config.json│ │  │
+│  │  │ /tmp/claude-mcp-browser-bridge-{user}/{pid}.sock  (Unix)       │ │  │
+│  │  │ \\.\pipe\claude-mcp-browser-bridge-{user}          (Windows)    │ │  │
+│  │  └───────────────────────────────────────────────────────────────┘ │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 关键流程与失败路径
+
+```text
+桌面会话迁移主流程 (Desktop Hand-off)
+─────────────────────────────────────────
+用户运行 /desktop
+    │
+    ├─ 检查 Desktop 安装状态
+    │   ├─ 未安装 → 提示下载 (y/n) → y 打开浏览器 → 完成
+    │   │                          → n → 取消
+    │   ├─ 版本过旧 → 提示更新 (y/n) → y 打开浏览器 → 完成
+    │   │                          → n → 继续尝试
+    │   └─ 就绪 → 继续
+    │
+    ├─ Flush session storage  [关键: 确保 transcript 完全写入]
+    │
+    ├─ 构建 deep link URL
+    │   claude://resume?session={sessionId}&cwd={cwd}
+    │   (开发模式: claude-dev://...)
+    │
+    └─ 打开 deep link
+        ├─ 成功 → 显示成功消息 → 500ms 后优雅退出 CLI
+        └─ 失败 → 显示错误消息 → 按任意键继续 [降级: 不阻塞]
+
+Claude in Chrome 连接流程
+───────────────────────────────
+启动时检测是否启用
+    │
+    ├─ 检测可用浏览器 (按优先级顺序)
+    │   └─ 无可用浏览器 → 不启动 MCP 服务器 [静默降级]
+    │
+    ├─ 设置 Native Messaging Host
+    │
+    ├─ 创建安全 Socket/Pipe
+    │   └─ 失败 → 记录日志，不启动 [静默降级]
+    │
+    └─ 建立连接 → 等待浏览器扩展连接
+
+移动应用 QR 码流程
+─────────────────────
+用户运行 /mobile
+    │
+    ├─ 预生成 iOS + Android QR 码
+    │
+    ├─ 显示默认平台 (iOS) QR 码
+    │
+    └─ 用户交互
+        ├─ Tab/←/→ → 切换平台状态 → 显示对应 QR 码
+        └─ Esc/q/Ctrl+C → 调用 onDone 关闭
+```
+
+### 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|-----------|--------|--------------|-----------|--------|-----------|------------|
+| `DesktopInstallStatus` | `desktopDeepLink.ts` | 每次调用 `getDesktopInstallStatus()` 时创建，包含检测结果 | 无共享，每次调用独立 | 不持久化 | 函数返回时回收 | 无需显式清理，纯函数结果 |
+| `trackedTabIds Set` | `claudeInChrome/common.ts` | 模块加载时初始化空 Set，最大 200 个 | 模块内单例共享 | 不持久化 | 超出容量时自动清空 | 进程退出时自动回收 |
+| `Claude Desktop Config Path` | `claudeDesktop.ts` | 每次调用 `getClaudeDesktopConfigPath()` 时探测 | 无共享，每次调用独立 | 配置文件持久化在 `~/Library/Application Support/...` | 无重置机制 | 无需清理，只读访问 |
+| `Deep Link URL` | `desktopDeepLink.ts` | 每次调用 `buildDesktopDeepLink(sessionId)` 时构建 | 无共享，单次使用 | 不持久化 | 使用后丢弃 | 无需清理，纯函数结果 |
+| `Unix Socket Path` | `claudeInChrome/common.ts` | 每次调用 `getSecureSocketPath()` 时生成，路径含 PID | 进程内隔离 (通过 PID) | Socket 文件在 `/tmp/...` | 进程退出时失效 | Socket 文件可能残留，无主动清理 |
+| `Mobile QR Code String` | `mobile.tsx` | 组件挂载时预生成 iOS + Android 两个版本 | React 组件内隔离 | 不持久化 | 组件卸载时回收 | 无需清理，内存自动回收 |
+| `Desktop Upsell Seen Count` | `DesktopUpsellStartup.tsx` | 首次显示时初始化，读取全局配置 | 用户级共享 (全局配置) | 持久化在全局配置中 | 用户选择 "Never" 时永久禁用 | 无需清理，配置持久化 |
+
+生命周期证据：
+- `src/utils/desktopDeepLink.ts:35-41, 137-162, 168-200`
+- `src/utils/claudeInChrome/common.ts:39-216, 474-540`
+- `src/utils/claudeDesktop.ts:13-96`
+- `src/components/DesktopUpsell/DesktopUpsellStartup.tsx:35-42, 54-62`
+- `src/commands/mobile/mobile.tsx:36-53`
+
 ### 4.1 入口与公共契约
 
 #### 命令入口

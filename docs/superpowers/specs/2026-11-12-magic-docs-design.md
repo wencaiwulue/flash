@@ -151,7 +151,302 @@ Magic Docs 是一个轻量级的文档自动更新系统，它在对话过程中
 
 ## 4. 架构、模块与数据流
 
-### 模块设计卡：文档发现与跟踪
+### 4.1 入口与公共契约
+
+### 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           flash 主进程                                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────┐       │
+│  │  FILE READ TRIGGER POINTS (auto-discovery only)               │       │
+│  │  • User asks to read a file with Read tool                  │       │
+│  │  • Agent reads a file during normal execution               │       │
+│  └─────────────────────────────────────────────────────────────────┘       │
+│                              │                                               │
+│                              ▼                                               │
+│              ┌───────────────────────────────┐                              │
+│              │  FileReadTool.call()          │                              │
+│              │  (checks file contents for    │                              │
+│              │   # MAGIC DOC header)         │                              │
+│              └───────────────────────────────┘                              │
+│                              │                                               │
+│                              ▼                                               │
+│              ┌───────────────────────────────┐                              │
+│              │  detectMagicDocHeader()       │                              │
+│              │  • matches /^# MAGIC DOC:/    │                              │
+│              │  • extracts title             │                              │
+│              │  • checks for *instructions*  │                              │
+│              └───────────────────────────────┘                              │
+│                              │                                               │
+│              ┌───────────────┴───────────────┐                              │
+│              │                               │                              │
+│         header found?                    header not found                  │
+│              │                               │                              │
+│              ▼                               ▼                              │
+│  ┌───────────────────────┐        ┌───────────────────────┐                │
+│  │ registerMagicDoc()   │        │   skip (no tracking)  │                │
+│  │ add to trackedDocs   │        └───────────────────────┘                │
+│  │ Map (path → info)    │                                               │
+│  └───────────────────────┘                                               │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────┐       │
+│  │  POST-SAMPLING TRIGGER (idle update only)                      │       │
+│  │  • after assistant completes turn                             │       │
+│  │  • NO tool calls in last turn → IDLE → update               │       │
+│  │  • tool calls present → BUSY → skip update                  │       │
+│  └─────────────────────────────────────────────────────────────────┘       │
+│                              │                                               │
+│                              ▼                                               │
+│              ┌───────────────────────────────┐                              │
+│              │  updateMagicDocs()            │                              │
+│              │  (sequential: one doc at a time) │                           │
+│              └───────────────────────────────┘                              │
+│                              │                                               │
+│              ┌───────────────┴───────────────┐                              │
+│              │                               │                              │
+│     trackedDocs not empty?             trackedDocs empty?                    │
+│              │                               │                              │
+│              ▼                               ▼                              │
+│  ┌───────────────────────┐        ┌───────────────────────┐                │
+│  │ for each doc in map: │        │   no-op               │                │
+│  │ updateMagicDoc(doc)  │        └───────────────────────┘                │
+│  └───────────────────────┘                                               │
+│              │                                                               │
+│              ▼                                                               │
+│  ┌─────────────────────────────────────────────────────────────────┐       │
+│  │  updateMagicDoc(doc):                                            │       │
+│  │  1. clone FileStateCache → delete doc path → avoid dedup      │       │
+│  │  2. FileReadTool.call(doc.path, clonedCache) → fresh read     │       │
+│  │  3. re-detect header → if missing: remove from trackedDocs     │       │
+│  │  4. buildMagicDocsUpdatePrompt(docContents, docPath, title)    │       │
+│  │  5. load custom prompt from ~/.claude/magic-docs/prompt.md (if exists)│
+│  │  6. substitute variables: {{docContents}}, {{docPath}}, {{docTitle}} │
+│  │  7. runAgent(magic-docs-agent):                                 │       │
+│  │     • canUseTool: only Edit, only this doc path              │       │
+│  │     • forkContextMessages: full conversation history          │       │
+│  │     • isAsync: true → no user feedback                     │       │
+│  └─────────────────────────────────────────────────────────────────┘       │
+│                              │                                               │
+│                              ▼                                               │
+│              ┌───────────────────────────────┐                              │
+│              │  magic-docs sub-agent:        │                              │
+│              │  only edits target doc        │                              │
+│              │  (silent, no user feedback)   │                              │
+│              └───────────────────────────────┘                              │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────┐       │
+│  │  CLEAR TRIGGER POINTS:                                         │       │
+│  │  • /clear command → clearSessionCaches() → clearTrackedMagicDocs()│
+│  │  • session exit → in-memory Map discarded automatically      │       │
+│  └─────────────────────────────────────────────────────────────────┘       │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  STATE OWNERSHIP:                                                            │
+│  • magic-docs.ts: trackedMagicDocs (Map<AbsolutePath, MagicDocInfo>)      │
+│  • no disk persistence, no cross-session state                           │
+│  • FileStateCache clone: per-update, isolated, discarded after use       │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 关键流程与失败路径
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Magic Doc Discovery Flow (Main + Failure)                                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+  User or Agent reads a file via ReadTool
+          │
+          ▼
+  FileReadTool.call({ file_path })
+          │
+          ▼
+  Read file from disk (or cache if fresh)
+          │
+          ▼
+  registerFileReadListener(file_path, content) is called
+          │
+          ▼
+  detectMagicDocHeader(content):
+          │
+          ├─► match /^#\s*MAGIC\s+DOC:\s*(.+)$/im
+          │      │
+          │      ├─ No match → return null → no tracking
+          │      │
+          │      ▼
+          │  Match: extract title (trimmed)
+          │      │
+          │      ▼
+          │  Check next non-empty line for *instructions*
+          │      │
+          │      ├─ matches /^\*(.+)\*$/ → extract instructions
+          │      └─ no match → instructions = undefined
+          │      │
+          │      ▼
+          │  return { title, instructions? }
+          │
+          ▼
+  Header detected?
+          │
+          ├─ No → do nothing
+          │
+          ▼ Yes
+  registerMagicDoc(file_path):
+          │
+          ├─ already in trackedDocs? → do nothing (no overwrite)
+          │
+          ▼ No
+  trackedDocs.set(file_path, { path: file_path })
+          │
+          ▼
+  Future post-sampling hooks will include this doc
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Magic Doc Update Flow (Main + Failure)                                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+  Post-sampling hook fires: updateMagicDocs(context)
+          │
+          ▼
+  Check querySource === 'repl_main_thread'?
+          │
+          ├─ No → skip (only update from main thread interactions)
+          │
+          ▼ Yes
+  Check hasToolCallsInLastAssistantTurn(messages)?
+          │
+          ├─ Yes → skip (user is busy, not idle)
+          │
+          ▼ No
+  Check trackedDocs.size > 0?
+          │
+          ├─ No → skip (no docs to update)
+          │
+          ▼ Yes
+  sequential() wrapper: process ONE DOC AT A TIME (prevents concurrent edit conflicts)
+          │
+          ▼
+  For each doc in trackedDocs:
+          │
+          ▼
+  updateMagicDoc(docInfo, context):
+          │
+          ▼
+  Clone FileStateCache:
+          │
+          ├─ const clonedCache = cloneFileStateCache(toolUseContext.readFileState)
+          ├─ clonedCache.delete(docInfo.path) → FORCE FRESH READ, no dedup
+          ├─ clonedToolUseContext = { ...toolUseContext, readFileState: clonedCache }
+          │
+          ▼
+  FileReadTool.call({ file_path: docInfo.path }, clonedToolUseContext)
+          │
+          ├─► FAILED (ENOENT, EACCES, etc.)
+          │      │
+          │      ▼
+          │  trackedDocs.delete(docInfo.path)
+          │  return (silent, no user feedback)
+          │
+          ▼ Success
+  currentDoc = content
+          │
+          ▼
+  Re-detect header: detectMagicDocHeader(currentDoc)
+          │
+          ├─► header GONE?
+          │      │
+          │      ▼
+          │  trackedDocs.delete(docInfo.path)
+          │  return (silent, no user feedback)
+          │
+          ▼ Header still present
+  { title, instructions? } = result
+          │
+          ▼
+  buildMagicDocsUpdatePrompt(currentDoc, docInfo.path, title, instructions?)
+          │
+          ▼
+  Try to load custom prompt: ~/.claude/magic-docs/prompt.md
+          │
+          ├─► file exists? ────┬─── Yes → read and use as template
+          │                    │
+          │                    No → use built-in template
+          │
+          ▼
+  substituteVariables(template, variables):
+          │
+          ├─ {{docContents}} → currentDoc
+          ├─ {{docPath}} → docInfo.path
+          ├─ {{docTitle}} → title
+          ├─ {{customInstructions}} → (if instructions present: add block)
+          │
+          └─ SINGLE PASS ONLY (no double-substitution)
+          │
+          ▼
+  finalPrompt = built-in preamble + substituted template + built-in postamble
+          │
+          ▼
+  runAgent(agentDefinition, promptMessages, options):
+          │
+          ├─ agentDefinition: getMagicDocsAgent()
+          │     • tools: only [FILE_EDIT_TOOL_NAME]
+          │     • canUseTool: (toolName, toolArgs) =>
+          │                      toolName === FILE_EDIT_TOOL_NAME &&
+          │                      toolArgs.path === docInfo.path
+          │     • model: sonnet
+          │
+          ├─ promptMessages: [createUserMessage(finalPrompt)]
+          │
+          ├─ forkContextMessages: messages (FULL CONVERSATION HISTORY)
+          │
+          ├─ isAsync: true (SILENT, no user feedback)
+          │
+          └─ querySource: 'magic-docs'
+          │
+          ▼
+  Sub-agent runs, may call Edit on target doc (only)
+          │
+          ▼
+  Stream consumed silently → NO USER NOTIFICATION
+          │
+          ▼
+  Done (next doc in sequence, if any)
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Failure Modes (All Silent)                                                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+  • File deleted: read fails → trackedDocs.delete() → silent
+  • File permissions changed: read fails → trackedDocs.delete() → silent
+  • User manually removed header: re-detect fails → trackedDocs.delete() → silent
+  • Sub-agent Edit fails: runAgent handles → no user feedback
+  • Sub-agent produces bad Edit: edit fails → no user feedback
+  • Conversation history too long: may hit token limit → silent failure
+  • Custom prompt template has syntax error: fallback to built-in → silent
+  • $VAR in docContents: single-pass substitution prevents issues
+  • {{var}} in docContents: single-pass substitution prevents issues
+```
+
+### 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|-----------|--------|--------------|-----------|--------|-----------|-----------|
+| `trackedMagicDocs` (Map) | `magic-docs.ts` | 模块加载时创建空 `Map<string, MagicDocInfo>` | 模块级单例，全局共享 | 否 | 不持久化，会话间重置 | `clearTrackedMagicDocs()`: `Map.clear()`，由 `clearSessionCaches()` 调用 |
+| `MagicDocInfo` | `magic-docs.ts` | `registerMagicDoc(file_path)` 创建，只含 `{ path: string }` | 每个文档独立 | 否 | 重新检测到 header 消失时 `delete()`，文件读失败时 `delete()` | 无（删除即清理） |
+| `FileStateCache` clone | `updateMagicDoc()` | `cloneFileStateCache()` 浅拷贝，`delete(doc.path)` 移除目标条目 | 每次更新独立，隔离 | 否 | 更新结束后立即丢弃，无引用保留 | GC 自动回收 |
+| `magic-docs` agent definition | `magic-docs.ts` | `getMagicDocsAgent()` 返回固定定义，无状态 | 全局共享（每次调用返回相同结构） | 否 | 无重置 | 无（纯数据） |
+| custom prompt template | `prompts.ts` | `loadMagicDocsPrompt()` 尝试读取 `~/.claude/magic-docs/prompt.md`，失败返回内置模板 | 每次 `buildMagicDocsUpdatePrompt()` 重新读取，无缓存 | 否（模板文件持久化，但加载不缓存） | 无重置（每次重新读取） | 无 |
+| substituted prompt | `prompts.ts` | `substituteVariables(template, vars)` 返回新字符串，单次遍历，不重新扫描已替换内容 | 每次调用独立 | 否 | 使用后立即丢弃 | GC 自动回收 |
+| runAgent async context | `magic-docs.ts` | `runAgent()` 启动子代理，`isAsync: true`，无用户反馈 | 每个文档更新独立 | 否 | 无显式取消（后台静默） | 子代理完成后自动清理 |
+
+**生命周期证据:** `src/services/MagicDocs/magic-docs.ts` (L31-94, trackedMagicDocs Map), `src/services/MagicDocs/magic-docs.ts` (L114-212, updateMagicDoc cache clone), `src/services/MagicDocs/prompts.ts` (L81-93, substituteVariables single pass), `src/commands/clear/caches.ts` (L25, clearSessionCaches integration)
 
 **入口签名与关键类型：**
 

@@ -859,6 +859,198 @@ type ProactiveControlState = {
 | 下游 | session存储 | Cron任务可能启动新session | session-persistence |
 | 下游 | analytics | 记录cron fire/missed/expired事件 | （待补充） |
 
+---
+
+### 4.6 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                        Claude Code 主会话 (持有锁)                              │
+│                                                                                 │
+│  ┌───────────────────────────────────────────────────────────────────────────┐ │
+│  │ CronScheduler (秒级轮询)                                                  │ │
+│  │ • 每秒 check() 执行                                                      │ │
+│  │ • 持有 scheduled_tasks.lock → isOwner=true                              │ │
+│  │ ┌───────────────────────────────────────────────────────────────────┐  │ │
+│  │ │ cronTasks 模块                                                  │  │ │
+│  │ │ • readCronTasks/writeCronTasks (原子写: tmp+rename)            │  │ │
+│  │ │ • addCronTask/removeCronTasks/markCronTasksFired              │  │ │
+│  │ └────────────────────────┬──────────────────────────────────────────┘  │ │
+│  │                           │                                             │ │
+│  │ ┌─────────────────────────┼───────────────────────────────────────────┐ │ │
+│  │ │ cronTasksLock 模块     │                                           │ │ │
+│  │ │ • tryAcquireSchedulerLock (O_EXCL 原子创建锁文件)                 │ │ │
+│  │ │ • releaseSchedulerLock (退出时清理)                                │ │ │
+│  │ │ • PID 存活检测 (检测锁持有者是否崩溃)                              │ │ │
+│  │ └─────────────────────────┼───────────────────────────────────────────┘ │ │
+│  └───────────────────────────┼───────────────────────────────────────────────┘ │
+│                              │                                               │
+│  ┌───────────────────────────▼───────────────────────────────────────────┐ │
+│  │ Template Jobs Supervisor (双进程模型)                                  │ │
+│  │ • Supervisor: detached 进程, 持有 job lock, 监控 child               │ │
+│  │ • Child: 实际执行任务, --print --output-format stream-json            │ │
+│  │ ┌─────────────────────────────────────────────────────────────────┐ │ │
+│  │ │ jobs/state 模块                                                │ │ │
+│  │ │ • readJob/writeJobState (原子写)                               │ │ │
+│  │ │ • withJobLock (proper-lockfile)                                │ │ │
+│  │ │ • PID + startToken 双重身份检测 (防 PID 复用)                   │ │ │
+│  │ └──────────┬──────────────────────────────────────────────────────┘ │ │
+│  │            │                                                         │ │
+│  │ ┌──────────▼──────────────────────────────────────────────────────┐ │ │
+│  │ │ jobs/classifier 模块                                            │ │ │
+│  │ │ • classifyAndWriteState (小模型快速分类)                        │ │ │
+│  │ │ • 分类队列串行化 (防锁重入)                                    │ │ │
+│  │ └─────────────────────────────────────────────────────────────────┘ │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+│                                                                                 │
+│  ┌───────────────────────────────────────────────────────────────────────────┐ │
+│  │ Proactive (功能开关)                                                        │ │
+│  │ • activateProactive('command') → 开启                                    │ │
+│  │ • deactivateProactive() → 关闭                                           │ │
+│  │ • pause/resume/setContextBlocked 状态控制                                │ │
+│  │ ┌───────────────────────────────────────────────────────────────────┐  │ │
+│  │ │ SleepTool                                                         │  │ │
+│  │ │ • isEnabled() → 仅当 proactive active时可用                      │  │ │
+│  │ └───────────────────────────────────────────────────────────────────┘  │ │
+│  └───────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                 │
+│  ┌───────────────────────────────────────────────────────────────────────────┐ │
+│  │ 持久化文件                                                                  │ │
+│  │ • {project}/.claude/scheduled_tasks.json (cron 任务)                       │ │
+│  │ • {project}/.claude/scheduled_tasks.lock (调度锁)                          │ │
+│  │ • {config}/jobs/{jobId}/job.json / state.json / supervisor.json / ...     │ │
+│  └───────────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+关键边界说明：
+- CronScheduler 单例锁：只有持有 scheduled_tasks.lock 的会话处理持久化 cron 任务
+- 双进程 supervisor/child：supervisor  detached 存活，child 崩溃不影响结果记录
+- Proactive 作为安全开关：默认关闭，SleepTool 仅在激活时可用
+- Jitter 策略：周期性任务用 frac*interval 抖动，一次性任务在整点提前 0-90 秒
+
+---
+
+### 4.7 关键流程与失败路径
+
+#### Cron 任务调度主流程与失败路径
+
+```text
+scheduler.start()
+         │
+         ├─► 检查 getScheduledTasksEnabled() → 禁用则跳过
+         │
+         ├─► enable()
+         │   ├─► tryAcquireSchedulerLock()
+         │   │   ├─► 锁文件已存在?
+         │   │   │   ├─► 是 → 检查锁持有者 PID 是否存活
+         │   │   │   │       ├─► 存活 → 放弃, 启动 5s probe 定时器
+         │   │   │   │       └─► 死亡 → 删除锁文件, 重试获取锁
+         │   │   │   └─► 否 → 原子创建锁文件 (O_EXCL)
+         │   │   ├─► 获取锁成功 → isOwner=true
+         │   │   └─► 获取锁失败 → isOwner=false, 仅处理 session tasks
+         │   │
+         │   ├─► load(true) → 初始加载
+         │   │   ├─► readCronTasks()
+         │   │   ├─► findMissedTasks() → 检测错过的一次性任务
+         │   │   ├─► 有错过? → onFire(buildMissedTaskNotification()) → 询问用户
+         │   │   └─► 删除已询问的错过任务
+         │   │
+         │   ├─► chokidar.watch() → 监听 scheduled_tasks.json 变化
+         │   └─► setInterval(check, 1000ms) → 启动秒级轮询
+         │
+         └─► check() 每秒执行
+             ├─► isKilled() 或 isLoading()? → 跳过
+             ├─► getJitterConfig() → 获取抖动配置
+             ├─► process(file-backed tasks) → 仅当 isOwner=true
+             │   ├─► inFlight.has(id)? → 跳过
+             │   ├─► nextFireAt 未设置? → 计算首次触发时间
+             │   │       ├─ recurring: lastFiredAt ?? createdAt 锚定
+             │   │       ├─ one-shot: createdAt 锚定
+             │   │       └─► jitter: 周期性 jitteredNextCronRunMs, 一次性 oneShotJittered...
+             │   ├─► now >= nextFireAt?
+             │   │   ├─► 是 → onFire/onFireTask 回调
+             │   │   ├─► recurring?
+             │   │   │   ├─► 是 → 重新计算 nextFireAt, markCronTasksFired(id, now)
+             │   │   │   └─► 否 → inFlight.add(id), removeCronTasks(id)
+             │   │   └─► recurring & aged (7天)? → removeCronTasks(id)
+             │   └─► 清理 nextFireAt 中已不存在的任务 id
+             └─► process(session tasks) → 不考虑锁
+                 └─► 类似流程, 但不持久化
+```
+
+#### Template Job Supervisor 流程与失败路径
+
+```text
+spawnSupervisorProcess(jobDirectory, replyId)
+         │
+         ├─► assertSecureJobDirectory() → 验证目录安全 (在 jobs root 内, 0o700 权限)
+         │
+         ├─► readJob() → 读取 JobRecord
+         │
+         ├─► write startup-*.json → 标记启动
+         │
+         ├─► spawn detached child
+         │   └─ command: node, args: [script, 'template-job-supervisor', jobDirectory]
+         │   └─ options: detached=true, stdio='ignore', windowsHide=true
+         │   └─ spawn 失败 → 抛出 JobError(SPAWN_FAILED)
+         │
+         ├─► child.unref() → 让 supervisor 独立存活
+         │
+         ├─► getProcessStartToken(pid) → 防 PID 复用
+         │
+         ├─► write supervisor.json → 记录 supervisor 信息
+         │
+         └─► withJobLock() → update job state pid
+
+runJobSupervisor(jobDirectory)
+         │
+         ├─► withJobLock() → 全程持有锁
+         │
+         ├─► readJobState() → 检查状态 (queued/running 才继续)
+         │
+         ├─► update state to running with current pid → writeJobState()
+         │
+         ├─► spawn child process
+         │   ├─ argv: buildJobChildArgv() → --resume 或 --session-id
+         │   ├─ stdout/stderr → appendJobDiagnostic() 记录到 transcript
+         │   └─ close → 等待 exit code
+         │
+         ├─► mergeProcessOutcome()
+         │   ├─ spawn 错误或 exit code !=0 → status=failed
+         │   └─► 成功 → 检查分类器结果 (confidence >=0.7)
+         │       ├─ category=in_progress/waiting_for_input/blocked/completed/failed
+         │       └─► 设置最终 status
+         │
+         ├─► writeJobState() → 持久化最终状态
+         └─► finalizeReply() → 更新 reply.json
+```
+
+关键失败处理：
+- Supervisor 崩溃: reconcileJob() 检测并标记 failed, last_error=recovery_uncertain
+- Child 崩溃: mergeProcessOutcome() 处理, 结果持久化不丢失
+- Cron 锁持有者崩溃: 其他会话检测到旧锁后删除并重试获取
+- 错过任务: 仅在启动时询问一次性任务, 会话运行期间错过的静默触发
+
+---
+
+### 4.8 核心对象生命周期表
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| cron 任务 (持久化) | cronTasks 模块 | addCronTask(cron, prompt, recurring, durable=true) 创建, uuid.slice(0,8) 为 id | 项目级共享 (所有会话可见) | {project}/.claude/scheduled_tasks.json (原子写: tmp+rename) | 周期性任务 7 天后过期 (除非 permanent=true) | 一次性任务触发后 removeCronTasks(id) 删除 |
+| cron 任务 (会话级) | bootstrap/state | addSessionCronTask() 创建, durable=false | 会话私有 (仅当前进程可见) | 无持久化 (仅内存) | 会话退出即消失 | removeSessionCronTasks(ids) 删除 |
+| scheduled_tasks.lock | cronTasksLock 模块 | tryAcquireSchedulerLock() 原子创建 (O_EXCL) | 互斥锁 (仅一个会话持有) | {project}/.claude/scheduled_tasks.lock (包含 sessionId, pid, acquiredAt) | 锁持有者退出时删除; PID 死亡时其他会话删除 | releaseSchedulerLock() 显式删除 |
+| template job 目录 | jobs/state 模块 | createJobDirectory() 创建, UUID 命名, 0o700 权限 | 作业私有 (每个 job 一个目录) | {config}/jobs/{jobId}/ → job.json, state.json, supervisor.json, child.json, transcript.jsonl, lock/ | 无自动清理 (永久保留) | 无内置清理机制 |
+| template supervisor 进程 | spawnSupervisorProcess() | spawn detached child → supervisor.json 记录 | 作业私有 | supervisor.json 记录 pid+startToken | 进程退出即消失 | child 退出后 supervisor 完成退出 |
+| proactive 控制状态 | proactive 模块 | activateProactive('command') 初始化 {active=true, paused=false, contextBlocked=false} | 会话私有 (仅当前进程) | 无持久化 | deactivateProactive() 重置为全 false; pause/resume/setContextBlocked 也清空 nextTickAt | 无特殊清理 |
+
+生命周期证据:
+- Cron 任务: `src/utils/cronTasks.ts:1-459` (创建/持久化/过期逻辑)
+- Cron 锁: `src/utils/cronTasksLock.ts:1-196` (获取/释放/PID 检测)
+- Template jobs: `src/jobs/supervisor.ts:1-442` (双进程模型)
+- Proactive: `src/proactive/index.ts:1-96` (状态管理)
+
 ## 5. 失败语义与工程取舍
 
 | 触发条件 | 检测位置 | 消息/异常如何传播 | 是否重试及上限 | 状态与资源清理 | 调用方可见结果 |

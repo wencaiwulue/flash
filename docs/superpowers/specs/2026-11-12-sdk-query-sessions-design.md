@@ -1014,6 +1014,194 @@ export function emitTaskTerminatedSdk(taskId, status, opts): void
 - session-persistence 负责持久化消息历史，sdkEventQueue 负责临时运行时事件流
 - 两者通过 `session_id`：关联，但独立存储和消费
 
+### 4.10 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────┐
+│                  公开 API (agentSdkTypes.ts)                     │
+│  ┌───────────────────────────────────────────────────────────────┐ │
+│  │  query() / unstable_v2_createSession() / listSessions()   │ │
+│  └───────────────────────────────────────────────────────────────┘ │
+└────────────────────────┬────────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│              内部实现模块                                          │
+│  ┌───────────────────────────────────────────────────────────────┐ │
+│  │  src/utils/sdkQuery.ts — createSdkQuery()                  │ │
+│  │  src/utils/sdkSessionConversation.ts — createSdkSession()│ │
+│  │  src/utils/sdkSessions.ts — 会话访问器                      │ │
+│  │  src/utils/sdkControl.ts — 控制面方法                   │ │
+│  │  src/utils/fileCheckpointing.ts — 文件快照/回滚          │ │
+│  │  src/utils/sessionChainRecovery.ts — DAG 恢复纯函数    │ │
+│  │  src/utils/sdkEventQueue.ts — 事件队列（可选）          │ │
+│  └───────────────────────────────────────────────────────────────┘ │
+└────────────────────────┬────────────────────────────────────────────┘
+                         │
+         ┌───────────────┼───────────────┐
+         ▼               ▼               ▼
+┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+│  QueryEngine    │ │  ~/.claude/     │ │  其他子系统     │
+│  (query-core)   │ │  sessions/      │ │  (settings/     │
+│                 │ │  *.jsonl       │ │   plugins/...) │
+└─────────────────┘ └─────────────────┘ └─────────────────┘
+         │                   │
+         ▼                   ▼
+┌─────────────────┐ ┌─────────────────┐
+│  FileCheckpoint │ │  文件历史快照   │
+│  实例           │ │  （可选）      │
+└─────────────────┘ └─────────────────┘
+```
+
+**边界说明**：
+- 公开 API 与内部实现明确分离，内部模块不暴露给 SDK 用户
+- `sdkSessions.ts` 和 `sessionChainRecovery.ts` 不读取 `AppState`，可在 CLI 未启动时运行
+- 会话持久化是进程级全局设置，通过 lease 机制（`activePersistenceLease`）协调多个 query
+- 文件快照与会话 transcript 独立存储，通过 user message UUID 关联
+
+### 4.11 关键流程与失败路径
+
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│  Query 完整生命周期                                         │
+└─────────────────────────────┬───────────────────────────────┘
+                              │
+                              ▼
+              ┌───────────────────────────────────┐
+              │  createSdkQuery({ prompt, opts })│
+              │  ├─► 创建 AbortController       │
+              │  ├─► 创建 UserMessageChannel    │
+              │  ├─► 处理 prompt 输入（字符串/AsyncIterable）│
+              │  └─► 返回增强的 AsyncGenerator   │
+              └─────────────┬─────────────────────┘
+                            │
+                            ▼
+              ┌───────────────────────────────────┐
+              │  懒加载初始化（首次 next()）     │
+              │  ├─► acquireSessionPersistence()│
+              │  │   ├─► 检查冲突：不同 persistSession值 │
+              │  │   ├─► 引用计数+1              │
+              │  │   └─► 保存 previousDisabled  │
+              │  ├─► 设置 bootstrap/state        │
+              │  ├─► 处理 session 切换（如提供）│
+              │  ├─► 应用环境变量              │
+              │  ├─► 初始化 FileCheckpointing  │
+              │  ├─► 连接 MCP 服务器             │
+              │  ├─► 组装工具池                 │
+              │  └─► 初始化权限上下文           │
+              └─────────────┬─────────────────────┘
+                            │
+                            ▼
+              ┌───────────────────────────────────┐
+              │  消息消费循环（run() generator）│
+              │  loop:                           │
+              │    ├─► 等待 channel.iterate() 用户消息│
+              │    ├─► 非合成消息：makeSnapshot(uuid)│
+              │    ├─► 调用 QueryEngine.ask()  yield 结果│
+              │    └─► 检查 channel 错误/关闭     │
+              └─────────────┬─────────────────────┘
+                            │
+                            ▼
+              ┌───────────────────────────────────┐
+              │  清理（finally / return()）     │
+              │  ├─► 检查 cleanupPromise（仅一次）│
+              │  ├─► remoteController.stop()（如活跃）│
+              │  ├─► cleanupClients(MCP clients) │
+              │  ├─► runCleanupFunctions()       │
+              │  ├─► flushSessionStorage()       │
+              │  └─► releasePersistence()        │
+              │      └─► 引用计数-1，0 时恢复 previousDisabled│
+              └───────────────────────────────────┘
+```
+
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│  Session 完整生命周期                                         │
+└─────────────────────────────┬───────────────────────────────┘
+                              │
+                              ▼
+              ┌───────────────────────────────────┐
+              │  createSdkSession(opts)          │
+              │  ├─► 实例化 LocalSdkSession     │
+              │  ├─► 创建 UserMessageChannel    │
+              │  ├─► 调用 createSdkQuery(channel.iterate())│
+              │  └─► 启动后台消费循环 consume() │
+              └─────────────┬─────────────────────┘
+                            │
+                            ▼
+              ┌───────────────────────────────────┐
+              │  后台消费循环 consume()           │
+              │  for await msg of query:         │
+              │    ├─► 有 session_id 更新 #sessionId│
+              │    ├─► push 到 #messages 队列     │
+              │    └─► notify() 所有 waiters     │
+              │  catch error:                    │
+              │    ├─► #error = error            │
+              │    └─► notify()                  │
+              └─────────────┬─────────────────────┘
+                            │
+                            ▼
+              ┌───────────────────────────────────┐
+              │  用户交互                         │
+              │  ├─► send(message) → push到channel│
+              │  ├─► stream() → wait/consume #messages│
+              │  ├─► close() → #closed=true, notify, channel.close, interrupt│
+              │  └─► Symbol.asyncDispose → close() + await #background│
+              └───────────────────────────────────┘
+```
+
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│  Session 恢复（resumeSdkSession / getSessionMessages）│
+└─────────────────────────────┬───────────────────────────────┘
+                              │
+                              ▼
+              ┌───────────────────────────────────┐
+              │  读取与 DAG 恢复                 │
+              │  ├─► resolveSessionFilePath(id)  │
+              │  ├─► readTranscriptEntries(file) │
+              │  ├─► 构建 Map<uuid, entry> 索引   │
+              │  ├─► 从叶节点（最新消息）回溯主链│
+              │  ├─► collectSeenSet(chain)       │
+              │  ├─► recoverOrphanedParallelToolResults()│
+              │  │   ├─► 收集 API message.id 锚点  │
+              │  │   ├─► 按 API ID 分组 assistant│
+              │  │   ├─► 找出孤儿 sibling 和 tool_result│
+              │  │   ├─► 按 timestamp 稳定排序    │
+              │  │   └─► 插入到 anchor point 之后│
+              │  └─► 转换为 SDK 类型，过滤系统消息，分页│
+              └───────────────────────────────────┘
+```
+
+**关键失败分支**：
+- `push()` 在 `close()` 后：抛出 `Error("Cannot stream input after the query closes")`
+- `UserMessageChannel.fail(error)`：`iterate()` 在队列耗尽后抛出存储的错误
+- 并发 query 不同 `persistSession` 值：`acquireSessionPersistence()` 抛出错误
+- `query.return()` 多次调用：仅第一次执行清理，后续直接返回
+- session 文件不存在/损坏：`getSessionMessages()` 返回空数组/跳过无效 JSON 行
+
+### 4.12 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| `UserMessageChannel` | `createSdkQuery()` / `LocalSdkSession` | `new UserMessageChannel()` | 每个 Query/Session 实例隔离 | 不持久化 | `close()` 后不可再 `push()` | `close()` / `fail(error)` 关闭通道，唤醒 waiters |
+| `UserMessageChannel.queue` | `UserMessageChannel` 私有 | 初始空数组，`push()` 追加 | 实例隔离 | 不持久化 | `close()` 后不追加，但仍可消费 | 无（仅内存数组） |
+| `UserMessageChannel.waiters` | `UserMessageChannel` 私有 | 初始空数组，`iterate()` 时推入 resolve 函数 | 实例隔离 | 不持久化 | `notify()` 时清空并调用所有 resolve | 无（仅内存数组） |
+| `FileCheckpointing` 实例 | `createSdkQuery()` | `new FileCheckpointing(getState, updateState, makeSnapshot?)` | 每个 Query 实例隔离 | 不持久化（实例本身） | Query 结束后 GC | 无特殊清理（`#pendingSnapshots` 随实例回收） |
+| `FileCheckpointing.#pendingSnapshots` | `FileCheckpointing` 私有 | 初始空 `Map<uuid, Promise<void>>` | 实例隔离 | 不持久化 | Promise resolve/reject 后从 Map 移除 | `rewindFiles(uuid)` 等待对应 Promise |
+| `LocalSdkSession` 实例 | `createSdkSession()` / `resumeSdkSession()` | `new LocalSdkSession()` | 每个 Session 实例隔离 | 不持久化 | `close()` 后 `#closed=true` | `close()` → `#closed=true` + notify waiters + channel.close() + query.interrupt() |
+| `LocalSdkSession.#messages` | `LocalSdkSession` 私有 | 初始空数组，后台消费循环 push | 实例隔离 | 不持久化 | `stream()` 消费时 shift | 无（仅内存数组） |
+| `LocalSdkSession.#waiters` | `LocalSdkSession` 私有 | 初始空 Set，`stream()` 时推入 resolve 函数 | 实例隔离 | 不持久化 | 新消息/错误/关闭时 notify 并清空 | 无（仅内存 Set） |
+| `activePersistenceLease` (模块级) | `sdkQuery.ts` 模块私有 | 首次 `acquireSessionPersistence()` 时创建 | 进程级单例 | 不持久化 | 引用计数归 0 时 undefined | `releasePersistence()` 引用计数-1，0 时恢复 `previousDisabled` |
+| `SdkEvent` 队列 | `sdkEventQueue.ts` 模块 | 初始空数组，容量 1000 | 进程级单例（模块级） | 不持久化 | `drainSdkEvents()` 清空队列 | 无（仅内存数组，满时自动 shift 最旧事件） |
+
+生命周期证据：
+- `src/utils/sdkQuery.ts` 的模块级 `activePersistenceLease`：进程级单例，引用计数协调
+- `src/utils/sdkQuery.ts` 的 `cleanupPromise`：确保清理仅执行一次
+- `src/utils/sdkSessionConversation.ts` 的 `LocalSdkSession` 私有字段：`#channel`、`#query`、`#background`、`#messages`、`#waiters`、`#closed`、`#error` 均为实例隔离
+- `src/utils/sessionChainRecovery.ts` 的纯函数：无状态，仅输入输出转换
+- `src/utils/fileCheckpointing.ts` 的 `#pendingSnapshots`：每个 Query 实例独立的 Map
+
 ## 5. 失败语义与工程取舍
 
 ### UserMessageChannel 错误与关闭边界

@@ -497,6 +497,137 @@ export default {
   - `/onboarding --reset` 被拒绝
 - **证据边界**：仅验证命令路由，未验证向导实际行为
 
+---
+
+### 4.10 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      启动流程控制层（showSetupScreens）                       │
+│  ┌──────────────────────────────────────────────────────────────────────┐ │
+│  │ Onboarding → TrustDialog → ManagedSettingsSecurityDialog → REPL    │ │
+│  └──────────────────────────────────────────────────────────────────────┘ │
+└───────────────────────────────────┬──────────────────────────────────────────┘
+                                    │
+                    ┌───────────────┼───────────────┐
+                    ▼               ▼               ▼
+┌───────────────────┐ ┌───────────────────┐ ┌───────────────────┐
+│ 首次引导层        │ │ 信任确认层        │ │ 托管设置层        │
+│ ┌───────────────┐ │ │ ┌─────────────┐ │ │ ┌─────────────┐   │
+│ │ Preflight     │ │ │ │ 项目MCP检测 │ │ │ │ 仅展示名称  │   │
+│ │ Theme选择     │ │ │ │ hooks检测   │ │ │ │ 不展示值    │   │
+│ │ API Key审批   │ │ │ │ bash权限    │ │ │ └─────────────┘   │
+│ │ OAuth Flow    │ │ │ │ apiKeyHelper│ │ │                   │
+│ │ Security Notes│ │ │ │ aws/gcp命令 │ │ └───────────────────┘
+│ │ Terminal Setup│ │ │ │ otelHeaders │ │
+│ └───────────────┘ │ │ │ 危险env变量 │ │
+│                   │ │ │ claude-code-hint标签 │ │
+│ globalConfig持久化 │ │ │ (non-home持久化，home仅内存) │ │
+└───────────────────┘ └───────────────────┘
+                    │
+                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      后续引导层（Post-REPL）                                  │
+│  ┌──────────────────────────────────────────────────────────────────────┐ │
+│  │ Project Onboarding (最多4次，memoize优化)                            │ │
+│  │ DesktopUpsellStartup (最多3次，支持"不再询问")                       │ │
+│  │ LspRecommendationMenu (30秒自动消失)                               │ │
+│  └──────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      Wizard Provider（通用向导框架）                         │
+│  ┌──────────────────────────────────────────────────────────────────────┐ │
+│  │ 非线性导航: goNext/goBack/goToStep/cancel                          │ │
+│  │ navigationHistory追踪                                                │ │
+│  │ wizardData共享                                                      │ │
+│  └──────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**边界说明：**
+- 信任确认：non-home目录持久化到projectConfig，home目录仅内存sessionTrustAccepted
+- TrustDialog不自动批准MCP：单独在handleMcpjsonServerApprovals中处理
+- 托管设置：仅展示名称，不展示值，防止敏感信息泄露
+- 项目引导：最多显示4次，memoize避免频繁hit文件系统
+
+### 4.11 关键流程与失败路径
+
+#### 完整首次启动流程（主路径）
+```text
+Claude Code 启动（非bare模式）
+  │
+  ▼
+showSetupScreens()
+  │
+  ├─ !globalConfig.hasCompletedOnboarding → 显示Onboarding
+  │   │
+  │   ▼
+  │   Onboarding流程
+  │   ├─ Preflight (仅OAuth启用时)
+  │   ├─ Theme选择
+  │   ├─ API Key Approval (仅ANTHROPIC_API_KEY存在且非homespace时)
+  │   ├─ OAuth Flow (OAuth启用且未通过API Key审批时)
+  │   ├─ Security Notes (确认进入下一步)
+  │   ├─ Terminal Setup (可选，失败则吞掉错误继续)
+  │   └─ 完成 → globalConfig.hasCompletedOnboarding = true, globalConfig.lastOnboardingVersion设置
+  │
+  ├─ 显示TrustDialog
+  │   │
+  │   ▼
+  │   TrustDialog检测
+  │   ├─ 检查项目级MCP、hooks、bash权限、apiKeyHelper、aws/gcp命令、otelHeadersHelper、危险环境变量
+  │   ├─ checkHasTrustDialogAccepted() → true则跳过显示
+  │   ├─ 用户确认 → 非home目录：projectConfig.hasTrustDialogAccepted = true
+  │   │                        home目录：仅内存sessionTrustAccepted = true
+  │   └─ 用户拒绝 → gracefulShutdownSync
+  │
+  └─ 检测托管设置包含危险项且有变更 → 显示ManagedSettingsSecurityDialog
+      │
+      ├─ 用户接受 → 继续启动
+      └─ 用户拒绝 → gracefulShutdownSync
+  │
+  ▼
+进入REPL
+  │
+  ├─ Project Onboarding检测（最多显示4次）
+  │   ├─ 空目录：建议创建应用或克隆仓库
+  │   └─ 非空目录：建议运行/init创建CLAUDE.md
+  │
+  ├─ DesktopUpsellStartup检测（最多显示3次，支持"不再询问"）
+  │
+  └─ LspRecommendationMenu检测（30秒自动消失，支持按插件/全局禁用）
+```
+
+**关键失败分支与恢复路径：**
+- Terminal Setup失败：吞掉错误继续流程，用户无感知
+- TrustDialog/ManagedSettingsSecurityDialog检测项读取失败：内部捕获，保守处理（不视为通过）
+- Wizard步骤渲染异常：依赖上层ErrorBoundary（SentryErrorBoundary）
+- StrictMode useEffect计数增加：Project Onboarding有guard保护
+- LspRecommendationMenu 30秒时间到：自动选择"不"，推荐自动消失
+- 用户按Esc：等同于拒绝/退出
+- 用户按Ctrl+C/Ctrl+D：调用gracefulShutdownSync
+
+### 4.12 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| `globalConfig.hasCompletedOnboarding` | `src/interactiveHelpers.tsx` | 首次引导完成时设置 | 全局共享 | 用户全局配置文件持久化 | 无（/onboarding命令可重新显示但不重置状态） | 无（持久化状态） |
+| `projectConfig.hasTrustDialogAccepted` | `src/components/TrustDialog/TrustDialog.tsx` | 非home目录信任确认后设置 | 项目目录隔离 | 项目配置文件持久化 | 无（手动编辑配置可重置） | 无（持久化状态） |
+| `sessionTrustAccepted` | `src/bootstrap/state.ts` | home目录信任确认后设置 | 会话隔离 | 不持久化（仅内存） | 会话结束后失效 | 无（自动清理） |
+| `projectConfig.projectOnboardingSeenCount` | `src/projectOnboardingState.ts` | 每次显示项目引导时递增 | 项目目录隔离 | 项目配置文件持久化 | 达到4次后永久隐藏，无重置机制（除手动编辑配置） | 无（持久化状态） |
+| `shouldShowProjectOnboarding` memoize缓存 | `src/projectOnboardingState.ts` | 首次调用时创建 | 全局共享 | 不持久化 | 无（自然过期） | 无（自动清理） |
+| Wizard navigationHistory | `src/components/wizard/WizardProvider.tsx` | WizardProvider初始化时创建 | 每个Wizard实例隔离 | 不持久化 | Wizard完成/取消后失效 | 无（随组件卸载清理） |
+| LspRecommendationMenu 30秒定时器 | `src/components/LspRecommendation/LspRecommendationMenu.tsx` | 组件挂载时设置 | 每个实例隔离 | 不持久化 | 组件卸载时清理，或时间到自动触发 | clearTimeout清理定时器 |
+
+**生命周期证据：**
+- `src/interactiveHelpers.tsx`：showSetupScreens流程控制
+- `src/components/Onboarding.tsx`：首次引导步骤
+- `src/components/TrustDialog/TrustDialog.tsx`：信任确认逻辑
+- `src/projectOnboardingState.ts`：项目引导状态管理
+- `src/components/wizard/WizardProvider.tsx`：通用向导框架
+
 ## 5. 失败语义与工程取舍
 
 | 触发条件 | 检测位置 | 消息/异常如何传播 | 是否重试及上限 | 状态与资源清理 | 调用方可见结果 |

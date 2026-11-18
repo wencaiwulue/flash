@@ -107,7 +107,427 @@ Computer Use 是 Claude Code 提供的桌面与浏览器自动化能力，支持
 - 不将应用白名单等同于截图安全保证；终端 Surrogate Host 与截图可见性必须分别处理。
 - 不在后台会话结束后保留隐藏应用、热键或文件锁，不在线验证真实桌面环境之外的服务能力。
 
+## 3a. 边界与验证矩阵（B2-computer-use-01, B2-computer-use-03）
+
+### TypeScript Stub 层与 Swift/Rust 内部实现边界
+
+| 组件 | TypeScript Stub 层 | Swift/Rust 内部实现 | 边界与契约 | 验证方式 | 未覆盖边界 |
+|-----|-------------------|-------------------|-----------|---------|-----------|
+| 显示与分辨率 | `resolvePrepareCapture()`、`targetImageSize()`、`API_RESIZE_PARAMS` | 原生 CoreGraphics/Quartz 捕获与缩放 | TypeScript 只负责坐标转换和尺寸计算，实际像素捕获在 Swift/Rust | 单元测试（`tests/computerUseExecutor.test.ts`）验证尺寸计算 | 多显示器排列非矩形、Retina/非 Retina 混合、4K/8K 超大分辨率 |
+| 窗口与应用隐藏 | `prepareForAction()`、`withoutTerminal()`、`surrogateHost` | 原生 NSWorkspace、CGWindowList | TypeScript 提供 bundleId 列表和 surrogate，Swift 执行实际隐藏/激活/显示分辨率 | 单元测试验证 bundleId 过滤和 surrogate 选择 | 应用被系统强制挂起、全屏应用、多空间/ Mission Control |
+| 鼠标与键盘输入 | `moveAndSettle()`、`animatedMove()`、`holdKey()`、`typeViaClipboard()`、`withModifiers()` | 原生 CoreGraphics EventTap、NSEvent | TypeScript 负责坐标转换、修饰键管理、剪贴板验证，Swift/Rust 执行实际输入 | 单元测试验证修饰键状态和释放逻辑；真实桌面验收需手动（TCC 限制） | 高 DPI 像素坐标、快速连续输入（>100/秒）、修饰键按下时崩溃/中止 |
+| TCC 权限检查 | `ensureOsPermissions()`、`checkAccessibility()`、`checkScreenRecording()` | 原生 CGRequestAccess、kTCCService | TypeScript 仅调用 Swift 导出的检查函数，不直接访问 TCC 数据库 | 单元测试 mock 检查函数；真实桌面验收需手动 | TCC 提示被用户忽略、权限在运行中被撤销、旧 macOS 版本（<13） |
+| ESC 热键注册 | `registerEscHotkey()`、`unregisterEscHotkey()`、`notifyExpectedEscape()` | 原生 CGEventTap 事件监听与过滤 | TypeScript 管理注册状态和回调，Swift 管理全局事件拦截和 `notifyExpectedEscape()` 豁免窗口 | 单元测试验证回调触发和清理；真实桌面验收需手动 | 热键与其他应用冲突、EventTap 被系统终止、高频率 ESC 事件（>10/秒） |
+| 屏幕截图 | `screenshot()` → Swift helper JSON Lines → base64 图像数据 | 原生 CoreGraphics CGDisplayCreateImage | TypeScript 负责尺寸缩放和 base64 解析，Swift/Rust 负责实际捕获和排除窗口 | `tests/computerUseExecutor.test.ts` 间接验证；真实桌面验收需手动 | 窗口叠加/重叠、敏感内容截图、部分应用拒绝被排除 |
+
+### 真实桌面验收边界（不可在 CI 中完全自动化）
+
+| 验收项 | 需要的环境 | 手动验证步骤 | 现状 |
+|-------|-----------|------------|-----|
+| 真实 TCC 提示与权限授予 | macOS，首次运行 Claude Code | 运行 Claude Code，触发 Computer Use，验证 TCC 提示出现且授予后功能正常 | 无自动化测试，依赖开发/用户手动验证 |
+| 真实应用隐藏与恢复 | macOS，多个打开的应用 | 运行 Computer Use `screenshot` 工具，验证非授权应用被隐藏，回合结束后恢复 | 无自动化测试，依赖开发/用户手动验证 |
+| 真实鼠标与键盘输入 | macOS，可安全测试的应用（如 TextEdit） | 运行 Computer Use 鼠标/键盘工具，验证输入生效 | 无自动化测试，依赖开发/用户手动验证 |
+| 真实 ESC 热键中止 | macOS，运行中的 Computer Use | 运行长时间 Computer Use 操作，按 ESC 验证及时中止 | 无自动化测试，依赖开发/用户手动验证 |
+| 真实多显示器场景 | macOS，多个显示器 | 测试 Computer Use 在多显示器间的截图和坐标转换 | 无自动化测试，依赖开发/用户手动验证 |
+
 ## 4. 架构、模块与数据流
+
+### 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    Claude Code Main Tool Execution Loop                    │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │  User Request / Tool Call (e.g., screenshot, mouse move, key press) │ │
+│  │    ↓                                                                 │ │
+│  │  ┌─────────────────────────────────────────────────────────────────┐  │ │
+│  │  │ Computer Use Wrapper (wrapper.tsx)                           │  │ │
+│  │  │  - Feature Gate Check: feature(CHICAGO)?                   │  │ │
+│  │  │  - Sub-gate Checks: pixel_validation, clipboard_guard, etc.│  │ │
+│  │  │  - Schema Validation (strict Zod)                        │  │ │
+│  │  │  - Error Normalization (isError())                       │  │ │
+│  │  │  - Tool Rendering (human-readable output)                 │  │ │
+│  │  └────────────────────┬────────────────────────────────────────────┘  │ │
+│  │                       ↓                                           │ │
+│  │  ┌─────────────────────────────────────────────────────────────────┐  │ │
+│  │  │ Host Adapter (hostAdapter.ts) → Selects Backend             │  │ │
+│  │  │  ┌─────────────────────────────────────────────────────────┐  │ │
+│  │  │  │ getComputerUseHostAdapter() → single instance      │  │ │
+│  │  │  │  - getSubGates(): { pixel_validation, ... }         │  │ │
+│  │  │  │  - isDisabled(): boolean (checks feature gate)     │  │ │
+│  │  │  │  - ensureOsPermissions(): OsPermissionState      │  │ │
+│  │  │  │  - executor: ComputerExecutor (Native or Zavora)  │  │ │
+│  │  │  └────────────────────┬─────────────────────────────────────────┘  │ │
+│  │  │                       ↓ Backend Selection                      │  │ │
+│  │  │  ┌──────────────────────────────┐   ┌─────────────────────────┐  │ │
+│  │  │  │  Native Backend (macOS only) │   │  Zavora MCP Backend    │  │ │
+│  │  │  │ (Swift/Rust native helper)  │   │ (MCP protocol, any OS) │  │ │
+│  │  │  │  - Native JSON Lines pipe  │   │  - MCP client/server  │  │ │
+│  │  │  │  - Direct CGEventTap       │   │  - MCP protocol calls  │  │ │
+│  │  │  │  - CoreGraphics screenshot  │   │  - Delegate to Zavora  │  │ │
+│  │  │  │  - CGWindowList hide       │   │  - Different cleanup  │  │ │
+│  │  │  └──────────────────┬───────────┘   └───────────┬─────────────┘  │ │
+│  │  │                     ↓                          ↓              │  │ │
+│  │  └─────────────────────────────────────────────────────────────────┘  │ │
+│  │                       ↓ Common Executor Interface                 │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    ↑
+                                    │
+┌───────────────────────────────────┼───────────────────────────────────────┐
+│  ┌───────────────────────────────┼───────────────────────────────────┐  │
+│  │ ComputerExecutor Interface (executor.ts)                         │  │
+│  │  ┌───────────────────────────────────────────────────────────────┐│ │
+│  │  │ screenshot() → capture, resize, metadata                  ││ │
+│  │  │ moveAndSettle(x,y) → move mouse, settle 50ms           ││ │
+│  │  │ animatedMove() → smooth ease-out-cubic, max 0.5s      ││ │
+│  │  │ holdKey(keys) → press keys, release on cleanup if failed││ │
+│  │  │ typeViaClipboard(text) → copy/paste with verification, ││ │
+│  │  │                          restore original clipboard    ││ │
+│  │  │ withModifiers(mods, fn) → hold mods, call fn, release mods││ │
+│  │  │ prepareForAction(allowlist, display?) → hide unlisted apps││ │
+│  │  │ resolvePrepareCapture(allowlist, preferredDisplay, autoResolve, doHide)││ │
+│  │  │ previewHideSet(allowlist, display?) → show what would hide││ │
+│  │  └───────────────────────────────────────────────────────────────┘│ │
+│  │  ┌───────────────────────────────────────────────────────────────┐│ │
+│  │  │ Common Types & Constants (common.ts)                      ││ │
+│  │  │  - CLI_HOST_BUNDLE_ID (surrogate host)                   ││ │
+│  │  │  - getTerminalBundleId(): detects terminal bundle ID   ││ │
+│  │  │    (env.__CFBundleIdentifier or fallback table)         ││ │
+│  │  │  - Coordinate conversion (logical ↔ physical, with display offset)││ │
+│  │  │  - targetImageSize(): API resize constraints (max 1568x1568, total pixels ≤1.15M)││ │
+│  │  └───────────────────────────────────────────────────────────────┘│ │
+│  └───────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    ↑
+                                    │
+┌───────────────────────────────────┼───────────────────────────────────────┐
+│  ┌───────────────────────────────┼───────────────────────────────────┐  │
+│  │ Native Helper Communication (nativeHelper.ts)                   │  │
+│  │  ┌───────────────────────────────────────────────────────────────┐│ │
+│  │  │ NativeHelperClient (ChildProcess JSON Lines pipe)          ││ │
+│  │  │  - constructor(child): spawns Swift/Rust helper binary   ││ │
+│  │  │  - request<T>(method, params, options): Promise<T>      ││ │
+│  │  │    - writes NDJSON to stdin: { id, method, params }\n   ││ │
+│  │  │    - reads NDJSON from stdout: { id, ok, result/error }\n││ │
+│  │  │    - options: signal (AbortSignal), timeoutMs (default 30s)││ │
+│  │  │  - onEvent(event, listener): listens for escape events  ││ │
+│  │  │  - close(): stdin.end(), wait 250ms, SIGKILL if needed ││ │
+│  │  │  - stderr: silently consumed (no logging, privacy)     ││ │
+│  │  └───────────────────────────────────────────────────────────────┘│ │
+│  │  ┌───────────────────────────────────────────────────────────────┐│ │
+│  │  │ Lazy Loading (swiftLoader.ts, inputLoader.ts)              ││ │
+│  │  │  - requireComputerUseSwift(): dynamic import on first use││ │
+│  │  │  - requireComputerUseInput(): dynamic import on first use││ │
+│  │  │  - Non-computer-use turns pay NO loading cost           ││ │
+│  │  └───────────────────────────────────────────────────────────────┘│ │
+│  │  ┌───────────────────────────────────────────────────────────────┐│ │
+│  │  │ Drain RunLoop (drainRunLoop.ts)                             ││ │
+│  │  │  - Wraps *all* Swift helper calls (window events work)    ││ │
+│  │  │  - drainRunLoop(fn, cu?): Promise<T>                      ││ │
+│  │  │  - Internal: pump setInterval(drainTick, 1ms) while fn runs││ │
+│  │  │  - TIMEOUT_MS = 30s (max wait)                             ││ │
+│  │  │  - pending counter: multiple calls share the pump       ││ │
+│  │  │  - Orphan promises: attached catch() to avoid unhandled rejection││ │
+│  │  └───────────────────────────────────────────────────────────────┘│ │
+│  │  ┌───────────────────────────────────────────────────────────────┐│ │
+│  │  │ Native Executor Implementation (native code, not TypeScript)  ││ │
+│  │  │  - OpenComputerUseHelper.swift (macOS Swift)               ││ │
+│  │  │  - Rust helper (some parts?)                               ││ │
+│  │  │  - CGEventTap for global ESC hotkey (PI defense)           ││ │
+│  │  │  - CoreGraphics for screenshot & window hide/show          ││ │
+│  │  │  - NSEvent for mouse/keyboard input                       ││ │
+│  │  │  - CGRequestAccess for TCC permissions                     ││ │
+│  │  └───────────────────────────────────────────────────────────────┘│ │
+│  └───────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    ↑
+                                    │
+┌───────────────────────────────────┼───────────────────────────────────────┐
+│  ┌───────────────────────────────┼───────────────────────────────────┐  │
+│  │ Session Lock & Concurrency Control (computerUseLock.ts)          │  │
+│  │  ┌───────────────────────────────────────────────────────────────┐│ │
+│  │  │ Cross-Process File Lock (prevents multiple instances)       ││ │
+│  │  │  - Lock Path: join(getClaudeConfigHomeDir(), "computer-use.lock")││ │
+│  │  │  - Atomic Create: writeFile with flag "wx" (O_EXCL)      ││ │
+│  │  │  - Lock Content: JSON { sessionId, pid, acquiredAt }      ││ │
+│  │  │  - PID Liveness Check: process.kill(pid, 0) (no signal sent)││ │
+│  │  │  - Stale Recovery: PID dead OR lock damaged → delete & retry││ │
+│  │  │  - Zero-Syscall Check: isLockHeldLocally() (process holds lock)││ │
+│  │  └───────────────────────────────────────────────────────────────┘│ │
+│  │  ┌───────────────────────────────────────────────────────────────┐│ │
+│  │  │ Lock Functions                                                ││ │
+│  │  │  - checkComputerUseLock(): CheckResult (free/held-by-self/blocked)││ │
+│  │  │  - tryAcquireComputerUseLock(): AcquireResult (acquired/blocked)││ │
+│  │  │    - acquired.fresh: boolean (whether we just acquired it)││ │
+│  │  │  - releaseComputerUseLock(): Promise<boolean>             ││ │
+│  │  │  - registerLockCleanup(): process exit cleanup hook        ││ │
+│  │  └───────────────────────────────────────────────────────────────┘│ │
+│  └───────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    ↑
+                                    │
+┌───────────────────────────────────┼───────────────────────────────────────┐
+│  ┌───────────────────────────────┼───────────────────────────────────┐  │
+│  │ ESC Hotkey & Abort Control (escHotkey.ts)                        │  │
+│  │  ┌───────────────────────────────────────────────────────────────┐│ │
+│  │  │ Global ESC Hotkey (CGEventTap, macOS only)                ││ │
+│  │  │  - registerEscHotkey(onEscape): Promise<boolean>        ││ │
+│  │  │    - Returns false if no permissions (accessibility)     ││ │
+│  │  │    - Injects ESC key globally when pressed → abort action││ │
+│  │  │  - unregisterEscHotkey(): Promise<void>                 ││ │
+│  │  │  - notifyExpectedEscape(): Promise<void>                 ││ │
+│  │  │    - 100ms window where model-generated ESC is ignored   ││ │
+│  │  │    (PI defense: model can't inject ESC to close dialogs)││ │
+│  │  └───────────────────────────────────────────────────────────────┘│ │
+│  └───────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    ↑
+                                    │
+┌───────────────────────────────────┼───────────────────────────────────────┐
+│  ┌───────────────────────────────┼───────────────────────────────────┐  │
+│  │ Turn Cleanup (cleanup.ts) – Called at 3 points                │  │
+│  │  ┌───────────────────────────────────────────────────────────────┐│ │
+│  │  │ Cleanup Trigger Points                                     ││ │
+│  │  │  1. Natural turn end (stopHooks.ts)                        ││ │
+│  │  │  2. Streaming abort (query.ts)                            ││ │
+│  │  │  3. Tool execution abort (query.ts)                        ││ │
+│  │  └───────────────────────────────────────────────────────────────┘│ │
+│  │  ┌───────────────────────────────────────────────────────────────┐│ │
+│  │  │ Cleanup Steps (isolation, failure doesn't block others)    ││ │
+│  │  │  1. unhideComputerUseApps(hiddenBundleIds, timeout 5s)      ││ │
+│  │  │     - restore hidden apps, 5s timeout (doesn't wait forever)││ │
+│  │  │  2. closeComputerUseBackend() (Zavora only)               ││ │
+│  │  │  3. unregisterEscHotkey() (best effort, catch/log)       ││ │
+│  │  │  4. releaseComputerUseLock() (if held locally)           ││ │
+│  │  └───────────────────────────────────────────────────────────────┘│ │
+│  │  ┌───────────────────────────────────────────────────────────────┐│ │
+│  │  │ AppState Tracking                                          ││ │
+│  │  │  - AppState.computerUseMcpState.hiddenDuringTurn: string[]││ │
+│  │  │    (remember which apps to unhide)                        ││ │
+│  │  └───────────────────────────────────────────────────────────────┘│ │
+│  └───────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    ↑
+                                    │
+┌───────────────────────────────────┼───────────────────────────────────────┐
+│  ┌───────────────────────────────┼───────────────────────────────────┐  │
+│  │ Permissions & Security (hostAdapter.ts, external-stubs)       │  │
+│  │  ┌───────────────────────────────────────────────────────────────┐│ │
+│  │  │ TCC Permission Checks (macOS only)                        ││ │
+│  │  │  - ensureOsPermissions(): Promise<OsPermissionState>    ││ │
+│  │  │    { granted: true } OR { granted: false, accessibility: boolean, screenRecording: boolean }││ │
+│  │  │  - checkAccessibility(): boolean (from Swift)            ││ │
+│  │  │  - checkScreenRecording(): boolean (from Swift)          ││ │
+│  │  └───────────────────────────────────────────────────────────────┘│ │
+│  │  ┌───────────────────────────────────────────────────────────────┐│ │
+│  │  │ Application Allowlist (Exact Bundle ID Match)              ││ │
+│  │  │  - Sentinel Apps (Terminal, Finder, System Settings, etc.)││ │
+│  │  │    → Special dialog/prompt for sensitive apps             ││ │
+│  │  │  - prepareForAction(allowlistBundleIds): hides all except allowlist││ │
+│  │  │  - Exact match only (no prefix, no glob) → strict security││ │
+│  │  └───────────────────────────────────────────────────────────────┘│ │
+│  │  ┌───────────────────────────────────────────────────────────────┐│ │
+│  │  │ Sub-Gates (Fine-Grained Control)                           ││ │
+│  │  │  - pixel_validation: boolean (currently unused future use)││ │
+│  │  │  - clipboard_guard: boolean (clipboard verification)      ││ │
+│  │  │  - mouse_animation: boolean (smooth vs teleport)          ││ │
+│  │  │  - hide_before_action: boolean (hide apps before action) ││ │
+│  │  │  - auto_target_display: boolean (auto-find app display)  ││ │
+│  │  └───────────────────────────────────────────────────────────────┘│ │
+│  └───────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 关键流程与失败路径
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                Typical Computer Use Turn (Screenshot Example)               │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │ 1. Pre-Flight Checks & Lock Acquisition                             │ │
+│  │    ├─→ feature(CHICAGO)? false → skip (gate closed)               │ │
+│  │    ├─→ getComputerUseHostAdapter().isDisabled() → skip            │ │
+│  │    ├─→ checkComputerUseLock():                                     │ │
+│  │    │   ├─→ blocked → tell user "another instance is controlling" │ │
+│  │    │   ├─→ held-by-self → reuse without reacquiring              │ │
+│  │    │   └─→ free → tryAcquireComputerUseLock()                     │ │
+│  │    ├─→ acquire success → registerLockCleanup() (process exit hook)│ │
+│  │    ├─→ ensureOsPermissions():                                      │ │
+│  │    │   ├─→ { granted: false } → show TCC dialog → user must grant│ │
+│  │    │   └─→ { granted: true } → proceed                          │ │
+│  │    └─→ registerEscHotkey(onEscape = abortController.abort):     │ │
+│  │        ├─→ returns false → log warning, continue without ESC abort│ │
+│  │        └─→ returns true → ESC will abort current action           │ │
+│  │                                                                       │ │
+│  │ 2. Prepare for Action (Hide Unlisted Apps)                        │ │
+│  │    ├─→ resolvePrepareCapture(allowlistBundleIds, preferredDisplay,│ │
+│  │    │                           autoResolve = true, doHide = true) │ │
+│  │    │   ├─→ findWindowDisplays(allowlist) → find which display app is on│ │
+│  │    │   ├─→ autoResolve to main display if not found            │ │
+│  │    │   ├─→ remember displayResolvedForApps in session context  │ │
+│  │    │   └─→ prepareForAction() → actually hide apps             │ │
+│  │    ├─→ withoutTerminal(allowed) → filter out terminal bundle ID│ │
+│  │    │   (terminal is surrogate host, never hidden, never in screenshot)│ │
+│  │    ├─→ getTerminalBundleId() → prefer env.__CFBundleIdentifier │ │
+│  │    │   fallback to table mapping terminal → bundle ID         │ │
+│  │    ├─→ save hiddenBundleIds to AppState.computerUseMcpState.hiddenDuringTurn│ │
+│  │    └─→ all Swift calls wrapped in drainRunLoop() → window events work│ │
+│  │                                                                       │ │
+│  │ 3. Execute Action (Screenshot)                                    │ │
+│  │    ├─→ executor.screenshot(allowlistBundleIds, display?)         │ │
+│  │    │   ├─→ hides unlisted apps again (idempotent?)            │ │
+│  │    │   ├─→ captures screenshot via CoreGraphics                │ │
+│  │    │   ├─→ calculates targetImageSize(): max 1568x1568, ≤1.15M pixels││ │
+│  │    │   ├─→ resizes image to target dimensions                 │ │
+│  │    │   ├─→ attaches metadata: display_origin, physical_size, scale,││ │
+│  │    │   │                     normalized_bounds, etc.          ││ │
+│  │    │   └─→ returns ScreenshotResult { data, metadata }        │ │
+│  │    ├─→ wrapper renders human-readable output (image, dimensions)│ │
+│  │    └─→ error during action? → go to "Failure Cleanup" below   │ │
+│  │                                                                       │ │
+│  │ 4. Success / Turn Natural End → CleanupComputerUseAfterTurn()   │ │
+│  │    ├─→ (also called at streaming abort and tool execution abort)│ │
+│  │    ├─→ STEP 1: unhideComputerUseApps(hiddenDuringTurn, timeout 5s)│ │
+│  │    │   ├─→ restore hidden apps via Swift                       │ │
+│  │    │   ├─→ Promise.race([unhide, timeoutAfter(5s)]) → don't wait││ │
+│  │    │   └─→ catch/log error, continue to next steps            │ │
+│  │    ├─→ STEP 2: closeComputerUseBackend() (Zavora only)         │ │
+│  │    ├─→ STEP 3: unregisterEscHotkey() (best effort, catch/log)  │ │
+│  │    ├─→ STEP 4: releaseComputerUseLock() (if held locally)      │ │
+│  │    └─→ clear AppState.computerUseMcpState.hiddenDuringTurn     │ │
+│  │                                                                       │ │
+│  │ Failure Cleanup (e.g., screenshot fails mid-way)                  │ │
+│  │  ┌───────────────────────────────────────────────────────────────┐ │ │
+│  │  │ holdKey() / drag() / withModifiers() partial failure:      │ │ │
+│  │  │  → executor releases all pressed keys IN REVERSE ORDER,     │ │ │
+│  │  │    mouse button always released; original error rethrown    │ │ │
+│  │  └───────────────────────────────────────────────────────────────┘ │ │
+│  │  ┌───────────────────────────────────────────────────────────────┐ │ │
+│  │  │ typeViaClipboard() failure:                                 │ │ │
+│  │  │  → restores ORIGINAL clipboard content first, then rethrows │ │ │
+│  │  │    (never leaves partial content in clipboard)              │ │ │
+│  │  └───────────────────────────────────────────────────────────────┘ │ │
+│  │  ┌───────────────────────────────────────────────────────────────┐ │ │
+│  │  │ ANY error (network, permission, timeout, abort):            │ │ │
+│  │  │  → still calls cleanupComputerUseAfterTurn() at end of turn │ │ │
+│  │  │    → unhide apps, unregister hotkey, release lock          │ │ │
+│  │  │    → cleanup steps isolated: one fails doesn't block others│ │ │
+│  │  └───────────────────────────────────────────────────────────────┘ │ │
+│  │                                                                       │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                  Mouse & Keyboard Input Flow (with Failure Recovery)       │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │ holdKey(keys: string[]): Promise<void>                               │ │
+│  │  ┌───────────────────────────────────────────────────────────────┐ │ │
+│  │  │ 1. Press keys one by one in order                            │ │ │
+│  │  │ 2. IF ANY STEP FAILS (throws):                               │ │ │
+│  │  │    → RELEASE ALL PRESSED KEYS IN REVERSE ORDER               │ │ │
+│  │  │    → rethrow original error                                 │ │ │
+│  │  │ 3. Success: return; caller responsible for releasing later   │ │ │
+│  │  │    (usually via withModifiers() or finally block)          │ │ │
+│  │  └───────────────────────────────────────────────────────────────┘ │ │
+│  │                                                                       │ │
+│  │ withModifiers(mods: string[], fn: () => Promise<T>): Promise<T>       │ │
+│  │  ┌───────────────────────────────────────────────────────────────┐ │ │
+│  │  │ 1. holdKey(mods) → press modifiers                          │ │ │
+│  │  │ 2. try { await fn() } → call user function                   │ │ │
+│  │  │ 3. finally { releasePressed(mods) } → ALWAYS release, even if fn throws│ │ │
+│  │  └───────────────────────────────────────────────────────────────┘ │ │
+│  │                                                                       │ │
+│  │ typeViaClipboard(text: string): Promise<void>                        │ │
+│  │  ┌───────────────────────────────────────────────────────────────┐ │ │
+│  │  │ 1. SAVE ORIGINAL clipboard content first                    │ │ │
+│  │  │ 2. Write text to clipboard                                  │ │ │
+│  │  │ 3. READ BACK clipboard to VERIFY content matches          │ │ │
+│  │  │ 4. IF VERIFY FAILS:                                       │ │ │
+│  │  │    → restore original clipboard first                     │ │ │
+│  │  │    → throw error (never paste bad content)                │ │ │
+│  │  │ 5. VERIFY OK: sleep 100ms (let app catch up)            │ │ │
+│  │  │ 6. Press Cmd+V (paste)                                    │ │ │
+│  │  │ 7. FINALLY: RESTORE ORIGINAL clipboard content no matter what││ │
+│  │  └───────────────────────────────────────────────────────────────┘ │ │
+│  │                                                                       │ │
+│  │ animatedMove(x, y, mouseAnimationEnabled): Promise<void>              │ │
+│  │  ┌───────────────────────────────────────────────────────────────┐ │ │
+│  │  │ 1. mouseAnimationEnabled? false → teleport directly        │ │ │
+│  │  │ 2. true → ease-out-cubic animation, max duration 0.5s     │ │ │
+│  │  │ 3. moveAndSettle(x,y) at end → wait 50ms for events to settle││ │
+│  │  └───────────────────────────────────────────────────────────────┘ │ │
+│  │                                                                       │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                  Native Helper JSON Lines Protocol & Timeouts             │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │ NativeHelperClient.request<T>(method, params, options): Promise<T>  │ │
+│  │  ┌───────────────────────────────────────────────────────────────┐ │ │
+│  │  │ Request (writes to child stdin):                             │ │ │
+│  │  │   { id: uuid(), method: string, params?: object }\n          │ │ │
+│  │  │ Response (reads from child stdout):                          │ │ │
+│  │  │   Success: { id: same uuid, ok: true, result: T }\n          │ │ │
+│  │  │   Error:   { id: same uuid, ok: false, error: string }\n     │ │ │
+│  │  │ Event (child pushes asynchronously):                        │ │ │
+│  │  │   Escape: { event: "escape" }\n → calls onEscape listeners  │ │ │
+│  │  └───────────────────────────────────────────────────────────────┘ │ │
+│  │  ┌───────────────────────────────────────────────────────────────┐ │ │
+│  │  │ Timeout & Abort                                             │ │ │
+│  │  │  - Default timeout: 30s (TIMEOUT_MS in drainRunLoop too)   │ │ │
+│  │  │  - options.timeoutMs: override default                     │ │ │
+│  │  │  - options.signal: AbortSignal → cancel request           │ │ │
+│  │  │  - Timeout/abort: cleanup pending map, timer, listeners    │ │ │
+│  │  └───────────────────────────────────────────────────────────────┘ │ │
+│  │  ┌───────────────────────────────────────────────────────────────┐ │ │
+│  │  │ Clean Shutdown (close())                                   │ │ │
+│  │  │  - stdin.end() → tell helper to exit gracefully          │ │ │
+│  │  │  - wait 250ms → let helper cleanup                       │ │ │
+│  │  │  - still running? → child.kill("SIGKILL") → force kill    │ │ │
+│  │  │  - stderr: silently consumed (no logging, privacy)        │ │ │
+│  │  └───────────────────────────────────────────────────────────────┘ │ │
+│  │                                                                       │ │
+│  │ drainRunLoop<T>(fn: () => Promise<T>, cu?): Promise<T>               │ │
+│  │  ┌───────────────────────────────────────────────────────────────┐ │ │
+│  │  │ 1. retain(): pending++, no pump yet → start setInterval(drainTick, 1ms)││ │
+│  │  │ 2. Promise.race([fn(), timeoutAfter(30s)])                │ │ │
+│  │  │ 3. release(): pending--, pending <= 0 → clearInterval        │ │ │
+│  │  │ 4. Orphan promises from drainTick: attach empty catch()    │ │ │
+│  │  │    to avoid unhandledRejection crashes                      │ │ │
+│  │  └───────────────────────────────────────────────────────────────┘ │ │
+│  │                                                                       │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| `ComputerUseHostAdapter` (singleton) | `getComputerUseHostAdapter()` | 首次调用 `getComputerUseHostAdapter()` 时创建，模块级单例缓存，之后直接返回同一实例 | 模块级单例共享（整个进程） | 否（内存仅） | 进程退出 | 无（单例直到进程结束） |
+| `ComputerExecutor` (Native or Zavora) | `ComputerUseHostAdapter` | Host adapter 创建时选择后端并初始化 executor（Native 或 Zavora MCP） | 单例共享（整个进程） | 否（内存仅） | 进程退出，Zavora 后端 `closeComputerUseBackend()` 时 | Zavora: `closeComputerUseBackend()`; Native: 隐式关闭 native helper |
+| `NativeHelperClient` (ChildProcess JSON Lines) | `nativeHelper.ts` | `getComputerUseHelper()` 首次调用时 spawn Swift/Rust 子进程，单例缓存 | 模块级单例共享（整个进程） | 否（内存仅，子进程 OS 资源） | `closeComputerUseHelper()` 显式关闭，进程退出 | `close()`: `stdin.end()` → wait 250ms → `SIGKILL` if still running; 清理 pending request map, timers, listeners |
+| `Computer Use Lock File` (cross-process) | 文件系统 | `tryAcquireComputerUseLock()`: `writeFile(lockPath, JSON, { flag: "wx" })` 原子创建（O_EXCL），内容 `{ sessionId, pid, acquiredAt }` | 跨进程全局互斥（单主机单会话） | **是**，持久化到 `~/.claude/computer-use.lock` | 显式 `releaseComputerUseLock()` 删除，进程退出清理 hook 删除，stale 恢复时删除（PID dead 或 JSON 损坏） | `releaseComputerUseLock()`: 仅在本地持有锁时删除；cleanup hook 在进程退出时调用 |
+| `active lock holder state` (in-memory) | `computerUseLock.ts` module | `registerLockCleanup()` 设置时，模块级变量标记本地持有锁 | 模块级单例共享（同一进程） | 否（内存仅） | 进程退出，`releaseComputerUseLock()` 清除 | `unregisterCleanup()` 当锁释放时 |
+| `ESC hotkey registration state` (in-memory) | `escHotkey.ts` module | `registerEscHotkey(onEscape)` 成功时设置为 true，Swift CGEventTap 全局注册 | 模块级单例共享（同一进程，全局热键） | 否（内存仅，CGEventTap OS 资源） | `unregisterEscHotkey()` 注销，进程退出，cleanupComputerUseAfterTurn() 调用时 | `unregisterEscHotkey()`: 最佳努力，catch/log 错误，从不阻止后续清理步骤 |
+| `AppState.computerUseMcpState.hiddenDuringTurn` (string[]) | `AppState` store | `prepareForAction()` 保存被隐藏 bundle ID 数组到这里，用于后续清理 | 全局单例共享（同一进程） | 否（内存仅，React/Redux 状态） | `cleanupComputerUseAfterTurn()` 清空该数组，回合结束/中止时 | 无（cleanup 函数清空） |
+| `drainRunLoop` pump interval & pending counter | `drainRunLoop.ts` module | 首次 `retain()` 时创建 `setInterval(drainTick, 1ms)`，pending 计数器初始 0，每次 `retain()` 递增，`release()` 递减 | 模块级单例共享（整个进程，共享 pump） | 否（内存仅，Node.js interval） | `pending <= 0` 时 `clearInterval(pumpInterval)`，进程退出 | `release()`: 递减 pending，0 时清理 interval；orphan promises 附加空 `catch()` 避免 unhandled rejection |
+| `held keys state` (in-memory, during action) | `executor.ts` | `holdKey()` 时跟踪已按下键的数组，用于失败时逆序释放 | 单次 action 隔离 | 否（内存仅，临时状态） | action 结束/失败时释放，`releasePressed()` 显式释放，`withModifiers()` finally 块释放 | `releasePressed(keys)` 逆序释放所有键，鼠标按钮总是释放 |
+| `original clipboard state` (during typeViaClipboard) | `executor.ts` | `typeViaClipboard()` 开始时保存原始剪贴板内容 | 单次调用隔离 | 否（内存仅，剪贴板是 OS 资源但临时保存内容） | `typeViaClipboard()` finally 块总是恢复原始内容，无论成功或失败 | 恢复原始剪贴板内容，然后重新抛出错误或返回 |
+| `hidden app state` (OS window state, macOS) | macOS window server | `prepareForAction()` 隐藏不在白名单中的应用，保存 bundle ID 列表 | 全局 OS 级状态（影响整个桌面） | 否（OS 窗口状态，不持久化） | `unhideComputerUseApps()` 恢复，cleanupComputerUseAfterTurn() 调用，5s 超时后不等待直接继续 | `unhideComputerUseApps(hidden, 5s timeout)`: Promise.race 超时，catch/log 错误但继续其他清理 |
+
+生命周期证据：
+- `src/utils/computer-use/hostAdapter.ts` (单例 host adapter，后端选择，权限检查，子门控)
+- `src/utils/computer-use/executor.ts` (executor 接口，prepareForAction, resolvePrepareCapture, moveAndSettle, animatedMove, holdKey, releasePressed, withModifiers, typeViaClipboard, unhideComputerUseApps，输入失败时逆序释放键，剪贴板恢复，隐藏应用跟踪)
+- `src/utils/computer-use/nativeHelper.ts` (NativeHelperClient JSON Lines 协议，spawn 子进程，request/response/event 处理，超时/AbortSignal，close() 250ms 后 SIGKILL，stderr 静默消费)
+- `src/utils/computer-use/drainRunLoop.ts` (drainRunLoop 包装所有 Swift 调用，1ms interval pump，pending 计数器，30s 超时，orphan promises catch 防崩溃)
+- `src/utils/computer-use/computerUseLock.ts` (跨进程文件锁 O_EXCL，PID 存活检查，stale 恢复，零 syscall 本地持有检查，registerLockCleanup 进程退出钩子)
+- `src/utils/computer-use/escHotkey.ts` (registerEscHotkey/unregisterEscHotkey，CGEventTap ESC 热键，notifyExpectedEscape 100ms 窗口模型 ESC 豁免)
+- `src/utils/computer-use/cleanup.ts` (cleanupComputerUseAfterTurn 在 3 个点调用：自然结束/流式中止/工具中止，4 个隔离清理步骤：unhide 5s 超时/关闭后端/注销热键/释放锁，一步失败不阻止其他)
+- `src/external-stubs/computer-use-types.ts`, `computer-use-native.ts`, `computer-use-mcp.ts`, `computer-use-sentinel-apps.ts` (类型定义，sentinel 应用列表)
+- `tests/computerUseBackends.test.ts`, `computerUseExecutor.test.ts`, `computerUseNativeHelper.test.ts`, `computerUseWrapper.test.ts` (测试覆盖)
 
 ### 4.1 后端抽象模块
 

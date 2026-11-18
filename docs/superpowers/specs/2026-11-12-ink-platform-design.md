@@ -1275,6 +1275,307 @@ Style 转换（stylePool.transition）→
 
 ---
 
+### 4.13 架构与资源边界图
+
+```text
+┌────────────────────────────────────────────────────────────────────────────┐
+│                              React (Public API)                           │
+│  ┌──────────────────────────────────────────────────────────────────────┐ │
+│  │  React Components (Box, Text, Ansi, Newline, Spacer)                │ │
+│  └──────────────────────────────────────────────────────────────────────┘ │
+│                                    │                                       │
+│                                    ▼                                       │
+│  ┌──────────────────────────────────────────────────────────────────────┐ │
+│  │  src/ink/root.tsx: render() / createRoot()                         │ │
+│  │  • Root.render(node: ReactNode)                                   │ │
+│  │  • Root.unmount()                                                 │ │
+│  └──────────────────────────────────────────────────────────────────────┘ │
+│                                    │                                       │
+│                                    ▼                                       │
+└────────────────────────────────────────────────────────────────────────────┘
+                                    │
+┌───────────────────────────────────│────────────────────────────────────────┐
+│                                   ▼                                        │
+│  ┌──────────────────────────────────────────────────────────────────────┐ │
+│  │        src/ink/ink.tsx: Ink Instance (Root Object)                  │ │
+│  │  ┌─────────────────────────────────────────────────────────────────┐ │ │
+│  │  │  • frontFrame: Frame                                          │ │ │
+│  │  │  • backFrame: Frame                                          │ │ │
+│  │  │  • terminal: Terminal                                          │ │ │
+│  │  │  • logUpdate: LogUpdate                                       │ │ │
+│  │  │  • stylePool: StylePool                                      │ │ │
+│  │  │  • charPool: CharPool                                       │ │ │
+│  │  │  • hyperlinkPool: HyperlinkPool                             │ │ │
+│  │  │  • altScreenActive: boolean                                  │ │ │
+│  │  │  • selection: {start, end}                                   │ │ │
+│  │  └─────────────────────────────────────────────────────────────────┘ │ │
+│  └──────────────────────────────────────────────────────────────────────┘ │
+│                                    │                                       │
+│         ┌──────────────────────────┼──────────────────────────┐             │
+│         │                          │                          │             │
+│         ▼                          ▼                          ▼             │
+│  ┌──────────────┐          ┌──────────────┐          ┌─────────────────┐    │
+│  │  React      │          │   Yoga       │          │   Input         │    │
+│  │  Reconciler │          │   Layout     │          │   Processing    │    │
+│  └──────────────┘          └──────────────┘          └─────────────────┘    │
+│         │                          │                          │             │
+│         ▼                          ▼                          ▼             │
+│  ┌──────────────┐          ┌──────────────┐          ┌─────────────────┐    │
+│  │reconciler.ts │          │dom.ts +      │          │parse-keypress.ts│    │
+│  │  • Fiber    │          │layout/       │          │  • Tokenizer    │    │
+│  │  Tree       │          │engine.ts    │          │  • KeyParseState│    │
+│  │  • dispatcher│          │  • YogaNode │          │  • Chord buffer │    │
+│  └──────────────┘          └──────────────┘          └─────────────────┘    │
+│                                    │                                       │
+│                                    ▼                                       │
+│  ┌──────────────────────────────────────────────────────────────────────┐ │
+│  │              Render Pipeline (onRender)                              │ │
+│  │  ┌─────────────────────────────────────────────────────────────────┐ │ │
+│  │  │  renderer() → backFrame.screen                                 │ │ │
+│  │  │    └─ render-node-to-output.ts                              │ │ │
+│  │  │       ├─ node-cache.ts: check blit eligible?               │ │ │
+│  │  │       └─ render to Output (ScreenWriter)                  │ │ │
+│  │  ├─ applySelectionOverlay() / applySearchHighlight()         │ │ │
+│  │  ├─ swap frontFrame ↔ backFrame                               │ │ │
+│  │  ├─ logUpdate.render(prev, next) → Patch[]                  │ │ │
+│  │  │  └─ diffEach(): compare cells + StylePool transition    │ │ │
+│  │  ├─ optimizer.ts: merge/optimize patches                   │ │ │
+│  │  └─ writeDiffToTerminal(terminal, patches)               │ │ │
+│  │     ├─ BSU (Begin Synchronized Update)                       │ │ │
+│  │     ├─ write patches to stdout                                │ │ │
+│  │     └─ ESU (End Synchronized Update)                         │ │ │
+│  │  └─────────────────────────────────────────────────────────────────┘ │ │
+│  └──────────────────────────────────────────────────────────────────────┘ │
+└────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────────┐
+│                          Screen Data Structure                             │
+│  ┌──────────────────────────────────────────────────────────────────────┐ │
+│  │  Screen (screen.ts)                                                  │ │
+│  │  • width: number, height: number                                   │ │
+│  │  • cells: Int32Array (2 words per cell: [charId, packed word1])    │ │
+│  │  • cells64: BigInt64Array (same buffer, fast fill)               │ │
+│  │  • noSelect: Uint8Array (selection forbidden regions)            │ │
+│  │  • softWrap: Int32Array (line wrap points)                        │ │
+│  │  • damage: {x,y,w,h} (dirty region, optional)                  │ │ │
+│  │  • charPool: CharPool (interned char strings)                 │ │ │
+│  │  • stylePool: StylePool (interned AnsiCode[] → id)             │ │ │
+│  │  • hyperlinkPool: HyperlinkPool (interned URLs)              │ │ │
+│  │  └─────────────────────────────────────────────────────────────────┘ │ │
+│  └──────────────────────────────────────────────────────────────────────┘ │
+└────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────────┐
+│                        Terminal (stdout/stdin)                             │
+│  ┌──────────────────────────────────────────────────────────────────────┐ │
+│  │  terminal.ts: Terminal Interface                                  │ │
+│  │  • writeSync(s: string)                                           │ │
+│  │  • enterAlternateScreen() / exitAlternateScreen()               │ │
+│  │  • setRawMode(true/false)                                       │ │
+│  │  • getCursorPosition() → {x,y}                                  │ │
+│  │  • getWindowSize() → {columns, rows}                            │ │
+│  │  └─────────────────────────────────────────────────────────────────┘ │ │
+│  │                                                                       │ │
+│  │  termio/: Terminal IO Helpers                                      │ │
+│  │  • csi.ts: ANSI CSI sequences (cursor move, scroll region)         │ │
+│  │  • ansi.ts: ANSI helper functions                                 │ │
+│  │  • escape.ts: Escape sequence handling                           │ │
+│  └──────────────────────────────────────────────────────────────────────┘ │
+│                                                                             │
+│  Event Flow:                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐ │
+│  │  stdin 'readable' → read chunk → parseMultipleKeypresses()          │ │
+│  │    → ParsedKey/ParsedMouse/ParsedResponse → dispatchKeyboardEvent() │ │
+│  │    → dispatcher.dispatchDiscrete() → trigger useInput handlers  │ │
+│  └─────────────────────────────────────────────────────────────────────┘ │
+└────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    │  Terminal Emulator (xterm/kitty/ghostty/alacritty/...)
+                                    │  • Supports DECSTBM, DECRPM, BSU/ESU
+                                    │  • Supports SGR mouse, bracketed paste
+                                    │  • Supports OSC 8 hyperlinks
+                                    ▼
+```
+
+**证据来源**: `src/ink/ink.tsx:203-224` (onComputeLayout/onRender), `src/ink/ink.tsx:268-273` (frame buffers), `src/ink/screen.ts:366-544` (Screen data structure), `src/ink/log-update.ts` (diff/patch generation)
+
+---
+
+### 4.14 关键流程与失败路径
+
+```text
+[主流程 1: 完整渲染循环]
+
+用户输入或状态变化
+  │
+  ├─> React setState / useReducer
+  │       │
+  │       ▼
+  │  ┌─────────────────────────────────────┐
+  │  │ React Fiber 树协调 (reconciler.ts) │
+  │  │  • createInstance()               │
+  │  │  • appendChild() / removeChild()  │
+  │  │  • setAttribute() / setStyle()   │
+  │  │  • mark node dirty               │
+  │  └─────────────────────────────────────┘
+  │       │
+  │       ▼
+  │  resetAfterCommit hook
+  │       │
+  │       ├─> rootNode.onComputeLayout()
+  │       │       ├─ Yoga.calculateLayout()
+  │       │       └─ recordYogaMs(perf)
+  │       │
+  │       └─> rootNode.onRender()
+  │               │
+  │               ▼
+  │  ┌───────────────────────────────────────────────────┐
+  │  │ Render Pipeline (ink.tsx)                        │
+  │  │ 1. flushInteractionTime()                      │
+  │  │ 2. renderer() → backFrame.screen              │
+  │  │    └─ render-node-to-output.ts:              │
+  │  │       ├─ check node-cache for blit?           │
+  │  │       ├─ yes: blitRegion(prevScreen)        │
+  │  │       └─ no: render recursively             │
+  │  │ 3. applySelectionOverlay()                  │
+  │  │ 4. applySearchHighlight()                  │
+  │  │ 5. swap: frontFrame ↔ backFrame             │
+  │  │ 6. logUpdate.render(prev, next) → Patch[]   │
+  │  │    └─ diffEach: compare cells + StylePool.transition
+  │  │ 7. optimizer.ts: merge patches              │
+  │  │ 8. writeDiffToTerminal()                   │
+  │  │    ├─ BSU (if altScreen + supported)     │
+  │  │    ├─ write patches to stdout             │
+  │  │    └─ ESU (if altScreen + supported)     │
+  │  └───────────────────────────────────────────────────┘
+  │
+  └─> next frame ready (16ms throttle via scheduleRender)
+
+
+[失败分支: 屏幕损坏恢复]
+  ├─ absolute node deleted → prevFrameContaminated = true
+  ├─ next frame: disable blit entirely
+  ├─ render full screen (no blit optimization)
+  ├─ contamination cleared after one full frame
+  └─ blit resumes normally
+
+
+[主流程 2: 输入事件处理]
+
+stdin 'readable' event fires
+  │
+  ├─> read chunk from stdin (Buffer)
+  │       │
+  │       ▼
+  │  ┌─────────────────────────────────────────────────┐
+  │  │ parseMultipleKeypresses(prevState, chunk)    │
+  │  │  • tokenizer.feed(chunk) → tokens           │
+  │  │  • iterate tokens:                           │
+  │  │    ├─ PASTE_START → mode='IN_PASTE'       │
+  │  │    ├─ PASTE_END → createPasteKey(buffer)  │
+  │  │    ├─ sequence → parseTerminalResponse()  │
+  │  │    │              or parseMouseEvent()     │
+  │  │    │              or parseKeypress()       │
+  │  │    └─ text → parseKeypress()              │
+  │  │  • return [ParsedInput[], newKeyParseState] │
+  │  └─────────────────────────────────────────────────┘
+  │       │
+  │       ▼
+  │  ┌─────────────────────────────────────────────────┐
+  │  │ dispatchKeyboardEvent(parsedKey)               │
+  │  │  • dispatcher.dispatchDiscrete(target, event)│
+  │  │  • event bubbles up DOM tree                 │
+  │  │  • useInput handlers triggered              │
+  │  │  • tab: switch focus (if not prevented)     │
+  │  └─────────────────────────────────────────────────┘
+  │       │
+  │       ▼
+  │  React updates → back to render cycle
+
+
+[失败分支: 不完整输入序列]
+  ├─ chunk ends with partial ESC sequence
+  ├─ tokenizer detects incomplete
+  ├─ state.incomplete = partial sequence
+  ├─ retained for next chunk
+  ├─ next read: prepend incomplete to new chunk
+  └─ parsing resumes correctly
+
+
+[主流程 3: Alt Screen 模式切换]
+
+进入 Alt Screen (enterAlternateScreen):
+  │
+  ├─ save cursor position
+  ├─ save current screen (for restoration?)
+  ├─ write DECSET 1049 (alt screen buffer)
+  ├─ enable mouse tracking: DECSET 1000, 1002, 1003
+  ├─ hide cursor: DECTCEM 0
+  ├─ set altScreenActive = true
+  └─ resetFramesForAltScreen()
+
+退出 Alt Screen (exitAlternateScreen):
+  │
+  ├─ show cursor: DECTCEM 1
+  ├─ disable mouse tracking: DECRST 1000, 1002, 1003
+  ├─ write DECRST 1049 (back to main buffer)
+  ├─ restore cursor position
+  └─ set altScreenActive = false
+
+
+[失败分支: SIGCONT 恢复]
+  ├─ process receives SIGCONT (resumed from background)
+  ├─ handleResume() called
+  ├─ altScreenActive? → reenterAltScreen():
+  │   ├─ full reset + reinitialize
+  │   └─ full redraw of screen
+  ├─ else: resetFrames + logUpdate.reset()
+  └─ full render cycle triggered
+
+
+[主流程 4: Resize 处理]
+
+SIGWINCH signal received
+  │
+  ├─ handleResize() called
+  │       │
+  │       ├─ get new terminalColumns/terminalRows
+  │       ├─ altScreenActive?
+  │       │   ├─ yes: resetFramesForAltScreen()
+  │       │   └─ needsEraseBeforePaint = true
+  │       ├─ no: resetFrames
+  │       │
+  │       └─ render(currentNode) → full redraw with new size
+  │
+  └─ onComputeLayout() uses new dimensions
+```
+
+**证据来源**: `src/ink/ink.tsx:290-296` (scheduleRender), `src/ink/parse-keypress.ts:212-302` (input parsing), `src/ink/ink.tsx:400-406` (alt screen), `src/ink/ink.tsx:1630-1646` (SIGCONT handler)
+
+---
+
+### 4.15 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| `frontFrame` / `backFrame: Frame` | `Ink` 实例 | `resetFrames()` / `resetFramesForAltScreen()` 创建 `{screen, viewport, cursor, scrollHint?}` | 全局单例，双缓冲交替 | 无（内存状态） | resize/SIGCONT 时 `resetFrames()` 重新分配，swap 时交换引用 | N/A（swap 时无清理，GC 自动回收旧数组） |
+| `screen.cells: Int32Array` | `Screen` 对象 | `createScreen(width, height)` 分配 `size*2` Int32Array | 每个 Screen 私有，back/front 独立 | 无（内存状态） | `resetScreen()` 时 `cells64.fill(0)` 清空，尺寸增大时重新分配 | TypedArray 自动 GC，无需手动释放 |
+| `StylePool` | `Ink` 实例 | `new StylePool()` 创建，初始 `none` = 0 | 全局单例，跨帧共享 | 无（内存状态） | 对话轮次间重新创建防止泄漏；`setSelectionBg()` 清空 `withSelectionBg` 缓存 | 无上限但定期重建，GC 自动回收 |
+| `CharPool` / `HyperlinkPool` | `Ink` 实例 | `new CharPool()` / `new HyperlinkPool()` 创建 | 全局单例，跨帧共享 | 无（内存状态） | 对话轮次间重新创建防止泄漏；`migrateScreenPools()` 重新 intern | 无上限但定期重建，GC 自动回收 |
+| `node-cache: Map<DOMElement, ScreenRegion>` | `render-node-to-output.ts` (模块级) | 首次渲染时惰性创建，`collectRemovedRects()` 跟踪删除 | 全局单例，跨帧共享 | 无（内存状态） | `absoluteRemoved` 设置时禁用 blit 一帧；布局变化时失效对应节点 | 组件 unmount 时自动从缓存移除，`absoluteRemoved` 下一帧自动清除 |
+| `KeyParseState: {mode, incomplete, pasteBuffer}` | parse-keypress.ts (调用者持有) | `INITIAL_STATE` 常量: `mode='NORMAL', incomplete='', pasteBuffer=''` | 每个调用者（App.tsx）独立 | 无（内存状态） | `parseMultipleKeypresses()` 返回新状态，旧状态丢弃 | 解析完成后旧状态 GC |
+| `pendingChord: ParsedKeystroke[]|null` | Keybinding Context | 和弦开始时设置，完成/取消时清空 | 全局单例，共享 | 无（内存状态） | 和弦超时/取消时清空为 null | N/A（引用自动 GC） |
+| `pendingSpaceAfterPillRef: MutableRefObject<boolean>` | PromptInput 组件 | Hook 初始化时 `{current: false}` | 组件实例私有 | 无（内存状态） | 粘贴后输入非可打印字符时设为 false，组件 unmount 时释放 | N/A（ref 随组件 unmount 自动 GC） |
+| `currentIDESearch: AbortController|null` | ide.ts (顶层) | `findAvailableIDE()` 被调用时 `new AbortController()` | 全局单例，新调用覆盖旧的 | 无（内存状态） | 新调用时对旧的调用 `abort()`，30s 超时后自动失效 | `abort()` 停止 poll 循环，signal 触发 sleep 中断 |
+| `altScreenActive: boolean` | Ink 实例 | 初始 false，`enterAlternateScreen()` 设为 true | 全局单例 | 无（内存状态） | `exitAlternateScreen()` 设为 false，SIGCONT 时重置 | unmount 时调用 `exitAlternateScreen()` 清理终端模式 |
+| `logUpdate.previousOutput: VirtualScreen` | LogUpdate 实例 | `LogUpdate.render()` 首次调用时构建 | LogUpdate 私有，跨帧复用 | 无（内存状态） | `logUpdate.reset()` 清空为 null，SIGCONT 时重置 | 随 LogUpdate 对象一起 GC |
+
+**生命周期证据**: `src/ink/ink.tsx:268-273` (frame management), `src/ink/screen.ts:366-544` (Screen allocation), `src/ink/node-cache.ts` (node cache), `src/ink/parse-keypress.ts:212-302` (KeyParseState), `src/utils/ide.ts:626-657` (currentIDESearch)
+
+---
+
 ## 5. 失败语义与工程取舍
 
 ### 失败表

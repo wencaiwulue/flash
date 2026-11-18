@@ -1423,6 +1423,367 @@ Viewing agent？
     └─ 否 → onSubmitProp()
 ```
 
+---
+
+### 4.10 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        User Interface (Ink Rendered)                        │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │    PromptInput Component (Main Container)                          │  │
+│  │  ┌─────────────────────────────────────────────────────────────────┐ │  │
+│  │  │ TextInput / VimTextInput (Editor View)                   │ │  │
+│  │  │ • Cursor display, line rendering                      │ │  │
+│  │  │ • Ghost text (inline suggestions)                   │ │  │
+│  │  └─────────────────────────────────────────────────────────────────┘ │  │
+│  │  ┌─────────────────────────────────────────────────────────────────┐ │  │
+│  │  │ Typeahead Suggestions (Dropdown)                         │ │  │
+│  │  │ • Command suggestions (/...)                              │ │  │
+│  │  │ • File/directory suggestions (@...)                   │ │  │
+│  │  │ • Agent/Slack suggestions (@... / #...)             │ │  │
+│  │  └─────────────────────────────────────────────────────────────────┘ │  │
+│  │  ┌─────────────────────────────────────────────────────────────────┐ │  │
+│  │  │ Footer Navigation Pills (Bottom Bar)                        │ │  │
+│  │  └─────────────────────────────────────────────────────────────────┘ │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                     │
+                                     ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      Hooks Layer (State & Logic)                           │
+│  ┌─────────────────────────┐  ┌─────────────────────────┐  ┌────────────────┐  │
+│  │  useTextInput         │  │  useVimInput          │  │  useTypeahead  │  │
+│  │  • Cursor state      │  │  • VimMode state     │  │  • Suggestions │  │
+│  │  • Kill ring        │  │  • VimCommand state  │  │  • Ghost text │  │
+│  │  • Editing ops      │  │  • State machine     │  │  • Debounced    │  │
+│  └─────────────────────────┘  └─────────────────────────┘  └────────────────┘  │
+│  ┌─────────────────────────┐  ┌─────────────────────────┐  ┌────────────────┐  │
+│  │ useArrowKeyHistory     │  │  useHistorySearch     │  │ useInputBuffer │  │
+│  │  • historyIndex        │  │  • search mode       │  │  • undo buffer │  │
+│  │  • lastShownEntry      │  │  • search results    │  │  • debounce    │  │
+│  └─────────────────────────┘  └─────────────────────────┘  └────────────────┘  │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │ useKeybindings Hook + KeybindingContext Provider                  │ │  │
+│  │  • activeContexts: Set<KeybindingContextName>                │ │  │
+│  │  • handlerRegistry: Map<ActionName, Handler[]>               │ │  │
+│  │  • pendingChord: ParsedKeystroke[]|null                   │ │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │ usePromptSuggestion (Speculative Execution)                  │ │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                     │
+                                     ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      Core Logic Layer (Pure Functions)                      │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │ src/utils/Cursor.ts                                             │ │  │
+│  │  • Cursor class: UTF-16 offset, MeasuredText              │ │  │
+│  │  • left()/right()/up()/down()/insert()/delete()          │ │  │
+│  │  • findCharacter() (Vim f/t/F/T)                           │ │  │
+│  │  • render(): string with cursor position                  │ │  │
+│  │  • Kill ring (global): killRing[] array, killRingIndex    │ │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │ src/vim/: Vim State Machine & Operations                      │ │  │
+│  │  • transitions.ts: VimCommand transition()            │ │  │
+│  │  • operators.ts: delete()/change()/yank()              │ │  │
+│  │  • motions.ts: wordLeft()/wordRight()/...            │ │  │
+│  │  • textObjects.ts: innerWord()/aWord()/...          │ │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │ src/keybindings/: Key Resolution System                     │ │  │
+│  │  • resolver.ts: resolveKeyWithChordState()          │ │  │
+│  │  • match.ts: matchKey() vs bindings                      │ │  │
+│  │  • parser.ts: parseKeystroke() (ESC [1;31A → ...)        │ │  │
+│  │  • defaultBindings.ts: built-in bindings               │ │  │
+│  │  • loadUserBindings.ts: ~/.claude/keybindings.json    │ │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │ src/utils/suggestions/: Completion Providers                │ │  │
+│  │  • commandSuggestions.ts: /... completion                │ │  │
+│  │  • directoryCompletion.ts: @path/... completion          │ │  │
+│  │  • fileSuggestions.ts: @file fuzzy search              │ │  │
+│  │  • shellHistoryCompletion.ts: bash history              │ │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                     │
+                                     ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                   State & Storage (AppStateStore + Filesystem)              │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │ AppState (React Context)                                           │ │  │
+│  │  • promptSuggestion: PromptSuggestion|null (speculative)      │ │  │
+│  │  • speculation: Speculation|null (executing?)               │ │  │
+│  │  • isLoading: boolean (response generating?)              │ │  │
+│  │  • globalConfig: {diffTool, autoConnectIde, ...}          │ │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │ Component Local State (React useState/useRef)                   │ │  │
+│  │  • inputValue: string                                               │ │  │
+│  │  • cursorOffset: number                                             │ │  │
+│  │  • pastedContents: Record<number, PastedContent>          │ │  │
+│  │  • nextPasteIdRef: MutableRefObject<number>              │ │  │
+│  │  • pendingSpaceAfterPillRef: MutableRefObject<boolean>      │ │  │
+│  │  • vimMode: 'NORMAL'|'INSERT'                               │ │  │
+│  │  • vimStateRef: {command, register, lastFind, lastChange}  │ │  │
+│  │  • suggestionsState: {suggestions, selectedIndex, type}      │ │  │
+│  │  • historyIndex: number (useArrowKeyHistory)                  │ │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │ Filesystem Storage                                                │ │  │
+│  │  • ~/.claude/keybindings.json (user keybindings)                  │ │  │
+│  │  • ~/.claude/claude_config.json (global config)                 │ │  │
+│  │  • ~/.claude/history/ (conversation history)                   │ │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                     │
+                                     ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      Ink Platform Input Layer                            │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │ src/ink/use-input.ts + parse-keypress.ts                     │ │  │
+│  │  • stdin 'readable' → read chunk → parse to ParsedInput[]     │ │  │
+│  │  • KeyParseState: {mode, incomplete, pasteBuffer, _tokenizer} │ │  │
+│  │  • Tokenizer: tokenize chunk into text/sequence/paste-start/end │ │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**证据来源**: `src/components/PromptInput/PromptInput.tsx` (主组件), `src/hooks/useTextInput.ts` (编辑), `src/hooks/useVimInput.ts` (Vim), `src/hooks/useTypeahead.tsx` (补全), `src/keybindings/` (键解析), `src/utils/Cursor.ts` (光标核心)
+
+---
+
+### 4.11 关键流程与失败路径
+
+```text
+[主流程 1: 文本编辑输入]
+
+用户按键
+  │
+  ├─> Ink use-input → ParsedKey event
+  │       │
+  │       ▼
+  │  ┌─────────────────────────────────────────────────────────┐
+  │  │ Key Binding Resolution (Highest → Lowest Priority) │
+  │  │  1. Autocomplete Context (suggestions/ghostText)  │
+  │  │  2. Footer Context (pill selected)            │
+  │  │  3. Help Context (help open)                  │
+  │  │  4. Chat Context (default input)              │
+  │  │  5. Vim mode handling (NORMAL/INSERT check)       │
+  │  │  6. TextInput (basic editing)                  │
+  │  │  7. Global Context (fallthrough)              │
+  │  └─────────────────────────────────────────────────────────┘
+  │       │
+  │       ├─> 绑定匹配? → invokeAction(handler)
+  │       │       ├─ autocomplete:accept → applyGhostText()
+  │       │       ├─ autocomplete:next → selectedIndex++
+  │       │       ├─ history:previous → historyUp()
+  │       │       ├─ chat:submit → handleSubmit()
+  │       │       ├─ footer:open → openSelectedPill()
+  │       │       └─ ...and many others
+  │       │
+  │       └─> 无匹配 or text key → TextInput / VimInput处理
+  │
+  ├─> TextInput / useTextInput (非Vim模式 or Ctrl键)
+  │       │
+  │       ├─> Cursor.fromText(currentValue, columns, cursorOffset)
+  │       ├─> newCursor = cursor.insert(key) / cursor.backspace() / cursor.left() / ...
+  │       ├─> 如果是杀操作: pushToKillRing(killedText)
+  │       ├─> pushToInputBuffer(newCursor.text, newCursor.offset, pastedContents)
+  │       │   └─> debounce 1000ms: merge rapid inputs into single undo entry
+  │       ├─> setValue(newCursor.text) + setCursorOffset(newCursor.offset)
+  │       └─> trigger typeahead update (if input changed)
+  │
+  └─> VimInput / useVimInput (Vim模式且非Ctrl键)
+  │       │
+  │       ├─> vimMode is INSERT?
+  │       │   ├─ yes: delegate to useTextInput (like normal)
+  │       │   └─ no: process NORMAL mode command
+  │       │
+  │       └─> NORMAL mode:
+  │           ├─> call transition(vimStateRef.current.command, vimInputKey, ctx)
+  │           ├─> execute returned operation function (if any)
+  │           │   ├─ delete word, change line, yank, etc.
+  │           │   ├─ update Cursor, kill ring, etc.
+  │           │   └─ recordLastChange() for dot repeat
+  │           ├─> update vimStateRef.current.command for next transition
+  │           └─> set VimMode state for UI display
+
+
+[失败分支: 重复撤销合并]
+  ├─ 用户快速输入 "hello" (h e l l o)
+  ├─ pushToBuffer() 检测距离上次 push < 1000ms
+  ├─ clearTimeout(pendingPush) + set new timeout
+  ├─ 防抖窗口内只保留最终状态
+  └─ Ctrl+Z 一次性撤销整个 "hello"
+
+
+[主流程 2: 自动补全与幽灵文本]
+
+输入变化 (inputValue/cursorOffset改变)
+  │
+  ├─> useEffect in useTypeahead triggered
+  │       │
+  │       ├─> check dismissedForInputRef.current === input → skip (用户刚按Esc)
+  │       │
+  │       └─> 按优先级顺序检测补全类型:
+  │           ├─ 1. prompt mode && "/..." not at start → useMemo sync计算幽灵文本
+  │           ├─ 2. bash mode → getShellHistoryCompletion() async
+  │           ├─ 3. "@mention" (space+@\w*$) → agent/slack suggestions
+  │           ├─ 4. "/command" at start → command suggestions
+  │           ├─ 5. "@path-like" (@~/@./@../@abs) → directory completion
+  │           ├─ 6. "@..." otherwise → file fuzzy search (debounced 50ms)
+  │           └─ 7. bash mode → shell completion
+  │               └─> latestSearchTokenRef tracks token to discard stale results
+  │
+  ├─> suggestions available → setSuggestionsState() → dropdown renders
+  │       │
+  │       ├─> user presses Tab / Enter: applySuggestion()
+  │       │   ├─> 目录补全? → apply, keep menu open, display children
+  │       │   └─> 其他? → apply, may execute command
+  │       │
+  │       └─> user presses Up/Down: cycle selectedIndex
+  │
+  └─> ghostText available → render inline (dimmed)
+  │       │
+  │       ├─> user presses Tab: applyGhostText()
+  │       └─> user presses Right: apply only if input is empty
+  │
+  └─> user presses Esc:
+      ├─> close dropdown
+      ├─> clear ghostText
+      └─> set dismissedForInputRef.current = input (prevent immediate reappearance)
+
+
+[失败分支: 过期查询结果丢弃]
+  ├─ 用户输入 "@a" → search token = "a", query starts
+  ├─ 用户快速继续输入 "@ab" → search token = "ab", new query starts
+  ├─ 第一个查询 (token="a") returns later
+  ├─ compare to latestSearchTokenRef.current ("ab")
+  ├─ not equal → discard stale results without updating UI
+  └─ 只使用最新查询的结果
+
+
+[主流程 3: 提交流程]
+
+用户按 Enter
+  │
+  ├─> Autocomplete Context优先级检查
+  │       ├─> suggestions visible?
+  │       │   ├─ yes → 是目录补全? → apply, do NOT submit, continue showing children
+  │       │   └─ no → apply, do NOT submit
+  │       └─> ghostText present?
+  │           ├─ yes → apply, do NOT submit
+  │           └─ no → continue
+  │
+  ├─> Footer Context优先级检查
+  │       └─> footer pill selected?
+  │           ├─ yes → openSelectedPill(), do NOT submit
+  │           └─ no → continue
+  │
+  ├─> viewSelectionMode检查
+  │       └─> yes → do NOT submit
+  │
+  ├─> Prompt suggestion检查
+  │       ├─> speculation active (投机执行中)?
+  │       │   ├─ yes → acceptSpeculationAndSubmit() → 立即注入消息
+  │       │   └─ no → ghostText present? → apply, do NOT submit
+  │       └─ no → continue
+  │
+  ├─> @team DM检查
+  │       ├─ yes → sendDirectMessage(), do NOT enter main loop
+  │       └─ no → continue
+  │
+  ├─> Viewing agent检查
+  │       ├─ yes → onAgentSubmit() → route to active agent
+  │       └─ no → normal submit
+  │
+  └─> Normal submit path:
+      ├─ resolve all [Pasted Text #N]/[Image #N]/[...Truncated...] references
+      │   └─> lookup in pastedContents Record, build full message
+      ├─> onSubmitProp(fullMessage)
+      ├─> clear inputValue + reset cursorOffset to 0
+      ├─> add to history
+      ├─> clear undo/redo buffer (resetInputBuffer())
+      └─> focus back to input
+
+
+[失败分支: 投机执行中用户输入]
+  ├─ speculation活跃 (agent generating/sending)
+  ├─ 用户开始输入新内容
+  ├─ 立即 abortPromptSuggestion() + abortSpeculation()
+  ├─ 清除建议状态
+  └─ 用户输入正常处理，不阻塞
+
+
+[主流程 4: 粘贴处理]
+
+用户粘贴 (剪贴板检测)
+  │
+  ├─> getImageFromClipboard() 尝试 (平台特定)
+  │       ├─ 成功 → create [Image #N] reference
+  │       └─> store in pastedContents[N] = {type:'image', base64, ...}
+  │
+  ├─> 无图像 → get text from clipboard
+  │       │
+  │       ├─> text length >= PASTE_THRESHOLD (10000 chars)?
+  │       │   ├─ yes → truncate to [...Truncated #N +X lines...]
+  │       │   │   └─> store full text in pastedContents[N]
+  │       │   └─ no → use text as-is (short text)
+  │       │
+  │       ├─> 清理 ANSI 转义序列, 转换 tabs to spaces
+  │       │
+  │       └─> 空输入且粘贴内容以 "!"/"bash"开头?
+  │           ├─ yes → auto switch to bash mode
+  │           └─ no → keep current mode
+  │
+  ├─> insert reference/text at cursor position
+  │
+  ├─> set pendingSpaceAfterPillRef.current = true (if reference inserted)
+  │       └─> 下一可打印字符输入时自动插入空格: [Image #1]hello → [Image #1] hello
+  │
+  └─> pushToInputBuffer() (粘贴操作不防抖, always separate undo entry)
+
+
+[失败分支: 引用标签中间有光标]
+  ├─ user moves cursor into middle of "[Image #1]"
+  ├─ detect cursorOffset is inside reference tag
+  ├─ snap to nearest boundary (start or end of tag)
+  └─ cursor stays outside editable reference content
+```
+
+**证据来源**: `src/hooks/useTypeahead.tsx` (补全流程), `src/components/PromptInput/PromptInput.tsx` (提交流程), `src/components/PromptInput/inputPaste.ts` (粘贴处理), `src/hooks/useInputBuffer.ts` (撤销缓冲)
+
+---
+
+### 4.12 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| `Cursor` 实例 | useTextInput | `Cursor.fromText(text, columns, offset)` 创建 | 每次编辑新建，不可变实例 | 无 | Cursor是不可变的，每次操作返回新实例，旧实例GC | N/A |
+| `killRing: string[]` | 全局 (src/utils/Cursor.ts) | 模块加载时初始化为空数组 | 全局单例，所有输入框共享 | 无 | 无上限但会话间重置，进程退出时GC | N/A，杀环是全局状态但不持久化 |
+| `killRingIndex: number` | 全局 | 初始化为0 | 全局单例 | 无 | yank/pop时更新，新杀操作重置为末尾 | N/A |
+| `lastActionWasKill: boolean` | 全局 | 初始化为false | 全局单例 | 无 | 非杀操作时设为false，杀操作时设为true | N/A |
+| `pastedContents: Record<number, PastedContent>` | PromptInput组件 | 初始化为 `{}` | 组件实例私有，隔离 | HistoryEntry中包含提交时的完整内容 | 提交后保留在内存供可能的编辑，但对话轮次间重建 | 删除引用时不立即清理（内存安全，引用ID唯一） |
+| `nextPasteIdRef: MutableRefObject<number>` | PromptInput组件 | 惰性初始化: 首次粘贴时扫描现有引用找最大N+1 | 组件实例私有 | 无 | 组件unmount时GC | N/A |
+| `pendingSpaceAfterPillRef: MutableRefObject<boolean>` | PromptInput组件 | 初始化为`{current: false}` | 组件实例私有 | 无 | 粘贴引用后置为true，下一可打印字符输入时加空格后重置为false，其他输入（箭头/退格/换行）直接重置 | N/A |
+| `useInputBuffer state: {buffer, currentIndex, pendingPush, lastPushTime}` | useInputBuffer Hook | Hook初始化时: buffer=[], currentIndex=-1, pendingPush=null, lastPushTime=0 | Hook实例私有，每个输入框独立 | 无 | 提交后调用 `resetInputBuffer()` → buffer清空，currentIndex重置为-1 | pendingPush timeout可以被clearTimeout取消（但用户看不到，内部管理） |
+| `suggestionsState: {suggestions, selectedIndex, type}` | useTypeahead Hook | 初始化为 `{suggestions: [], selectedIndex: 0, type: 'none'}` | Hook实例私有 | 无 | 用户按Esc时清除，或输入匹配新类型时更新 | debounced查询可以被新输入cancel（通过latestSearchTokenRef丢弃旧结果） |
+| `dismissedForInputRef: MutableRefObject<string>` | useTypeahead Hook | 初始化为`{current: ''}` | Hook实例私有 | 无 | 用户按Esc时设置为当前input，下次输入变化时检查跳过，新输入变化后失效 | N/A |
+| `latestSearchTokenRef: MutableRefObject<string>` | useTypeahead Hook | 初始化为`{current: ''}` | Hook实例私有 | 无 | 每次新查询时更新，用于比较丢弃过期结果 | N/A |
+| `historyIndex: number` | useArrowKeyHistory Hook | 初始化为0 | Hook实例私有 | 无 | 提交后或用户编辑草稿时重置为0 | N/A |
+| `lastShownHistoryEntry: {text, pastedContents}` | useArrowKeyHistory Hook | 初始化为null | Hook实例私有 | 无 | 用户开始编辑草稿时重置为null | N/A |
+| `vimMode: 'NORMAL'|'INSERT'` | useVimInput Hook | 初始化为'INSERT' | Hook实例私有 | 无 | 用户按Esc (INSERT→NORMAL)或i/a/o/A/O/I (NORMAL→INSERT)时切换 | N/A |
+| `vimStateRef: {command, register, lastFind, lastChange}` | useVimInput Hook | 初始化为`{command: {type:'idle'}, register: '"', lastFind: null, lastChange: null}` | Hook实例私有，ref对象避免React state延迟 | 无 | Hook unmount时GC，状态转换时自动更新 | N/A，状态机纯函数，无显式取消 |
+| `KeybindingContext state: {activeContexts, handlerRegistry, pendingChord}` | KeybindingContext Provider | 初始化为`{activeContexts: new Set(), handlerRegistry: new Map(), pendingChord: null}` | 全局单例（Provider通常near root） | 无 | pendingChord超时或用户按非和弦键时重置为null，Context unregister时从activeContexts移除 | 和弦取消时pendingChord设为null |
+| `pendingChord: ParsedKeystroke[]|null` | KeybindingContext | 初始化为null | 全局单例 | 无 | 和弦完成或取消时重置为null | N/A |
+
+**生命周期证据**: `src/utils/Cursor.ts` (Cursor+killRing), `src/hooks/useInputBuffer.ts` (undo buffer), `src/hooks/useTypeahead.tsx` (suggestion refs), `src/hooks/useVimInput.ts` (Vim state), `src/keybindings/KeybindingContext.tsx` (key context)
+
+---
+
 ## 5. 失败语义与工程取舍
 
 ### 终端兼容性处理

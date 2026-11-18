@@ -73,18 +73,77 @@ jobs:
           bun-version: 1.3.14
       - name: Install dependencies
         run: bun install --frozen-lockfile
+      - name: Install Chrome if missing (best effort)
+        if: runner.os == 'Windows' || matrix.target == 'bun-linux-arm64'
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            CHROME="/c/Program Files/Google/Chrome/Application/chrome.exe"
+            if [[ ! -f "$CHROME" ]]; then
+              echo "Chrome missing; installing via winget (ARM64 runners get the native ARM64 build)"
+              winget install --id Google.Chrome --exact --silent \
+                --accept-package-agreements --accept-source-agreements \
+                || echo "winget install failed; the smoke will skip"
+            else
+              echo "Chrome already present"
+            fi
+          else
+            if ! command -v google-chrome >/dev/null 2>&1 && ! [[ -f /opt/google/chrome/chrome ]]; then
+              echo "Chrome missing on linux-arm64 (no official Google build); installing Chromium via playwright and symlinking"
+              bun x playwright install --with-deps chromium >/dev/null 2>&1 || true
+              CHROMIUM_BIN="$(find ~/.cache/ms-playwright -path '*chromium*' -name chrome -type f 2>/dev/null | head -1)"
+              echo "resolved chromium binary: ${CHROMIUM_BIN:-<none>}"
+              if [[ -n "$CHROMIUM_BIN" ]]; then
+                # Playwright's chrome channel probes exactly /opt/google/chrome/chrome
+                # on Linux — /usr/bin symlinks are never consulted.
+                sudo mkdir -p /opt/google/chrome
+                sudo ln -sf "$CHROMIUM_BIN" /opt/google/chrome/chrome
+                ls -la /opt/google/chrome/chrome
+                "$CHROMIUM_BIN" --version 2>&1 | head -1
+              else
+                echo "playwright chromium download failed; the smoke will skip"
+              fi
+            else
+              echo "Chrome already present"
+            fi
+          fi
       - name: Pre-warm Chrome for the smoke (Windows Defender cold-start)
         if: runner.os == 'Windows'
         shell: bash
         run: |
           CHROME="/c/Program Files/Google/Chrome/Application/chrome.exe"
+          # Chrome.exe is a GUI-subsystem binary: bare `--version` can hang
+          # the step, and plain `timeout` resolves to Windows' pause utility
+          # in some shells. Always use the Git Bash GNU timeout by path.
+          T=/usr/bin/timeout
+          [[ -x $T ]] || T=""
+          # Diagnose the runner's Chrome remote-debugging posture: Chrome's
+          # UserDataDir enterprise policy overrides the --user-data-dir
+          # command line, which would make --remote-debugging-pipe fail with
+          # "requires a non-default data directory".
+          $T 20 "$CHROME" --version || true
+          (reg query "HKLM\\SOFTWARE\\Policies\\Google\\Chrome" /v UserDataDir 2>/dev/null || echo "no HKLM UserDataDir policy")
+          (reg query "HKCU\\SOFTWARE\\Policies\\Google\\Chrome" /v UserDataDir 2>/dev/null || echo "no HKCU UserDataDir policy")
+          (reg query "HKLM\\SOFTWARE\\Policies\\Google\\Chrome" 2>/dev/null | head -30 || true)
           if [[ -f "$CHROME" ]]; then
             # Fresh Windows VMs re-scan every Chrome DLL on first read under
             # Defender, which makes the smoke's real-browser launch exceed the
-            # MCP request timeout. Two throwaway headless launches prime the
-            # scan cache so the later smoke e2e runs at normal speed.
-            "$CHROME" --headless --disable-gpu --dump-dom about:blank >/dev/null 2>&1 || true
-            "$CHROME" --headless --disable-gpu --dump-dom about:blank >/dev/null 2>&1 || true
+            # MCP request timeout. Warm with throwaway headless launches until
+            # one finishes in <=5s (scan cache primed), capped at 6 rounds —
+            # x64 Chrome under ARM64 emulation may never get there, which is
+            # fine: the smoke then skips as perf-timeout as before.
+            for i in 1 2 3 4 5 6; do
+              START=$SECONDS
+              # Per-launch timeout: a hung headless launch (seen on runner
+              # VMs) must never stall the release build.
+              $T 60 "$CHROME" --headless --disable-gpu --dump-dom about:blank >/dev/null 2>&1 || true
+              ELAPSED=$((SECONDS - START))
+              echo "warm launch $i took ${ELAPSED}s"
+              if [[ $ELAPSED -le 5 ]]; then
+                echo "Chrome warm"
+                break
+              fi
+            done
           else
             echo "Chrome not preinstalled on this runner; skipping pre-warm"
           fi

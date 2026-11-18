@@ -171,6 +171,36 @@ Shell tools（Bash 和 PowerShell）需要解决的核心问题是如何在保�
 - 不管理全局 shell 配置：用户 `.bashrc`/`.zshrc` 不在设计范围内
 - 不吞并通用 permissions 域：权限裁决核心逻辑由 permissions 模块拥有
 
+## 3a. @anthropic-ai/sandbox-runtime 外部行为契约与未验证组合（B2-shell-tools-03）
+
+### 沙箱运行时外部行为契约
+
+| 功能 | 契约行为 | 配置来源 | 验证状态 | 测试覆盖 |
+|-----|---------|---------|---------|---------|
+| 文件系统权限 | - `allowWrite` 列表中的路径允许写入<br>- `denyWrite` 列表中的路径拒绝写入<br>- 总是允许 Claude 临时目录<br>- 总是拒绝 `.claude/skills` 写入<br>- Git 裸仓库路径（`.git`/`objects`/`refs`）如果存在则拒绝写入，不存在则事后 scrub | `convertToSandboxRuntimeConfig()` 从 FileEdit/FileRead 权限规则生成 | 部分验证（仅手动） | 无直接沙箱测试，依赖集成测试 |
+| 网络权限 | - `allowManagedDomainsOnly` 时仅允许 policy 中的域名<br>- 域名支持通配符前缀（如 `*.example.com`）<br>- 默认拒绝所有网络 | 从 WebFetch 权限规则生成 | 部分验证（仅手动） | 无直接沙箱测试，依赖集成测试 |
+| 命令执行包装 | - 沙箱包装命令字符串，不改变参数语义<br>- `bwrap` 在 Linux/macOS（无 Windows 支持）<br>- POSIX 使用 `O_APPEND` 原子写入输出文件；Windows 使用普通 `w` 模式避免 MSYS2 问题 | `SandboxManager.wrapWithSandbox()` | 部分验证（仅手动） | 无直接沙箱测试，依赖集成测试 |
+| Git 裸仓库防护 | - 检测到 `HEAD`/`objects`/`refs` 路径存在时拒绝写入<br>- 如果不存在但命令可能创建，事后 `scrubBareGitRepoFiles()` 清理 | `sandbox-adapter.ts` 路径检查与 scrub | 部分验证（仅手动） | 无直接沙箱测试，依赖集成测试 |
+| 错误报告 | - 沙箱违规会输出到 stderr<br>- `annotateStderrWithSandboxFailures()` 会将违规注释到工具结果 stderr<br>- 违规不会导致工具失败（仅注释） | `SandboxManager.annotateStderrWithSandboxFailures()` | 部分验证（仅手动） | 无直接沙箱测试，依赖集成测试 |
+
+### 未验证的沙箱组合与边界情况
+
+| 组合 | 风险 | 为什么未验证 |
+|-----|-----|-------------|
+| 沙箱 + `command1 && command2` 复合命令 | 第二个命令可能绕过沙箱限制 | 集成测试未覆盖此组合 |
+| 沙箱 + `sudo` / `doas` / 其他提权命令 | 可能突破沙箱隔离 | 显式禁止但无测试验证 |
+| 沙箱 + 进程间通信（Unix socket/共享内存） | 可能绕过文件系统/网络限制 | 未测试此场景 |
+| 沙箱 + Git 工作树（非裸仓库） + Git 钩子 | Git 钩子可能执行非沙箱命令 | 集成测试未覆盖 Git 钩子场景 |
+| 沙箱 + 非常长的命令行（>100KB） | 可能触发系统限制或包装器 bug | 未测试此边界情况 |
+| 沙箱 + 嵌套沙箱（命令内部再次调用沙箱） | 可能逃逸或崩溃 | `enableWeakerNestedSandbox` 选项但无测试验证 |
+| 沙箱 + macOS 签名/公证二进制 | 可能被系统拒绝 | 未测试此场景 |
+| 沙箱 + Linux AppArmor/SELinux 强制访问控制 | 可能与 bwrap 冲突 | 未测试此场景 |
+
+**@anthropic-ai/sandbox-runtime 外部依赖说明：**
+- 沙箱运行时是外部 npm 包，其内部实现细节不属于本 spec
+- 本 spec 仅描述 `src/utils/sandbox/sandbox-adapter.ts` 如何包装和配置该包
+- 不声明与上游沙箱运行时的私有 API 或行为兼容
+
 ## 4. 架构、模块与数据流
 
 ### 4.1 入口与公共契约
@@ -836,6 +866,166 @@ bashToolHasPermission 被调用
 **特有细节:**
 - CLI独有，SDK无
 - 与后台任务共享 LocalShellTask 基础设施
+
+### 4.10 跨子系统依赖
+
+| 依赖 | 用途 | 本 spec 中的使用点 | 负责的 spec |
+|---|---|---|---|
+| permissions | 通用权限规则解析、存储、应用 | bashToolHasPermission 调用 | permissions 域 |
+| query-core | 工具调用的生命周期 | 工具执行点交互 | query-core spec |
+| file-history | sed 编辑模拟依赖文件历史 | fileHistoryTrackEdit | file-history spec |
+| mcp | VS Code 通知由 MCP 处理 | LSP 通知 | mcp spec |
+
+### 4.11 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      ToolUseContext (工具执行上下文)                          │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │ readFileState: Map (来自 file-tools)                                  │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+└───────────────────────────────────┬─────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      Shell Tools (本 spec)                                   │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐             │
+│  │ BashTool        │  │ PowerShellTool  │  │ TerminalCapture │             │
+│  │ (主入口)        │  │ (Windows-only)  │  │ (CLI-only)      │             │
+│  └────────┬────────┘  └────────┬────────┘  └────────┬────────┘             │
+│           │                    │                    │                       │
+│           └────────────────────┼────────────────────┘                       │
+│                                ▼                                            │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │ ShellProvider (抽象)                                                    │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐             │
+│  │ Shell.ts        │  │ ShellCommand    │  │ TaskOutput      │             │
+│  │ (执行/IO)       │  │ (进程管理)      │  │ (输出处理)      │             │
+│  └─────────────────┘  └────────┬────────┘  └─────────────────┘             │
+└───────────────────────────────────┼─────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    External Dependencies / Services                         │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐             │
+│  │ SandboxManager  │  │ LocalShellTask  │  │ bashClassifier  │             │
+│  │ (沙箱包装)      │  │ (后台任务)      │  │ (权限分类)      │             │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘             │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐             │
+│  │ file-history    │  │ permissions     │  │ mcp (VS Code)   │             │
+│  │ (快照/rewind)   │  │ (权限裁决)      │  │                 │             │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**边界说明：**
+- 沙箱仅在 macOS/Linux/WSL 支持，Windows 无沙箱
+- 后台任务状态管理在 LocalShellTask，与 BashTool 共享
+- 权限分类由 bashClassifier 处理，建议权，最终裁决在 permissions 域
+
+### 4.12 关键流程与失败路径
+
+#### 完整前台命令执行流程 (主路径)
+```text
+模型调用 BashTool({command, timeout, description, run_in_background})
+│
+▼
+输入验证
+├─ validateInput() (简单结构检查)
+└─ bashToolHasPermission() 开始权限检查
+    ├─ 精确规则匹配
+    ├─ 前缀/通配符规则匹配
+    ├─ parseCommandRaw() 尝试 tree-sitter 解析
+    │   ├─ parseForSecurityFromAst() 检查危险结构
+    │   └─ 失败 → parseUnavailable，fallback 到 regex
+    ├─ 检查沙箱 auto-allow (若启用)
+    ├─ 并行调用 classifyBashCommand() (speculative)
+    ├─ 检查命令操作符 (管道/&&/||/...)
+    ├─ 子命令权限检查 (最多 50 个，超限 ask)
+    └─ 返回 permission decision (allow/deny/ask/passthrough)
+
+▼ (权限允许)
+
+沙箱决策
+├─ shouldUseSandbox()
+│   ├─ 平台支持? (macOS/Linux/WSL)
+│   ├─ 排除命令? (excludedCommands)
+│   └─ dangerouslyDisableSandbox?
+├─ 是 → SandboxManager.wrapWithSandbox()
+│   ├─ convertToSandboxRuntimeConfig() 从权限规则生成
+│   ├─ allowWrite/denyWrite 列表
+│   ├─ network 配置 (allowManagedDomainsOnly)
+│   └─ Git 裸仓库防护检查 (HEAD/objects/refs)
+└─ 否 → 直接执行
+
+▼
+
+Shell.ts exec()
+├─ ShellProvider.buildExecCommand()
+│   ├─ 设置环境变量
+│   ├─ sourcing 快照
+│   ├─ 禁用 extglob
+│   └─ eval 包装命令
+├─ 创建 TaskOutput (可选写文件)
+├─ spawn 子进程
+│   ├─ stdout/stderr 重定向到 TaskOutput
+│   ├─ O_APPEND on POSIX, 'w' on Windows
+│   └─ detached? (provider.detached)
+├─ 设置超时定时器 (unref)
+│   ├─ default: 30min
+│   ├─ 用户自定义: timeout 参数
+│   └─ 最大: getMaxTimeoutMs()
+├─ wrapSpawn() 包装
+│   ├─ AbortSignal 监听
+│   ├─ exit/error 事件处理
+│   └─ StreamWrapper (pipe 模式)
+└─ 等待完成或超时/取消
+
+▼
+
+输出处理
+├─ stdout/stderr → EndTruncatingAccumulator (保留头尾)
+├─ 检查图片输出 → resizeShellImageOutput()
+├─ 大输出 (>64KB) → 持久化到临时文件
+└─ 返回 tool result
+
+▼ (前台超时自动后台化, assistant 模式)
+├─ ASSISTANT_BLOCKING_BUDGET_MS (15s) 到期
+├─ backgroundExistingForegroundTask()
+├─ 立即返回 backgroundTaskId
+└─ 后台继续执行，polling 输出
+```
+
+#### 失败路径：命令超时
+- **触发条件**：超时定时器到期
+- **处理**：
+  - 前台且 onTimeout callback → 后台化 (assistant 模式)
+  - 否则 → SIGTERM → 等待 → SIGKILL
+- **结果**：interrupted=true，保留已输出内容
+
+#### 失败路径：用户取消
+- **触发条件**：AbortSignal 'abort' 事件
+- **处理**：
+  - reason === 'interrupt' → 后台化 (不 kill)
+  - 其他 reason → kill() 进程组
+- **结果**：interrupted=true
+
+### 4.13 核心对象生命周期表
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| ShellCommand | Shell.ts | exec() 或 wrapSpawn() 创建 | 独立，单次执行 | 不持久化 | 完成/超时/取消后 status 变为 'completed'/'killed' | kill() 终止进程组，finally 清理监听器和定时器 |
+| TaskOutput | Shell.ts / LocalShellTask | 构造函数创建，可选文件路径 | 独立，单次执行 | 输出文件持久化到临时目录 | 进程结束后停止写入 | 无取消操作，文件保留供读取 |
+| LocalShellTaskState | LocalShellTask | spawnShellTask() 初始化 | 独立，单个后台任务 | 不持久化 (状态内存) | 完成/停止后状态更新为 'completed'/'stopped' | killTask() 终止进程，保留输出文件 |
+| SandboxManager | 全局单例 | 首次 wrapWithSandbox() 初始化 | 全局共享 | 不持久化 | 无重置 | cleanupAfterCommand() 清理 bwrap stub，scrubBareGitRepoFiles() |
+| EndTruncatingAccumulator | Shell.ts | 构造函数创建 (max size) | 独立，单次执行 | 不持久化 | 完成后内容用于 tool result | 无取消操作 |
+
+**生命周期证据：**
+- ShellCommand: `src/utils/ShellCommand.ts:1-400`
+- TaskOutput: `src/utils/task/TaskOutput.ts:1-200`
+- LocalShellTask: `src/tasks/LocalShellTask/LocalShellTask.ts:1-400`
+- SandboxManager: `src/utils/sandbox/sandbox-adapter.ts:1-400`
 
 ## 5. 失败语义与工程取舍
 

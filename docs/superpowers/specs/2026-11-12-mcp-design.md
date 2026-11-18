@@ -1206,6 +1206,147 @@ server.onclose = () => {
 - stdio escalator测试: 验证信号序列与超时
 - onclose缓存清除测试: 验证重连时新状态获取
 
+### 4.9 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    MCP 配置层（多源聚合）                                    │
+│  ┌──────────────────────────────────────────────────────────────────────┐ │
+│  │ Enterprise Config (独占) → Local → Project → User → Plugin →       │ │
+│  │ ClaudeAI (优先级排序)                                                │ │
+│  │ dedupPluginMcpServers / dedupClaudeAiMcpServers (内容签名去重)      │ │
+│  └──────────────────────────────────────────────────────────────────────┘ │
+└───────────────────────────────────┬──────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                连接管理器（memoize + LRU + 批处理）                         │
+│  ┌──────────────────────────────────────────────────────────────────────┐ │
+│  │ connectToServer: memoize (key: serverCacheKey)                     │ │
+│  │ fetchToolsForClient: memoizeWithLRU (size: 20)                    │ │
+│  │ getMcpToolsCommandsAndResources: pMap调度                        │ │
+│  │   ├─ 本地 (stdio/sdk): 3并发                                      │ │
+│  │   └─ 远程 (sse/http/ws/...): 20并发                               │ │
+│  └──────────────────────────────────────────────────────────────────────┘ │
+└───────────────────────────────────┬──────────────────────────────────────────┘
+                                    │
+                    ┌───────────────┼───────────────┐
+                    ▼               ▼               ▼
+┌───────────────────┐ ┌───────────────────┐ ┌───────────────────┐
+│ stdio 传输        │ │ sse/http/ws 传输 │ │ SDK in-process    │
+│ 子进程 + stderr   │ │ ClaudeAuthProvider │ │ SdkControlClient  │
+│ 捕获 (64MB 上限)  │ │ OAuth 2.0 / XAA   │ │ Transport         │
+│ SIGINT→SIGTERM→   │ │ token 缓存 +      │ │ (无网络/子进程)   │
+│ SIGKILL escalator │ │ 跨进程锁刷新      │ │                   │
+└───────────────────┘ └───────────────────┘ └───────────────────┘
+                    │
+                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│              能力聚合层（工具/资源/Prompts）                               │
+│  ┌──────────────────────────────────────────────────────────────────────┐ │
+│  │ 工具名称规范化: mcp__${server}__${tool} (SDK可选跳过前缀)            │ │
+│  │ 工具描述截断: 2048字符上限                                            │ │
+│  │ ListMcpResourcesTool/ReadMcpResourceTool去重                        │ │
+│  └──────────────────────────────────────────────────────────────────────┘ │
+└───────────────────────────────────┬──────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│              认证缓存层（needs-auth 状态 15分钟 TTL）                       │
+│  ┌──────────────────────────────────────────────────────────────────────┐ │
+│  │ ~/.claude-code/mcp-needs-auth-cache.json (文件持久化)                │ │
+│  │ McpAuthTool 伪工具（替代真实工具）                                   │ │
+│  └──────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**边界说明：**
+- 企业配置独占：存在企业配置时忽略其他来源
+- 去重基于内容签名：不是基于名称
+- memoize缓存LRU 20：防止内存无限增长
+- needs-auth缓存15分钟：避免重复失败请求
+
+### 4.10 关键流程与失败路径
+
+#### 完整启动与连接流程（主路径）
+```text
+Claude Code 启动
+  │
+  ▼
+getAllMcpConfigs()
+  ├─ 检查企业配置（存在则独占）
+  ├─ 加载 user/project/local/plugin/claudeai 配置
+  ├─ dedupPluginMcpServers/dedupClaudeAiMcpServers
+  └─ 应用企业策略过滤
+  │
+  ▼
+getMcpToolsCommandsAndResources(onConnectionAttempt)
+  │
+  ▼
+遍历服务器（pMap分池并发）
+  │
+  ├─ disabled 服务器 → 直接通知，不连接
+  │
+  ├─ needs-auth 缓存命中（15分钟TTL内）→ 跳过连接，创建McpAuthTool
+  │
+  └─ 需要连接的服务器
+      │
+      ▼
+      connectToServer(name, config) [memoize]
+        ├─ type==='sdk' → 特殊处理，跳过connectToServer
+        ├─ 其他类型 → 创建对应 Transport
+        ├─ Client.connect(transport)
+        ├─ 设置 onerror/onclose 回调
+        └─ 初始化会话
+        │
+      ▼
+      fetchToolsForClient(client) [memoizeWithLRU, size=20]
+      fetchResourcesForClient(client) [memoizeWithLRU, size=20]
+      fetchCommandsForClient(client) [memoizeWithLRU, size=20]
+        │
+      ▼
+      名称规范化，工具描述截断（2048字符）
+        │
+      ▼
+      onConnectionAttempt({client, tools, commands, resources})
+  │
+  ▼
+IDE工具过滤
+  │
+  ▼
+ListMcpResourcesTool/ReadMcpResourceTool去重
+  │
+  ▼
+emit tengu_mcp_tools_commands_loaded
+```
+
+**关键失败分支与恢复路径：**
+- 连接超时（30秒，可配置MCP_TIMEOUT）：标记为failed，不影响其他服务器
+- 认证失败（401）：标记为needs-auth，缓存15分钟，提供McpAuthTool
+- ContentModified错误（-32801）：指数退避重试最多3次（500ms→1s→2s）
+- Session expired（HTTP 404 + JSON-RPC -32001）：清除缓存，可重试一次
+- 服务器崩溃：onclose回调清除memoize缓存，下次操作自动重连
+- stdio清理失败：escalator渐进式（SIGINT→100ms→SIGTERM→500ms→SIGKILL）
+- needs-auth缓存过期：下次操作自动重新连接
+
+### 4.11 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| `connectToServer` memoize缓存 | `src/services/mcp/client.ts` | 首次连接时创建 | 按serverCacheKey隔离 | 不持久化 | onclose回调调用cache.clear(key) | 无（自动清理） |
+| `fetchToolsForClient` LRU缓存 | `src/services/mcp/client.ts` | 首次fetch时创建 | 按client隔离 | 不持久化 | LRU自动淘汰（size=20），onclose后下次重连刷新 | 无（自动淘汰） |
+| `needs-auth` 缓存 | `src/services/mcp/client.ts` | 认证失败时创建 | 按serverKey隔离 | 文件持久化（~/.claude-code/mcp-needs-auth-cache.json） | TTL 15分钟过期，手动重连清除 | `clearMcpAuthCache()` 清除所有 |
+| `ClaudeAuthProvider` 实例 | `src/services/mcp/auth.ts` | OAuth流程时创建 | 每个服务器实例隔离 | token持久化（keychain） | invalidateCredentials(scope)可细粒度清除 | 无（自动清理） |
+| stdio子进程 | `@modelcontextprotocol/sdk` | connect时spawn | 每个服务器实例隔离 | 不持久化 | onexit事件触发 | cleanupStdioServer（SIGINT→100ms→SIGTERM→500ms→SIGKILL） |
+| SDK in-process Transport | `src/services/mcp/client.ts` | SDK服务器连接时创建 | 每个SDK服务器实例隔离 | 不持久化 | 无（in-process无需清理） | 无操作 |
+| McpAuthTool伪工具 | `src/tools/McpAuthTool/McpAuthTool.ts` | needs-auth状态时创建 | 每个服务器实例隔离 | 不持久化 | 重连成功后被真实工具替换 | 无（自动替换） |
+
+**生命周期证据：**
+- `src/services/mcp/client.ts`：memoize缓存、LRU缓存、onclose回调、needs-auth缓存
+- `src/services/mcp/auth.ts`：ClaudeAuthProvider、token刷新、跨进程锁
+- `src/services/mcp/normalization.ts`：名称规范化、工具前缀
+- `src/tools/McpAuthTool/McpAuthTool.ts`：伪工具创建与替换
+
 ## 5. 失败语义与工程取舍
 
 ### 5.1 连接失败语义

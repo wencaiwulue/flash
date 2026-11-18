@@ -12,7 +12,8 @@ groups:
   - id: tests
     kind: test
     section: 4
-    summary: 插件绊线/单元测试与 pty 交互启动冒烟
+    summary: 插件绊线/单元测试、pty 交互启动冒烟与 smoke 结果分类
     files:
       - tests/playwrightInlinePlugin.test.ts
       - tests/interactiveStartup.test.ts
+      - tests/toolSmokeClassify.test.ts

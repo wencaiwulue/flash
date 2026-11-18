@@ -692,6 +692,167 @@ export async function call(
 - 依赖：`RemoteEnvironmentDialog` 组件
 - 测试覆盖：无直接测试
 
+---
+
+### 4.8 架构与资源边界图
+
+```text
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                          User Commands & UI                                   │
+│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────────────┐  │
+│  │   /assistant     │  │  /remote-setup   │  │      /remote-env         │  │
+│  │   sessions       │  │                  │  │                          │  │
+│  └──────────────────┘  └──────────────────┘  └──────────────────────────┘  │
+└───────────────────────────────────────────────────────────────────────────────┘
+               │                        │                          │
+               ▼                        ▼                          ▼
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                    UI Components & Hooks Layer                                │
+│  ┌───────────────────────┐  ┌─────────────────────────────────────────────┐ │
+│  │ AssistantSessionChooser│  │         useAssistantHistory               │ │
+│  │ • Displays session list│  │ • Loads history with pagination          │ │
+│  │ • Handles user choice  │  │ • Manages scroll anchoring               │ │
+│  └───────────────────────┘  │ • Manages sentinel messages               │ │
+│               │             └─────────────────────────────────────────────┘ │
+└───────────────┼───────────────────────────────────────────────────────────────┘
+                │
+                ▼
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                        API Layer                                             │
+│  ┌───────────────────────────────┐  ┌─────────────────────────────────────┐  │
+│  │  sessionDiscovery             │  │     sessionHistory                  │  │
+│  │  • discoverAssistantSessions()│  │  • fetchLatestEvents()             │  │
+│  │  • Normalizes API response    │  │  • fetchOlderEvents()              │  │
+│  │    format                     │  │  • createHistoryAuthCtx()          │  │
+│  └───────────────────────────────┘  └─────────────────────────────────────┘  │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │  remote-setup API                                                      │  │
+│  │  • RedactedGithubToken class                                         │  │
+│  │  • importGithubToken()                                                │  │
+│  │  • createDefaultEnvironment()                                        │  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────────────────────────────────────────────────────┘
+                │
+                ▼
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                   Remote Session Layer                                      │
+│  ┌─────────────────────────────────────────────────────────────────────────┐  │
+│  │  RemoteSessionManager                                                 │  │
+│  │  • Manages WebSocket connection                                       │  │
+│  │  • Handles messages/control requests/permissions                     │  │
+│  │  • viewerOnly mode support                                            │  │
+│  │  ┌─────────────────────────────────────────────────────────────────┐  │
+│  │  │  SessionsWebSocket                                              │  │
+│  │  │  • Actual WebSocket wrapper                                     │  │
+│  │  │  • Reconnect logic (2s delay, max 5 attempts)                   │  │
+│  │  │  • 4001 error special handling (3 attempts)                     │  │
+│  │  │  • Ping every 30 seconds                                        │  │
+│  │  └─────────────────────────────────────────────────────────────────┘  │
+│  └─────────────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────────────────────────────────────────────────────┘
+                │
+                ▼
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                    Claude API (External)                                     │
+│  • GET /v1/sessions (discovery)                                              │
+│  • GET /v1/sessions/{sessionId}/events (history)                            │
+│  • POST /v1/code/github/import-token (remote-setup)                         │
+│  • WebSocket wss://{api}/v1/sessions/ws/{sessionId}/subscribe               │
+└───────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 4.9 关键流程与失败路径
+
+```text
+─── 主流程：用户选择并查看远程会话历史 ─────────────────────────────────────────
+用户输入 /assistant
+    │
+    ▼
+调用 discoverAssistantSessions()
+    │
+    ▼
+GET /v1/sessions?limit=50
+    ├─ Success: 200 OK → normalize response (handle different field names)
+    └─ Failure: Network/timeout → throw error, user sees empty list
+    │
+    ▼
+显示 AssistantSessionChooser
+    │
+    ▼
+用户选择会话 → onSelect(sessionId)
+    │
+    ▼
+创建 RemoteSessionManager (viewerOnly=true)
+    ├─ 创建 SessionsWebSocket
+    ├─ 调用 connect()
+    │   ├─ 成功 → onConnected() 回调
+    │   ├─ 失败 → onError() → 重连逻辑（最多5次，2s间隔）
+    │   └─ 4001错误 → 最多3次重连，间隔2s/4s/6s
+    │
+    ▼
+同时初始化 useAssistantHistory
+    │
+    ▼
+useEffect 调用 fetchLatestEvents() → 获取100条事件
+    │
+    ▼
+prepend 消息 → 记录 anchorRef (beforeHeight)
+    │
+    ▼
+检查内容高度 ≤ 视口高度且 fillBudget > 0 → 自动继续加载下一页
+    │
+    ▼
+用户向上滚动 → scrollTop < PREFETCH_THRESHOLD_ROWS (40)
+    │
+    ▼
+maybeLoadOlder() 被调用
+    ├─ 检查 inflightRef → 避免并发请求
+    ├─ 检查 cursorRef → null表示已到达开头
+    ├─ 交换哨兵消息为 "loading older messages…"
+    ├─ 调用 fetchOlderEvents(cursor)
+    │   ├─ Success: prepend 消息，useLayoutEffect 调用 scrollBy(delta) 保持位置
+    │   └─ Failure: 显示 "failed to load older messages — scroll up to retry"
+    └─ 清理哨兵消息
+
+─── 失败路径：网络中断导致历史加载失败 ────────────────────────────────────────────
+用户正在查看历史消息
+    │
+    ▼
+网络连接断开
+    │
+    ▼
+用户向上滚动触发 maybeLoadOlder()
+    │
+    ▼
+fetchOlderEvents() → 网络错误 → 返回 null
+    │
+    ▼
+显示哨兵消息 "failed to load older messages — scroll up to retry"
+    │
+    ▼
+cursorRef 保持不变 → 用户可以再次滚动重试
+    │
+    ▼
+同时 SessionsWebSocket 检测断开 → onDisconnected() → 开始重连
+    ├─ 尝试重连最多5次，2s间隔
+    ├─ 每次尝试前调用 onReconnecting()
+    └─ 重连预算耗尽 → onClose()
+```
+
+### 4.10 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|----------|--------|-------------|----------|--------|----------|-----------|
+| RemoteSessionManager | /assistant command | `new RemoteSessionManager(config, callbacks)` | 每个会话一个独立实例；内部持有 SessionsWebSocket | 无（连接状态内存中） | 调用 disconnect() → 清理 WebSocket | disconnect() 关闭连接；GC 清理实例 |
+| SessionsWebSocket | RemoteSessionManager | `new SessionsWebSocket(sessionId, orgUuid, getAccessToken, callbacks)` | 属于单个 RemoteSessionManager；独立连接 | 无 | 调用 close() → 关闭 WebSocket，清理定时器 | close() 关闭连接；clearTimeout 重连定时器；clearInterval ping 定时器 |
+| useAssistantHistory Hook | React component | 组件 mount 时通过调用 `useAssistantHistory(props)` 初始化 | 每个使用的组件一个 Hook 实例；内部 refs 隔离 | 无（消息在 React state 中） | 组件 unmount → refs 被 GC；无显式清理 | 无取消操作，但 inflightRef 防止并发请求 |
+| RedactedGithubToken | remote-setup API | `new RedactedGithubToken(raw)` | 每个 token 一个实例；toString() 隐藏值 | 无（不保存原始值） | 调用 reveal() 获取原始值；使用后丢弃 | reveal() 返回原始值；实例丢弃后 GC |
+| session discovery API response | sessionDiscovery module | `discoverAssistantSessions()` 调用返回 | 每次调用新数组；无缓存 | 无 | 函数返回后结果被调用方持有；调用方丢弃后 GC | 无取消操作（fetch 无 AbortController） |
+
+生命周期证据：src/remote/RemoteSessionManager.ts, src/remote/SessionsWebSocket.ts, src/hooks/useAssistantHistory.ts, src/commands/remote-setup/api.ts, src/assistant/sessionDiscovery.ts
+
+---
+
 ## 5. 失败语义与工程取舍
 
 | 失败场景 | 处理方式 | 工程取舍 |

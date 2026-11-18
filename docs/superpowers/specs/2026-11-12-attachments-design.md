@@ -262,6 +262,169 @@ Claude Code 需要将多种非结构化上下文注入对话，面临以下约�
 
 ## 4. 架构、模块与数据流
 
+### 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         Claude Code Main Process                             │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │                         getAttachments()                               │ │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐                │ │
+│  │  │ User Input   │  │Thread-safe   │  │Main Thread   │                │ │
+│  │  │Attachments   │  │Attachments   │  │Only Attachments                │ │
+│  │  │              │  │              │  │              │                │ │
+│  │  │ - @file      │  │ - queued cmd │  │ - IDE select │                │ │
+│  │  │ - @mcp       │  │ - date change│  │ - diagnostics│                │ │
+│  │  │ - @agent     │  │ - memories   │  │ - clipboard  │                │ │
+│  │  │ - skill disc │  │ - skills     │  │ - unified tasks                │ │
+│  │  │              │  │ - plan/auto  │  │ - token usage│                │ │
+│  │  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘                │ │
+│  │         │                  │                 │                         │ │
+│  │         └────────────┬─────┴─────────────────┘                         │ │
+│  │                      ↓                                                 │ │
+│  │         ┌────────────────────────────┐                               │ │
+│  │         │    maybe() Wrapper         │                               │ │
+│  │         │  - try/catch per type      │                               │ │
+│  │         │  - 5% sampling telemetry   │                               │ │
+│  │         └─────────────┬──────────────┘                               │ │
+│  │                       ↓                                              │ │
+│  └───────────────────────┼──────────────────────────────────────────────┘ │
+└──────────────────────────┼─────────────────────────────────────────────────┘
+                           ↓
+┌──────────────────────────┼─────────────────────────────────────────────────┐
+│           External Dependencies & State                                   │
+│  ┌───────────────────┐  ┌───────────────────┐  ┌───────────────────┐      │
+│  │  File System      │  │  Git Repository   │  │  MCP Servers      │      │
+│  │  (read, pwd)     │  │  (gitignore, diff)│  │  (readResource)  │      │
+│  └─────────┬─────────┘  └─────────┬─────────┘  └─────────┬─────────┘      │
+│            ↓                     ↓                    ↓                    │
+│  ┌──────────────────────────────────────────────────────────────────────┐│
+│  │                         Shared State                                  ││
+│  │  ┌──────────────────────────────────────────────────────────────────┐││
+│  │  │ readFileState (LRU Cache)       │  - file content                │││
+│  │  │ sentSkillNames (Map)            │  - skill transmission state    │││
+│  │  │ loadedNestedMemoryPaths (Set)   │  - deduplication               │││
+│  │  │ lastEmittedDate (string)        │  - date change tracking        │││
+│  │  └──────────────────────────────────────────────────────────────────┘││
+│  │                                                                       ││
+│  │  ┌──────────────────┐   ┌──────────────────────────┐                 ││
+│  │  │   Paste Cache    │   │   Image Cache            │                 ││
+│  │  │ ~/.claude/       │   │ ~/.claude/image-cache/   │                 ││
+│  │  │ paste-cache/     │   │   (session isolated)    │                 ││
+│  │  │   (cross-session)│   │   0o600 permissions      │                 ││
+│  │  └──────────────────┘   └──────────────────────────┘                 ││
+│  └──────────────────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 关键流程与失败路径
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        getAttachments() Main Flow                          │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │ 1. Quick Path Check                          ┌─────────────────────┐  │ │
+│  │    CLAUDE_CODE_DISABLE_ATTACHMENTS=1         │   Return only       │  │ │
+│  │    OR SIMPLE=1                               │  queued-commands    │  │ │
+│  │    ├─→ Yes →──────────────────────────────→ │                     │  │ │
+│  │    └─→ No → Continue                         └─────────────────────┘  │ │
+│  │                                            ┌──────────────────────┐ │ │
+│  │ 2. Create AbortController                  │   1s Global Timeout  │ │ │
+│  │    setTimeout(1000, ac.abort) →──────────→│  ┌──────────────────┐│ │ │
+│  │                                            │  │ Abort when done  ││ │ │
+│  │ 3. Step 1: User Input Attachments (Parallel)│  │ clearTimeout() ││ │ │
+│  │    ├─ maybe(at-mentioned-files)            │  └──────────────────┘│ │ │
+│  │    ├─ maybe(mcp-resources)                 └──────────────────────┘ │ │
+│  │    ├─ maybe(agent-mentions)                                        │ │
+│  │    └─ maybe(skill-discovery)                                       │ │
+│  │         └─→ triggers nestedMemoryAttachmentTriggers                  │ │
+│  │                                                                     │ │
+│  │ 4. Step 2: Thread-safe Attachments (Parallel)                       │ │
+│  │    ├─ maybe(queued-commands)         ┌──────────────────────────┐   │ │
+│  │    ├─ maybe(date-change)             │ Individual failure     │   │ │
+│  │    ├─ maybe(ultrathink-effort)       │ returns []; doesn't    │   │ │
+│  │    ├─ maybe(deferred-tools-delta)    │ block other types     │   │ │
+│  │    ├─ maybe(agent-listing-delta)     └──────────────────────────┘   │ │
+│  │    ├─ maybe(mcp-instructions-delta)                                │ │
+│  │    ├─ maybe(companion-intro)                                       │ │
+│  │    ├─ maybe(changed-files)                                         │ │
+│  │    ├─ maybe(nested-memory)     ┌──────────────────────────────────┐│ │
+│  │    ├─ maybe(dynamic-skills)    │ 5% Sampling Telemetry            ││ │
+│  │    ├─ maybe(skill-listing)     │ tengu_attachment_compute_duration││ │
+│  │    ├─ maybe(plan-mode)         │ success/failure + duration      ││ │
+│  │    ├─ maybe(plan-mode-exit)    └──────────────────────────────────┘│ │
+│  │    ├─ maybe(auto-mode)                                             │ │
+│  │    ├─ maybe(auto-mode-exit)                                        │ │
+│  │    ├─ maybe(todo-reminders)                                        │ │
+│  │    ├─ maybe(teammate-mailbox)                                      │ │
+│  │    ├─ maybe(team-context)                                          │ │
+│  │    ├─ maybe(agent-pending-messages)                                │ │
+│  │    ├─ maybe(critical-system-reminder)                              │ │
+│  │    ├─ maybe(compaction-reminder)                                   │ │
+│  │    └─ maybe(context-efficiency)                                    │ │
+│  │                                                                     │ │
+│  │ 5. Step 3: Main Thread Only (Parallel, if isMainThread)            │ │
+│  │    ├─ maybe(ide-selection)                                         │ │
+│  │    ├─ maybe(ide-opened-file)                                       │ │
+│  │    ├─ maybe(output-style)                                          │ │
+│  │    ├─ maybe(diagnostics)                                           │ │
+│  │    ├─ maybe(lsp-diagnostics)                                       │ │
+│  │    ├─ maybe(unified-tasks)                                         │ │
+│  │    ├─ maybe(async-hook-responses)                                  │ │
+│  │    ├─ maybe(token-usage)                                           │ │
+│  │    ├─ maybe(budget-usd)                                            │ │
+│  │    ├─ maybe(output-token-usage)                                    │ │
+│  │    └─ maybe(verify-plan-reminder)                                  │ │
+│  │                                                                     │ │
+│  │ 6. Step 4: Wait for all + Clear Timeout                            │ │
+│  │ 7. Step 5: Merge + Filter (remove undefined/null)                  │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+│          └─→ Return Attachment[]                                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      maybe() Failure & Recovery Path                        │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │ maybe(label, fn)                                                       │ │
+│  │  ├─→ const startTime = Date.now()                                     │ │
+│  │  ├─→ try { await fn() }                                               │ │
+│  │  ├─→ ├─→ Success: duration, 5% sample → logEvent(...)                │ │
+│  │  ├─→ └─→ Error:   duration, 5% sample → logEvent(...) + logError()  │ │
+│  │  └─→ return [] (ALWAYS, never rethrow)                               │ │
+│  │                                                                       │ │
+│  │ Key Failure Guarantees:                                              │ │
+│  │  ├─→ Single attachment type never blocks others                     │ │
+│  │  ├─→ 1s timeout abandons slow attachments                            │ │
+│  │  ├─→ No user-visible error (only debug logs)                        │ │
+│  │  └─→ Other attachment types continue to work                        │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| `Attachment[]` | `getAttachments()` | 每个 `maybe()` 调用独立创建 | 本地函数作用域 | 否（仅内存，返回给调用方） | 函数返回后 GC | 无（纯返回值） |
+| `readFileState` | `toolUseContext` | 首次 `generateFileAttachment()` 时创建 `LRU` | 跨会话共享（在 `toolUseContext` 中） | 否（内存仅） | 文件删除 `ENOENT` 时删除该 key，其他错误保留 | 无（LRU 自动驱逐） |
+| `loadedNestedMemoryPaths` | `toolUseContext` | 首次嵌套记忆注入时创建 `Set` | 会话内共享（不可驱逐） | 否（内存仅） | 会话结束重置 | 无（Set 自动 GC） |
+| `nestedMemoryAttachmentTriggers` | `toolUseContext` | 每次 `getAttachments()` 调用清空并重建 `Set` | 单次调用内共享 | 否（内存仅） | 调用结束清空 | 无（Set 自动 GC） |
+| `sentSkillNames` | 模块级静态 `Map` | 首次 `getSkillListingAttachments()` 时创建 `Map<string, Set<string>>` | 跨会话共享（按 `agentId` 隔离） | 否（内存仅） | 进程退出清空，`resetSentSkillNames()` 手动重置 | 无（Map 自动 GC） |
+| `suppressNext` | 模块级静态 `boolean` | 初始为 `false` | 跨会话共享 | 否（内存仅） | `suppressNextSkillListing()` 设为 `true`，下次使用后重置为 `false` | 无 |
+| `AbortController` (1s timeout) | `getAttachments()` | 每次调用创建新实例 | 单次调用隔离 | 否（内存仅） | 1s 后 `abort()`，或所有附件完成后 `clearTimeout()` | `clearTimeout()` 在步骤 4，`ac.abort()` 在超时 |
+| `PastedContent` | 粘贴处理器 | 每次粘贴创建，分配序列 `id` | 单次会话隔离 | 可选（`pasteStore` 跨会话持久化文本） | 会话结束内存清理，`paste-cache/` 旧文件自动清理 | `cleanupOldPastes()` 按年龄删除 |
+| `ImageWithDimensions` | 图像处理器 | 每次图像粘贴创建 | 单次会话隔离 | 可选（`imageStore` 会话缓存，`0o600` 权限） | 会话结束删除 `image-cache/<sessionId>/` | `cleanupOldImageCaches()` 按会话删除，`MAX_STORED_IMAGE_PATHS=200` LRU |
+| `MemoryPrefetch` | `startRelevantMemoryPrefetch()` | 每次调用创建带 `promise`、`settledAt`、`consumedOnIteration`、`Symbol.dispose` 的对象 | 单次调用隔离 | 否（内存仅） | `promise` settled 或调用方消费后 | `Symbol.dispose()` 取消子 `AbortController`，`finally` 清理 |
+| `lastEmittedDate` | 模块级静态 `string` | 首次 `getDateChangeAttachments()` 时初始化 | 跨会话共享 | 否（内存仅） | 日期变化时更新，记录上次发送的日期 | 无 |
+
+生命周期证据：
+- `src/utils/attachments.ts:748-1012` (`getAttachments()` 主流程)
+- `src/utils/attachments.ts:1903-1973` (`generateFileAttachment()` 缓存处理)
+- `src/utils/attachments.ts:1665-2202` (`getNestedMemoryAttachments()` 双重去重)
+- `src/utils/attachments.ts:2204-2549` (`MemoryPrefetch` 定义与清理)
+- `src/utils/imageStore.ts` (图像存储与 `0o600` 权限)
+- `src/utils/pasteStore.ts` (文本持久化与清理)
+
 ### 4.1 入口与公共契约
 
 **主要入口：**

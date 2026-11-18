@@ -336,6 +336,115 @@ export const ModelUsageSchema = lazySchema(() =>
 - IDE hover 时仍可通过跳转到 schema 查看注释
 - 如需继承，需要更复杂的 AST 解析 (当前正则方案不支持)
 
+### 4.18 架构与资源边界图
+
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│              调用方 (开发者)                                    │
+│  ┌───────────────────────────────────────────────────────────┐ │
+│  │  bun scripts/generate-sdk-types.ts                      │ │
+│  └───────────────────────────────────────────────────────────┘ │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              scripts/generate-sdk-types.ts                    │
+│  ┌───────────────────────────────────────────────────────────┐ │
+│  │  const targets: GenerationTarget[] = [                  │ │
+│  │    { schemaPath, outputPath, prelude? },                │ │
+│  │    ...                                                   │ │
+│  │  ]                                                     │ │
+│  └───────────────────────────────────────────────────────────┘ │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │
+         ┌─────────────────┼─────────────────┐
+         ▼                 ▼                 ▼
+┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+│  src/entrypoints/│ │  src/entrypoints/│ │  src/entrypoints/│
+│  sdk/coreSchemas│ │  sdk/controlSche│ │  sdk/settingsTy│
+│  .ts (源)       │ │  mas.ts (源)    │ │  pes.generated.ts│
+└────────┬────────┘ └────────┬────────┘ └─────────────────┘
+         │                   │                   (手写，不参与)
+         ▼                   ▼
+┌─────────────────┐ ┌─────────────────┐
+│  src/entrypoints/│ │  src/entrypoints/│
+│  sdk/coreTypes.│ │  sdk/controlTyp│
+│  generated.ts  │ │  es.ts (输出)  │
+│  (输出)         │ │                 │
+└─────────────────┘ └─────────────────┘
+```
+
+**边界说明**:
+- 生成范围仅限 `coreTypes.generated.ts` 和 `controlTypes.ts`
+- `settingsTypes.generated.ts` 是手写兼容层，不参与自动生成
+- 无外部依赖（仅 Node.js 内置模块 `fs`、`path` 等 + Zod 类型定义）
+- 无网络请求、无 Git 操作、无持久化状态
+
+### 4.19 关键流程与失败路径
+
+```text
+启动 generateSdkTypes()
+       │
+       ▼
+┌─────────────────────────────────────────┐
+│  for (const target of targets)         │
+│  ┌────────────────────────────────────┐│
+│  │ 1. 读取源文件                      ││
+│  │    readFileSync(target.schemaPath) ││
+│  └──────────────┬─────────────────────┘│
+│                 ▼                     │
+│  ┌────────────────────────────────────┐│
+│  │ 2. 正则匹配 schema 名称            ││
+│  │    /^export const (\w+Schema)\s*=/gm││
+│  │    → schemaNames[]                ││
+│  └──────────────┬─────────────────────┘│
+│                 ▼                     │
+│  ┌────────────────────────────────────┐│
+│  │ 3. 空源文件防护                    ││
+│  │    schemaNames.length === 0 → throw││
+│  └──────────────┬─────────────────────┘│
+│                 ▼                     │
+│  ┌────────────────────────────────────┐│
+│  │ 4. 生成文件内容                    ││
+│  │    a. preamble: 生成标记 + zod import││
+│  │    b. prelude: 可选 (如 controlTypes││
+│  │       有 export * from './coreTypes.js')││
+│  │    c. types: 每个 schemaName 生成    ││
+│  │       export type ${name} = z.infer<││
+│  │         ReturnType<typeof schemas.${schemaName}>>││
+│  └──────────────┬─────────────────────┘│
+│                 ▼                     │
+│  ┌────────────────────────────────────┐│
+│  │ 5. 写入输出文件                    ││
+│  │    writeFileSync(target.outputPath,││
+│  │      content)                      ││
+│  └────────────────────────────────────┘│
+└─────────────────────────────────────────┘
+```
+
+**关键失败分支**:
+- 源文件不存在：`readFileSync` 抛出 `Error: ENOENT`
+- 源文件无 schema：`schemaNames.length === 0` 抛出错误
+- 写入权限不足：`writeFileSync` 抛出 `Error: EACCES`
+- schema 定义模式变化（如 `export let`、多行声明）：正则不匹配，可能导致空输出或错误（TypeScript 编译时会发现）
+
+### 4.20 核心对象生命周期
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| `targets` 数组 | `generate-sdk-types.ts` 模块 | 硬编码常量数组 | 模块级单例 | 不持久化（代码中定义） | 模块加载时初始化，永不失效 | 无（常量数组） |
+| `GenerationTarget` 对象 | 同上 | 数组元素，字面量创建 | 同上 | 不持久化 | 同上 | 无（纯数据对象） |
+| `schemaNames` 数组 | `generateSdkTypes()` 函数 | `source.match(/^export const (\w+Schema)\s*=/gm)` 生成 | 单次调用隔离 | 不持久化 | 调用结束后 GC | 无（仅内存数组） |
+| `typeName` 字符串 | `generateSdkTypes()` 函数 | `schemaName.slice(0, -'Schema'.length)` 或 `slice(0, -6)` | 单次调用隔离，每个 schemaName 单独生成 | 不持久化 | 使用后立即丢弃，GC | 无（仅字符串） |
+| 生成文件内容（字符串） | `generateSdkTypes()` 函数 | preamble + prelude + types 拼接 | 单次调用隔离，每个 target 单独生成 | 写入目标文件后持久化 | 重新生成时被覆盖 | 无（仅字符串） |
+| `coreTypes.generated.ts` / `controlTypes.ts` | 生成器输出 | `writeFileSync()` 创建/覆盖 | 文件系统持久化 | 是（提交到 Git） | 重新生成时被覆盖 | 无（普通文件，Git 管理历史） |
+
+生命周期证据：
+- `scripts/generate-sdk-types.ts` 为单次运行脚本：无持久化状态，无模块级可变变量
+- 所有数据结构均在函数内创建，调用结束后 GC
+- 生成文件原子覆盖（`writeFileSync` 完整替换文件内容）
+- Git 历史提供持久化和回滚能力
+
 ## 5. 失败语义与工程取舍
 
 ### 失败语义
