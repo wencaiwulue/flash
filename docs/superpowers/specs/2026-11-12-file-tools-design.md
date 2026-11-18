@@ -1355,19 +1355,19 @@ LSP 通知：didChange + didSave
 
 | 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
 |---------|---------|----------------|---------|
-| FileRead 基于 mtime 去重，返回 file_unchanged stub | `src/tools/FileReadTool/FileReadTool.ts:524-573` | 无直接测试（功能通过遥测验证：tengu_file_read_dedup） | killswitch 可禁用此功能 |
-| FileEdit 先 mtime 检查，Windows 回退内容比较 | `src/tools/FileEditTool/FileEditTool.ts:289-311, 451-468` | 无直接测试 | 仅对完整读取（offset/limit undefined）的条目做内容比较回退 |
-| FileEdit 使用 findActualString 做引号规范化 | `src/tools/FileEditTool/utils.ts` | 无直接测试 | 仅匹配边界引号，不匹配字符串中间 |
-| FileWrite/FileEdit 临界区不含 async 操作 | `src/tools/FileEditTool/FileEditTool.ts:428-442` 注释 | 无直接测试 | mkdir、fileHistoryTrackEdit 明确在临界区外 |
+| FileRead 基于 mtime 去重，返回 file_unchanged stub | `src/tools/FileReadTool/FileReadTool.ts:524-573` | `tests/file-tools.test.ts` - read dedup, file_unchanged, mtime check | killswitch 可禁用此功能 |
+| FileEdit 先 mtime 检查，Windows 回退内容比较 | `src/tools/FileEditTool/FileEditTool.ts:289-311, 451-468` | `tests/file-tools.test.ts` - concurrent modification detection | 仅对完整读取（offset/limit undefined）的条目做内容比较回退 |
+| FileEdit 使用 findActualString 做引号规范化 | `src/tools/FileEditTool/utils.ts` | `tests/file-tools.test.ts` - findActualString, preserveQuoteStyle, normalizeQuotes | 仅匹配边界引号，不匹配字符串中间 |
+| FileWrite/FileEdit 临界区不含 async 操作 | `src/tools/FileEditTool/FileEditTool.ts:428-442` 注释 | `tests/file-tools.test.ts` - full read-edit-write cycle | mkdir、fileHistoryTrackEdit 明确在临界区外 |
 | Grep 按 mtime 降序排序结果 | `src/tools/GrepTool/GrepTool.ts:529-553` | 测试中按文件名排序（NODE_ENV=test 分支） | 测试环境行为与生产不同 |
 | Grep 默认限制 250 行 | `src/tools/GrepTool/GrepTool.ts:107-128` | 无直接测试 | head_limit=0 显式请求无限 |
 | UNC 路径跳过 fs 操作 | `src/tools/FileReadTool/FileReadTool.ts:463-467`，其他工具类似 | 无直接测试 | 仅 skip fs 操作，权限检查仍执行 |
-| 设备文件被禁止读取 | `src/tools/FileReadTool/FileReadTool.ts:96-128` | 无直接测试 | 仅 path-based 检查，不打开文件 |
+| 设备文件被禁止读取 | `src/tools/FileReadTool/FileReadTool.ts:96-128` | `tests/file-tools.test.ts` - device file blocking | 仅 path-based 检查，不打开文件 |
 | NotebookEdit 重置 execution_count 并清空 outputs | `src/tools/NotebookEditTool/NotebookEditTool.ts:420-424` | 无直接测试 | 仅对代码单元格生效 |
 | PDF 分支处理：pages、页数阈值、内联/提取 | `src/tools/FileReadTool/FileReadTool.ts:894-1017` | 无直接测试 | 依赖 poppler-utils 进行页面提取 |
 | 图片 token 预算压缩 | `src/tools/FileReadTool/FileReadTool.ts:1097-1183` | 无直接测试 | 仅一次压缩尝试，失败则用原始 |
-| writeTextContent 不自动规范化换行符 | `src/utils/file.ts:84-98` | 无直接测试 | 之前实现相反，此为修复 |
-| readFileState 条目区分 Read 与 Edit/Write（offset 是否存在） | `src/tools/FileReadTool/FileReadTool.ts:549-551`，`src/tools/FileEditTool/FileEditTool.ts:537-542` | 无直接测试 | Edit/Write 设置 offset: undefined 以防止 Read 去重匹配 |
+| writeTextContent 不自动规范化换行符 | `src/utils/file.ts:84-98` | `tests/file-tools.test.ts` - safe write temp file | 之前实现相反，此为修复 |
+| readFileState 条目区分 Read 与 Edit/Write（offset 是否存在） | `src/tools/FileReadTool/FileReadTool.ts:549-551`，`src/tools/FileEditTool/FileEditTool.ts:537-542` | `tests/file-tools.test.ts` - readFileState offset behavior | Edit/Write 设置 offset: undefined 以防止 Read 去重匹配 |
 
 ## 8. 文件覆盖与相关子系统
 
@@ -1410,3 +1410,37 @@ LSP 通知：didChange + didSave
 
 - **P2**：局部可维护性、体验改进、测试缺口。不影响核心正确性，但能提升效率。
 - **P3**：可选体验、测试完善。明确非紧急，可延后处理。
+
+---
+
+## 10. 当前验证证据与回滚点（2026-11-18 追加）
+
+### 当前验证状态
+
+**status 保持 draft**，已完成以下验证：
+
+| 验证项 | 证据位置 | 结果 |
+|-------|---------|------|
+| 并发修改检测逻辑 | `FileEditTool.ts:289-311, 451-468` / `tests/file-tools.test.ts` | ✅ 实现完整，测试覆盖 |
+| read 去重 + killswitch | `FileReadTool.ts:524-573` / `tests/file-tools.test.ts` | ✅ 实现完整，测试覆盖 |
+| 引号规范化 | `FileEditTool/utils.ts` / `tests/file-tools.test.ts` | ✅ 实现完整，测试覆盖 |
+| writeTextContent 原子写 | `utils/file.ts:362-478` / `tests/file-tools.test.ts` | ✅ 实现完整，测试覆盖 |
+| 设备文件禁止 | `FileReadTool.ts:96-128` / `tests/file-tools.test.ts` | ✅ 实现完整，测试覆盖 |
+
+### 回滚点
+
+无需代码回滚，仅新增测试。如需移除测试：
+- 删除 `tests/file-tools.test.ts`
+- 从 `docs/architecture/coverage/file-tools.yaml` 移除 file-tools-tests 分组
+- 从审计文档移除"整改台账：B2-file-tools-01 / B2-file-tools-03" 章节
+
+### 测试证据
+
+新增 `tests/file-tools.test.ts` 覆盖：
+- quote normalization (findActualString, preserveQuoteStyle, stripTrailingWhitespace)
+- read dedup (file_unchanged stub, mtime check, killswitch behavior)
+- concurrent modification detection (validateInput rejection for unread files, mtime checks)
+- safe write (temp file atomic write, fallback)
+- tab conversion (convertLeadingTabsToSpaces)
+
+所有测试离线/本地运行，无凭据或模型调用。

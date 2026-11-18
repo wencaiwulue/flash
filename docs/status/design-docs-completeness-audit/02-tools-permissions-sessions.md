@@ -1140,3 +1140,12 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/02-tools-permis
 - 新增 `tests/attachments.test.ts` 并唯一登记 attachments coverage：mention 去重、错误隔离、nested memory 去重、PDF reference、日期与 queued command。
 - **新增增量缺陷**：原实现只有 `AbortController` 定时器，挂起的 MCP `readResource` 仍让 `Promise.all` 永久等待。初次 RED 为 5 秒超时；user/thread/main 三段聚合均改为 `allSettled + race(1000ms)` 后，预算内返回已完成的 queued command。
 - spec 已更新实际超时机制、证据和回滚；原 Finding 行与历史统计保持 open。全部本地 fake transport/offline，无真实 MCP、模型或凭据调用。
+
+---
+
+## 整改台账：B2-file-tools-01 / B2-file-tools-03（2026-11-18 追加）
+
+- 新增 `tests/file-tools.test.ts` 并唯一登记 file-tools coverage：并发修改检测、read 去重、引号规范化、安全写/编辑、离线/本地验证。
+- 验证原实现：tengu_read_dedup_killswitch 在 `FileReadTool.ts:536-539` 正确实现，getFeatureValue_CACHED_MAY_BE_STALE 检查；writeTextContent 使用 temp file 原子写 + 回退机制；findActualString 引号规范化完整。
+- **无新增缺陷**：原实现完整符合 spec，无需代码改动。仅补充测试覆盖。
+- spec 保持 draft 状态；原 Finding 行与历史统计保持 open。全部离线/本地验证，无凭据或模型调用。

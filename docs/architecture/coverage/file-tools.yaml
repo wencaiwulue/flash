@@ -109,3 +109,9 @@ groups:
     files:
       - src/utils/glob.ts
       - src/utils/ripgrep.ts
+  - id: file-tools-tests
+    kind: test
+    section: 4
+    summary: Comprehensive tests for file-tools (B2-file-tools-01, B2-file-tools-03)
+    files:
+      - tests/file-tools.test.ts
