@@ -108,13 +108,6 @@
   expected_effect:
     hook_fired: true
   # Needs specific error path (model API failure) to test.
-- event: UserPromptExpansion
-  status: blocked-by-batch:B1
-  trigger: none
-  matcher: '*'
-  exit_semantics: nonblock
-  expected_effect: {}
-
 - event: PreCompact
   status: active
   trigger: repl_compact
@@ -154,3 +147,114 @@
   exit_semantics: nonblock
   expected_effect:
     hook_fired: true
+- event: SubagentStart
+  status: blocked-by-prereq:subagent-scenario-not-implemented
+  trigger: subagent
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+  # Probe result: SubagentStart hook exists in src/utils/hooks.ts and is called
+  # in src/tools/AgentTool/runAgent.ts, but the subagent scenario isn't implemented yet.
+- event: SubagentStop
+  status: blocked-by-prereq:subagent-scenario-not-implemented
+  trigger: subagent
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+  # Probe result: SubagentStop hook exists in src/utils/hooks.ts (referenced in registerFrontmatterHooks),
+  # but the subagent scenario isn't implemented yet.
+- event: TeammateIdle
+  status: blocked-by-prereq:teammate-mode
+  trigger: none
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+- event: TaskCreated
+  status: blocked-by-prereq:task-tool-observability
+  trigger: none
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+  # Probe result: TaskCreated hook exists in src/utils/hooks.ts and is called in TaskCreateTool,
+  # but we don't have a way to trigger it in the test framework yet.
+- event: TaskCompleted
+  status: blocked-by-prereq:task-tool-observability
+  trigger: none
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+  # Probe result: TaskCompleted hook exists in src/utils/hooks.ts and is called in TaskUpdateTool,
+  # but we don't have a way to trigger it in the test framework yet.
+- event: Elicitation
+  status: blocked-by-prereq:mcp-elicit-server
+  trigger: none
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+- event: ElicitationResult
+  status: blocked-by-prereq:mcp-elicit-server
+  trigger: none
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+- event: WorktreeCreate
+  status: blocked-by-prereq:worktree-ui
+  trigger: none
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+  # Probe result: WorktreeCreate hook exists in src/utils/hooks.ts and is called in src/utils/worktree.ts,
+  # but we don't have a way to trigger it via the test framework yet.
+- event: WorktreeRemove
+  status: blocked-by-prereq:worktree-ui
+  trigger: none
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+  # Probe result: WorktreeRemove hook exists in src/utils/hooks.ts and is called in src/utils/worktree.ts,
+  # but we don't have a way to trigger it via the test framework yet.
+- event: UserPromptExpansion
+  status: blocked-by-batch:B1
+  trigger: none
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect: {}
+- event: ToolCallProgress
+  status: blocked-by-batch:B1
+  trigger: none
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect: {}
+- event: AgentThinking
+  status: blocked-by-batch:B1
+  trigger: none
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect: {}
+- event: MessageChunk
+  status: blocked-by-batch:B1
+  trigger: none
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect: {}
+- event: ModelResponse
+  status: blocked-by-batch:B1
+  trigger: none
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect: {}
+- event: ToolResponse
+  status: blocked-by-batch:B1
+  trigger: none
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect: {}

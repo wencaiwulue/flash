@@ -7,7 +7,22 @@ const hooksYaml = join(import.meta.dir, '..', 'fixtures', 'hooks.yaml')
 describe('loadHookEntries', () => {
   test('loads entries with ids and preserves field values', () => {
     const entries = loadHookEntries(hooksYaml)
-    expect(entries.length).toBeGreaterThanOrEqual(14)
+    expect(entries.length).toBe(33)
+
+    // Verify all 27 core events are present
+    const coreEvents = [
+      'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Notification',
+      'UserPromptSubmit', 'SessionStart', 'SessionEnd', 'Stop', 'StopFailure',
+      'SubagentStart', 'SubagentStop', 'PreCompact', 'PostCompact',
+      'PermissionRequest', 'PermissionDenied', 'Setup', 'TeammateIdle',
+      'TaskCreated', 'TaskCompleted', 'Elicitation', 'ElicitationResult',
+      'ConfigChange', 'WorktreeCreate', 'WorktreeRemove', 'InstructionsLoaded',
+      'CwdChanged', 'FileChanged',
+    ]
+    const eventNames = entries.map(e => e.event)
+    for (const event of coreEvents) {
+      expect(eventNames).toContain(event)
+    }
 
     // Check that all expected entries exist and have correct fields
     const preToolUse = entries.find(e => e.id === 'hook:PreToolUse')
