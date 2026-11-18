@@ -1,6 +1,7 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'fs'
-import { mkdir, readFile, rm, writeFile } from 'fs/promises'
+import { mkdirSync, readFileSync, writeFileSync, unlinkSync, renameSync } from 'fs'
+import { mkdir, readFile, rm, writeFile, open, rename, unlink } from 'fs/promises'
 import { join } from 'path'
+import { randomUUID } from 'crypto'
 import { z } from 'zod/v4'
 import { getSessionCreatedTeams } from '../../bootstrap/state.js'
 import { logForDebugging } from '../debug.js'
@@ -160,17 +161,44 @@ export async function readTeamFileAsync(
 }
 
 /**
- * Writes a team file (sync — for sync contexts)
+ * Writes a team file (sync — for sync contexts) with atomic rename
+ * Prevents partial file corruption if process crashes during write
  */
 // sync IO: called from sync context
 function writeTeamFile(teamName: string, teamFile: TeamFile): void {
   const teamDir = getTeamDir(teamName)
   mkdirSync(teamDir, { recursive: true })
-  writeFileSync(getTeamFilePath(teamName), jsonStringify(teamFile, null, 2))
+  const filePath = getTeamFilePath(teamName)
+
+  // Atomic write pattern: write to temp first, then rename
+  const tmpPath = join(teamDir, `.${randomUUID()}.tmp`)
+  let tmpCreated = false
+  try {
+    // Use 'wx' to ensure we don't overwrite existing temp files
+    writeFileSync(tmpPath, jsonStringify(teamFile, null, 2), {
+      mode: 0o600,
+      flag: 'wx',
+    })
+    tmpCreated = true
+    // Atomic rename
+    renameSync(tmpPath, filePath)
+  } catch (error) {
+    // Clean up temp file if it was created
+    if (tmpCreated) {
+      try {
+        unlinkSync(tmpPath)
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
+    throw error
+  }
 }
 
 /**
- * Writes a team file (async — for tool handlers)
+ * Writes a team file (async — for tool handlers) with atomic rename
+ * Prevents partial file corruption if process crashes during write,
+ * and guarantees readers never see a torn JSON file.
  */
 export async function writeTeamFileAsync(
   teamName: string,
@@ -178,7 +206,43 @@ export async function writeTeamFileAsync(
 ): Promise<void> {
   const teamDir = getTeamDir(teamName)
   await mkdir(teamDir, { recursive: true })
-  await writeFile(getTeamFilePath(teamName), jsonStringify(teamFile, null, 2))
+  const filePath = getTeamFilePath(teamName)
+
+  // Atomic write pattern: write to temp first, fsync, then rename
+  // Reference: src/jobs/state.ts writeJsonAtomic
+  const tmpPath = join(teamDir, `.${randomUUID()}.tmp`)
+  let handle: Awaited<ReturnType<typeof open>> | undefined
+
+  try {
+    // 1. Create temporary file with O_EXCL (wx) - prevents race conditions
+    handle = await open(tmpPath, 'wx', 0o600)
+
+    // 2. Write content
+    await handle.writeFile(jsonStringify(teamFile, null, 2) + '\n', 'utf8')
+
+    // 3. Fsync to ensure data is on disk before rename
+    await handle.sync()
+    await handle.close()
+    handle = undefined
+
+    // 4. Atomic rename - this is the point where the new content becomes visible
+    await rename(tmpPath, filePath)
+
+    // 5. Fsync the directory to ensure the rename is persisted
+    const dirHandle = await open(teamDir, 'r')
+    try {
+      await dirHandle.sync()
+    } finally {
+      await dirHandle.close()
+    }
+  } catch (error) {
+    // Clean up: close handle if open, delete temp file if it exists
+    if (handle) {
+      await handle.close().catch(() => {})
+    }
+    await unlink(tmpPath).catch(() => {})
+    throw error
+  }
 }
 
 /**

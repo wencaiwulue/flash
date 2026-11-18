@@ -191,6 +191,12 @@ groups:
     summary: Agent 内存快照测试（快照初始化、时间戳验证、保留变更、回滚机制）
     files:
       - tests/agentMemorySnapshot.test.ts
+  - id: team-file-atomic-write-tests
+    kind: test
+    section: 7
+    summary: TeamFile 原子写入测试（临时文件、fsync、原子 rename、权限设置）
+    files:
+      - tests/teamFileAtomicWrite.test.ts
   - id: agent-tool-uncovered
     kind: source
     section: 4
