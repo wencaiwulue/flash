@@ -1506,6 +1506,23 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 
 ---
 
+## 整改台账：B3-notifications-01（2026-11-19 追加）
+
+**Finding ID**：B3-notifications-01；主责 spec：notifications。
+
+新增 `tests/notifications.test.tsx` 与 `tests/notificationsServices.test.ts` 并唯一登记 coverage，共 14 个测试、46 个断言：
+
+- 真实 Ink + AppStoreContext 渲染 `useNotifications`，直接观察 current/queue：普通 high 不抢占当前项、后续 high 先于 medium；immediate 抢占并重入队；current/queued fold；invalidates；remove 和短 timeout 队列推进。
+- 后台通知仅折叠连续 completed bash，失败保留；verbose/fullscreen-disabled 原样保留。
+- 真实 notifier channel 逻辑：terminal_bell、disabled，以及 osascript/defaults 边界 mock 驱动的 Apple Terminal Bell=false 补偿 bell。
+- 真实 PushNotificationTool：webhook 成功字段、503 不降级 OS、无 webhook 的 OS 成功和无 adapter 错误。
+
+**证据边界**：全部离线；OS hooks、osascript/defaults、axios 只替换外部边界，无真实终端视觉、webhook、远程通知或私有协议验收。spec 第 7/7.3 节记录官方文档、上游 strings、当前缺口和回滚。无生产代码变更。
+
+**原 Finding 状态**：B3-notifications-01 保持 open，spec 保持 draft。
+
+---
+
 ## 整改台账：B3-auth-02 / 增量 B3-auth-03（2026-11-19 追加）
 
 **Finding ID**：B3-auth-02；主责 spec：auth。新增 B3-auth-03 是本轮发现的生产缺陷，不计入原始 234 条。
