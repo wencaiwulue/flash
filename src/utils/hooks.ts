@@ -97,6 +97,12 @@ import type {
   ConfigChangeHookInput,
   CwdChangedHookInput,
   FileChangedHookInput,
+  PostToolBatchHookInput,
+  UserPromptExpansionHookInput,
+  PreModelSwitchHookInput,
+  PostModelSwitchHookInput,
+  DirectoryAddedHookInput,
+  MessageDisplayHookInput,
   InstructionsLoadedHookInput,
   UserPromptSubmitHookInput,
   PermissionRequestHookInput,
@@ -345,6 +351,8 @@ export interface HookResult {
   permissionBehavior?: 'ask' | 'deny' | 'allow' | 'passthrough'
   hookPermissionDecisionReason?: string
   additionalContext?: string
+  suppressOriginalPrompt?: boolean
+  displayContent?: string
   initialUserMessage?: string
   updatedInput?: Record<string, unknown>
   updatedMCPToolOutput?: unknown
@@ -365,6 +373,8 @@ export type AggregatedHookResult = {
   hookSource?: string
   permissionBehavior?: PermissionResult['behavior']
   additionalContexts?: string[]
+  suppressOriginalPrompt?: boolean
+  displayContent?: string
   initialUserMessage?: string
   updatedInput?: Record<string, unknown>
   updatedMCPToolOutput?: unknown
@@ -703,6 +713,44 @@ function processHookJSONOutput({
             }
           }
         }
+        break
+      case 'UserPromptExpansion':
+        result.additionalContext = json.hookSpecificOutput.additionalContext
+        result.suppressOriginalPrompt =
+          json.hookSpecificOutput.suppressOriginalPrompt
+        break
+      case 'PostToolBatch':
+        result.additionalContext = json.hookSpecificOutput.additionalContext
+        break
+      case 'PostModelSwitch':
+        result.additionalContext = json.hookSpecificOutput.additionalContext
+        break
+      case 'MessageDisplay':
+        result.displayContent = json.hookSpecificOutput.displayContent
+        break
+      case 'PreModelSwitch':
+        if (json.hookSpecificOutput.permissionDecision) {
+          switch (json.hookSpecificOutput.permissionDecision) {
+            case 'allow':
+              result.permissionBehavior = 'allow'
+              break
+            case 'deny':
+              result.permissionBehavior = 'deny'
+              result.blockingError = {
+                blockingError:
+                  json.hookSpecificOutput.permissionDecisionReason ||
+                  json.reason ||
+                  'Model switch blocked by a PreModelSwitch hook',
+                command,
+              }
+              break
+            case 'ask':
+              result.permissionBehavior = 'ask'
+              break
+          }
+        }
+        result.hookPermissionDecisionReason =
+          json.hookSpecificOutput.permissionDecisionReason
         break
     }
   }
@@ -2797,6 +2845,14 @@ async function* executeHooks({
       }
     }
 
+    if (result.displayContent) {
+      yield { displayContent: result.displayContent }
+    }
+
+    if (result.suppressOriginalPrompt !== undefined) {
+      yield { suppressOriginalPrompt: result.suppressOriginalPrompt }
+    }
+
     if (result.initialUserMessage) {
       logForDebugging(
         `Hook ${hookEvent} (${getHookDisplayText(result.hook)}) provided initialUserMessage (${result.initialUserMessage.length} chars)`,
@@ -3580,6 +3636,182 @@ export async function* executePostToolHooks<ToolInput, ToolResponse>(
     signal,
     timeoutMs,
     toolUseContext,
+  })
+}
+
+/**
+ * Execute PostToolBatch hooks once after all parallel tool calls in a turn resolve,
+ * before the next model request. No matcher. tool_calls carries each call's
+ * serialized content (failed tools included, no error field). additionalContext is
+ * injected; continue:false / decision:"block" stops the agentic loop; exit 2 stops
+ * the loop; other exit codes continue.
+ */
+export async function* executePostToolBatchHooks(
+  toolCalls: PostToolBatchHookInput['tool_calls'],
+  toolUseContext: ToolUseContext,
+  permissionMode?: string,
+  signal?: AbortSignal,
+  timeoutMs: number = TOOL_HOOK_EXECUTION_TIMEOUT_MS,
+): AsyncGenerator<AggregatedHookResult> {
+  const appState = toolUseContext.getAppState()
+  const sessionId = toolUseContext.agentId ?? getSessionId()
+  if (!hasHookForEvent('PostToolBatch', appState, sessionId)) {
+    return
+  }
+
+  const hookInput: PostToolBatchHookInput = {
+    ...createBaseHookInput(permissionMode, undefined, toolUseContext),
+    hook_event_name: 'PostToolBatch',
+    tool_calls: toolCalls,
+  }
+
+  yield* executeHooks({
+    hookInput,
+    toolUseID: toolCalls[0]?.tool_use_id ?? 'batch',
+    signal,
+    timeoutMs,
+    toolUseContext,
+  })
+}
+
+/**
+ * Execute UserPromptExpansion hooks after a slash command or MCP prompt is expanded,
+ * before it reaches the model. matcher matches command_name. prompt is the original
+ * input (not the expanded text). additionalContext is delivered with the expansion;
+ * decision:"block" / exit 2 blocks the expansion; other exit codes continue.
+ */
+export async function* executeUserPromptExpansionHooks(
+  expansionType: 'slash_command' | 'mcp_prompt',
+  commandName: string,
+  commandArgs: string,
+  commandSource: string | undefined,
+  prompt: string,
+  toolUseContext: ToolUseContext,
+  permissionMode?: string,
+  signal?: AbortSignal,
+  timeoutMs: number = TOOL_HOOK_EXECUTION_TIMEOUT_MS,
+): AsyncGenerator<AggregatedHookResult> {
+  const appState = toolUseContext.getAppState()
+  const sessionId = toolUseContext.agentId ?? getSessionId()
+  if (!hasHookForEvent('UserPromptExpansion', appState, sessionId)) {
+    return
+  }
+
+  const hookInput: UserPromptExpansionHookInput = {
+    ...createBaseHookInput(permissionMode, undefined, toolUseContext),
+    hook_event_name: 'UserPromptExpansion',
+    expansion_type: expansionType,
+    command_name: commandName,
+    command_args: commandArgs,
+    command_source: commandSource,
+    prompt,
+  }
+
+  yield* executeHooks({
+    hookInput,
+    toolUseID: `expansion-${commandName}`,
+    matchQuery: commandName,
+    signal,
+    timeoutMs,
+    toolUseContext,
+  })
+}
+
+type BaseHookFields = keyof ReturnType<typeof createBaseHookInput>
+
+/**
+ * DirectoryAdded (upstream 2.1.311): fires after a directory is added to the
+ * working set. Background, non-blocking — output cannot cancel the addition.
+ * source is slash_command (/add-dir) or register_repo_root (not yet implemented
+ * in flash). No hookSpecificOutput.
+ */
+export async function* executeDirectoryAddedHooks(
+  directory: string,
+  source: DirectoryAddedHookInput['source'],
+  signal?: AbortSignal,
+  timeoutMs: number = TOOL_HOOK_EXECUTION_TIMEOUT_MS,
+): AsyncGenerator<AggregatedHookResult> {
+  const hookInput: DirectoryAddedHookInput = {
+    ...createBaseHookInput(undefined),
+    hook_event_name: 'DirectoryAdded',
+    directory,
+    source,
+  }
+  yield* executeHooks({
+    hookInput,
+    toolUseID: `directory-added-${directory}`,
+    signal,
+    timeoutMs,
+  })
+}
+
+/**
+ * PreModelSwitch (upstream 2.1.311): fires before a model switch. deny/block/
+ * timeout cancels the switch (fail-closed); ask on a non-warm cache switches
+ * directly. Default timeout 30s. No matcher.
+ */
+export async function* executePreModelSwitchHooks(
+  fields: Omit<PreModelSwitchHookInput, BaseHookFields | 'hook_event_name'>,
+  signal?: AbortSignal,
+  timeoutMs: number = 30_000,
+): AsyncGenerator<AggregatedHookResult> {
+  const hookInput: PreModelSwitchHookInput = {
+    ...createBaseHookInput(undefined),
+    hook_event_name: 'PreModelSwitch',
+    ...fields,
+  }
+  yield* executeHooks({
+    hookInput,
+    toolUseID: `pre-model-switch-${fields.to_model}`,
+    signal,
+    timeoutMs,
+  })
+}
+
+/**
+ * PostModelSwitch (upstream 2.1.311): fires after a model switch. Async,
+ * non-cancellable; additionalContext is delivered with the next request. Waits
+ * at most 5s. source adds auto/resume beyond PreModelSwitch.
+ */
+export async function* executePostModelSwitchHooks(
+  fields: Omit<PostModelSwitchHookInput, BaseHookFields | 'hook_event_name'>,
+  signal?: AbortSignal,
+  timeoutMs: number = 5_000,
+): AsyncGenerator<AggregatedHookResult> {
+  const hookInput: PostModelSwitchHookInput = {
+    ...createBaseHookInput(undefined),
+    hook_event_name: 'PostModelSwitch',
+    ...fields,
+  }
+  yield* executeHooks({
+    hookInput,
+    toolUseID: `post-model-switch-${fields.to_model}`,
+    signal,
+    timeoutMs,
+  })
+}
+
+/**
+ * MessageDisplay (upstream 2.1.311): fires when a message is rendered.
+ * displayContent replaces the rendered text only; exit 2 / failure shows the
+ * original. Default timeout 10s, synchronous. No matcher.
+ */
+export async function* executeMessageDisplayHooks(
+  fields: Omit<MessageDisplayHookInput, BaseHookFields | 'hook_event_name'>,
+  signal?: AbortSignal,
+  timeoutMs: number = 10_000,
+): AsyncGenerator<AggregatedHookResult> {
+  const hookInput: MessageDisplayHookInput = {
+    ...createBaseHookInput(undefined),
+    hook_event_name: 'MessageDisplay',
+    ...fields,
+  }
+  yield* executeHooks({
+    hookInput,
+    toolUseID: `message-display-${fields.message_id}`,
+    signal,
+    timeoutMs,
+    forceSyncExecution: true,
   })
 }
 
