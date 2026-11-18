@@ -785,4 +785,32 @@ Set the model.
     }
     expect(byId.get('setting:hooks')?.precedence).toContain('Hooks merge across files')
   })
+
+  describe('multi-baseline functionality', () => {
+    test('can load baseline pointer', async () => {
+      const { getBaselinePointer } = await import('../scripts/upstreamConfigInventory.ts')
+      const pointer = await getBaselinePointer()
+      expect(pointer.schemaVersion).toBe(1)
+      expect(typeof pointer.active).toBe('string')
+      expect(Array.isArray(pointer.available)).toBe(true)
+      expect(pointer.available.length).toBeGreaterThan(0)
+    })
+
+    test('can load inventory for 2.1.311', async () => {
+      const { loadInventoryForVersion } = await import('../scripts/upstreamConfigInventory.ts')
+      const inventory = await loadInventoryForVersion('2.1.311')
+      expect(inventory.baseline.version).toBe('2.1.311')
+      expect(inventory.entries.length).toBeGreaterThan(0)
+    })
+
+    test('diffInventories with same inventory produces empty diff', async () => {
+      const { loadInventoryForVersion, diffInventories } = await import('../scripts/upstreamConfigInventory.ts')
+      const inventory = await loadInventoryForVersion('2.1.311')
+      const diff = diffInventories(inventory, inventory)
+      expect(diff.added).toEqual([])
+      expect(diff.removed).toEqual([])
+      expect(diff.changed).toEqual([])
+      expect(diff.unchanged.length).toEqual(inventory.entries.length)
+    })
+  })
 })
