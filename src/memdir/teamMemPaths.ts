@@ -208,8 +208,12 @@ async function isRealPathWithinTeamDir(
 /**
  * Check if a resolved absolute path is within the team memory directory.
  * Uses path.resolve() to convert relative paths and eliminate traversal segments.
- * Does NOT resolve symlinks — for write validation use validateTeamMemWritePath()
- * or validateTeamMemKey() which include symlink resolution.
+ * Does NOT resolve symlinks - for security-sensitive validation use
+ * validateTeamMemWritePath(), validateTeamMemReadPath(), or validateTeamMemKey()
+ * which include symlink resolution.
+ *
+ * NOTE: This is a fast-path check for permission decisions. Actual file reads
+ * should validate symlink containment with validateTeamMemReadPath() first.
  */
 export function isTeamMemPath(filePath: string): boolean {
   // SECURITY: resolve() converts to absolute and eliminates .. segments,
@@ -217,6 +221,35 @@ export function isTeamMemPath(filePath: string): boolean {
   const resolvedPath = resolve(filePath)
   const teamDir = getTeamMemPath()
   return resolvedPath.startsWith(teamDir)
+}
+
+/**
+ * Validate that an absolute file path is safe for reading from team memory.
+ * Returns the resolved real path if valid.
+ * Throws PathTraversalError if the path contains injection vectors or escapes
+ * the directory via symlink (PSR M22186).
+ *
+ * B3-memory-01 FIX: This validates symlink containment before reads, ensuring
+ * symlinks can't escape the team directory.
+ */
+export async function validateTeamMemReadPath(filePath: string): Promise<string> {
+  if (filePath.includes('\0')) {
+    throw new PathTraversalError(`Null byte in path: "${filePath}"`)
+  }
+
+  const resolvedPath = resolve(filePath)
+  const teamDir = getTeamMemPath()
+
+  if (!resolvedPath.startsWith(teamDir)) {
+    throw new PathTraversalError(`Path escapes team memory directory: "${filePath}"`)
+  }
+
+  const realPath = await realpathDeepestExisting(resolvedPath)
+  if (!(await isRealPathWithinTeamDir(realPath))) {
+    throw new PathTraversalError(`Path escapes team memory directory via symlink: "${filePath}"`)
+  }
+
+  return realPath
 }
 
 /**

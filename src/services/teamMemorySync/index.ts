@@ -38,6 +38,7 @@ import {
   getTeamMemPath,
   PathTraversalError,
   validateTeamMemKey,
+  validateTeamMemReadPath,
 } from '../../memdir/teamMemPaths.js'
 import { count } from '../../utils/array.js'
 import {
@@ -582,7 +583,18 @@ async function readLocalTeamMemory(maxEntries: number | null): Promise<{
             await walkDir(fullPath)
           } else if (entry.isFile()) {
             try {
-              const stats = await stat(fullPath)
+              let validatedPath: string
+              try {
+                validatedPath = await validateTeamMemReadPath(fullPath)
+              } catch (e) {
+                if (e instanceof PathTraversalError) {
+                  logForDebugging(`team-memory-sync: ${e.message}`, { level: 'warn' })
+                  return
+                }
+                throw e
+              }
+
+              const stats = await stat(validatedPath)
               if (stats.size > MAX_FILE_SIZE_BYTES) {
                 logForDebugging(
                   `team-memory-sync: skipping oversized file ${entry.name} (${stats.size} > ${MAX_FILE_SIZE_BYTES} bytes)`,
@@ -590,7 +602,7 @@ async function readLocalTeamMemory(maxEntries: number | null): Promise<{
                 )
                 return
               }
-              const content = await readFile(fullPath, 'utf8')
+              const content = await readFile(validatedPath, 'utf8')
               const relPath = relative(teamDir, fullPath).replaceAll('\\', '/')
 
               // PSR M22174: scan for secrets BEFORE adding to the upload

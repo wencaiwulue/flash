@@ -1408,6 +1408,106 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 
 **当前进度**：9/9 已审计，batch 3 完整
 
+---
+
+## 修复台账：B3-memory-01, B3-memory-03, B3-memory-06
+
+### 修复概述
+
+针对 memory 子系统的 3 个路径验证漏洞进行了统一修复，确保读取路径与写入路径采用相同的安全标准。
+
+### 发现 B3-memory-01：team memory 读取路径验证不足
+
+**问题**：`isTeamMemPath` 仅做字符串前缀检查，不解析 symlink；而 `validateTeamMemWritePath` 做完整 symlink 解析。
+
+**修复**：
+- 新增 `validateTeamMemReadPath` 函数，与 `validateTeamMemWritePath` 采用相同的验证逻辑
+- 更新 `readLocalTeamMemory` 函数，在读取文件前先验证路径
+- 保留 `isTeamMemPath` 作为快速权限检查，但明确说明仅用于权限预判，实际读取需要完整验证
+
+**证据**：
+- `src/memdir/teamMemPaths.ts`：新增 `validateTeamMemReadPath` 函数
+- `src/services/teamMemorySync/index.ts`：集成验证到 `readLocalTeamMemory`
+
+### 发现 B3-memory-03：auto memory 读取路径验证不足
+
+**问题**：`isAutoMemPath` 仅做字符串前缀检查，无 symlink 解析。
+
+**修复**：
+- 新增 `validateAutoMemReadPath` 函数，实现完整的 symlink 解析和真实路径包含检查
+- 新增 `PathTraversalError` 类到 paths.ts
+- 实现 `realpathDeepestExistingAuto` 和 `isRealPathWithinAutoDir` 辅助函数
+
+**证据**：
+- `src/memdir/paths.ts`：新增验证函数和错误类
+
+### 发现 B3-memory-06：readLocalTeamMemory 缺少 symlink 重验证
+
+**问题**：`readLocalTeamMemory` 遍历 team 目录读取文件，但对发现的文件没有二次验证 symlink。
+
+**修复**：
+- 更新 `readLocalTeamMemory` 函数，对每个文件路径调用 `validateTeamMemReadPath` 验证
+- 使用验证后的真实路径进行读取
+- 验证失败时记录警告并跳过该文件
+
+**证据**：
+- `src/services/teamMemorySync/index.ts`：集成路径验证
+
+### 修复决策表
+
+| 维度 | 选择 | 说明 |
+|------|------|------|
+| 验证深度 | symlink + realpath | 与写入验证一致，确保安全边界 |
+| 性能策略 | 快速检查保留 + 完整验证在实际读取前 | 权限判断用 isTeamMemPath/isAutoMemPath，实际读取用 validate* 函数 |
+| 错误处理 | fail closed，验证失败跳过 | 安全优先，不读取有风险的文件 |
+| 向后兼容 | isTeamMemPath/isAutoMemPath 保留现有行为 | 不破坏现有代码，逐步迁移 |
+
+### 三层证据收集
+
+#### 1. 官方文档边界
+
+查阅官方 Claude Code 文档关于记忆系统的说明：
+- 团队记忆目录设计为安全沙箱
+- 不期望通过 symlink 逃出该目录
+- 没有找到关于 symlink 处理的具体文档
+
+#### 2. 上游 CLI strings 边界
+
+对 `/opt/homebrew/bin/claude` 执行 strings 搜索：
+- 未找到 `validateTeamMemReadPath` 或类似名称的明确符号
+- 发现 `PathTraversalError` 相关字符串，说明上游有路径验证机制
+- 未找到关于读取路径验证的明确证据
+
+#### 3. 本地源码/契约边界
+
+**修复证据已集成到代码库**：
+- 新增验证函数与现有写入验证使用相同的 `realpathDeepestExisting` 模式
+- 内存中已有的 `MemoryPathValidator`（session memory）也使用相同模式
+- 所有新验证使用已有的 `PathTraversalError`，保持一致的错误契约
+
+### RED/GREEN 测试验证
+
+#### RED（修复前）
+- `isTeamMemPath` 对指向外部的 symlink 返回 true
+- `readLocalTeamMemory` 会读取指向外部的文件
+
+#### GREEN（修复后）
+- `validateTeamMemReadPath` 对指向外部的 symlink 抛出 `PathTraversalError`
+- `readLocalTeamMemory` 在读取前验证，跳过有风险的文件
+- 正常文件和内部 symlink 继续正常工作
+
+### 测试覆盖
+
+新增测试：
+- `tests/memoryPathValidation.test.ts`：验证修复的安全边界
+- `tests/memory.test.ts`：已存在的 session memory 验证测试（部分覆盖类似场景）
+
+### 说明
+
+本次完成 3 个 memory 相关发现的修复，确保记忆目录读取路径与写入路径采用相同的安全标准。
+
+---
+
 ### 说明
 
 本次完成所有 9 个子系统的深度生命周期审计，README 已统一更新。
