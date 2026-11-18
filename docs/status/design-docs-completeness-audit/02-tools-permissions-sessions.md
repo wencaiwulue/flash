@@ -1260,30 +1260,17 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/02-tools-permis
 
 **Finding ID**：B2-session-persistence-01 / B2-session-persistence-02 / B2-session-persistence-04
 
-**整改内容**：新增 `tests/sessionPersistenceRecovery.test.ts` 并唯一登记 session-persistence coverage，覆盖以下关键场景：
+**整改内容**：新增并唯一登记 `tests/sessionPersistenceRecovery.test.ts`。首轮浅测试及一次错误的 reviewer 修改均未通过验收；最终版本共 10 个测试、36 个硬断言：
 
-1. **崩溃恢复与截断处理**：
-   - 模拟进程崩溃导致最后一行 JSONL 被截断（部分写入）
-   - 验证 loadTranscriptFile 自动跳过无效行，保留有效历史
-   - 验证完全无效的 JSON 行被正确忽略
+1. **真实崩溃重启**：Bun 子进程写两条完整 JSONL 后追加截断尾行并以 42 退出；父进程验证退出码、有效 UUID 集合、leaf 和恢复链。另验证无效行隔离。
+2. **惰性创建与 resume**：真实 cache-only title/agent-setting/mode 在首条消息前不创建文件；首条消息物化 metadata；`adoptResumedSessionFile` 后续写完整。
+3. **removeMessageByUuid 三分支**：末尾 truncate；<50MiB 且目标在 64KiB 尾窗外时 slow-path rewrite；>50MiB guarded slow path 后文件逐字节不变，目标和其他消息保留。最后一项是直接返回的保护行为，不追加 tombstone。
+4. **compact 恢复**：>5MiB 文件只加载最后 boundary 后缀并验证精确链；preservedSegment 的 head 改接 anchor、anchor sibling 改接 tail、其他旧消息删除、最终用户/assistant 顺序精确匹配；小文件对照保留旧消息。
 
-2. **惰性文件创建**：
-   - 验证在第一条 user/assistant 消息写入前，会话文件不创建
-   - 验证 adoptResumedSessionFile 在恢复会话时正确工作
+**验证结果**：focused 10 pass、0 fail、36 assertions；无生产代码变更。全部使用临时文件和本地子进程，无模型、凭据、网络、用户配置或远程 SessionStore 调用。
 
-3. **Tombstone 与 removeMessageByUuid**：
-   - 验证删除最后一条消息时文件被正确 truncate
-   - 验证大文件阈值（50MB）行为（跳过重写，保留 tombstone 处理）
+**证据边界**：三层证据记录在 spec 第 10.2 节。官方文档支持进程重启后 resume 的公开语义；本机 strings 只证明相关符号存在；当前仓库测试证明上述本地行为。未验证 >1GB 性能、更多崩溃时序、多 boundary/损坏 metadata 组合、定期 reAppend 或远程 live。
 
-4. **Compact Boundary + Preserved Segment**：
-   - 验证 preserved segment 的 head/tail/anchor 正确解析
-   - 验证消息 parentUuid 重链接逻辑
-   - 验证预压缩内容的跳过逻辑
-
-**验证结果**：focused 7 pass、0 fail；无生产代码变更。全部测试使用临时文件，无真实模型/凭据/网络调用。
-
-**证据边界**：崩溃恢复测试模拟截断文件，未使用真实进程退出；大文件测试跳过 50MB 以上重写，未实际生成 1GB 会话；跨进程并发写入已在 sessionConcurrency.test.ts 有覆盖。
-
-**spec 更新**：保持 approved（原状态已批准），新增第 10 节整改记录，更新第 7 节测试证据表格。
+**spec 更新**：保持原 approved 状态；第 7/10 节记录真实测试与剩余边界，并更正“大文件会追加 tombstone”的错误描述为“逐字节不变、原记录保留”。
 
 **原 Finding 状态**：B2-session-persistence-01/02/04 保持 open，不修改历史统计。

@@ -47,7 +47,7 @@ status: approved
 | 并行工具调用通过 recoverOrphanedParallelToolResults 恢复 | 加载时从叶子回溯主链，然后从 Map 中找回同一 API ID 的并行分支插入 | 单条消息 parentUuid 指向主链，但并行分支需要单独恢复算法 | 写入时就保持多链结构：复杂度高，难以兼容现有格式；引入专门 fork 消息：需要迁移旧会话 | 加载时需额外扫描；需要消息中携带 API message ID | `src/utils/sessionChainRecovery.ts:38-116` |
 | 会话文件惰性创建（第一条 user/assistant 消息时） | pendingEntries 暂存元数据，materializeSessionFile 在第一条 user/assistant 时写入 | 避免空会话文件（只有元数据）污染列表；用户打开但没交互的会话不持久化 | 立即创建文件：大量空会话在 listSessions 中可见；在会话列表中过滤空会话：仍浪费磁盘空间和扫描时间 | 退出时如果没有 user/assistant 消息，元数据会丢失 | `src/utils/sessionStorage.ts` |
 | compact_boundary 截断历史，但保留 preservedSegment | 加载时定位最后一个 compact_boundary，截断到之后；有 preservedSegment 时恢复并重新链接 | 控制上下文长度，避免每次加载全量历史；同时保留用户明确保留的片段 | 永远保留全量：大文件启动慢；fork 时创建新文件：磁盘占用高 | 实现复杂度高；需处理 preservedSegment 的 parentUuid 重链接 | `src/utils/sessionStorage.ts:1840-2039` |
-| removeMessageByUuid 对不在末尾的消息，仅在文件 ≤ 50MB 时才重写 | `MAX_TOMBSTONE_REWRITE_BYTES = 50 * 1024 * 1024`，超过该大小只标记 tombstone 不重写 | 大文件重写慢且占用 I/O；通过 tombstone 标记在加载时过滤 | 总是重写整个文件：大文件卡顿；永不重写只 tombstone：需解析器支持过滤，文件会越来越大 | 大文件删除非末尾消息后，文件不会立即变小 | `src/utils/sessionStorage.ts:124` |
+| removeMessageByUuid 对不在末尾的消息，仅在文件 ≤ 50MiB 时才重写 | `MAX_TOMBSTONE_REWRITE_BYTES = 50 * 1024 * 1024`；目标不在 64KiB 尾窗且文件超过阈值时直接返回，原文件逐字节不变，不追加 tombstone | 避免全文件读取和重写的 I/O、内存与阻塞成本 | 总是重写整个文件：大文件卡顿；后台压缩：需要额外生命周期与命令语义 | 大文件 slow path 的删除请求不生效，原消息仍保留，需后续显式压缩能力 | `src/utils/sessionStorage.ts:899-977`；`tests/sessionPersistenceRecovery.test.ts` 的 >50MiB 逐字节不变测试 |
 | 文件历史快照按 messageId 关联，不是按 UUID | fileHistoryMakeSnapshot(messageId) 关联到 messageId；fork 时不复制文件历史快照 | fork 时重新 UUID 导致快照孤立；按 messageId 关联可以在 fork 后继续访问 | 按 UUID 关联：fork 时快照孤立；按时间戳关联：难以与会话历史对齐 | 需要消息同时携带 UUID 和 messageId | `src/utils/fileHistory.ts` |
 | **队列化写入与 flush 时机** | `appendEntry()` 队列化后立即 resolve，不等待刷盘；100ms 定时器批量 flush；`flush()` 等待 active drain 和 pending writes | 不阻塞调用方 UI；批量写入减少 I/O 次数 | 同步等待刷盘：用户体验卡顿；每写入立即 flush：I/O 次数过多，性能差 | 崩溃时未 flush 的数据丢失；调用方必须调用 `flush()` 确保持久化 | `src/utils/sessionStorage.ts:533-687` [B2-session-persistence-03] |
 | **跨进程短锁机制** | `appendToFile()` 使用 proper-lockfile；锁仅在文件写入期间持有；锁超时 5 次重试（10-100ms 退避）；锁 10s 后视为 stale 可清理；写入前确保文件存在 | 防止 SDK/CLI 同时写入导致交错；锁粒度小，不阻塞模型调用；stale lock 自动清理避免死锁 | 无锁：写入交错损坏 JSONL；粗粒度锁：阻塞模型调用性能差；数据库：复杂度太高 | 轻微写入延迟增加；极端情况下仍可能时序问题（但不会损坏） | `src/utils/sessionStorage.ts:635-687` [B2-session-persistence-03] |
@@ -1258,20 +1258,20 @@ findLatestMessage() (有可见用户内容)
 | fork 会话 | 调用 forkSession() | 新会话有新 sessionId，保留 forkFrom 元数据 | 不能复制文件历史快照 |
 | rewind 到某个 messageId | 调用 fileHistoryRewind() | 文件系统恢复到该 messageId 时的状态 | 不能自动 rewind（需显式调用） |
 | removeMessageByUuid 删除末尾消息 | 调用 removeMessageByUuid() | 文件被 truncate，立即变小 | 不能保留 tombstone |
-| removeMessageByUuid 删除大文件非末尾消息 | 调用 removeMessageByUuid() | 只标记 tombstone，不重写 | 不能阻塞用户操作 |
+| removeMessageByUuid 删除大文件非末尾消息 | 目标不在 64KiB 尾窗且文件 >50MiB，调用 removeMessageByUuid() | guarded slow path 直接返回，文件逐字节不变，原消息仍保留，不新增 tombstone | 不能读取并重写整个大文件 |
 
 ## 7. 代码与测试证据
 
 | 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
 |---|---|---|---|
-| JSONL 追加写入，无原地改写 | `src/utils/sessionStorage.ts:1-999` | `tests/sessionPersistenceRecovery.test.ts` | `tests/sessionPersistenceRecovery.test.ts` 验证崩溃恢复截断场景 |
-| 大文件启动时仅读头尾 64KB | `src/utils/sessionStoragePortable.ts:1-999` | `tests/sessionConcurrency.test.ts` | 已有头尾读取测试，但大文件（>1GB）性能仍未覆盖 |
-| 元数据追加不覆盖，读取取最后一个 | `src/utils/sessionStorage.ts:1-999` + `extractLastJsonStringField` | 需查找相关测试 | 未找到直接测试覆盖 |
-| 并行工具调用通过 recoverOrphanedParallelToolResults 恢复 | `src/utils/sessionChainRecovery.ts:1-999` | `tests/sessionChainRecovery.test.ts` | `tests/sessionChainRecovery.test.ts` 验证恢复顺序与无关联分支排除 |
-| 会话文件惰性创建 | `src/utils/sessionStorage.ts:1-999` + `pendingEntries` + `materializeSessionFile` | `tests/sessionPersistenceRecovery.test.ts` | `tests/sessionPersistenceRecovery.test.ts` 验证文件在第一条 user/assistant 消息前不创建 |
-| compact_boundary 截断历史，但保留 preservedSegment | `src/utils/sessionStorage.ts:1-999` | `tests/sessionPersistenceRecovery.test.ts` | `tests/sessionPersistenceRecovery.test.ts` 验证 preserved segment 恢复与重链接 |
-| removeMessageByUuid 对不在末尾的消息，仅在 ≤ 50MB 时才重写 | `src/utils/sessionStorage.ts:1-999` + `MAX_TOMBSTONE_REWRITE_BYTES` | `tests/sessionPersistenceRecovery.test.ts` | `tests/sessionPersistenceRecovery.test.ts` 验证末尾消息 truncate 行为；大文件非末尾仍需实机验证 |
-| 文件历史快照按 messageId 关联 | `src/utils/fileHistory.ts:1-999` | `tests/fileHistory.test.ts` | 已有基本快照测试 |
+| JSONL 追加写入与截断恢复 | `src/utils/sessionStorage.ts` 的 `loadTranscriptFile` | 真实 Bun 子进程写入两条完整消息后追加截断行并以 42 异常退出；父进程断言退出码、有效 UUID 集合、leaf 和二节点链 | 只覆盖完整行已落盘、尾行部分写入；未 flush 的内存队列不可能由磁盘恢复 |
+| 大文件启动时仅读头尾 64KB | `src/utils/sessionStoragePortable.ts` + `extractLastJsonStringField` | `tests/sessionConcurrency.test.ts` | 已有头尾读取测试，但大文件（>1GB）性能仍未覆盖 |
+| 元数据追加不覆盖，读取取最后一个 | `src/utils/sessionStorage.ts` + `extractLastJsonStringField` | cache-only title/agent-setting/mode 在首条消息前不建文件，materialize 后实际落盘 | 定时 reAppend 与多进程元数据竞争另行验收 |
+| 并行工具调用通过 recoverOrphanedParallelToolResults 恢复 | `src/utils/sessionChainRecovery.ts` | `tests/sessionChainRecovery.test.ts` | 验证恢复顺序与无关联分支排除 |
+| 会话文件惰性创建与恢复后续写 | `src/utils/sessionStorage.ts` 的 `materializeSessionFile`、`adoptResumedSessionFile` | `tests/sessionPersistenceRecovery.test.ts` 验证 metadata-only 不建文件、首条消息物化、resume 后三条消息完整 | 未覆盖全部 CLI 交互入口 |
+| compact_boundary 截断历史，但保留 preservedSegment | `src/utils/sessionStorage.ts` 的 `readTranscriptForLoad` 调用与 `applyPreservedSegmentRelinks` | >5MiB 文件精确保留最后 boundary 后缀；preserved head 改接 anchor、anchor sibling 改接 tail，其他旧消息删除，最终用户/assistant 链顺序精确匹配；小文件对照保留旧消息 | 不证明 >1GB 性能或所有多 boundary 组合 |
+| removeMessageByUuid 的末尾、小文件 slow path 与大文件 guard | `src/utils/sessionStorage.ts:899-977` | 末尾 truncate；<50MiB 且目标在 64KiB 尾窗外时重写删除；>50MiB guarded slow path 后文件逐字节不变、目标与其他消息均保留 | 大文件 guard 不追加 tombstone；本轮不声称后台压缩或删除生效 |
+| 文件历史快照按 messageId 关联 | `src/utils/fileHistory.ts` | `tests/fileHistory.test.ts` | 已有基本快照测试 |
 
 ### 7.1 核心模块
 
@@ -1285,14 +1285,13 @@ findLatestMessage() (有可见用户内容)
 | `tests/sdkSessions.test.ts` | 测试用例 | SDK 会话测试，包括并行分支恢复 |
 | `tests/sdkQueryLifecycle.test.ts` | 测试用例 | SDK 查询生命周期测试，验证多次 return() 只执行一次清理 |
 
-### 7.2 未覆盖行为（基于代码阅读）
+### 7.2 当前未覆盖行为
 
-- 崩溃恢复的完整测试（进程崩溃后重启）
-- 大文件（> 1GB）的加载性能测试
-- 多进程并发写入同一会话的测试
-- removeMessageByUuid 对大文件非末尾消息的处理
-- reAppendSessionMetadata 的定期执行机制
+- 大文件（>1GB）的加载性能与峰值内存验收；本轮只验证 >5MiB/>50MiB 行为阈值，不做墙钟性能断言
+- 更多 abrupt-exit 时序（锁持有期间、多条追加交错）和未 flush 队列的崩溃边界；本轮只覆盖完整前缀加截断尾行
+- reAppendSessionMetadata 的定期执行机制和多进程元数据竞争的全部组合
 - 文件历史快照与 SDK 文件检查点的完整边界测试
+- 多个 compact boundary、损坏 preservedSegment 元数据和全部 CLI 交互恢复入口的组合场景
 
 ## 8. 文件覆盖与相关子系统
 
@@ -1326,27 +1325,33 @@ findLatestMessage() (有可见用户内容)
 
 ## 10. 整改记录（2026-11-18）
 
-### 10.1 已完成整改
+### 10.1 范围与最终测试证据
 
-| Finding | 类型 | 内容 |
+Findings：B2-session-persistence-01/02/04。新增并唯一登记 `tests/sessionPersistenceRecovery.test.ts`，最终 10 个测试、36 个断言，无生产代码变更：
+
+1. 真实 Bun 子进程写完整前缀和截断尾行后以 42 退出；父进程验证退出码、UUID、leaf 和链。
+2. 无效 JSON 行隔离。
+3. cache-only metadata 不建文件，首条消息物化消息与 metadata。
+4. `adoptResumedSessionFile` 恢复后续写。
+5. 末尾消息 truncate。
+6. <50MiB、目标在 64KiB 尾窗外的 slow-path rewrite。
+7. >50MiB guarded slow path 后文件逐字节不变；这是无操作保护，不是新增 tombstone。
+8. >5MiB compact boundary 大文件只保留最后 boundary 后缀，并精确验证链。
+9. preservedSegment 的 head/anchor sibling 重接、旧消息裁剪和最终链顺序。
+10. 小文件 compact 对照保留 boundary 前消息。
+
+首轮浅测试和后续未提交的宽松断言均未作为完成证据；最终版本移除了“系统不崩溃”式断言、重复 preserved 记录和未验证的报告声明。
+
+### 10.2 三层证据
+
+| 层级 | 只读证据 | 能证明与不能证明的内容 |
 |---|---|---|
-| B2-session-persistence-01/02/04 | 测试补充 | 新增 `tests/sessionPersistenceRecovery.test.ts`，覆盖崩溃恢复截断处理、惰性文件创建、tombstone 末尾删除、compact boundary + preserved segment 恢复 |
+| 官方文档 | [Agent SDK Sessions](https://code.claude.com/docs/en/agent-sdk/sessions)：会话自动写盘，可用 continue/resume 在进程重启后恢复；本地 JSONL 路径有公开说明 | 支持本轮进程重启恢复场景；未规定 5MiB/50MiB、preservedSegment 或截断行恢复算法，不能据此宣称私有实现兼容 |
+| 本机上游二进制 | `strings $(command -v claude)` 命中 `removeMessageByUuid`、`materializeSessionFile`、`compact_boundary`、`preservedSegment` | 只证明相关符号存在，不证明上游阈值、运行时状态或恢复结果 |
+| 本仓库 | `sessionStorage.ts`、`sessionStoragePortable.ts` 与最终 10 个真实临时文件/子进程测试 | 证明当前实现的上述可观察行为；offline 测试不等于 >1GB 性能或远程 SessionStore 验收 |
 
-### 10.2 测试覆盖
+### 10.3 回滚与剩余边界
 
-- ✅ `sessionPersistenceRecovery.test.ts` 包含：
-  - 崩溃恢复：截断 JSONL 的最后一行、完全无效的 JSON 行处理
-  - 惰性创建：文件在第一条 user/assistant 消息前不创建
-  - adoptResumedSessionFile 行为验证
-  - removeMessageByUuid：末尾消息 truncate、大文件阈值行为验证
-  - compact boundary 与 preserved segment 恢复流程
+回滚只需删除新增测试、移除 coverage entry，并还原本文与审计台账的新增证据；无生产行为变更。spec 保持原 approved 状态，原 Finding 保持 open。
 
-### 10.3 证据边界
-
-本整改**未**修改生产代码，仅补充测试覆盖，因此**无**代码回滚风险。
-
-### 10.4 剩余缺口（待后续迭代）
-
-- 多进程并发写入元数据竞争场景（已在 sessionConcurrency.test.ts 有基本覆盖）
-- 大文件（>1GB）启动加载性能
-- reAppendSessionMetadata 的定期执行机制
+剩余边界见第 7.2 节，重点是 >1GB 性能、更多崩溃时序、多 boundary/损坏 metadata 组合、定期 metadata reAppend 和远程 SessionStore；不得把本轮本地文件测试提升为这些场景的 live 验收。
