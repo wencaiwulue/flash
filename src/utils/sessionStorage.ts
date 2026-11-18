@@ -1025,6 +1025,12 @@ class Project {
     startingParentUuid?: UUID | null,
     teamInfo?: { teamName?: string; agentName?: string },
   ) {
+    // Rebind before trackWrite starts: flush() waits for active writers, so
+    // doing this inside appendEntry/trackWrite would self-deadlock.
+    if (this.sessionFile !== null && this.sessionFile !== getTranscriptPath()) {
+      await this.flush()
+      this.sessionFile = getTranscriptPath()
+    }
     return this.trackWrite(async () => {
       let parentUuid: UUID | null = startingParentUuid ?? null
 

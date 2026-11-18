@@ -589,3 +589,9 @@ bun run test
 ```
 
 门禁执行结果：Design docs: 0 errors, 71 warnings（符合预期，基线状态）
+
+## 整改台账：B0-query-core-01（2026-11-18 追加）
+
+- 新增 `tests/queryCore.integration.test.ts` 并唯一登记 query-core coverage：真实 QueryEngine + 离线 fake model 的两轮持久化、重载、session 隔离、parent/UUID 链与 compact boundary 顺序/去重。
+- **新增增量缺陷**：`B0-query-core-02`：`switchSession` 后缓存 `Project.sessionFile` 未重绑定，新 sessionId 的消息写入旧 JSONL；最终在 `insertMessageChain` 进入 trackWrite 前 flush 并重绑定。`B0-query-core-03`：全功能 profile 下 coordinator 的 CommonJS `require` 返回未定义导出，改为 `await import()` 惰性解析。两项增量均不改变原始 Finding 统计；focused 2/2 与 session/query 组合 22/22 通过。
+- **证据边界**：官方 Agent SDK Sessions 只提供 continue/resume/fork 语义；upstream strings 命中 session 符号但不证明缓存策略。全部本地 fake model/temp dir/offline，无真实模型调用。原 Finding 与历史统计不变，spec 保持 draft。

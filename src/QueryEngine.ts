@@ -111,12 +111,18 @@ import {
 
 // Dead code elimination: conditional import for coordinator mode
 /* eslint-disable @typescript-eslint/no-require-imports */
-const getCoordinatorUserContext: (
+async function getCoordinatorUserContext(
   mcpClients: ReadonlyArray<{ name: string }>,
   scratchpadDir?: string,
-) => { [k: string]: string } = feature('COORDINATOR_MODE')
-  ? require('./coordinator/coordinatorMode.js').getCoordinatorUserContext
-  : () => ({})
+): Promise<{ [k: string]: string }> {
+  if (!feature('COORDINATOR_MODE')) return {}
+  // Resolve lazily so coordinator initialization never affects QueryEngine's
+  // module graph or the external build's CommonJS interop.
+  const { getCoordinatorUserContext } = await import(
+    './coordinator/coordinatorMode.js'
+  )
+  return getCoordinatorUserContext(mcpClients, scratchpadDir)
+}
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 // Dead code elimination: conditional import for snip compaction
@@ -308,10 +314,10 @@ export class QueryEngine {
     headlessProfilerCheckpoint('after_getSystemPrompt')
     const userContext = {
       ...baseUserContext,
-      ...getCoordinatorUserContext(
+      ...(await getCoordinatorUserContext(
         mcpClients,
         isScratchpadEnabled() ? getScratchpadDir() : undefined,
-      ),
+      )),
     }
 
     // When an SDK caller provides a custom system prompt AND has set

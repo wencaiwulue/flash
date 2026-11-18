@@ -37,3 +37,9 @@ groups:
       - src/query/stopHooks.ts
       - src/query/tokenBudget.ts
       - src/query/transitions.ts
+  - id: query-integration-tests
+    kind: test
+    section: 7
+    summary: Query 多轮、恢复、compact 边界与 session 切换集成测试
+    files:
+      - tests/queryCore.integration.test.ts
