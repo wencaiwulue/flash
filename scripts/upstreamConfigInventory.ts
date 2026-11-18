@@ -8,19 +8,22 @@ import { fileURLToPath } from 'node:url'
 export const UPSTREAM_BASELINE_VERSION = '2.1.311' as const
 
 /**
- * 确定条目归属批次 B1-B5，遵循路线 4.5 节语义
+ * 确定条目归属批次 B1-B5，遵循路线 4.5 节语义。
+ *
+ * 返回 'final' 表示该条目无法被自动语义分类，需要在最终完整性审查（xxx）中人工归类，
+ * 避免把未知 settings 全塞 B3、未知 env 全塞 B1 造成错误的所有权归属。
  */
 export function determineOwnerBatch(
   id: string,
   entry?: { lifecycle?: 'active' | 'deprecated' | 'removed', kind?: 'setting' | 'hook' | 'env' }
-): 1 | 2 | 3 | 4 | 5 {
+): 1 | 2 | 3 | 4 | 5 | 'final' {
   // B1: Hooks 与当前环境变量
   if (id.startsWith('hook:')) return 1
 
   // 环境变量按语义划分
   if (id.startsWith('env:')) {
     const envName = id.slice('env:'.length)
-    // B4: MCP/插件/认证/远程/跨会话
+    // B4: MCP/插件/认证/远程/跨会话（先检查更具体的语义，避免被宽泛前缀遮蔽）
     if (envName.includes('MCP') || envName.includes('PLUGIN') || envName.includes('SKILL') ||
         envName.includes('AUTH') || envName.includes('OAUTH') || envName.includes('GITHUB') ||
         envName.includes('GITLAB') || envName.includes('BRIDGE') || envName.includes('REMOTE') ||
@@ -32,8 +35,18 @@ export function determineOwnerBatch(
         envName.includes('FEEDBACK') || envName.includes('AUTO_CONTINUE')) {
       return 5
     }
-    // 剩余环境变量默认 B1
-    return 1
+    // B3: 安全/沙箱/权限（明显分类，避免落入未知）
+    if (envName.includes('SANDBOX') || envName.includes('SEATBELT') || envName.includes('PERMISSION')) {
+      return 3
+    }
+    // B1: 进程/subagent/守护进程/调试等明确进程语义
+    if (envName.includes('SUBAGENT') || envName.includes('DAEMON') || envName.includes('BACKGROUND') ||
+        envName.includes('TIMEOUT') || envName.includes('RETRY') ||
+        envName.includes('DEBUG') || envName.includes('VERBOSE') || envName.includes('LOG')) {
+      return 1
+    }
+    // 未知环境变量归 final，待人工分类
+    return 'final'
   }
 
   // B5: 完全缺失功能（Artifact/同步/mods/反馈/自动继续）- 先检查更具体的前缀
@@ -105,8 +118,8 @@ export function determineOwnerBatch(
     return 2
   }
 
-  // 默认 B3（B0 批次，基础设施）
-  return 3
+  // 未知 settings 归 final，待最终完整性审查人工分类
+  return 'final'
 }
 
 export type InventoryDiff = {

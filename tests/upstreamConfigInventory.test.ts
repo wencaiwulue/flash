@@ -799,7 +799,6 @@ Set the model.
       expect(determineOwnerBatch('setting:background')).toBe(1)
       expect(determineOwnerBatch('setting:daemon')).toBe(1)
       expect(determineOwnerBatch('env:CLAUDE_CODE_MAX_SUBAGENT')).toBe(1)
-      expect(determineOwnerBatch('env:CLAUDE_CODE_SESSION')).toBe(1)
       expect(determineOwnerBatch('env:DEBUG')).toBe(1)
       expect(determineOwnerBatch('env:LOG_LEVEL')).toBe(1)
       expect(determineOwnerBatch('env:VERBOSE')).toBe(1)
@@ -875,10 +874,24 @@ Set the model.
       expect(determineOwnerBatch('env:CLAUDE_CODE_AUTO_CONTINUE')).toBe(5)
     })
 
-    test('assigns B3 to uncategorized settings by default', () => {
-      expect(determineOwnerBatch('setting:advisorModel')).toBe(3)
-      expect(determineOwnerBatch('setting:agent')).toBe(3)
-      expect(determineOwnerBatch('setting:agentPushNotifEnabled')).toBe(3)
+    test('assigns final to uncategorized settings for manual triage', () => {
+      expect(determineOwnerBatch('setting:advisorModel')).toBe('final')
+      expect(determineOwnerBatch('setting:agent')).toBe('final')
+      expect(determineOwnerBatch('setting:agentPushNotifEnabled')).toBe('final')
+      expect(determineOwnerBatch('setting:unknownFutureKey')).toBe('final')
+    })
+
+    test('assigns final to unknown env vars and B3 to sandbox env vars', () => {
+      // 未知环境变量归 final，不再默认塞 B1
+      expect(determineOwnerBatch('env:SOME_UNKNOWN_FLAG')).toBe('final')
+      expect(determineOwnerBatch('env:ANTHROPIC_BASE_URL')).toBe('final')
+      // 明确的 sandbox/security 语义归 B3
+      expect(determineOwnerBatch('env:CLAUDE_CODE_SANDBOX')).toBe(3)
+      expect(determineOwnerBatch('env:SEATBELT_PROFILE')).toBe(3)
+      // 明确的进程/subagent 语义归 B1
+      expect(determineOwnerBatch('env:CLAUDE_CODE_SUBAGENT')).toBe(1)
+      expect(determineOwnerBatch('env:DEBUG')).toBe(1)
+      expect(determineOwnerBatch('env:API_TIMEOUT_MS')).toBe(1)
     })
   })
 

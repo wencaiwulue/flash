@@ -100,13 +100,15 @@ fixtures/upstream-config/
 
 ### 4.2 OwnerBatch 确定性分配
 
-实现 `determineOwnerBatch(id, inventoryEntry)` 函数，按路线 4.5 节：
+实现 `determineOwnerBatch(id, inventoryEntry)` 函数，按路线 4.5 节。
+
+**关键设计决策**：返回类型包含 `'final'`。当条目无法被自动语义分类时，返回 `'final'` 而非兜底塞入某个批次，避免"未知 settings 全塞 B3、未知 env 全塞 B1"造成错误的所有权归属。`'final'` 条目在 batch 模式（B1-B5）下被跳过，仅在最终完整性审查（xxx / final 模式）中强制人工归类。
 
 ```typescript
 export function determineOwnerBatch(
   id: string,
   entry?: { lifecycle?: 'active' | 'deprecated' | 'removed', kind?: 'setting' | 'hook' | 'env' }
-): 1 | 2 | 3 | 4 | 5 {
+): 1 | 2 | 3 | 4 | 5 | 'final' {
   // B1: Hooks 与当前环境变量
   if (id.startsWith('hook:')) return 1
   // 环境变量按语义划分：B1（进程/subagent）、B4（MCP/认证/远程）、B5（Artifact/mods/反馈）
@@ -127,8 +129,8 @@ export function determineOwnerBatch(
         envName.includes('FEEDBACK') || envName.includes('AUTO_CONTINUE')) {
       return 5
     }
-    // 剩余环境变量默认 B1
-    return 1
+    // 未知环境变量归 final，待人工分类（不再默认塞 B1）
+    return 'final'
   }
 
   // B1: setting 前缀匹配（subagent/进程相关）
@@ -197,12 +199,12 @@ export function determineOwnerBatch(
     return 5
   }
 
-  // 默认 B3（B0 批次，基础设施）
-  return 3
+  // 未知 settings 归 final，待最终完整性审查人工分类（不再默认塞 B3）
+  return 'final'
 }
 ```
 
-此函数可完全测试，覆盖代表性条目。
+此函数可完全测试，覆盖代表性条目。当前 2.1.311 矩阵的分配结果：B1=77、B2=42、B3=70、B4=77、B5=61、final=404（final 占多数正反映了大量条目需在最终审查中人工归类的现实）。
 
 ### 4.3 矩阵条目 V2 与迁移
 
@@ -210,7 +212,7 @@ export function determineOwnerBatch(
 
 ```typescript
 export type MatrixEntryV2 = CompatibilityMatrixEntry & {
-  ownerBatch?: 1 | 2 | 3 | 4 | 5  // B1-B5
+  ownerBatch?: 1 | 2 | 3 | 4 | 5 | 'final'  // B1-B5，或 final 待人工分类
   spec?: string  // 拥有 spec 的 id，如 'upstream-config-b0-baseline'
   verifiedVersion?: string  // 已验证基线版本，如 '2.1.311'
   currentReview?: {
@@ -262,6 +264,17 @@ export type MatrixEntryV2 = CompatibilityMatrixEntry & {
    - "Desktop-only, CLI ignores per upstream docs"
    - "Removed/no-op in 2.1.311, per binary probe"
 
+### 4.5.1 Final 终态门禁（`entry-not-aligned`）
+
+最终严格模式要求每个 active 条目处于**终态**，否则产生 `entry-not-aligned` 诊断。终态定义为：
+
+- `aligned`：六维全部 aligned 且有证据（另需 verifiedVersion/currentReview，见 4.4）。
+- `excluded` 且 `lifecycle=removed`：上游已移除，有移除证据。
+- `ignored-by-design`：有明确排除理由与证据（Desktop-only、no-op 等）。
+- `blocked` 且 `afterBaseline`：上游文档领先于当前基线，允许保留待后续基线处理。
+
+其余 `missing`/`partial`/`different`/非 afterBaseline 的 `blocked` 一律视为未完成。这堵住了旧实现的漏洞：旧 final 模式只校验 aligned/excluded 的证据完整性，一个"全 missing 但无 exclusion 问题"的矩阵会被误判为通过。当前真实矩阵在 final 模式下产生 727 个诊断（144 partial + 564 missing + 5 个非 removed excluded = 713 个 `entry-not-aligned`，外加 9 个 env consumer 与 5 个 exclusion evidence），真实反映对齐尚未完成。
+
 ### 4.6 CLI 行为
 
 扩展现有 CLI：
@@ -295,6 +308,7 @@ bun scripts/checkUpstreamConfigCompatibility.ts --initialize-matrix
 | `ignored-by-design` 无证据 | 最终模式产生 `invalid-exclusion-evidence` | 排除决策必须可审计 |
 | deprecated 被排除且无 `ignored-by-design` | 最终模式产生 `invalid-deprecated-effective-excluded` | deprecated 仍有效时不应排除 |
 | `aligned` 缺少六维/verifiedVersion/currentReview | 最终模式产生 `invalid-aligned-not-complete`/`invalid-verified-version`/`invalid-current-review` | aligned 必须完整可审计 |
+| 条目处于 missing/partial/different/blocked（非 afterBaseline） | 最终模式产生 `entry-not-aligned` | final 严格门禁要求每个 active 条目处于终态，防止"全 missing 但无 exclusion 问题"的矩阵被误判为通过 |
 | 矩阵 ID 不在清单中 | 所有模式产生 `stale-matrix-entry` | ID 必须精确对应 |
 | 清单 ID 不在矩阵中 | 所有模式产生 `missing-matrix-entry` | ID 必须精确对应 |
 
