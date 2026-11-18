@@ -5,7 +5,7 @@ import { ensureFreshDist } from '../tests/integration/support/dist-fixture.ts'
 const root = resolve(import.meta.dir, '..')
 const args = process.argv.slice(2)
 const testFilePattern = /^tests\/integration\/.*\.test\.tsx?$/
-const supportedOptions = ['--suite=', '--live', '--no-build']
+const supportedOptions = ['--suite=', '--live', '--no-build', '--form=']
 
 const requestedFiles = args.filter(arg => testFilePattern.test(arg))
 const unknownOptions = args.filter(
@@ -21,6 +21,14 @@ if (unknownOptions.length > 0) {
 const suite = args.find(arg => arg.startsWith('--suite='))?.split('=')[1]
 const live = args.includes('--live')
 const noBuild = args.includes('--no-build')
+const form = args.find(arg => arg.startsWith('--form='))?.split('=')[1] ?? 'dist'
+if (form !== 'dist' && form !== 'source') {
+  console.error(`Invalid --form=${form} (supported: dist, source)`)
+  process.exit(2)
+}
+if (form === 'source') {
+  console.log('--form=source: managed-injection tests require USER_TYPE=ant; they skip in dist form')
+}
 
 async function discoverIntegrationFiles(): Promise<string[]> {
   const files = new Set<string>()
@@ -64,7 +72,7 @@ for (const file of testFiles) {
     stdin: 'inherit',
     stdout: 'inherit',
     stderr: 'inherit',
-    env: process.env,
+    env: { ...process.env, FLASH_IT_FORM: form },
   })
   const exitCode = await child.exited
   if (exitCode !== 0) failures.push(file)

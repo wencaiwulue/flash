@@ -14,6 +14,7 @@ export interface SandboxOptions {
 export interface Sandbox {
   home: string
   project: string
+  managedDir: string            // 新增：源码形态 managed 注入目录
   env: Record<string, string>
   cleanup(): Promise<void>
 }
@@ -41,8 +42,10 @@ export function baseEnv(home: string): Record<string, string> {
 export async function createSandbox(opts: SandboxOptions = {}): Promise<Sandbox> {
   const home = await mkdtemp(join(tmpdir(), 'flash-it-home-'))
   const project = opts.projectDir ?? join(home, 'project')
+  const managedDir = join(home, 'managed-settings')
   await mkdir(join(home, '.claude'), { recursive: true })
   await mkdir(join(project, '.claude'), { recursive: true })
+  await mkdir(managedDir, { recursive: true })
 
   const realProject = realpathSync(project)
   const globalConfig = {
@@ -62,6 +65,7 @@ export async function createSandbox(opts: SandboxOptions = {}): Promise<Sandbox>
   return {
     home,
     project,
+    managedDir,
     env: baseEnv(home),
     async cleanup() {
       await rm(home, { recursive: true, force: true })
