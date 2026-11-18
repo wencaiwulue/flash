@@ -25,7 +25,7 @@ status: approved
 - 嵌套差异包括 3 个 permissions 限制项、`attribution.sessionUrl`、3 个 worktree 项和 15 个 sandbox 项。
 - 顶层 schema 使用 `.passthrough()`（`src/utils/settings/types.ts:1112-1113`），因此许多未知键不会报错，但也不会自动获得上游运行时语义。
 - `theme`、`editorMode`、`verbose`、`autoCompactEnabled`、`fileCheckpointingEnabled`、`showTurnDuration`、`terminalProgressBarEnabled`、`teammateMode`、`preferredNotifChannel` 等仍只从 `~/.claude.json` 读取，证据为 `src/tools/ConfigTool/supportedSettings.ts:29-83`。
-- 本机 `env.CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` 在 flash 源码中没有消费者，只会被注入环境，不会限制 subagent 数量。
+- 路线立项时本机 `env.CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` 在 flash 源码中没有消费者，只会被注入环境，不会限制 subagent 数量；B0 的 2.1.311 文档证据随后确认该变量自 2.1.224 起已移除且为 no-op，因此后续目标改为验证移除语义并处理 active 并发/深度变量。
 
 ### 1.2 约束
 
@@ -37,18 +37,19 @@ status: approved
 6. 新功能未实现前不得仅通过声明配置键来伪装支持。
 7. 路线文档和试点都不是模块完成证据；每个功能模块必须有具体设计和行为验收。
 8. 测试证据不得记录本机或其他机器配置中的凭据、OAuth token 等敏感内容。
+9. 按用户 2026-11-18 的交付决定，B0–B5 与最终完整性审查全部留在同一个 PR #17；批次仍分别设计、提交和评审，但不独立合并。
 
 ## 2. 设计理由与备选方案
 
 | 决策 | 实际机制 | 为什么采用 | 备选方案及不采用原因 | 代价 | 证据 |
 |---|---|---|---|---|---|
-| 采用兼容矩阵驱动的分批路线 | 机器可读矩阵记录每个配置/hook/env 的上游语义、flash 状态和测试证据 | 能区分解析、接线和行为完成，批次可独立评审 | 一次性大批量同步：跨子系统风险集中；schema 先行：容易形成长期静默空操作 | 需要先建设矩阵和检查器 | 当前 `99 + 22 + 6` 差异跨越多个子系统；本文件第 4 节 |
+| 采用兼容矩阵驱动的分批路线 | 机器可读矩阵记录每个配置/hook/env 的上游语义、flash 状态和测试证据 | 能区分解析、接线和行为完成；批次独立评审，按用户决定统一在 PR #17 交付 | 不分提交区间的一次性同步：无法有效评审；schema 先行：容易形成长期静默空操作；拆多个 PR：不符合本次交付约束 | 需要先建设矩阵和检查器，且单一 PR 必须等全部批次完成 | 当前 `99 + 22 + 6` 差异跨越多个子系统；本文件第 1.2 节第 9 项、第 4 节 |
 | 每批固定最新稳定版 | 批次头记录版本、采集日期、文档来源、二进制版本和仓库契约修订 | 可重复验证，避免文档、二进制、契约指向不同版本 | 永远跟踪 latest：结果不可复现；固定在 2.1.212：无法覆盖更新事件 | 批次开始需要重新收集证据 | 2.1.212 只确认 6 个缺失事件中的 3 个 |
 | 保留前向兼容，但完整声明已知配置 | 已知项进入显式 schema 和消费者；未知项由差异检查诊断 | 同时支持新配置容错与当前配置真实语义 | 全靠 `.passthrough()`：配置静默无效；严格拒绝所有未知项：一个未来字段破坏整个文件 | 需要字段级诊断和差异检测 | `src/utils/settings/types.ts:1112-1113`；当前未知 hook 整文件失败 |
 | 错误按项隔离，安全策略例外 | 未知项只跳过自身；普通已知字段尽量保留有效兄弟项；安全策略按上游 fail-closed | 避免局部错误扩大，同时不削弱策略 | 整文件失败：当前兼容问题；所有字段一律 fail-open：可能绕过 managed 限制 | 需要按来源和字段分类错误 | `src/schemas/hooks.ts:211-213`；现有 settings spec 第 4.3 节 |
 | 统一配置来源解析 | managed、flag、local、shared、user 与远程 managed 进入同一优先级模型，并保留来源信息 | 防止运行时模块各自读取造成冲突 | 各消费者自行读取 settings/global config：当前部分字段语义分裂 | 需要调整读取路径及冲突测试 | `src/tools/ConfigTool/supportedSettings.ts:29-83`；现有 settings spec 第 4.1 节 |
 | 外部能力按实现基础分层 | Desktop 忽略、已有实现接线、完整功能缺失三类分别处理 | 防止过度实现或虚假兼容 | 全部排除：漏掉已有 CLI 功能；全部实现：把 Desktop UI 错放进 CLI | 每类需要不同验收证据 | 本文件第 4.5 节代码盘点 |
-| 独立功能缺失项建立子项目 | Artifact 发布、同步、mods 扩展等独立 spec 和实测 | 这些不是简单配置接线，不能阻塞本地配置批次 | 在总路线中一次性实现：范围不可评审；只加警告：不满足全量目标 | 总路线完成依赖多个子项目 | 当前未找到 Artifact 发布、插件/技能同步等实现 |
+| 独立功能缺失项建立子项目 | Artifact 发布、同步、mods 扩展等独立 spec 和实测 | 这些不是简单配置接线，必须独立设计、提交和评审；统一 PR 在全部子项目完成前保持 Draft | 不分提交区间的一次性实现：范围不可评审；只加警告：不满足全量目标；拆独立 PR：不符合本次交付约束 | 总路线和统一 PR 完成依赖多个子项目 | 当前未找到 Artifact 发布、插件/技能同步等实现；本文件第 1.2 节第 9 项 |
 | 上游探测与常规 CI 分离 | 固定版本黑盒探测结果脱敏记录；CI 使用本地 fixtures | CI 不应依赖私有二进制、网络或真实账号 | CI 直接访问上游服务：不稳定且可能泄露凭据 | 需要维护可重复 fixtures 和证据快照 | flash-coding 三层证据工作流；外部环境可用性限制 |
 
 ## 3. 目标与非目标
@@ -174,20 +175,20 @@ entries:
 - 合并结果保留来源元数据，用于解释最终值来自何处；安全敏感值只记录来源，不记录内容。
 - `theme`、`editorMode`、`autoCompactEnabled` 等字段从上游规定的 settings 来源读取。
 - `~/.claude.json` 仅在上游仍用于该字段时保留兼容读取；冲突按上游优先级，不自行引入双写或隐式迁移。
-- `env.*` 注入与功能语义分别验收。例如 `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` 必须由 subagent 管理逻辑读取并真实限制数量。
+- `env.*` 注入与功能语义分别验收。例如 active 的 `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` 与 `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` 必须由 subagent 管理逻辑读取并真实限制并发或嵌套深度；已移除的 `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` 按 2.1.311 证据验证 no-op，不重新发明上限。
 
 ### 4.5 实施批次
 
 | 批次 | 范围 | 关键交付 | 完成阻挡条件 |
 |---|---|---|---|
 | B0：兼容基础设施 | 基线、完整矩阵、schema/来源诊断、差异检查 | 全量条目、错误隔离、统一解析、检查器和 fixtures | 任何有效配置/hook/env 未入矩阵；未知 hook 仍使兄弟配置失效 |
-| B1：Hooks 与当前环境变量 | 6 个缺失 hook、`CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` | 事件注册、触发时机、payload/输出协议、matcher、错误语义；真实 subagent 限制 | 只加枚举或只注入环境；缺少任一运行时协议测试 |
+| B1：Hooks 与当前环境变量 | 全部 33 个 hook 的协议复核、6 个缺失 hook、B1 所属进程与 subagent 环境变量 | 事件注册、触发时机、payload/输出协议、matcher、错误语义；active subagent 并发/深度限制及 removed 变量 no-op 证据 | 只加枚举或只注入环境；缺少任一运行时协议测试；按过时路线重新实现已移除变量 |
 | B2：本地核心与界面 | 模型、thinking、压缩、输出、状态栏、终端、global-config 读取路径 | 来源、默认值、运行时读取和交互行为 | 仍只从错误来源读取；仅 UI 或仅 schema 对齐 |
 | B3：安全与文件系统 | permissions、attribution、worktree、sandbox | 合并、fail-closed、路径边界、绕过防护 | 安全字段无行为测试或错误时降级为宽松策略 |
 | B4：集成与托管 | MCP、插件、认证、remote managed、Remote Control、跨会话消息 | 已有实现接线、配置消费者、降级行为 | 配置键无消费者；绕过订阅或 gate；私有协议无证据 |
 | B5：独立功能子项目 | Artifact 发布、插件/技能同步、mods 扩展、反馈草稿、用量重置后自动继续等 | 每项独立 spec、实现、协议 fake 和可用的实测 | 以占位实现、无关同名工具或仅 schema 冒充功能 |
 
-B1 至 B5 均重新固定当时最新稳定版。B0 的矩阵先记录当前状态，不能预填完成状态。每批只处理一个可独立评审的子系统；若同时修改多个运行时所有者则继续拆分。
+B1 至 B5 均重新固定当时最新稳定版。B0 的矩阵先记录当前状态，不能预填完成状态。每批只处理一个可独立评审的子系统；若同时修改多个运行时所有者则继续拆分。所有批次及最终跨批次漂移审查统一提交到 PR #17，批次之间不独立合并；PR 在最终严格门禁和必要外部实测完成前保持 Draft。
 
 当前两个 hook 的故障由 B1 根治，不先增加会被 B0/B1 重构覆盖的临时白名单补丁。
 
@@ -280,7 +281,7 @@ bun scripts/check-design-docs.ts
 | 当前机器 settings 严格校验 | 通过 | 只证明当前文件符合 flash 现有 schema；未记录其中凭据 |
 | 官方 settings 与 flash 初次差异 | 99 个顶层键、22 个嵌套键未声明 | 以 2026-11-16 获取文档为输入；最终条目以 B0 固定版本矩阵为准 |
 | 官方 hooks 与 flash 差异 | 33 对 27，缺 6 个事件 | 本机 2.1.212 只确认其中 3 个 |
-| subagent 上限环境变量 | 无源码消费者 | 不能据此推断上游默认值或边界值，B1 需补证据 |
+| subagent 上限环境变量 | 路线立项时无源码消费者；2.1.311 已确认总场次上限变量 removed/no-op | Active 并发/深度变量的默认值、解析和边界仍需 B1 三层证据；不得按旧假设实现已移除变量 |
 | 另一台机器的故障 | 两个未知 hook 导致配置被拒绝 | 无该机器完整配置，不能替代针对该文件的审核 |
 | 外部能力盘点 | 已有接线基础与完整缺失两类均存在 | 初次源码搜索结论，批次开始时需复核 |
 
@@ -289,17 +290,17 @@ bun scripts/check-design-docs.ts
 只有同时满足以下条件，才能宣称“全量配置对齐”：
 
 1. 矩阵覆盖固定稳定版的全部有效配置、嵌套配置、环境变量和 hook。
-2. 除有上游证据的 `ignored-by-design` 项外，所有条目均为 `aligned`。
+2. 除有上游证据的 `ignored-by-design`、removed/no-op 的 `excluded` 和最终基线尚未包含的 `excluded`（reason=`not-in-baseline`）项外，所有 active 条目均为 `aligned`；deprecated 但仍有效的条目不得借生命周期排除。
 3. 每个 `aligned` 条目都有正确路径、类型、默认值、来源、合并和运行时行为测试。
 4. 当前两个未知 hook 的复现场景通过，且未知事件不再破坏同文件其他配置。
-5. `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` 等环境变量有真实消费者和边界测试。
+5. Active 环境变量有真实消费者和边界测试；`CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` 等 removed 变量有 no-op/无残留行为证据。
 6. 外部功能完成所需真实环境验证；不可用项仍保持未完成，不计入全量完成。
 7. 全部发布门槛通过，具体模块 spec、coverage 和矩阵引用一致。
 
 ### 6.3 批次验收
 
 - B0：矩阵完整且检查可重复；未知项隔离、安全错误策略和来源合并有回归测试。
-- B1：6 个 hook 均按固定版本证据实现完整协议；subagent 上限真实生效。
+- B1：全部 33 个 hook 完成协议复核，6 个新增 hook 均按固定版本证据实现完整协议；active subagent 并发/深度限制真实生效，removed 上限变量保持有证据的 no-op。
 - B2：本地核心/UI 配置从正确来源读取，默认值和交互行为与上游一致。
 - B3：安全字段无法通过无效高优先级配置、路径边界或数组合并绕过。
 - B4：已有外部集成配置接线完成，禁用、资格和服务失败路径符合上游。
