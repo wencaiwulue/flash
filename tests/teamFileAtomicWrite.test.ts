@@ -140,6 +140,41 @@ describe('TeamFile 原子写入', () => {
     expect(final!.description).toBe('write-9')
   })
 
+  test('并发写入始终产生一个完整且可解析的最终文件', async () => {
+    const teamName = 'real-concurrent-writers'
+    const data = sampleTeamFile(teamName)
+
+    await Promise.all(Array.from({ length: 40 }, (_, index) =>
+      writeTeamFileAsync(teamName, {
+        ...data,
+        description: `writer-${index}`,
+        createdAt: index,
+      }),
+    ))
+
+    const final = await readTeamFileAsync(teamName)
+    expect(final).not.toBeNull()
+    expect(final!.description).toMatch(/^writer-([0-9]|[1-3][0-9])$/)
+    const files = await readdir(join(testRoot, 'config', 'teams', teamName))
+    expect(files).toEqual(['config.json'])
+  })
+
+  test('序列化失败保留旧内容并清理临时文件', async () => {
+    const teamName = 'failure-preserves-old-content'
+    const original = sampleTeamFile(teamName)
+    original.description = 'known-good-content'
+    await writeTeamFileAsync(teamName, original)
+    const circular = sampleTeamFile(teamName) as TeamFile & { self?: unknown }
+    circular.self = circular
+
+    await expect(writeTeamFileAsync(teamName, circular)).rejects.toThrow()
+
+    const preserved = await readTeamFileAsync(teamName)
+    expect(preserved!.description).toBe('known-good-content')
+    const files = await readdir(join(testRoot, 'config', 'teams', teamName))
+    expect(files).toEqual(['config.json'])
+  })
+
   test('文件权限为 0o600（仅用户可读写）', async () => {
     const teamName = 'permission-test'
     await writeTeamFileAsync(teamName, sampleTeamFile(teamName))

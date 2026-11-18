@@ -706,8 +706,9 @@ readTeamFile(teamName)
 
 writeTeamFileAsync(teamName, teamFile)
   → getTeamDir → mkdir recursive
-  → writeFile 原子化写入
-  → logForDebugging
+  → open(UUID.tmp, 'wx', 0o600) → write JSON → fsync → close
+  → rename(tmp, config.json) → fsync(teamDir)
+  → 任一失败关闭 handle 并清理 tmp；rename 前旧 config 不变
 
 成员更新示例：
   → readTeamFile(teamName)
@@ -725,7 +726,11 @@ writeTeamFileAsync(teamName, teamFile)
 
 **源码测试证据**
 - 实现：`src/utils/swarm/teamHelpers.ts`
-- 测试：未找到直接测试文件
+- 测试：`tests/teamFileAtomicWrite.test.ts`（8 项）：普通读写、权限、无临时残留、40 路真实 async 并发、序列化失败保留旧内容。
+- 官方文档：[Agent teams](https://code.claude.com/docs/en/agent-teams.md) 明确 team config 位于 `~/.claude/teams/{team-name}/config.json`，并说明本地状态更新与 inbox 写入失败语义；未公开 TeamFile 原子写实现。
+- 上游二进制：本机 `/opt/homebrew/bin/claude` `strings` 命中 `writeTeamFileAsync`、`updateTeamFile`、`readTeamFileAsync` 与 lock release 相关符号；这些符号不能证明上游采用相同 temp+rename 实现。
+- 本地证据：`src/jobs/state.ts` 的 `writeJsonAtomic` 提供 temp+rename 参考；本实现使用独立 UUID 临时文件避免并发互覆，最终读者只见完整旧/新 JSON。
+- 回滚：撤销原子写前必须保留现有文件备份并恢复并发/故障测试；不得通过删除回归断言接受半写 JSON。spec 保持 draft，待用户审阅。
 
 ---
 

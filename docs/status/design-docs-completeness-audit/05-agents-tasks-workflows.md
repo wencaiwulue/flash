@@ -979,7 +979,7 @@
 | B5-agent-swarms-05 | agent-swarms | agent-tool-core | 设计权衡 | P3 | worktree 清理依赖 hasWorktreeChanges()，未跟踪未跟踪文件可能导致意外保留 | src/tools/AgentTool/AgentTool.tsx, src/utils/worktree.ts | ✅ strings 匹配 | ❌ 无测试 | 低（文档已记录，无功能问题） | 无需变更，spec 已明确记录此权衡 | 已证实 | spec 与源码一致 | open |
 | B5-agent-swarms-06 | agent-swarms | swarm-team-state | 测试缺口 | P3 | isActive 状态管理（崩溃场景）无测试 | src/utils/swarm/teamHelpers.ts | ✅ strings 匹配 | ❌ 无测试 | 低（测试缺口） | 添加 in-process worker 崩溃场景测试、跨进程 worker 崩溃检测测试 | 已证实 | 完整源码审查 | open |
 | B5-agent-swarms-07 | agent-swarms | swarm-permission-sync | 设计权衡 | P3 | mailbox 消息无超时机制，worker 可能永久阻塞 | src/utils/swarm/permissionSync.ts | ✅ strings 匹配 | ❌ 无测试 | 低（文档已记录，无功能问题） | 无需变更，spec 已明确记录此权衡 | 已证实 | spec 与源码一致 | open |
-| B5-agent-swarms-08 | agent-swarms | swarm-team-state | 实现改进 | P2 | TeamFile 写入无原子 rename 保护，崩溃时可能损坏文件 | src/utils/swarm/teamHelpers.ts:156-163 | ✅ strings 匹配 | ✅ 有测试（tests/teamFileAtomicWrite.test.ts） | 中（低概率但高影响） | 已修复：先写临时文件再 rename（`{path}.tmp` → `{path}`），权限 0o600，fsync 持久化 | 已证实 | 完整源码审查 + 测试覆盖 | resolved |
+| B5-agent-swarms-08 | agent-swarms | swarm-team-state | 实现改进 | P2 | TeamFile 写入无原子 rename 保护，崩溃时可能损坏文件 | src/utils/swarm/teamHelpers.ts:156-163 | ✅ strings 匹配 | ❌ 无测试 | 中（低概率但高影响） | 改为先写临时文件再 rename（`{path}.tmp` → `{path}`） | 已证实 | 完整源码审查 | open |
 | B5-help-feedback-01 | help-feedback | additional-files, commands | 测试缺口 | P2 | help-feedback 子系统无任何专用测试覆盖。FeedbackSurvey 数字输入防抖、冷却期检查、触发概率验证、Feedback 敏感信息清理、HelpV2 标签页切换、Tips 相关性检查、ReleaseNotes 解析均无测试 | src/components/FeedbackSurvey/, src/components/Feedback.tsx, src/components/HelpV2/, src/services/tips/, src/utils/releaseNotes.ts | ✅ strings 匹配 | ❌ 无测试 | 中（功能正常但无回归保护） | 添加 FeedbackSurvey 数字输入防抖测试、冷却期逻辑测试、触发概率验证、Feedback 敏感信息清理正则测试、HelpV2 标签页切换测试、Tips 相关性检查测试、ReleaseNotes 解析测试 | 已证实 | 完整源码审查 | open |
 | B5-help-feedback-02 | help-feedback | additional-files | 功能未实现 | P3 | `useFrustrationDetection()` 仅占位实现，未激活。spec 中提到的挫折检测功能（如连续修正、负面措辞、错误重试后主动触发调查）未实现 | src/components/FeedbackSurvey/useFrustrationDetection.ts | ✅ strings 匹配 | ❌ 无测试 | 低（设计已记录但未实现） | 实现挫折检测逻辑（连续修正、负面措辞、错误重试检测），主动触发调查 | 已证实 | 完整源码审查 | open |
 | B5-plan-worktree-01 | plan-worktree | plan-tools, worktree-tools, plans-utils, worktree-utils, ultraplan-ccr | 测试缺口 | P2 | plan-worktree 子系统仅 2 个小型测试文件（schema 验证、OAuth 刷新），核心功能无测试覆盖。EnterPlanModeTool、ExitPlanModeTool（完整批准流程）、EnterWorktreeTool、ExitWorktreeTool（未提交变更检查、fail-closed）、plans.ts（slug 生成/恢复/fork）、worktree.ts（slug 验证、symlink、.worktreeinclude、暂态清理）均无专用测试 | src/tools/EnterPlanModeTool/, src/tools/ExitPlanModeTool/, src/tools/EnterWorktreeTool/, src/tools/ExitWorktreeTool/, src/utils/plans.ts, src/utils/worktree.ts, src/utils/ultraplan/ccrSession.ts | ✅ strings 匹配 | ⚠️ 仅 2 个小型测试 | 中（功能正常但无回归保护） | 添加 EnterPlanMode 权限剥离测试、ExitPlanMode 批准流程测试、EnterWorktree slug 验证测试、ExitWorktree 未提交变更检查测试、plans.ts slug 生成/恢复/fork 测试、worktree.ts symlink/.worktreeinclude/暂态清理测试、ultraplan ccr 轮询测试 | 已证实 | 完整源码审查 | open |
@@ -1579,7 +1579,7 @@ bun run build
 
 # 设计文档检查
 bun run scripts/check-design-docs.ts
-# ✅ 0 项 UNCOVERED_FILE 警告，69 项 DRAFT_SPEC 警告（预期）
+# ✅ 0 项 UNCOVERED_FILE 警告，62 项 DRAFT_SPEC 警告（当前 70 - 已批准 8）
 
 # git diff 验证
 git diff src/utils/swarm/teamHelpers.ts tests/teamFileAtomicWrite.test.ts docs/architecture/coverage/agent-swarms.yaml
@@ -1588,9 +1588,7 @@ git diff src/utils/swarm/teamHelpers.ts tests/teamFileAtomicWrite.test.ts docs/a
 
 ### 审计报告更新
 
-在「发现登记」表格中，将 B5-agent-swarms-08 标记为：
-- **状态**：resolved（原 open）
-- **测试证据**：✅ 有测试（`tests/teamFileAtomicWrite.test.ts`）
+原「发现登记」表格保留 `open` 与原始测试缺口，不改写历史。整改结果仅在本台账追加：最终实现与 8 项测试见 `tests/teamFileAtomicWrite.test.ts`。
 
 ### 总结
 
@@ -1599,7 +1597,7 @@ git diff src/utils/swarm/teamHelpers.ts tests/teamFileAtomicWrite.test.ts docs/a
 | 问题复现 | ✅ 有概念验证测试 |
 | 设计对齐 | ✅ 与 jobs/state.ts 原子写入模式一致 |
 | 实现完成 | ✅ sync/async 双版本，权限 0o600，fsync，原子 rename |
-| 测试覆盖 | ✅ 6 项测试覆盖核心不变量 |
+| 测试覆盖 | ✅ 8 项测试，含 40 路 async 并发和序列化失败保留旧内容 |
 | Coverage 登记 | ✅ 已在 agent-swarms.yaml 中新增测试分组 |
 | 门禁验证 | ✅ test/typecheck/build/check-design-docs 全通过 |
 | 审计报告更新 | ✅ 已记录完整整改台账 |
