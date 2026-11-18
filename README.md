@@ -156,6 +156,7 @@ See [Architecture](https://github.com/wencaiwulue/flash/blob/main/docs/ARCHITECT
 | `bun run typecheck` | Run TypeScript checks without emitting files. |
 | `bun run test` | Run tests with the isolated per-file test runner. |
 | `bun run test:integration` | Run the integration test suites (builds dist first; offline mock API, no credentials). |
+| `bun scripts/test-integration.ts --suite=config-acceptance` | Run the config-alignment acceptance suite (33-event hook matrix, source precedence, tolerance; managed-source entries are prereq-blocked). |
 | `bun run build` | Generate SDK types, build the CLI and SDK, and emit declarations. |
 | `bun run build:binary` | Compile, verify, and package a standalone binary for the current host. |
 
