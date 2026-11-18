@@ -9,6 +9,7 @@ import {
   type InventoryDiff,
   type UpstreamEntry,
   type UpstreamInventory,
+  determineOwnerBatch
 } from './upstreamConfigInventory.ts'
 
 export const COMPATIBILITY_STATUSES = [
@@ -23,12 +24,12 @@ export const COMPATIBILITY_STATUSES = [
 export type CheckMode = 'drift' | 'batch' | 'final'
 
 export type MatrixEntryV2 = CompatibilityMatrixEntry & {
-  ownerBatch?: number
+  ownerBatch?: 1 | 2 | 3 | 4 | 5
   spec?: string
   verifiedVersion?: string
   currentReview?: {
     by: string
-    at: string
+    at?: string
     baseline: string
   }
 }
@@ -51,6 +52,7 @@ export type CheckCompatibilityInputV2 = Omit<CheckCompatibilityInput, 'inventory
   mode: CheckMode
   repoRoot?: string
   envConsumers?: EnvConsumerRegistry
+  batches?: Array<1 | 2 | 3 | 4 | 5>
 }
 
 export type CheckCompatibilityResult = {
@@ -65,35 +67,49 @@ export type CheckCompatibilityResult = {
   }
 }
 
+export type MigrationResult = {
+  matrix: CompatibilityMatrixV2
+  removedIds: string[]
+  diff: InventoryDiff
+}
+
+/**
+ * 迁移矩阵到新版本，非破坏性
+ * - 保留不变条目的 ownerBatch/spec/verifiedVersion/currentReview
+ * - 降级变化条目 aligned→partial
+ * - 不自动排除消失条目，而是在 removedIds 中返回供人工复核
+ * - 确定排序，时间戳仅在明确传入时设置
+ */
 export function migrateMatrix(
   sourceMatrix: CompatibilityMatrix | CompatibilityMatrixV2,
   options: {
     from: string
     to: string
     diff: InventoryDiff
-    force?: boolean
-    ownerDefault?: number
-  },
-): CompatibilityMatrixV2 {
-  const sourceEntries = new Map(sourceMatrix.entries.map(entry => [entry.id, entry]))
+    migratedAt?: string
+  }
+): MigrationResult {
+  const sourceEntriesById = new Map(sourceMatrix.entries.map(entry => [entry.id, entry]))
   const newEntries: MatrixEntryV2[] = []
-  const now = new Date().toISOString()
+  const removedIds: string[] = []
 
-  // Carry over unchanged entries with default owner if needed
+  // 处理不变条目：保留所有字段，添加 currentReview 若缺失
   for (const id of options.diff.unchanged) {
-    const source = sourceEntries.get(id)
+    const source = sourceEntriesById.get(id)
     if (source) {
+      const v2Source: MatrixEntryV2 = source as MatrixEntryV2
       newEntries.push({
-        ...source,
-        ownerBatch: options.ownerDefault,
-        spec: undefined,
-        verifiedVersion: undefined,
-        currentReview: undefined,
+        ...v2Source,
+        ownerBatch: v2Source.ownerBatch ?? determineOwnerBatch(id),
+        currentReview: v2Source.currentReview ?? {
+          by: `baseline-${options.from}`,
+          baseline: options.from
+        }
       })
     }
   }
 
-  // Add new entries (missing/blocked)
+  // 处理新增条目
   for (const entry of options.diff.added) {
     const status = entry.afterBaseline ? 'blocked' : 'missing'
     newEntries.push({
@@ -102,73 +118,75 @@ export function migrateMatrix(
       implementation: [],
       tests: [],
       evidence: [],
-      dimensions: emptyDimensions(),
+      dimensions: {
+        path: { status: 'missing', evidence: '' },
+        type: { status: 'missing', evidence: '' },
+        default: { status: 'missing', evidence: '' },
+        source: { status: 'missing', evidence: '' },
+        precedence: { status: 'missing', evidence: '' },
+        runtime: { status: 'missing', evidence: '' },
+      },
       notes: entry.afterBaseline
         ? `Upstream documentation is ahead of stable ${options.to}; introduced in ${entry.introduced ?? 'a later version'}.`
         : '',
       exclusion: null,
-      ownerBatch: options.ownerDefault,
+      ownerBatch: determineOwnerBatch(entry.id, entry),
     })
   }
 
-  // Handle changed entries
+  // 处理变化条目：降级 aligned→partial
   for (const change of options.diff.changed) {
-    const source = sourceEntries.get(change.id)
+    const source = sourceEntriesById.get(change.id)
     if (source) {
-      // Downgrade aligned to partial
-      const status = source.status === 'aligned' ? 'partial' : source.status
-      const notes = [
+      const v2Source: MatrixEntryV2 = source as MatrixEntryV2
+      const wasAligned = source.status === 'aligned'
+      const newStatus = wasAligned ? 'partial' : source.status
+      const newNotes = [
         source.notes,
         `Changed in upstream ${options.to}: ${change.changes.join(', ')}`,
       ].filter(Boolean).join(' ')
+
       newEntries.push({
-        ...source,
-        status,
-        notes,
-        ownerBatch: options.ownerDefault,
+        ...v2Source,
+        status: newStatus,
+        notes: newNotes,
+        ownerBatch: v2Source.ownerBatch ?? determineOwnerBatch(change.id),
+        verifiedVersion: wasAligned ? undefined : v2Source.verifiedVersion,
+        currentReview: v2Source.currentReview ?? {
+          by: `baseline-${options.from}`,
+          baseline: options.from
+        }
       })
     }
   }
 
-  // Handle removed entries (excluded with lifecycle evidence)
+  // 记录消失条目供人工复核（不自动添加为 excluded）
   for (const entry of options.diff.removed) {
-    newEntries.push({
-      id: entry.id,
-      status: 'excluded',
-      implementation: [],
-      tests: [],
-      evidence: [],
-      dimensions: emptyDimensions(),
-      notes: '',
-      exclusion: {
-        reason: `Upstream lifecycle: ${entry.lifecycle}; removed from baseline ${options.to}`,
-        evidence: entry.source?.url ?? 'upstream inventory',
-        lifecycle: entry.lifecycle,
-        replacement: entry.replacement ?? null,
-      },
-      ownerBatch: options.ownerDefault,
-    })
+    removedIds.push(entry.id)
   }
 
-  // Sort by kind then id
-  const kindOrder: Record<UpstreamEntry['kind'], number> = {
-    setting: 0, hook: 1, env: 2,
-  }
+  // 确定排序：按 kind 然后 id
+  const kindOrder: Record<string, number> = { setting: 0, hook: 1, env: 2 }
   newEntries.sort((a, b) => {
-    const aKind = a.id.split(':')[0] as keyof typeof kindOrder
-    const bKind = b.id.split(':')[0] as keyof typeof kindOrder
-    const kindDiff = kindOrder[aKind] - kindOrder[bKind]
-    return kindDiff !== 0 ? kindDiff : a.id < b.id ? -1 : 1
+    const aKind = a.id.split(':')[0] ?? ''
+    const bKind = b.id.split(':')[0] ?? ''
+    const kindDiff = (kindOrder[aKind] ?? 999) - (kindOrder[bKind] ?? 999)
+    return kindDiff !== 0 ? kindDiff : a.id < b.id ? -1 : a.id > b.id ? 1 : 0
   })
 
-  return {
+  const result: CompatibilityMatrixV2 = {
     schemaVersion: 2,
     baseline: options.to,
     entries: newEntries,
-    schemaExclusions: [...sourceMatrix.schemaExclusions],
+    schemaExclusions: [...(sourceMatrix.schemaExclusions ?? [])],
     migratedFrom: options.from,
-    migratedAt: now,
   }
+
+  if (options.migratedAt) {
+    result.migratedAt = options.migratedAt
+  }
+
+  return { matrix: result, removedIds, diff: options.diff }
 }
 
 export type CompatibilityStatus = typeof COMPATIBILITY_STATUSES[number]
@@ -306,203 +324,35 @@ async function pathExists(path: string): Promise<boolean> {
   }
 }
 
-export async function checkCompatibilityV2(
-  input: CheckCompatibilityInputV2,
-): Promise<CheckCompatibilityResult> {
-  const { mode, repoRoot } = input
-  const diagnostics = checkCompatibility({
-    ...input,
-    inventory: normalizeInventory(input.inventory),
-    matrix: normalizeMatrix(input.matrix),
-  })
-  const matrix = normalizeMatrix(input.matrix)
-  const inventory = normalizeInventory(input.inventory)
-
-  // Batch and Final mode checks
-  if (mode === 'batch' || mode === 'final') {
-    const root = repoRoot ?? fileURLToPath(new URL('..', import.meta.url))
-    const matrixEntriesById = new Map(matrix.entries.map(entry => [entry.id, entry]))
-
-    for (const entry of matrix.entries) {
-      // Owner batch check
-      const v2Entry = entry as MatrixEntryV2
-      if (v2Entry.ownerBatch === undefined) {
-        diagnostics.push({
-          code: 'invalid-owner-batch',
-          id: entry.id,
-          message: `Entry ${entry.id} requires an ownerBatch`,
-        })
-      }
-
-      // Spec check (TBD is acceptable)
-      if (entry.status === 'aligned' && !v2Entry.spec) {
-        diagnostics.push({
-          code: 'invalid-spec',
-          id: entry.id,
-          message: `Aligned entry ${entry.id} requires a spec reference`,
-        })
-      }
-
-      // Implementation and test paths exist
-      for (const path of entry.implementation) {
-        const fullPath = join(root, path)
-        if (!await pathExists(fullPath)) {
-          diagnostics.push({
-            code: 'invalid-implementation-path',
-            id: entry.id,
-            path: fullPath,
-            message: `Implementation path ${path} does not exist`,
-          })
-        }
-      }
-      for (const path of entry.tests) {
-        const fullPath = join(root, path)
-        if (!await pathExists(fullPath)) {
-          diagnostics.push({
-            code: 'invalid-test-path',
-            id: entry.id,
-            path: fullPath,
-            message: `Test path ${path} does not exist`,
-          })
-        }
-      }
-
-      // Env consumer check
-      if (entry.id.startsWith('env:')) {
-        const consumers = input.envConsumers?.consumers[entry.id.slice('env:'.length)]
-        if (!consumers || consumers.length === 0) {
-          diagnostics.push({
-            code: 'invalid-env-consumer',
-            id: entry.id,
-            message: `Env var ${entry.id} has no registered consumers`,
-          })
-        }
-      }
-    }
-
-    // Final mode only checks
-    if (mode === 'final') {
-      for (const entry of matrix.entries) {
-        const v2Entry = entry as MatrixEntryV2
-
-        if (entry.status === 'aligned') {
-          // All dimensions aligned and evidenced
-          const allAligned = Object.values(entry.dimensions).every(
-            dim => dim.status === 'aligned' && dim.evidence,
-          )
-          if (!allAligned) {
-            diagnostics.push({
-              code: 'invalid-aligned-not-complete',
-              id: entry.id,
-              message: `Aligned entry ${entry.id} requires all six dimensions to be aligned and evidenced`,
-            })
-          }
-          // Verified version present
-          if (!v2Entry.verifiedVersion) {
-            diagnostics.push({
-              code: 'invalid-verified-version',
-              id: entry.id,
-              message: `Aligned entry ${entry.id} requires verifiedVersion`,
-            })
-          }
-          // Current review present
-          if (!v2Entry.currentReview) {
-            diagnostics.push({
-              code: 'invalid-current-review',
-              id: entry.id,
-              message: `Aligned entry ${entry.id} requires currentReview`,
-            })
-          }
-        }
-
-        // After baseline entries must be blocked
-        const invEntry = inventory.entries.find(e => e.id === entry.id)
-        if (invEntry?.afterBaseline && entry.status !== 'blocked') {
-          diagnostics.push({
-            code: 'invalid-after-baseline',
-            id: entry.id,
-            message: `After baseline entry ${entry.id} must have status blocked`,
-          })
-        }
-
-        // Deprecated-effective should not be excluded without explicit evidence
-        if (entry.status === 'excluded') {
-          const invEntry = inventory.entries.find(e => e.id === entry.id)
-          if (invEntry?.lifecycle !== 'removed') {
-            // Check for ignored-by-design evidence
-            const hasIgnoredEvidence =
-              entry.exclusion?.reason.includes('ignored-by-design') ||
-              entry.evidence.some(e => e.includes('ignored-by-design'))
-            if (!hasIgnoredEvidence) {
-              diagnostics.push({
-                code: 'invalid-excluded-lacks-evidence',
-                id: entry.id,
-                message: `Excluded entry ${entry.id} requires 'ignored-by-design' evidence`,
-              })
-            }
-          }
-        }
-      }
-    }
-  }
-
-  // Sort diagnostics deterministically
-  diagnostics.sort((a, b) => {
-    const order = (code: string) =>
-      DIAGNOSTIC_OUTPUT_ORDER[code as keyof typeof DIAGNOSTIC_OUTPUT_ORDER] ?? Number.MAX_SAFE_INTEGER
-    const orderDiff = order(a.code) - order(b.code)
-    if (orderDiff !== 0) return orderDiff
-    const aKey = [a.code, a.id, a.path, a.message].map(v => v ?? '').join('\0')
-    const bKey = [b.code, b.id, b.path, b.message].map(v => v ?? '').join('\0')
-    return aKey < bKey ? -1 : aKey > bKey ? 1 : 0
-  })
-
-  // Calculate counts
-  const byStatus = Object.fromEntries(COMPATIBILITY_STATUSES.map(s => [s, 0])) as Record<
-    CompatibilityStatus,
-    number
-  >
-  const byOwner: Record<string, number> = {}
-  for (const entry of matrix.entries) {
-    byStatus[entry.status]++
-    const owner = (entry as MatrixEntryV2).ownerBatch?.toString() ?? 'unknown'
-    byOwner[owner] = (byOwner[owner] ?? 0) + 1
-  }
-
-  return {
-    diagnostics,
-    pass: diagnostics.length === 0,
-    mode,
-    baseline: inventory.baseline.version,
-    counts: {
-      total: inventory.entries.length,
-      byStatus,
-      byOwner,
-    },
-  }
-}
-
 function normalizeInventory(inv: CompatibilityInventory | UpstreamInventory): CompatibilityInventory {
   if ('baseline' in inv && 'version' in inv.baseline && 'entries' in inv) {
     return {
       baseline: { version: inv.baseline.version },
-      entries: inv.entries.map(e => ({
+      entries: (inv.entries as Array<{id:string, kind?:string, path:string, lifecycle?:string, introduced?:string, afterBaseline?:boolean, replacement?:string, source?:{url:string, sha256?:string, anchor:string}, excerpt?:string}>).map(e => ({
         id: e.id,
-        kind: e.kind,
+        kind: (e.kind ?? 'setting') as CompatibilityKind,
         path: e.path,
-        lifecycle: e.lifecycle,
+        lifecycle: (e.lifecycle ?? 'active') as 'active'|'deprecated'|'removed',
         introduced: e.introduced,
         afterBaseline: e.afterBaseline,
         replacement: e.replacement,
-        source: e.source,
-        excerpt: e.excerpt,
+        source: e.source ? {url:e.source.url, sha256:e.source.sha256 ?? '', anchor:e.source.anchor} : undefined,
+        excerpt: e.excerpt
       })),
     }
   }
   return inv as CompatibilityInventory
 }
 
-function normalizeMatrix(mat: CompatibilityMatrix | CompatibilityMatrixV2): CompatibilityMatrix {
+function normalizeMatrix(mat: CompatibilityMatrix | CompatibilityMatrixV2 | null | undefined): CompatibilityMatrix {
+  if (!mat || !isRecord(mat)) {
+    return {
+      schemaVersion: 1,
+      baseline: UPSTREAM_BASELINE_VERSION,
+      entries: [],
+      schemaExclusions: [],
+    }
+  }
   if (mat.schemaVersion === 2) {
     return {
       ...mat,
@@ -526,7 +376,7 @@ function resolveRef(schema: Record<string, unknown>, reference: string): Record<
   }
   let current: unknown = schema
   for (const encodedSegment of reference.slice(2).split('/')) {
-    const segment = encodedSegment.replace(/~1/g, '/').replace(/~0/g, '~')
+    const segment = encodedSegment.replace('~1', '/').replace('~0', '~')
     if (!isRecord(current) || !(segment in current)) {
       throw new Error(`unresolved schema reference: ${reference}`)
     }
@@ -628,7 +478,7 @@ export function createInitialMatrix(
     if (present) {
       dimensions.path = {
         status: 'aligned',
-        evidence: entry.kind === 'setting' ? 'generated schema diff' : 'HOOK_EVENTS',
+        evidence: 'generated schema diff',
       }
     }
 
@@ -958,6 +808,214 @@ export function checkCompatibility({
   })
 }
 
+export async function checkCompatibilityV2(
+  input: CheckCompatibilityInputV2,
+): Promise<CheckCompatibilityResult> {
+  const { mode, repoRoot, batches } = input
+  const normalizedInventory = normalizeInventory(input.inventory)
+  const normalizedMatrix = normalizeMatrix(input.matrix)
+
+  // 首先运行 B0 checkCompatibility 以确保基础通过
+  const diagnostics = checkCompatibility({
+    inventory: normalizedInventory,
+    matrix: normalizedMatrix,
+    schemaPaths: input.schemaPaths,
+    hookEvents: input.hookEvents,
+  })
+
+  const matrixV2 = input.matrix as CompatibilityMatrixV2
+  const entries = matrixV2.entries ?? (input.matrix.entries as MatrixEntryV2[])
+  const inventoryById = new Map(normalizedInventory.entries.map(e => [e.id, e]))
+
+  if (mode === 'batch' || mode === 'final') {
+    const root = repoRoot ?? fileURLToPath(new URL('..', import.meta.url))
+
+    for (const entry of entries) {
+      const v2Entry = entry as MatrixEntryV2
+      const inventoryEntry = inventoryById.get(entry.id)
+      const ownerBatch = v2Entry.ownerBatch ?? determineOwnerBatch(entry.id, inventoryEntry)
+
+      // 批次过滤：仅检查指定批次，或者 final 模式检查全部
+      const isInSelectedBatch = !batches || batches.length === 0 || batches.includes(ownerBatch as 1|2|3|4|5)
+      if (!isInSelectedBatch) continue
+
+      // OwnerBatch 验证
+      if (!v2Entry.ownerBatch) {
+        diagnostics.push({
+          code: 'invalid-owner-batch',
+          id: entry.id,
+          message: `Entry ${entry.id} requires an ownerBatch`,
+        })
+      }
+
+      // Spec 引用验证（仅当 aligned 时严格要求，其他情况可选但格式需正确）
+      if (entry.status === 'aligned' && !v2Entry.spec) {
+        diagnostics.push({
+          code: 'invalid-spec',
+          id: entry.id,
+          message: `Aligned entry ${entry.id} requires a spec reference`,
+        })
+      }
+
+      // 实现路径存在验证（仅当路径非空时检查）
+      for (const path of entry.implementation) {
+        const fullPath = join(root, path)
+        if (path && !await pathExists(fullPath)) {
+          diagnostics.push({
+            code: 'invalid-implementation-path',
+            id: entry.id,
+            path: fullPath,
+            message: `Implementation path ${path} does not exist`,
+          })
+        }
+      }
+
+      // 测试路径存在验证（仅当路径非空时检查）
+      for (const path of entry.tests) {
+        const fullPath = join(root, path)
+        if (path && !await pathExists(fullPath)) {
+          diagnostics.push({
+            code: 'invalid-test-path',
+            id: entry.id,
+            path: fullPath,
+            message: `Test path ${path} does not exist`,
+          })
+        }
+      }
+
+      // 环境变量消费者验证
+      if (entry.id.startsWith('env:')) {
+        const envName = entry.id.slice('env:'.length)
+        const consumers = input.envConsumers?.consumers?.[envName]
+        if (!consumers || consumers.length === 0) {
+          // 仅当状态不是 missing/partial 时才报错，允许未开始工作
+          if (entry.status === 'aligned' || entry.status === 'different' || entry.status === 'excluded') {
+            diagnostics.push({
+              code: 'invalid-env-consumer',
+              id: entry.id,
+              message: `Env var ${entry.id} has no registered consumers`,
+            })
+          }
+        }
+      }
+    }
+
+    // Final 模式独有检查
+    if (mode === 'final') {
+      for (const entry of entries) {
+        const v2Entry = entry as MatrixEntryV2
+        const inventoryEntry = inventoryById.get(entry.id)
+
+        if (entry.status === 'aligned') {
+          // 所有六维必须 aligned 且有证据
+          const allAligned = DIMENSION_NAMES.every(name => {
+            const dim = entry.dimensions?.[name]
+            return dim?.status === 'aligned' && hasText(dim.evidence)
+          })
+          if (!allAligned) {
+            diagnostics.push({
+              code: 'invalid-aligned-not-complete',
+              id: entry.id,
+              message: `Aligned entry ${entry.id} requires all six dimensions to be aligned and evidenced`,
+            })
+          }
+          // verifiedVersion 必须存在
+          if (!v2Entry.verifiedVersion) {
+            diagnostics.push({
+              code: 'invalid-verified-version',
+              id: entry.id,
+              message: `Aligned entry ${entry.id} requires verifiedVersion`,
+            })
+          }
+          // currentReview 必须存在
+          if (!v2Entry.currentReview) {
+            diagnostics.push({
+              code: 'invalid-current-review',
+              id: entry.id,
+              message: `Aligned entry ${entry.id} requires currentReview`,
+            })
+          }
+        }
+
+        // afterBaseline 条目必须 blocked
+        if (inventoryEntry?.afterBaseline && entry.status !== 'blocked') {
+          diagnostics.push({
+            code: 'invalid-after-baseline',
+            id: entry.id,
+            message: `After-baseline entry ${entry.id} must have status blocked`,
+          })
+        }
+
+        // 排除规则验证：仅 removed 或 ignored-by-design 可排除
+        if (entry.status === 'excluded') {
+          const exclusion = entry.exclusion
+          const hasIgnoredByDesign =
+            exclusion?.reason?.includes('ignored-by-design') ||
+            entry.evidence.some(e => e.includes('ignored-by-design'))
+
+          if (inventoryEntry?.lifecycle !== 'removed' && !hasIgnoredByDesign) {
+            diagnostics.push({
+              code: 'invalid-exclusion-evidence',
+              id: entry.id,
+              message: `Excluded entry ${entry.id} must have lifecycle=removed or ignored-by-design with evidence`,
+            })
+          }
+
+          if (inventoryEntry?.lifecycle === 'deprecated' && !hasIgnoredByDesign) {
+            diagnostics.push({
+              code: 'invalid-deprecated-effective-excluded',
+              id: entry.id,
+              message: `Deprecated entry ${entry.id} may not be excluded without ignored-by-design evidence`,
+            })
+          }
+
+          if (hasIgnoredByDesign && !exclusion?.evidence) {
+            diagnostics.push({
+              code: 'invalid-exclusion-evidence',
+              id: entry.id,
+              message: `ignored-by-design entry ${entry.id} requires evidence`,
+            })
+          }
+        }
+      }
+    }
+  }
+
+  // 确定排序诊断
+  diagnostics.sort((a, b) => {
+    const orderA = DIAGNOSTIC_OUTPUT_ORDER[a.code] ?? Number.MAX_SAFE_INTEGER
+    const orderB = DIAGNOSTIC_OUTPUT_ORDER[b.code] ?? Number.MAX_SAFE_INTEGER
+    if (orderA !== orderB) return orderA - orderB
+    const keyA = [a.code, a.id, a.path, a.message].map(v => v ?? '').join('\0')
+    const keyB = [b.code, b.id, b.path, b.message].map(v => v ?? '').join('\0')
+    return keyA < keyB ? -1 : keyA > keyB ? 1 : 0
+  })
+
+  // 计算统计
+  const byStatus = Object.fromEntries(COMPATIBILITY_STATUSES.map(s => [s, 0])) as Record<
+    CompatibilityStatus,
+    number
+  >
+  const byOwner: Record<string, number> = {}
+  for (const entry of entries) {
+    byStatus[entry.status]++
+    const owner = ((entry as MatrixEntryV2).ownerBatch ?? determineOwnerBatch(entry.id)).toString()
+    byOwner[owner] = (byOwner[owner] ?? 0) + 1
+  }
+
+  return {
+    diagnostics,
+    pass: diagnostics.length === 0,
+    mode,
+    baseline: normalizedInventory.baseline.version,
+    counts: {
+      total: normalizedInventory.entries.length,
+      byStatus,
+      byOwner,
+    },
+  }
+}
+
 function printReport(
   inventory: CompatibilityInventory,
   matrix: CompatibilityMatrix | CompatibilityMatrixV2,
@@ -965,14 +1023,17 @@ function printReport(
   mode: CheckMode = 'drift',
 ) {
   const matrixEntries = isRecord(matrix) && Array.isArray(matrix.entries)
-    ? matrix.entries.filter(entry => isRecord(entry) && typeof entry.id === 'string')
+    ? matrix.entries.filter(entry => isRecord(entry) && typeof (entry as {id:string}).id === 'string')
     : []
-  const matrixById = new Map(matrixEntries.map(entry => [entry.id, entry]))
+  const matrixById = new Map(matrixEntries.map(entry => [
+    (entry as {id:string}).id,
+    entry
+  ]))
   for (const kind of ['setting', 'hook', 'env'] as const) {
     const entries = inventory.entries.filter(entry => entry.kind === kind)
     const counts = Object.fromEntries(COMPATIBILITY_STATUSES.map(status => [status, 0])) as Record<CompatibilityStatus, number>
     for (const entry of entries) {
-      const status = matrixById.get(entry.id)?.status
+      const status = (matrixById.get(entry.id) as {status?:CompatibilityStatus})?.status
       if (status && isCompatibilityStatus(status)) counts[status]++
     }
     console.log([
@@ -993,7 +1054,7 @@ export async function runCli(
   let initialize = false
   let mode: CheckMode = 'drift'
   let baselineVersion: string | undefined
-  let customFixtureDir: string | undefined
+  const batches: Array<1|2|3|4|5> = []
 
   let i = 0
   while (i < arguments_.length) {
@@ -1012,15 +1073,23 @@ export async function runCli(
     } else if (arg === '--baseline' && i + 1 < arguments_.length) {
       baselineVersion = arguments_[i + 1]
       i += 2
+    } else if (arg === '--batch' && i + 1 < arguments_.length) {
+      const b = arguments_[i + 1]
+      const batchNum = parseInt(b.replace('B', ''), 10)
+      if (batchNum >= 1 && batchNum <= 5) {
+        batches.push(batchNum as 1|2|3|4|5)
+      } else {
+        throw new Error(`invalid batch: ${b}, must be B1-B5 or 1-5`)
+      }
+      i += 2
     } else {
       throw new Error(`unknown argument: ${arg}`)
     }
   }
 
-  // Determine fixture directory
+  // 确定 fixture 目录
   let fixtureDir = fixtureDirectory
   if (baselineVersion) {
-    // Use versioned directory
     fixtureDir = fixtureDirectory.replace(/\/[\d.]+\/?$/, `/${baselineVersion}/`)
   }
 
@@ -1034,7 +1103,7 @@ export async function runCli(
   ])
   const schemaPaths = collectSchemaPaths(JSON.parse(generateSettingsJSONSchema()))
 
-  // Load env consumers
+  // 加载环境消费者注册表
   let envConsumers: EnvConsumerRegistry | undefined
   try {
     const envConsumersPath = join(fixtureDir, '..', 'env-consumers.json')
@@ -1042,7 +1111,7 @@ export async function runCli(
       envConsumers = JSON.parse(await readFile(envConsumersPath, 'utf8')) as EnvConsumerRegistry
     }
   } catch {
-    // Ignore if not present
+    // 不存在则忽略
   }
 
   let matrix: CompatibilityMatrix | CompatibilityMatrixV2
@@ -1063,14 +1132,16 @@ export async function runCli(
       throw error
     }
   } else {
-    matrix = parse(await readFile(matrixPath, 'utf8')) as CompatibilityMatrix | CompatibilityMatrixV2
+    const content = await readFile(matrixPath, 'utf8')
+    const parsed = content.trim() ? parse(content) : null
+    matrix = parsed as CompatibilityMatrix | CompatibilityMatrixV2
   }
 
   let diagnostics: Diagnostic[]
   if (mode === 'drift') {
     diagnostics = checkCompatibility({
       inventory,
-      matrix,
+      matrix: normalizeMatrix(matrix),
       schemaPaths,
       hookEvents: HOOK_EVENTS,
     })
@@ -1082,7 +1153,7 @@ export async function runCli(
       schemaPaths,
       hookEvents: HOOK_EVENTS,
       mode,
-      repoRoot: fileURLToPath(new URL('..', import.meta.url)),
+      batches: batches.length > 0 ? batches : undefined,
       envConsumers,
     })
     diagnostics = result.diagnostics
