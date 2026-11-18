@@ -1506,6 +1506,24 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 
 ---
 
+## 整改台账：B3-session-search-recovery-01（2026-11-19 追加）
+
+**Finding ID**：B3-session-search-recovery-01；主责 spec：session-search-recovery。
+
+新增 `tests/sessionSearchRecovery.test.ts` 并唯一登记 coverage，6 个测试、23 个断言：
+
+- >64KiB JSONL 的真实 head/tail lite 读取，title/firstPrompt/cwd/tag/gitBranch/createdAt 恢复；sidechain 和无 summary metadata 过滤。
+- 跨项目命令生成与 ant 同 worktree 直接恢复判断。
+- 真实 `registerSession`、name/bridge 更新、session switch、stale-delete 防护。
+- registry 损坏/pid 不匹配/symlink 过滤、非运行 PID 计数、interactive/bg tombstone 分支。
+- 不注入 dependencies 的默认多项目 backfill：两个有效 transcript 重建，损坏隔离，第二次保留 metadata。
+
+既有 `backfillSessionsCommand.test.ts` 继续覆盖 dry-run/force/锁/原子写，未重复替代。无生产代码、模型、上传、远程恢复或私有协议调用。spec 第 7 节同步修正不存在的 `src/sessions/*` 路径为当前实现路径，并记录三层证据和回滚。
+
+**原 Finding 状态**：B3-session-search-recovery-01 保持 open，spec 保持 draft。
+
+---
+
 ## 整改台账：B3-git-integration-03（2026-11-19 追加）
 
 **Finding ID**：B3-git-integration-03；主责 spec：git-integration。

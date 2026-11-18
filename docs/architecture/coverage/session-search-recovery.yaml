@@ -51,3 +51,4 @@ groups:
     summary: 会话恢复与回填测试
     files:
       - tests/backfillSessionsCommand.test.ts
+      - tests/sessionSearchRecovery.test.ts
