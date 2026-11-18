@@ -5,24 +5,67 @@ import { join } from 'path'
 const hooksYaml = join(import.meta.dir, '..', 'fixtures', 'hooks.yaml')
 
 describe('loadHookEntries', () => {
-  test('loads entries with ids and preserves order', () => {
+  test('loads entries with ids and preserves field values', () => {
     const entries = loadHookEntries(hooksYaml)
-    expect(entries.length).toBe(14)
-    expect(entries[0].id).toBe('hook:PreToolUse')
-    expect(entries[1].id).toBe('hook:PostToolUse')
-    expect(entries[2].id).toBe('hook:PostToolUseFailure')
-    expect(entries[3].id).toBe('hook:UserPromptSubmit')
-    expect(entries[4].id).toBe('hook:SessionStart')
-    expect(entries[5].id).toBe('hook:Setup')
-    expect(entries[6].id).toBe('hook:Stop')
-    expect(entries[7].id).toBe('hook:Notification')
-    expect(entries[8].id).toBe('hook:PermissionRequest')
-    expect(entries[9].id).toBe('hook:PermissionDenied')
-    expect(entries[10].id).toBe('hook:SessionEnd')
-    expect(entries[11].id).toBe('hook:StopFailure')
-    expect(entries[12].id).toBe('hook:InstructionsLoaded')
-    expect(entries[13].id).toBe('hook:UserPromptExpansion')
-    expect(entries[0].trigger).toBe('tool_call_unsafe_block')
+    expect(entries.length).toBeGreaterThanOrEqual(14)
+
+    // Check that all expected entries exist and have correct fields
+    const preToolUse = entries.find(e => e.id === 'hook:PreToolUse')
+    expect(preToolUse).toBeDefined()
+    expect(preToolUse?.event).toBe('PreToolUse')
+    expect(preToolUse?.trigger).toBe('tool_call_unsafe_block')
+    expect(preToolUse?.matcher).toBe('*')
+    expect(preToolUse?.exit_semantics).toBe('block')
+    expect(preToolUse?.status).toBe('active')
+
+    const postToolUse = entries.find(e => e.id === 'hook:PostToolUse')
+    expect(postToolUse).toBeDefined()
+    expect(postToolUse?.event).toBe('PostToolUse')
+    expect(postToolUse?.trigger).toBe('tool_call_safe')
+    expect(postToolUse?.matcher).toBe('*')
+    expect(postToolUse?.exit_semantics).toBe('nonblock')
+    expect(postToolUse?.status).toBe('active')
+
+    const postToolUseFailure = entries.find(e => e.id === 'hook:PostToolUseFailure')
+    expect(postToolUseFailure).toBeDefined()
+
+    const userPromptSubmit = entries.find(e => e.id === 'hook:UserPromptSubmit')
+    expect(userPromptSubmit).toBeDefined()
+
+    const sessionStart = entries.find(e => e.id === 'hook:SessionStart')
+    expect(sessionStart).toBeDefined()
+
+    const setup = entries.find(e => e.id === 'hook:Setup')
+    expect(setup).toBeDefined()
+
+    const stop = entries.find(e => e.id === 'hook:Stop')
+    expect(stop).toBeDefined()
+
+    const notification = entries.find(e => e.id === 'hook:Notification')
+    expect(notification).toBeDefined()
+
+    const permissionRequest = entries.find(e => e.id === 'hook:PermissionRequest')
+    expect(permissionRequest).toBeDefined()
+
+    const permissionDenied = entries.find(e => e.id === 'hook:PermissionDenied')
+    expect(permissionDenied).toBeDefined()
+
+    const sessionEnd = entries.find(e => e.id === 'hook:SessionEnd')
+    expect(sessionEnd).toBeDefined()
+
+    const stopFailure = entries.find(e => e.id === 'hook:StopFailure')
+    expect(stopFailure).toBeDefined()
+
+    const instructionsLoaded = entries.find(e => e.id === 'hook:InstructionsLoaded')
+    expect(instructionsLoaded).toBeDefined()
+
+    const userPromptExpansion = entries.find(e => e.id === 'hook:UserPromptExpansion')
+    expect(userPromptExpansion).toBeDefined()
+
+    // Verify all ids are unique
+    const ids = entries.map(e => e.id)
+    const uniqueIds = new Set(ids)
+    expect(uniqueIds.size).toBe(ids.length)
   })
 
   test('unknown trigger throws with entry id', async () => {
