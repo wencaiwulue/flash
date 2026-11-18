@@ -7,6 +7,108 @@ import { fileURLToPath } from 'node:url'
 
 export const UPSTREAM_BASELINE_VERSION = '2.1.311' as const
 
+/**
+ * 确定条目归属批次 B1-B5，遵循路线 4.5 节语义
+ */
+export function determineOwnerBatch(
+  id: string,
+  entry?: { lifecycle?: 'active' | 'deprecated' | 'removed', kind?: 'setting' | 'hook' | 'env' }
+): 1 | 2 | 3 | 4 | 5 {
+  // B1: Hooks 与当前环境变量
+  if (id.startsWith('hook:')) return 1
+
+  // 环境变量按语义划分
+  if (id.startsWith('env:')) {
+    const envName = id.slice('env:'.length)
+    // B4: MCP/插件/认证/远程/跨会话
+    if (envName.includes('MCP') || envName.includes('PLUGIN') || envName.includes('SKILL') ||
+        envName.includes('AUTH') || envName.includes('OAUTH') || envName.includes('GITHUB') ||
+        envName.includes('GITLAB') || envName.includes('BRIDGE') || envName.includes('REMOTE') ||
+        envName.includes('CROSS_SESSION') || envName.includes('GATEWAY')) {
+      return 4
+    }
+    // B5: Artifact/同步/mods/反馈/自动继续
+    if (envName.includes('ARTIFACT') || envName.includes('SYNC') || envName.includes('MOD') ||
+        envName.includes('FEEDBACK') || envName.includes('AUTO_CONTINUE')) {
+      return 5
+    }
+    // 剩余环境变量默认 B1
+    return 1
+  }
+
+  // B5: 完全缺失功能（Artifact/同步/mods/反馈/自动继续）- 先检查更具体的前缀
+  if (id.startsWith('setting:artifact') ||
+      id.startsWith('setting:disableArtifact') ||
+      id.startsWith('setting:enableArtifact') ||
+      id.startsWith('setting:sync') ||
+      id === 'setting:mod' || id.startsWith('setting:mod.') ||
+      id.startsWith('setting:feedback') ||
+      id.startsWith('setting:autoContinue') ||
+      id.startsWith('setting:dialogExpiry') ||
+      id.startsWith('setting:switchModels')) {
+    return 5
+  }
+
+  // B4: 集成与托管（MCP/插件/认证/remote/跨会话）
+  if (id.startsWith('setting:mcp') ||
+      id.startsWith('setting:plugin') ||
+      id.startsWith('setting:skill') ||
+      id.startsWith('setting:auth') ||
+      id.startsWith('setting:oauth') ||
+      id.startsWith('setting:github') ||
+      id.startsWith('setting:gitlab') ||
+      id.startsWith('setting:bridge') ||
+      id.startsWith('setting:remote') ||
+      id.startsWith('setting:crossSession') ||
+      id.startsWith('setting:isolatePeer') ||
+      id.startsWith('setting:forceLogin') ||
+      id.startsWith('setting:gateway') ||
+      id.startsWith('setting:disableClaudeAi') ||
+      id.startsWith('setting:allowAllClaudeAi') ||
+      id.startsWith('setting:allowClaudeInChromeWithManagedMcp') ||
+      id.startsWith('setting:forceRemote')) {
+    return 4
+  }
+
+  // B3: 安全与文件系统（permissions/attribution/worktree/sandbox）
+  if (id.startsWith('setting:permissions') ||
+      id.startsWith('setting:attribution') ||
+      id.startsWith('setting:worktree') ||
+      id.startsWith('setting:sandbox') ||
+      id.startsWith('setting:allowManagedHooksOnly')) {
+    return 3
+  }
+
+  // B1: setting 前缀匹配（subagent/进程相关）
+  if (id.startsWith('setting:subagent') ||
+      id.startsWith('setting:background') ||
+      id.startsWith('setting:daemon')) {
+    return 1
+  }
+
+  // B2: 本地核心与 UI
+  if (id.startsWith('setting:model') ||
+      id.startsWith('setting:thinking') ||
+      id.startsWith('setting:compact') ||
+      id.startsWith('setting:output') ||
+      id.startsWith('setting:status') ||
+      id.startsWith('setting:terminal') ||
+      id.startsWith('setting:theme') ||
+      id.startsWith('setting:editor') ||
+      id.startsWith('setting:ui') ||
+      id.startsWith('setting:show') ||
+      id.startsWith('setting:verbose') ||
+      id.startsWith('setting:auto') ||
+      id.startsWith('setting:fileCheckpointing') ||
+      id.startsWith('setting:teammate') ||
+      id.startsWith('setting:preferred')) {
+    return 2
+  }
+
+  // 默认 B3（B0 批次，基础设施）
+  return 3
+}
+
 export type InventoryDiff = {
   left: string
   right: string

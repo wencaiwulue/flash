@@ -108,7 +108,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 4
   - id: setting:allowClaudeInChromeWithManagedMcp
     status: missing
     implementation: []
@@ -135,7 +135,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 4
   - id: setting:allowManagedHooksOnly
     status: partial
     implementation: []
@@ -567,7 +567,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:autoCompactWindow
     status: missing
     implementation: []
@@ -594,7 +594,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:autoConnectIde
     status: missing
     implementation: []
@@ -621,7 +621,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:autoContinueAtUsageLimit
     status: missing
     implementation: []
@@ -648,7 +648,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 5
   - id: setting:autoInstallIdeExtension
     status: missing
     implementation: []
@@ -675,7 +675,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:autoMemoryDirectory
     status: partial
     implementation: []
@@ -702,7 +702,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:autoMemoryEnabled
     status: partial
     implementation: []
@@ -729,7 +729,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:autoMode
     status: missing
     implementation: []
@@ -756,7 +756,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:autoMode.allow
     status: missing
     implementation: []
@@ -783,7 +783,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:autoMode.classifyAllShell
     status: missing
     implementation: []
@@ -810,7 +810,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:autoMode.environment
     status: missing
     implementation: []
@@ -837,7 +837,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:autoMode.hard_deny
     status: missing
     implementation: []
@@ -864,7 +864,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:autoMode.soft_deny
     status: missing
     implementation: []
@@ -891,7 +891,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:autoScrollEnabled
     status: missing
     implementation: []
@@ -918,7 +918,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:autoUpdatesChannel
     status: partial
     implementation: []
@@ -945,7 +945,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:availableModels
     status: partial
     implementation: []
@@ -1458,7 +1458,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 4
   - id: setting:defaultShell
     status: partial
     implementation: []
@@ -1620,7 +1620,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 5
   - id: setting:diffTool
     status: missing
     implementation: []
@@ -1733,7 +1733,7 @@ entries:
       lifecycle: deprecated
       replacement: enableArtifact
       sourceAnchor: "#disableartifact"
-    ownerBatch: 3
+    ownerBatch: 5
   - id: setting:disableAutoMode
     status: partial
     implementation: []
@@ -1841,7 +1841,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 4
   - id: setting:disableCommandPluginSources
     status: missing
     implementation: []
@@ -2138,7 +2138,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:effortLevel
     status: partial
     implementation: []
@@ -2246,7 +2246,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 5
   - id: setting:enableWorkflows
     status: missing
     implementation: []
@@ -2543,7 +2543,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 5
   - id: setting:feedbackSurveyRate
     status: partial
     implementation: []
@@ -2570,7 +2570,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 5
   - id: setting:fileCheckpointingEnabled
     status: missing
     implementation: []
@@ -2597,7 +2597,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:fileSuggestion
     status: partial
     implementation: []
@@ -2732,7 +2732,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 4
   - id: setting:forceLoginMethod
     status: partial
     implementation: []
@@ -2759,7 +2759,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 4
   - id: setting:forceLoginOrgUUID
     status: partial
     implementation: []
@@ -2786,7 +2786,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 4
   - id: setting:forceRemoteSettingsRefresh
     status: missing
     implementation: []
@@ -2813,7 +2813,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 4
   - id: setting:gatewayInternalNetworks
     status: missing
     implementation: []
@@ -2840,7 +2840,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 4
   - id: setting:gcpAuthRefresh
     status: partial
     implementation: []
@@ -3056,7 +3056,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 4
   - id: setting:keybindingFlavor
     status: excluded
     implementation: []
@@ -3304,7 +3304,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:modelOverrides
     status: partial
     implementation: []
@@ -3331,7 +3331,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:modelPicker
     status: missing
     implementation: []
@@ -3358,7 +3358,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:modelPicker.options
     status: missing
     implementation: []
@@ -3385,7 +3385,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:modelPicker.replaceBuiltInOptions
     status: missing
     implementation: []
@@ -3412,7 +3412,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:modelPricing
     status: missing
     implementation: []
@@ -3439,7 +3439,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:modelPricing.multiplier
     status: missing
     implementation: []
@@ -3466,7 +3466,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:modelPricing.overrides
     status: missing
     implementation: []
@@ -3493,7 +3493,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:modelSettings
     status: missing
     implementation: []
@@ -3520,7 +3520,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:otelHeadersHelper
     status: partial
     implementation: []
@@ -3574,7 +3574,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:parentSettingsBehavior
     status: missing
     implementation: []
@@ -3984,7 +3984,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 4
   - id: setting:pluginSuggestionMarketplaces
     status: missing
     implementation: []
@@ -4011,7 +4011,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 4
   - id: setting:pluginTrustMessage
     status: partial
     implementation: []
@@ -4038,7 +4038,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 4
   - id: setting:policyHelper
     status: missing
     implementation: []
@@ -4227,7 +4227,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:prefersReducedMotion
     status: partial
     implementation: []
@@ -4389,7 +4389,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 4
   - id: setting:remoteControlAtStartup
     status: missing
     implementation: []
@@ -4416,7 +4416,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 4
   - id: setting:requiredMaximumVersion
     status: missing
     implementation: []
@@ -5793,7 +5793,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:showThinkingSummaries
     status: partial
     implementation: []
@@ -5820,7 +5820,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:showTurnDuration
     status: missing
     implementation: []
@@ -5847,7 +5847,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:skillListingBudgetFraction
     status: missing
     implementation: []
@@ -5874,7 +5874,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 4
   - id: setting:skillListingMaxDescChars
     status: missing
     implementation: []
@@ -5901,7 +5901,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 4
   - id: setting:skillOverrides
     status: missing
     implementation: []
@@ -5928,7 +5928,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 4
   - id: setting:skipAutoPermissionPrompt
     status: missing
     implementation: []
@@ -6495,7 +6495,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:statusLine.command
     status: partial
     implementation: []
@@ -6522,7 +6522,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:statusLine.hideVimModeIndicator
     status: missing
     implementation: []
@@ -6549,7 +6549,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:statusLine.padding
     status: partial
     implementation: []
@@ -6576,7 +6576,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:statusLine.refreshInterval
     status: missing
     implementation: []
@@ -6603,7 +6603,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:statusLine.type
     status: partial
     implementation: []
@@ -6630,7 +6630,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:strictKnownMarketplaces
     status: partial
     implementation: []
@@ -6819,7 +6819,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 1
   - id: setting:switchModelsOnFlag
     status: missing
     implementation: []
@@ -6846,7 +6846,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 5
   - id: setting:syncClaudeAiPlugins
     status: missing
     implementation: []
@@ -6873,7 +6873,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 5
   - id: setting:syncClaudeAiSkills
     status: missing
     implementation: []
@@ -6900,7 +6900,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 5
   - id: setting:syntaxHighlightingDisabled
     status: partial
     implementation: []
@@ -6991,7 +6991,7 @@ entries:
       lifecycle: removed
       replacement: null
       sourceAnchor: "#teammatedefaultmodel"
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:teammateMode
     status: missing
     implementation: []
@@ -7018,7 +7018,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:terminalProgressBarEnabled
     status: missing
     implementation: []
@@ -7045,7 +7045,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:terminalTitleFromRename
     status: partial
     implementation: []
@@ -7072,7 +7072,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:theme
     status: missing
     implementation: []
@@ -7099,7 +7099,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:timeFormat
     status: missing
     implementation: []
@@ -7261,7 +7261,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 3
+    ownerBatch: 2
   - id: setting:viewMode
     status: missing
     implementation: []
@@ -7752,7 +7752,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 4
+    ownerBatch: 1
   - id: hook:CwdChanged
     status: partial
     implementation: []
@@ -7779,7 +7779,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 4
+    ownerBatch: 1
   - id: hook:DirectoryAdded
     status: missing
     implementation: []
@@ -7806,7 +7806,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 4
+    ownerBatch: 1
   - id: hook:Elicitation
     status: partial
     implementation: []
@@ -7833,7 +7833,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 4
+    ownerBatch: 1
   - id: hook:ElicitationResult
     status: partial
     implementation: []
@@ -7860,7 +7860,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 4
+    ownerBatch: 1
   - id: hook:FileChanged
     status: partial
     implementation: []
@@ -7887,7 +7887,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 4
+    ownerBatch: 1
   - id: hook:InstructionsLoaded
     status: partial
     implementation: []
@@ -7914,7 +7914,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 4
+    ownerBatch: 1
   - id: hook:MessageDisplay
     status: missing
     implementation: []
@@ -7941,7 +7941,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 4
+    ownerBatch: 1
   - id: hook:Notification
     status: partial
     implementation: []
@@ -7968,7 +7968,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 4
+    ownerBatch: 1
   - id: hook:PermissionDenied
     status: partial
     implementation: []
@@ -7995,7 +7995,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 4
+    ownerBatch: 1
   - id: hook:PermissionRequest
     status: partial
     implementation: []
@@ -8022,7 +8022,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 4
+    ownerBatch: 1
   - id: hook:PostCompact
     status: partial
     implementation: []
@@ -8049,7 +8049,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 4
+    ownerBatch: 1
   - id: hook:PostModelSwitch
     status: missing
     implementation: []
@@ -8076,7 +8076,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 4
+    ownerBatch: 1
   - id: hook:PostToolBatch
     status: missing
     implementation: []
@@ -8103,7 +8103,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 4
+    ownerBatch: 1
   - id: hook:PostToolUse
     status: partial
     implementation: []
@@ -8130,7 +8130,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 4
+    ownerBatch: 1
   - id: hook:PostToolUseFailure
     status: partial
     implementation: []
@@ -8157,7 +8157,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 4
+    ownerBatch: 1
   - id: hook:PreCompact
     status: partial
     implementation: []
@@ -8184,7 +8184,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 4
+    ownerBatch: 1
   - id: hook:PreModelSwitch
     status: missing
     implementation: []
@@ -8211,7 +8211,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 4
+    ownerBatch: 1
   - id: hook:PreToolUse
     status: partial
     implementation: []
@@ -8238,7 +8238,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 4
+    ownerBatch: 1
   - id: hook:SessionEnd
     status: partial
     implementation: []
@@ -8265,7 +8265,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 4
+    ownerBatch: 1
   - id: hook:SessionStart
     status: partial
     implementation: []
@@ -8292,7 +8292,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 4
+    ownerBatch: 1
   - id: hook:Setup
     status: partial
     implementation: []
@@ -8319,7 +8319,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 4
+    ownerBatch: 1
   - id: hook:Stop
     status: partial
     implementation: []
@@ -8346,7 +8346,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 4
+    ownerBatch: 1
   - id: hook:StopFailure
     status: partial
     implementation: []
@@ -8373,7 +8373,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 4
+    ownerBatch: 1
   - id: hook:SubagentStart
     status: partial
     implementation: []
@@ -8400,7 +8400,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 4
+    ownerBatch: 1
   - id: hook:SubagentStop
     status: partial
     implementation: []
@@ -8427,7 +8427,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 4
+    ownerBatch: 1
   - id: hook:TaskCompleted
     status: partial
     implementation: []
@@ -8454,7 +8454,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 4
+    ownerBatch: 1
   - id: hook:TaskCreated
     status: partial
     implementation: []
@@ -8481,7 +8481,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 4
+    ownerBatch: 1
   - id: hook:TeammateIdle
     status: partial
     implementation: []
@@ -8508,7 +8508,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 4
+    ownerBatch: 1
   - id: hook:UserPromptExpansion
     status: missing
     implementation: []
@@ -8535,7 +8535,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 4
+    ownerBatch: 1
   - id: hook:UserPromptSubmit
     status: partial
     implementation: []
@@ -8562,7 +8562,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 4
+    ownerBatch: 1
   - id: hook:WorktreeCreate
     status: partial
     implementation: []
@@ -8589,7 +8589,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 4
+    ownerBatch: 1
   - id: hook:WorktreeRemove
     status: partial
     implementation: []
@@ -8616,7 +8616,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 4
+    ownerBatch: 1
   - id: env:ANTHROPIC_API_KEY
     status: missing
     implementation: []
@@ -8643,7 +8643,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:ANTHROPIC_AUTH_TOKEN
     status: missing
     implementation: []
@@ -8670,7 +8670,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:ANTHROPIC_AWS_API_KEY
     status: missing
     implementation: []
@@ -8697,7 +8697,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:ANTHROPIC_AWS_BASE_URL
     status: missing
     implementation: []
@@ -8724,7 +8724,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:ANTHROPIC_AWS_WORKSPACE_ID
     status: missing
     implementation: []
@@ -8751,7 +8751,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:ANTHROPIC_BASE_URL
     status: missing
     implementation: []
@@ -8778,7 +8778,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:ANTHROPIC_BEDROCK_BASE_URL
     status: missing
     implementation: []
@@ -8805,7 +8805,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:ANTHROPIC_BEDROCK_MANTLE_BASE_URL
     status: missing
     implementation: []
@@ -8832,7 +8832,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:ANTHROPIC_BEDROCK_REGION_PREFIX
     status: missing
     implementation: []
@@ -8859,7 +8859,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:ANTHROPIC_BEDROCK_SERVICE_TIER
     status: missing
     implementation: []
@@ -8886,7 +8886,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:ANTHROPIC_BETAS
     status: missing
     implementation: []
@@ -8913,7 +8913,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:ANTHROPIC_CUSTOM_HEADERS
     status: missing
     implementation: []
@@ -8940,7 +8940,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:ANTHROPIC_CUSTOM_MODEL_OPTION
     status: missing
     implementation: []
@@ -9534,7 +9534,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:ANTHROPIC_FOUNDRY_API_KEY
     status: missing
     implementation: []
@@ -9561,7 +9561,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:ANTHROPIC_FOUNDRY_AUTH_TOKEN
     status: missing
     implementation: []
@@ -9588,7 +9588,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:ANTHROPIC_FOUNDRY_BASE_URL
     status: missing
     implementation: []
@@ -9615,7 +9615,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:ANTHROPIC_FOUNDRY_RESOURCE
     status: missing
     implementation: []
@@ -9642,7 +9642,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:ANTHROPIC_GOOGLE_CLOUD_BASE_URL
     status: missing
     implementation: []
@@ -9669,7 +9669,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:ANTHROPIC_GOOGLE_CLOUD_LOCATION
     status: missing
     implementation: []
@@ -9696,7 +9696,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:ANTHROPIC_GOOGLE_CLOUD_PROJECT
     status: missing
     implementation: []
@@ -9723,7 +9723,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:ANTHROPIC_GOOGLE_CLOUD_WORKSPACE_ID
     status: missing
     implementation: []
@@ -9750,7 +9750,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:ANTHROPIC_MODEL
     status: missing
     implementation: []
@@ -9804,7 +9804,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:ANTHROPIC_PROFILE
     status: missing
     implementation: []
@@ -9831,7 +9831,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:ANTHROPIC_SMALL_FAST_MODEL
     status: excluded
     implementation: []
@@ -9917,7 +9917,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:ANTHROPIC_VERTEX_PROJECT_ID
     status: missing
     implementation: []
@@ -9944,7 +9944,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:ANTHROPIC_WORKSPACE_ID
     status: missing
     implementation: []
@@ -9971,7 +9971,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:API_FORCE_IDLE_TIMEOUT
     status: missing
     implementation: []
@@ -9998,7 +9998,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:API_TIMEOUT_MS
     status: missing
     implementation: []
@@ -10025,7 +10025,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:AWS_BEARER_TOKEN_BEDROCK
     status: missing
     implementation: []
@@ -10052,7 +10052,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:BASH_DEFAULT_TIMEOUT_MS
     status: missing
     implementation: []
@@ -10079,7 +10079,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:BASH_MAX_OUTPUT_LENGTH
     status: missing
     implementation: []
@@ -10106,7 +10106,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:BASH_MAX_TIMEOUT_MS
     status: missing
     implementation: []
@@ -10133,7 +10133,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:BETA_TRACING_ENDPOINT
     status: missing
     implementation: []
@@ -10160,7 +10160,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CCR_FORCE_BUNDLE
     status: missing
     implementation: []
@@ -10187,7 +10187,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDECODE
     status: missing
     implementation: []
@@ -10214,7 +10214,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS
     status: missing
     implementation: []
@@ -10241,7 +10241,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_AGENT_SDK_MCP_NO_PREFIX
     status: missing
     implementation: []
@@ -10268,7 +10268,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_ASYNC_AGENT_STALL_TIMEOUT_MS
     status: missing
     implementation: []
@@ -10322,7 +10322,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_AUTO_BACKGROUND_TASKS
     status: missing
     implementation: []
@@ -10349,7 +10349,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_AX_PREPARK_MS
     status: missing
     implementation: []
@@ -10376,7 +10376,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_AX_SCREEN_READER
     status: missing
     implementation: []
@@ -10403,7 +10403,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_AX_STARTUP_QUIET_MS
     status: missing
     implementation: []
@@ -10430,7 +10430,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR
     status: missing
     implementation: []
@@ -10457,7 +10457,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_BYTE_STREAM_IDLE_TIMEOUT_MS
     status: missing
     implementation: []
@@ -10484,7 +10484,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CLIENT_PRESENCE_FILE
     status: missing
     implementation: []
@@ -10511,7 +10511,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_ACCESSIBILITY
     status: missing
     implementation: []
@@ -10538,7 +10538,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD
     status: missing
     implementation: []
@@ -10565,7 +10565,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_ALT_SCREEN_FULL_REPAINT
     status: missing
     implementation: []
@@ -10592,7 +10592,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_ALWAYS_ENABLE_EFFORT
     status: missing
     implementation: []
@@ -10619,7 +10619,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_API_KEY_HELPER_TTL_MS
     status: missing
     implementation: []
@@ -10646,7 +10646,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_ARTIFACT_AUTO_OPEN
     status: missing
     implementation: []
@@ -10781,7 +10781,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_AUTOMOUNT_ROOTS
     status: blocked
     implementation: []
@@ -10808,7 +10808,7 @@ entries:
         evidence: Requires Claude Code v2.1.323 or later
     notes: Upstream documentation is ahead of stable 2.1.311; introduced in 2.1.323.
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_AUTO_BACKGROUND_WORKER_CHECKIN_SECONDS
     status: excluded
     implementation: []
@@ -10840,7 +10840,7 @@ entries:
       lifecycle: removed
       replacement: CLAUDE_CODE_WORKER_CHECKIN_SCHEDULE
       sourceAnchor: "#variables"
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_AUTO_COMPACT_WINDOW
     status: missing
     implementation: []
@@ -10867,7 +10867,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_AUTO_CONNECT_IDE
     status: missing
     implementation: []
@@ -10894,7 +10894,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_AUTO_MODE_MODEL
     status: missing
     implementation: []
@@ -10975,7 +10975,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_BASH_EDIT_DIFF
     status: missing
     implementation: []
@@ -11002,7 +11002,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_BG_TASKS_REPORT_RUNNING
     status: missing
     implementation: []
@@ -11029,7 +11029,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_BRIDGE_SESSION_ID
     status: missing
     implementation: []
@@ -11056,7 +11056,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_BS_AS_CTRL_BACKSPACE
     status: missing
     implementation: []
@@ -11083,7 +11083,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_CERT_STORE
     status: missing
     implementation: []
@@ -11110,7 +11110,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_CHILD_SESSION
     status: missing
     implementation: []
@@ -11137,7 +11137,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_CLIENT_CERT
     status: missing
     implementation: []
@@ -11164,7 +11164,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_CLIENT_KEY
     status: missing
     implementation: []
@@ -11191,7 +11191,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_CLIENT_KEY_PASSPHRASE
     status: missing
     implementation: []
@@ -11218,7 +11218,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_CONFIG_LOCK_WAIT_MS
     status: blocked
     implementation: []
@@ -11245,7 +11245,7 @@ entries:
         evidence: Requires Claude Code v2.1.318 or later
     notes: Upstream documentation is ahead of stable 2.1.311; introduced in 2.1.318.
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_CONNECT_TIMEOUT_MS
     status: excluded
     implementation: []
@@ -11277,7 +11277,7 @@ entries:
       lifecycle: removed
       replacement: API_TIMEOUT_MS
       sourceAnchor: "#variables"
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DEBUG_LOGS_DIR
     status: missing
     implementation: []
@@ -11304,7 +11304,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DEBUG_LOG_LEVEL
     status: missing
     implementation: []
@@ -11331,7 +11331,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_1M_CONTEXT
     status: missing
     implementation: []
@@ -11358,7 +11358,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING
     status: missing
     implementation: []
@@ -11385,7 +11385,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_ADVISOR_TOOL
     status: missing
     implementation: []
@@ -11412,7 +11412,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_AGENT_VIEW
     status: missing
     implementation: []
@@ -11439,7 +11439,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN
     status: missing
     implementation: []
@@ -11466,7 +11466,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_ARTIFACT
     status: missing
     implementation: []
@@ -11520,7 +11520,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_AUTH_REFRESH_LOCK
     status: missing
     implementation: []
@@ -11547,7 +11547,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_DISABLE_AUTO_MEMORY
     status: missing
     implementation: []
@@ -11574,7 +11574,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_BACKGROUND_TASKS
     status: missing
     implementation: []
@@ -11601,7 +11601,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_BEDROCK_CONTENT_TYPE_DEFAULT
     status: missing
     implementation: []
@@ -11628,7 +11628,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_BEDROCK_CONTENT_TYPE_GUARD
     status: missing
     implementation: []
@@ -11655,7 +11655,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_BG_EXIT_HANDOFF
     status: missing
     implementation: []
@@ -11682,7 +11682,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_BG_SHELL_PRESSURE_REAP
     status: missing
     implementation: []
@@ -11709,7 +11709,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_BG_STABLE_PATH
     status: missing
     implementation: []
@@ -11736,7 +11736,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_BUNDLED_SKILLS
     status: missing
     implementation: []
@@ -11763,7 +11763,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_DISABLE_CFC_PROMPT
     status: missing
     implementation: []
@@ -11790,7 +11790,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_CLAUDE_MDS
     status: missing
     implementation: []
@@ -11817,7 +11817,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_CRON
     status: missing
     implementation: []
@@ -11844,7 +11844,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_DANGEROUS_RM_TIMEOUT
     status: missing
     implementation: []
@@ -11871,7 +11871,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS
     status: missing
     implementation: []
@@ -11898,7 +11898,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_EXPLORE_PLAN_AGENTS
     status: missing
     implementation: []
@@ -11925,7 +11925,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_FAST_MODE
     status: missing
     implementation: []
@@ -11979,7 +11979,7 @@ entries:
         evidence: Requires Claude Code v2.1.319 or later.
     notes: Upstream documentation is ahead of stable 2.1.311; introduced in 2.1.319.
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY
     status: missing
     implementation: []
@@ -12033,7 +12033,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_FILE_MENTIONS
     status: missing
     implementation: []
@@ -12060,7 +12060,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS
     status: missing
     implementation: []
@@ -12087,7 +12087,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_INLINE_SHELL_RM_PROMPT
     status: missing
     implementation: []
@@ -12114,7 +12114,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_LEGACY_MODEL_REMAP
     status: missing
     implementation: []
@@ -12168,7 +12168,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_DISABLE_MODEL_ACCESS_FALLBACK
     status: missing
     implementation: []
@@ -12222,7 +12222,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_MOUSE
     status: missing
     implementation: []
@@ -12249,7 +12249,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_MOUSE_CLICKS
     status: missing
     implementation: []
@@ -12276,7 +12276,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_MTLS_RELOAD_ON_STALE_CONNECTION
     status: missing
     implementation: []
@@ -12303,7 +12303,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC
     status: missing
     implementation: []
@@ -12330,7 +12330,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK
     status: missing
     implementation: []
@@ -12357,7 +12357,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_NOTIFICATION_PRESENCE_CHECK
     status: missing
     implementation: []
@@ -12384,7 +12384,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL
     status: missing
     implementation: []
@@ -12411,7 +12411,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_PERMISSION_PROMPT_NOTIFY_HOOKS
     status: missing
     implementation: []
@@ -12438,7 +12438,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_POLICY_SKILLS
     status: missing
     implementation: []
@@ -12465,7 +12465,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_DISABLE_POWERSHELL_CMD_RM_DENY
     status: missing
     implementation: []
@@ -12492,7 +12492,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK
     status: missing
     implementation: []
@@ -12519,7 +12519,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS
     status: missing
     implementation: []
@@ -12546,7 +12546,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT
     status: missing
     implementation: []
@@ -12573,7 +12573,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_TERMINAL_TITLE
     status: missing
     implementation: []
@@ -12600,7 +12600,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_THINKING
     status: missing
     implementation: []
@@ -12627,7 +12627,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_ULTRAREVIEW_TRUST_CHECK
     status: missing
     implementation: []
@@ -12654,7 +12654,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_ULTRATHINK
     status: blocked
     implementation: []
@@ -12681,7 +12681,7 @@ entries:
         evidence: Requires Claude Code v2.1.316 or later
     notes: Upstream documentation is ahead of stable 2.1.311; introduced in 2.1.316.
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT
     status: missing
     implementation: []
@@ -12735,7 +12735,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_WEB_FETCH
     status: missing
     implementation: []
@@ -12762,7 +12762,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_WINDOWS_SHELL_LAUNCHER
     status: missing
     implementation: []
@@ -12789,7 +12789,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DISABLE_WORKFLOWS
     status: missing
     implementation: []
@@ -12816,7 +12816,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_DROP_UNAVAILABLE_DEFERRED_TOOL
     status: blocked
     implementation: []
@@ -12843,7 +12843,7 @@ entries:
         evidence: Requires Claude Code v2.1.319 or later
     notes: Upstream documentation is ahead of stable 2.1.311; introduced in 2.1.319.
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_EFFORT_LEVEL
     status: missing
     implementation: []
@@ -12870,7 +12870,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS
     status: missing
     implementation: []
@@ -12897,7 +12897,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_ENABLE_AUTO_MODE
     status: missing
     implementation: []
@@ -12951,7 +12951,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_ENABLE_BACKGROUND_PLUGIN_REFRESH
     status: missing
     implementation: []
@@ -12978,7 +12978,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_ENABLE_CFC
     status: missing
     implementation: []
@@ -13005,7 +13005,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_ENABLE_FEEDBACK_SURVEY_FOR_OTEL
     status: missing
     implementation: []
@@ -13059,7 +13059,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY
     status: missing
     implementation: []
@@ -13086,7 +13086,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_ENABLE_OPUS_4_7_FAST_MODE
     status: excluded
     implementation: []
@@ -13145,7 +13145,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_ENABLE_SHARE_BUNDLE
     status: missing
     implementation: []
@@ -13172,7 +13172,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_ENABLE_TASKS
     status: missing
     implementation: []
@@ -13199,7 +13199,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_ENABLE_TELEMETRY
     status: missing
     implementation: []
@@ -13226,7 +13226,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_ENABLE_TODO_TOOLS
     status: missing
     implementation: []
@@ -13253,7 +13253,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_EVEN_MORE_DANGEROUSLY_SKIP_PERMISSIONS
     status: missing
     implementation: []
@@ -13280,7 +13280,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_EXIT_AFTER_STOP_DELAY
     status: missing
     implementation: []
@@ -13307,7 +13307,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS
     status: missing
     implementation: []
@@ -13334,7 +13334,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_EXPERIMENTAL_CODE_MODE
     status: missing
     implementation: []
@@ -13388,7 +13388,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS
     status: missing
     implementation: []
@@ -13415,7 +13415,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_FORCE_SESSION_PERSISTENCE
     status: missing
     implementation: []
@@ -13442,7 +13442,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_FORCE_STRIKETHROUGH
     status: missing
     implementation: []
@@ -13469,7 +13469,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_FORCE_SYNC_OUTPUT
     status: missing
     implementation: []
@@ -13523,7 +13523,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_FORK_SUBAGENT
     status: missing
     implementation: []
@@ -13550,7 +13550,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_FORWARD_SUBAGENT_TEXT
     status: missing
     implementation: []
@@ -13577,7 +13577,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_GATEWAY_HINT_HEADERS
     status: missing
     implementation: []
@@ -13604,7 +13604,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_GATEWAY_MODEL_DISCOVERY_TIMEOUT_MS
     status: missing
     implementation: []
@@ -13631,7 +13631,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_GIT_BASH_PATH
     status: missing
     implementation: []
@@ -13658,7 +13658,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_GLOB_HIDDEN
     status: missing
     implementation: []
@@ -13685,7 +13685,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_GLOB_NO_IGNORE
     status: missing
     implementation: []
@@ -13712,7 +13712,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_GLOB_TIMEOUT_SECONDS
     status: missing
     implementation: []
@@ -13739,7 +13739,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_GOAL_CHECKIN_MINUTES
     status: missing
     implementation: []
@@ -13766,7 +13766,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_GZIP_REQUEST_BODIES
     status: missing
     implementation: []
@@ -13793,7 +13793,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_HIDE_CWD
     status: missing
     implementation: []
@@ -13820,7 +13820,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_IDE_HOST_OVERRIDE
     status: missing
     implementation: []
@@ -13847,7 +13847,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL
     status: missing
     implementation: []
@@ -13874,7 +13874,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_IDE_SKIP_VALID_CHECK
     status: missing
     implementation: []
@@ -13901,7 +13901,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS
     status: missing
     implementation: []
@@ -13928,7 +13928,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS
     status: missing
     implementation: []
@@ -13955,7 +13955,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_MAX_CONTEXT_TOKENS
     status: missing
     implementation: []
@@ -13982,7 +13982,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH
     status: missing
     implementation: []
@@ -14009,7 +14009,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_MAX_OUTPUT_TOKENS
     status: missing
     implementation: []
@@ -14036,7 +14036,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_MAX_RETRIES
     status: missing
     implementation: []
@@ -14063,7 +14063,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION
     status: excluded
     implementation: []
@@ -14095,7 +14095,7 @@ entries:
       lifecycle: removed
       replacement: null
       sourceAnchor: "#variables"
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH
     status: missing
     implementation: []
@@ -14122,7 +14122,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_MAX_TURNS
     status: missing
     implementation: []
@@ -14149,7 +14149,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION
     status: missing
     implementation: []
@@ -14176,7 +14176,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_MCP_ALLOWLIST_ENV
     status: missing
     implementation: []
@@ -14203,7 +14203,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_MCP_AUTO_BACKGROUND_MS
     status: missing
     implementation: []
@@ -14230,7 +14230,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_MCP_STARTUP_WAIT_MS
     status: missing
     implementation: []
@@ -14257,7 +14257,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT
     status: missing
     implementation: []
@@ -14284,7 +14284,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_MESSAGING_SOCKET
     status: missing
     implementation: []
@@ -14311,7 +14311,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_MESSAGING_TOKEN
     status: missing
     implementation: []
@@ -14338,7 +14338,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_NATIVE_CURSOR
     status: missing
     implementation: []
@@ -14365,7 +14365,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_NEW_INIT
     status: missing
     implementation: []
@@ -14392,7 +14392,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_NONBLOCKING_STDOUT
     status: missing
     implementation: []
@@ -14419,7 +14419,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_NONSTREAMING_TIMEOUT_RETRIES
     status: missing
     implementation: []
@@ -14446,7 +14446,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_NO_FLICKER
     status: missing
     implementation: []
@@ -14473,7 +14473,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_OAUTH_REFRESH_TOKEN
     status: missing
     implementation: []
@@ -14500,7 +14500,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_OAUTH_SCOPES
     status: missing
     implementation: []
@@ -14527,7 +14527,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_OAUTH_TOKEN
     status: missing
     implementation: []
@@ -14554,7 +14554,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_OPUS_4_6_FAST_MODE_OVERRIDE
     status: excluded
     implementation: []
@@ -14613,7 +14613,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_OTEL_DIAG_STDERR
     status: missing
     implementation: []
@@ -14640,7 +14640,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_OTEL_FLUSH_TIMEOUT_MS
     status: missing
     implementation: []
@@ -14667,7 +14667,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_OTEL_HEADERS_HELPER_DEBOUNCE_MS
     status: missing
     implementation: []
@@ -14694,7 +14694,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_OTEL_SHUTDOWN_TIMEOUT_MS
     status: missing
     implementation: []
@@ -14721,7 +14721,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_OVERLOADED_RETRY_BASE_DELAY_MS
     status: missing
     implementation: []
@@ -14748,7 +14748,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_OVERLOADED_RETRY_MAX_DELAY_MS
     status: missing
     implementation: []
@@ -14775,7 +14775,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_PACKAGE_MANAGER_AUTO_UPDATE
     status: missing
     implementation: []
@@ -14802,7 +14802,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_PERFORCE_MODE
     status: missing
     implementation: []
@@ -14856,7 +14856,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_PLUGIN_DIRS
     status: missing
     implementation: []
@@ -14883,7 +14883,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_PLUGIN_DIR_WATCH
     status: missing
     implementation: []
@@ -14910,7 +14910,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_PLUGIN_GIT_TIMEOUT_MS
     status: missing
     implementation: []
@@ -14937,7 +14937,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_PLUGIN_KEEP_MARKETPLACE_ON_FAILURE
     status: missing
     implementation: []
@@ -14964,7 +14964,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_PLUGIN_PREFER_HTTPS
     status: missing
     implementation: []
@@ -14991,7 +14991,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_PLUGIN_SEED_DIR
     status: missing
     implementation: []
@@ -15018,7 +15018,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_POWERSHELL_RESPECT_EXECUTION_POLICY
     status: missing
     implementation: []
@@ -15045,7 +15045,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS
     status: missing
     implementation: []
@@ -15072,7 +15072,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_PROCESS_WRAPPER
     status: missing
     implementation: []
@@ -15099,7 +15099,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_PROJECT_DIR_NAME
     status: missing
     implementation: []
@@ -15126,7 +15126,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_PROMPT_CACHE_TTL
     status: missing
     implementation: []
@@ -15153,7 +15153,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_PROPAGATE_TRACEPARENT
     status: missing
     implementation: []
@@ -15180,7 +15180,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST
     status: missing
     implementation: []
@@ -15207,7 +15207,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_PROXY_RESOLVES_HOSTS
     status: missing
     implementation: []
@@ -15234,7 +15234,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_REMOTE
     status: missing
     implementation: []
@@ -15261,7 +15261,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_REMOTE_SESSION_ID
     status: missing
     implementation: []
@@ -15288,7 +15288,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_RESTRICTED
     status: missing
     implementation: []
@@ -15315,7 +15315,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_RESUME_HINT_COMMAND
     status: blocked
     implementation: []
@@ -15342,7 +15342,7 @@ entries:
         evidence: Requires Claude Code v2.1.323 or later
     notes: Upstream documentation is ahead of stable 2.1.311; introduced in 2.1.323.
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_RESUME_INTERRUPTED_TURN
     status: missing
     implementation: []
@@ -15369,7 +15369,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_RESUME_INTERRUPTED_TURN_MAX_AGE_MS
     status: missing
     implementation: []
@@ -15396,7 +15396,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_RESUME_PROMPT
     status: missing
     implementation: []
@@ -15423,7 +15423,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_RESUME_SHOWS_CUT_OFF_CALLS
     status: missing
     implementation: []
@@ -15450,7 +15450,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_RETRY_WATCHDOG
     status: missing
     implementation: []
@@ -15477,7 +15477,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_RETRY_WATCHDOG_MAX_WAIT_MS
     status: missing
     implementation: []
@@ -15504,7 +15504,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_RETRY_WATCHDOG_USAGE_LIMIT_RECHECK_MS
     status: missing
     implementation: []
@@ -15531,7 +15531,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_SAFE_MODE
     status: missing
     implementation: []
@@ -15585,7 +15585,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_SCROLL_SPEED
     status: missing
     implementation: []
@@ -15612,7 +15612,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_SEND_FEEDBACK
     status: missing
     implementation: []
@@ -15666,7 +15666,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_SESSION_ID
     status: missing
     implementation: []
@@ -15693,7 +15693,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_SHELL
     status: missing
     implementation: []
@@ -15720,7 +15720,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_SHELL_PREFIX
     status: missing
     implementation: []
@@ -15747,7 +15747,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_SIMPLE
     status: missing
     implementation: []
@@ -15774,7 +15774,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT
     status: missing
     implementation: []
@@ -15801,7 +15801,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_SKIP_ANTHROPIC_AWS_AUTH
     status: missing
     implementation: []
@@ -15828,7 +15828,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_SKIP_ANTHROPIC_GOOGLE_CLOUD_AUTH
     status: missing
     implementation: []
@@ -15855,7 +15855,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_SKIP_AWS_CRED_CACHE
     status: missing
     implementation: []
@@ -15882,7 +15882,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_SKIP_BEDROCK_AUTH
     status: missing
     implementation: []
@@ -15909,7 +15909,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_SKIP_FAST_MODE_NETWORK_ERRORS
     status: missing
     implementation: []
@@ -15990,7 +15990,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_SKIP_MANTLE_AUTH
     status: missing
     implementation: []
@@ -16017,7 +16017,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_SKIP_MODEL_ACCESS_MEMORY
     status: missing
     implementation: []
@@ -16071,7 +16071,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_SKIP_VERTEX_AUTH
     status: missing
     implementation: []
@@ -16098,7 +16098,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_STARTUP_FAILURE_RESULTS
     status: missing
     implementation: []
@@ -16125,7 +16125,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_STOP_HOOK_BLOCK_CAP
     status: missing
     implementation: []
@@ -16152,7 +16152,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_SUBAGENT_MODEL
     status: missing
     implementation: []
@@ -16233,7 +16233,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_SUBPROCESS_ENV_SCRUB
     status: missing
     implementation: []
@@ -16260,7 +16260,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_SYNC_PLUGIN_INSTALL
     status: missing
     implementation: []
@@ -16287,7 +16287,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_SYNC_PLUGIN_INSTALL_TIMEOUT_MS
     status: missing
     implementation: []
@@ -16314,7 +16314,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_SYNC_SKILLS
     status: missing
     implementation: []
@@ -16341,7 +16341,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_SYNC_SKILLS_INSTALL_TIMEOUT_MS
     status: missing
     implementation: []
@@ -16368,7 +16368,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_SYNC_SKILLS_WAIT_TIMEOUT_MS
     status: missing
     implementation: []
@@ -16395,7 +16395,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_CODE_SYNTAX_HIGHLIGHT
     status: missing
     implementation: []
@@ -16422,7 +16422,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_TASK_LIST_ID
     status: missing
     implementation: []
@@ -16449,7 +16449,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_TMPDIR
     status: missing
     implementation: []
@@ -16476,7 +16476,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_TMUX_TRUECOLOR
     status: missing
     implementation: []
@@ -16503,7 +16503,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_TOOL_MEMORY_CGROUP_EXCLUDE
     status: missing
     implementation: []
@@ -16530,7 +16530,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_TOOL_MEMORY_LIMIT
     status: missing
     implementation: []
@@ -16557,7 +16557,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_TRANSCRIPT_LOCAL_GC
     status: missing
     implementation: []
@@ -16584,7 +16584,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_USER_DIALOG_TIMEOUT_MS
     status: missing
     implementation: []
@@ -16611,7 +16611,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_USE_ANTHROPIC_AWS
     status: missing
     implementation: []
@@ -16638,7 +16638,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_USE_ANTHROPIC_GOOGLE_CLOUD
     status: missing
     implementation: []
@@ -16665,7 +16665,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_USE_BEDROCK
     status: missing
     implementation: []
@@ -16692,7 +16692,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_USE_FOUNDRY
     status: missing
     implementation: []
@@ -16719,7 +16719,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_USE_MANTLE
     status: missing
     implementation: []
@@ -16746,7 +16746,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_USE_POWERSHELL_TOOL
     status: missing
     implementation: []
@@ -16773,7 +16773,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_USE_VERTEX
     status: missing
     implementation: []
@@ -16800,7 +16800,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_WARN_DISK_FREE_GIB
     status: missing
     implementation: []
@@ -16827,7 +16827,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_WARN_MEMORY_FREE_GIB
     status: missing
     implementation: []
@@ -16854,7 +16854,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_WEBFETCH_CACHE_TTL_MS
     status: missing
     implementation: []
@@ -16881,7 +16881,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_WEBFETCH_DEADLINE_MS
     status: missing
     implementation: []
@@ -16908,7 +16908,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_WEB_SEARCH_REFILLS_PER_HOUR
     status: missing
     implementation: []
@@ -16935,7 +16935,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_WORKER_CHECKIN_SCHEDULE
     status: missing
     implementation: []
@@ -16962,7 +16962,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_WORKFLOW_MAX_CONCURRENT_AGENTS
     status: missing
     implementation: []
@@ -16989,7 +16989,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_WORKFLOW_PREFIX_STAGGER_MS
     status: missing
     implementation: []
@@ -17016,7 +17016,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CODE_YOU_SHOULD_KNOW_DEBUG
     status: missing
     implementation: []
@@ -17043,7 +17043,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_CONFIG_DIR
     status: missing
     implementation: []
@@ -17070,7 +17070,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_EFFORT
     status: missing
     implementation: []
@@ -17097,7 +17097,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_ENABLE_BYTE_WATCHDOG
     status: missing
     implementation: []
@@ -17124,7 +17124,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_ENABLE_BYTE_WATCHDOG_BEDROCK
     status: missing
     implementation: []
@@ -17151,7 +17151,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_ENABLE_STREAM_WATCHDOG
     status: missing
     implementation: []
@@ -17178,7 +17178,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_ENV_FILE
     status: missing
     implementation: []
@@ -17205,7 +17205,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_JOB_DIR
     status: missing
     implementation: []
@@ -17232,7 +17232,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_PID
     status: missing
     implementation: []
@@ -17259,7 +17259,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_REMOTE_CONTROL_SESSION_NAME_PREFIX
     status: missing
     implementation: []
@@ -17286,7 +17286,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:CLAUDE_STREAM_FIRST_BYTE_TIMEOUT_MS
     status: missing
     implementation: []
@@ -17313,7 +17313,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_STREAM_IDLE_TIMEOUT_MS
     status: missing
     implementation: []
@@ -17340,7 +17340,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:CLAUDE_SUBAGENT_BG_SHELL_MAX_MS
     status: excluded
     implementation: []
@@ -17372,7 +17372,7 @@ entries:
       lifecycle: removed
       replacement: null
       sourceAnchor: "#variables"
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:DEBUG
     status: missing
     implementation: []
@@ -17399,7 +17399,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:DISABLE_AUTOUPDATER
     status: missing
     implementation: []
@@ -17426,7 +17426,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:DISABLE_AUTO_COMPACT
     status: missing
     implementation: []
@@ -17453,7 +17453,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:DISABLE_COMPACT
     status: missing
     implementation: []
@@ -17480,7 +17480,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:DISABLE_COST_WARNINGS
     status: missing
     implementation: []
@@ -17507,7 +17507,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:DISABLE_DOCTOR_COMMAND
     status: missing
     implementation: []
@@ -17534,7 +17534,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:DISABLE_ERROR_REPORTING
     status: missing
     implementation: []
@@ -17561,7 +17561,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:DISABLE_EXTRA_USAGE_COMMAND
     status: missing
     implementation: []
@@ -17588,7 +17588,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:DISABLE_FEEDBACK_COMMAND
     status: missing
     implementation: []
@@ -17642,7 +17642,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:DISABLE_INSTALLATION_CHECKS
     status: missing
     implementation: []
@@ -17669,7 +17669,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:DISABLE_INSTALL_GITHUB_APP_COMMAND
     status: missing
     implementation: []
@@ -17696,7 +17696,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:DISABLE_INTERLEAVED_THINKING
     status: missing
     implementation: []
@@ -17723,7 +17723,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:DISABLE_LOGIN_COMMAND
     status: missing
     implementation: []
@@ -17750,7 +17750,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:DISABLE_LOGOUT_COMMAND
     status: missing
     implementation: []
@@ -17777,7 +17777,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:DISABLE_PROMPT_CACHING
     status: missing
     implementation: []
@@ -17804,7 +17804,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:DISABLE_PROMPT_CACHING_FABLE
     status: missing
     implementation: []
@@ -17831,7 +17831,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:DISABLE_PROMPT_CACHING_HAIKU
     status: missing
     implementation: []
@@ -17858,7 +17858,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:DISABLE_PROMPT_CACHING_OPUS
     status: missing
     implementation: []
@@ -17885,7 +17885,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:DISABLE_PROMPT_CACHING_SONNET
     status: missing
     implementation: []
@@ -17912,7 +17912,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:DISABLE_TELEMETRY
     status: missing
     implementation: []
@@ -17939,7 +17939,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:DISABLE_UPDATES
     status: missing
     implementation: []
@@ -17966,7 +17966,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:DISABLE_UPGRADE_COMMAND
     status: missing
     implementation: []
@@ -17993,7 +17993,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:DO_NOT_TRACK
     status: missing
     implementation: []
@@ -18020,7 +18020,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:ENABLE_BETA_TRACING_DETAILED
     status: missing
     implementation: []
@@ -18047,7 +18047,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:ENABLE_CLAUDEAI_MCP_SERVERS
     status: missing
     implementation: []
@@ -18074,7 +18074,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:ENABLE_PROMPT_CACHING_1H
     status: missing
     implementation: []
@@ -18101,7 +18101,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:ENABLE_PROMPT_CACHING_1H_BEDROCK
     status: excluded
     implementation: []
@@ -18133,7 +18133,7 @@ entries:
       lifecycle: deprecated
       replacement: ENABLE_PROMPT_CACHING_1H
       sourceAnchor: "#variables"
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:ENABLE_TOOL_SEARCH
     status: missing
     implementation: []
@@ -18160,7 +18160,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:FORCE_AUTOUPDATE_PLUGINS
     status: missing
     implementation: []
@@ -18187,7 +18187,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:FORCE_HYPERLINK
     status: missing
     implementation: []
@@ -18214,7 +18214,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:FORCE_PROMPT_CACHING_5M
     status: missing
     implementation: []
@@ -18241,7 +18241,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:HTTPS_PROXY
     status: missing
     implementation: []
@@ -18268,7 +18268,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:HTTP_PROXY
     status: missing
     implementation: []
@@ -18295,7 +18295,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:IS_DEMO
     status: missing
     implementation: []
@@ -18322,7 +18322,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:MAX_MCP_OUTPUT_TOKENS
     status: missing
     implementation: []
@@ -18349,7 +18349,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:MAX_STRUCTURED_OUTPUT_RETRIES
     status: missing
     implementation: []
@@ -18376,7 +18376,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:MAX_THINKING_TOKENS
     status: missing
     implementation: []
@@ -18403,7 +18403,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:MCP_CLIENT_SECRET
     status: missing
     implementation: []
@@ -18430,7 +18430,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:MCP_CONNECTION_NONBLOCKING
     status: missing
     implementation: []
@@ -18457,7 +18457,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:MCP_CONNECT_TIMEOUT_MS
     status: missing
     implementation: []
@@ -18484,7 +18484,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:MCP_DISCOVERY_CACHE
     status: missing
     implementation: []
@@ -18511,7 +18511,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:MCP_DISCOVERY_CACHE_MAX_STALE_S
     status: missing
     implementation: []
@@ -18538,7 +18538,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:MCP_DISCOVERY_CACHE_STRIKES
     status: missing
     implementation: []
@@ -18565,7 +18565,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:MCP_DISCOVERY_CACHE_TTL_S
     status: missing
     implementation: []
@@ -18592,7 +18592,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:MCP_OAUTH_CALLBACK_PORT
     status: missing
     implementation: []
@@ -18619,7 +18619,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:MCP_PROTOCOL_NEGOTIATION
     status: missing
     implementation: []
@@ -18646,7 +18646,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:MCP_REMOTE_SERVER_CONNECTION_BATCH_SIZE
     status: missing
     implementation: []
@@ -18673,7 +18673,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:MCP_SDK_GENERATION
     status: missing
     implementation: []
@@ -18700,7 +18700,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:MCP_SERVER_CONNECTION_BATCH_SIZE
     status: missing
     implementation: []
@@ -18727,7 +18727,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:MCP_TIMEOUT
     status: missing
     implementation: []
@@ -18754,7 +18754,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:MCP_TOOL_TIMEOUT
     status: missing
     implementation: []
@@ -18781,7 +18781,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 4
   - id: env:NO_PROXY
     status: missing
     implementation: []
@@ -18808,7 +18808,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT
     status: missing
     implementation: []
@@ -18835,7 +18835,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:OTEL_LOG_ASSISTANT_RESPONSES
     status: missing
     implementation: []
@@ -18862,7 +18862,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:OTEL_LOG_MANAGED_SETTINGS
     status: missing
     implementation: []
@@ -18889,7 +18889,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:OTEL_LOG_RAW_API_BODIES
     status: missing
     implementation: []
@@ -18916,7 +18916,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:OTEL_LOG_TOOL_CONTENT
     status: missing
     implementation: []
@@ -18943,7 +18943,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:OTEL_LOG_TOOL_DETAILS
     status: missing
     implementation: []
@@ -18970,7 +18970,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:OTEL_LOG_USER_PROMPTS
     status: missing
     implementation: []
@@ -18997,7 +18997,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:OTEL_METRICS_INCLUDE_ACCOUNT_UUID
     status: missing
     implementation: []
@@ -19024,7 +19024,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:OTEL_METRICS_INCLUDE_ENTRYPOINT
     status: missing
     implementation: []
@@ -19051,7 +19051,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:OTEL_METRICS_INCLUDE_REPOSITORY
     status: missing
     implementation: []
@@ -19078,7 +19078,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:OTEL_METRICS_INCLUDE_RESOURCE_ATTRIBUTES
     status: missing
     implementation: []
@@ -19105,7 +19105,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:OTEL_METRICS_INCLUDE_SESSION_ID
     status: missing
     implementation: []
@@ -19132,7 +19132,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:OTEL_METRICS_INCLUDE_VERSION
     status: missing
     implementation: []
@@ -19159,7 +19159,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:SLASH_COMMAND_TOOL_CHAR_BUDGET
     status: missing
     implementation: []
@@ -19186,7 +19186,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:TASK_MAX_OUTPUT_LENGTH
     status: excluded
     implementation: []
@@ -19218,7 +19218,7 @@ entries:
       lifecycle: removed
       replacement: null
       sourceAnchor: "#variables"
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:USE_BUILTIN_RIPGREP
     status: missing
     implementation: []
@@ -19245,7 +19245,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:VERTEX_REGION_CLAUDE_3_5_HAIKU
     status: missing
     implementation: []
@@ -19272,7 +19272,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:VERTEX_REGION_CLAUDE_3_5_SONNET
     status: missing
     implementation: []
@@ -19299,7 +19299,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:VERTEX_REGION_CLAUDE_3_7_SONNET
     status: missing
     implementation: []
@@ -19326,7 +19326,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:VERTEX_REGION_CLAUDE_4_0_OPUS
     status: missing
     implementation: []
@@ -19353,7 +19353,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:VERTEX_REGION_CLAUDE_4_0_SONNET
     status: missing
     implementation: []
@@ -19380,7 +19380,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:VERTEX_REGION_CLAUDE_4_1_OPUS
     status: missing
     implementation: []
@@ -19407,7 +19407,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:VERTEX_REGION_CLAUDE_4_5_OPUS
     status: missing
     implementation: []
@@ -19434,7 +19434,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:VERTEX_REGION_CLAUDE_4_5_SONNET
     status: missing
     implementation: []
@@ -19461,7 +19461,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:VERTEX_REGION_CLAUDE_4_6_OPUS
     status: missing
     implementation: []
@@ -19488,7 +19488,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:VERTEX_REGION_CLAUDE_4_6_SONNET
     status: missing
     implementation: []
@@ -19515,7 +19515,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:VERTEX_REGION_CLAUDE_4_7_OPUS
     status: missing
     implementation: []
@@ -19542,7 +19542,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:VERTEX_REGION_CLAUDE_4_8_OPUS
     status: missing
     implementation: []
@@ -19569,7 +19569,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:VERTEX_REGION_CLAUDE_5_5_OPUS
     status: missing
     implementation: []
@@ -19596,7 +19596,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:VERTEX_REGION_CLAUDE_5_5_SONNET
     status: missing
     implementation: []
@@ -19623,7 +19623,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:VERTEX_REGION_CLAUDE_5_OPUS
     status: missing
     implementation: []
@@ -19650,7 +19650,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:VERTEX_REGION_CLAUDE_5_SONNET
     status: missing
     implementation: []
@@ -19677,7 +19677,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:VERTEX_REGION_CLAUDE_FABLE_5
     status: missing
     implementation: []
@@ -19704,7 +19704,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:VERTEX_REGION_CLAUDE_FABLE_5_1
     status: missing
     implementation: []
@@ -19731,7 +19731,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:VERTEX_REGION_CLAUDE_FABLE_5_2
     status: missing
     implementation: []
@@ -19758,7 +19758,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:VERTEX_REGION_CLAUDE_HAIKU_4_5
     status: missing
     implementation: []
@@ -19785,7 +19785,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
   - id: env:VERTEX_REGION_CLAUDE_HAIKU_5_5
     status: missing
     implementation: []
@@ -19812,7 +19812,7 @@ entries:
         evidence: ""
     notes: ""
     exclusion: null
-    ownerBatch: 5
+    ownerBatch: 1
 schemaExclusions:
   - path: $schema
     reason: flash-only or legacy schema path; review ownership in B2-B5

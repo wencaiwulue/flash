@@ -36,6 +36,7 @@
 | `settings` | 3 | draft | [Settings 设置来源、合并与变更生命周期设计](../superpowers/specs/2026-11-12-settings-design.md) | [coverage](coverage/settings.yaml) |
 | `upstream-configuration-alignment` | 3 | approved | [flash 与上游全量配置对齐路线设计](../superpowers/specs/2026-11-16-upstream-configuration-alignment-design.md) | [coverage](coverage/upstream-configuration-alignment.yaml) |
 | `upstream-config-b0-baseline` | 3 | approved | [全量配置对齐 B0：稳定基线、兼容矩阵与局部 Hook 容错设计](../superpowers/specs/2026-11-16-upstream-config-b0-baseline-design.md) | [coverage](coverage/upstream-config-b0-baseline.yaml) |
+| `upstream-config-task-2-multi-baseline` | 3 | approved | [Task 2：多基线迁移与完整性门禁设计](../superpowers/specs/2026-11-18-upstream-config-task-2-multi-baseline-design.md) | [coverage](coverage/upstream-config-task-2-multi-baseline.yaml) |
 | `skills` | 3 | draft | [Skills 技能发现、加载与执行设计](../superpowers/specs/2026-11-12-skills-design.md) | [coverage](coverage/skills.yaml) |
 | `app-state` | 4 | draft | [App State 应用状态、订阅与生命周期设计](../superpowers/specs/2026-11-12-app-state-design.md) | [coverage](coverage/app-state.yaml) |
 | `assistant-ui` | 4 | draft | [Assistant UI 助手会话与历史交互设计](../superpowers/specs/2026-11-12-assistant-ui-design.md) | [coverage](coverage/assistant-ui.yaml) |

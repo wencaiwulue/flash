@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import {
   buildInventory,
   completeRequiresStatement,
+  determineOwnerBatch,
   parseEnvironmentReference,
   parseHooksReference,
   parseSettingsReference,
@@ -784,6 +785,101 @@ Set the model.
       expect(entry.precedence).toContain(entry.sourceRules)
     }
     expect(byId.get('setting:hooks')?.precedence).toContain('Hooks merge across files')
+  })
+
+  describe('ownerBatch determination', () => {
+    test('assigns B1 to all hooks', () => {
+      expect(determineOwnerBatch('hook:Stop')).toBe(1)
+      expect(determineOwnerBatch('hook:PostToolBatch')).toBe(1)
+      expect(determineOwnerBatch('hook:UserPromptExpansion')).toBe(1)
+    })
+
+    test('assigns B1 to process/subagent-related settings and env vars', () => {
+      expect(determineOwnerBatch('setting:subagent')).toBe(1)
+      expect(determineOwnerBatch('setting:background')).toBe(1)
+      expect(determineOwnerBatch('setting:daemon')).toBe(1)
+      expect(determineOwnerBatch('env:CLAUDE_CODE_MAX_SUBAGENT')).toBe(1)
+      expect(determineOwnerBatch('env:CLAUDE_CODE_SESSION')).toBe(1)
+      expect(determineOwnerBatch('env:DEBUG')).toBe(1)
+      expect(determineOwnerBatch('env:LOG_LEVEL')).toBe(1)
+      expect(determineOwnerBatch('env:VERBOSE')).toBe(1)
+    })
+
+    test('assigns B2 to local core and UI settings', () => {
+      expect(determineOwnerBatch('setting:model')).toBe(2)
+      expect(determineOwnerBatch('setting:thinking')).toBe(2)
+      expect(determineOwnerBatch('setting:compact')).toBe(2)
+      expect(determineOwnerBatch('setting:output')).toBe(2)
+      expect(determineOwnerBatch('setting:status')).toBe(2)
+      expect(determineOwnerBatch('setting:terminal')).toBe(2)
+      expect(determineOwnerBatch('setting:theme')).toBe(2)
+      expect(determineOwnerBatch('setting:editor')).toBe(2)
+      expect(determineOwnerBatch('setting:ui')).toBe(2)
+      expect(determineOwnerBatch('setting:show')).toBe(2)
+      expect(determineOwnerBatch('setting:verbose')).toBe(2)
+      expect(determineOwnerBatch('setting:auto')).toBe(2)
+      expect(determineOwnerBatch('setting:fileCheckpointing')).toBe(2)
+      expect(determineOwnerBatch('setting:teammate')).toBe(2)
+      expect(determineOwnerBatch('setting:preferred')).toBe(2)
+    })
+
+    test('assigns B3 to security and filesystem settings', () => {
+      expect(determineOwnerBatch('setting:permissions')).toBe(3)
+      expect(determineOwnerBatch('setting:permissions.allow')).toBe(3)
+      expect(determineOwnerBatch('setting:permissions.deny')).toBe(3)
+      expect(determineOwnerBatch('setting:attribution')).toBe(3)
+      expect(determineOwnerBatch('setting:worktree')).toBe(3)
+      expect(determineOwnerBatch('setting:sandbox')).toBe(3)
+      expect(determineOwnerBatch('setting:allowManagedHooksOnly')).toBe(3)
+    })
+
+    test('assigns B4 to integration and managed settings', () => {
+      expect(determineOwnerBatch('setting:mcp')).toBe(4)
+      expect(determineOwnerBatch('setting:plugin')).toBe(4)
+      expect(determineOwnerBatch('setting:skill')).toBe(4)
+      expect(determineOwnerBatch('setting:auth')).toBe(4)
+      expect(determineOwnerBatch('setting:oauth')).toBe(4)
+      expect(determineOwnerBatch('setting:github')).toBe(4)
+      expect(determineOwnerBatch('setting:gitlab')).toBe(4)
+      expect(determineOwnerBatch('setting:bridge')).toBe(4)
+      expect(determineOwnerBatch('setting:remote')).toBe(4)
+      expect(determineOwnerBatch('setting:crossSession')).toBe(4)
+      expect(determineOwnerBatch('setting:isolatePeer')).toBe(4)
+      expect(determineOwnerBatch('setting:forceLogin')).toBe(4)
+      expect(determineOwnerBatch('setting:gateway')).toBe(4)
+      expect(determineOwnerBatch('setting:disableClaudeAiConnectors')).toBe(4)
+      expect(determineOwnerBatch('setting:allowAllClaudeAiMcps')).toBe(4)
+      expect(determineOwnerBatch('setting:allowClaudeInChromeWithManagedMcp')).toBe(4)
+      expect(determineOwnerBatch('setting:forceRemoteSettingsRefresh')).toBe(4)
+      expect(determineOwnerBatch('env:CLAUDE_CODE_MCP')).toBe(4)
+      expect(determineOwnerBatch('env:CLAUDE_CODE_PLUGIN')).toBe(4)
+      expect(determineOwnerBatch('env:CLAUDE_CODE_REMOTE')).toBe(4)
+      expect(determineOwnerBatch('env:CLAUDE_CROSS_SESSION')).toBe(4)
+    })
+
+    test('assigns B5 to independent feature settings', () => {
+      expect(determineOwnerBatch('setting:artifact')).toBe(5)
+      expect(determineOwnerBatch('setting:disableArtifact')).toBe(5)
+      expect(determineOwnerBatch('setting:enableArtifact')).toBe(5)
+      expect(determineOwnerBatch('setting:sync')).toBe(5)
+      expect(determineOwnerBatch('setting:mod')).toBe(5)
+      expect(determineOwnerBatch('setting:feedback')).toBe(5)
+      expect(determineOwnerBatch('setting:autoContinue')).toBe(5)
+      expect(determineOwnerBatch('setting:autoContinueAtUsageLimit')).toBe(5)
+      expect(determineOwnerBatch('setting:dialogExpiry')).toBe(5)
+      expect(determineOwnerBatch('setting:switchModelsOnFlag')).toBe(5)
+      expect(determineOwnerBatch('env:CLAUDE_CODE_ARTIFACT')).toBe(5)
+      expect(determineOwnerBatch('env:CLAUDE_CODE_SYNC')).toBe(5)
+      expect(determineOwnerBatch('env:CLAUDE_CODE_MOD')).toBe(5)
+      expect(determineOwnerBatch('env:CLAUDE_CODE_FEEDBACK')).toBe(5)
+      expect(determineOwnerBatch('env:CLAUDE_CODE_AUTO_CONTINUE')).toBe(5)
+    })
+
+    test('assigns B3 to uncategorized settings by default', () => {
+      expect(determineOwnerBatch('setting:advisorModel')).toBe(3)
+      expect(determineOwnerBatch('setting:agent')).toBe(3)
+      expect(determineOwnerBatch('setting:agentPushNotifEnabled')).toBe(3)
+    })
   })
 
   describe('multi-baseline functionality', () => {
