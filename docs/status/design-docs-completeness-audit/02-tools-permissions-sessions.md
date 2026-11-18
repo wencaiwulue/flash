@@ -1182,3 +1182,12 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/02-tools-permis
 - 新增 `tests/bridge.test.ts` 并唯一登记 bridge coverage：权限回调 axios 10s 超时、token refresh generation、capacity wake、stale/corrupt pointer 清理、真实 git worktree sibling fanout。
 - **新增增量缺陷**：`/var` 与 `/private/var` 使新写 pointer 与 fanout 读取命名空间分裂。写入统一 canonicalize，读取同时尝试 lexical/canonical 路径，真实 worktree 恢复通过。
 - spec 已补当前证据与回滚；原 Finding 行和历史统计保持 open。全部本地 fake transport/temp git/offline，无真实远程服务、OAuth 或私有协议验证。
+
+---
+
+## 整改台账：B2-lsp-01 / B2-lsp-03（2026-11-18 追加）
+
+- 新增 `tests/lsp.test.ts` 并唯一登记 lsp coverage：ContentModified 自动重试逻辑、诊断注册表去重/容量限制/跨回合 LRU、通知处理隔离、服务器实例生命周期基本行为。
+- 扩展 `tests/fixtures/fake-lsp-server.ts` 支持测试所需的额外 LSP 方法（textDocument/hover、textDocument/definition、textDocument/references、textDocument/documentSymbol、workspace/symbol、textDocument/implementation、textDocument/prepareCallHierarchy、callHierarchy/incomingCalls、callHierarchy/outgoingCalls、x-set-diagnostics、x-set-content-modified、x-set-symbols、x-set-definitions、x-set-references）。
+- **无新增缺陷**：原实现完整符合 spec，无需代码改动。仅补充测试覆盖。验证内容包括：ContentModified 最多 3 次重试、指数退避延迟 500ms/1s/2s、诊断去重和容量限制（每文件最多 10 条，总共最多 30 条）、按严重度排序（Error < Warning < Info < Hint）、跨回合 LRU 去重、编辑文件时清除已交付诊断。
+- spec 已更新实际测试证据与回滚；原 Finding 行和历史统计保持 open。全部使用本地 fake transport，无需真实 LSP 服务器、无网络访问、无凭据调用。
