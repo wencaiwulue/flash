@@ -9,7 +9,7 @@ describe('loadHookEntries', () => {
     const entries = loadHookEntries(hooksYaml)
     expect(entries.length).toBe(33)
 
-    // Verify all 27 core events are present
+    // Verify all 27 core events from HOOK_EVENTS are present
     const coreEvents = [
       'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Notification',
       'UserPromptSubmit', 'SessionStart', 'SessionEnd', 'Stop', 'StopFailure',
