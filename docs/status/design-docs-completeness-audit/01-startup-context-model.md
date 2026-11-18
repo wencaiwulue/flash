@@ -370,7 +370,7 @@ projectView() 应用到当前消息
 | B1-context-compaction-01 | context-compaction | — | 测试缺口 | P2 | context-compaction spec 7.0 节列出的 27 个核心模块，大多数标注"无直接测试"，仅 context-collapse 和 reactive-compact 有测试覆盖 | `docs/superpowers/specs/2026-11-12-context-compaction-design.md:7.0` | N/A | `tests/contextCollapse.test.ts`、`tests/reactiveCompact.test.ts` 存在但覆盖不全 | 中等（核心模块有测试，但边缘情况可能未覆盖） | 补充 compactConversation、autoCompact、microCompact（cached/time-based）的单元测试 | 已证实 | 测试文件存在但覆盖范围有限 | open |
 | B1-context-compaction-02 | context-compaction | — | 设计风险 | P2 | context collapse 使用模块级全局状态（collapseStore），多会话/多 agent 环境下不安全；spec 已指出此问题但状态保持不变 | `src/services/contextCollapse/index.ts:1-346`、`src/services/contextCollapse/store.ts:1-90` | 上游 CLI 同样使用模块级状态 | 测试使用 initContextCollapse() 注入依赖，但真实代码使用模块级状态 | 中等（当前单会话设计下无问题，但扩展受限） | 将 collapseStore 改为由 QueryEngine 或 SessionContext 拥有 | 已证实 | 源码结构明显 | open |
 | B1-context-compaction-03 | context-compaction | — | 设计风险 | P2 | cached MC 使用模块级全局状态（cachedMCState），非主线程被禁用；spec 已指出此问题但状态保持不变 | `src/services/compact/microCompact.ts:53-62`、`src/services/compact/cachedMicrocompact.ts` | 上游 CLI 同样使用模块级状态 | 无直接测试 | 中等（当前主线程优先设计下无问题，但子 agent 无法使用 cached MC） | 将 cachedMCState 绑定到 QueryEngine 或会话上下文 | 已证实 | 源码结构明显 | open |
-| B1-model-api-01 | model-api | — | 测试缺口 | P3 | model-api spec 7.2 节仅列出 antModelOverrides.test.ts 和 sdkControls.test.ts，模型选择与配置的其他模块无直接测试覆盖 | `docs/superpowers/specs/2026-11-12-model-api-design.md:7.2` | N/A | `tests/antModelOverrides.test.ts` 存在但覆盖不全；`tests/modelApi.test.ts` 已新增 | 低（功能通过集成测试间接覆盖） | 补充 model.ts、providers.ts、bedrock.ts、validateModel.ts 的单元测试 | 已证实 | 已新增 `tests/modelApi.test.ts` 覆盖 38 个测试用例：模型解析与别名、提供商选择、Bedrock 工具函数、模型验证非 API 路径、配置映射、规范名称提取等 | resolved |
+| B1-model-api-01 | model-api | — | 测试缺口 | P3 | model-api spec 7.2 节仅列出 antModelOverrides.test.ts 和 sdkControls.test.ts，模型选择与配置的其他模块无直接测试覆盖 | `docs/superpowers/specs/2026-11-12-model-api-design.md:7.2` | N/A | `tests/antModelOverrides.test.ts` 存在但覆盖不全 | 低（功能通过集成测试间接覆盖） | 补充 model.ts、providers.ts、bedrock.ts、validateModel.ts 的单元测试 | 已证实 | 测试文件存在但覆盖范围有限 | open |
 
 ---
 
@@ -497,3 +497,9 @@ projectView() 应用到当前消息
 1. **补充 B1 发现的测试缺口**：context-compaction 其余模块、model-api 其余模块、cli-startup 的单元测试。
 2. **验证真实模型/API 实时行为**：在有网络环境下验证 API 行为。
 3. **评估设计风险的优先级**：B1-context-compaction-02/03（模块级全局状态）是否需要在 batch 2+ 中重构。
+
+## 整改台账：B1-model-api-01（2026-11-18 追加）
+
+- 新增 `tests/modelApi.test.ts` 并唯一登记 model-api coverage：38 个直接生产函数测试，覆盖模型解析与别名、provider 环境选择、Bedrock 区域/ARN 工具、validateModel 非 API 路径及配置映射。
+- spec 7.2 已补测试证据；原 Finding 行保持 open，历史统计不变。
+- **边界**：全部为本地 env/离线路径，未执行真实模型、Bedrock/Vertex/Foundry 或凭据验证；live API/cache 命中不标为已验证。spec 保持 draft。
