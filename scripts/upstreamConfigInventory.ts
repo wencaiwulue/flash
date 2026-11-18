@@ -3,8 +3,97 @@ import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 export const UPSTREAM_BASELINE_VERSION = '2.1.311' as const
+
+export type InventoryDiff = {
+  left: string
+  right: string
+  added: UpstreamEntry[]
+  removed: UpstreamEntry[]
+  changed: Array<{
+    id: string
+    left: UpstreamEntry
+    right: UpstreamEntry
+    changes: Array<'types' | 'default' | 'scopes' | 'sourceRules' | 'precedence' | 'lifecycle' | 'introduced' | 'replacement'>
+  }>
+  unchanged: string[]
+}
+
+export type BaselinePointer = {
+  schemaVersion: 1
+  active: string
+  available: string[]
+}
+
+export async function getBaselinePointer(fixturesRoot?: string): Promise<BaselinePointer> {
+  const root = fixturesRoot
+    ? join(fixturesRoot, 'baseline.json')
+    : new URL('../fixtures/upstream-config/baseline.json', import.meta.url)
+  return JSON.parse(await readFile(root, 'utf8')) as BaselinePointer
+}
+
+export async function loadInventoryForVersion(
+  version: string,
+  fixturesRoot?: string,
+): Promise<UpstreamInventory> {
+  const root = fixturesRoot
+    ? join(fixturesRoot, version)
+    : fileURLToPath(new URL(`../fixtures/upstream-config/${version}/`, import.meta.url))
+  const inventoryPath = join(root, 'inventory.json')
+  return JSON.parse(await readFile(inventoryPath, 'utf8')) as UpstreamInventory
+}
+
+export function diffInventories(left: UpstreamInventory, right: UpstreamInventory): InventoryDiff {
+  const leftById = new Map(left.entries.map(entry => [entry.id, entry]))
+  const rightById = new Map(right.entries.map(entry => [entry.id, entry]))
+  const allIds = new Set([...leftById.keys(), ...rightById.keys()])
+
+  const added: UpstreamEntry[] = []
+  const removed: UpstreamEntry[] = []
+  const changed: InventoryDiff['changed'] = []
+  const unchanged: string[] = []
+
+  for (const id of allIds) {
+    const leftEntry = leftById.get(id)
+    const rightEntry = rightById.get(id)
+    if (!leftEntry && rightEntry) {
+      added.push(rightEntry)
+    } else if (leftEntry && !rightEntry) {
+      removed.push(leftEntry)
+    } else if (leftEntry && rightEntry) {
+      const changes: InventoryDiff['changed'][0]['changes'] = []
+      function fieldChanged<T>(a: T, b: T, name: typeof changes[0]) {
+        const aStr = JSON.stringify(a)
+        const bStr = JSON.stringify(b)
+        if (aStr !== bStr) changes.push(name)
+      }
+      fieldChanged(leftEntry.types, rightEntry.types, 'types')
+      fieldChanged(leftEntry.default, rightEntry.default, 'default')
+      fieldChanged(leftEntry.scopes, rightEntry.scopes, 'scopes')
+      fieldChanged(leftEntry.sourceRules, rightEntry.sourceRules, 'sourceRules')
+      fieldChanged(leftEntry.precedence, rightEntry.precedence, 'precedence')
+      fieldChanged(leftEntry.lifecycle, rightEntry.lifecycle, 'lifecycle')
+      fieldChanged(leftEntry.introduced, rightEntry.introduced, 'introduced')
+      fieldChanged(leftEntry.replacement, rightEntry.replacement, 'replacement')
+      if (changes.length > 0) {
+        changed.push({ id, left: leftEntry, right: rightEntry, changes })
+      } else {
+        unchanged.push(id)
+      }
+    }
+  }
+
+  return {
+    left: left.baseline.version,
+    right: right.baseline.version,
+    added,
+    removed,
+    changed,
+    unchanged,
+  }
+}
 
 export type UpstreamSource = {
   url: string

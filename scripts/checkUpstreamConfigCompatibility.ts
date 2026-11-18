@@ -5,6 +5,10 @@ import { parse, stringify } from 'yaml'
 import {
   completeRequiresStatement,
   UPSTREAM_BASELINE_VERSION,
+  type BaselinePointer,
+  type InventoryDiff,
+  type UpstreamEntry,
+  type UpstreamInventory,
 } from './upstreamConfigInventory.ts'
 
 export const COMPATIBILITY_STATUSES = [
@@ -15,6 +19,157 @@ export const COMPATIBILITY_STATUSES = [
   'blocked',
   'excluded',
 ] as const
+
+export type CheckMode = 'drift' | 'batch' | 'final'
+
+export type MatrixEntryV2 = CompatibilityMatrixEntry & {
+  ownerBatch?: number
+  spec?: string
+  verifiedVersion?: string
+  currentReview?: {
+    by: string
+    at: string
+    baseline: string
+  }
+}
+
+export type CompatibilityMatrixV2 = Omit<CompatibilityMatrix, 'entries'> & {
+  schemaVersion: 2
+  entries: MatrixEntryV2[]
+  migratedFrom?: string
+  migratedAt?: string
+}
+
+export type EnvConsumerRegistry = {
+  schemaVersion: 1
+  consumers: Record<string, Array<{ file: string; line?: number; purpose?: string }>>
+}
+
+export type CheckCompatibilityInputV2 = Omit<CheckCompatibilityInput, 'inventory' | 'matrix'> & {
+  inventory: CompatibilityInventory | UpstreamInventory
+  matrix: CompatibilityMatrix | CompatibilityMatrixV2
+  mode: CheckMode
+  repoRoot?: string
+  envConsumers?: EnvConsumerRegistry
+}
+
+export type CheckCompatibilityResult = {
+  diagnostics: Diagnostic[]
+  pass: boolean
+  mode: CheckMode
+  baseline: string
+  counts: {
+    total: number
+    byStatus: Record<CompatibilityStatus, number>
+    byOwner: Record<string, number>
+  }
+}
+
+export function migrateMatrix(
+  sourceMatrix: CompatibilityMatrix | CompatibilityMatrixV2,
+  options: {
+    from: string
+    to: string
+    diff: InventoryDiff
+    force?: boolean
+    ownerDefault?: number
+  },
+): CompatibilityMatrixV2 {
+  const sourceEntries = new Map(sourceMatrix.entries.map(entry => [entry.id, entry]))
+  const newEntries: MatrixEntryV2[] = []
+  const now = new Date().toISOString()
+
+  // Carry over unchanged entries with default owner if needed
+  for (const id of options.diff.unchanged) {
+    const source = sourceEntries.get(id)
+    if (source) {
+      newEntries.push({
+        ...source,
+        ownerBatch: options.ownerDefault,
+        spec: undefined,
+        verifiedVersion: undefined,
+        currentReview: undefined,
+      })
+    }
+  }
+
+  // Add new entries (missing/blocked)
+  for (const entry of options.diff.added) {
+    const status = entry.afterBaseline ? 'blocked' : 'missing'
+    newEntries.push({
+      id: entry.id,
+      status,
+      implementation: [],
+      tests: [],
+      evidence: [],
+      dimensions: emptyDimensions(),
+      notes: entry.afterBaseline
+        ? `Upstream documentation is ahead of stable ${options.to}; introduced in ${entry.introduced ?? 'a later version'}.`
+        : '',
+      exclusion: null,
+      ownerBatch: options.ownerDefault,
+    })
+  }
+
+  // Handle changed entries
+  for (const change of options.diff.changed) {
+    const source = sourceEntries.get(change.id)
+    if (source) {
+      // Downgrade aligned to partial
+      const status = source.status === 'aligned' ? 'partial' : source.status
+      const notes = [
+        source.notes,
+        `Changed in upstream ${options.to}: ${change.changes.join(', ')}`,
+      ].filter(Boolean).join(' ')
+      newEntries.push({
+        ...source,
+        status,
+        notes,
+        ownerBatch: options.ownerDefault,
+      })
+    }
+  }
+
+  // Handle removed entries (excluded with lifecycle evidence)
+  for (const entry of options.diff.removed) {
+    newEntries.push({
+      id: entry.id,
+      status: 'excluded',
+      implementation: [],
+      tests: [],
+      evidence: [],
+      dimensions: emptyDimensions(),
+      notes: '',
+      exclusion: {
+        reason: `Upstream lifecycle: ${entry.lifecycle}; removed from baseline ${options.to}`,
+        evidence: entry.source?.url ?? 'upstream inventory',
+        lifecycle: entry.lifecycle,
+        replacement: entry.replacement ?? null,
+      },
+      ownerBatch: options.ownerDefault,
+    })
+  }
+
+  // Sort by kind then id
+  const kindOrder: Record<UpstreamEntry['kind'], number> = {
+    setting: 0, hook: 1, env: 2,
+  }
+  newEntries.sort((a, b) => {
+    const aKind = a.id.split(':')[0] as keyof typeof kindOrder
+    const bKind = b.id.split(':')[0] as keyof typeof kindOrder
+    const kindDiff = kindOrder[aKind] - kindOrder[bKind]
+    return kindDiff !== 0 ? kindDiff : a.id < b.id ? -1 : 1
+  })
+
+  return {
+    schemaVersion: 2,
+    baseline: options.to,
+    entries: newEntries,
+    schemaExclusions: [...sourceMatrix.schemaExclusions],
+    migratedFrom: options.from,
+    migratedAt: now,
+  }
+}
 
 export type CompatibilityStatus = typeof COMPATIBILITY_STATUSES[number]
 export type CompatibilityKind = 'setting' | 'hook' | 'env'
@@ -99,6 +254,15 @@ export type Diagnostic = {
     | 'invalid-different-evidence'
     | 'invalid-exclusion-evidence'
     | 'invalid-schema-exclusion'
+    | 'invalid-owner-batch'
+    | 'invalid-spec'
+    | 'invalid-implementation-path'
+    | 'invalid-test-path'
+    | 'invalid-env-consumer'
+    | 'invalid-aligned-not-complete'
+    | 'invalid-verified-version'
+    | 'invalid-current-review'
+    | 'invalid-deprecated-effective-excluded'
   id?: string
   path?: string
   message: string
@@ -131,6 +295,226 @@ const DIAGNOSTIC_OUTPUT_ORDER: Partial<Record<Diagnostic['code'], number>> = {
 const DEFAULT_FIXTURE_DIRECTORY = fileURLToPath(
   new URL('../fixtures/upstream-config/2.1.311/', import.meta.url),
 )
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await stat(path)
+    return true
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
+    throw error
+  }
+}
+
+export async function checkCompatibilityV2(
+  input: CheckCompatibilityInputV2,
+): Promise<CheckCompatibilityResult> {
+  const { mode, repoRoot } = input
+  const diagnostics = checkCompatibility({
+    ...input,
+    inventory: normalizeInventory(input.inventory),
+    matrix: normalizeMatrix(input.matrix),
+  })
+  const matrix = normalizeMatrix(input.matrix)
+  const inventory = normalizeInventory(input.inventory)
+
+  // Batch and Final mode checks
+  if (mode === 'batch' || mode === 'final') {
+    const root = repoRoot ?? fileURLToPath(new URL('..', import.meta.url))
+    const matrixEntriesById = new Map(matrix.entries.map(entry => [entry.id, entry]))
+
+    for (const entry of matrix.entries) {
+      // Owner batch check
+      const v2Entry = entry as MatrixEntryV2
+      if (v2Entry.ownerBatch === undefined) {
+        diagnostics.push({
+          code: 'invalid-owner-batch',
+          id: entry.id,
+          message: `Entry ${entry.id} requires an ownerBatch`,
+        })
+      }
+
+      // Spec check (TBD is acceptable)
+      if (entry.status === 'aligned' && !v2Entry.spec) {
+        diagnostics.push({
+          code: 'invalid-spec',
+          id: entry.id,
+          message: `Aligned entry ${entry.id} requires a spec reference`,
+        })
+      }
+
+      // Implementation and test paths exist
+      for (const path of entry.implementation) {
+        const fullPath = join(root, path)
+        if (!await pathExists(fullPath)) {
+          diagnostics.push({
+            code: 'invalid-implementation-path',
+            id: entry.id,
+            path: fullPath,
+            message: `Implementation path ${path} does not exist`,
+          })
+        }
+      }
+      for (const path of entry.tests) {
+        const fullPath = join(root, path)
+        if (!await pathExists(fullPath)) {
+          diagnostics.push({
+            code: 'invalid-test-path',
+            id: entry.id,
+            path: fullPath,
+            message: `Test path ${path} does not exist`,
+          })
+        }
+      }
+
+      // Env consumer check
+      if (entry.id.startsWith('env:')) {
+        const consumers = input.envConsumers?.consumers[entry.id.slice('env:'.length)]
+        if (!consumers || consumers.length === 0) {
+          diagnostics.push({
+            code: 'invalid-env-consumer',
+            id: entry.id,
+            message: `Env var ${entry.id} has no registered consumers`,
+          })
+        }
+      }
+    }
+
+    // Final mode only checks
+    if (mode === 'final') {
+      for (const entry of matrix.entries) {
+        const v2Entry = entry as MatrixEntryV2
+
+        if (entry.status === 'aligned') {
+          // All dimensions aligned and evidenced
+          const allAligned = Object.values(entry.dimensions).every(
+            dim => dim.status === 'aligned' && dim.evidence,
+          )
+          if (!allAligned) {
+            diagnostics.push({
+              code: 'invalid-aligned-not-complete',
+              id: entry.id,
+              message: `Aligned entry ${entry.id} requires all six dimensions to be aligned and evidenced`,
+            })
+          }
+          // Verified version present
+          if (!v2Entry.verifiedVersion) {
+            diagnostics.push({
+              code: 'invalid-verified-version',
+              id: entry.id,
+              message: `Aligned entry ${entry.id} requires verifiedVersion`,
+            })
+          }
+          // Current review present
+          if (!v2Entry.currentReview) {
+            diagnostics.push({
+              code: 'invalid-current-review',
+              id: entry.id,
+              message: `Aligned entry ${entry.id} requires currentReview`,
+            })
+          }
+        }
+
+        // After baseline entries must be blocked
+        const invEntry = inventory.entries.find(e => e.id === entry.id)
+        if (invEntry?.afterBaseline && entry.status !== 'blocked') {
+          diagnostics.push({
+            code: 'invalid-after-baseline',
+            id: entry.id,
+            message: `After baseline entry ${entry.id} must have status blocked`,
+          })
+        }
+
+        // Deprecated-effective should not be excluded without explicit evidence
+        if (entry.status === 'excluded') {
+          const invEntry = inventory.entries.find(e => e.id === entry.id)
+          if (invEntry?.lifecycle !== 'removed') {
+            // Check for ignored-by-design evidence
+            const hasIgnoredEvidence =
+              entry.exclusion?.reason.includes('ignored-by-design') ||
+              entry.evidence.some(e => e.includes('ignored-by-design'))
+            if (!hasIgnoredEvidence) {
+              diagnostics.push({
+                code: 'invalid-excluded-lacks-evidence',
+                id: entry.id,
+                message: `Excluded entry ${entry.id} requires 'ignored-by-design' evidence`,
+              })
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Sort diagnostics deterministically
+  diagnostics.sort((a, b) => {
+    const order = (code: string) =>
+      DIAGNOSTIC_OUTPUT_ORDER[code as keyof typeof DIAGNOSTIC_OUTPUT_ORDER] ?? Number.MAX_SAFE_INTEGER
+    const orderDiff = order(a.code) - order(b.code)
+    if (orderDiff !== 0) return orderDiff
+    const aKey = [a.code, a.id, a.path, a.message].map(v => v ?? '').join('\0')
+    const bKey = [b.code, b.id, b.path, b.message].map(v => v ?? '').join('\0')
+    return aKey < bKey ? -1 : aKey > bKey ? 1 : 0
+  })
+
+  // Calculate counts
+  const byStatus = Object.fromEntries(COMPATIBILITY_STATUSES.map(s => [s, 0])) as Record<
+    CompatibilityStatus,
+    number
+  >
+  const byOwner: Record<string, number> = {}
+  for (const entry of matrix.entries) {
+    byStatus[entry.status]++
+    const owner = (entry as MatrixEntryV2).ownerBatch?.toString() ?? 'unknown'
+    byOwner[owner] = (byOwner[owner] ?? 0) + 1
+  }
+
+  return {
+    diagnostics,
+    pass: diagnostics.length === 0,
+    mode,
+    baseline: inventory.baseline.version,
+    counts: {
+      total: inventory.entries.length,
+      byStatus,
+      byOwner,
+    },
+  }
+}
+
+function normalizeInventory(inv: CompatibilityInventory | UpstreamInventory): CompatibilityInventory {
+  if ('baseline' in inv && 'version' in inv.baseline && 'entries' in inv) {
+    return {
+      baseline: { version: inv.baseline.version },
+      entries: inv.entries.map(e => ({
+        id: e.id,
+        kind: e.kind,
+        path: e.path,
+        lifecycle: e.lifecycle,
+        introduced: e.introduced,
+        afterBaseline: e.afterBaseline,
+        replacement: e.replacement,
+        source: e.source,
+        excerpt: e.excerpt,
+      })),
+    }
+  }
+  return inv as CompatibilityInventory
+}
+
+function normalizeMatrix(mat: CompatibilityMatrix | CompatibilityMatrixV2): CompatibilityMatrix {
+  if (mat.schemaVersion === 2) {
+    return {
+      ...mat,
+      schemaVersion: 1,
+      entries: mat.entries.map(e => {
+        const { ownerBatch, spec, verifiedVersion, currentReview, ...rest } = e
+        return rest
+      }),
+    }
+  }
+  return mat as CompatibilityMatrix
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -574,7 +958,12 @@ export function checkCompatibility({
   })
 }
 
-function printReport(inventory: CompatibilityInventory, matrix: CompatibilityMatrix, diagnostics: Diagnostic[]) {
+function printReport(
+  inventory: CompatibilityInventory,
+  matrix: CompatibilityMatrix | CompatibilityMatrixV2,
+  diagnostics: Diagnostic[],
+  mode: CheckMode = 'drift',
+) {
   const matrixEntries = isRecord(matrix) && Array.isArray(matrix.entries)
     ? matrix.entries.filter(entry => isRecord(entry) && typeof entry.id === 'string')
     : []
@@ -591,19 +980,9 @@ function printReport(inventory: CompatibilityInventory, matrix: CompatibilityMat
       ...COMPATIBILITY_STATUSES.map(status => `${status}=${counts[status]}`),
     ].join(' '))
   }
-  console.log(`diagnostics: ${diagnostics.length}`)
+  console.log(`mode: ${mode}, diagnostics: ${diagnostics.length}`)
   for (const diagnostic of diagnostics) {
     console.error(`[${diagnostic.code}] ${diagnostic.id ?? diagnostic.path ?? ''}: ${diagnostic.message}`)
-  }
-}
-
-async function pathExists(path: string): Promise<boolean> {
-  try {
-    await stat(path)
-    return true
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
-    throw error
   }
 }
 
@@ -611,22 +990,62 @@ export async function runCli(
   arguments_: readonly string[],
   fixtureDirectory = DEFAULT_FIXTURE_DIRECTORY,
 ): Promise<Diagnostic[]> {
-  if (arguments_.length > 1 || (
-    arguments_.length === 1 && arguments_[0] !== '--initialize-matrix'
-  )) {
-    throw new Error(`unknown argument: ${arguments_.join(' ')}`)
+  let initialize = false
+  let mode: CheckMode = 'drift'
+  let baselineVersion: string | undefined
+  let customFixtureDir: string | undefined
+
+  let i = 0
+  while (i < arguments_.length) {
+    const arg = arguments_[i]!
+    if (arg === '--initialize-matrix') {
+      initialize = true
+      i++
+    } else if (arg === '--mode' && i + 1 < arguments_.length) {
+      const m = arguments_[i + 1]
+      if (m === 'drift' || m === 'batch' || m === 'final') {
+        mode = m
+      } else {
+        throw new Error(`invalid mode: ${m}`)
+      }
+      i += 2
+    } else if (arg === '--baseline' && i + 1 < arguments_.length) {
+      baselineVersion = arguments_[i + 1]
+      i += 2
+    } else {
+      throw new Error(`unknown argument: ${arg}`)
+    }
   }
-  const initialize = arguments_[0] === '--initialize-matrix'
-  const inventoryPath = join(fixtureDirectory, 'inventory.json')
-  const matrixPath = join(fixtureDirectory, 'compatibility.yaml')
+
+  // Determine fixture directory
+  let fixtureDir = fixtureDirectory
+  if (baselineVersion) {
+    // Use versioned directory
+    fixtureDir = fixtureDirectory.replace(/\/[\d.]+\/?$/, `/${baselineVersion}/`)
+  }
+
+  const inventoryPath = join(fixtureDir, 'inventory.json')
+  const matrixPath = join(fixtureDir, 'compatibility.yaml')
   const inventory = JSON.parse(await readFile(inventoryPath, 'utf8')) as CompatibilityInventory
+
   const [{ generateSettingsJSONSchema }, { HOOK_EVENTS }] = await Promise.all([
     import('../src/utils/settings/schemaOutput.ts'),
     import('../src/entrypoints/sdk/coreTypes.ts'),
   ])
   const schemaPaths = collectSchemaPaths(JSON.parse(generateSettingsJSONSchema()))
 
-  let matrix: CompatibilityMatrix
+  // Load env consumers
+  let envConsumers: EnvConsumerRegistry | undefined
+  try {
+    const envConsumersPath = join(fixtureDir, '..', 'env-consumers.json')
+    if (await pathExists(envConsumersPath)) {
+      envConsumers = JSON.parse(await readFile(envConsumersPath, 'utf8')) as EnvConsumerRegistry
+    }
+  } catch {
+    // Ignore if not present
+  }
+
+  let matrix: CompatibilityMatrix | CompatibilityMatrixV2
   if (initialize) {
     if (await pathExists(matrixPath)) {
       throw new Error(`refusing to overwrite existing compatibility matrix: ${matrixPath}`)
@@ -644,11 +1063,32 @@ export async function runCli(
       throw error
     }
   } else {
-    matrix = parse(await readFile(matrixPath, 'utf8')) as CompatibilityMatrix
+    matrix = parse(await readFile(matrixPath, 'utf8')) as CompatibilityMatrix | CompatibilityMatrixV2
   }
 
-  const diagnostics = checkCompatibility({ inventory, matrix, schemaPaths, hookEvents: HOOK_EVENTS })
-  printReport(inventory, matrix, diagnostics)
+  let diagnostics: Diagnostic[]
+  if (mode === 'drift') {
+    diagnostics = checkCompatibility({
+      inventory,
+      matrix,
+      schemaPaths,
+      hookEvents: HOOK_EVENTS,
+    })
+    printReport(inventory, matrix, diagnostics, mode)
+  } else {
+    const result = await checkCompatibilityV2({
+      inventory,
+      matrix,
+      schemaPaths,
+      hookEvents: HOOK_EVENTS,
+      mode,
+      repoRoot: fileURLToPath(new URL('..', import.meta.url)),
+      envConsumers,
+    })
+    diagnostics = result.diagnostics
+    printReport(inventory, matrix, diagnostics, mode)
+  }
+
   return diagnostics
 }
 
