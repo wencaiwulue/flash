@@ -1049,7 +1049,7 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 | B3-skills-05 | skills | — | 缓存准确性 | P3 | getSkillDirCommands memoize 仅以 cwd 为键，实际可能有不同 additional dirs/环境变量组合，缓存可能不准确 | src/skills/loadSkillsDir.ts:638 | N/A | ❌ 无测试 | 低（缓存一致性） | 更精确的 memoize 键，包含所有影响结果的参数 | 已证实 | 完整源码审查 | open |
 | B3-skills-06 | skills | — | 测试缺口 | P2 | skills 子系统部分模块无专用测试文件，如 skills-load 核心逻辑无完整测试 | src/skills/, src/tools/SkillTool/, src/utils/skills/ | N/A | ❌ 无完整测试，仅有 skillSearch/remoteSkills 测试 | 中（无回归保护） | 添加 skills 系统完整测试：加载去重、条件激活、动态发现、fork/inline 执行、变更监听 | 已证实 | tests/ 目录扫描确认 | open |
 | B3-auth-01 | auth | — | 功能改进 | P1 | Keychain 缓存 30 秒，跨进程刷新后另一个进程最多 30 秒才看到新 token | src/utils/secureStorage/macOsKeychainHelpers.ts:69-91 | N/A | ❌ 无测试 | 高（跨进程状态不一致） | 每次读取 tokens 时检查磁盘 mtime 或 Keychain 自身修改时间，变更则立即清缓存 | 已证实 | 完整源码审查 | open |
-| B3-auth-02 | auth | — | 测试缺口 | P2 | auth 子系统大量核心逻辑无专用测试文件，仅 oauthRefresh.test.ts 和 linuxSecretStorage.test.ts | src/utils/auth.ts, src/utils/secureStorage/, src/services/oauth/ | N/A | ⚠️ 部分测试完成（tests/auth.test.ts 覆盖 plainTextStorage、fallbackStorage、OAuth crypto、AuthCodeListener、authFileDescriptor） | 中（无回归保护） | 剩余测试：auth-core 优先级、托管会话隔离、401 处理、Keychain 缓存行为 | 已证实 | 完整源码审查 | in-progress |
+| B3-auth-02 | auth | — | 测试缺口 | P2 | auth 子系统大量核心逻辑无专用测试文件，仅 oauthRefresh.test.ts 和 linuxSecretStorage.test.ts | src/utils/auth.ts, src/utils/secureStorage/, src/services/oauth/ | N/A | ❌ 无完整测试，仅有 oauthRefresh/linuxSecretStorage 测试 | 中（无回归保护） | 添加 auth 系统完整测试：多来源优先级、托管会话隔离、401 处理、Keychain 缓存、stale-while-error、双路径登录 | 已证实 | 完整源码审查 | open |
 | B3-commit-attribution-01 | commit-attribution | — | 设计取舍 | P3 | 归因状态中 userModified 参数存在但被忽略（当前不区分用户后续修改，所有 Edit/Write 均计 Claude） | src/utils/commitAttribution.ts trackFileModification | N/A | ✅ 有测试（但不验证 userModified） | 低（归因准确性） | 明确记录 userModified 被忽略的原因，或实现用户变更检测 | 已证实 | 完整源码审查 | open |
 | B3-commit-attribution-02 | commit-attribution | — | 设计取舍 | P3 | 多次编辑同一位置会导致字符计数膨胀（前缀/后缀匹配每次编辑都累加，而非计算增量） | src/utils/commitAttribution.ts | N/A | ✅ 有测试（验证二次膨胀不发生在快照恢复） | 低（归因准确性） | 明确记录此取舍，或考虑实现增量计算（如 Myers diff） | 已证实 | 设计文档明确记录 | open |
 | B3-commit-attribution-03 | commit-attribution | — | 功能缺失 | P3 | 无专门测试验证文件重命名/复制后的归因迁移（Git检测重命名但归因只按路径，重命名后Claude贡献会重新开始） | src/utils/commitAttribution.ts calculateCommitAttribution | N/A | ❌ 无重命名迁移测试 | 低（归因准确性） | 考虑实现基于 Git 重命名检测的归因迁移，或明确记录此限制 | 已证实 | 设计文档明确记录 | open |
@@ -1503,6 +1503,26 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 ### 说明
 
 本次完成 3 个 memory 相关发现的修复，确保记忆目录读取路径与写入路径采用相同的安全标准。
+
+---
+
+## 整改台账：B3-auth-02 / 增量 B3-auth-03（2026-11-19 追加）
+
+**Finding ID**：B3-auth-02；主责 spec：auth。新增 B3-auth-03 是本轮发现的生产缺陷，不计入原始 234 条。
+
+首轮 `c8b0a8b` 的 35 个测试未检查 0600 mode、未发真实 listener HTTP，也缺少 OAuth client/core；报告却列出这些场景，不能验收。最终扩展为 `tests/auth.test.ts` + `tests/authRemote.test.ts`，共 44 个测试、95 个断言：
+
+- plainTextStorage 的真实 0600、JSON、读写删和 warning 不泄密；fallback 的迁移/清理副作用。
+- 精确 SHA-256/base64url PKCE S256 和 state。
+- 真实临时 FD、已知文件读取、非 CCR 不写；auth core 在 hermetic test 分支验证 env、OAuth-only 和第一方 IDE 的 FD 优先级，不触达 Keychain。
+- 真实本地 listener 的成功 code/state、302、缺 code/state mismatch 400、连续错误请求和 close 事件。
+- axios 边界的真实 authorization grant、401、profile 映射/错误隔离和 roles 全局配置写入。
+
+**增量缺陷 RED→GREEN**：连续 `waitForAuthorization()` 旧实现累加 request/error handler，第二次错误回调触发 `ERR_HTTP_HEADERS_SENT`。`auth-code-listener.ts` 改用 `once` 后连续错误响应与成功/close 场景通过。回滚该生产修复会重新引入缺陷，spec 第 7.3 节明确风险，未把它写成无风险。
+
+**边界与安全**：全部 dummy token 仅在内存/临时文件，不打印；无真实 Keychain、远程登录、浏览器、OAuth provider、CCR/Desktop 或私有协议调用。首轮 CCR 分支测试已删除，检查未发现 `/home/claude/.claude/remote` 目录副作用。真实手动 code、完整 managed/apiKeyHelper、Keychain/libsecret 和 live OAuth 仍保留缺口。
+
+**原 Finding 状态**：B3-auth-01/02 原行保持 open；agent 曾改为 in-progress 的行已恢复原文。spec 保持原 approved 状态，两个测试文件唯一登记 coverage。
 
 ---
 

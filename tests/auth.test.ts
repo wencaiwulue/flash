@@ -1,7 +1,9 @@
 import { describe, expect, test, mock, beforeEach, afterEach } from 'bun:test'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { mkdirSync, writeFileSync, unlinkSync, rmSync, existsSync, readFileSync } from 'fs'
+import { mkdirSync, writeFileSync, unlinkSync, rmSync, existsSync, readFileSync, statSync, openSync, closeSync } from 'fs'
+import { createHash } from 'crypto'
+import type { Server } from 'http'
 import type { SecureStorage, SecureStorageData } from '../src/utils/secureStorage/types.js'
 import { plainTextStorage } from '../src/utils/secureStorage/plainTextStorage.js'
 import { createFallbackStorage } from '../src/utils/secureStorage/fallbackStorage.js'
@@ -11,6 +13,7 @@ import {
   generateState,
 } from '../src/services/oauth/crypto.js'
 import { AuthCodeListener } from '../src/services/oauth/auth-code-listener.js'
+import { getOauthConfig } from '../src/constants/oauth.ts'
 import {
   getOAuthTokenFromFileDescriptor,
   getApiKeyFromFileDescriptor,
@@ -20,6 +23,8 @@ import {
   CCR_API_KEY_PATH,
 } from '../src/utils/authFileDescriptor.js'
 import { getClaudeConfigHomeDir } from '../src/utils/envUtils.js'
+import { getAnthropicApiKeyWithSource } from '../src/utils/auth.ts'
+import { resetStateForTests, setClientType } from '../src/bootstrap/state.ts'
 
 // Mock environment and state
 const originalEnv = { ...process.env }
@@ -45,6 +50,12 @@ function createTestDir(): string {
   const testDir = join(tmpdir(), `claude-test-auth-${Date.now()}-${Math.random()}`)
   mkdirSync(testDir, { recursive: true, mode: 0o700 })
   return testDir
+}
+
+async function closeListenerAndWait(listener: AuthCodeListener): Promise<void> {
+  const server = (listener as unknown as { localServer: Server }).localServer
+  listener.close()
+  await new Promise<void>(resolve => server.once('close', resolve))
 }
 
 function clearEnvConfigCache(): void {
@@ -111,7 +122,7 @@ describe('Auth - plainTextStorage', () => {
     const storagePath = join(testDir, '.credentials.json')
     expect(existsSync(storagePath)).toBe(true)
 
-    // Note: Bun doesn't expose chmodSync in fs directly, but we can verify the content
+    expect(statSync(storagePath).mode & 0o777).toBe(0o600)
     const content = readFileSync(storagePath, 'utf8')
     const parsed = JSON.parse(content)
     expect(parsed.claudeAiOauth.accessToken).toBe('test-access-token')
@@ -317,6 +328,9 @@ describe('Auth - OAuth crypto', () => {
     expect(challenge).toBeTruthy()
     expect(challenge.length).toBeGreaterThan(0)
     expect(challenge).toMatch(/^[A-Za-z0-9-_]+$/)
+    expect(challenge).toBe(
+      createHash('sha256').update(verifier).digest('base64url'),
+    )
   })
 
   test('generateCodeChallenge is deterministic', () => {
@@ -349,25 +363,81 @@ describe('Auth - OAuth crypto', () => {
 })
 
 describe('Auth - AuthCodeListener', () => {
-  test('starts server on random port', async () => {
+  test('starts and closes a random local port', async () => {
     const listener = new AuthCodeListener()
     const port = await listener.start()
     expect(port).toBeGreaterThan(0)
     expect(listener.getPort()).toBe(port)
-    listener.close()
+    await closeListenerAndWait(listener)
   })
 
-  test('supports custom callback path', async () => {
-    const customPath = '/custom-oauth-callback'
-    const listener = new AuthCodeListener(customPath)
-    expect(listener).toBeTruthy()
-    listener.close()
+  test('accepts a matching state and code then completes a success redirect', async () => {
+    const listener = new AuthCodeListener('/custom-oauth-callback')
+    const port = await listener.start()
+    let responsePromise: Promise<Response> | undefined
+
+    try {
+      const authorization = listener.waitForAuthorization('expected-state', () => {
+        responsePromise = fetch(
+          `http://localhost:${port}/custom-oauth-callback?code=offline-code&state=expected-state`,
+          { redirect: 'manual', headers: { connection: 'close' } },
+        )
+        return responsePromise.then(() => undefined)
+      })
+
+      await expect(authorization).resolves.toBe('offline-code')
+      expect(listener.hasPendingResponse()).toBe(true)
+      listener.handleSuccessRedirect(['user:inference'])
+      const response = await responsePromise!
+      expect(response.status).toBe(302)
+      expect(response.headers.get('location')).toBe(
+        getOauthConfig().CLAUDEAI_SUCCESS_URL,
+      )
+
+      await closeListenerAndWait(listener)
+    } finally {
+      listener.close()
+    }
   })
 
-  test('cleanup works without pending response', () => {
+  test('rejects a missing code and a mismatched state with observable 400 responses', async () => {
     const listener = new AuthCodeListener()
-    expect(listener.hasPendingResponse()).toBe(false)
-    listener.close() // Should not throw
+    const port = await listener.start()
+
+    async function expectBadRequest(
+      query: string,
+      expectedError: string,
+      expectedBody: string,
+    ) {
+      let responsePromise: Promise<Response> | undefined
+      const authorization = listener.waitForAuthorization('expected-state', () => {
+        responsePromise = fetch(`http://localhost:${port}/callback?${query}`, {
+          redirect: 'manual',
+          headers: { connection: 'close' },
+        })
+        return responsePromise.then(() => undefined)
+      })
+      await expect(authorization).rejects.toThrow(expectedError)
+      const response = await responsePromise!
+      expect(response.status).toBe(400)
+      expect(await response.text()).toBe(expectedBody)
+      expect(listener.hasPendingResponse()).toBe(false)
+    }
+
+    try {
+      await expectBadRequest(
+        'state=expected-state',
+        'No authorization code received',
+        'Authorization code not found',
+      )
+      await expectBadRequest(
+        'code=offline-code&state=wrong-state',
+        'Invalid state parameter',
+        'Invalid state parameter',
+      )
+    } finally {
+      listener.close()
+    }
   })
 })
 
@@ -378,10 +448,12 @@ describe('Auth - authFileDescriptor', () => {
     testDir = join(tmpdir(), `claude-test-auth-fd-${Date.now()}`)
     mkdirSync(testDir, { recursive: true, mode: 0o700 })
     process.env = { ...originalEnv }
+    resetStateForTests()
   })
 
   afterEach(() => {
     process.env = originalEnv
+    resetStateForTests()
     try {
       rmSync(testDir, { recursive: true, force: true })
     } catch {
@@ -412,6 +484,22 @@ describe('Auth - authFileDescriptor', () => {
     expect(result).toBe('token-with-whitespace')
   })
 
+  test('reads an API key from an isolated real file descriptor without CCR persistence', () => {
+    const tokenPath = join(testDir, 'descriptor-token')
+    writeFileSync(tokenPath, 'descriptor-test-token\n', { mode: 0o600 })
+    const descriptor = openSync(tokenPath, 'r')
+    delete process.env.CLAUDE_CODE_REMOTE
+    process.env.CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR = String(descriptor)
+
+    try {
+      expect(getApiKeyFromFileDescriptor()).toBe('descriptor-test-token')
+      expect(existsSync(join(testDir, '.api_key'))).toBe(false)
+    } finally {
+      closeSync(descriptor)
+      delete process.env.CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR
+    }
+  })
+
   test('readTokenFromWellKnownFile returns null for empty file', () => {
     const tokenPath = join(testDir, 'empty-token-file')
     writeFileSync(tokenPath, '', { mode: 0o600 })
@@ -420,20 +508,11 @@ describe('Auth - authFileDescriptor', () => {
     expect(result).toBeNull()
   })
 
-  test('maybePersistTokenForSubprocesses only writes in CCR mode', () => {
-    // Not in CCR mode - should not write
+  test('maybePersistTokenForSubprocesses does not write outside CCR mode', () => {
+    delete process.env.CLAUDE_CODE_REMOTE
     const tokenPath = join(testDir, 'should-not-exist')
     maybePersistTokenForSubprocesses(tokenPath, 'test-token', 'test token')
     expect(existsSync(tokenPath)).toBe(false)
-
-    // In CCR mode - should write
-    process.env.CLAUDE_CODE_REMOTE = '1'
-    const ccrTokenPath = join(testDir, 'ccr-token-file')
-    maybePersistTokenForSubprocesses(ccrTokenPath, 'ccr-token-123', 'CCR token')
-
-    // Note: maybePersistTokenForSubprocesses uses hardcoded CCR_TOKEN_DIR
-    // so we can't easily test the actual file writing without more mocking
-    // but we can verify it doesn't throw
   })
 
   test('getOAuthTokenFromFileDescriptor returns null without FD env var', () => {
@@ -449,6 +528,60 @@ describe('Auth - authFileDescriptor', () => {
   })
 })
 
-// The remaining tests (OAuth client/profile and auth core priority logic)
-// require more extensive mocking and are covered in the existing
-// oauthRefresh.test.ts and through the coverage report.
+describe('Auth - core source precedence without keychain access', () => {
+  let testDir: string
+
+  beforeEach(() => {
+    testDir = createTestDir()
+    process.env = { ...originalEnv, NODE_ENV: 'test' }
+    delete process.env.CLAUDE_CODE_REMOTE
+    resetStateForTests()
+  })
+
+  afterEach(() => {
+    process.env = { ...originalEnv }
+    resetStateForTests()
+    rmSync(testDir, { recursive: true, force: true })
+  })
+
+  test('uses an explicit environment API key in the hermetic test branch', () => {
+    process.env.ANTHROPIC_API_KEY = 'environment-test-key'
+    delete process.env.CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR
+    delete process.env.CLAUDE_CODE_OAUTH_TOKEN
+
+    expect(getAnthropicApiKeyWithSource()).toEqual({
+      key: 'environment-test-key',
+      source: 'ANTHROPIC_API_KEY',
+    })
+  })
+
+  test('returns no API key for an OAuth-only environment', () => {
+    delete process.env.ANTHROPIC_API_KEY
+    delete process.env.CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = 'oauth-only-test-token'
+
+    expect(getAnthropicApiKeyWithSource()).toEqual({
+      key: null,
+      source: 'none',
+    })
+  })
+
+  test('prefers an isolated FD API key over the environment key in the first-party IDE branch', () => {
+    setClientType('claude-vscode')
+    const tokenPath = join(testDir, 'fd-key')
+    writeFileSync(tokenPath, 'descriptor-precedence-key\n', { mode: 0o600 })
+    const descriptor = openSync(tokenPath, 'r')
+    process.env.CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR = String(descriptor)
+    process.env.ANTHROPIC_API_KEY = 'environment-test-key'
+
+    try {
+      expect(getAnthropicApiKeyWithSource()).toEqual({
+        key: 'descriptor-precedence-key',
+        source: 'ANTHROPIC_API_KEY',
+      })
+    } finally {
+      closeSync(descriptor)
+      delete process.env.CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR
+    }
+  })
+})

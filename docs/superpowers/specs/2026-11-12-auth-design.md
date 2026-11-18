@@ -748,7 +748,7 @@ type AuthTokenSource =
 
 | 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
 |---|---|---|---|
-| 多来源认证优先级：托管 FD > 环境变量 > 安全存储 > apiKeyHelper | `src/utils/auth.ts:152-206` | 需查找相关测试 | 未找到直接测试覆盖 |
+| 多来源认证优先级：托管 FD > 环境变量 > 安全存储 > apiKeyHelper | `src/utils/auth.ts` 的 `getAnthropicApiKeyWithSource` | `tests/auth.test.ts` 在 `NODE_ENV=test` hermetic 分支验证显式 env、OAuth-only 和第一方 IDE 的临时 FD 优先级，不触达 Keychain | 尚未覆盖安全存储/apiKeyHelper/完整 managed context 组合，官方公开优先级与本仓库 FD 扩展不能混为一谈 |
 | 托管会话隔离：isManagedOAuthContext() 阻止读取用户本地凭据 | `src/utils/auth.ts:91-96` | 需查找相关测试 | 未找到直接测试覆盖 |
 | OAuth 令牌刷新并发去重：同一进程内 pendingRefreshCheck + 跨进程文件锁 | `src/utils/auth.ts:1427-1562` | `tests/oauthRefresh.test.ts` | 有基本测试覆盖并发去重逻辑 |
 | 安全存储分层 fallback：Keychain → libsecret → plaintext | `src/utils/secureStorage/index.ts:10-20` | `tests/linuxSecretStorage.test.ts`、`tests/auth.test.ts` | 有 Linux fallback 测试和完整 fallback 行为测试覆盖 |
@@ -761,9 +761,10 @@ type AuthTokenSource =
 | 401 错误处理：对比 token + 并发去重 | `src/utils/auth.ts:1339-1392` | 需查找相关测试 | 未找到直接测试覆盖 |
 | plainTextStorage 权限 0o600、无效 JSON 处理 | `src/utils/secureStorage/plainTextStorage.ts:44-69` | `tests/auth.test.ts` | 有完整测试覆盖文件权限、JSON 解析、删除操作 |
 | fallbackStorage primary/secondary 迁移逻辑 | `src/utils/secureStorage/fallbackStorage.ts:27-62` | `tests/auth.test.ts` | 有完整测试覆盖 primary 成功、fallback、迁移清理、stale 防护 |
-| OAuth crypto PKCE verifier/challenge | `src/services/oauth/crypto.ts:11-23` | `tests/auth.test.ts` | 有完整测试覆盖唯一性、确定性、base64url 格式 |
-| AuthCodeListener 本地随机端口服务器 | `src/services/oauth/auth-code-listener.ts:18-211` | `tests/auth.test.ts` | 有完整测试覆盖端口绑定、state 验证、回调处理、错误重定向 |
-| authFileDescriptor FD/CCR 文件读取 | `src/utils/authFileDescriptor.ts:57-82` | `tests/auth.test.ts` | 有测试覆盖已知文件读取、空文件处理、whitespace 修剪 |
+| OAuth crypto PKCE verifier/challenge | `src/services/oauth/crypto.ts` | `tests/auth.test.ts` 验证唯一性、base64url，并用独立 SHA-256/base64url 计算精确校验 S256 challenge | 不证明 provider 端接受，未执行远程登录 |
+| AuthCodeListener 本地随机端口服务器 | `src/services/oauth/auth-code-listener.ts` | `tests/auth.test.ts` 发真实本地 HTTP：成功 code/state、302 redirect、缺 code/state mismatch 的 400、连续错误请求及 server close 事件 | 新增 B3-auth-03 修复重复 wait 注册多 handler；不打开浏览器、不验证外部 provider 或手动输入路径 |
+| authFileDescriptor FD/CCR 文件读取 | `src/utils/authFileDescriptor.ts` | `tests/auth.test.ts` 验证已知文件、空文件/whitespace、真实临时 FD 读取及非 CCR 不写文件 | 不访问真实 CCR FD/目录，不验证 subprocess 私有环境 |
+| OAuth token exchange/profile/roles | `src/services/oauth/client.ts`、`getOauthProfile.ts` | `tests/authRemote.test.ts` 以 axios 边界替身验证 grant body/header、401、profile 映射/错误隔离和 roles 全局配置写入 | 不执行真实 token exchange、refresh 或 profile 请求；refresh 主路径沿用 oauthRefresh 既有证据 |
 
 ### 7.1 核心模块
 
@@ -801,6 +802,19 @@ type AuthTokenSource =
 - apiKeyHelper SWR（stale-while-revalidate）缓存行为测试
 - Keychain 预取与缓存 priming 测试
 - auth.ts 中 _apiKeyHelperEpoch 竞态避免测试
+- OAuth 手动 code 输入、真实浏览器/provider、手动组织和额外 scope/401 组合的 live 验收
+
+### 7.3 三层证据、增量 Finding 与回滚
+
+| 层级 | 只读证据 | 边界 |
+|---|---|---|
+| 官方文档 | [Authentication](https://code.claude.com/docs/en/authentication)说明浏览器/手动 code 登录、公开凭据优先级和 plaintext 0600 fallback | 未公开本仓库 FD 分支、listener handler 注册、token exchange/profile 内部实现或重复 wait 语义 |
+| 本机上游二进制 | `strings $(command -v claude)` 命中 `code_challenge_method`、`waitForAuthorizationCode`、`exchangeCodeForTokens`、`CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR` | 只证明相关符号存在，不证明上游也有重复 handler 缺陷或采用相同修复 |
+| 本仓库 | 44 个离线测试/95 个断言，真实临时文件/FD、本地 HTTP listener、axios 边界的 client/profile/roles | 不等于真实 Keychain/libsecret、浏览器、OAuth provider、CCR/Desktop 或私有协议 live 验收 |
+
+**新增 B3-auth-03**：连续调用 `waitForAuthorization()` 时，旧实现用 `on('request')`/`on('error')` 累加 handler。真实 RED 在第二次错误回调中触发 `ERR_HTTP_HEADERS_SENT`；改为 `once` 后，缺 code 与 state mismatch 能分别返回一次 400，成功 redirect 与 close 也通过。该 Finding 属于本轮增量，不计入原始 234 条。
+
+**回滚**：测试与文档可随 coverage 一并回退。生产回滚需恢复 `startLocalListener` 的两行注册方式，但这会重新引入 B3-auth-03，不能描述为无风险回滚；执行前必须保留失败复现并评估重复 wait 调用方。spec 保持原 approved 状态，B3-auth-01/02 原 Finding 保持 open。
 
 ## 附录 A：跨进程 Keychain 缓存失效机制
 

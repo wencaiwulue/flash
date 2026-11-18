@@ -147,5 +147,6 @@ groups:
       - tests/oauthRefresh.test.ts
       - tests/linuxSecretStorage.test.ts
       - tests/auth.test.ts
+      - tests/authRemote.test.ts
       - tests/macOsKeychainHelpers.test.ts
       - tests/macOsKeychainCrossProcess.test.ts
