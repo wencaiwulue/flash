@@ -19,6 +19,7 @@ export const COMPATIBILITY_STATUSES = [
   'different',
   'blocked',
   'excluded',
+  'ignored-by-design',
 ] as const
 
 export type CheckMode = 'drift' | 'batch' | 'final'
@@ -93,7 +94,7 @@ export function migrateMatrix(
   const newEntries: MatrixEntryV2[] = []
   const removedIds: string[] = []
 
-  // 处理不变条目：保留所有字段，添加 currentReview 若缺失
+  // 处理不变条目：保留所有字段，不自动添加 currentReview（需显式批准）
   for (const id of options.diff.unchanged) {
     const source = sourceEntriesById.get(id)
     if (source) {
@@ -101,10 +102,7 @@ export function migrateMatrix(
       newEntries.push({
         ...v2Source,
         ownerBatch: v2Source.ownerBatch ?? determineOwnerBatch(id),
-        currentReview: v2Source.currentReview ?? {
-          by: `baseline-${options.from}`,
-          baseline: options.from
-        }
+        // Do NOT automatically add currentReview - needs explicit carry-forward approval
       })
     }
   }
@@ -134,7 +132,7 @@ export function migrateMatrix(
     })
   }
 
-  // 处理变化条目：降级 aligned→partial
+  // 处理变化条目：降级 aligned→partial，不自动添加 currentReview
   for (const change of options.diff.changed) {
     const source = sourceEntriesById.get(change.id)
     if (source) {
@@ -152,10 +150,7 @@ export function migrateMatrix(
         notes: newNotes,
         ownerBatch: v2Source.ownerBatch ?? determineOwnerBatch(change.id),
         verifiedVersion: wasAligned ? undefined : v2Source.verifiedVersion,
-        currentReview: v2Source.currentReview ?? {
-          by: `baseline-${options.from}`,
-          baseline: options.from
-        }
+        // Do NOT automatically add currentReview - existing one is preserved if present
       })
     }
   }
@@ -564,7 +559,10 @@ export function checkCompatibility({
       code: 'invalid-matrix-envelope',
       message: `matrix envelope requires schemaVersion 1 and baseline ${UPSTREAM_BASELINE_VERSION} matching the inventory; received schemaVersion ${String(matrix.schemaVersion)} and baseline ${String(matrix.baseline)} (inventory ${String(inventory.baseline.version)})`,
     })
+    // If envelope is invalid, only return envelope diagnostics
+    return diagnostics
   }
+
   const rawMatrixEntries: unknown[] = Array.isArray(matrix.entries) ? matrix.entries : []
   if (!Array.isArray(matrix.entries)) {
     diagnostics.push({
@@ -812,6 +810,21 @@ export async function checkCompatibilityV2(
   input: CheckCompatibilityInputV2,
 ): Promise<CheckCompatibilityResult> {
   const { mode, repoRoot, batches } = input
+
+  if (input.matrix === null || !isRecord(input.matrix)) {
+    // Empty or invalid matrix, return invalid-matrix-envelope
+    return {
+      diagnostics: [{
+        code: 'invalid-matrix-envelope',
+        message: 'compatibility matrix must be a mapping',
+      }],
+      pass: false,
+      mode,
+      baseline: normalizeInventory(input.inventory).baseline.version,
+      counts: { total: 0, byStatus: {}, byOwner: {} },
+    }
+  }
+
   const normalizedInventory = normalizeInventory(input.inventory)
   const normalizedMatrix = normalizeMatrix(input.matrix)
 
@@ -927,12 +940,18 @@ export async function checkCompatibilityV2(
               message: `Aligned entry ${entry.id} requires verifiedVersion`,
             })
           }
-          // currentReview 必须存在
+          // currentReview 必须存在且 baseline 匹配当前基线（显式 carry-forward）
           if (!v2Entry.currentReview) {
             diagnostics.push({
               code: 'invalid-current-review',
               id: entry.id,
               message: `Aligned entry ${entry.id} requires currentReview`,
+            })
+          } else if (v2Entry.currentReview.baseline !== normalizedInventory.baseline.version) {
+            diagnostics.push({
+              code: 'invalid-current-review',
+              id: entry.id,
+              message: `Aligned entry ${entry.id} currentReview.baseline must match current baseline ${normalizedInventory.baseline.version} (got ${v2Entry.currentReview.baseline}) - explicit carry-forward approval required`,
             })
           }
         }
@@ -946,34 +965,39 @@ export async function checkCompatibilityV2(
           })
         }
 
-        // 排除规则验证：仅 removed 或 ignored-by-design 可排除
+        // 排除规则验证：仅 removed 可 excluded；其他 ignored-by-design 需用单独状态
         if (entry.status === 'excluded') {
           const exclusion = entry.exclusion
-          const hasIgnoredByDesign =
-            exclusion?.reason?.includes('ignored-by-design') ||
-            entry.evidence.some(e => e.includes('ignored-by-design'))
 
-          if (inventoryEntry?.lifecycle !== 'removed' && !hasIgnoredByDesign) {
+          if (inventoryEntry?.lifecycle !== 'removed') {
             diagnostics.push({
               code: 'invalid-exclusion-evidence',
               id: entry.id,
-              message: `Excluded entry ${entry.id} must have lifecycle=removed or ignored-by-design with evidence`,
+              message: `Excluded entry ${entry.id} must have lifecycle=removed; use ignored-by-design status otherwise`,
             })
           }
 
-          if (inventoryEntry?.lifecycle === 'deprecated' && !hasIgnoredByDesign) {
-            diagnostics.push({
-              code: 'invalid-deprecated-effective-excluded',
-              id: entry.id,
-              message: `Deprecated entry ${entry.id} may not be excluded without ignored-by-design evidence`,
-            })
-          }
-
-          if (hasIgnoredByDesign && !exclusion?.evidence) {
+          if (!exclusion?.evidence) {
             diagnostics.push({
               code: 'invalid-exclusion-evidence',
               id: entry.id,
-              message: `ignored-by-design entry ${entry.id} requires evidence`,
+              message: `Excluded entry ${entry.id} requires evidence pointing to upstream removal`,
+            })
+          }
+        }
+
+        // ignored-by-design 状态验证：必须有证据
+        if (entry.status === 'ignored-by-design') {
+          const v2Entry = entry as MatrixEntryV2
+          const hasEvidence = entry.evidence.length > 0 ||
+            (entry.exclusion?.reason && entry.exclusion?.evidence) ||
+            entry.notes.length > 0
+
+          if (!hasEvidence) {
+            diagnostics.push({
+              code: 'invalid-exclusion-evidence',
+              id: entry.id,
+              message: `ignored-by-design entry ${entry.id} requires explicit evidence/reason for exclusion`,
             })
           }
         }
@@ -1138,7 +1162,14 @@ export async function runCli(
   }
 
   let diagnostics: Diagnostic[]
-  if (mode === 'drift') {
+  if (matrix === null) {
+    // Empty matrix, return invalid-matrix-envelope
+    diagnostics = [{
+      code: 'invalid-matrix-envelope',
+      message: 'compatibility matrix must be a mapping',
+    }]
+    printReport(inventory, matrix, diagnostics, mode)
+  } else if (mode === 'drift') {
     diagnostics = checkCompatibility({
       inventory,
       matrix: normalizeMatrix(matrix),

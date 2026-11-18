@@ -508,11 +508,30 @@ describe('compatibility CLI and real baseline', () => {
   })
 
   test('empty matrix returns structured diagnostics instead of throwing', async () => {
-    // This test is less critical now since we have other coverage,
-    // but let's just verify the key behavior without calling runCli
-    const emptyYaml = ''
-    const parsed = parse(emptyYaml)
-    expect(parsed).toBeNull()
+    const directory = await mkdtemp(join(tmpdir(), 'flash-compatibility-'))
+    try {
+      const fixture = new URL('../fixtures/upstream-config/2.1.311/', import.meta.url)
+      await copyFile(new URL('inventory.json', fixture), join(directory, 'inventory.json'))
+      await writeFile(join(directory, 'compatibility.yaml'), '')
+
+      // Temporarily silence console output
+      const originalLog = console.log
+      const originalError = console.error
+      console.log = () => {}
+      console.error = () => {}
+
+      try {
+        const diagnostics = await runCli([], directory)
+        expect(diagnostics).toEqual([
+          expect.objectContaining({ code: 'invalid-matrix-envelope' }),
+        ])
+      } finally {
+        console.log = originalLog
+        console.error = originalError
+      }
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
   })
 
   test('real 2.1.311 snapshot has no unrecorded drift', async () => {
