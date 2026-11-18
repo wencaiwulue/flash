@@ -261,6 +261,52 @@ export const getHookEventMetadata = memoize(
         description:
           'Input to command is JSON with file_path and event (change, add, unlink).\nCLAUDE_ENV_FILE is set — write bash exports there to apply env to subsequent BashTool commands.\nThe matcher field specifies filenames to watch in the current directory (e.g. ".envrc|.env").\nHook output can include hookSpecificOutput.watchPaths (array of absolute paths) to dynamically update the watch list.\nExit code 0 - command completes successfully\nOther exit codes - show stderr to user only',
       },
+      PostToolBatch: {
+        summary: 'After a batch of parallel tool calls completes',
+        description:
+          'Runs once after all parallel tool calls in a turn resolve, before the next model request. Input to command is JSON with tool_calls (array of {tool_name, tool_input, tool_use_id, tool_response}); failed tools carry only their serialized content, not an error field.\nReturn hookSpecificOutput.additionalContext to add context, or continue:false / decision:"block" to stop the agentic loop.\nExit code 2 - stop the loop and show stderr to the model\nOther exit codes - show stderr to user only and continue',
+      },
+      UserPromptExpansion: {
+        summary: 'After a slash command or MCP prompt is expanded',
+        description:
+          'Input to command is JSON with expansion_type (slash_command, mcp_prompt), command_name, command_args, command_source, and prompt (the original input, not the expanded text).\nReturn hookSpecificOutput.additionalContext to add context, suppressOriginalPrompt to omit the prompt from a block message, or decision:"block" to stop the expansion.\nExit code 2 - block the expansion and show stderr to the user\nOther exit codes - show stderr to user only and continue',
+        matcherMetadata: {
+          fieldToMatch: 'command_name',
+          values: [],
+        },
+      },
+      PreModelSwitch: {
+        summary: 'Before the session model is switched',
+        description:
+          'Input to command is JSON with from_model, to_model (canonical id), requested_model, source (command, picker, sdk), context_tokens, prompt_cache_warm, cache_ttl, estimated_cache_write_usd, and pricing.\nReturn hookSpecificOutput.permissionDecision (allow, deny, ask) with optional permissionDecisionReason; deny or decision:"block" cancels the switch.\nExit code 2 - cancel the switch and show stderr\nTimeout also cancels the switch (fail-closed)\nOther exit codes - show stderr to user only and continue',
+        matcherMetadata: {
+          fieldToMatch: 'to_model',
+          values: [],
+        },
+      },
+      PostModelSwitch: {
+        summary: 'After the session model is switched',
+        description:
+          'Input to command is JSON with the same fields as PreModelSwitch; source may also be auto or resume. Runs asynchronously after the model changes and cannot cancel the switch.\nReturn hookSpecificOutput.additionalContext to deliver context with the next model request (waits up to 5s).\nExit code 2 - show stderr to the user only',
+        matcherMetadata: {
+          fieldToMatch: 'to_model',
+          values: [],
+        },
+      },
+      DirectoryAdded: {
+        summary: 'After a directory is added to the workspace',
+        description:
+          'Input to command is JSON with directory (absolute path) and source (slash_command, register_repo_root). Runs in the background after the directory is added and cannot undo it. The matcher matches the source field.\nExit code 0 - command completes successfully\nOther exit codes - show stderr to user only',
+        matcherMetadata: {
+          fieldToMatch: 'source',
+          values: ['slash_command', 'register_repo_root'],
+        },
+      },
+      MessageDisplay: {
+        summary: 'Before an assistant message delta is displayed',
+        description:
+          'Input to command is JSON with turn_id, message_id, index, final, and delta. Runs synchronously before each rendered line in the REPL, and once per completed assistant text in headless mode (index=0, final=true).\nReturn hookSpecificOutput.displayContent to replace the displayed delta only; the transcript and what Claude sees keep the original. Display-only — cannot block.\nExit code 2, failure, or timeout - show the original text',
+      },
     }
   },
   toolNames => toolNames.slice().sort().join(','),
@@ -299,6 +345,12 @@ export function groupHooksByEventAndMatcher(
     InstructionsLoaded: {},
     CwdChanged: {},
     FileChanged: {},
+    PostToolBatch: {},
+    UserPromptExpansion: {},
+    PreModelSwitch: {},
+    PostModelSwitch: {},
+    DirectoryAdded: {},
+    MessageDisplay: {},
   }
 
   const metadata = getHookEventMetadata(toolNames)
