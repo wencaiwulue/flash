@@ -80,9 +80,9 @@
   expect_key: model
   expect_value: model-flag-12
 
-# 2 source-form entries (status form:source)
+# 2 source-form entries (blocked-by-prereq:source-form-missing-ant-modules)
 - id: source:managed-vs-user
-  status: form:source
+  status: blocked-by-prereq:source-form-missing-ant-modules
   form: source
   layers:
     user:
@@ -93,7 +93,7 @@
   expect_value: model-managed-14
 
 - id: source:managed-vs-flag
-  status: form:source
+  status: blocked-by-prereq:source-form-missing-ant-modules
   form: source
   layers:
     flag:

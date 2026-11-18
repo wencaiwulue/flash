@@ -25,6 +25,8 @@ status: approved
 4. 安全策略不降级：managed fail-closed 断言按上游证据；证据不足的行为只记录观测不声称对齐。
 5. 命名遵守 flash 排除清单；测试证据不记录真实凭据。
 
+2026-11-18 修订：源码形态在本仓库不可运行（USER_TYPE=ant 需要 ant 专属私有模块 REPLTool.js 等，快照中不存在，探针证据 src/tools.ts:16-22）；managed 注入验收条目统一标记 blocked-by-prereq:source-form-missing-ant-modules，待私有模块可用后点亮。
+
 ## 2. 设计决策
 
 | 决策 | 机制 | 为什么 | 备选及不采用原因 | 代价 | 证据 |
@@ -125,7 +127,7 @@ runHookMatrix(entries, launcher): void     // active → 场景断言；blocked 
 
 1. fixtures 条目 ↔ 生成测试一一对应（引擎单测断言计数：33 hooks + sources + tolerance + env + migration 条目数）。
 2. 27 个既有 hook 事件真实运行断言；6 个新事件输出 `SKIP [blocked-by-batch:B1]`；B0 容错条目输出 `SKIP [blocked-by-batch:B0]`；CI 无静默 skip。
-3. 双形态本地全跑 exit 0；`--form=source` 在无 ant 门控环境输出 skip 行。
+3. 双形态本地全跑 exit 0；`--form=source` 在无 ant 门控环境输出 skip 行；managed 条目在两种形态下均以 skip 行呈现。
 4. 全套件单轮 ≤ 10 分钟（单事件场景 ≤ 15s）。
 5. 不改动产品源码（src/）；runner 仅加 `--form` 透传。
 6. CI（dist 形态）并入现有 `test:integration` 门禁。

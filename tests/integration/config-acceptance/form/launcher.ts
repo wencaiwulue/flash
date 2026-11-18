@@ -4,7 +4,6 @@ import { spawnPty, type PtySession } from '../../support/pty-driver.ts'
 import { MOCK_API_KEY } from '../../support/mock-anthropic.ts'
 import { stripAnsi } from '../../support/ansi.ts'
 import type { Sandbox } from '../../support/sandbox.ts'
-import { EXTERNAL_FEATURES } from '../../../../scripts/externalFeatureProfile.ts'
 
 export type Form = 'dist' | 'source'
 
@@ -27,8 +26,6 @@ async function sourceCliPath(): Promise<string> {
   return join(repoRoot, 'src', 'entrypoints', 'cli.tsx')
 }
 
-const featureArgs = EXTERNAL_FEATURES.flatMap(feature => [`--feature=${feature}`])
-
 function baseChildEnv(sandbox: Sandbox, mockUrl: string, form: Form): Record<string, string> {
   const env: Record<string, string> = {
     ...sandbox.env,
@@ -47,8 +44,7 @@ export function createFormLauncher(form: Form): Launcher {
     form,
     async runPrint(args, sandbox, mockUrl) {
       const entry = form === 'dist' ? await distMainPath() : await sourceCliPath()
-      const cmd = form === 'dist' ? [process.execPath, entry, ...args] : [process.execPath, ...featureArgs, entry, ...args]
-      const proc = Bun.spawn(cmd, {
+      const proc = Bun.spawn([process.execPath, entry, ...args], {
         cwd: sandbox.project,
         env: baseChildEnv(sandbox, mockUrl, form),
         stdout: 'pipe',
@@ -61,9 +57,8 @@ export function createFormLauncher(form: Form): Launcher {
     },
     async spawnRepl(opts) {
       const entry = form === 'dist' ? await distMainPath() : await sourceCliPath()
-      const cmd = form === 'dist' ? [process.execPath, entry] : [process.execPath, ...featureArgs, entry]
       return spawnPty({
-        cmd,
+        cmd: [process.execPath, entry],
         cwd: opts.sandbox.project,
         cols: opts.cols,
         rows: opts.rows,

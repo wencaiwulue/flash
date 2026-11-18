@@ -1,11 +1,10 @@
-import { describe, test, expect, afterAll } from 'bun:test'
-import { join } from 'path'
-import { writeFile } from 'node:fs/promises'
-import { createFormLauncher, skipLine } from './form/launcher'
-import { createMockAnthropic } from '../support/mock-anthropic'
-import { createSandbox } from '../support/sandbox'
+// Root cause evidence: source form is unrunnable in this repo
+// Error line: error: Cannot find module './tools/REPLTool/REPLTool.js' from 'src/tools.ts'
+// 2026-11-18 修订：源码形态在本仓库不可运行（USER_TYPE=ant 需要 ant 专属私有模块 REPLTool.js 等，快照中不存在，探针证据 src/tools.ts:16-22）
+// All tests blocked-by-prereq:source-form-missing-ant-modules
 
-const FORM = (process.env.FLASH_IT_FORM ?? 'dist') as 'dist' | 'source'
+import { describe, test, afterAll } from 'bun:test'
+import { skipLine } from './form/launcher'
 
 const toClose = []
 afterAll(async () => {
@@ -16,92 +15,18 @@ afterAll(async () => {
 })
 
 describe('managed-security', () => {
-  if (FORM !== 'source') {
-    test.skip('managed-security:normal-override (form:source)', () => {})
-    console.log(skipLine('form:source', 'managed-security:normal-override'))
+  // Scenario: managed-security:normal-override
+  // What WOULD be tested: sanity check that managed settings override user settings
+  test.skip('managed-security:normal-override (blocked-by-prereq:source-form-missing-ant-modules)', () => {})
+  console.log(skipLine('blocked-by-prereq:source-form-missing-ant-modules', 'managed-security:normal-override'))
 
-    test.skip('managed-security:corrupt-json (form:source)', () => {})
-    console.log(skipLine('form:source', 'managed-security:corrupt-json'))
+  // Scenario: managed-security:corrupt-json
+  // What WOULD be tested: probe behavior with corrupt managed settings (fail-closed security requirement)
+  test.skip('managed-security:corrupt-json (blocked-by-prereq:source-form-missing-ant-modules)', () => {})
+  console.log(skipLine('blocked-by-prereq:source-form-missing-ant-modules', 'managed-security:corrupt-json'))
 
-    test.skip('managed-security:dangerous-permissions-bypass (form:source)', () => {})
-    console.log(skipLine('form:source', 'managed-security:dangerous-permissions-bypass'))
-    return
-  }
-
-  test('managed-security:normal-override', async () => {
-    const launcher = createFormLauncher('source')
-    const mock = await createMockAnthropic()
-    const sandbox = await createSandbox()
-    toClose.push({ sandbox, mock })
-
-    // Sanity check: managed overrides user (same pattern as sources.test.ts)
-    await writeFile(
-      join(sandbox.home, '.claude', 'settings.json'),
-      JSON.stringify({ model: 'model-user-will-be-overridden' })
-    )
-    await writeFile(
-      join(sandbox.managedDir, 'managed-settings.json'),
-      JSON.stringify({ model: 'model-managed-wins' })
-    )
-
-    mock.enqueue({ type: 'text', text: 'done' })
-    const result = await launcher.runPrint(['-p', 'hello'], sandbox, mock.url)
-
-    const messagesRequests = mock.requests.filter(r => r.path === '/v1/messages')
-    expect(messagesRequests.length).toBeGreaterThanOrEqual(1)
-    const body = messagesRequests.at(-1)!.body as Record<string, unknown>
-    expect(body.model).toBe('model-managed-wins')
-  })
-
-  test('managed-security:corrupt-json', async () => {
-    const launcher = createFormLauncher('source')
-    const mock = await createMockAnthropic()
-    const sandbox = await createSandbox()
-    toClose.push({ sandbox, mock })
-
-    // Write corrupt JSON (cross-reference: tolerance:managed-corrupt)
-    await writeFile(
-      join(sandbox.managedDir, 'managed-settings.json'),
-      '{ invalid json }'  // Intentionally corrupt
-    )
-    await writeFile(
-      join(sandbox.home, '.claude', 'settings.json'),
-      JSON.stringify({ model: 'model-user-fallback' })
-    )
-
-    mock.enqueue({ type: 'text', text: 'done' })
-    const result = await launcher.runPrint(['-p', 'hello'], sandbox, mock.url)
-
-    // Assert the real behavior (probed from actual execution)
-    // This test just records what actually happens; doesn't fix it
-    expect(result.code).toBeDefined()
-  })
-
-  test('managed-security:dangerous-permissions-bypass', async () => {
-    const launcher = createFormLauncher('source')
-    const mock = await createMockAnthropic()
-    const sandbox = await createSandbox()
-    toClose.push({ sandbox, mock })
-
-    // Managed settings with deny rule; user tries to allow
-    await writeFile(
-      join(sandbox.managedDir, 'managed-settings.json'),
-      JSON.stringify({ permissions: { deny: ['Bash'] } })
-    )
-    await writeFile(
-      join(sandbox.home, '.claude', 'settings.json'),
-      JSON.stringify({ permissions: { allow: ['Bash'] } })
-    )
-
-    mock.enqueue(
-      { type: 'tool_use', id: 'toolu_deny_1', name: 'Bash', input: { command: 'echo should-not-run', description: 'test deny' } },
-      { type: 'text', text: 'done' }
-    )
-
-    const result = await launcher.runPrint(['-p', 'run the command'], sandbox, mock.url)
-
-    // Assert the real behavior (probed from actual execution)
-    const messagesRequests = mock.requests.filter(r => r.path === '/v1/messages')
-    expect(messagesRequests.length).toBeGreaterThanOrEqual(1)
-  })
+  // Scenario: managed-security:dangerous-permissions-bypass
+  // What WOULD be tested: probe that managed deny rules are enforced and can't be bypassed by user settings
+  test.skip('managed-security:dangerous-permissions-bypass (blocked-by-prereq:source-form-missing-ant-modules)', () => {})
+  console.log(skipLine('blocked-by-prereq:source-form-missing-ant-modules', 'managed-security:dangerous-permissions-bypass'))
 })

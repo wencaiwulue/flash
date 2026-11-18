@@ -93,9 +93,9 @@
   expect_value: model-user-valid-4
   # Current behavior: passthrough doesn't poison; model still applies
 
-# 6. Managed corrupt - form:source (skip, Task 10 covers)
+# 6. Managed corrupt - blocked-by-prereq:source-form-missing-ant-modules
 - id: tolerance:managed-corrupt
-  status: form:source
+  status: blocked-by-prereq:source-form-missing-ant-modules
   form: source
   layers:
     managed: {}  # Corrupt JSON will be created by test
