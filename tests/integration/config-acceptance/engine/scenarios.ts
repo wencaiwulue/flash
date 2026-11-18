@@ -45,6 +45,12 @@ export async function runHookScenario(scenario: ScenarioKey, ctx: ScenarioContex
       return permissionPromptScenario(ctx, { approve: true })
     case 'permission_denied':
       return permissionPromptScenario(ctx, { approve: false })
+    case 'repl_compact':
+      return replCompactScenario(ctx)
+    case 'repl_config_change':
+      return replConfigChangeScenario(ctx)
+    case 'repl_file_change':
+      return { hookFired: false, marker: null, toolExecuted: false, stdout: '' }
     default:
       throw new Error(`scenario "${scenario}" not implemented yet`)
   }
@@ -195,4 +201,110 @@ async function permissionPromptScenario(ctx: ScenarioContext, opts: { approve: b
   const toolExecuted = await Bun.file(join(sandbox.project, 'testfile.txt')).exists().catch(() => false)
 
   return { hookFired: eventsSeen.length > 0 || marker !== null || Object.keys(markersByEvent).length > 0, marker, toolExecuted, stdout: '', markersByEvent }
+}
+
+async function replCompactScenario(ctx: ScenarioContext): Promise<ScenarioResult> {
+  const { launcher, mock, sandbox } = ctx
+
+  // Setup mock responses - need two turns to have history to compact
+  mock.enqueue({ type: 'text', text: 'First response' })
+  mock.enqueue({ type: 'text', text: 'Compacted!' })
+
+  // Spawn REPL
+  const session = await launcher.spawnRepl({ sandbox, mockUrl: mock.url })
+
+  try {
+    // Wait for ready
+    await session.waitFor('/effort', 30_000)
+
+    // Send a message to create conversation history
+    session.write('Hello\r')
+    await new Promise(r => setTimeout(r, 1500))
+
+    // Now send /compact command
+    session.write('/compact\r')
+
+    // Wait for hooks to fire
+    await new Promise(r => setTimeout(r, 4000))
+  } finally {
+    await session.kill().catch(() => {})
+  }
+
+  // Collect markers
+  const eventsFile = join(sandbox.home, 'hook-events-seen.txt')
+  const eventsSeen = (await Bun.file(eventsFile).text().catch(() => '')).split('\n').filter(Boolean)
+
+  const markersByEvent: Record<string, Record<string, unknown> | null> = {}
+  for (const event of ['PreCompact', 'PostCompact']) {
+    const eventMarkerPath = join(sandbox.home, `hook-marker-${event}.json`)
+    const eventMarkerRaw = await Bun.file(eventMarkerPath).text().catch(() => null)
+    if (eventMarkerRaw) {
+      try {
+        markersByEvent[event] = JSON.parse(eventMarkerRaw)
+      } catch {
+        markersByEvent[event] = { raw: eventMarkerRaw }
+      }
+    }
+  }
+
+  return {
+    hookFired: eventsSeen.length > 0 || Object.keys(markersByEvent).length > 0,
+    marker: null,
+    toolExecuted: false,
+    stdout: '',
+    markersByEvent
+  }
+}
+
+async function replConfigChangeScenario(ctx: ScenarioContext): Promise<ScenarioResult> {
+  const { launcher, mock, sandbox } = ctx
+
+  // Setup mock responses
+  mock.enqueue({ type: 'text', text: 'Hello!' })
+
+  // Spawn REPL
+  const session = await launcher.spawnRepl({ sandbox, mockUrl: mock.url })
+
+  try {
+    // Wait for ready
+    await session.waitFor('/effort', 30_000)
+
+    // Send a message to get it going
+    session.write('Hi\r')
+    await new Promise(r => setTimeout(r, 1000))
+
+    // Now modify the settings file to trigger ConfigChange
+    const settingsPath = join(sandbox.home, '.claude', 'settings.json')
+    const currentSettings = JSON.parse(await Bun.file(settingsPath).text())
+    const newSettings = { ...currentSettings, someArbitraryKey: Date.now() }
+    await Bun.write(settingsPath, JSON.stringify(newSettings))
+
+    // Wait for hook to fire
+    await new Promise(r => setTimeout(r, 2500))
+  } finally {
+    await session.kill().catch(() => {})
+  }
+
+  // Collect markers
+  const eventsFile = join(sandbox.home, 'hook-events-seen.txt')
+  const eventsSeen = (await Bun.file(eventsFile).text().catch(() => '')).split('\n').filter(Boolean)
+
+  const markersByEvent: Record<string, Record<string, unknown> | null> = {}
+  const configMarkerPath = join(sandbox.home, 'hook-marker-ConfigChange.json')
+  const configMarkerRaw = await Bun.file(configMarkerPath).text().catch(() => null)
+  if (configMarkerRaw) {
+    try {
+      markersByEvent.ConfigChange = JSON.parse(configMarkerRaw)
+    } catch {
+      markersByEvent.ConfigChange = { raw: configMarkerRaw }
+    }
+  }
+
+  return {
+    hookFired: eventsSeen.length > 0 || Object.keys(markersByEvent).length > 0,
+    marker: null,
+    toolExecuted: false,
+    stdout: '',
+    markersByEvent
+  }
 }

@@ -114,3 +114,43 @@
   matcher: '*'
   exit_semantics: nonblock
   expected_effect: {}
+
+- event: PreCompact
+  status: active
+  trigger: repl_compact
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+
+- event: PostCompact
+  status: active
+  trigger: repl_compact
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+
+- event: ConfigChange
+  status: active
+  trigger: repl_config_change
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+
+- event: FileChanged
+  status: blocked-by-prereq:file-watch-observability
+  trigger: repl_file_change
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+
+- event: CwdChanged
+  status: blocked-by-prereq:cwd-change-observability
+  trigger: none
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
