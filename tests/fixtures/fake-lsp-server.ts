@@ -1,7 +1,7 @@
 let buffer = Buffer.alloc(0)
 
 // State for tracking diagnostics and content modified retries
-let publishDiagnosticsParams: unknown = null
+let pendingDiagnostics: unknown = null
 let contentModifiedRequestCount = 0
 let contentModifiedMaxFailures = 0
 let symbols: unknown[] = []
@@ -54,8 +54,8 @@ process.stdin.on('data', chunk => {
     } else if (request.method === 'initialized') {
       // No response needed for notification
       // If we have diagnostics to publish, send them now
-      if (publishDiagnosticsParams) {
-        setTimeout(() => sendNotification('textDocument/publishDiagnostics', publishDiagnosticsParams), 50)
+      if (pendingDiagnostics) {
+        setTimeout(() => sendNotification('textDocument/publishDiagnostics', pendingDiagnostics), 50)
       }
     } else if (request.method === 'shutdown') {
       respond(request.id, null)
@@ -64,12 +64,19 @@ process.stdin.on('data', chunk => {
     } else if (request.method === 'exit') {
       process.exit(0)
     } else if (request.method === 'x-crash') {
-      process.exit(1)
+      // Just exit with error code
+      setTimeout(() => process.exit(1), 10)
     } else if (request.method === 'x-echo') {
       respond(request.id, request.params)
     } else if (request.method === 'x-set-diagnostics') {
       // Set diagnostics to be published when initialized
-      publishDiagnosticsParams = (request.params as { diagnostics: unknown }).diagnostics
+      pendingDiagnostics = (request.params as { diagnostics: unknown }).diagnostics
+      respond(request.id, { success: true })
+    } else if (request.method === 'x-send-diagnostics-now') {
+      // Send diagnostics immediately (for testing)
+      if (pendingDiagnostics) {
+        sendNotification('textDocument/publishDiagnostics', pendingDiagnostics)
+      }
       respond(request.id, { success: true })
     } else if (request.method === 'x-set-content-modified') {
       // Configure how many times to return ContentModified before succeeding

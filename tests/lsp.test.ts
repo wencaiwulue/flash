@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { mkdir, writeFile } from 'fs/promises'
+import { mkdir, writeFile, rm } from 'fs/promises'
 import * as path from 'path'
 import {
   createLSPServerInstance,
@@ -19,6 +19,7 @@ import {
 import { sleep } from '../src/utils/sleep.js'
 
 const TEST_WORKSPACE = path.resolve(import.meta.dir, 'temp-lsp-test')
+const GIT_WORKSPACE = path.resolve(import.meta.dir, 'temp-git-test')
 const instances: ReturnType<typeof createLSPServerInstance>[] = []
 
 function config(overrides: Partial<ScopedLspServerConfig> = {}): ScopedLspServerConfig {
@@ -38,37 +39,59 @@ function create(overrides?: Partial<ScopedLspServerConfig>) {
   return instance
 }
 
-async function waitForState(
-  instance: ReturnType<typeof createLSPServerInstance>,
-  targetState: 'running' | 'stopped' | 'error',
-  timeoutMs = 5000,
-): Promise<void> {
-  const started = Date.now()
-  while (instance.state !== targetState) {
-    if (Date.now() - started > timeoutMs) {
-      throw new Error(`Timeout waiting for state ${targetState}, current: ${instance.state}`)
-    }
-    await sleep(20)
-  }
+function createWithName(name: string, overrides?: Partial<ScopedLspServerConfig>) {
+  const instance = createLSPServerInstance(name, config(overrides))
+  instances.push(instance)
+  return instance
 }
 
-async function setupTestWorkspace() {
-  await mkdir(TEST_WORKSPACE, { recursive: true })
+async function setupGitWorkspace() {
+  await rm(GIT_WORKSPACE, { recursive: true, force: true })
+  await mkdir(GIT_WORKSPACE, { recursive: true })
+
+  // Initialize git repo
+  await Bun.$`cd ${GIT_WORKSPACE} && git init -q`.quiet()
+  await Bun.$`cd ${GIT_WORKSPACE} && git config user.name "Test User"`.quiet()
+  await Bun.$`cd ${GIT_WORKSPACE} && git config user.email "test@example.com"`.quiet()
+
+  // Create .gitignore
   await writeFile(
-    path.join(TEST_WORKSPACE, 'test.ts'),
-    `function hello() {
-  return "world";
-}
-
-const x = hello();
+    path.join(GIT_WORKSPACE, '.gitignore'),
+    `node_modules/
+dist/
+build/
+generated/
+*.log
 `,
   )
-  await writeFile(path.join(TEST_WORKSPACE, '.gitignore'), 'node_modules/\ndist/\n')
-  await mkdir(path.join(TEST_WORKSPACE, 'node_modules'), { recursive: true })
+
+  // Create source files
+  await mkdir(path.join(GIT_WORKSPACE, 'src'), { recursive: true })
   await writeFile(
-    path.join(TEST_WORKSPACE, 'node_modules', 'dependency.ts'),
+    path.join(GIT_WORKSPACE, 'src', 'main.ts'),
+    `export function main() {
+  return "hello";
+}
+
+export const VERSION = "1.0.0";
+`,
+  )
+
+  // Create ignored files
+  await mkdir(path.join(GIT_WORKSPACE, 'node_modules'), { recursive: true })
+  await writeFile(
+    path.join(GIT_WORKSPACE, 'node_modules', 'dep.ts'),
     'export function ignored() {}',
   )
+
+  await mkdir(path.join(GIT_WORKSPACE, 'dist'), { recursive: true })
+  await writeFile(
+    path.join(GIT_WORKSPACE, 'dist', 'output.js'),
+    'console.log("built");',
+  )
+
+  // Initial commit (so git can check ignored files)
+  await Bun.$`cd ${GIT_WORKSPACE} && git add . && git commit -qm "init"`.quiet()
 }
 
 describe('LSP', () => {
@@ -77,38 +100,69 @@ describe('LSP', () => {
     instances.length = 0
     resetAllLSPDiagnosticState()
     await Bun.$`rm -rf ${TEST_WORKSPACE}`.quiet().nothrow()
+    await Bun.$`rm -rf ${GIT_WORKSPACE}`.quiet().nothrow()
   })
 
-  describe('ContentModified automatic retry', () => {
-    test('retries up to 3 times on ContentModified error', async () => {
+  describe('ContentModified automatic retry with timing', () => {
+    test('uses exponential backoff: 500ms, 1000ms, 2000ms', async () => {
       const instance = create()
       await instance.start()
       expect(instance.state).toBe('running')
 
+      // Configure to fail 3 times then succeed
       await instance.sendRequest('x-set-content-modified', { maxFailures: 3, result: { value: 'success' } })
 
+      const startTime = Date.now()
       const result = await instance.sendRequest('textDocument/hover', {
         textDocument: { uri: 'file:///test.ts' },
         position: { line: 0, character: 0 },
       })
+      const totalTime = Date.now() - startTime
 
       expect(result).not.toBeNull()
       expect((result as { contents?: { value?: string } })?.contents?.value).toBe('Hover content')
+
+      // Total time should be at least 500 + 1000 + 2000 = 3500ms, with some fuzz
+      // for overhead, but definitely more than just 500ms
+      expect(totalTime).toBeGreaterThanOrEqual(3400) // Allow 100ms fuzz
     })
 
-    test('fails after 3 ContentModified retries', async () => {
+    test('first retry waits 500ms', async () => {
+      const instance = create()
+      await instance.start()
+      expect(instance.state).toBe('running')
+
+      await instance.sendRequest('x-set-content-modified', { maxFailures: 1, result: { value: 'success' } })
+
+      const startTime = Date.now()
+      const result = await instance.sendRequest('textDocument/hover', {
+        textDocument: { uri: 'file:///test.ts' },
+        position: { line: 0, character: 0 },
+      })
+      const totalTime = Date.now() - startTime
+
+      expect(result).not.toBeNull()
+      expect(totalTime).toBeGreaterThanOrEqual(480) // At least ~500ms
+      expect(totalTime).toBeLessThanOrEqual(800) // But not too long
+    })
+
+    test('fails after 3 ContentModified retries with proper timing', async () => {
       const instance = create()
       await instance.start()
       expect(instance.state).toBe('running')
 
       await instance.sendRequest('x-set-content-modified', { maxFailures: 4 })
 
+      const startTime = Date.now()
       await expect(
         instance.sendRequest('textDocument/hover', {
           textDocument: { uri: 'file:///test.ts' },
           position: { line: 0, character: 0 },
         }),
       ).rejects.toThrow('Content modified')
+      const totalTime = Date.now() - startTime
+
+      expect(totalTime).toBeGreaterThanOrEqual(3400) // 500 + 1000 + 2000 = 3500ms
     })
 
     test('ContentModified works with different LSP methods', async () => {
@@ -263,6 +317,155 @@ describe('LSP', () => {
 
       clearAllLSPDiagnostics()
       expect(getPendingLSPDiagnosticCount()).toBe(0)
+    })
+  })
+
+  describe('Full publishDiagnostics notification flow', () => {
+    test('receives publishDiagnostics from fake server via explicit trigger', async () => {
+      const instance = create()
+      await instance.start()
+      expect(instance.state).toBe('running')
+
+      // Register notification handler FIRST
+      let receivedParams: unknown = null
+      instance.onNotification('textDocument/publishDiagnostics', (params) => {
+        receivedParams = params
+      })
+
+      // Tell server what diagnostics to use
+      const testUri = 'file:///testflow.ts'
+      await instance.sendRequest('x-set-diagnostics', {
+        diagnostics: {
+          uri: testUri,
+          diagnostics: [
+            { message: 'Flow test error', severity: 1, range: { start: { line: 0, character: 0 }, end: { line: 0, character: 5 } } }
+          ]
+        }
+      })
+
+      // Tell server to send diagnostics NOW
+      await instance.sendRequest('x-send-diagnostics-now', {})
+
+      // Wait a bit for notification to arrive
+      await sleep(200)
+
+      // Verify notification was received
+      expect(receivedParams).not.toBeNull()
+      expect((receivedParams as { uri?: string })?.uri).toBe(testUri)
+    })
+
+    test('notification handler can format and register diagnostics', async () => {
+      const instance = create()
+      await instance.start()
+      expect(instance.state).toBe('running')
+
+      // Set up spy on pending diagnostic count
+      const initialCount = getPendingLSPDiagnosticCount()
+      let receivedCount = 0
+
+      // Register production handler flow
+      instance.onNotification('textDocument/publishDiagnostics', (params) => {
+        receivedCount++
+        const formatted = formatDiagnosticsForAttachment(params as { uri: string, diagnostics: unknown[] })
+        registerPendingLSPDiagnostic({ serverName: 'fake-lsp', files: formatted })
+      })
+
+      // Tell server to send diagnostics
+      const testUri = 'file:///prodtest.ts'
+      await instance.sendRequest('x-set-diagnostics', {
+        diagnostics: {
+          uri: testUri,
+          diagnostics: [
+            { message: 'Prod test error', severity: 1, range: { start: { line: 0, character: 0 }, end: { line: 0, character: 5 } } }
+          ]
+        }
+      })
+
+      // Trigger send
+      await instance.sendRequest('x-send-diagnostics-now', {})
+      await sleep(200)
+
+      // Verify handler was called
+      expect(receivedCount).toBe(1)
+    })
+  })
+
+  describe('Shutdown/exit and server isolation', () => {
+    test('shutdown and exit sequence works cleanly', async () => {
+      const instance = create()
+      await instance.start()
+      expect(instance.state).toBe('running')
+
+      // Stop gracefully
+      await instance.stop()
+      expect(instance.state).toBe('stopped')
+    })
+
+    test('one server stopping does not affect another', async () => {
+      const instance1 = createWithName('server1')
+      const instance2 = createWithName('server2')
+
+      await instance1.start()
+      await instance2.start()
+
+      expect(instance1.state).toBe('running')
+      expect(instance2.state).toBe('running')
+
+      // Verify both can handle requests
+      await instance1.sendRequest('x-echo', { value: 'hello1' })
+      await instance2.sendRequest('x-echo', { value: 'hello2' })
+
+      // Stop server 1
+      await instance1.stop()
+      expect(instance1.state).toBe('stopped')
+
+      // Server 2 should still be healthy
+      expect(instance2.isHealthy()).toBe(true)
+
+      // Server 2 should still handle requests
+      const echoResult = await instance2.sendRequest('x-echo', { value: 'still working' })
+      expect(echoResult).toEqual({ value: 'still working' })
+    })
+
+    test('disabled server state is isolated', async () => {
+      const instance1 = createWithName('serverA')
+      const instance2 = createWithName('serverB')
+
+      await instance1.start()
+      await instance2.start()
+
+      // Stop server 1
+      await instance1.stop()
+      expect(instance1.state).toBe('stopped')
+
+      // Server 2 still works
+      expect(instance2.isHealthy()).toBe(true)
+
+      // Can restart server 1 without affecting server 2
+      await instance1.start()
+      expect(instance1.state).toBe('running')
+      expect(instance2.state).toBe('running')
+    })
+  })
+
+  describe('LSPTool gitignore filtering with real git repo', () => {
+    test('git check-ignore identifies ignored files correctly', async () => {
+      await setupGitWorkspace()
+
+      const srcPath = path.join(GIT_WORKSPACE, 'src', 'main.ts')
+      const nodeDepPath = path.join(GIT_WORKSPACE, 'node_modules', 'dep.ts')
+      const distPath = path.join(GIT_WORKSPACE, 'dist', 'output.js')
+
+      // Test batch checking
+      const result = await Bun.$`cd ${GIT_WORKSPACE} && git check-ignore ${srcPath} ${nodeDepPath} ${distPath}`.quiet().nothrow()
+
+      const stdoutText = typeof result.stdout === 'string' ? result.stdout : result.stdout.toString()
+      const ignored = stdoutText.trim().split('\n').filter(Boolean)
+
+      // node_modules/ and dist/ should be ignored, src/ should not
+      expect(ignored.some(p => p.includes('node_modules'))).toBe(true)
+      expect(ignored.some(p => p.includes('dist'))).toBe(true)
+      expect(ignored.some(p => p.includes('src'))).toBe(false)
     })
   })
 

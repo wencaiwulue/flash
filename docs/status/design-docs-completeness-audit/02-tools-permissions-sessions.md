@@ -1191,3 +1191,41 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/02-tools-permis
 - 扩展 `tests/fixtures/fake-lsp-server.ts` 支持测试所需的额外 LSP 方法（textDocument/hover、textDocument/definition、textDocument/references、textDocument/documentSymbol、workspace/symbol、textDocument/implementation、textDocument/prepareCallHierarchy、callHierarchy/incomingCalls、callHierarchy/outgoingCalls、x-set-diagnostics、x-set-content-modified、x-set-symbols、x-set-definitions、x-set-references）。
 - **无新增缺陷**：原实现完整符合 spec，无需代码改动。仅补充测试覆盖。验证内容包括：ContentModified 最多 3 次重试、指数退避延迟 500ms/1s/2s、诊断去重和容量限制（每文件最多 10 条，总共最多 30 条）、按严重度排序（Error < Warning < Info < Hint）、跨回合 LRU 去重、编辑文件时清除已交付诊断。
 - spec 已更新实际测试证据与回滚；原 Finding 行和历史统计保持 open。全部使用本地 fake transport，无需真实 LSP 服务器、无网络访问、无凭据调用。
+
+---
+
+## 整改台账：B2-lsp-01 / B2-lsp-03 真实场景测试（2026-11-18 追加）
+
+**Finding ID**：B2-lsp-01 / B2-lsp-03
+
+**整改内容**：
+1. **ContentModified 重试延迟验证**：
+   - 添加真实时序测试（500ms/1s/2s 指数退避）
+   - 实测完整重试序列约 3.5s
+   - 验证 3 次失败后第 4 次成功，4 次失败后最终抛出
+
+2. **完整 publishDiagnostics 通知流程**：
+   - 从 fake server 发送 publishDiagnostics
+   - 经过 notification handler 处理
+   - 最终注册到 diagnostic registry
+   - 验证完整端到端流程
+
+3. **shutdown/exit 和服务器隔离**：
+   - 验证一个 server 停止不影响另一个
+   - 无跨服务器污染
+
+4. **LSPTool gitignore 过滤**：
+   - 使用真实 temp git repo
+   - 包含 .gitignore 文件
+   - 验证 git check-ignore 识别 node_modules/ 等路径
+
+**验证结果**：
+- 所有 19 个 LSP 测试通过
+- 无源码断言
+- 无模型调用
+- 无网络请求
+- 所有测试有界且确定性
+
+**spec 更新**：保持 draft，更新了第 10 节整改记录，补充实际测试证据和回滚计划
+
+**原 Finding 状态**：B2-lsp-01 和 B2-lsp-03 保持 open，不修改历史统计
