@@ -235,7 +235,7 @@ coverage：[upstream-config-b1-hooks-env.yaml](../../architecture/coverage/upstr
 - PostModelSwitch additionalContext 下一请求投递未接（当前 drain 丢弃）。
 - MessageDisplay REPL streaming delta 已接（`1613419`）：`text_delta` await MessageDisplay，displayContent 仅替换渲染文本，稳定 turn/message UUID + per-message delta index。
 - ModelPicker 的 picker 路径（source=picker）未接 Pre/PostModelSwitch。
-- prompt_id 在 createBaseHookInput 未生成（实测 payload 含）。
+- prompt_id 已接入 `createBaseHookInput`：复用既有 per-turn `getPromptId()`（`bootstrap/state.ts:1755`，turn 边界 `processTextPrompt`/`processSlashCommand` 用 `randomUUID()` 设置），非 prompt hook 携带最近 turn id，对齐上游实测 payload。
 - 27 hooks 审计、真实矩阵 --batch 1 未在本轮跑。字段提取行为测试（`tests/b1HookEvents.test.ts` 10 pass，`1a1e865`）与触发点集成测试（`tests/b1HookTriggers.test.ts` 8 pass，真实 command hook 验证触发→解析→结果链，`1b6393d`）已补。
 - DirectoryAdded matcher 已接 source（`1a1e865`）；UserPromptExpansion matcher 接 command_name、DirectoryAdded 接 source（getMatchingHooks switch，`1b6393d`）；Pre/PostModelSwitch matcher 的 canonical to_model 未实现，按上游 fail-safe 运行全部。
 
