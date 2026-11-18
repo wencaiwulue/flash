@@ -45,6 +45,12 @@ groups:
     summary: 用量/限额 API 调用、Utilization/RateLimit/ExtraUsage 类型定义
     files:
       - src/services/api/usage.ts
+  - id: cost-tracking-tests
+    kind: test
+    section: 7
+    summary: 成本计算、持久化、billing 和限额状态测试
+    files:
+      - tests/costTracking.test.ts
   - id: cmd-cost
     kind: source
     section: 4

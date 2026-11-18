@@ -697,16 +697,15 @@ fallback 到 getDefaultMainLoopModelSetting()
 
 | 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
 |---|---|---|---|
-| 成本状态存储在 bootstrap/state | src/bootstrap/state.ts:51-67, 561-879 | 无直接测试 | 未找到直接测试覆盖 |
-| 模型成本分层配置 | src/utils/modelCost.ts:35-126 | 无直接测试 | 未找到直接测试覆盖 |
-| 按模型短名汇总显示 | src/cost-tracker.ts:188-210 | 无直接测试 | 未找到直接测试覆盖 |
-| 成本显示精度动态调整 | src/cost-tracker.ts:177-179 | 无直接测试 | 未找到直接测试覆盖 |
-| 成本持久化到项目 config | src/cost-tracker.ts:87-175 | 无直接测试 | 未找到直接测试覆盖 |
-| 权限控制检查 | src/utils/billing.ts:10-78 | 无直接测试 | 未找到直接测试覆盖 |
-| 限额状态从响应头提取 | src/services/claudeAiLimits.ts:472-515 | 无直接测试 | 未找到直接测试覆盖 |
-| 超额使用双路径流程 | src/commands/extra-usage/extra-usage-core.ts:18-118 | 无直接测试 | 未找到直接测试覆盖 |
-| 未知模型成本降级 | src/utils/modelCost.ts:156-163 | 无直接测试 | 未找到直接测试覆盖 |
-| Advisor 用量递归累加 | src/cost-tracker.ts:303-321 | 无直接测试 | 未找到直接测试覆盖 |
+| 成本状态存储在 bootstrap/state | `src/bootstrap/state.ts` + `src/cost-tracker.ts` | `tests/costTracking.test.ts` 验证 add/save/reset/restore，只有匹配 sessionId 恢复成本 | 不做多进程并发恢复 |
+| 模型成本分层配置 | `src/utils/modelCost.ts` | input/output/cacheRead/cacheWrite/webSearch 精确合计 48.95；Opus fast tier 30/150 与普通 5/25；unknown model 标记降级 | 当前表格是快照历史配置，不宣称等于最新公开定价 |
+| 按短名汇总显示 | `src/cost-tracker.ts` | `formatTotalCost` 包含成本与 usage 信息 | 模型名变体/大小写组合未全覆盖 |
+| 成本显示精度动态调整 | `src/cost-tracker.ts` | 计算和恢复使用 toBeCloseTo，避免浮点假精度 | 展示格式的全部小数边界未覆盖 |
+| 成本持久化到项目 config | `src/cost-tracker.ts` | lastCost/lastModelUsage 写入并恢复，错误 sessionId 不恢复 | 不写用户 config，使用 NODE_ENV=test 内存分支 |
+| 权限控制检查 | `src/utils/billing.ts` | DISABLE_COST_WARNINGS、无认证、admin/owner、普通 member、consumer pro、mock override | 无真实组织/角色 live |
+| 限额状态从响应头提取 | `src/services/claudeAiLimits.ts` | 5h early warning、429 rejected、停止处理后 allowed、overage disabled reason 缓存 | 时间相对 fallback、后台 quota query 和真实 API 未覆盖 |
+| 未知模型成本降级 | `src/utils/modelCost.ts` | unknown model 返回正成本并设置 hasUnknownModelCost | 不推断未知模型的真实价格 |
+| Advisor 用量递归累加 | `src/cost-tracker.ts` | 未覆盖 | 保留后续专项，不把本轮称为完整 Advisor 验收 |
 
 ### 7.1 核心模块
 
@@ -729,17 +728,23 @@ fallback 到 getDefaultMainLoopModelSetting()
 | src/commands/extra-usage/index.ts | extraUsage、extraUsageNonInteractive | /extra-usage 命令元数据、分交互/非交互版本 |
 | src/bootstrap/state.ts | STATE.totalCostUSD、STATE.modelUsage、STATE.hasUnknownModelCost、addToTotalCostState、getTotalCostUSD、getModelUsage、resetCostState、setCostStateForRestore | 成本状态存储、读写接口 |
 
-### 7.2 未覆盖行为（基于代码阅读）
+### 7.2 当前未覆盖行为
 
-- 成本累加的并发安全（多个 API 请求同时完成）
-- 会话恢复的完整端到端测试
-- 限额 early warning 的时间相对 fallback 逻辑
-- 不同定价 tier 的计算准确性测试
-- 按短名聚合的边界情况（如模型名大小写、变体识别）
-- 权限检查的各种角色组合测试
-- /extra-usage 流程的各分支测试
-- Advisor 用量递归处理的测试
-- prompt cache 成本计算测试
+- 成本累加的并发安全和多进程恢复
+- 限额 early warning 的时间相对 fallback 与后台 quota query
+- 模型名大小写/变体聚合、显示精度和所有角色组合
+- /extra-usage 流程和 Advisor 用量递归处理
+- 真实组织、价格、API、桌面或远程 live 验证
+
+### 7.3 三层证据与回滚
+
+| 层级 | 只读证据 | 边界 |
+|---|---|---|
+| 官方文档 | [Pricing](https://platform.claude.com/docs/en/about-claude/pricing)区分 input/output/cache 价格 | 文档更新可能改变价格；本文测试只证明当前快照表格计算，不宣称最新定价一致 |
+| 本机上游二进制 | `strings $(command -v claude)` 命中 `tengu_unknown_model_cost`、`cachedExtraUsageDisabledReason` 等标记 | 只证明相关实现存在，不证明当前价格或真实组织限额 |
+| 本仓库 | `tests/costTracking.test.ts` 7 个测试、26 个断言，真实计算、内存 config、角色和 headers 状态迁移 | 全部离线，不是多进程、组织、API 或 UI live |
+
+本轮无生产代码变更。回滚只需删除测试与 coverage entry；spec 保持 draft，B4-cost-tracking-01 原 Finding 保持 open。
 
 ## 8. 文件覆盖与相关子系统
 

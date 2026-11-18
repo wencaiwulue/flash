@@ -1500,3 +1500,20 @@
 全部 auth/provider 边界离线，无登录、模型、全源命令聚合或真实远程执行。无生产代码变更，spec 第 7.2/7.3 节明确未覆盖范围。
 
 **原 Finding 状态**：B4-commands-framework-01 保持 open，spec 保持 draft。
+
+---
+
+## 整改台账：B4-cost-tracking-01（2026-11-19 追加）
+
+**Finding ID**：B4-cost-tracking-01；主责 spec：cost-tracking。
+
+新增 `tests/costTracking.test.ts` 并唯一登记 coverage，7 个测试、26 个断言：
+
+- input/output/cacheRead/cacheWrite/webSearch 精确成本 48.95，Opus fast tier 与 unknown-model 降级。
+- add/save/reset/restore 成本，只有匹配 sessionId 恢复。
+- console/claude.ai billing 的认证、角色、override。
+- 5h early warning、429 rejected、停止处理后 allowed 和 overage disabled reason 缓存。
+
+全部使用内存 config、dummy auth 和 headers，无真实价格/组织/API/远程验证。时间相对 fallback、并发、Advisor、/extra-usage 和真实 UI 未覆盖。无生产代码变更。
+
+**原 Finding 状态**：B4-cost-tracking-01 保持 open，spec 保持 draft。
