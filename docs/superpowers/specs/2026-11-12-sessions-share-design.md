@@ -1240,9 +1240,8 @@ Show success message
   - `src/commands/share/resolveShareOutputPath.ts` - 路径验证
 
 - **/export 命令**：
-  - `src/commands/export/index.tsx` - 主命令
-  - `src/commands/export/exportRenderer.tsx` - 渲染管线
-  - `src/commands/export/streamRenderedMessages.ts` - 分块渲染
+  - `src/commands/export/export.tsx` - 主命令、首条提示/文件名、双重路径验证和独占写入
+  - `src/utils/exportRenderer.tsx` - 分块渲染管线与 ANSI/plain text 输出
 
 - **ccshare 系统**：
   - `src/sessions/ccshare.ts` - 主入口
@@ -1305,7 +1304,7 @@ export function escapeHtml(value: string): string {
 
 #### 分块渲染
 
-代码位置：`src/commands/export/streamRenderedMessages.ts`
+代码位置：`src/utils/exportRenderer.tsx`
 ```typescript
 const chunkSize = 40;
 ```
@@ -1389,12 +1388,25 @@ catch (error) {
 
 ### 7.3 测试覆盖
 
-现有测试覆盖：
-- /share 命令路径验证
-- /share 命令 HTML 生成
-- ccshare ID/URL 解析
-- ccshare 下载流程
-- ccshare 边界限制
+| 场景 | 真实测试与不变量 | 证据边界 |
+|---|---|---|
+| `/export` 首条提示与文件名 | `tests/export.test.ts` 验证第一行、50 字符截断、特殊字符清理 | 不验证所有 Unicode/平台保留文件名 |
+| 分块流式渲染 | 45 条消息、chunkSize=5，产生 9 个非空 chunk，progress 为 5…45，首尾内容完整且 ANSI 可剥离 | 只证明分块与输出契约，不断言内存峰值或 >1GB 性能 |
+| 合法写入 | 新文件名在 cwd 内生成 `.txt`，onDone 路径和文件内容一致 | 不执行剪贴板或交互 dialog live |
+| 路径逃逸 | `../` 与绝对路径失败且不创建文件；symlink parent 指向外部时 realpath 拒绝；missing parent 不自动创建 | 未覆盖 Windows junction 等所有平台链接形式 |
+| 永不覆盖 | 现有文件返回失败且原内容不变 | `writeFileSync_DEPRECATED` 的 flush 分支现在真正尊重 `flag:'wx'` |
+
+既有 `/share` HTML/路径测试和 `w6Ccshare` 的解析/下载/边界测试保持独立，不由 `/export` 测试替代。
+
+### 7.4 三层证据与回滚
+
+| 层级 | 只读证据 | 边界 |
+|---|---|---|
+| 官方文档 | [Commands](https://code.claude.com/docs/en/commands)：`/export [filename]` 导出当前对话为纯文本，带文件名直接写入 | 未公开 cwd containment、symlink、独占写入或 chunk 内存策略 |
+| 本机上游二进制 | `strings $(command -v claude)` 命中 `Conversation exported to:` 与导出/写入相关标记 | 只证明命令存在，不证明上游具有相同缺陷或修复 |
+| 本仓库 | `tests/export.test.ts` 的真实 RED→GREEN：traversal、symlink、overwrite 三个失败场景修复后通过，另有合法路径和 9-chunk 渲染 | 全部临时目录，无网络、模型、剪贴板或远程分享 |
+
+生产修复：`resolveExportOutputPath` 增加词法与 realpath containment；`writeFileSync_DEPRECATED` 的 flush 分支将 `options.flag` 传给 `openSync`，不再在 `flush:true` 时丢弃 `wx`。回滚生产变更会重新引入路径逃逸/覆盖风险，必须先保留 RED 并评估调用方，不能描述为无风险。spec 保持 draft，B3-sessions-share-01 原 Finding 保持 open。
 
 ## 8. 文件覆盖与相关子系统
 

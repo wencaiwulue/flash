@@ -1506,6 +1506,18 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 
 ---
 
+## 整改台账：B3-sessions-share-01（2026-11-19 追加）
+
+**Finding ID**：B3-sessions-share-01；主责 spec：sessions-share。
+
+新增 `tests/export.test.ts` 并唯一登记 export-test coverage，7 个测试、21 个断言：首条提示/文件名、45 条消息按 5 条一块的 9-chunk/progress/plain text、合法新文件、traversal/absolute/symlink/missing-parent/overwrite 安全。
+
+**真实 RED→生产修复**：旧 `/export` 直接 join 路径并写入，测试复现 traversal、symlink 逃逸和覆盖已有文件。`resolveExportOutputPath` 现在执行词法 + realpath containment；`writeFileSync_DEPRECATED` 的 flush 分支现在把 `options.flag` 传给 `openSync`，`flag:'wx'` 不再被忽略。合法新文件正常导出，已有文件内容不变。回滚生产修复会重新引入风险，spec 第 7.4 节明确保留 RED。
+
+**证据边界**：全部临时目录，无网络、模型、剪贴板、远程分享或内存峰值断言。spec 保持 draft，原 Finding 保持 open。
+
+---
+
 ## 整改台账：B3-session-search-recovery-01（2026-11-19 追加）
 
 **Finding ID**：B3-session-search-recovery-01；主责 spec：session-search-recovery。
