@@ -287,6 +287,11 @@ export type CheckCompatibilityInput = {
   matrix: CompatibilityMatrix
   schemaPaths: ReadonlySet<string>
   hookEvents: readonly string[]
+  /**
+   * 期望的基线版本。默认 UPSTREAM_BASELINE_VERSION（B0 硬契约：拒绝任何非 2.1.311 基线）。
+   * checkCompatibilityV2 传入 inventory 实际基线以支持多基线端到端检查。
+   */
+  expectedBaseline?: string
 }
 
 const DIMENSION_NAMES: readonly CompatibilityDimensionName[] = [
@@ -543,6 +548,7 @@ export function checkCompatibility({
   matrix,
   schemaPaths,
   hookEvents,
+  expectedBaseline = UPSTREAM_BASELINE_VERSION,
 }: CheckCompatibilityInput): Diagnostic[] {
   const diagnostics: Diagnostic[] = []
   if (!isRecord(matrix)) {
@@ -553,12 +559,12 @@ export function checkCompatibility({
   }
   if (
     matrix.schemaVersion !== 1 ||
-    inventory.baseline.version !== UPSTREAM_BASELINE_VERSION ||
+    inventory.baseline.version !== expectedBaseline ||
     matrix.baseline !== inventory.baseline.version
   ) {
     diagnostics.push({
       code: 'invalid-matrix-envelope',
-      message: `matrix envelope requires schemaVersion 1 and baseline ${UPSTREAM_BASELINE_VERSION} matching the inventory; received schemaVersion ${String(matrix.schemaVersion)} and baseline ${String(matrix.baseline)} (inventory ${String(inventory.baseline.version)})`,
+      message: `matrix envelope requires schemaVersion 1 and baseline ${expectedBaseline} matching the inventory; received schemaVersion ${String(matrix.schemaVersion)} and baseline ${String(matrix.baseline)} (inventory ${String(inventory.baseline.version)})`,
     })
     // If envelope is invalid, only return envelope diagnostics
     return diagnostics
@@ -829,12 +835,14 @@ export async function checkCompatibilityV2(
   const normalizedInventory = normalizeInventory(input.inventory)
   const normalizedMatrix = normalizeMatrix(input.matrix)
 
-  // 首先运行 B0 checkCompatibility 以确保基础通过
+  // 首先运行 B0 checkCompatibility 以确保基础通过。
+  // 传入 inventory 实际基线，使多基线端到端工作（B0 直接调用仍默认 2.1.311 硬契约）。
   const diagnostics = checkCompatibility({
     inventory: normalizedInventory,
     matrix: normalizedMatrix,
     schemaPaths: input.schemaPaths,
     hookEvents: input.hookEvents,
+    expectedBaseline: normalizedInventory.baseline.version,
   })
 
   const matrixV2 = input.matrix as CompatibilityMatrixV2
@@ -1195,6 +1203,7 @@ export async function runCli(
       matrix: normalizeMatrix(matrix),
       schemaPaths,
       hookEvents: HOOK_EVENTS,
+      expectedBaseline: inventory.baseline.version,
     })
     printReport(inventory, matrix, diagnostics, mode)
   } else {

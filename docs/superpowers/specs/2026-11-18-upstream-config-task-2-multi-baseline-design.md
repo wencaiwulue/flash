@@ -37,7 +37,7 @@ status: approved
 
 ### 1.3 约束
 
-1. 保持现有公共 `checkCompatibility()` 接口不变，供 B0 调用者继续使用。
+1. 保持现有公共 `checkCompatibility()` 向后兼容，供 B0 调用者继续使用。允许多基线扩展：新增**可选** `expectedBaseline` 参数（默认 `UPSTREAM_BASELINE_VERSION`），B0 直接调用不传参时仍拒绝任何非 2.1.311 基线（硬契约，见测试 `rejects an incompatible or missing matrix envelope`）；`checkCompatibilityV2` 与 `runCli` 传入 inventory 实际基线，使任意精确新基线可端到端通过 drift/batch/final 检查。
 2. B0 的 2.1.311 基线必须保持可通过漂移模式（drift）检查。
 3. spec 必须登记到 `docs/architecture/coverage/manifest.yaml`，并附带独立 coverage YAML，不与 B0 重复拥有文件。
 4. 必须有 `ignored-by-design` 状态枚举和验证，且必须有证据。
@@ -296,6 +296,17 @@ bun scripts/checkUpstreamConfigCompatibility.ts --baseline 2.1.311
 bun scripts/checkUpstreamConfigCompatibility.ts --initialize-matrix
 # 若 compatibility.yaml 已存在，报错 "refusing to overwrite existing compatibility matrix"
 ```
+
+### 4.7 多基线 envelope 参数化
+
+B0 的 `checkCompatibility` 在 envelope 校验中硬编码 `baseline === UPSTREAM_BASELINE_VERSION`，导致任何非 2.1.311 基线即使 matrix/inventory 一致也被拒绝，多基线无法端到端工作。修复方式：
+
+- `CheckCompatibilityInput` 新增可选 `expectedBaseline`（默认 `UPSTREAM_BASELINE_VERSION`）。
+- envelope 校验改为 `inventory.baseline.version === expectedBaseline && matrix.baseline === inventory.baseline.version`。
+- `checkCompatibilityV2` 与 `runCli` 的 drift 分支传入 `inventory.baseline.version`，使 `--baseline <新版本>` 端到端可用。
+- B0 直接调用不传参，硬契约不变（测试 `rejects an incompatible or missing matrix envelope` 与新增 `B0 checkCompatibility keeps the 2.1.311 hard contract by default` 双向锁定）。
+
+证据：合成 2.1.320 端到端测试 `V2 drift accepts a non-2.1.311 baseline end-to-end`、`V2 final applies terminal-state gate on a non-2.1.311 baseline` 通过；真实 2.1.311 矩阵 drift 仍 0 诊断、final 仍 727 诊断，行为不变。
 
 ## 5. 失败语义与工程取舍
 
