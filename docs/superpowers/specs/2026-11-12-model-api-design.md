@@ -1530,6 +1530,7 @@ withRetry() 重试装饰器核心流程
 |---------|---------|------------|
 | `tests/antModelOverrides.test.ts` | 公开模型目录覆盖 | `modelCatalog` 配置正确应用；`getDefaultMainLoopModelSetting()` 返回配置的默认值；`parseUserSpecifiedModel()` 正确解析；`renderModelName()` 不泄露私有代号；effort/context/max_tokens 覆盖正确应用 |
 | `tests/sdkControls.test.ts` | SDK 模型控制 | `applySdkFlagSettings()` 正确更新模型；`getSettings()` 返回应用的模型；model metadata change 通知正确触发 |
+| `tests/modelApi.test.ts` | 模型解析、提供商选择、Bedrock 工具函数、模型验证非 API 路径 | `parseUserSpecifiedModel()` 别名/[1m]后缀/旧版重定向；`resolveSkillModelOverride()` [1m]继承；`getCanonicalName()` 跨提供商统一名称；`getAPIProvider()` 环境变量切换；`isFoundationModel()` Bedrock格式检测；`extractModelIdFromArn()` ARN解析；`getBedrockRegionPrefix()`/`applyBedrockRegionPrefix()` 区域前缀；`findFirstMatch()` 配置文件匹配；`validateModel()` 空/白名单/别名/custom model 检查；`ALL_MODEL_CONFIGS` 四提供商映射完整性 |
 
 ## 8. 文件覆盖与相关子系统
 
