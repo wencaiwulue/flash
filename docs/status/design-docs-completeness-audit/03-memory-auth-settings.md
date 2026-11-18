@@ -1506,82 +1506,21 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 
 ---
 
-## 修复台账：B3-settings-01
+## 修复台账：B3-settings-01（2026-11-19 最终返工）
 
-### 修复概述
+**Finding ID**：B3-settings-01；B3-settings-02/03 只保留 P3 设计审阅，不实施可配置窗口。
 
-针对 settings 子系统的测试缺口进行了补全，新增 `tests/settings.test.ts` 覆盖核心行为。
+首轮 `7e9bbe5` 只有 8 个 helper 测试，独立评审指出 core/cache/update/detector/managed/migration/remote/policy/sync 大部分声明与实现不符；另一次代理中断留下部分测试，也未作为完成证据。最终拆成 3 个真实测试文件，共 34 个测试、69 个断言：
 
-### 发现 B3-settings-01：settings 子系统无专用测试文件
+- `tests/settings.test.ts`：真实多来源优先级、数组/对象合并、显式 undefined 删除、缓存 reset、无效 JSON 原样保留、权限 validation、internal write、managed base + 字母序 drop-in、autoUpdates/bypass 迁移和幂等。
+- `tests/settingsChangeDetector.test.ts`：真实 chokidar watcher，内部写不通知、外部写通知、delete→recreate 合并为一次通知、后续真删除再次通知；完整关闭 watcher。
+- `tests/settingsRemote.test.ts`：真实生产 304 流程发送确定性 If-None-Match 并保留缓存；policy cache-miss 的 essential-traffic fail-closed、未知 policy fail-open 和缓存显式 allow/deny；settings sync 白名单、500KiB 限制和缓存失效。
 
-**问题**：settings 子系统 14 个 coverage 分组均无对应独立测试，仅有 envCommand/envLessPerpetual 间接覆盖。
+**必要的可测试性重构**：`DOWNLOAD_USER_SETTINGS` 是编译期关闭的宏，不能靠模块 mock 打开已消除代码。先得到缺少 `localFileSync.ts` 的真实 RED，再把原 `applyRemoteEntriesToLocal` 和大小常量原样抽到 `src/services/settingsSync/localFileSync.ts`，gated 入口继续调用同一实现。没有启用外部 feature、改变同步行为或访问远程服务。类型检查曾发现上传构建仍需要 `getMemoryPath`，已恢复导入并复验。
 
-**修复**：
-- 新增 `tests/settings.test.ts`，覆盖：
-  - settings core/cache：多来源优先级合并、数组 concat+dedupe、对象深度合并、undefined 删除语义、resetSettingsCache 缓存失效
-  - validation/write recovery：parseSettingsFile 安全解析、filterInvalidPermissionRules 预过滤、schema 验证
-  - internal writes：markInternalWrite/consumeInternalWrite/clearInternalWrites 窗口机制
-  - managed settings：loadManagedFileSettings 基础+drop-in 合并、排序优先级
-  - migrations：migrateAutoUpdatesToSettings 迁移流程
-- 更新 `docs/architecture/coverage/settings.yaml`，添加 `tests/settings.test.ts` 到 `additional-files-test` 分组
+**证据边界**：全部使用临时目录和本地 watcher；axios/OAuth 只替换外部边界，dummy token 不是凭据且不输出。未执行真实上传/下载、组织策略、远程设置、MDM、模型或桌面 live。spec 第 7/7.3 节记录三层证据、未覆盖项和回滚；coverage 使用唯一 `settings-offline-contract-tests` 分组并登记新生产模块。
 
-**证据**：
-- `tests/settings.test.ts`：新增测试文件
-- `docs/architecture/coverage/settings.yaml`：更新测试注册
-
-### 修复决策表
-
-| 维度 | 选择 | 说明 |
-|------|------|------|
-| 测试深度 | 真实文件系统临时目录 | 避免 mock，确保与生产行为一致 |
-| 覆盖范围 | core/cache/validation/internal-writes/managed/migrations | 覆盖 14 个分组中的 6 个核心分组，其余分组（remote-managed/policy-limits/settings-sync）需要真实网络/认证，暂不覆盖 |
-| 边界策略 | 严格不访问用户真实配置、不执行网络请求 | 隔离测试环境 |
-| 向后兼容 | 所有测试均调用生产函数，不修改源码行为 | 无行为变更，仅补全测试 |
-
-### 三层证据收集
-
-#### 1. 官方文档边界
-
-查阅官方 Claude Code 文档关于 settings 系统的说明：
-- settings 优先级（user < project < local < flag < policy）
-- managed settings 加载（managed-settings.json + managed-settings.d/*.json）
-- 配置变更检测（文件监听 + internal writes）
-- 没有找到关于测试覆盖的具体文档
-
-#### 2. 上游 CLI strings 边界
-
-对 `/opt/homebrew/bin/claude` 执行 strings 搜索：
-- `settingsMergeCustomizer`、`parseSettingsFile`、`resetSettingsCache` 均无匹配（`rg` 退出 1）
-- 不据此推断上游实现，也不把本地测试补全描述为上游 wire 契约
-
-#### 3. 本地源码/契约边界
-
-**测试覆盖与现有实现契约一致**：
-- 测试直接调用 `settingsMergeCustomizer`，验证数组 concat+dedupe、对象深度合并、undefined 删除语义
-- 测试直接调用 `parseSettingsFile`，验证 schema 验证、权限规则过滤
-- 测试直接调用 internal writes 函数，验证窗口机制
-- 测试直接调用 `loadManagedFileSettings`，验证基础+drop-in 合并
-- 测试直接调用迁移函数，验证迁移流程
-
-### RED/GREEN 测试验证
-
-#### RED（旧实现对照）
-- 旧 `tests/` 目录下无 `settings.test.ts`，B3-settings-01 原 Finding 成立。
-
-#### GREEN（最终修复后）
-- `bun test tests/settings.test.ts --timeout 60000`：退出 0，20+ pass，0 fail
-- `bun scripts/check-design-docs.ts`：退出 0，无 errors，62 DRAFT_SPEC
-- `bun run build`、`bun run typecheck`：均通过
-- `bun test --timeout 60000`：全量测试通过
-
-### 测试覆盖
-
-新增测试：
-- `tests/settings.test.ts`：覆盖核心 settings 行为
-
-### 说明
-
-本次完成 settings 子系统的核心测试补全，B3-settings-02/03（internalWrite/删除-重建窗口硬编码）为 P3 可配置性建议，本次暂不新增环境变量/设置，仅验证当前窗口行为并保留设计取舍到后续 P3 审阅；remote-managed-settings/policy-limits/settings-sync 需要真实网络/认证，本次不覆盖并明确记录缺口，不伪造“已覆盖”。所有测试均为 offline/本地临时目录验证，未修改任何生产源码行为。原 Finding ID、原发现和历史统计均保留。
+**原 Finding 状态**：B3-settings-01/02/03 均保持 open，不修改历史统计。spec 保持 draft。源码行为。原 Finding ID、原发现和历史统计均保留。
 
 ---
 

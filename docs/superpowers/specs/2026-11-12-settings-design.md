@@ -904,17 +904,17 @@ Download (CCR mode startup):
 
 | 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
 |---|---|---|---|
-| 多来源优先级 user < project < local < flag < policy | `src/utils/settings/constants.ts:7-22` | 需查找相关测试 | 未找到直接测试覆盖 |
-| 数组合并 concat+dedupe，对象深度合并 | `src/utils/settings/settings.ts:529-547` | 需查找相关测试 | 未找到直接测试覆盖 |
-| undefined 表示删除 | `src/utils/settings/settings.ts:482-494` | 需查找相关测试 | 未找到直接测试覆盖 |
-| 各来源独立验证，失败时保留原始文件 | `src/utils/settings/settings.ts:178-246` | 需查找相关测试 | 未找到直接测试覆盖 |
-| settings 与 global config 分离，有安全边界 | `src/utils/config.ts:1-184` + `src/utils/settings/types.ts` | 需查找相关测试 | 未找到直接测试覆盖 |
-| 变更检测 chokidar + MDM 轮询 + internalWrite | `src/utils/settings/changeDetector.ts:66-490` | 需查找相关测试 | 未找到直接测试覆盖 |
-| 会话级缓存避免重复读取 | `src/utils/settings/settingsCache.ts:1-40` | 需查找相关测试 | 未找到直接测试覆盖 |
-| policySettings 多来源只取第一个非空 | `src/utils/settings/settings.ts:322-344` | 需查找相关测试 | 未找到直接测试覆盖 |
-| 远程设置 checksum 缓存 + graceful degradation + 安全检查 | `src/services/remoteManagedSettings/index.ts:1-639` | 需查找相关测试 | 未找到直接测试覆盖 |
-| 权限规则先过滤再验证 | `src/utils/settings/validation.ts:224-265` | 需查找相关测试 | 未找到直接测试覆盖 |
-| 迁移系统从 global config 移到 settings | `src/migrations/migrateAutoUpdatesToSettings.ts:1-61` | 需查找相关测试 | 未找到直接测试覆盖 |
+| 多来源优先级 user < project < local < flag < policy | `src/utils/settings/constants.ts` + `settings.ts` | `tests/settings.test.ts` 用真实 user/project/local 文件验证覆盖和保留未覆盖字段 | flag/policy 的完整优先级组合仍未覆盖 |
+| 数组合并 concat+dedupe，对象深度合并 | `src/utils/settings/settings.ts` 的 `settingsMergeCustomizer` | 直接合并及跨来源 permissions.allow 测试 | 特殊模型列表的独立覆盖规则不在本轮扩展 |
+| undefined 表示删除 | `src/utils/settings/settings.ts:473-506` | `updateSettingsForSource` 删除 theme、保留 env、更新 model，持久化及重读一致 | 只验证记录字段和显式 undefined，不扩展到全部键 |
+| 验证与写入失败保护 | `src/utils/settings/settings.ts` + `validation.ts` | 无效 JSON parse 返回错误且 update 原样保留；有效/空文件和无效权限规则可观察 | schema 无效文件的 raw-fallback 修复路径未在本轮改写；UI 错误对话框未覆盖 |
+| managed-settings.json + drop-in | `src/utils/settings/settings.ts` 的 `loadManagedFileSettings` | 真实 base + 10/20 两个 drop-in，验证字母序、标量覆盖、数组合并和嵌套字段 | 平台 MDM 与远程 managed tier 的完整组合未覆盖 |
+| 变更检测 chokidar + internalWrite + delete/recreate | `src/utils/settings/changeDetector.ts` | `tests/settingsChangeDetector.test.ts` 真实 watcher：内部写零通知、外部写一次通知、删除后重建一次通知、后续真删除再通知 | MDM poll、ConfigChange hook block 和各 OS 原生事件差异未覆盖 |
+| 会话级缓存避免重复读取 | `src/utils/settings/settingsCache.ts` | 外部写入在 reset 前保留旧值、reset 后可见；update 后立即可读 | 多进程 watcher freshness 未覆盖 |
+| 远程设置 checksum + 304 cache | `src/services/remoteManagedSettings/index.ts` + `syncCacheState.ts` | `tests/settingsRemote.test.ts` 以 axios/OAuth 边界替身执行真实 load：304 发送确定性的 If-None-Match，缓存和磁盘逐值不变 | 无真实服务、安全检查交互、重试或后台轮询 live 验收 |
+| policy fail-open / essential-traffic fail-closed | `src/services/policyLimits/index.ts` | 无缓存时 protected policy deny/未知 policy allow；真实缓存文件显式 allow/deny/unknown | 未执行真实组织策略获取或 ETag 网络流程 |
+| settings sync 白名单与 500KiB | `src/services/settingsSync/localFileSync.ts` 的 `applyRemoteEntriesToLocal` | 白名单 settings/memory 写入、未注册 key 不应用、>500KiB settings 保留而小额 memory 写入、缓存刷新 | DOWNLOAD_USER_SETTINGS 是编译期关闭的宏；本轮不启用外部功能，也未做上传/下载端到端或远程同步 |
+| 迁移系统从 global config 移到 settings | `src/migrations/migrateAutoUpdatesToSettings.ts`、`migrateBypassPermissionsAcceptedToSettings.ts` | 真实迁移、protected/false 跳过、重复运行文件不变；测试间重置 global config | 其余迁移及真实旧版本用户文件未覆盖 |
 
 ### 7.1 核心模块
 
@@ -934,20 +934,33 @@ Download (CCR mode startup):
 | `src/services/remoteManagedSettings/syncCacheState.ts` | `getRemoteManagedSettingsSyncFromCache`、`setSessionCache`、`resetSyncCache` | 远程设置同步缓存状态（打破循环依赖） |
 | `src/services/remoteManagedSettings/securityCheck.tsx` | `checkManagedSettingsSecurity`、`handleSecurityCheckResult` | 远程设置安全检查 |
 | `src/services/policyLimits/index.ts` | `loadPolicyLimits`、`isPolicyAllowed`、`refreshPolicyLimits`、`clearPolicyLimitsCache` | 企业策略限制获取与查询 |
-| `src/services/settingsSync/index.ts` | `uploadUserSettingsInBackground`、`downloadUserSettings`、`redownloadUserSettings` | 用户设置跨设备同步 |
+| `src/services/settingsSync/index.ts` | `uploadUserSettingsInBackground`、`downloadUserSettings`、`redownloadUserSettings` | 用户设置跨设备同步的编译期 gated 入口 |
+| `src/services/settingsSync/localFileSync.ts` | `applyRemoteEntriesToLocal`、`MAX_FILE_SIZE_BYTES` | gated 入口共用的本地白名单写入、大小限制和缓存失效逻辑；抽取只为直接离线验证，不启用新 feature |
 | `src/migrations/migrateAutoUpdatesToSettings.ts` | `migrateAutoUpdatesToSettings` | autoUpdates 配置迁移 |
 | `src/migrations/migrateBypassPermissionsAcceptedToSettings.ts` | `migrateBypassPermissionsAcceptedToSettings` | bypassPermissions 配置迁移 |
 | `src/utils/config.ts` | `GlobalConfig`、`getGlobalConfig`、`saveGlobalConfig` | Global config 管理（独立于 settings） |
 
-### 7.2 未覆盖行为（基于代码阅读）
+### 7.2 当前未覆盖行为
 
-- settings 与 global config 完整边界测试
-- 远程设置安全检查的用户交互路径
+- settings 与 global config 的全部边界组合及真实旧版本用户文件
+- 远程设置安全检查的用户交互、网络重试和后台轮询 live 路径
 - MDM/注册表设置在 Windows/macOS 上的实际行为
-- ConfigChange hook 阻塞变更的完整流程
-- settings sync 的端到端测试（上传+下载）
-- policySettings drop-in 文件的合并顺序测试
-- 删除-重建模式的完整测试
+- ConfigChange hook 阻塞变更的完整流程和各 OS 原生文件事件差异
+- settings sync 的上传+下载端到端、远程服务和编译期 gated 入口；本轮只验证其共用的本地文件应用逻辑
+- flag/policy 全优先级组合、policyLimits 的真实组织获取和 ETag 流程
+- P3 internalWrite 5 秒和 deletion grace 6.5 秒的可配置性；本轮只验证当前生产窗口，不新增设置
+
+### 7.3 三层证据与回滚
+
+| 层级 | 只读证据 | 边界 |
+|---|---|---|
+| 官方文档 | [Settings](https://code.claude.com/docs/en/settings)说明 user/project/local/managed 优先级、数组合并、运行中 watch/reload 和无效 JSON/entry 处理 | 未公开 5 秒/6.5 秒窗口、ETag 算法、500KiB 私有同步实现或测试方法 |
+| 本机上游二进制 | `strings $(command -v claude)` 命中 `managed-settings.d`、`remote-settings.json`、`policy-limits.json`、`If-None-Match`、`updateSettingsForSource`、`deletionGrace` | 只证明符号存在，不证明运行时状态迁移、私有服务或 live 行为 |
+| 本仓库 | 真实临时文件、真实 watcher、生产 304/policy/local-file 函数和 34 个离线测试；axios/OAuth 仅替换外部边界 | 不把模块边界 mock 或本地文件测试提升为真实远程、组织策略或桌面/MDM 验收 |
+
+2026-11-19 的 `localFileSync.ts` 是原 `settingsSync/index.ts` 本地应用逻辑的原样抽取，下载入口继续调用同一函数。先以缺少该模块的真实 RED 驱动抽取，再得到 5 个远程/policy/sync 测试 GREEN；没有启用 `DOWNLOAD_USER_SETTINGS`，也没有改变白名单、500KiB 或缓存失效行为。
+
+回滚时把 `applyRemoteEntriesToLocal` 和大小常量移回 `settingsSync/index.ts`，删除新模块及 3 个测试文件、coverage 和本节证据即可；不会改变其他运行路径。spec 保持 draft，B3-settings-01/02/03 原 Finding 均保持 open。
 
 ## 8. 文件覆盖与相关子系统
 
