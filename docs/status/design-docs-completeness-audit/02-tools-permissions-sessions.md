@@ -1229,3 +1229,53 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/02-tools-permis
 **spec 更新**：保持 draft，更新了第 10 节整改记录，补充实际测试证据和回滚计划
 
 **原 Finding 状态**：B2-lsp-01 和 B2-lsp-03 保持 open，不修改历史统计
+
+---
+
+## 整改台账：B2-mcp-01 / B2-mcp-03（2026-11-18 追加）
+
+**Finding ID**：B2-mcp-01 / B2-mcp-03
+
+**整改内容**：
+
+1. **新增完整 MCP 生命周期测试** `tests/mcp-lifecycle.test.ts`，唯一登记 mcp coverage，包含：
+   - **连接/断开**：连接建立与能力协商、clean disconnection with cleanup、连接失败优雅处理
+   - **Schema 枚举**：工具枚举（含元数据）、资源枚举、prompts 枚举、空能力集处理
+   - **工具调用**：成功调用返回结果、错误调用 with `isError` flag、结构化内容响应
+   - **重连**：重连重建能力、跨重连保持调用状态
+   - **禁用分支**：`DisabledMCPServer`、`FailedMCPServer`、`NeedsAuthMCPServer`、`PendingMCPServer` 状态模型
+   - **错误传播**：`isError` flag 保留、`_meta` 保留（成功/失败场景）
+   - **工具名称规范化**：`normalizeNameForMCP` 特殊字符处理、`buildMcpToolName` 完整名称构建
+   - **多服务器并发**：多个服务器独立共存、一个失败不影响其他
+   - **完整端到端生命周期**：connect → enumerate → call → disconnect → reconnect
+
+2. **扩展 `createFakeMcpServer` 测试工厂**：
+   - 支持可配置工具/资源/prompts
+   - 支持可配置失败模式（handshake/tool calls）
+   - 内置调用统计和连接计数
+   - 支持运行时动态切换失败模式
+
+3. **验证覆盖 spec 全部关键模块**：
+   - `src/services/mcp/client.ts`：连接管理、工具调用
+   - `src/services/mcp/types.ts`：状态模型、连接类型
+   - `src/services/mcp/mcpStringUtils.ts`：名称规范化
+   - `src/services/mcp/normalization.ts`：名称规范化
+   - `src/services/mcp/InProcessTransport.ts`：内存传输
+
+**验证结果**：
+- ✅ 无新增缺陷：原实现完整符合 spec，无需代码改动
+- ✅ 所有 20+ 测试通过
+- ✅ 无源码文本断言，全部验证可观测协议行为
+- ✅ 无真实网络/凭据/模型调用，全部本地 fake transport
+- ✅ 无 Chrome/desktop/private services 依赖
+
+**测试边界**（离线/本地安全）：
+- 仅使用 `InProcessTransport`，无真实网络
+- Fake MCP server 内存实现，无外部依赖
+- 无 OAuth 流程，无凭据处理
+- 无真实 MCP 服务器调用
+- 无 Claude 模型调用
+
+**spec 更新**：保持 draft，第 7 节已更新实际测试证据，补充回滚计划（删除 `tests/mcp-lifecycle.test.ts` 并从 mcp.yaml 移除）
+
+**原 Finding 状态**：B2-mcp-01 和 B2-mcp-03 保持 open，不修改历史统计
