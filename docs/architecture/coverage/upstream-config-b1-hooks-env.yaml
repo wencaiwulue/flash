@@ -1,0 +1,8 @@
+schema_version: 1
+spec_id: upstream-config-b1-hooks-env
+spec: ../../superpowers/specs/2026-11-18-upstream-config-b1-hooks-env-design.md
+status: draft
+# 本 spec 是 B1 六 hooks（UserPromptExpansion/PostToolBatch/MessageDisplay/DirectoryAdded/
+# PreModelSwitch/PostModelSwitch）与 subagent env 对齐设计；运行时代码主归属由
+# hooks-system、settings 等既有 coverage 维护，避免重复拥有文件。
+groups: []

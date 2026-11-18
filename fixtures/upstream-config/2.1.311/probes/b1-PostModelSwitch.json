@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "upstreamVersion": "2.1.311",
+  "event": "PostModelSwitch",
+  "cases": [
+    {
+      "mode": "record",
+      "stdin": [
+        {
+          "session_id": "ad6bc757-4cc3-4d74-a925-7ea25ddbbf43",
+          "transcript_path": "/var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b1-PostModelSwitch-esTOyr/.claude/projects/-private-var-folders-p5-5yk3txnn3td6jb095qq42k0m0000gn-T-b1-PostModelSwitch-esTOyr-project/ad6bc757-4cc3-4d74-a925-7ea25ddbbf43.jsonl",
+          "cwd": "/private/var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b1-PostModelSwitch-esTOyr/project",
+          "prompt_id": "ef73e6ac-682b-4d22-8b55-1089227604b3",
+          "hook_event_name": "PostModelSwitch",
+          "from_model": "kimi-k3-1-pro-261024",
+          "to_model": "claude-opus-5-5",
+          "requested_model": "opus",
+          "source": "command",
+          "context_tokens": 0,
+          "prompt_cache_warm": false,
+          "cache_ttl": "5m",
+          "estimated_cache_write_usd": 0,
+          "pricing": "catalog"
+        }
+      ],
+      "transcriptTail": "\u001b/permission-modes\u001b\u001b\u001b\u001b\u001b\u001b\u001b❯\u001b \u001b/model opus\u001b                                                                   \u001b\u001b\u001b  ⎿  \u001bSet\u001bmodel\u001bto\u001b\u001bOpus 5.5\u001b\u001band\u001bsaved\u001bas\u001byour\u001bdefault\u001bfor\u001bnew\u001bsessions\u001b     \u001b     ANTHROPIC_MODEL is set to \u001b\u001bkimi-k3-1-pro-261024\u001b\u001b — new sessions use that\u001b\u001b     \u001bwhile it is set\u001b\u001b\u001b\u001b\u001b\u001b\u001b\u001b❯ \u001b/exit\u001b                                                                         \u001b\u001b\u001b✽\u001bThundering… \u001b\u001b  ⎿  Tip: Start with small features or bug fixes, tell Claude to propose a plan,\u001b\u001band verify its suggested edits\u001b❯ \u001b\u001b · esc to interrupt\u001b\u001b\u001b\u001b\u001b\u001b\u001b\u001b\u001b\u001b[<u\u001b\u001b[>4m\u001b[>4m\u001b[<u\u001b\u001b\u001b(B\u000f\u001b\u001b\u001b\u001b\u001b\u001b\u001b7\u001b\u001b8\u001b\u001b(B\u000f\u001b\u001b\u001b\u001b\u001b\u001b[>4m\u001b\u001b\u001b\u001b[<u\u001b\u001b7\u001b\u001b8\u001b\u001b\u001b\n\u001bResume this session with:\u001b\n\u001bclaude --resume ad6bc757-4cc3-4d74-a925-7ea25ddbbf43\u001b\n\u001b\u001b\u001b"
+    },
+    {
+      "mode": "context",
+      "stdin": [
+        {
+          "session_id": "ab4916e5-3816-4d0e-80b9-56e62ec74339",
+          "transcript_path": "/var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b1-PostModelSwitch-uCkWmh/.claude/projects/-private-var-folders-p5-5yk3txnn3td6jb095qq42k0m0000gn-T-b1-PostModelSwitch-uCkWmh-project/ab4916e5-3816-4d0e-80b9-56e62ec74339.jsonl",
+          "cwd": "/private/var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b1-PostModelSwitch-uCkWmh/project",
+          "prompt_id": "90097e8a-ab48-4d3b-998c-4d919de38272",
+          "hook_event_name": "PostModelSwitch",
+          "from_model": "kimi-k3-1-pro-261024",
+          "to_model": "claude-opus-5-5",
+          "requested_model": "opus",
+          "source": "command",
+          "context_tokens": 0,
+          "prompt_cache_warm": false,
+          "cache_ttl": "5m",
+          "estimated_cache_write_usd": 0,
+          "pricing": "catalog"
+        }
+      ],
+      "transcriptTail": "e\u001b/permission-modes\u001b\u001b\u001b\u001b\u001b\u001b\u001b❯\u001b \u001b/model opus\u001b                                                                   \u001b\u001b\u001b  ⎿  \u001bSet\u001bmodel\u001bto\u001b\u001bOpus 5.5\u001b\u001band\u001bsaved\u001bas\u001byour\u001bdefault\u001bfor\u001bnew\u001bsessions\u001b     \u001b     ANTHROPIC_MODEL is set to \u001b\u001bkimi-k3-1-pro-261024\u001b\u001b — new sessions use that\u001b\u001b     \u001bwhile it is set\u001b\u001b\u001b\u001b\u001b\u001b\u001b\u001b❯ \u001b/exit\u001b                                                                         \u001b\u001b\u001b✽\u001bTempering… \u001b\u001b  ⎿  Tip: Start with small features or bug fixes, tell Claude to propose a plan,\u001b\u001band verify its suggested edits\u001b❯ \u001b\u001b · esc to interrupt\u001b\u001b\u001b\u001b\u001b\u001b\u001b\u001b\u001b\u001b[<u\u001b\u001b[>4m\u001b[>4m\u001b[<u\u001b\u001b\u001b(B\u000f\u001b\u001b\u001b\u001b\u001b\u001b\u001b7\u001b\u001b8\u001b\u001b(B\u000f\u001b\u001b\u001b\u001b\u001b\u001b[>4m\u001b\u001b\u001b\u001b[<u\u001b\u001b7\u001b\u001b8\u001b\u001b\u001b\n\u001bResume this session with:\u001b\n\u001bclaude --resume ab4916e5-3816-4d0e-80b9-56e62ec74339\u001b\n\u001b\u001b\u001b"
+    },
+    {
+      "mode": "block",
+      "stdin": [
+        {
+          "session_id": "3d7cbf49-fa60-4f9a-ad64-1a546614b58d",
+          "transcript_path": "/var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b1-PostModelSwitch-jz15dd/.claude/projects/-private-var-folders-p5-5yk3txnn3td6jb095qq42k0m0000gn-T-b1-PostModelSwitch-jz15dd-project/3d7cbf49-fa60-4f9a-ad64-1a546614b58d.jsonl",
+          "cwd": "/private/var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b1-PostModelSwitch-jz15dd/project",
+          "prompt_id": "cb2d92f1-2cd8-46f6-9801-5e5671a85719",
+          "hook_event_name": "PostModelSwitch",
+          "from_model": "kimi-k3-1-pro-261024",
+          "to_model": "claude-opus-5-5",
+          "requested_model": "opus",
+          "source": "command",
+          "context_tokens": 0,
+          "prompt_cache_warm": false,
+          "cache_ttl": "5m",
+          "estimated_cache_write_usd": 0,
+          "pricing": "catalog"
+        }
+      ],
+      "transcriptTail": "e\u001b/permission-modes\u001b\u001b\u001b\u001b\u001b\u001b\u001b❯\u001b \u001b/model opus\u001b                                                                   \u001b\u001b\u001b  ⎿  \u001bSet\u001bmodel\u001bto\u001b\u001bOpus 5.5\u001b\u001band\u001bsaved\u001bas\u001byour\u001bdefault\u001bfor\u001bnew\u001bsessions\u001b     \u001b     ANTHROPIC_MODEL is set to \u001b\u001bkimi-k3-1-pro-261024\u001b\u001b — new sessions use that\u001b\u001b     \u001bwhile it is set\u001b\u001b\u001b\u001b\u001b\u001b\u001b\u001b❯ \u001b/exit\u001b                                                                         \u001b\u001b\u001b✽\u001bTempering… \u001b\u001b  ⎿  Tip: Start with small features or bug fixes, tell Claude to propose a plan,\u001b\u001band verify its suggested edits\u001b❯ \u001b\u001b · esc to interrupt\u001b\u001b\u001b\u001b\u001b\u001b\u001b\u001b\u001b\u001b[<u\u001b\u001b[>4m\u001b[>4m\u001b[<u\u001b\u001b\u001b(B\u000f\u001b\u001b\u001b\u001b\u001b\u001b\u001b7\u001b\u001b8\u001b\u001b(B\u000f\u001b\u001b\u001b\u001b\u001b\u001b[>4m\u001b\u001b\u001b\u001b[<u\u001b\u001b7\u001b\u001b8\u001b\u001b\u001b\n\u001bResume this session with:\u001b\n\u001bclaude --resume 3d7cbf49-fa60-4f9a-ad64-1a546614b58d\u001b\n\u001b\u001b\u001b"
+    },
+    {
+      "mode": "exit1",
+      "stdin": [
+        {
+          "session_id": "c61c8c6f-709a-45d4-8438-a71b6a5f4555",
+          "transcript_path": "/var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b1-PostModelSwitch-uP8MyS/.claude/projects/-private-var-folders-p5-5yk3txnn3td6jb095qq42k0m0000gn-T-b1-PostModelSwitch-uP8MyS-project/c61c8c6f-709a-45d4-8438-a71b6a5f4555.jsonl",
+          "cwd": "/private/var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b1-PostModelSwitch-uP8MyS/project",
+          "prompt_id": "fea58b62-9ad5-4347-96d0-ea8957fcf96f",
+          "hook_event_name": "PostModelSwitch",
+          "from_model": "kimi-k3-1-pro-261024",
+          "to_model": "claude-opus-5-5",
+          "requested_model": "opus",
+          "source": "command",
+          "context_tokens": 0,
+          "prompt_cache_warm": false,
+          "cache_ttl": "5m",
+          "estimated_cache_write_usd": 0,
+          "pricing": "catalog"
+        }
+      ],
+      "transcriptTail": "\u001b/permission-modes\u001b\u001b\u001b\u001b\u001b\u001b\u001b❯\u001b \u001b/model opus\u001b                                                                   \u001b\u001b\u001b  ⎿  \u001bSet\u001bmodel\u001bto\u001b\u001bOpus 5.5\u001b\u001band\u001bsaved\u001bas\u001byour\u001bdefault\u001bfor\u001bnew\u001bsessions\u001b     \u001b     ANTHROPIC_MODEL is set to \u001b\u001bkimi-k3-1-pro-261024\u001b\u001b — new sessions use that\u001b\u001b     \u001bwhile it is set\u001b\u001b\u001b\u001b\u001b\u001b\u001b\u001b❯ \u001b/exit\u001b                                                                         \u001b\u001b\u001b✽\u001bOrbiting\u001b…\u001b \u001b\u001b  ⎿  Tip: Start with small features or bug fixes, tell Claude to propose a plan,\u001b\u001band verify its suggested edits\u001b❯ \u001b\u001b · esc to interrupt\u001b\u001b\u001b\u001b\u001b\u001b\u001b\u001b\u001b\u001b[<u\u001b\u001b[>4m\u001b[>4m\u001b[<u\u001b\u001b\u001b(B\u000f\u001b\u001b\u001b\u001b\u001b\u001b\u001b7\u001b\u001b8\u001b\u001b(B\u000f\u001b\u001b\u001b\u001b\u001b\u001b[>4m\u001b\u001b\u001b\u001b[<u\u001b\u001b7\u001b\u001b8\u001b\u001b\u001b\n\u001bResume this session with:\u001b\n\u001bclaude --resume c61c8c6f-709a-45d4-8438-a71b6a5f4555\u001b\n\u001b\u001b\u001b"
+    }
+  ]
+}

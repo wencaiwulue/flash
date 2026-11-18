@@ -1,0 +1,155 @@
+{
+  "schemaVersion": 1,
+  "upstreamVersion": "2.1.311",
+  "event": "PostToolBatch",
+  "cases": [
+    {
+      "mode": "record",
+      "stdin": [
+        {
+          "session_id": "c107a40e-2c21-4f9f-ac38-c7e3cc6b4c01",
+          "transcript_path": "/var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b1-PostToolBatch-70QB5D/.claude/projects/-private-var-folders-p5-5yk3txnn3td6jb095qq42k0m0000gn-T-b1-PostToolBatch-70QB5D-project/c107a40e-2c21-4f9f-ac38-c7e3cc6b4c01.jsonl",
+          "cwd": "/private/var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b1-PostToolBatch-70QB5D/project",
+          "prompt_id": "0a682e8c-c1e3-4a34-8d20-9023ec2934fd",
+          "permission_mode": "bypassPermissions",
+          "effort": {
+            "level": "high"
+          },
+          "hook_event_name": "PostToolBatch",
+          "tool_calls": [
+            {
+              "tool_name": "Read",
+              "tool_input": {
+                "file_path": "/private/var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b1-PostToolBatch-70QB5D/project/exist.txt"
+              },
+              "tool_use_id": "Read_0_68fc78f3",
+              "tool_response": "1\thello\n2\t"
+            },
+            {
+              "tool_name": "Read",
+              "tool_input": {
+                "file_path": "/private/var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b1-PostToolBatch-70QB5D/project/missing.txt"
+              },
+              "tool_use_id": "Read_1_c2adf2fc",
+              "tool_response": "File does not exist. Note: your current working directory is /private/var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b1-PostToolBatch-70QB5D/project."
+            }
+          ]
+        }
+      ],
+      "status": 0,
+      "stdoutTail": "udget\":0},\"by_type\":{}},\"safety_stops\":0,\"is_error\":false,\"num_turns\":3,\"subtype\":\"success\",\"api_error_status\":null,\"result\":\"`exist.txt` contains `hello`. `missing.txt` does not exist.\",\"ttft_ms\":5384,\"type\":\"result\",\"duration_ms\":11022,\"uuid\":\"a6c8b41a-4f65-4d7d-899a-59a42d4507b7\",\"ttft_stream_ms\":2442,\"time_to_request_ms\":45,\"first_content_frame_ms\":2442,\"queued_turn_count\":0,\"result_index\":0}\n",
+      "stderrTail": "[claude-code:unrecognized_model] {\"model\":\"kimi-k3-1-pro-261024\",\"query_source\":\"sdk\"}\n"
+    },
+    {
+      "mode": "context",
+      "stdin": [
+        {
+          "session_id": "1fe55039-a999-413d-95a5-81754e16dc7a",
+          "transcript_path": "/var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b1-PostToolBatch-2lLhzz/.claude/projects/-private-var-folders-p5-5yk3txnn3td6jb095qq42k0m0000gn-T-b1-PostToolBatch-2lLhzz-project/1fe55039-a999-413d-95a5-81754e16dc7a.jsonl",
+          "cwd": "/private/var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b1-PostToolBatch-2lLhzz/project",
+          "prompt_id": "446b5772-b15e-4686-8ccc-1c2bb73f746b",
+          "permission_mode": "bypassPermissions",
+          "effort": {
+            "level": "high"
+          },
+          "hook_event_name": "PostToolBatch",
+          "tool_calls": [
+            {
+              "tool_name": "Read",
+              "tool_input": {
+                "file_path": "/private/var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b1-PostToolBatch-2lLhzz/project/exist.txt"
+              },
+              "tool_use_id": "Read_0_6a4f9c7b",
+              "tool_response": "1\thello\n2\t"
+            },
+            {
+              "tool_name": "Read",
+              "tool_input": {
+                "file_path": "/private/var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b1-PostToolBatch-2lLhzz/project/missing.txt"
+              },
+              "tool_use_id": "Read_1_23d320fb",
+              "tool_response": "File does not exist. Note: your current working directory is /private/var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b1-PostToolBatch-2lLhzz/project."
+            }
+          ]
+        }
+      ],
+      "status": 0,
+      "stdoutTail": "udget\":0},\"by_type\":{}},\"safety_stops\":0,\"is_error\":false,\"num_turns\":3,\"subtype\":\"success\",\"api_error_status\":null,\"result\":\"`exist.txt` contains `hello`. `missing.txt` does not exist.\",\"ttft_ms\":6907,\"type\":\"result\",\"duration_ms\":11821,\"uuid\":\"07d8c9a2-579f-4154-b03c-6d12015d4570\",\"ttft_stream_ms\":2242,\"time_to_request_ms\":53,\"first_content_frame_ms\":2242,\"queued_turn_count\":0,\"result_index\":0}\n",
+      "stderrTail": "[claude-code:unrecognized_model] {\"model\":\"kimi-k3-1-pro-261024\",\"query_source\":\"sdk\"}\n"
+    },
+    {
+      "mode": "block",
+      "stdin": [
+        {
+          "session_id": "e10f2eb8-a3e8-4548-93f8-5aa0449d3924",
+          "transcript_path": "/var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b1-PostToolBatch-2sFopV/.claude/projects/-private-var-folders-p5-5yk3txnn3td6jb095qq42k0m0000gn-T-b1-PostToolBatch-2sFopV-project/e10f2eb8-a3e8-4548-93f8-5aa0449d3924.jsonl",
+          "cwd": "/private/var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b1-PostToolBatch-2sFopV/project",
+          "prompt_id": "e64a78f6-65a1-4dec-b900-dfc7f3e453cb",
+          "permission_mode": "bypassPermissions",
+          "effort": {
+            "level": "high"
+          },
+          "hook_event_name": "PostToolBatch",
+          "tool_calls": [
+            {
+              "tool_name": "Read",
+              "tool_input": {
+                "file_path": "/private/var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b1-PostToolBatch-2sFopV/project/exist.txt"
+              },
+              "tool_use_id": "Read_0_940d13db",
+              "tool_response": "1\thello\n2\t"
+            },
+            {
+              "tool_name": "Read",
+              "tool_input": {
+                "file_path": "/private/var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b1-PostToolBatch-2sFopV/project/missing.txt"
+              },
+              "tool_use_id": "Read_1_09fd9cc9",
+              "tool_response": "File does not exist. Note: your current working directory is /private/var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b1-PostToolBatch-2sFopV/project."
+            }
+          ]
+        }
+      ],
+      "status": 0,
+      "stdoutTail": "tem\":0},\"refused\":{\"depth_limit\":0,\"concurrency_limit\":0,\"budget\":0},\"by_type\":{}},\"safety_stops\":0,\"is_error\":false,\"num_turns\":3,\"subtype\":\"success\",\"api_error_status\":null,\"result\":\"\",\"ttft_ms\":5077,\"type\":\"result\",\"duration_ms\":6050,\"uuid\":\"5ebaa402-8443-4eb1-b165-1ee2ae7fdc68\",\"ttft_stream_ms\":2119,\"time_to_request_ms\":114,\"first_content_frame_ms\":2120,\"queued_turn_count\":0,\"result_index\":0}\n",
+      "stderrTail": "[claude-code:unrecognized_model] {\"model\":\"kimi-k3-1-pro-261024\",\"query_source\":\"sdk\"}\n"
+    },
+    {
+      "mode": "exit1",
+      "stdin": [
+        {
+          "session_id": "e978f072-1013-4cbd-9714-678cde569c41",
+          "transcript_path": "/var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b1-PostToolBatch-zOgMQn/.claude/projects/-private-var-folders-p5-5yk3txnn3td6jb095qq42k0m0000gn-T-b1-PostToolBatch-zOgMQn-project/e978f072-1013-4cbd-9714-678cde569c41.jsonl",
+          "cwd": "/private/var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b1-PostToolBatch-zOgMQn/project",
+          "prompt_id": "efe8b614-0a7b-472f-abef-028e183968ac",
+          "permission_mode": "bypassPermissions",
+          "effort": {
+            "level": "high"
+          },
+          "hook_event_name": "PostToolBatch",
+          "tool_calls": [
+            {
+              "tool_name": "Read",
+              "tool_input": {
+                "file_path": "/private/var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b1-PostToolBatch-zOgMQn/project/exist.txt"
+              },
+              "tool_use_id": "Read_0_39ab03cc",
+              "tool_response": "1\thello\n2\t"
+            },
+            {
+              "tool_name": "Read",
+              "tool_input": {
+                "file_path": "/private/var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b1-PostToolBatch-zOgMQn/project/missing.txt"
+              },
+              "tool_use_id": "Read_1_1509d2ba",
+              "tool_response": "File does not exist. Note: your current working directory is /private/var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b1-PostToolBatch-zOgMQn/project."
+            }
+          ]
+        }
+      ],
+      "status": 0,
+      "stdoutTail": "get\":0},\"by_type\":{}},\"safety_stops\":0,\"is_error\":false,\"num_turns\":3,\"subtype\":\"success\",\"api_error_status\":null,\"result\":\"- `exist.txt`: `hello`\\n- `missing.txt`: File does not exist.\",\"ttft_ms\":5489,\"type\":\"result\",\"duration_ms\":10533,\"uuid\":\"216dfd8b-6124-4876-ad32-b75f83a800bf\",\"ttft_stream_ms\":3028,\"time_to_request_ms\":58,\"first_content_frame_ms\":3028,\"queued_turn_count\":0,\"result_index\":0}\n",
+      "stderrTail": "[claude-code:unrecognized_model] {\"model\":\"kimi-k3-1-pro-261024\",\"query_source\":\"sdk\"}\n"
+    }
+  ]
+}
