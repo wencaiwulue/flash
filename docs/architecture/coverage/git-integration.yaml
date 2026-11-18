@@ -65,3 +65,4 @@ groups:
     summary: Git 相关测试
     files:
       - tests/changedFiles.test.ts
+      - tests/gitIntegration.test.ts

@@ -1506,6 +1506,23 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 
 ---
 
+## 整改台账：B3-git-integration-03（2026-11-19 追加）
+
+**Finding ID**：B3-git-integration-03；主责 spec：git-integration。
+
+新增 `tests/gitIntegration.test.ts` 并唯一登记 coverage，4 个真实本地 Git 场景、26 个断言：
+
+- 普通仓库的 gitdir、loose/packed refs、detached HEAD、ref/SHA 白名单。
+- 真实 worktree 的独立 HEAD 与主仓库隔离，commonDir 的 remote/count/shallow。
+- GitFileWatcher 在 branch 切换、commit、detach、remote config 修改后重新计算。
+- worktree watcher 观察 common config 修改。
+
+临时根目录先 `realpath`，避免 macOS `/var` 与 `/private/var` 分裂造成假失败。无生产代码变更、远程访问、凭据或全局 Git 配置写入；只写临时仓库。reftable、Windows、Git LFS、并发和真实远程仍未覆盖。
+
+**原 Finding 状态**：B3-git-integration-01/02/03 均保持 open；01/02 的 P3 建议不实施。spec 保持 draft，第 7/7.4 节记录三层证据和回滚。
+
+---
+
 ## 整改台账：B3-notifications-01（2026-11-19 追加）
 
 **Finding ID**：B3-notifications-01；主责 spec：notifications。
