@@ -236,9 +236,9 @@ coverage：[upstream-config-b1-hooks-env.yaml](../../architecture/coverage/upstr
 - MessageDisplay REPL streaming delta 未接（仅 headless 单条）。
 - ModelPicker 的 picker 路径（source=picker）未接 Pre/PostModelSwitch。
 - prompt_id 在 createBaseHookInput 未生成（实测 payload 含）。
-- 六事件触发点集成测试（mock spawn 验证真实触发/取消/替换链）、27 hooks 审计、真实矩阵 --batch 1 未在本轮跑。字段提取行为测试已补（`tests/b1HookEvents.test.ts` 10 pass，`1a1e865`）。
-- DirectoryAdded matcher 已接 source（`1a1e865`）；Pre/PostModelSwitch matcher 的 canonical to_model 未实现，按上游 fail-safe 运行全部。
+- 27 hooks 审计、真实矩阵 --batch 1 未在本轮跑。字段提取行为测试（`tests/b1HookEvents.test.ts` 10 pass，`1a1e865`）与触发点集成测试（`tests/b1HookTriggers.test.ts` 8 pass，真实 command hook 验证触发→解析→结果链，`1b6393d`）已补。
+- DirectoryAdded matcher 已接 source（`1a1e865`）；UserPromptExpansion matcher 接 command_name、DirectoryAdded 接 source（getMatchingHooks switch，`1b6393d`）；Pre/PostModelSwitch matcher 的 canonical to_model 未实现，按上游 fail-safe 运行全部。
 
 ### 验证
-- typecheck/build/全量 test（exit 0）通过；design-docs 0 errors；headlessHooks/settingsHookCompatibility/settingsManagedHookCompatibility 共 29 pass；subagentLimits 7 pass；b1HookEvents 10 pass。
+- typecheck/build/全量 test（exit 0）通过；design-docs 0 errors；headlessHooks/settingsHookCompatibility/settingsManagedHookCompatibility 共 29 pass；subagentLimits 7 pass；b1HookEvents 10 pass；b1HookTriggers 8 pass。
 
