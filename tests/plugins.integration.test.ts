@@ -23,6 +23,7 @@ import {
 import { getPluginsDirectory } from '../src/utils/plugins/pluginDirectories'
 import {
   addInstalledPlugin,
+  loadInstalledPluginsV2,
   clearInstalledPluginsCache,
   resetInMemoryState,
 } from '../src/utils/plugins/installedPluginsManager'
@@ -370,8 +371,8 @@ describe('installed plugins integration', () => {
       'user',
     )
 
-    // In-memory state is read-only after startup, so we can't verify via
-    // loadInstalledPluginsV2 without actually writing to disk. The key is
-    // that the function doesn't throw.
+    const installed = loadInstalledPluginsV2().plugins['test-plugin@test-marketplace']
+    expect(installed).toHaveLength(1)
+    expect(installed[0].scope).toBe('user')
   })
 })
