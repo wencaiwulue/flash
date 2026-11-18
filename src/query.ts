@@ -90,7 +90,7 @@ import { ESCALATED_MAX_TOKENS } from './utils/context.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from './services/analytics/growthbook.js'
 import { SLEEP_TOOL_NAME } from './tools/SleepTool/prompt.js'
 import { executePostSamplingHooks } from './utils/hooks/postSamplingHooks.js'
-import { executeStopFailureHooks } from './utils/hooks.js'
+import { executePostToolBatchHooks, executeStopFailureHooks } from './utils/hooks.js'
 import type { QuerySource } from './constants/querySource.js'
 import { createDumpPromptsFetch } from './services/api/dumpPrompts.js'
 import { StreamingToolExecutor } from './services/tools/StreamingToolExecutor.js'
@@ -1412,6 +1412,100 @@ async function* queryLoop(
       }
     }
     queryCheckpoint('query_tool_execution_end')
+
+    // PostToolBatch：整批工具 resolved 后、下一模型请求前同步执行一次（无 matcher）。
+    // additionalContext 注入到 toolResults；decision:"block"/continue:false/exit 2 停 loop。
+    if (toolUseBlocks.length > 0 && !toolUseContext.abortController.signal.aborted) {
+      const batchToolUseID = toolUseBlocks[0]?.id ?? 'batch'
+      const batchToolCalls = toolUseBlocks.map(block => {
+        const toolResult = toolResults.find(
+          result =>
+            result.type === 'user' &&
+            Array.isArray(result.message.content) &&
+            result.message.content.some(
+              content =>
+                content.type === 'tool_result' &&
+                content.tool_use_id === block.id,
+            ),
+        )
+        const resultContent =
+          toolResult?.type === 'user' && Array.isArray(toolResult.message.content)
+            ? toolResult.message.content.find(
+                (c): c is ToolResultBlockParam =>
+                  c.type === 'tool_result' && c.tool_use_id === block.id,
+              )
+            : undefined
+        return {
+          tool_name: block.name,
+          tool_input: block.input,
+          tool_use_id: block.id,
+          tool_response:
+            resultContent && 'content' in resultContent
+              ? resultContent.content
+              : undefined,
+        }
+      })
+      for await (const result of executePostToolBatchHooks(
+        batchToolCalls,
+        updatedToolUseContext,
+        updatedToolUseContext.getAppState().toolPermissionContext.mode,
+        toolUseContext.abortController.signal,
+      )) {
+        // 跳过 hook_blocking_error，避免与 blockingError 路径重复（见 #31301）。
+        if (
+          result.message &&
+          !(
+            result.message.type === 'attachment' &&
+            result.message.attachment.type === 'hook_blocking_error'
+          )
+        ) {
+          yield result.message
+          if (
+            result.message.type === 'attachment' &&
+            result.message.attachment.type === 'hook_stopped_continuation'
+          ) {
+            shouldPreventContinuation = true
+          }
+        }
+        if (result.blockingError) {
+          shouldPreventContinuation = true
+          yield createAttachmentMessage({
+            type: 'hook_blocking_error',
+            hookName: 'PostToolBatch',
+            toolUseID: batchToolUseID,
+            hookEvent: 'PostToolBatch',
+            blockingError: result.blockingError,
+          })
+        }
+        if (result.additionalContexts && result.additionalContexts.length > 0) {
+          const contextMessage = createAttachmentMessage({
+            type: 'hook_additional_context',
+            content: result.additionalContexts,
+            hookName: 'PostToolBatch',
+            toolUseID: batchToolUseID,
+            hookEvent: 'PostToolBatch',
+          })
+          yield contextMessage
+          toolResults.push(
+            ...normalizeMessagesForAPI(
+              [contextMessage],
+              toolUseContext.options.tools,
+            ).filter(_ => _.type === 'user'),
+          )
+        }
+        if (result.preventContinuation) {
+          shouldPreventContinuation = true
+          yield createAttachmentMessage({
+            type: 'hook_stopped_continuation',
+            message:
+              result.stopReason || 'Execution stopped by PostToolBatch hook',
+            hookName: 'PostToolBatch',
+            toolUseID: batchToolUseID,
+            hookEvent: 'PostToolBatch',
+          })
+        }
+      }
+    }
 
     // Generate tool use summary after tool batch completes — passed to next recursive call
     let nextPendingToolUseSummary:
