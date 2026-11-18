@@ -56,6 +56,8 @@ export type CheckCompatibilityInputV2 = Omit<CheckCompatibilityInput, 'inventory
   repoRoot?: string
   envConsumers?: EnvConsumerRegistry
   batches?: Array<1 | 2 | 3 | 4 | 5>
+  /** 已登记 spec id 集合（来自 docs/architecture/coverage/manifest.yaml）。传入后 aligned 条目的 spec 必须在其中。 */
+  specRegistry?: ReadonlySet<string>
 }
 
 export type CheckCompatibilityResult = {
@@ -859,8 +861,9 @@ export async function checkCompatibilityV2(
       const inventoryEntry = inventoryById.get(entry.id)
       const ownerBatch = v2Entry.ownerBatch ?? determineOwnerBatch(entry.id, inventoryEntry)
 
-      // 批次过滤：仅检查指定批次，或者 final 模式检查全部
-      const isInSelectedBatch = !batches || batches.length === 0 || batches.includes(ownerBatch as 1|2|3|4|5)
+      // 批次过滤仅在 batch 模式生效；final 模式始终全量严格检查，忽略 batches，
+      // 否则 final+--batch 会跳过非选中批次条目的 ownerBatch/spec/路径/env 校验，造成绕过。
+      const isInSelectedBatch = mode === 'final' || !batches || batches.length === 0 || batches.includes(ownerBatch as 1|2|3|4|5)
       if (!isInSelectedBatch) continue
 
       // OwnerBatch 验证：必须存在且为合法枚举值（1-5 或 'final'），仅 truthy 检查不够
@@ -878,13 +881,22 @@ export async function checkCompatibilityV2(
         })
       }
 
-      // Spec 引用验证（仅当 aligned 时严格要求，其他情况可选但格式需正确）
-      if (entry.status === 'aligned' && !v2Entry.spec) {
-        diagnostics.push({
-          code: 'invalid-spec',
-          id: entry.id,
-          message: `Aligned entry ${entry.id} requires a spec reference`,
-        })
+      // Spec 引用验证：aligned 必须有 spec；若提供了 specRegistry（manifest 登记的 spec id 集合），
+      // spec 必须真实登记，仅 truthy 检查不够（否则 spec="definitely-not-registered" 也能通过）。
+      if (entry.status === 'aligned') {
+        if (!v2Entry.spec) {
+          diagnostics.push({
+            code: 'invalid-spec',
+            id: entry.id,
+            message: `Aligned entry ${entry.id} requires a spec reference`,
+          })
+        } else if (input.specRegistry && !input.specRegistry.has(v2Entry.spec)) {
+          diagnostics.push({
+            code: 'invalid-spec',
+            id: entry.id,
+            message: `Aligned entry ${entry.id} references unregistered spec ${v2Entry.spec}; spec must be registered in docs/architecture/coverage/manifest.yaml`,
+          })
+        }
       }
 
       // 实现路径存在验证（仅当路径非空时检查）
@@ -1149,6 +1161,11 @@ export async function runCli(
     }
   }
 
+  // final 模式始终全量检查，不接受 --batch（避免误以为能缩小 final 范围）
+  if (mode === 'final' && batches.length > 0) {
+    throw new Error('--batch cannot be combined with --mode final; final mode always checks all entries')
+  }
+
   // 确定 fixture 目录
   let fixtureDir = fixtureDirectory
   if (baselineVersion) {
@@ -1171,6 +1188,21 @@ export async function runCli(
     const envConsumersPath = join(fixtureDir, '..', 'env-consumers.json')
     if (await pathExists(envConsumersPath)) {
       envConsumers = JSON.parse(await readFile(envConsumersPath, 'utf8')) as EnvConsumerRegistry
+    }
+  } catch {
+    // 不存在则忽略
+  }
+
+  // 加载 manifest 中已登记的 spec id 集合，用于 aligned 条目的 spec 登记校验
+  let specRegistry: Set<string> | undefined
+  try {
+    const repoRoot = fileURLToPath(new URL('..', import.meta.url))
+    const manifestPath = join(repoRoot, 'docs/architecture/coverage/manifest.yaml')
+    if (await pathExists(manifestPath)) {
+      const manifest = parse(await readFile(manifestPath, 'utf8')) as { specs?: Array<{ id?: string }> }
+      specRegistry = new Set(
+        (manifest.specs ?? []).map(spec => spec.id).filter((id): id is string => Boolean(id)),
+      )
     }
   } catch {
     // 不存在则忽略
@@ -1225,6 +1257,7 @@ export async function runCli(
       mode,
       batches: batches.length > 0 ? batches : undefined,
       envConsumers,
+      specRegistry,
     })
     diagnostics = result.diagnostics
     printReport(inventory, matrix, diagnostics, mode)
