@@ -1180,7 +1180,7 @@ async function getMessagesForPromptSlashCommand(
   const expansionContexts: string[] = []
   let suppressOriginalPrompt = false
   for await (const r of executeUserPromptExpansionHooks(
-    'slash_command',
+    command.source === 'mcp' ? 'mcp_prompt' : 'slash_command',
     command.name,
     args,
     command.source,
