@@ -29,6 +29,7 @@ groups:
       - src/memdir/memdir.ts
       - src/memdir/paths.ts
       - src/memdir/teamMemPaths.ts
+      - src/memdir/realPathContainment.ts
       - src/memdir/findRelevantMemories.ts
       - src/memdir/memoryScan.ts
       - src/memdir/memoryAge.ts
@@ -76,3 +77,4 @@ groups:
       - tests/sessionMemory.test.ts
       - tests/memoryPaths.test.ts
       - tests/memory.test.ts
+      - tests/memoryPathValidation.test.ts

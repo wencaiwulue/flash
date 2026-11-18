@@ -1,13 +1,17 @@
 import memoize from 'lodash-es/memoize.js'
 import { homedir } from 'os'
-import { isAbsolute, join, normalize, resolve, sep, dirname } from 'path'
-import { lstat, realpath } from 'fs/promises'
+import { isAbsolute, join, normalize, sep } from 'path'
+import {
+  isRealPathContainedSync,
+  validateRealPathContainmentSync,
+} from './realPathContainment.js'
+
+export { PathTraversalError } from './realPathContainment.js'
 import {
   getIsNonInteractiveSession,
   getProjectRoot,
 } from '../bootstrap/state.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
-import { getErrnoCode } from '../utils/errors.js'
 import {
   getClaudeConfigHomeDir,
   isEnvDefinedFalsy,
@@ -19,16 +23,6 @@ import {
   getInitialSettings,
   getSettingsForSource,
 } from '../utils/settings/settings.js'
-
-/**
- * Error thrown when a path validation detects a traversal or injection attempt.
- */
-export class PathTraversalError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'PathTraversalError'
-  }
-}
 
 /**
  * Whether auto-memory features are enabled (memdir, agent memory, past session search).
@@ -283,106 +277,17 @@ export function getAutoMemEntrypoint(): string {
  * excluded — see getAutoMemPathSetting), and hasAutoMemPathOverride() remains
  * false for it.
  *
- * NOTE: This is a fast-path check for permission decisions. Actual file reads
- * should validate symlink containment with validateAutoMemReadPath() first.
+ * NOTE: This synchronous check resolves the deepest existing path and auto
+ * memory root so permission and read classification fail closed on escapes.
  */
 export function isAutoMemPath(absolutePath: string): boolean {
-  // SECURITY: Normalize to prevent path traversal bypasses via .. segments
-  const normalizedPath = normalize(absolutePath)
-  return normalizedPath.startsWith(getAutoMemPath())
-}
-
-/**
- * Resolve symlinks for the deepest existing ancestor of a path.
- * Helper for validateAutoMemReadPath.
- */
-async function realpathDeepestExistingAuto(absolutePath: string): Promise<string> {
-  const tail: string[] = []
-  let current = absolutePath
-
-  for (
-    let parent = dirname(current);
-    current !== parent;
-    parent = dirname(current)
-  ) {
-    try {
-      const realCurrent = await realpath(current)
-      return tail.length === 0 ? realCurrent : join(realCurrent, ...tail.reverse())
-    } catch (e: unknown) {
-      const code = getErrnoCode(e)
-      if (code === 'ENOENT') {
-        try {
-          const st = await lstat(current)
-          if (st.isSymbolicLink()) {
-            throw new PathTraversalError(`Dangling symlink detected: "${current}"`)
-          }
-        } catch (lstatErr: unknown) {
-          if (lstatErr instanceof PathTraversalError) {
-            throw lstatErr
-          }
-        }
-      } else if (code === 'ELOOP') {
-        throw new PathTraversalError(`Symlink loop detected in path: "${current}"`)
-      } else if (code !== 'ENOTDIR' && code !== 'ENAMETOOLONG') {
-        throw new PathTraversalError(`Cannot verify path containment (${code}): "${current}"`)
-      }
-
-      tail.push(current.slice(parent.length + sep.length))
-      current = parent
-    }
-  }
-
-  return absolutePath
-}
-
-/**
- * Check whether a real path is within the real auto memory directory.
- * Helper for validateAutoMemReadPath.
- */
-async function isRealPathWithinAutoDir(realCandidate: string): Promise<boolean> {
-  let realAutoDir: string
-  try {
-    realAutoDir = await realpath(getAutoMemPath().replace(/[/\\]+$/, ''))
-  } catch (e: unknown) {
-    const code = getErrnoCode(e)
-    if (code === 'ENOENT' || code === 'ENOTDIR') {
-      return true
-    }
-    return false
-  }
-
-  if (realCandidate === realAutoDir) {
-    return true
-  }
-
-  return realCandidate.startsWith(realAutoDir + sep)
+  return isRealPathContainedSync(absolutePath, getAutoMemPath())
 }
 
 /**
  * Validate that an absolute file path is safe for reading from auto memory.
- * Returns the resolved real path if valid.
- * Throws PathTraversalError if the path contains injection vectors or escapes
- * the directory via symlink.
- *
- * B3-memory-03 FIX: This validates symlink containment before reads, ensuring
- * symlinks can't escape the auto memory directory.
+ * Returns the canonical real path if valid.
  */
 export async function validateAutoMemReadPath(filePath: string): Promise<string> {
-  if (filePath.includes('\0')) {
-    throw new PathTraversalError(`Null byte in path: "${filePath}"`)
-  }
-
-  const resolvedPath = resolve(filePath)
-  const autoDir = getAutoMemPath()
-
-  if (!resolvedPath.startsWith(autoDir)) {
-    throw new PathTraversalError(`Path escapes auto memory directory: "${filePath}"`)
-  }
-
-  const realPath = await realpathDeepestExistingAuto(resolvedPath)
-  if (!(await isRealPathWithinAutoDir(realPath))) {
-    throw new PathTraversalError(`Path escapes auto memory directory via symlink: "${filePath}"`)
-  }
-
-  return realPath
+  return validateRealPathContainmentSync(filePath, getAutoMemPath())
 }

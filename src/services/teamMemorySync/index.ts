@@ -565,7 +565,7 @@ async function uploadTeamMemory(
  * (not uploaded) and collected in skippedSecrets so the caller can
  * warn the user.
  */
-async function readLocalTeamMemory(maxEntries: number | null): Promise<{
+export async function readLocalTeamMemory(maxEntries: number | null): Promise<{
   entries: Record<string, string>
   skippedSecrets: SkippedSecretFile[]
 }> {

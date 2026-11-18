@@ -3,16 +3,9 @@ import { dirname, join, resolve, sep } from 'path'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 import { getErrnoCode } from '../utils/errors.js'
 import { getAutoMemPath, isAutoMemoryEnabled } from './paths.js'
+import { isRealPathContainedSync, PathTraversalError } from './realPathContainment.js'
 
-/**
- * Error thrown when a path validation detects a traversal or injection attempt.
- */
-export class PathTraversalError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'PathTraversalError'
-  }
-}
+export { PathTraversalError } from './realPathContainment.js'
 
 /**
  * Sanitize a file path key by rejecting dangerous patterns.
@@ -212,15 +205,11 @@ async function isRealPathWithinTeamDir(
  * validateTeamMemWritePath(), validateTeamMemReadPath(), or validateTeamMemKey()
  * which include symlink resolution.
  *
- * NOTE: This is a fast-path check for permission decisions. Actual file reads
- * should validate symlink containment with validateTeamMemReadPath() first.
+ * NOTE: This synchronous check resolves the deepest existing path and the
+ * team root so permission and read classification fail closed on symlink escapes.
  */
 export function isTeamMemPath(filePath: string): boolean {
-  // SECURITY: resolve() converts to absolute and eliminates .. segments,
-  // preventing path traversal attacks (e.g. "team/../../etc/passwd")
-  const resolvedPath = resolve(filePath)
-  const teamDir = getTeamMemPath()
-  return resolvedPath.startsWith(teamDir)
+  return isRealPathContainedSync(filePath, getTeamMemPath())
 }
 
 /**

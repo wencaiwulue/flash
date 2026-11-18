@@ -1421,9 +1421,9 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 **问题**：`isTeamMemPath` 仅做字符串前缀检查，不解析 symlink；而 `validateTeamMemWritePath` 做完整 symlink 解析。
 
 **修复**：
-- 新增 `validateTeamMemReadPath` 函数，与 `validateTeamMemWritePath` 采用相同的验证逻辑
-- 更新 `readLocalTeamMemory` 函数，在读取文件前先验证路径
-- 保留 `isTeamMemPath` 作为快速权限检查，但明确说明仅用于权限预判，实际读取需要完整验证
+- `isTeamMemPath` 直接执行共享 `realPathContainment` 同步真实路径检查，不再依赖调用方另选验证器
+- `validateTeamMemReadPath` 保留 async API 并用于 `readLocalTeamMemory` 读取前重验
+- 内部 symlink 允许，文件/目录逃逸与 dangling symlink 失败关闭
 
 **证据**：
 - `src/memdir/teamMemPaths.ts`：新增 `validateTeamMemReadPath` 函数
@@ -1434,9 +1434,8 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 **问题**：`isAutoMemPath` 仅做字符串前缀检查，无 symlink 解析。
 
 **修复**：
-- 新增 `validateAutoMemReadPath` 函数，实现完整的 symlink 解析和真实路径包含检查
-- 新增 `PathTraversalError` 类到 paths.ts
-- 实现 `realpathDeepestExistingAuto` 和 `isRealPathWithinAutoDir` 辅助函数
+- `isAutoMemPath` 直接执行共享 `realPathContainment` 同步真实路径检查
+- `validateAutoMemReadPath` 复用同一实现，`PathTraversalError` 统一从 `realPathContainment.ts` 导出，不再维护重复错误类和重复 deepest-ancestor 逻辑
 
 **证据**：
 - `src/memdir/paths.ts`：新增验证函数和错误类
@@ -1458,9 +1457,9 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 | 维度 | 选择 | 说明 |
 |------|------|------|
 | 验证深度 | symlink + realpath | 与写入验证一致，确保安全边界 |
-| 性能策略 | 快速检查保留 + 完整验证在实际读取前 | 权限判断用 isTeamMemPath/isAutoMemPath，实际读取用 validate* 函数 |
+| 性能策略 | 保留同步 API，执行 realpath I/O | 分类器本身失败关闭，不能靠调用方选择安全 API |
 | 错误处理 | fail closed，验证失败跳过 | 安全优先，不读取有风险的文件 |
-| 向后兼容 | isTeamMemPath/isAutoMemPath 保留现有行为 | 不破坏现有代码，逐步迁移 |
+| 向后兼容 | 函数签名与内部 symlink/新文件行为保留 | lexical-only 逃逸行为按安全缺陷修正 |
 
 ### 三层证据收集
 
@@ -1474,9 +1473,8 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 #### 2. 上游 CLI strings 边界
 
 对 `/opt/homebrew/bin/claude` 执行 strings 搜索：
-- 未找到 `validateTeamMemReadPath` 或类似名称的明确符号
-- 发现 `PathTraversalError` 相关字符串，说明上游有路径验证机制
-- 未找到关于读取路径验证的明确证据
+- `isAutoMemPath`、`isTeamMemPath`、`realpathDeepestExisting`、`validateAutoMemReadPath`、`validateTeamMemReadPath` 均无匹配（`rg` 退出 1）
+- 不据此推断上游读取路径校验实现，也不把本地修复描述为上游 wire 契约
 
 #### 3. 本地源码/契约边界
 
@@ -1487,14 +1485,14 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 
 ### RED/GREEN 测试验证
 
-#### RED（修复前）
-- `isTeamMemPath` 对指向外部的 symlink 返回 true
-- `readLocalTeamMemory` 会读取指向外部的文件
+#### RED（旧实现对照）
+- 从 `a7f4f21` 临时恢复旧分类器并对真实 symlink 执行，输出 `teamEscapeAccepted:true`、`autoEscapeAccepted:true`，退出 1；临时源码已删除。
+- 初次评审还确认 `validateAutoMemReadPath` 无生产调用方，新增 helper 不能替代执行层修复。
 
-#### GREEN（修复后）
-- `validateTeamMemReadPath` 对指向外部的 symlink 抛出 `PathTraversalError`
-- `readLocalTeamMemory` 在读取前验证，跳过有风险的文件
-- 正常文件和内部 symlink 继续正常工作
+#### GREEN（最终修复后）
+- `isTeamMemPath`/`isAutoMemPath` 直接拒绝文件和目录 symlink 逃逸，内部 symlink 继续可用。
+- `readLocalTeamMemory` 真实调用返回普通 entry，不包含逃逸 entry。
+- `bun test tests/memoryPathValidation.test.ts tests/memoryPaths.test.ts tests/memory.test.ts tests/sessionMemory.test.ts --timeout 60000`：退出 0，55 pass，0 fail。
 
 ### 测试覆盖
 

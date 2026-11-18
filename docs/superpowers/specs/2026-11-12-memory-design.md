@@ -107,16 +107,20 @@ CLAUDE.md通过attachments系统注入上下文，**不是**记忆系统的一�
 | **代价** | 实现复杂，有多层检查和错误处理 |
 | **证据** | `src/memdir/teamMemPaths.ts`（PathTraversalError、validateTeamMemWritePath、validateTeamMemKey、realpathDeepestExisting、isRealPathWithinTeamDir 等） |
 
-### 团队记忆路径验证差异（读取 vs 写入）
+### Auto/Team 记忆读写统一的 realpath 边界
 
 | 操作 | 验证函数 | 验证程度 | 证据位置 | 说明 |
 |-----|---------|---------|---------|------|
-| **读取/权限检查** | `isTeamMemPath` | 仅字符串前缀检查 | `teamMemPaths.ts:214-220` | 快速路径，无symlink解析，存在潜在逃逸风险（但写入有完整验证） |
-| **写入/同步** | `validateTeamMemWritePath` | 完整symlink解析 + 真实路径检查 | `teamMemPaths.ts:228-284` | 安全路径，深度验证，防止逃逸 |
-| **远程键验证** | `validateTeamMemKey` | 清理+规范化检查 | `teamMemPaths.ts:22-63` | 键名安全，防止路径遍历注入 |
+| **读取/权限检查** | `isTeamMemPath`、`isAutoMemPath` | 同步 deepest-existing-ancestor realpath + 根目录包含检查 | `realPathContainment.ts`、`teamMemPaths.ts`、`paths.ts` | 保留同步 API；内部 symlink 允许，文件/目录逃逸和 dangling symlink 失败关闭 |
+| **团队本地读取** | `readLocalTeamMemory` 内 `validateTeamMemReadPath` | 读取前重新验证真实路径 | `src/services/teamMemorySync/index.ts`、`tests/memoryPathValidation.test.ts` | 普通 entry 保留，逃逸 entry 不进入同步集合 |
+| **写入/同步** | `validateTeamMemWritePath` | 完整 symlink 解析 + 真实路径检查 | `teamMemPaths.ts` | 新文件路径解析最深已存在祖先，保留合法创建行为 |
+| **远程键验证** | `validateTeamMemKey` | 清理 + 规范化 + realpath 检查 | `teamMemPaths.ts` | 键名和最终落盘位置均受约束 |
 
-- **验证边界**：读取路径仅做前缀检查是设计权衡（性能vs安全），因为写入路径已有完整保护；但需注意：若已存在恶意symlink，读取可能访问外部文件。
-- **相关发现登记**：X-memory-01（见cross-subsystem.md）
+- **设计取舍**：同步分类器需要文件系统 I/O，但权限/读取分类不能依赖调用方另选一个安全 API；共享 `PathTraversalError` 和 `realPathContainment.ts` 避免 auto/team 校验漂移。
+- **三层证据**：官方 [How Claude remembers your project](https://code.claude.com/docs/en/memory.md) 只约束记忆语义，不公开本校验实现；本机 `/opt/homebrew/bin/claude` `strings` 未提供可据此推断 auto/team realpath 契约的符号；本仓库源码与 `direct-connect` 无关，不借用私有协议证据。
+- **RED/GREEN**：旧实现对照在真实 symlink 上得到 `teamEscapeAccepted:true`、`autoEscapeAccepted:true`（退出 1）；统一调用方后，`bun test tests/memoryPathValidation.test.ts tests/memoryPaths.test.ts tests/memory.test.ts tests/sessionMemory.test.ts --timeout 60000` 退出 0（55 pass）。
+- **失败与回滚**：校验失败不得读取或返回权限允许；回滚不得恢复 lexical-only 分类，若撤销共享实现，必须同步保留所有现有调用方的 realpath 检查并重跑对抗测试。
+- **相关发现整改**：B3-memory-01、B3-memory-03、B3-memory-06；spec 状态虽为 approved，此行为变更仍需列入下一批用户复审。
 
 ### 删除文件后的cursor/索引失效与重复注入
 

@@ -1,147 +1,110 @@
-import { describe, expect, test, beforeEach, afterEach } from 'bun:test'
-import { join, resolve } from 'path'
-import { mkdir, symlink, writeFile, rm, realpath } from 'fs/promises'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
+import { join } from 'path'
 import {
-  validateTeamMemReadPath,
-  PathTraversalError,
   isTeamMemPath,
-} from '../src/memdir/teamMemPaths'
+  PathTraversalError,
+  validateTeamMemReadPath,
+} from '../src/memdir/teamMemPaths.ts'
 import {
-  validateAutoMemReadPath,
+  getAutoMemPath,
   isAutoMemPath,
-} from '../src/memdir/paths'
-import {
-  setFsImplementation,
-  FsOperations,
-} from '../src/utils/fsOperations'
-import { setProjectRoot } from '../src/bootstrap/state'
-import { PathTraversalError as SessionPathTraversalError } from '../src/services/SessionMemory/sessionMemoryUtils'
+  validateAutoMemReadPath,
+} from '../src/memdir/paths.ts'
+import { readLocalTeamMemory } from '../src/services/teamMemorySync/index.ts'
 
 let testDir: string
-let projectRoot: string
+let autoDir: string
+let teamDir: string
+let previousOverride: string | undefined
 
-async function mkdtemp(prefix: string): Promise<string> {
-  const rand = Math.random().toString(36).slice(2, 10)
-  const dir = join(tmpdir(), prefix + rand)
-  await mkdir(dir, { recursive: true })
-  return dir
-}
+beforeEach(async () => {
+  previousOverride = process.env.CLAUDE_COWORK_MEMORY_PATH_OVERRIDE
+  testDir = await mkdtemp(join(tmpdir(), 'flash-memory-paths-'))
+  autoDir = join(testDir, 'memory')
+  teamDir = join(autoDir, 'team')
+  await mkdir(teamDir, { recursive: true })
+  process.env.CLAUDE_COWORK_MEMORY_PATH_OVERRIDE = autoDir
+  getAutoMemPath.cache.clear()
+})
 
-// Mock implementations that don't depend on real git/settings
-let mockAutoMemPath: string
-let mockTeamMemPath: string
+afterEach(async () => {
+  if (previousOverride === undefined) {
+    delete process.env.CLAUDE_COWORK_MEMORY_PATH_OVERRIDE
+  } else {
+    process.env.CLAUDE_COWORK_MEMORY_PATH_OVERRIDE = previousOverride
+  }
+  getAutoMemPath.cache.clear()
+  await rm(testDir, { recursive: true, force: true })
+})
 
-describe('Memory Path Validation - Fix for B3-memory-01, B3-memory-03, B3-memory-06', () => {
-  beforeEach(async () => {
-    testDir = await mkdtemp('flash-memory-test-')
-    projectRoot = join(testDir, 'project')
-    mockAutoMemPath = join(testDir, 'memory') + '/'
-    mockTeamMemPath = join(mockAutoMemPath, 'team') + '/'
+describe('memory realpath execution checks', () => {
+  test('isTeamMemPath accepts ordinary files and internal symlinks', async () => {
+    const target = join(teamDir, 'target.md')
+    const link = join(teamDir, 'alias.md')
+    await writeFile(target, 'team note')
+    await symlink(target, link)
 
-    await mkdir(projectRoot, { recursive: true })
-    await mkdir(mockTeamMemPath, { recursive: true })
-
-    setProjectRoot(projectRoot)
+    expect(isTeamMemPath(target)).toBe(true)
+    expect(isTeamMemPath(link)).toBe(true)
+    expect(await validateTeamMemReadPath(link)).toBe(await realpath(target))
   })
 
-  afterEach(async () => {
-    await rm(testDir, { recursive: true, force: true })
-  })
-
-  test('isTeamMemPath passes lexical check but validateTeamMemReadPath catches symlink escape', async () => {
-    // Create a secret file outside team directory
-    const secretFile = join(testDir, 'secret.txt')
-    await writeFile(secretFile, 'This is a secret!')
-
-    // Create a symlink inside team directory pointing to outside
-    const symlinkPath = join(mockTeamMemPath, 'malicious.txt')
-    await symlink(secretFile, symlinkPath)
-
-    // B3-memory-01: Lexical check passes
-    expect(isTeamMemPath(symlinkPath)).toBe(true)
-
-    // But validation catches the escape
-    await expect(validateTeamMemReadPath(symlinkPath)).rejects.toBeInstanceOf(PathTraversalError)
-  })
-
-  test('validateTeamMemReadPath accepts normal files inside team directory', async () => {
-    const normalFile = join(mockTeamMemPath, 'normal.txt')
-    await writeFile(normalFile, 'Normal content')
-
-    const validated = await validateTeamMemReadPath(normalFile)
-    expect(validated).toBeDefined()
-  })
-
-  test('validateTeamMemReadPath accepts internal symlinks (inside team directory)', async () => {
-    const targetFile = join(mockTeamMemPath, 'target.txt')
-    await writeFile(targetFile, 'Target content')
-
-    const symlinkPath = join(mockTeamMemPath, 'link.txt')
-    await symlink(targetFile, symlinkPath)
-
-    const validated = await validateTeamMemReadPath(symlinkPath)
-    expect(validated).toBeDefined()
-  })
-
-  test('validateTeamMemReadPath catches directory symlink escape', async () => {
+  test('isTeamMemPath rejects file and directory symlink escapes', async () => {
+    const outside = join(testDir, 'outside.md')
     const outsideDir = join(testDir, 'outside')
+    await writeFile(outside, 'outside secret')
     await mkdir(outsideDir)
-    await writeFile(join(outsideDir, 'secret.txt'), 'Secret')
+    await writeFile(join(outsideDir, 'nested.md'), 'nested secret')
+    const fileLink = join(teamDir, 'file-escape.md')
+    const directoryLink = join(teamDir, 'directory-escape')
+    await symlink(outside, fileLink)
+    await symlink(outsideDir, directoryLink, 'dir')
 
-    const symlinkDir = join(mockTeamMemPath, 'linked_dir')
-    await symlink(outsideDir, symlinkDir, 'dir')
-
-    // File inside symlinked directory pointing outside
-    const deepPath = join(symlinkDir, 'secret.txt')
-
-    // Lexical check passes, validation catches
-    await expect(validateTeamMemReadPath(deepPath)).rejects.toBeInstanceOf(PathTraversalError)
-  })
-
-  test('validateTeamMemReadPath rejects path traversal', async () => {
+    expect(isTeamMemPath(fileLink)).toBe(false)
+    expect(isTeamMemPath(join(directoryLink, 'nested.md'))).toBe(false)
+    await expect(validateTeamMemReadPath(fileLink)).rejects.toBeInstanceOf(PathTraversalError)
     await expect(
-      validateTeamMemReadPath(join(mockTeamMemPath, '../escape.txt')),
+      validateTeamMemReadPath(join(directoryLink, 'nested.md')),
     ).rejects.toBeInstanceOf(PathTraversalError)
   })
-})
 
-// Helper for testing auto memory validation
-describe('Auto Memory Path Validation - B3-memory-03', () => {
-  beforeEach(async () => {
-    testDir = await mkdtemp('flash-auto-memory-test-')
-    projectRoot = join(testDir, 'project')
-    mockAutoMemPath = join(testDir, 'memory') + '/'
+  test('isAutoMemPath accepts internal links and rejects escapes', async () => {
+    const target = join(autoDir, 'target.md')
+    const internalLink = join(autoDir, 'internal.md')
+    const escapingLink = join(autoDir, 'escaping.md')
+    const outside = join(testDir, 'outside.md')
+    await writeFile(target, 'auto note')
+    await writeFile(outside, 'outside secret')
+    await symlink(target, internalLink)
+    await symlink(outside, escapingLink)
 
-    await mkdir(projectRoot, { recursive: true })
-    await mkdir(mockAutoMemPath, { recursive: true })
-
-    setProjectRoot(projectRoot)
+    expect(isAutoMemPath(internalLink)).toBe(true)
+    expect(isAutoMemPath(escapingLink)).toBe(false)
+    expect(isAutoMemPath(join(autoDir, '..', 'outside.md'))).toBe(false)
+    expect(await validateAutoMemReadPath(internalLink)).toBe(await realpath(target))
+    await expect(validateAutoMemReadPath(escapingLink)).rejects.toBeInstanceOf(PathTraversalError)
   })
 
-  afterEach(async () => {
-    await rm(testDir, { recursive: true, force: true })
-  })
-
-  test('isAutoMemPath vs validateAutoMemReadPath symlink check', async () => {
-    // Mock implementation to avoid real getAutoMemPath
-    const secretFile = join(testDir, 'secret.txt')
-    await writeFile(secretFile, 'secret!')
-
-    // This test demonstrates the pattern, but validateAutoMemReadPath uses getAutoMemPath
-    // For the actual fix, validateAutoMemReadPath provides the real protection
-  })
-
-  test('validateAutoMemReadPath rejects path traversal', async () => {
-    // Instead of testing against real getAutoMemPath, we verify the pattern
-    // The validateAutoMemReadPath function implements the same pattern as validateTeamMemReadPath
+  test('missing memory roots still permit first-time internal writes', async () => {
+    await rm(autoDir, { recursive: true, force: true })
+    expect(isAutoMemPath(join(autoDir, 'new.md'))).toBe(true)
+    expect(isTeamMemPath(join(teamDir, 'new.md'))).toBe(true)
   })
 })
 
-describe('Read Local Team Memory Symlink Validation - B3-memory-06', () => {
-  // This is integration tested in teamMemorySync tests
-  test('readLocalTeamMemory would validate paths (demonstration)', async () => {
-    // Conceptual demonstration: readLocalTeamMemory now validates each path
-    // before reading, ensuring symlink escapes are caught
+describe('readLocalTeamMemory', () => {
+  test('returns ordinary entries but never reads symlink escapes', async () => {
+    await writeFile(join(teamDir, 'ordinary.md'), 'ordinary team note')
+    const outside = join(testDir, 'outside.md')
+    await writeFile(outside, 'outside secret')
+    await symlink(outside, join(teamDir, 'escape.md'))
+
+    const result = await readLocalTeamMemory(null)
+
+    expect(result.entries).toEqual({ 'ordinary.md': 'ordinary team note' })
+    expect(result.skippedSecrets).toEqual([])
+    expect(await readFile(join(teamDir, 'ordinary.md'), 'utf8')).toBe('ordinary team note')
   })
 })
