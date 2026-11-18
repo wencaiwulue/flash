@@ -83,6 +83,12 @@ groups:
       - src/commands/clear/clear.ts
       - src/commands/clear/conversation.ts
       - src/commands/clear/index.ts
+  - id: commands-framework-tests
+    kind: test
+    section: 7
+    summary: 命令 availability、远程安全、查找和 prompt 构造测试
+    files:
+      - tests/commandsFramework.test.ts
   - id: uncovered-types
     kind: source
     section: 4

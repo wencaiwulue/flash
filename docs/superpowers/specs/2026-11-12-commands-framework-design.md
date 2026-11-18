@@ -985,13 +985,26 @@ Promise 从未 resolve
   - `src/utils/processUserInput/executeForkedSlashCommand.ts` - `executeForkedSlashCommand()`
   - `src/utils/processUserInput/processUserInput.ts` - `processUserInput()`
 
-### 7.2 测试覆盖
+### 7.2 测试覆盖与证据边界
 
-现有测试覆盖：
-- 斜杠命令解析
-- 命令执行流程
-- 远程控制安全模型
-- 各种内建命令功能
+| 场景 | 真实测试与不变量 | 证据边界 |
+|---|---|---|
+| availability/provider | `tests/commandsFramework.test.ts` 验证 claude.ai subscriber、console 非 3P 第一方 URL，以及 subscriber/3P/custom URL 拒绝 | auth/provider 只替换状态，不执行登录或凭据读取 |
+| REMOTE_SAFE / BRIDGE_SAFE | 真实 registry 中 help 保留、compact/model 排除；compact bridge-safe，prompt 类型安全 | 未执行真实远程入站命令；只验证过滤契约 |
+| 查找与描述 | name/alias 命中、missing 错误列出 alias、workflow/plugin 来源格式和 local description 不变 | 不替代完整 skill/plugin 加载集成 |
+| 命令名与文本 prompt | `looksLikeCommand` 接受名称/冒号连字符，拒绝路径和 `/`；`processTextPrompt` 保留原文、附件顺序、prompt id、图片和 paste IDs | 不执行模型或完整 QueryEngine |
+
+既有各内建命令测试保持独立，本文件不宣称完成 getCommands 的全源聚合、完整 processSlashCommand 或真实远程执行。
+
+### 7.3 三层证据与回滚
+
+| 层级 | 只读证据 | 边界 |
+|---|---|---|
+| 官方文档 | [Commands](https://code.claude.com/docs/en/commands)提供内建命令与参数语义 | 未公开 availability、remote/bridge allowlist 或 prompt 构造内部实现 |
+| 本机上游二进制 | `strings $(command -v claude)` 命中 `looksLikeCommand`、`formatDescriptionWithSource`、`REMOTE_SAFE_COMMANDS`、`BRIDGE_SAFE_COMMANDS` | 只证明相关符号存在，不证明真实远程执行安全 |
+| 本仓库 | `tests/commandsFramework.test.ts` 7 个测试、30 个断言，真实 registry 和 prompt 构造函数 | 全部离线，不是全源聚合、模型或远程 live |
+
+本轮无生产代码变更。回滚只需删除测试与 coverage entry；spec 保持 draft，B4-commands-framework-01 原 Finding 保持 open。
 
 ## 8. 文件覆盖与相关子系统
 

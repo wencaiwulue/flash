@@ -1483,3 +1483,20 @@
 全部 axios/core 边界离线，无真实远程、OAuth、滚动 viewer、桌面或私有 WebSocket 验证。无生产代码变更。
 
 **原 Finding 状态**：B4-assistant-ui-01 保持 open，spec 保持 draft。
+
+---
+
+## 整改台账：B4-commands-framework-01（2026-11-19 追加）
+
+**Finding ID**：B4-commands-framework-01；主责 spec：commands-framework。
+
+新增 `tests/commandsFramework.test.ts` 并唯一登记 coverage，7 个测试、30 个断言：
+
+- claude.ai/console availability 的 subscriber、3P 和第一方 URL 分支。
+- 真实 registry 的 REMOTE_SAFE 过滤、BRIDGE_SAFE 类型与 compact 白名单。
+- name/alias 查找、missing 错误、workflow/plugin 描述。
+- `looksLikeCommand` 名称/路径分支，以及真实 `processTextPrompt` 的 prompt id、附件顺序、图片和 paste IDs。
+
+全部 auth/provider 边界离线，无登录、模型、全源命令聚合或真实远程执行。无生产代码变更，spec 第 7.2/7.3 节明确未覆盖范围。
+
+**原 Finding 状态**：B4-commands-framework-01 保持 open，spec 保持 draft。
