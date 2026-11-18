@@ -1707,6 +1707,14 @@ export async function getMatchingHooks(
       case 'ConfigChange':
         matchQuery = hookInput.source
         break
+      case 'UserPromptExpansion':
+        matchQuery = hookInput.command_name
+        break
+      case 'DirectoryAdded':
+        matchQuery = hookInput.source
+        break
+      // Pre/PostModelSwitch match on canonical to_model upstream; canonicalization
+      // is not implemented, so matchQuery stays undefined → all hooks run (fail-safe).
       case 'InstructionsLoaded':
         matchQuery = hookInput.load_reason
         break
