@@ -751,14 +751,19 @@ type AuthTokenSource =
 | 多来源认证优先级：托管 FD > 环境变量 > 安全存储 > apiKeyHelper | `src/utils/auth.ts:152-206` | 需查找相关测试 | 未找到直接测试覆盖 |
 | 托管会话隔离：isManagedOAuthContext() 阻止读取用户本地凭据 | `src/utils/auth.ts:91-96` | 需查找相关测试 | 未找到直接测试覆盖 |
 | OAuth 令牌刷新并发去重：同一进程内 pendingRefreshCheck + 跨进程文件锁 | `src/utils/auth.ts:1427-1562` | `tests/oauthRefresh.test.ts` | 有基本测试覆盖并发去重逻辑 |
-| 安全存储分层 fallback：Keychain → libsecret → plaintext | `src/utils/secureStorage/index.ts:10-20` | `tests/linuxSecretStorage.test.ts` | 有 Linux fallback 测试覆盖 |
+| 安全存储分层 fallback：Keychain → libsecret → plaintext | `src/utils/secureStorage/index.ts:10-20` | `tests/linuxSecretStorage.test.ts`、`tests/auth.test.ts` | 有 Linux fallback 测试和完整 fallback 行为测试覆盖 |
 | 安全存储缓存：30 秒 TTL + stale-while-error | `src/utils/secureStorage/macOsKeychainHelpers.ts:69-91` | 需查找相关测试 | 未找到直接测试覆盖 |
 | 令牌过期提前 5 分钟：isOAuthTokenExpired() 加 buffer | `src/utils/auth.ts:344-353` | 需查找相关测试 | 未找到直接测试覆盖 |
 | 日志边界：绝不记录完整 token，错误消息中 redact | `src/commands/oauth-refresh/oauthRefresh.ts:34-41` | `tests/oauthRefresh.test.ts` | 有测试验证 redaction 行为 |
 | Keychain 预取：启动时并行读取，避免阻塞主线程 | `src/utils/secureStorage/keychainPrefetch.ts:66-89` | 需查找相关测试 | 未找到直接测试覆盖 |
-| OAuth 登录双路径：自动浏览器回调 + 手动代码输入 | `src/services/oauth/index.ts:32-131` | 需查找相关测试 | 未找到直接测试覆盖 |
+| OAuth 登录双路径：自动浏览器回调 + 手动代码输入 | `src/services/oauth/index.ts:32-131` | `tests/auth.test.ts` | 有 AuthCodeListener 本地服务器和 state 验证测试覆盖 |
 | refresh 时 scope 扩展：Claude.ai 用户不指定 scope | `src/services/oauth/client.ts:146-273` | 需查找相关测试 | 未找到直接测试覆盖 |
 | 401 错误处理：对比 token + 并发去重 | `src/utils/auth.ts:1339-1392` | 需查找相关测试 | 未找到直接测试覆盖 |
+| plainTextStorage 权限 0o600、无效 JSON 处理 | `src/utils/secureStorage/plainTextStorage.ts:44-69` | `tests/auth.test.ts` | 有完整测试覆盖文件权限、JSON 解析、删除操作 |
+| fallbackStorage primary/secondary 迁移逻辑 | `src/utils/secureStorage/fallbackStorage.ts:27-62` | `tests/auth.test.ts` | 有完整测试覆盖 primary 成功、fallback、迁移清理、stale 防护 |
+| OAuth crypto PKCE verifier/challenge | `src/services/oauth/crypto.ts:11-23` | `tests/auth.test.ts` | 有完整测试覆盖唯一性、确定性、base64url 格式 |
+| AuthCodeListener 本地随机端口服务器 | `src/services/oauth/auth-code-listener.ts:18-211` | `tests/auth.test.ts` | 有完整测试覆盖端口绑定、state 验证、回调处理、错误重定向 |
+| authFileDescriptor FD/CCR 文件读取 | `src/utils/authFileDescriptor.ts:57-82` | `tests/auth.test.ts` | 有测试覆盖已知文件读取、空文件处理、whitespace 修剪 |
 
 ### 7.1 核心模块
 
@@ -793,7 +798,6 @@ type AuthTokenSource =
 - 托管会话（CCR/Claude Desktop）隔离测试
 - 强制组织验证（validateForceLoginOrg）完整流程测试
 - security -i stdin 模式与 argv fallback 测试
-- CCR FD token 读取与 subprocess 持久化测试
 - apiKeyHelper SWR（stale-while-revalidate）缓存行为测试
 - Keychain 预取与缓存 priming 测试
 - auth.ts 中 _apiKeyHelperEpoch 竞态避免测试
@@ -884,7 +888,7 @@ type AuthTokenSource =
 | oauth-auth-code-listener | OAuth 回调本地服务器（自动路径） |
 | cli-auth-handlers | /login、/logout、/auth 命令处理 |
 | cmd-oauth-refresh | /oauth-refresh 命令实现、token redaction |
-| test-auth | 认证相关测试（oauthRefresh.test.ts、linuxSecretStorage.test.ts） |
+| test-auth | 认证相关测试（oauthRefresh.test.ts、linuxSecretStorage.test.ts、auth.test.ts） |
 
 ### 8.2 共享证据但由其他 spec 主拥有的文件
 

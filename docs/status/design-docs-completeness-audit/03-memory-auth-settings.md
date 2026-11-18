@@ -247,9 +247,9 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 检查 coverage 中提及的测试文件：
 - ✅ tests/oauthRefresh.test.ts：OAuth refresh 并发去重、redaction、status
 - ✅ tests/linuxSecretStorage.test.ts：Linux libsecret 存储读写、fallback
+- ✅ tests/auth.test.ts：plainTextStorage、fallbackStorage、OAuth crypto、AuthCodeListener、authFileDescriptor 测试
 - ❌ 无 auth-core 测试：多来源优先级、托管会话隔离、401 处理、apiKeyHelper
 - ❌ 无 secure-storage-macos 测试：Keychain 缓存、stale-while-error、stdin/argv fallback
-- ❌ 无 oauth-service 测试：双路径登录、PKCE、授权码交换
 
 #### 上游证据
 
@@ -1049,7 +1049,7 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 | B3-skills-05 | skills | — | 缓存准确性 | P3 | getSkillDirCommands memoize 仅以 cwd 为键，实际可能有不同 additional dirs/环境变量组合，缓存可能不准确 | src/skills/loadSkillsDir.ts:638 | N/A | ❌ 无测试 | 低（缓存一致性） | 更精确的 memoize 键，包含所有影响结果的参数 | 已证实 | 完整源码审查 | open |
 | B3-skills-06 | skills | — | 测试缺口 | P2 | skills 子系统部分模块无专用测试文件，如 skills-load 核心逻辑无完整测试 | src/skills/, src/tools/SkillTool/, src/utils/skills/ | N/A | ❌ 无完整测试，仅有 skillSearch/remoteSkills 测试 | 中（无回归保护） | 添加 skills 系统完整测试：加载去重、条件激活、动态发现、fork/inline 执行、变更监听 | 已证实 | tests/ 目录扫描确认 | open |
 | B3-auth-01 | auth | — | 功能改进 | P1 | Keychain 缓存 30 秒，跨进程刷新后另一个进程最多 30 秒才看到新 token | src/utils/secureStorage/macOsKeychainHelpers.ts:69-91 | N/A | ❌ 无测试 | 高（跨进程状态不一致） | 每次读取 tokens 时检查磁盘 mtime 或 Keychain 自身修改时间，变更则立即清缓存 | 已证实 | 完整源码审查 | open |
-| B3-auth-02 | auth | — | 测试缺口 | P2 | auth 子系统大量核心逻辑无专用测试文件，仅 oauthRefresh.test.ts 和 linuxSecretStorage.test.ts | src/utils/auth.ts, src/utils/secureStorage/, src/services/oauth/ | N/A | ❌ 无完整测试，仅有 oauthRefresh/linuxSecretStorage 测试 | 中（无回归保护） | 添加 auth 系统完整测试：多来源优先级、托管会话隔离、401 处理、Keychain 缓存、stale-while-error、双路径登录 | 已证实 | 完整源码审查 | open |
+| B3-auth-02 | auth | — | 测试缺口 | P2 | auth 子系统大量核心逻辑无专用测试文件，仅 oauthRefresh.test.ts 和 linuxSecretStorage.test.ts | src/utils/auth.ts, src/utils/secureStorage/, src/services/oauth/ | N/A | ⚠️ 部分测试完成（tests/auth.test.ts 覆盖 plainTextStorage、fallbackStorage、OAuth crypto、AuthCodeListener、authFileDescriptor） | 中（无回归保护） | 剩余测试：auth-core 优先级、托管会话隔离、401 处理、Keychain 缓存行为 | 已证实 | 完整源码审查 | in-progress |
 | B3-commit-attribution-01 | commit-attribution | — | 设计取舍 | P3 | 归因状态中 userModified 参数存在但被忽略（当前不区分用户后续修改，所有 Edit/Write 均计 Claude） | src/utils/commitAttribution.ts trackFileModification | N/A | ✅ 有测试（但不验证 userModified） | 低（归因准确性） | 明确记录 userModified 被忽略的原因，或实现用户变更检测 | 已证实 | 完整源码审查 | open |
 | B3-commit-attribution-02 | commit-attribution | — | 设计取舍 | P3 | 多次编辑同一位置会导致字符计数膨胀（前缀/后缀匹配每次编辑都累加，而非计算增量） | src/utils/commitAttribution.ts | N/A | ✅ 有测试（验证二次膨胀不发生在快照恢复） | 低（归因准确性） | 明确记录此取舍，或考虑实现增量计算（如 Myers diff） | 已证实 | 设计文档明确记录 | open |
 | B3-commit-attribution-03 | commit-attribution | — | 功能缺失 | P3 | 无专门测试验证文件重命名/复制后的归因迁移（Git检测重命名但归因只按路径，重命名后Claude贡献会重新开始） | src/utils/commitAttribution.ts calculateCommitAttribution | N/A | ❌ 无重命名迁移测试 | 低（归因准确性） | 考虑实现基于 Git 重命名检测的归因迁移，或明确记录此限制 | 已证实 | 设计文档明确记录 | open |
