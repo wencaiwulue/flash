@@ -1166,3 +1166,11 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/02-tools-permis
 - 验证原实现完整流程：argv/command 解析通过 tree-sitter AST + legacy regex fallback；foreground/background 转换通过 registerForeground + backgroundExistingForegroundTask + LocalShellTask；输出截断通过 EndTruncatingAccumulator 保留开头和结尾；沙箱行为通过 SandboxManager.wrapWithSandbox + convertToSandboxRuntimeConfig + Git 裸仓库防护；失败/超时清理通过 ShellCommand.kill + treeKill 进程树终止。
 - **无新增缺陷**：原实现完整符合 spec，无需代码改动。仅补充测试覆盖。
 - spec 保持 draft 状态；原 Finding 行与历史统计保持 open。全部使用无害本地命令（echo/sleep/cat），无凭据、无网络、无破坏性命令、无真实模型调用；测试验证可观测行为（输出内容、退出码、状态转换、清理安全性），而非 mock 调用计数或源码文本。
+
+---
+
+## 整改台账：B2-tool-framework-01 和 B2-tool-framework-04（2026-11-18 追加）
+
+- 新增 `tests/tool-framework.test.ts` 并唯一登记 tool-framework coverage：Tool 接口、buildTool 默认值填充、工具池组装与去重、ToolUseContext 隔离结构、流式与批量执行等价性、禁用工具分支、错误传播
+- 无新增缺陷：原实现完整符合 spec，无需代码改动。仅补充测试覆盖
+- spec 保持 draft 状态；原 Finding 行与历史统计保持 open。全部离线/本地验证，无凭据/模型调用

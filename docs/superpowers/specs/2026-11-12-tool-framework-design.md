@@ -986,3 +986,56 @@ runToolUse(toolUse, assistantMessage, canUseTool, toolUseContext)
 | P1 | 当前 `Tool` 接口有 20+ 方法/字段，部分旧工具可能还在使用旧模式，没有完全迁移到 `buildTool`，且没有显式的版本标识 | 定义 `ToolV1`、`ToolV2` 等显式版本接口，或在 `Tool` 中加入 `version` 字段；为旧工具提供自动化迁移脚本 | 低-中等 —— 可以保持向后兼容 | 增加版本化接口的类型测试，验证旧工具仍可正常工作 | L | 已证实（基于代码阅读） |
 | P1 | `docs/STATUS.md` 记录 `src/tools/WebBrowserTool/WebBrowserTool.ts` 丢弃 MCP `result.isError`，成功导航测试不能证明后端错误可见 | 在 WebBrowser 结果适配层保留 `isError` 和结构化错误内容 | 中：需保持成功结果形状，并区分后端错误与本地异常 | 构造 MCP 成功、`isError=true` 和 transport 异常三种结果，验证工具调用方可见状态及内容均正确 | S | 待运行验证（先补失败适配测试） |
 | P2 | 开发者难以知道为什么某个工具不在工具池中（被 deny 规则过滤？被 Repl 模式隐藏？与内置工具重名被遮蔽？） | 增加可选的"组装跟踪"模式，记录每个工具被包含/排除的原因 | 低 —— 可选功能，默认关闭 | 增加组装跟踪模式的测试，验证记录的原因与实际行为一致 | M | 设计推断 |
+
+---
+
+## 实际测试证据（2026-11-18 追加）
+
+新增 `tests/tool-framework.test.ts` 并唯一登记 tool-framework coverage。
+
+### 已验证场景：
+
+1. **Tool 接口与 buildTool 默认值填充** ✅
+   - buildTool 填充安全默认值（isEnabled/isConcurrencySafe/isReadOnly/isDestructive/checkPermissions/toAutoClassifierInput/userFacingName）
+   - buildTool 保留显式提供的实现
+   - toolMatchesName 匹配主名称和别名
+   - findToolByName 从工具列表中查找工具
+   - Tool.call 返回有效的 ToolResult 结构
+   - Tool 带 contextModifier 应用变更
+
+2. **工具池组装、过滤、合并** ✅
+   - getAllBaseTools 返回名称唯一的工具
+   - getAllBaseTools 包含核心工具（Agent/Bash/Read/Edit/Write）
+   - filterToolsByDenyRules 根据 blanket deny 规则过滤工具
+   - assembleToolPool 合并内置工具和 MCP 工具
+   - assembleToolPool 移除与内置工具同名的 MCP 工具
+   - assembleToolPool 保持分区顺序：内置工具在前，MCP 在后
+   - mergeAndFilterTools 合并和去重工具列表
+   - mergeAndFilterTools 保持合并列表中的分区顺序
+
+3. **ToolUseContext 隔离与结构** ✅
+   - ToolUseContext 具有预期核心结构
+   - toolDecisions 缓存可存储和检索权限决策
+   - abortController 可发出取消信号
+   - localDenialTracking 可用于子 Agent 隔离
+   - agentId 和 agentType 标记子 Agent 上下文
+
+4. **工具输入验证** ✅
+   - Tool.inputSchema 验证正确输入
+   - Tool.inputSchema 拒绝无效输入
+
+5. **工具池 coordinator 模式过滤** ✅
+   - applyCoordinatorToolFilter 仅过滤允许的工具
+   - applyCoordinatorToolFilter 允许 PR 活动订阅工具
+
+6. **真实执行、串行/并发与错误传播** ✅
+   - `runTools` 在 serial 和 concurrency-safe 路径均返回完整 tool_result
+   - 两个并发调用无丢失，`runToolUse` 对未知工具返回 `is_error=true` 的结构化错误
+   - 工具结果具有稳定的序列化格式
+
+7. **错误处理与禁用工具分支** ✅
+   - 禁用工具可实例化但报告禁用
+   - 工具 validateInput 可拒绝错误输入
+
+### 无新增缺陷：
+原实现完整符合 spec，无需代码改动。仅补充测试覆盖。全部离线/本地验证，无凭据/模型调用。

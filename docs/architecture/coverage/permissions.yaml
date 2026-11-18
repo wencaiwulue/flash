@@ -2,8 +2,6 @@ schema_version: 1
 spec_id: permissions
 spec: ../../superpowers/specs/2026-11-12-permissions-design.md
 status: draft
-additional_files:
-  - tests/permissions.test.ts
 groups:
   - id: additional-files
     kind: source
@@ -157,3 +155,9 @@ groups:
       - src/components/permissions/EnterPlanModePermissionRequest/EnterPlanModePermissionRequest.tsx
       - src/components/permissions/AskUserQuestionPermissionRequest/AskUserQuestionPermissionRequest.tsx
       - src/components/permissions/FilePermissionDialog/FilePermissionDialog.tsx
+  - id: permissions-tests
+    kind: test
+    section: 7
+    summary: 权限裁决、拒绝跟踪、模式和 auto 安全路径测试
+    files:
+      - tests/permissions.test.ts
