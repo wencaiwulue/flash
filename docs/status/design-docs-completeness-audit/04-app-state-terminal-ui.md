@@ -1450,3 +1450,18 @@
 ### 说明
 
 本次完成所有 11 个子系统的深度生命周期审计，包括新增的 voice-assistant 和 workspace-ui。README 已统一更新。
+
+---
+
+## 整改台账：B4-app-state-02（2026-11-19 追加）
+
+**Finding ID**：B4-app-state-02；主责 spec：app-state。
+
+新增 `tests/appStateReact.test.tsx` 与 `tests/appStateOnChange.test.ts` 并唯一登记 coverage，7 个测试、28 个断言：
+
+- 真实 Ink/Provider 的 selector 渲染隔离、同引用更新跳过、Provider 嵌套错误输出、临时 userSettings 变更同步 `AppState.settings`。
+- onChange 的 verbose/expandedView 全局配置、settings env 清 auth/provider 缓存、model settings/bootstrap override，以及权限 raw/external metadata 区分。
+
+既有 `appStateStore.test.ts` 继续证明 FIFO 嵌套更新和 unsubscribe，不重复实施。auth/settings/managedEnv/sessionState 只替换外部边界，无真实凭据、浏览器、桌面或 CCR live。无生产代码变更。
+
+**原 Finding 状态**：B4-app-state-01/02 保持 open；spec 保持原 approved 状态，第 7.3/7.4 节记录实际证据、三层边界和回滚。

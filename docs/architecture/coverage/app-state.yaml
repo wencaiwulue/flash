@@ -21,6 +21,13 @@ groups:
     summary: Store 实现的测试，包括 FIFO 通知队列、嵌套 setState、unsubscribe 等
     files:
       - tests/appStateStore.test.ts
+  - id: app-state-react-tests
+    kind: test
+    section: 7
+    summary: AppStateProvider React 和 onChange 副作用测试
+    files:
+      - tests/appStateReact.test.tsx
+      - tests/appStateOnChange.test.ts
   - id: app-state-react
     kind: source
     section: 4
