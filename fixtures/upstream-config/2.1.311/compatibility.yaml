@@ -7923,11 +7923,12 @@ entries:
     exclusion: null
     ownerBatch: 1
   - id: hook:MessageDisplay
-    status: partial
+    status: aligned
     spec: upstream-config-b1-hooks-env
     implementation:
       - src/utils/hooks.ts
       - src/cli/print.ts
+      - src/screens/REPL.tsx
       - src/entrypoints/sdk/coreSchemas.ts
     tests:
       - tests/b1HookEvents.test.ts
@@ -7951,9 +7952,9 @@ entries:
         status: aligned
         evidence: "no matcher (upstream: MessageDisplay has none)"
       runtime:
-        status: partial
-        evidence: "displayContent replaces rendered result in headless; REPL streaming deltas not wired (gap)"
-    notes: "REPL interactive streaming display not wired; headless single-shot only."
+        status: aligned
+        evidence: "displayContent replaces rendered result in headless (print.ts) and per-delta in interactive REPL (REPL.tsx onQueryEvent, awaited in data layer)"
+    notes: ""
     exclusion: null
     ownerBatch: 1
   - id: hook:Notification
