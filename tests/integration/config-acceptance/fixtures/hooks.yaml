@@ -14,6 +14,15 @@
   expected_effect:
     tool_executed: true
     hook_fired: true
+    marker_has_tool_name: true
+- event: PostToolUseFailure
+  status: blocked-by-batch:B1
+  trigger: tool_call_fail
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+    marker_has_error: true
 - event: UserPromptExpansion
   status: blocked-by-batch:B1
   trigger: none
