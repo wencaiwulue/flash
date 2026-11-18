@@ -1,7 +1,7 @@
 schema_version: 1
 spec_id: skills
 spec: ../../superpowers/specs/2026-11-12-skills-design.md
-status: draft
+status: approved
 groups:
   - id: commands
     kind: source

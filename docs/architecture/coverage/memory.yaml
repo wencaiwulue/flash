@@ -1,7 +1,7 @@
 schema_version: 1
 spec_id: memory
 spec: ../../superpowers/specs/2026-11-12-memory-design.md
-status: draft
+status: approved
 groups:
   - id: additional-files
     kind: source

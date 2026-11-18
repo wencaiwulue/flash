@@ -3,7 +3,7 @@ id: workflow
 batch: 5
 title: Workflow DAG 编排与失败传播设计
 date: 2026-11-12
-status: draft
+status: approved
 ---
 
 # Workflow DAG 编排与失败传播设计

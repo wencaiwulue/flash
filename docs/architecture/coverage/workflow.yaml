@@ -1,7 +1,7 @@
 schema_version: 1
 spec_id: workflow
 spec: ../../superpowers/specs/2026-11-12-workflow-design.md
-status: draft
+status: approved
 groups:
   - id: workflow-schema
     kind: source

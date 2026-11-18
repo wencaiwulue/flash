@@ -3,7 +3,7 @@ id: skills
 batch: 3
 title: Skills 技能发现、加载与执行设计
 date: 2026-11-12
-status: draft
+status: approved
 ---
 
 # Skills 技能发现、加载与执行设计

@@ -3,7 +3,7 @@ id: app-state
 batch: 4
 title: App State 应用状态、订阅与生命周期设计
 date: 2026-11-12
-status: draft
+status: approved
 ---
 
 # App State 应用状态、订阅与生命周期设计
