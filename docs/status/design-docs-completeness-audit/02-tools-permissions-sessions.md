@@ -1236,46 +1236,20 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/02-tools-permis
 
 **Finding ID**：B2-mcp-01 / B2-mcp-03
 
-**整改内容**：
+**整改内容**：返工 `tests/mcp-lifecycle.test.ts` 并唯一登记 mcp coverage。前一轮只构造状态对象、检查名称和基础连接，不能支撑此前写入本节的完整生命周期声明；本轮改用 MCP 官方 SDK `Client`、`Server`、`InMemoryTransport.createLinkedPair()` 和请求 schema，验证可观察协议行为：
 
-1. **新增完整 MCP 生命周期测试** `tests/mcp-lifecycle.test.ts`，唯一登记 mcp coverage，包含：
-   - **连接/断开**：连接建立与能力协商、clean disconnection with cleanup、连接失败优雅处理
-   - **Schema 枚举**：工具枚举（含元数据）、资源枚举、prompts 枚举、空能力集处理
-   - **工具调用**：成功调用返回结果、错误调用 with `isError` flag、结构化内容响应
-   - **重连**：重连重建能力、跨重连保持调用状态
-   - **禁用分支**：`DisabledMCPServer`、`FailedMCPServer`、`NeedsAuthMCPServer`、`PendingMCPServer` 状态模型
-   - **错误传播**：`isError` flag 保留、`_meta` 保留（成功/失败场景）
-   - **工具名称规范化**：`normalizeNameForMCP` 特殊字符处理、`buildMcpToolName` 完整名称构建
-   - **多服务器并发**：多个服务器独立共存、一个失败不影响其他
-   - **完整端到端生命周期**：connect → enumerate → call → disconnect → reconnect
+- 初始化能力协商，真实 `tools/list`、`resources/list`、`prompts/list` 及空列表
+- `tools/call` 成功结果、结构化内容、可恢复 `isError:true` 结果和 `_meta` 传播
+- 已关闭 peer 的初始化失败；关闭后请求拒绝和重复清理
+- 新 client 经新 transport pair 重连同一 server，重新枚举并保留 server 端调用计数
+- 两个 server 并发执行，单个 handler 异常不影响另一个 server，且出错 server 后续调用可恢复
+- 真实 `setMcpServerEnabled` / `isMcpServerDisabled` 的项目配置禁用/启用转换
+- `normalizeNameForMCP` / `buildMcpToolName` 名称规范化
 
-2. **扩展 `createFakeMcpServer` 测试工厂**：
-   - 支持可配置工具/资源/prompts
-   - 支持可配置失败模式（handshake/tool calls）
-   - 内置调用统计和连接计数
-   - 支持运行时动态切换失败模式
+**验证结果**：focused 10 pass、0 fail、38 assertions；无生产代码变更。独立评审发现的前一轮证据与声明不匹配已通过替换浅测试和收缩声明整改。
 
-3. **验证覆盖 spec 全部关键模块**：
-   - `src/services/mcp/client.ts`：连接管理、工具调用
-   - `src/services/mcp/types.ts`：状态模型、连接类型
-   - `src/services/mcp/mcpStringUtils.ts`：名称规范化
-   - `src/services/mcp/normalization.ts`：名称规范化
-   - `src/services/mcp/InProcessTransport.ts`：内存传输
+**证据边界**：全部离线；协议测试使用 SDK 内存 server，不是外部 live MCP 服务。没有 OAuth、凭据、模型、Chrome/desktop 或私有协议调用。禁用测试在 `NODE_ENV=test` 的项目配置内存分支运行，不写用户配置。当前结果不证明生产 `connectToServer` 的 onclose/memoize 重连、OAuth、企业策略组合、stdio 信号清理、生产并发上限或内存使用，这些缺口保留在 spec 第 7.3 节。
 
-**验证结果**：
-- ✅ 无新增缺陷：原实现完整符合 spec，无需代码改动
-- ✅ 所有 20+ 测试通过
-- ✅ 无源码文本断言，全部验证可观测协议行为
-- ✅ 无真实网络/凭据/模型调用，全部本地 fake transport
-- ✅ 无 Chrome/desktop/private services 依赖
+**spec 更新**：保持 draft；第 7 节记录真实测试、三层证据、未覆盖项和回滚计划。
 
-**测试边界**（离线/本地安全）：
-- 仅使用 `InProcessTransport`，无真实网络
-- Fake MCP server 内存实现，无外部依赖
-- 无 OAuth 流程，无凭据处理
-- 无真实 MCP 服务器调用
-- 无 Claude 模型调用
-
-**spec 更新**：保持 draft，第 7 节已更新实际测试证据，补充回滚计划（删除 `tests/mcp-lifecycle.test.ts` 并从 mcp.yaml 移除）
-
-**原 Finding 状态**：B2-mcp-01 和 B2-mcp-03 保持 open，不修改历史统计
+**原 Finding 状态**：B2-mcp-01 和 B2-mcp-03 保持 open，不修改历史统计。
