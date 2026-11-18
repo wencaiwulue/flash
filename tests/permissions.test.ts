@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'bun:test'
-import type { ToolPermissionContext } from '../src/Tool.ts'
+import { feature } from 'bun:bundle'
+import { z } from 'zod'
+import type { ToolPermissionContext, ToolUseContext } from '../src/Tool.ts'
+import { hasPermissionsToUseTool } from '../src/utils/permissions/permissions.ts'
+import { createAssistantMessage } from '../src/utils/messages.ts'
 
 // ============================================================================
 // Test utilities
@@ -341,105 +345,108 @@ describe('bypass permissions mode', () => {
 })
 
 // ============================================================================
-// Integration: Rule + Mode Decision Flow (B2-permissions-03)
+// Integration: Actual production decision flow (B2-permissions-03)
 // ============================================================================
 
-describe('complete permission decision flow model', () => {
-  // This tests the conceptual model from the spec:
-  // 1. Check deny rules (highest priority)
-  // 2. Check ask rules
-  // 3. Tool checkPermissions
-  // 4. Check allow rules
-  // 5. Apply mode transformation
+function toolContext(permission: ToolPermissionContext): ToolUseContext {
+  return {
+    abortController: new AbortController(),
+    getAppState: () => ({
+      toolPermissionContext: permission,
+      sessionHooks: new Map(),
+    }),
+    messages: [],
+    options: { tools: [] },
+  } as unknown as ToolUseContext
+}
 
-  test('deny rules have precedence over all others', () => {
-    // Conceptual test: deny rule wins regardless of other rules
-    const hasDenyRule = true
-    const hasAllowRule = true
-    const hasAskRule = true
-
-    // Deny should win
-    const decision = hasDenyRule ? 'deny' : hasAskRule ? 'ask' : hasAllowRule ? 'allow' : 'ask'
-    expect(decision).toBe('deny')
-  })
-
-  test('ask rules have precedence over allow rules', () => {
-    const hasDenyRule = false
-    const hasAllowRule = true
-    const hasAskRule = true
-
-    // Ask should win over allow
-    const decision = hasDenyRule ? 'deny' : hasAskRule ? 'ask' : hasAllowRule ? 'allow' : 'ask'
-    expect(decision).toBe('ask')
-  })
-
-  test('allow rules apply when no deny/ask rules', () => {
-    const hasDenyRule = false
-    const hasAllowRule = true
-    const hasAskRule = false
-
-    // Allow applies
-    const decision = hasDenyRule ? 'deny' : hasAskRule ? 'ask' : hasAllowRule ? 'allow' : 'ask'
-    expect(decision).toBe('allow')
-  })
-
-  test('dontAsk mode transforms ask to deny as final step', () => {
-    const baseDecision = 'ask'
-    const mode = 'dontAsk'
-
-    const finalDecision = (baseDecision === 'ask' && mode === 'dontAsk') ? 'deny' : baseDecision
-    expect(finalDecision).toBe('deny')
-  })
-
-  test('dontAsk mode does not affect allow', () => {
-    const baseDecision = 'allow'
-    const mode = 'dontAsk'
-
-    const finalDecision = (baseDecision === 'ask' && mode === 'dontAsk') ? 'deny' : baseDecision
-    expect(finalDecision).toBe('allow')
-  })
-
-  test('dontAsk mode does not affect deny', () => {
-    const baseDecision = 'deny'
-    const mode = 'dontAsk'
-
-    const finalDecision = (baseDecision === 'ask' && mode === 'dontAsk') ? 'deny' : baseDecision
-    expect(finalDecision).toBe('deny')
-  })
-
-  test('auto mode has fast path for acceptEdits-compatible actions', () => {
-    const baseDecision = 'ask'
-    const mode = 'auto'
-    const isAcceptEditsCompatible = true
-    const isSafeTool = false
-
-    let finalDecision = baseDecision
-    if (baseDecision === 'ask' && mode === 'auto') {
-      if (isAcceptEditsCompatible) {
-        finalDecision = 'allow'
-      } else if (isSafeTool) {
-        finalDecision = 'allow'
+function demoTool(name = 'DemoTool') {
+  return {
+    name,
+    inputSchema: z.object({}),
+    checkPermissions: async (_input: unknown, context: ToolUseContext) => {
+      if (context.getAppState().toolPermissionContext.mode === 'acceptEdits') {
+        return { behavior: 'allow', updatedInput: {} }
       }
-    }
+      return { behavior: 'passthrough', message: 'approval required' }
+    },
+  } as any
+}
 
-    expect(finalDecision).toBe('allow')
+const assistant = createAssistantMessage({ content: 'permission test' })
+
+describe('actual hasPermissionsToUseTool decisions', () => {
+  test('deny rule wins before tool implementation and other rules', async () => {
+    const permission = createEmptyPermissionContext({
+      alwaysDenyRules: { session: ['DemoTool'] },
+      alwaysAllowRules: { session: ['DemoTool'] },
+      alwaysAskRules: { session: ['DemoTool'] },
+    })
+    const result = await hasPermissionsToUseTool(demoTool(), {}, toolContext(permission), assistant, 'tool-1')
+    expect(result.behavior).toBe('deny')
   })
 
-  test('auto mode has fast path for safe tools', () => {
-    const baseDecision = 'ask'
-    const mode = 'auto'
-    const isAcceptEditsCompatible = false
-    const isSafeTool = true
+  test('ask rule is preserved in default mode', async () => {
+    const permission = createEmptyPermissionContext({ alwaysAskRules: { session: ['DemoTool'] } })
+    const result = await hasPermissionsToUseTool(demoTool(), {}, toolContext(permission), assistant, 'tool-1')
+    expect(result.behavior).toBe('ask')
+  })
 
-    let finalDecision = baseDecision
-    if (baseDecision === 'ask' && mode === 'auto') {
-      if (isAcceptEditsCompatible) {
-        finalDecision = 'allow'
-      } else if (isSafeTool) {
-        finalDecision = 'allow'
-      }
+  test('dontAsk converts an ask result to deny', async () => {
+    const permission = createEmptyPermissionContext({
+      mode: 'dontAsk',
+      alwaysAskRules: { session: ['DemoTool'] },
+    })
+    const result = await hasPermissionsToUseTool(demoTool(), {}, toolContext(permission), assistant, 'tool-1')
+    expect(result.behavior).toBe('deny')
+    expect(result.decisionReason).toMatchObject({ type: 'mode', mode: 'dontAsk' })
+  })
+
+  test('allow rule permits without invoking a classifier', async () => {
+    const permission = createEmptyPermissionContext({ alwaysAllowRules: { session: ['DemoTool'] } })
+    const result = await hasPermissionsToUseTool(demoTool(), {}, toolContext(permission), assistant, 'tool-1')
+    expect(result.behavior).toBe('allow')
+    expect(result.decisionReason).toMatchObject({ type: 'rule' })
+  })
+
+  test('tool-specific deny is enforced even in bypass mode', async () => {
+    const permission = createEmptyPermissionContext({ mode: 'bypassPermissions' })
+    const tool = {
+      ...demoTool(),
+      checkPermissions: async () => ({ behavior: 'deny', message: 'tool denied' }),
     }
+    const result = await hasPermissionsToUseTool(tool, {}, toolContext(permission), assistant, 'tool-1')
+    expect(result.behavior).toBe('deny')
+  })
 
-    expect(finalDecision).toBe('allow')
+  test('auto acceptEdits fast path returns an actual allow decision', async () => {
+    const permission = createEmptyPermissionContext({ mode: 'auto' })
+    const result = await hasPermissionsToUseTool(demoTool(), {}, toolContext(permission), assistant, 'tool-1')
+    if (feature('TRANSCRIPT_CLASSIFIER')) {
+      expect(result.behavior).toBe('allow')
+      expect(result.decisionReason).toMatchObject({ type: 'mode', mode: 'auto' })
+    } else {
+      expect(result.behavior).toBe('ask')
+    }
+  })
+
+  test('auto non-approvable safety check denies headless agent without prompts', async () => {
+    const permission = createEmptyPermissionContext({
+      mode: 'auto',
+      shouldAvoidPermissionPrompts: true,
+    })
+    const tool = {
+      ...demoTool(),
+      checkPermissions: async () => ({
+        behavior: 'ask',
+        message: 'interactive approval required',
+        decisionReason: { type: 'safetyCheck', classifierApprovable: false },
+      }),
+    }
+    const result = await hasPermissionsToUseTool(tool, {}, toolContext(permission), assistant, 'tool-1')
+    expect(result.behavior).toBe('deny')
+    if (feature('TRANSCRIPT_CLASSIFIER')) {
+      expect(result.decisionReason?.type).toBe('asyncAgent')
+    }
   })
 })
