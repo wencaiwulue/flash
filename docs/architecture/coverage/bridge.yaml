@@ -152,6 +152,12 @@ groups:
     summary: Peer sessions测试
     files:
       - tests/peerSessions.test.ts
+  - id: bridge-offline-contract-tests
+    kind: test
+    section: 7
+    summary: Bridge 权限超时、token 刷新、容量唤醒和 worktree 指针测试
+    files:
+      - tests/bridge.test.ts
   - id: inbound-envelope-tests
     kind: test
     section: 7

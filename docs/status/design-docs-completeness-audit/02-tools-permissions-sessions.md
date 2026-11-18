@@ -1174,3 +1174,11 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/02-tools-permis
 - 新增 `tests/tool-framework.test.ts` 并唯一登记 tool-framework coverage：Tool 接口、buildTool 默认值填充、工具池组装与去重、ToolUseContext 隔离结构、流式与批量执行等价性、禁用工具分支、错误传播
 - 无新增缺陷：原实现完整符合 spec，无需代码改动。仅补充测试覆盖
 - spec 保持 draft 状态；原 Finding 行与历史统计保持 open。全部离线/本地验证，无凭据/模型调用
+
+---
+
+## 整改台账：B2-bridge-01 / B2-bridge-04（2026-11-18 追加）
+
+- 新增 `tests/bridge.test.ts` 并唯一登记 bridge coverage：权限回调 axios 10s 超时、token refresh generation、capacity wake、stale/corrupt pointer 清理、真实 git worktree sibling fanout。
+- **新增增量缺陷**：`/var` 与 `/private/var` 使新写 pointer 与 fanout 读取命名空间分裂。写入统一 canonicalize，读取同时尝试 lexical/canonical 路径，真实 worktree 恢复通过。
+- spec 已补当前证据与回滚；原 Finding 行和历史统计保持 open。全部本地 fake transport/temp git/offline，无真实远程服务、OAuth 或私有协议验证。

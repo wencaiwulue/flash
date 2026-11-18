@@ -1521,17 +1521,20 @@ interface PollConfig {
 | 幂等注册与恢复 | bridgeMain.ts 初始化逻辑，bridgeApi.ts registerBridge/reconnectSession | perpetualBridge.test.ts：perpetual指针持久化、v1/v2路径选择、指针恢复 | 未覆盖并发恢复场景 |
 | Poll/heartbeat 双模式 | bridgeMain.ts poll loop，pollConfig.ts，capacityWake.ts | 未找到直接测试 | 未覆盖极端负载场景 |
 | WorkSecret decode 与 URL 构建 | workSecret.ts | 未找到直接测试 | 未覆盖所有协议迁移边缘情况 |
-| Token refresh scheduler | jwtUtils.ts，sessionRunner.ts updateAccessToken | 未找到直接测试 | 未覆盖并发 refresh 竞态 |
+| Token refresh scheduler | jwtUtils.ts，sessionRunner.ts updateAccessToken | `tests/bridge.test.ts`：generation 使旧刷新失效，仅最新 token 回调 | 离线 deferred transport，不验证真实 OAuth |
 | 会话 spawn 与 activity 跟踪 | sessionRunner.ts | 未找到直接测试 | 未覆盖所有工具动词映射 |
-| 权限回调路由 | bridgePermissionCallbacks.ts，sessionRunner.ts control request 检测 | 未找到直接测试 | 未覆盖权限请求超时场景 |
-| 多会话容量管理 | bridgeMain.ts 容量判断，capacityWake.ts | 未找到直接测试 | 未覆盖容量波动场景 |
+| 权限回调路由 | bridgePermissionCallbacks.ts，sessionRunner.ts control request 检测 | `tests/bridge.test.ts`：本地 HTTP 延迟响应在 axios 10s timeout 内失败并清理 | 未验证真实权限回调服务或 >10MB payload |
+| 多会话容量管理 | bridgeMain.ts 容量判断，capacityWake.ts | `tests/bridge.test.ts`：wake 替换 controller，outer abort 传播并清理 | 不验证真实 poll loop 负载 |
+| Worktree 指针规范化 | bridgePointer.ts readBridgePointerAcrossWorktrees | `tests/bridge.test.ts`：写入先 canonicalize，读取同时尝试 lexical/canonical；实际 git worktree sibling 恢复 | macOS /var ↔ /private/var；旧 alias 指针需要后续迁移验证 |
 | Worktree 创建与清理 | bridgeMain.ts worktree 逻辑，bridgePointer.ts readBridgePointerAcrossWorktrees | 未找到直接测试 | 未覆盖所有 git 错误回退场景 |
 | Clean shutdown 流程 | bridgeMain.ts teardown 逻辑（2435-2600+ 行） | 未找到直接测试 | 未覆盖强制 kill 场景 |
-| 崩溃恢复 pointer | bridgePointer.ts，envLessBridgePointer.ts，perpetualBridge.test.ts | perpetualBridge.test.ts | 未覆盖跨 worktree 扫描所有边缘情况 |
+| 崩溃恢复 pointer | bridgePointer.ts，envLessBridgePointer.ts，perpetualBridge.test.ts | `tests/bridge.test.ts`：stale/corrupt 清理、真实 worktree fanout、规范化写入 | 只验证新写指针；旧 alias 迁移未覆盖 |
 | 四层认证与输入验证 | bridgeApi.ts，trustedDevice.ts，inboundMessages.ts | tests/inboundEnvelope.test.ts：输入信封验证 | 未覆盖所有攻击向量 |
 | Feature gate 分层检查 | bridgeEnabled.ts，initReplBridge.ts | 未找到直接测试 | 未覆盖所有禁用原因组合 |
 | REPL bridge v2 与 flush gate | replBridge.ts，remoteBridgeCore.ts，initReplBridge.ts，flushGate.ts | perpetualBridge.test.ts：perpetual模式指针管理 | 未覆盖历史刷新与实时写入交错场景 |
 | Daemon bridge集成 | assistant/daemonBridge.ts | tests/daemonBridge.test.ts：daemon bridge队列和状态 | 未覆盖长时间运行场景 |
+
+**当前证据补充（B2-bridge-01/-04）**：官方 [Remote Control](https://code.claude.com/docs/en/remote-control.md) 只承诺恢复与多端同步，不公开 token generation 或 pointer 路径规范化细节；本机 `/opt/homebrew/bin/claude` `strings` 命中 `readBridgePointerAcrossWorktrees` 和 `bridge-pointer.json`，但不能证明上游采用 canonical 写入。当前实现写入时 `canonicalizePath(dir)`，读取时同时尝试 lexical 与 canonical 路径，避免 macOS `/var` 与 `/private/var` 分裂恢复。回滚必须保留真实 worktree sibling 恢复与 stale/corrupt 清理测试；spec 保持 draft。
 
 ## 8. 文件覆盖与相关子系统
 
