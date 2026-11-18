@@ -178,7 +178,7 @@ describe('matrix initialization', () => {
       dimensions: { path: { status: 'aligned', evidence: 'generated schema diff' } },
     })
     expect(matrix.entries.find(entry => entry.id === 'hook:Stop')).toMatchObject({
-      status: 'partial', dimensions: { path: { status: 'aligned' } },
+      status: 'partial', dimensions: { path: { status: 'aligned', evidence: 'HOOK_EVENTS' } },
     })
     expect(matrix.entries.find(entry => entry.id === 'setting:missingKey')?.status).toBe('missing')
     expect(matrix.entries.find(entry => entry.id === 'hook:PostToolBatch')?.status).toBe('missing')
@@ -819,6 +819,58 @@ describe('final mode validation', () => {
 
     // afterBaseline blocked 是允许的终态，不应产生 entry-not-aligned
     expect(result.diagnostics.some(d => d.code === 'entry-not-aligned')).toBe(false)
+  })
+
+  test('final mode rejects ignored-by-design with only free-text notes', async () => {
+    const testInventory: CompatibilityInventory = {
+      baseline: { version: '2.1.311' },
+      entries: [{ id: 'setting:model', kind: 'setting', path: 'model', lifecycle: 'active' }],
+    }
+    const testMatrix = createInitialMatrix(testInventory, collectSchemaPaths(syntheticSchema), [])
+    const entry = testMatrix.entries[0]!
+    entry.status = 'ignored-by-design'
+    entry.notes = 'Desktop only, CLI ignores'
+    entry.evidence = []
+    entry.exclusion = null
+
+    const result = await checkCompatibilityV2({
+      inventory: testInventory, matrix: testMatrix,
+      schemaPaths: collectSchemaPaths(syntheticSchema), hookEvents: [], mode: 'final',
+    })
+    expect(result.diagnostics.some(d => d.code === 'invalid-exclusion-evidence')).toBe(true)
+  })
+
+  test('final mode accepts ignored-by-design with structured exclusion evidence', async () => {
+    const testInventory: CompatibilityInventory = {
+      baseline: { version: '2.1.311' },
+      entries: [{ id: 'setting:model', kind: 'setting', path: 'model', lifecycle: 'active' }],
+    }
+    const testMatrix = createInitialMatrix(testInventory, collectSchemaPaths(syntheticSchema), [])
+    const entry = testMatrix.entries[0]!
+    entry.status = 'ignored-by-design'
+    entry.notes = ''
+    entry.evidence = []
+    entry.exclusion = {
+      reason: 'Desktop-only per upstream docs', evidence: 'settings-reference#desktop',
+      lifecycle: 'active', replacement: null,
+    }
+
+    const result = await checkCompatibilityV2({
+      inventory: testInventory, matrix: testMatrix,
+      schemaPaths: collectSchemaPaths(syntheticSchema), hookEvents: [], mode: 'final',
+    })
+    expect(result.diagnostics.some(d => d.code === 'invalid-exclusion-evidence')).toBe(false)
+  })
+
+  test('final mode rejects an out-of-range ownerBatch', async () => {
+    const { testInventory, testMatrix } = createFullyAlignedSyntheticData()
+    ;(testMatrix.entries[0] as any).ownerBatch = 99
+
+    const result = await checkCompatibilityV2({
+      inventory: testInventory, matrix: testMatrix,
+      schemaPaths: collectSchemaPaths(syntheticSchema), hookEvents: [], mode: 'final',
+    })
+    expect(result.diagnostics.some(d => d.code === 'invalid-owner-batch')).toBe(true)
   })
 
   test('final mode fails on current real matrix (no aligned entries yet)', async () => {

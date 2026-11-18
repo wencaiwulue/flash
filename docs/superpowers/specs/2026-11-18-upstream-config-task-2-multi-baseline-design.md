@@ -263,6 +263,7 @@ export type MatrixEntryV2 = CompatibilityMatrixEntry & {
 2. `ignored-by-design` 证据必须说明理由，如：
    - "Desktop-only, CLI ignores per upstream docs"
    - "Removed/no-op in 2.1.311, per binary probe"
+3. `status=ignored-by-design` 的证据必须是**结构化证据**：`evidence[]` 含非空字符串，或 `exclusion.reason` + `exclusion.evidence` 均非空。**自由文本 `notes` 不算证据**——否则随手写一句 notes 即可绕过门禁（回归测试 `final mode rejects ignored-by-design with only free-text notes` 锁定）。
 
 ### 4.5.1 Final 终态门禁（`entry-not-aligned`）
 
@@ -312,7 +313,7 @@ B0 的 `checkCompatibility` 在 envelope 校验中硬编码 `baseline === UPSTRE
 
 | 触发条件 | 处理方式 | 理由 |
 |---|---|---|
-| `ownerBatch` 缺失 | 批次/最终模式产生 `invalid-owner-batch` 诊断 | 所有条目必须可归属 |
+| `ownerBatch` 缺失或非法（非 1-5/'final'） | 批次/最终模式产生 `invalid-owner-batch` 诊断 | 所有条目必须可归属且为合法枚举，仅 truthy 检查不够（回归测试 `final mode rejects an out-of-range ownerBatch` 锁定） |
 | `spec` 引用不存在 | 批次/最终模式产生 `invalid-spec` 诊断 | spec 必须登记在 manifest 中 |
 | 实现/测试路径不存在 | 批次/最终模式产生 `invalid-implementation-path`/`invalid-test-path` | 引用必须指向真实文件（允许空数组表示未开始） |
 | 环境变量无注册消费者 | 批次/最终模式产生 `invalid-env-consumer` | 注入不算完成，必须显式消费者 |
