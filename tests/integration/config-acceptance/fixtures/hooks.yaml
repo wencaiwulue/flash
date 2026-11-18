@@ -1,0 +1,22 @@
+- event: PreToolUse
+  status: active
+  trigger: tool_call_unsafe_block
+  matcher: '*'
+  exit_semantics: block
+  expected_effect:
+    tool_executed: false
+    hook_fired: true
+- event: PostToolUse
+  status: active
+  trigger: tool_call_safe
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    tool_executed: true
+    hook_fired: true
+- event: UserPromptExpansion
+  status: blocked-by-batch:B1
+  trigger: none
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect: {}
