@@ -72,7 +72,17 @@ export type SdkEvent =
   | SessionStateChangedEvent
 
 const MAX_QUEUE_SIZE = 1000
-const queue: SdkEvent[] = []
+let queue: SdkEvent[] = []
+
+/**
+ * Reset the SDK event queue. Only for use in tests.
+ */
+export function resetSdkEventQueueForTests(): void {
+  if (process.env.NODE_ENV !== 'test') {
+    throw new Error('resetSdkEventQueueForTests can only be called in tests')
+  }
+  queue = []
+}
 
 export function enqueueSdkEvent(event: SdkEvent): void {
   // SDK events are only consumed (drained) in headless/streaming mode.
