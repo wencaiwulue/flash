@@ -459,15 +459,17 @@ Date:   ...
 **设计文档检查**：
 - ✅ 8 个批准的 spec 均包含完整的 9 个章节
 - ✅ 所有 spec 均包含「三视图」（架构与资源边界图、关键流程与失败路径、核心对象生命周期七列表）
-- ✅ 所有 spec 的 frontmatter、manifest、coverage YAML、INDEX.md 状态已同步更新为 `approved`
+- ✅ 8 个批准 spec 的 frontmatter、对应 manifest 条目、coverage YAML 与 INDEX.md 状态均已同步为 `approved`
 
 **验证结果**：
 - ✅ `bun scripts/check-design-docs.ts`：0 错误，62 警告（预期：62 DRAFT_SPEC，0 UNCOVERED_FILE）
-- ✅ `bun scripts/check-design-docs.ts --require-approved`：通过批准 spec 的严格检查
-- ✅ `bun run test`：通过
-- ✅ `bun run typecheck`：通过
-- ✅ `bun run build`：通过
-- ✅ `git diff --check`：无空白错误
+- ⚠️ `bun scripts/check-design-docs.ts --require-approved`：退出 1；该模式把剩余 62 个 `DRAFT_SPEC` 全部提升为错误。8 个批准 spec 不再产生 DRAFT_SPEC，但全仓严格模式不是独立通过项，实际结果如实保留。
+- ✅ `bun run test`：退出 0，无 `Failed test files`
+- ✅ `bun run typecheck`：退出 0
+- ✅ `bun run build`：退出 0
+- ✅ `git diff --check`：退出 0
+
+**证据边界与未决项**：本次行为回归均为 mock/offline、本地临时目录或本机独立进程验证；未执行真实模型提取、远程同步或完整 live 环境验收，也未将官方文档、upstream `strings` 或 stub 结果提升为 live 证据。不声明私有 native-messaging、bridge 或扩展配对协议兼容。62 个未批准 spec 和未执行的 live 项均不标为 fixed/verified。
 
 **剩余未批准 Spec**：
 - 62 个 spec 保持 `draft` 状态，待后续用户审阅后逐批批准
@@ -489,7 +491,7 @@ Date:   ...
 
 ### 总体状态
 
-✅ **Task 8 完成**：8 个 spec 已批准，门禁全绿，剩余 62 spec 保持 draft 状态待后续审阅。
+✅ **Task 8 完成**：8 个 spec 已批准，常规门禁通过；全仓 `--require-approved` 因剩余 62 个 draft 按设计退出 1，结果已记录，不表述为严格模式全绿。
 
 **当前清单统计**：
 - 总计：70 个注册 spec
