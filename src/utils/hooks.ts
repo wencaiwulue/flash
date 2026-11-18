@@ -35,6 +35,7 @@ import {
   addToTurnHookDuration,
   getOriginalCwd,
   getMainThreadAgentType,
+  getPromptId,
 } from '../bootstrap/state.js'
 import { checkHasTrustDialogAccepted } from './config.js'
 import {
@@ -317,6 +318,7 @@ export function createBaseHookInput(
   permission_mode?: string
   agent_id?: string
   agent_type?: string
+  prompt_id?: string
 } {
   const resolvedSessionId = sessionId ?? getSessionId()
   // agent_type: subagent's type (from toolUseContext) takes precedence over
@@ -330,6 +332,10 @@ export function createBaseHookInput(
     permission_mode: permissionMode,
     agent_id: agentInfo?.agentId,
     agent_type: resolvedAgentType,
+    // prompt_id: per-turn UUID set at the prompt boundary (processTextPrompt /
+    // processSlashCommand). Non-prompt hooks carry the most recent turn's id,
+    // matching upstream payloads.
+    prompt_id: getPromptId() ?? undefined,
   }
 }
 
