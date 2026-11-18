@@ -1664,14 +1664,24 @@ SIGWINCH signal received
 
 ### 7.2 测试覆盖
 
-**测试文件：**
-- `tests/inkDevtools.test.ts`：React DevTools 连接测试
-- 其他 tests/ 下可能有更多（未详细阅读）
+| 场景 | 真实测试与不变量 | 证据边界 |
+|---|---|---|
+| 输入状态机 | `tests/inkPlatform.test.tsx` 分段 CSI u 恢复为 Shift+Return；SGR mouse press 坐标/按钮；DA1 response | 未覆盖全部终端协议和真实键盘 |
+| Bracketed paste | start/end 间文本与 escape sequence 合成一个 isPasted key，mode 回 NORMAL | 未验证真实剪贴板/图片 |
+| 宽字符与超链接 | Wide + SpacerTail 成双；相同 hyperlink intern 同 ID；Narrow 覆盖清除残留 | 不做真实字体宽度测量 |
+| diffEach | 共享 CharPool 时 a→b 只产生 `(0,0,removed:'a',added:'b')` | 测试同时证明独立 pool 的 ID 冲突会隐藏变化，跨帧必须共享 |
+| LogUpdate | 非 TTY 输出 `bc`；TTY patch 无 clearTerminal 且包含变更字符 | 不做 60fps、DECSTBM、SIGCONT 或真实终端字节流验收 |
+| React reconciler | 真实 `<Text>hello</Text>` 经 production renderToString 得 `hello` | 不覆盖完整应用/终端 UI 交互 |
 
-**测试覆盖边界：**
-- DevTools 测试只覆盖开发环境，生产环境不连接
-- 缺少性能测试（目标 60fps 未自动化验证）
-- 缺少终端兼容性测试（只在部分终端手动验证）
+### 7.3 三层证据与回滚
+
+| 层级 | 只读证据 | 边界 |
+|---|---|---|
+| 官方文档 | [Terminal config](https://code.claude.com/docs/en/terminal-config.md)提供终端通知、输入/渲染相关公开语义 | 未公开 parser、pool、diffEach 或 LogUpdate 内部实现 |
+| 本机上游二进制 | `strings $(command -v claude)` 命中 CharPool 和相关渲染标记 | 只证明实现存在，不证明终端兼容性或帧率 |
+| 本仓库 | `tests/inkPlatform.test.tsx` 6 个测试、17 个断言，真实 parser/screen/diff/render | 全部离线，不是 60fps、终端兼容性、鼠标/剪贴板或 SIGCONT live |
+
+本轮无生产代码变更。回滚只需删除测试与 coverage entry；spec 保持 draft，B4-ink-platform-01 原 Finding 保持 open。
 
 ## 8. 文件覆盖与相关子系统
 

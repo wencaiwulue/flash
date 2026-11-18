@@ -1534,3 +1534,20 @@
 全部临时文件，无真实 IDE/WSL/RPC/端口连接或私有协议验证。祖先 PID、轮询、tab 生命周期、P3 并发锁和崩溃清理未覆盖。无生产代码变更。
 
 **原 Finding 状态**：B4-ide-integration-01/02 保持 open，spec 保持 draft。
+
+---
+
+## 整改台账：B4-ink-platform-01（2026-11-19 追加）
+
+**Finding ID**：B4-ink-platform-01；主责 spec：ink-platform。
+
+新增 `tests/inkPlatform.test.tsx` 并唯一登记 coverage，6 个测试、17 个断言：
+
+- 分段 CSI u、SGR mouse、DA1 输入解析和 bracketed paste 状态机。
+- Wide/SpacerTail、hyperlink intern 和 Narrow 覆盖清理。
+- 共享 CharPool 下 diffEach 精确变更；LogUpdate 非 TTY 全帧和 TTY patch。
+- 真实 production reconciler 文本渲染。
+
+独立 CharPool 的 ID 冲突会先隐藏 diff，测试明确跨帧共享 pool 的必要性，未把假 fixture 当成生产缺陷。无生产代码变更。60fps、全部终端协议、真实键盘/剪贴板、SIGCONT 和终端兼容性 live 未覆盖。
+
+**原 Finding 状态**：B4-ink-platform-01 保持 open，spec 保持 draft。

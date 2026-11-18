@@ -214,3 +214,4 @@ groups:
     summary: Ink 平台相关测试
     files:
       - tests/inkDevtools.test.ts
+      - tests/inkPlatform.test.tsx
