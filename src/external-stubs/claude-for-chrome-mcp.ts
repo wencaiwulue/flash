@@ -84,7 +84,16 @@ export function createIsolatedBrowserConfig(options?: {
   return {
     browser: {
       isolated: true,
-      launchOptions: { headless: true },
+      launchOptions: {
+        headless: true,
+        // FLASH_SMOKE_CHANNEL pins the channel for the release-smoke channel:
+        // on Windows runners @playwright/mcp's default-browser resolution can
+        // land on msedge (whose compat-layer relaunch drops --user-data-dir
+        // and breaks --remote-debugging-pipe). Explicit chrome bypasses it.
+        ...(process.env.FLASH_SMOKE_CHANNEL
+          ? { channel: process.env.FLASH_SMOKE_CHANNEL }
+          : {}),
+      },
     },
     ...(allowedOrigins ? { network: { allowedOrigins } } : {}),
   }
@@ -513,7 +522,11 @@ export async function getOpenBrowserClient(): Promise<Client> {
           const { chromium } = await import('playwright')
           const browser = await chromium.launch({
             channel: 'chrome',
-            chromiumSandbox: true,
+            // FLASH_SMOKE_TOOL marks the release-smoke channel: CI runners
+            // (e.g. ubuntu-24.04-arm) lack user-namespace support, where
+            // Chromium's SUID/namespace sandbox cannot start. Normal
+            // sessions keep the sandbox enabled.
+            chromiumSandbox: process.env.FLASH_SMOKE_TOOL ? false : true,
             ...config.browser?.launchOptions,
             args: launchArgs,
             handleSIGINT: false,

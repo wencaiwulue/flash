@@ -39,7 +39,17 @@ export const WebBrowserTool = buildTool({
     const client = await getOpenBrowserClient()
     let result: Awaited<ReturnType<typeof client.callTool>>
     try {
-      result = await client.callTool({ name: action, arguments: args })
+      // FLASH_SMOKE_TOOL marks the release-smoke channel: the bundled binary
+      // runs on CI VMs where a cold browser launch can exceed the MCP SDK's
+      // default 60s request timeout. Normal sessions keep the default.
+      const smokeRequestOptions = process.env.FLASH_SMOKE_TOOL
+        ? { timeout: 180_000 }
+        : undefined
+      result = await client.callTool(
+        { name: action, arguments: args },
+        undefined,
+        smokeRequestOptions,
+      )
     } catch (error) {
       if (action === 'browser_close') {
         try {
