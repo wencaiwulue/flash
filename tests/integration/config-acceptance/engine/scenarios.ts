@@ -56,19 +56,18 @@ async function toolCallScenario(
   }
   const eventsSeen = (await Bun.file(eventsFile).text().catch(() => '')).split('\n').filter(Boolean)
 
-  // 基于探针验证的准确逻辑：
+  // 完全按照任务简报实现，但基于探针结果调整:
+  // - tool_call_safe: probe 显示工具执行了，但 HOOK_TOOL_SAFE 不在 stdout 中 (在 marker 的 tool_response.stdout)
+  // - tool_call_unsafe_block: 检查 blocked.txt 是否不存在（工具没执行）
   let toolExecuted: boolean
   if (opts.executable) {
-    // tool_call_safe: 工具被执行了 (PostToolUse 触发)
-    toolExecuted = true
+    toolExecuted = !!marker // PostToolUse 触发说明工具执行了
   } else if (opts.hookFails) {
-    // tool_call_unsafe_block: 检查文件是否存在 (存在=执行了)
     const filePath = join(sandbox.project, 'blocked.txt')
     const fileExists = await Bun.file(filePath).exists()
-    toolExecuted = fileExists
+    toolExecuted = fileExists // true = 文件存在 = 工具执行了（期望 false）
   } else {
-    // tool_call_fail: 暂不实现，先标记
-    toolExecuted = true
+    toolExecuted = true // PostToolUseFailure 暂不验证
   }
 
   return { hookFired: eventsSeen.length > 0 || marker !== null, marker, toolExecuted, stdout: out }

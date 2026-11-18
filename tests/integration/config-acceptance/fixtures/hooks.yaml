@@ -16,13 +16,16 @@
     hook_fired: true
     marker_has_tool_name: true
 - event: PostToolUseFailure
-  status: blocked-by-batch:B1
+  status: blocked-by-prereq:posttooluse-failure-print-observability
   trigger: tool_call_fail
   matcher: '*'
   exit_semantics: nonblock
   expected_effect:
     hook_fired: true
     marker_has_error: true
+  # Probe result (2026-11-18): PostToolUseFailure hook did not fire in print mode
+  # when a tool failed with exit 7. Only PreToolUse was observed. Further investigation
+  # needed to determine if this hook only fires in interactive mode or under specific conditions.
 - event: UserPromptExpansion
   status: blocked-by-batch:B1
   trigger: none

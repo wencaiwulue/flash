@@ -7,9 +7,11 @@ const hooksYaml = join(import.meta.dir, '..', 'fixtures', 'hooks.yaml')
 describe('loadHookEntries', () => {
   test('loads entries with ids and preserves order', () => {
     const entries = loadHookEntries(hooksYaml)
-    expect(entries.length).toBe(3)
+    expect(entries.length).toBe(4)
     expect(entries[0].id).toBe('hook:PreToolUse')
-    expect(entries[2].id).toBe('hook:UserPromptExpansion')
+    expect(entries[1].id).toBe('hook:PostToolUse')
+    expect(entries[2].id).toBe('hook:PostToolUseFailure')
+    expect(entries[3].id).toBe('hook:UserPromptExpansion')
     expect(entries[0].trigger).toBe('tool_call_unsafe_block')
   })
 
