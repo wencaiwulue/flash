@@ -8545,7 +8545,7 @@ entries:
     exclusion: null
     ownerBatch: 1
   - id: hook:UserPromptExpansion
-    status: partial
+    status: aligned
     spec: upstream-config-b1-hooks-env
     implementation:
       - src/utils/hooks.ts
@@ -8567,15 +8567,15 @@ entries:
         status: aligned
         evidence: "fires after slash-command expansion, before the model; exit 2 blocks expansion"
       source:
-        status: partial
-        evidence: "slash_command wired; mcp_prompt expansion path not wired (gap)"
+        status: aligned
+        evidence: "slash_command and mcp_prompt both wired (expansion_type from command.source === 'mcp')"
       precedence:
         status: aligned
         evidence: "matcher on command_name via getMatchingHooks switch"
       runtime:
         status: aligned
         evidence: "additionalContext appended; suppressOriginalPrompt drops expansion; block aborts; 8 trigger tests"
-    notes: "mcp_prompt expansion source not wired."
+    notes: ""
     exclusion: null
     ownerBatch: 1
   - id: hook:UserPromptSubmit
