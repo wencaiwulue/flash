@@ -873,6 +873,45 @@ describe('final mode validation', () => {
     expect(result.diagnostics.some(d => d.code === 'invalid-owner-batch')).toBe(true)
   })
 
+  test('final mode ignores batch filter so out-of-batch entries are still checked', async () => {
+    const { testInventory, testMatrix } = createFullyAlignedSyntheticData()
+    ;(testMatrix.entries[0] as any).ownerBatch = 99
+
+    const result = await checkCompatibilityV2({
+      inventory: testInventory, matrix: testMatrix,
+      schemaPaths: collectSchemaPaths(syntheticSchema), hookEvents: [],
+      mode: 'final', batches: [1],
+    })
+    // final 忽略 batches，ownerBatch=99 不能被批次过滤跳过
+    expect(result.diagnostics.some(d => d.code === 'invalid-owner-batch')).toBe(true)
+  })
+
+  test('final mode validates aligned spec against the manifest registry', async () => {
+    const { testInventory, testMatrix } = createFullyAlignedSyntheticData()
+    ;(testMatrix.entries[0] as any).spec = 'definitely-not-registered'
+
+    const result = await checkCompatibilityV2({
+      inventory: testInventory, matrix: testMatrix,
+      schemaPaths: collectSchemaPaths(syntheticSchema), hookEvents: [],
+      mode: 'final', specRegistry: new Set(['upstream-config-task-2-multi-baseline']),
+    })
+    expect(result.diagnostics.some(d => d.code === 'invalid-spec')).toBe(true)
+  })
+
+  test('CLI rejects --mode final combined with --batch', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'flash-compatibility-'))
+    try {
+      const fixture = new URL('../fixtures/upstream-config/2.1.311/', import.meta.url)
+      await copyFile(new URL('inventory.json', fixture), join(directory, 'inventory.json'))
+      await copyFile(new URL('compatibility.yaml', fixture), join(directory, 'compatibility.yaml'))
+      await expect(runCli(['--mode', 'final', '--batch', '1'], directory)).rejects.toThrow(
+        /--batch cannot be combined/,
+      )
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
   test('final mode fails on current real matrix (no aligned entries yet)', async () => {
     const root = new URL('../fixtures/upstream-config/2.1.311/', import.meta.url)
     const realInventory = JSON.parse(await readFile(new URL('inventory.json', root), 'utf8'))

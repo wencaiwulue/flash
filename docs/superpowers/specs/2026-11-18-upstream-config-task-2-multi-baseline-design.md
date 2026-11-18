@@ -314,7 +314,8 @@ B0 的 `checkCompatibility` 在 envelope 校验中硬编码 `baseline === UPSTRE
 | 触发条件 | 处理方式 | 理由 |
 |---|---|---|
 | `ownerBatch` 缺失或非法（非 1-5/'final'） | 批次/最终模式产生 `invalid-owner-batch` 诊断 | 所有条目必须可归属且为合法枚举，仅 truthy 检查不够（回归测试 `final mode rejects an out-of-range ownerBatch` 锁定） |
-| `spec` 引用不存在 | 批次/最终模式产生 `invalid-spec` 诊断 | spec 必须登记在 manifest 中 |
+| `spec` 引用不存在或未登记 | 批次/最终模式产生 `invalid-spec` 诊断 | aligned 的 spec 必须登记在 manifest 中；`runCli` 加载 manifest `specs[].id` 作为 `specRegistry`，仅 truthy 检查不够（回归测试 `final mode validates aligned spec against the manifest registry` 锁定） |
+| `--mode final` 与 `--batch` 同用 | CLI 直接抛错退出码 1 | final 始终全量检查；`checkCompatibilityV2` 在 final 模式忽略 batches，防止 final+--batch 跳过非选中批次条目的校验（回归测试 `final mode ignores batch filter`、`CLI rejects --mode final combined with --batch` 锁定） |
 | 实现/测试路径不存在 | 批次/最终模式产生 `invalid-implementation-path`/`invalid-test-path` | 引用必须指向真实文件（允许空数组表示未开始） |
 | 环境变量无注册消费者 | 批次/最终模式产生 `invalid-env-consumer` | 注入不算完成，必须显式消费者 |
 | `ignored-by-design` 无证据 | 最终模式产生 `invalid-exclusion-evidence` | 排除决策必须可审计 |
