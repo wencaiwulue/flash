@@ -1517,3 +1517,20 @@
 全部使用内存 config、dummy auth 和 headers，无真实价格/组织/API/远程验证。时间相对 fallback、并发、Advisor、/extra-usage 和真实 UI 未覆盖。无生产代码变更。
 
 **原 Finding 状态**：B4-cost-tracking-01 保持 open，spec 保持 draft。
+
+---
+
+## 整改台账：B4-ide-integration-01（2026-11-19 追加）
+
+**Finding ID**：B4-ide-integration-01；主责 spec：ide-integration。
+
+新增 `tests/ideIntegration.test.ts` 并唯一登记 coverage，4 个测试、17 个断言：
+
+- lockfile mtime 排序、当前 workspace 的有效 ws 检测、includeInvalid 分支。
+- dead pid 和 corrupt JSON 清理，当前 pid/有效 lockfile 保留。
+- WSL C:\\ 手动 fallback、不同 distro 保留与匹配检查。
+- diff 同内容无 edit、单 hunk 替换和 multiple hunks 上下文。
+
+全部临时文件，无真实 IDE/WSL/RPC/端口连接或私有协议验证。祖先 PID、轮询、tab 生命周期、P3 并发锁和崩溃清理未覆盖。无生产代码变更。
+
+**原 Finding 状态**：B4-ide-integration-01/02 保持 open，spec 保持 draft。

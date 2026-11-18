@@ -13,6 +13,12 @@ groups:
       - src/components/wizard/WizardProvider.tsx
       - src/utils/sideQuery.ts
       - src/utils/sideQuestion.ts
+  - id: ide-integration-tests
+    kind: test
+    section: 7
+    summary: IDE lockfile、WSL 路径和 diff 重算测试
+    files:
+      - tests/ideIntegration.test.ts
   - id: ide-core
     kind: source
     section: 4

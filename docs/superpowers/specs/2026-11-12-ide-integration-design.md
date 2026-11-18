@@ -1188,18 +1188,23 @@ FileEditTool requests confirmation
 
 | 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
 |---|---|---|---|
-| 通过 lockfile 发现 IDE，支持 SSE 和 WebSocket 传输 | `src/utils/ide.ts:298-433` | 无直接覆盖 | 手动验证 lockfile 发现逻辑 |
-| 路径 NFC 规范化和 WSL 转换 | `src/utils/ide.ts:678-679; src/utils/idePathConversion.ts:25-73` | 无直接覆盖 | 手动验证路径转换逻辑 |
-| 祖先 PID 检查消歧义 | `src/utils/ide.ts:689-690,770-782` | 无直接覆盖 | 手动验证祖先 PID 检查逻辑 |
-| 30 秒轮询 + scroll draining 暂停 | `src/utils/ide.ts:626-657` | 无直接覆盖 | 手动验证轮询和暂停逻辑 |
-| stale lockfile 清理策略 | `src/utils/ide.ts:522-581` | 无直接覆盖 | 手动验证 stale 清理逻辑 |
-| diff 同步使用 openDiff RPC 和三种结果消息 | `src/hooks/useDiffInIDE.ts:216-327` | 无直接覆盖 | 手动验证 diff 同步逻辑 |
-| VS Code 自动安装，JetBrains 只提示 | `src/utils/ide.ts:590-622,879-911` | 无直接覆盖 | 手动验证扩展安装逻辑 |
-| IDE 连接作为动态 MCP 配置 | `src/hooks/useIDEIntegration.tsx:25-88; src/commands/ide/ide.tsx:544-555` | 无直接覆盖 | 手动验证动态 MCP 配置逻辑 |
-| 通知系统显示 IDE 状态和错误 | `src/hooks/notifs/useIDEStatusIndicator.tsx:24-159` | 无直接覆盖 | 手动验证通知显示逻辑 |
-| /ide 命令管理连接和选择 | `src/commands/ide/ide.tsx:315-580` | 无直接覆盖 | 手动验证 /ide 命令逻辑 |
-| lockfile 没有并发锁，多 Claude Code 实例可能竞争写入或读取 | `src/utils/ide.ts:522-581` | 无直接覆盖 | 手动验证多实例并发行为 |
-| showDiffInIDE 在进程崩溃时可能遗留 IDE diff tab | `src/hooks/useDiffInIDE.ts:216-327` | 无直接覆盖 | 手动验证崩溃后 diff tab 清理逻辑 |
+| 通过 lockfile 发现 IDE，支持 SSE 和 WebSocket 传输 | `src/utils/ide.ts` | `tests/ideIntegration.test.ts` 验证 mtime 排序、当前 workspace 的 ws URL、有效/无效 lockfile | 未建立真实 IDE 连接或私有 RPC |
+| 路径 NFC 规范化和 WSL 转换 | `src/utils/idePathConversion.ts` | C:\\ 到 /mnt/c 手动 fallback、不同 distro 原样保留、checkWSLDistroMatch | 未执行 Windows/WSL wslpath live |
+| 祖先 PID 检查消歧义 | `src/utils/ide.ts` 的 needsAncestryCheck | 当前测试环境不走 supported-terminal ancestor 分支，明确保留 | 需专用 IDE terminal 环境验收 |
+| 30 秒轮询 + scroll draining 暂停 | `src/utils/ide.ts` 的 findAvailableIDE | 未覆盖 | 不做 30 秒墙钟或真实滚动测试 |
+| stale lockfile 清理策略 | `src/utils/ide.ts` 的 cleanupStaleIdeLockfiles | dead pid 与 corrupt JSON 删除，当前 pid 和有效 lockfile 保留 | 不验证 WSL 端口响应或并发锁，P3 建议不实施 |
+| diff 同步使用 openDiff RPC 和三种结果消息 | `src/hooks/useDiffInIDE.ts` 的 `computeEditsFromContents` | 同内容无 edit、单 hunk 精确替换、multiple hunks 保留上下文 | 未执行 openDiff RPC 或 tab 生命周期 |
+| lockfile 并发锁与崩溃 tab | `src/utils/ide.ts`、`src/hooks/useDiffInIDE.ts` | 未覆盖 | 多实例锁和崩溃清理仍是设计缺口，不因本轮测试标为完成 |
+
+### 7.1 三层证据与回滚
+
+| 层级 | 只读证据 | 边界 |
+|---|---|---|
+| 官方文档 | [IDE integrations](https://code.claude.com/docs/en/ide-integrations)说明 loopback ws、随机端口、lockfile token/0600/0700 和 native diff viewer | 未公开 stale cleanup、WSL fallback、并发锁或 diff recompute 内部实现 |
+| 本机上游二进制 | 对 `detectIDEs`、`cleanupStaleIdeLockfiles`、`computeEditsFromContents`、`checkWSLDistroMatch`、`WindowsToWSLConverter` 的 strings 检查未得到直接匹配 | 不据缺失推断上游行为，也不声称私有 IDE 协议兼容 |
+| 本仓库 | `tests/ideIntegration.test.ts` 4 个测试、17 个断言，真实 lockfile、临时 workspace 和 diff 重算 | 全部离线，不是 IDE/WSL/RPC/终端 live |
+
+本轮无生产代码变更。回滚只需删除测试与 coverage entry；spec 保持 draft，B4-ide-integration-01/02 原 Finding 均保持 open。
 
 ## 8. 文件覆盖与相关子系统
 
