@@ -843,6 +843,57 @@ describe('final mode validation', () => {
   })
 })
 
+describe('multi-baseline end-to-end', () => {
+  function syntheticForVersion(version: string) {
+    const testInventory: CompatibilityInventory = {
+      baseline: { version },
+      entries: [
+        { id: 'setting:model', kind: 'setting', path: 'model', lifecycle: 'active' },
+      ],
+    }
+    const testMatrix = createInitialMatrix(testInventory, collectSchemaPaths(syntheticSchema), [])
+    return { testInventory, testMatrix }
+  }
+
+  test('V2 drift accepts a non-2.1.311 baseline end-to-end', async () => {
+    const { testInventory, testMatrix } = syntheticForVersion('2.1.320')
+    const result = await checkCompatibilityV2({
+      inventory: testInventory,
+      matrix: testMatrix,
+      schemaPaths: collectSchemaPaths(syntheticSchema),
+      hookEvents: [],
+      mode: 'drift',
+    })
+    expect(result.baseline).toBe('2.1.320')
+    expect(result.diagnostics.some(d => d.code === 'invalid-matrix-envelope')).toBe(false)
+  })
+
+  test('V2 final applies terminal-state gate on a non-2.1.311 baseline', async () => {
+    const { testInventory, testMatrix } = syntheticForVersion('2.1.320')
+    const result = await checkCompatibilityV2({
+      inventory: testInventory,
+      matrix: testMatrix,
+      schemaPaths: collectSchemaPaths(syntheticSchema),
+      hookEvents: [],
+      mode: 'final',
+    })
+    // model 在 schema 中 -> partial -> final 必须报 entry-not-aligned，而非 envelope 错误
+    expect(result.diagnostics.some(d => d.code === 'invalid-matrix-envelope')).toBe(false)
+    expect(result.diagnostics.some(d => d.code === 'entry-not-aligned')).toBe(true)
+  })
+
+  test('B0 checkCompatibility keeps the 2.1.311 hard contract by default', () => {
+    const { testInventory, testMatrix } = syntheticForVersion('2.1.320')
+    const diagnostics = checkCompatibility({
+      inventory: testInventory,
+      matrix: testMatrix,
+      schemaPaths: collectSchemaPaths(syntheticSchema),
+      hookEvents: [],
+    })
+    expect(diagnostics.some(d => d.code === 'invalid-matrix-envelope')).toBe(true)
+  })
+})
+
 describe('migrateMatrix behavior', () => {
   function createTestInventoryDiff() {
     // Create a synthetic diff
