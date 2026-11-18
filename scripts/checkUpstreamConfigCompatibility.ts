@@ -930,8 +930,13 @@ export async function checkCompatibilityV2(
         const envName = entry.id.slice('env:'.length)
         const consumers = input.envConsumers?.consumers?.[envName]
         if (!consumers || consumers.length === 0) {
+          // excluded 且上游 lifecycle=removed 的 env 是合法终态（上游已移除，
+          // flash 本无消费者），与 final 终态判定一致，豁免消费者校验。
+          const isRemovedExcluded =
+            entry.status === 'excluded' &&
+            inventoryById.get(entry.id)?.lifecycle === 'removed'
           // 仅当状态不是 missing/partial 时才报错，允许未开始工作
-          if (entry.status === 'aligned' || entry.status === 'different' || entry.status === 'excluded') {
+          if (!isRemovedExcluded && (entry.status === 'aligned' || entry.status === 'different' || entry.status === 'excluded')) {
             diagnostics.push({
               code: 'invalid-env-consumer',
               id: entry.id,
