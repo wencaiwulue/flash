@@ -569,13 +569,11 @@ describe('compatibility CLI and real baseline', () => {
         evidence: expectedRequires[entry.id],
       })
     }
-    for (const id of [
-      'UserPromptExpansion', 'PostToolBatch', 'MessageDisplay',
-      'DirectoryAdded', 'PreModelSwitch', 'PostModelSwitch',
-    ]) {
-      const entry = matrix.entries.find((candidate: { id: string }) => candidate.id === `hook:${id}`)
-      expect(entry.dimensions.runtime.status).not.toBe('aligned')
-    }
+    // B0 asserted the six new hook events were NOT aligned (unimplemented
+    // placeholder). B1 has since implemented them, so PostToolBatch,
+    // UserPromptExpansion and MessageDisplay are now legitimately aligned and
+    // the remaining three are partial. The stale not-aligned assertion was
+    // removed; aligned entries are validated by the batch-1 gate instead.
   })
 })
 
