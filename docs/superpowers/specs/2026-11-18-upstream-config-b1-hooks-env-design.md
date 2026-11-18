@@ -213,3 +213,31 @@ coverage：[upstream-config-b1-hooks-env.yaml](../../architecture/coverage/upstr
 | P2 | DirectoryAdded 的 `register_repo_root` 路径在 flash 全 src 无实现 | B1 仅覆盖 `slash_command`，矩阵注明缺口；如需 SDK 目录注册再补 | 低 | DirectoryAdded slash_command 行为测试通过 | M | 实测 |
 | P2 | env 运行时限额实测（>20 并发 / >3 深度）、PostModelSwitch auto/resume、MessageDisplay 交互多批序列成本高 | 留最终 xxx 统一补实测后升级状态 | 中 | 运行时限额与 source=auto/resume 实测通过 | M | 设计推断 |
 | P3 | 基线升级到 2.1.327 时六事件协议可能漂移 | 对六事件重跑 probe 确认协议未漂移 | 中 | 新基线 probe drift=0 | M | 设计推断 |
+
+## 10. 实现状态（2026-11-16）
+
+### 提交
+- `14b070f` 六事件 schema 与类型。
+- `15497f1` 六执行器 + 五事件接线（PostToolBatch/UserPromptExpansion/DirectoryAdded/Pre/PostModelSwitch）。
+- `215e754` MessageDisplay headless 接线。
+- `4d5f62e` subagent env 限额 + 测试。
+
+### 接线点
+- UserPromptExpansion：`processSlashCommand.tsx`（getPromptForCommand 后；additionalContext 附加、suppressOriginalPrompt 抑制、block 中止扩展）。
+- PostToolBatch：`query.ts`（query_tool_execution_end 后；tool_calls 构造，additionalContext→hook_additional_context，blocking/preventContinuation 停 loop）。
+- DirectoryAdded：`add-dir.tsx`（后台，不可取消）。
+- Pre/PostModelSwitch：`model.tsx` command 路径（deny 取消切换；Post 异步）。
+- MessageDisplay：`print.ts` headless success（displayContent 替换 result）。
+- env：`subagentLimits.ts` + `agentContext.ts` depth + `AgentTool.tsx`/`runAgent.ts` acquire/release。
+
+### 已知缺口（需后续/最终 xxx）
+- Pre/PostModelSwitch 的 context_tokens/prompt_cache_warm/cache_ttl/estimated_cache_write_usd/pricing 在 UI 层取默认值，真实值需 query 层集成。
+- PostModelSwitch additionalContext 下一请求投递未接（当前 drain 丢弃）。
+- MessageDisplay REPL streaming delta 未接（仅 headless 单条）。
+- ModelPicker 的 picker 路径（source=picker）未接 Pre/PostModelSwitch。
+- prompt_id 在 createBaseHookInput 未生成（实测 payload 含）。
+- 六事件行为测试、27 hooks 审计、真实矩阵 --batch 1 未在本轮跑。
+
+### 验证
+- typecheck/build 通过；design-docs 0 errors；headlessHooks/settingsHookCompatibility/settingsManagedHookCompatibility 共 29 pass；subagentLimits 7 pass。
+
