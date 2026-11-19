@@ -1551,3 +1551,23 @@
 独立 CharPool 的 ID 冲突会先隐藏 diff，测试明确跨帧共享 pool 的必要性，未把假 fixture 当成生产缺陷。无生产代码变更。60fps、全部终端协议、真实键盘/剪贴板、SIGCONT 和终端兼容性 live 未覆盖。
 
 **原 Finding 状态**：B4-ink-platform-01 保持 open，spec 保持 draft。
+
+---
+
+## 整改台账：B4-repl-input-01（2026-11-19 追加）
+
+**Finding ID**：B4-repl-input-01；主责 spec：repl-input。
+
+新增 `tests/replInput.test.tsx` 并唯一登记 coverage，8 个测试、35 个断言：
+
+- 真实父组件 input 更新的 insertTextRef：文本插入与 cursorOffset=11/1。
+- 大粘贴 Truncated text 引用与中间 payload/IDs。
+- useInputBuffer debounce、maxBufferSize、undo/clear。
+- usePromptSuggestion 接受和提交后重置。
+- prompt/bash mode、真实 Cursor 的 x/2x 与 `digits:'2'` 状态。
+
+常量 input prop 不能验证 React 内部 cursor，已改为生产式父组件更新；`act()` 不支持当前 Ink 环境，最终没有使用该 helper。完整键盘/Footer/对话框/真实剪贴板和模型 live 未覆盖，P3 undo UX 取舍不变。
+
+**增量缺陷 B4-repl-input-03**：普通 `bun test` 通过、外部 feature profile RED，父级 input 未提交且 cursorOffset 停留 5。feature 二分和最小条件 `require` 复现定位到 `PromptInputFooterLeftSide` 的 COORDINATOR_MODE eager CommonJS 加载；改为与 `toolPool.ts` 一致的静态 ESM import，同时保留调用点 feature 判断。修复后普通与 profile focused 均 exit 0。修改文件已有 `ide-integration` coverage 主责，不重复登记；三层证据和离线边界记入 repl-input spec 7.1.1。
+
+**原 Finding 状态**：B4-repl-input-01/02 保持 open，spec 保持 draft；B4-repl-input-03 仅追加整改台账，不批量关闭原发现。
