@@ -1,0 +1,8 @@
+schema_version: 1
+spec_id: upstream-config-b2-local-core-ui
+spec: ../../superpowers/specs/2026-11-19-upstream-config-b2-local-core-ui-design.md
+status: draft
+# 本 spec 是 B2 本地核心与界面（模型/thinking/压缩/输出/状态栏/终端/global-config
+# 读取路径）对齐设计；运行时代码主归属由 settings、config 等既有 coverage 维护，
+# 避免重复拥有文件。
+groups: []

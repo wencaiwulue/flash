@@ -5822,30 +5822,36 @@ entries:
     exclusion: null
     ownerBatch: 2
   - id: setting:showTurnDuration
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b2-local-core-ui
+    implementation:
+      - src/utils/settings/types.ts
+      - src/utils/config.ts
+      - src/components/messages/SystemTextMessage.tsx
+    tests:
+      - tests/b2GlobalConfigPath.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "settings/types.ts 显式 zod；最外层 .passthrough() 保留 settings 文件值"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.boolean().optional() = 上游 Boolean；inventory types"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 default=true；getShowTurnDuration ?? true"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "getInitialSettings()（合并 settings 文件）为主，getGlobalConfig()（~/.claude.json）旧值 fallback"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游无额外 precedence；settings>legacy>default"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "SystemTextMessage 消费 getShowTurnDuration()；tests/b2GlobalConfigPath 4 pass"
+    notes: "B2 首个对齐条目；verbose 同模式但含 --verbose/viewMode precedence，后续"
     exclusion: null
     ownerBatch: 2
   - id: setting:skillListingBudgetFraction

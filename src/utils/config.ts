@@ -30,6 +30,7 @@ import type { MemoryType } from './memory/types.js'
 import { normalizePathForConfigKey } from './path.js'
 import { getEssentialTrafficOnlyReason } from './privacyLevel.js'
 import { getManagedFilePath } from './settings/managedPath.js'
+import { getInitialSettings } from './settings/settings.js'
 import type { ThemeSetting } from './theme.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -1083,6 +1084,19 @@ export function getGlobalConfig(): GlobalConfig {
       getConfig(getGlobalClaudeFile(), createDefaultGlobalConfig),
     )
   }
+}
+
+/**
+ * Effective showTurnDuration (upstream 2.1.311): the merged settings-file value
+ * wins; a legacy `~/.claude.json` value applies only when no settings file sets
+ * it; defaults to true.
+ */
+export function getShowTurnDuration(): boolean {
+  return (
+    getInitialSettings().showTurnDuration ??
+    getGlobalConfig().showTurnDuration ??
+    true
+  )
 }
 
 /**
