@@ -1498,7 +1498,7 @@ type AppState = {
 | TeamCreateTool 创建团队 | `src/tools/TeamCreateTool/TeamCreateTool.ts:1-241` | `tests/teamLifecycle.test.ts`：真实 config/task dir/AppState、单团队约束、同名唯一命名且原文件不变 | 顺序场景，未声称多进程并发创建同名团队 |
 | TeamDeleteTool 解散团队 | `src/tools/TeamDeleteTool/TeamDeleteTool.ts:1-139` | `tests/teamLifecycle.test.ts`：active 拒绝并保留、inactive 清理、inbox 清空、无团队幂等 | 真实本地目录，无真实 teammate/worktree 进程 |
 | SendMessageTool 消息路由 | `src/tools/SendMessageTool/SendMessageTool.ts:1-800+` | 未找到直接测试文件 | 未覆盖 UDS/Bridge 跨机器路径 |
-| TeamFile 状态持久化 | `src/utils/swarm/teamHelpers.ts:1-684` | 未找到直接测试文件 | 未覆盖并发读写 teamFile |
+| TeamFile 状态持久化 | `src/utils/swarm/teamHelpers.ts:1-684` | `tests/teamFileAtomicWrite.test.ts`：原子写；`tests/workerCrash.test.ts`：失败/完成后 member.isActive=false | 未覆盖多进程 teamFile 并发读写；pane 外部崩溃仍只有 registry-only 限制证据 |
 | Mailbox 文件邮箱系统 | `src/utils/teammateMailbox.ts:43-1142` | `tests/mailboxConcurrency.test.ts`：真实子进程并发 append/mark-read、锁持有重试、不可解析文件恢复 | 本地临时 inbox/proper-lockfile；不覆盖 tmux/iTerm2 后端、高负载消息风暴或逐条 schema 验证 |
 | 双路径权限同步 | `src/utils/swarm/inProcessRunner.ts:1-600+` + `src/utils/swarm/permissionSync.ts:1-600+` + `src/utils/swarm/leaderPermissionBridge.ts` | 未找到直接测试文件 | 仅检查 in-process 路径，未测试 mailbox 路径 |
 | Coordinator 模式协调 | `src/coordinator/coordinatorMode.ts:1-369` | 未找到直接测试文件 | 仅检查系统提示，未验证端到端协调 |
@@ -1584,6 +1584,22 @@ Remote/CCR 没有据此获得 live 凭证、登录、bundle、远程 session 或
 
 初版 mark 测试误用参数顺序和返回值，按真实签名 `(agentName, teamName, messageIndex): Promise<void>` 修正；这是测试签名错误，不是生产 RED。回滚只需移除测试、coverage entry、本节和审计台账，保持原 Finding open、spec draft。
 
+### 7.6 Worker 崩溃/完成状态整改（2026-11-20）
+
+关联 Finding：B5-agent-swarms-06。新增 `tests/workerCrash.test.ts` 并唯一登记；3 个测试、18 个断言。真实 runner 失败复现 TeamFile 一直 active 的增量实现缺陷，已做小范围生产修复。
+
+| 决策 | 实际行为与验证 | 证据 |
+|---|---|---|
+| 真实 RED | runInProcessTeammate 的 runAgent 抛出 `offline worker crash` 后，result.success=false、task 被驱逐、SDK failed 已发出，但 TeamFile worker.isActive 仍为 true | 修复前 `worker-crash-red.log`，最终断言 Expected false / Received true |
+| 失败路径修复 | catch 在 failed task/notification 收尾前调用 `markMemberInactive`，同步 TeamFile false；backend.isActive 也因 task 不存在返回 false | `inProcessRunner.ts` catch 与 `setMemberActive`；failure 测试 |
+| 正常完成修复 | 正常 aborted completion 同样标记 inactive，task 驱逐、SDK completed 与 TeamFile 一致 | completion 分支与 completion 测试 |
+| 失败隔离 | TeamFile 写入异常由 markMemberInactive 记录，不掩盖原 runner 结果或阻止 task/SDK 清理 | helper try/catch |
+| Pane 边界 | PaneBackendExecutor 只对 unknown agent 返回 false；已注册记录即使外部 pane 已 kill 仍返回 true。该测试记录 registry-only 限制，不声称跨进程崩溃检测已修复 | `PaneBackendExecutor.ts:329-344`；pane boundary 测试 |
+
+三层证据：官方 Agent Teams 文档明确成员 idle/停止状态与 TeamDelete 活跃成员约束；只读 `/opt/homebrew/bin/claude` strings 命中 `setMemberActive`；本仓库真实 runner、TeamFile、AppState/SDK 事件给出 RED/GREEN。PaneBackend 当前没有 pane-exists 查询接口，跨进程外部崩溃检测仍需独立后端设计，不能用本测试冒充完成。
+
+生产回滚：移除 `markMemberInactive` helper 与完成/失败两个调用，即恢复 RED。完整回滚再移除测试、coverage entry、本节和审计台账，保持原 Finding open、spec draft。
+
 ## 8. 文件覆盖与相关子系统
 
 [Coverage](../../architecture/coverage/agent-swarms.yaml)
@@ -1592,7 +1608,7 @@ Remote/CCR 没有据此获得 live 凭证、登录、bundle、远程 session 或
 |---|---|---|---|
 | agent-tool | AgentTool 实现、fork 子代理、agent memory | `agentToolExecution`：sync/async；`agentToolIsolation`：fork/worktree；`agentToolRouting`：teammate/remote 离线路由；`agentMemorySnapshot` | 自动后台化、真实 teammate/CCR/API cache、真实多 agent 并发和内置 agent 具体行为仍需各自证据 |
 | team-tools | TeamCreateTool、TeamDeleteTool | `tests/teamLifecycle.test.ts`：真实 config/task dir、唯一命名、active 保护和清理 | SendMessageTool、Task*Tool、真实 teammate 进程与多进程同名创建不归本组证据 |
-| swarm-utils | mailbox、teamHelpers、permissionSync、inProcessRunner、backends | `tests/mailboxConcurrency.test.ts`：真实多进程 inbox/lock；`tests/teamFileAtomicWrite.test.ts` | permissionSync、inProcessRunner、backends 与 `src/utils/teammate.ts` 等辅助函数仍需各自证据 |
+| swarm-utils | mailbox、teamHelpers、permissionSync、inProcessRunner、backends | `mailboxConcurrency`：inbox/lock；`workerCrash`：inactive 转换与 pane 限制；`teamFileAtomicWrite` | permissionSync、其他 backends 与 `src/utils/teammate.ts` 等辅助函数仍需各自证据 |
 | coordinator | Coordinator 模式、系统提示 | 未找到专用测试 | 协调业务逻辑不归本组 |
 
 相关子系统：

@@ -103,6 +103,7 @@ import {
   getLeaderSetToolPermissionContext,
   getLeaderToolUseConfirmQueue,
 } from './leaderPermissionBridge.js'
+import { setMemberActive } from './teamHelpers.js'
 import {
   createPermissionRequest,
   sendPermissionRequestViaMailbox,
@@ -560,6 +561,16 @@ async function sendMessageToLeader(
     },
     teamName,
   )
+}
+
+async function markMemberInactive(identity: TeammateIdentity): Promise<void> {
+  try {
+    await setMemberActive(identity.teamName, identity.agentName, false)
+  } catch (error) {
+    logForDebugging(
+      `[inProcessRunner] Failed to mark ${identity.agentName} inactive: ${error}`,
+    )
+  }
 }
 
 /**
@@ -1416,6 +1427,8 @@ export async function runInProcessTeammate(
       }
     }
 
+    await markMemberInactive(identity)
+
     // Mark as completed when exiting the loop
     let alreadyTerminal = false
     let toolUseId: string | undefined
@@ -1469,6 +1482,8 @@ export async function runInProcessTeammate(
     logForDebugging(
       `[inProcessRunner] Agent ${identity.agentId} failed: ${errorMessage}`,
     )
+
+    await markMemberInactive(identity)
 
     // Mark task as failed and notify any waiters
     let alreadyTerminal = false

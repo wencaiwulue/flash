@@ -215,6 +215,12 @@ groups:
     summary: Mailbox 多进程并发 append/mark-read、锁重试与损坏恢复
     files:
       - tests/mailboxConcurrency.test.ts
+  - id: worker-lifecycle-tests
+    kind: test
+    section: 7
+    summary: in-process worker 失败/完成 inactive 转换和 pane 检测边界
+    files:
+      - tests/workerCrash.test.ts
   - id: agent-memory-tests
     kind: test
     section: 7

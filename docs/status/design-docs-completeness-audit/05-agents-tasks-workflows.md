@@ -1684,3 +1684,10 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 - **Finding**：B5-agent-swarms-03；主责 spec：`2026-11-12-agent-swarms-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
 - **实现**：新增并唯一登记 `tests/mailboxConcurrency.test.ts`，4 个测试、30 个断言。6 个真实子进程并发 append 得 36 条唯一消息；两个进程 disjoint mark-read 保留全部 12 条内容；独立进程持锁 350ms 时写入重试成功；不可解析文件可重写为合法新数组，lock 均释放。
 - **证据边界**：真实 Bun 子进程、proper-lockfile 和临时 inbox，以磁盘数量/唯一性/内容验收，不以被吞 I/O 错误后的 exit 0 代替断言。未覆盖 tmux/iTerm2、高负载消息风暴、写盘失败传播或逐条 schema 验证；整文件损坏恢复不声称保留旧内容。
+
+## Phase B Worker 崩溃/完成状态整改（2026-11-20 追加）
+
+- **Finding**：B5-agent-swarms-06；主责 spec：`2026-11-12-agent-swarms-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
+- **真实 RED**：真实 spawn/runInProcessTeammate 中 runAgent 抛出 `offline worker crash`，result=false、task 驱逐、SDK failed 均已发生，但 TeamFile worker.isActive=true（Expected false/Received true）。初次断言还校正了 task 会立即驱逐这一实际生命周期，没有为保留 failed 对象改生产。
+- **实现**：新增 `markMemberInactive`，在 runner 完成与失败两个退出路径调用 `setMemberActive(..., false)`；TeamFile 写失败只记录，不掩盖 runner 结果。`tests/workerCrash.test.ts` 3 个测试、18 个断言，覆盖失败、正常完成、backend active/missing 以及 pane registry-only 限制。
+- **证据边界**：真实 runner、TeamFile、AppState/SDK，runAgent 离线。官方 Agent Teams 文档与只读 upstream strings 佐证 idle/active 语义。PaneBackend 无 pane-exists 查询接口，外部 pane kill 后 isActive 仍为 true 仅记录现有限制，跨进程崩溃检测未宣称完成。
