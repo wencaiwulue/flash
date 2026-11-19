@@ -593,6 +593,15 @@ export const SettingsSchema = lazySchema(() =>
           type: z.literal('command'),
           command: z.string(),
           padding: z.number().optional(),
+          refreshInterval: z
+            .number()
+            .min(1)
+            .optional()
+            .describe('Status line command refresh interval in seconds (min 1)'),
+          hideVimModeIndicator: z
+            .boolean()
+            .optional()
+            .describe('Hide the vim mode indicator in the status line area'),
         })
         .optional()
         .describe('Custom status line display configuration'),

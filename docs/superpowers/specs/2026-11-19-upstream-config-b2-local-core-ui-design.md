@@ -95,6 +95,7 @@ showTurnDuration 无 fail-closed 语义：读取失败/未设置时回退默认 
 - 上游证据：`fixtures/upstream-config/2.1.311/inventory.json` 的 `setting:showTurnDuration`、`setting:verbose`。
 - 输出/显示开关（已实现对齐，验证+记录证据）：`src/constants/outputStyles.ts`（getOutputStyleConfig 读 getSettings_DEPRECATED()=getInitialSettings()）、`src/utils/messages/systemInit.ts:55`（?? DEFAULT_OUTPUT_STYLE_NAME='default'）、`src/utils/betas.ts:274`（showThinkingSummaries !== true → REDACT_THINKING_BETA_HEADER）、`src/components/permissions/ExitPlanModePermissionRequest/ExitPlanModePermissionRequest.tsx:220` + `src/state/AppStateStore.ts:469`（settings=getInitialSettings()）。
 - `tests/b2DisplaySettings.test.ts`：3 用例（outputStyle/showThinkingSummaries/showClearContextOnPlanAccept 的 source+default），全 pass。
+- 状态栏：`src/utils/settings/types.ts` statusLine 加 refreshInterval(min 1)/hideVimModeIndicator；`src/components/StatusLine.tsx` 加 refreshInterval setInterval 定期 doUpdate；`src/components/PromptInput/PromptInputFooterLeftSide.tsx` showVim 加 `&& !hideVimIndicator`；`src/utils/hooks.ts` executeStatusLineCommand managed-only 已有。`tests/b2StatusLine.test.ts` 3 用例（完整解析/可选字段缺省/refreshInterval min 1）。
 
 ## 8. 文件覆盖与相关子系统
 
@@ -112,5 +113,6 @@ coverage：[upstream-config-b2-local-core-ui.yaml](../../architecture/coverage/u
 
 - global-config 读取路径：showTurnDuration、verbose 六维度 aligned（`getShowTurnDuration()`/`getVerbose()` + tests/b2GlobalConfigPath 10 用例）。verbose 的 viewMode/`/focus` 覆盖不适用（flash 无此特性）。
 - 输出/显示开关：outputStyle、showThinkingSummaries、showClearContextOnPlanAccept 六维度 aligned（已实现对齐，验证+记录证据，tests/b2DisplaySettings 3 用例）。
-- 矩阵 setting aligned=5，`--batch 2` 0 诊断，design-docs 0 errors。
-- 其余 38 条：未切入，按 §4 子系统分组待后续。
+- 状态栏：statusLine、statusLine.type/command/padding/refreshInterval/hideVimModeIndicator 六维度 aligned。type/command/padding 及 managed-only 安全限制（executeStatusLineCommand shouldAllowManagedHooksOnly/shouldDisableAllHooksIncludingManaged/trust）本已实现；本轮补 refreshInterval（types.ts min(1) + StatusLine setInterval 定期 doUpdate）与 hideVimModeIndicator（types.ts + PromptInputFooterLeftSide showVim && !hideVimIndicator）。tests/b2StatusLine 3 用例。
+- 矩阵 setting aligned=11，`--batch 2` 0 诊断，design-docs 0 errors。
+- 其余 31 条：未切入，按 §4 子系统分组待后续。

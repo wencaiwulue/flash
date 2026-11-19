@@ -6493,164 +6493,196 @@ entries:
     exclusion: null
     ownerBatch: final
   - id: setting:statusLine
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b2-local-core-ui
+    implementation:
+      - src/utils/settings/types.ts
+      - src/components/StatusLine.tsx
+      - src/utils/hooks.ts
+    tests:
+      - tests/b2StatusLine.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "types.ts statusLine object schema（含 refreshInterval/hideVimModeIndicator）；generated schema diff"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "object{type:literal command,command:string,padding?/refreshInterval?/hideVimModeIndicator?} 与上游一致"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 default=null(unset 无状态栏)；statusLineShouldDisplay 仅 statusLine!==undefined"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "executeStatusLineCommand：shouldAllowManagedHooksOnly 时仅 policySettings(managed)，否则 getInitialSettings()；managed-only 已实现"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "managed-only 限制（disableAllHooks/allowManagedHooksOnly）；无其他 precedence"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "StatusLine 渲染 + executeStatusLineCommand 执行命令；tests/b2StatusLine 3 用例"
+    notes: "refreshInterval/hideVimModeIndicator 本轮补齐；managed-only 已有"
     exclusion: null
     ownerBatch: 2
   - id: setting:statusLine.command
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b2-local-core-ui
+    implementation:
+      - src/components/StatusLine.tsx
+      - src/utils/hooks.ts
+      - src/utils/settings/types.ts
+    tests:
+      - tests/b2StatusLine.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "types.ts statusLine.command: z.string()；generated schema diff"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.string() = 上游 command string"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "无独立 default（statusLine unset 即无状态栏）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "executeStatusLineCommand 按 managed-only 选 policySettings/getInitialSettings 的 command"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "managed-only 限制"
       runtime:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "execCommandHook 执行 command 渲染状态栏文本"
     notes: ""
     exclusion: null
     ownerBatch: 2
   - id: setting:statusLine.hideVimModeIndicator
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
-    dimensions:
-      path:
-        status: missing
-        evidence: ""
-      type:
-        status: missing
-        evidence: ""
-      default:
-        status: missing
-        evidence: ""
-      source:
-        status: missing
-        evidence: ""
-      precedence:
-        status: missing
-        evidence: ""
-      runtime:
-        status: missing
-        evidence: ""
-    notes: ""
-    exclusion: null
-    ownerBatch: 2
-  - id: setting:statusLine.padding
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b2-local-core-ui
+    implementation:
+      - src/utils/settings/types.ts
+      - src/components/PromptInput/PromptInputFooterLeftSide.tsx
+    tests:
+      - tests/b2StatusLine.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "types.ts statusLine.hideVimModeIndicator z.boolean().optional()"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.boolean() = 上游 Boolean"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 default=null（不隐藏）；showVim 加 && !hideVimIndicator"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "useAppState(s=>s.settings.statusLine?.hideVimModeIndicator)；settings=getInitialSettings()"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "无额外 precedence"
       runtime:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "PromptInputFooterLeftSide showVim 加 && !hideVimIndicator，隐藏 -- INSERT -- 指示器"
+    notes: "本轮实现"
+    exclusion: null
+    ownerBatch: 2
+  - id: setting:statusLine.padding
+    status: aligned
+    spec: upstream-config-b2-local-core-ui
+    implementation:
+      - src/components/StatusLine.tsx
+      - src/utils/settings/types.ts
+    tests:
+      - tests/b2StatusLine.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
+    dimensions:
+      path:
+        status: aligned
+        evidence: "types.ts statusLine.padding: z.number().optional()"
+      type:
+        status: aligned
+        evidence: "z.number() = 上游 number"
+      default:
+        status: aligned
+        evidence: "StatusLine.tsx:391 padding ?? 0"
+      source:
+        status: aligned
+        evidence: "useSettings() 合并 settings 的 statusLine.padding"
+      precedence:
+        status: aligned
+        evidence: "无额外 precedence"
+      runtime:
+        status: aligned
+        evidence: "StatusLine Box paddingX=padding ?? 0；tests/b2StatusLine padding 用例"
     notes: ""
     exclusion: null
     ownerBatch: 2
   - id: setting:statusLine.refreshInterval
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
-    dimensions:
-      path:
-        status: missing
-        evidence: ""
-      type:
-        status: missing
-        evidence: ""
-      default:
-        status: missing
-        evidence: ""
-      source:
-        status: missing
-        evidence: ""
-      precedence:
-        status: missing
-        evidence: ""
-      runtime:
-        status: missing
-        evidence: ""
-    notes: ""
-    exclusion: null
-    ownerBatch: 2
-  - id: setting:statusLine.type
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b2-local-core-ui
+    implementation:
+      - src/utils/settings/types.ts
+      - src/components/StatusLine.tsx
+    tests:
+      - tests/b2StatusLine.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "types.ts statusLine.refreshInterval: z.number().min(1).optional()"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.number().min(1) = 上游 number(min 1)"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 default=null（不启用定期刷新）；未设置时无 setInterval"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "useSettings() 合并 settings 的 statusLine.refreshInterval"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "无额外 precedence"
       runtime:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "StatusLine 新增 setInterval(refreshInterval*1000) 定期 doUpdate；tests/b2StatusLine min1 用例"
+    notes: "本轮实现"
+    exclusion: null
+    ownerBatch: 2
+  - id: setting:statusLine.type
+    status: aligned
+    spec: upstream-config-b2-local-core-ui
+    implementation:
+      - src/utils/settings/types.ts
+      - src/utils/hooks.ts
+    tests:
+      - tests/b2StatusLine.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
+    dimensions:
+      path:
+        status: aligned
+        evidence: "types.ts statusLine.type: z.literal(\"command\")"
+      type:
+        status: aligned
+        evidence: "z.literal(\"command\") = 上游 type:\"command\""
+      default:
+        status: aligned
+        evidence: "无独立 default（必填 literal）"
+      source:
+        status: aligned
+        evidence: "executeStatusLineCommand:5078 检查 statusLine.type!==command 返回 undefined"
+      precedence:
+        status: aligned
+        evidence: "无额外 precedence"
+      runtime:
+        status: aligned
+        evidence: "仅支持 command 类型，非 command 不执行"
     notes: ""
     exclusion: null
     ownerBatch: 2
