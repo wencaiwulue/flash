@@ -145,6 +145,9 @@ export function PromptInputFooterLeftSide({
   historyFailedMatch,
   onOpenTasksDialog,
 }: Props): React.ReactNode {
+  const hideVimIndicator = useAppState(
+    s => s.settings.statusLine?.hideVimModeIndicator,
+  )
   if (exitMessage.show) {
     return (
       <Text dimColor key="exit-message">
@@ -160,7 +163,11 @@ export function PromptInputFooterLeftSide({
     )
   }
 
-  const showVim = isVimModeEnabled() && vimMode === 'INSERT' && !isSearching
+  const showVim =
+    isVimModeEnabled() &&
+    vimMode === 'INSERT' &&
+    !isSearching &&
+    !hideVimIndicator
 
   return (
     <Box justifyContent="flex-start" gap={1}>
