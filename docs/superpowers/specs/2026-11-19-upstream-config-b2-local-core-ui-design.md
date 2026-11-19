@@ -98,6 +98,7 @@ showTurnDuration 无 fail-closed 语义：读取失败/未设置时回退默认 
 - 状态栏：`src/utils/settings/types.ts` statusLine 加 refreshInterval(min 1)/hideVimModeIndicator；`src/components/StatusLine.tsx` 加 refreshInterval setInterval 定期 doUpdate；`src/components/PromptInput/PromptInputFooterLeftSide.tsx` showVim 加 `&& !hideVimIndicator`；`src/utils/hooks.ts` executeStatusLineCommand managed-only 已有。`tests/b2StatusLine.test.ts` 3 用例（完整解析/可选字段缺省/refreshInterval min 1）。
 - 终端/界面（theme、preferredNotifChannel、terminalProgressBarEnabled；Any file + legacy fallback，复用 verbose 同模式）：`src/utils/settings/types.ts` 加三者显式 zod；`src/utils/config.ts` 加 `getThemeSetting()`/`getPreferredNotifChannel()`/`getTerminalProgressBarEnabled()`（settings ?? legacy ?? default）。消费者改接：theme 统一 `resolveThemeSetting(getThemeSetting())`（QueryEngine.ts:363/510、Stats.tsx:821/978、LogoV2.tsx:254、FastIcon.tsx:28），terminalProgressBarEnabled 经 Messages.tsx `progressEnabled`；preferredNotifChannel 在 flash 无独立运行时消费者（通知渠道逻辑不经此键），仅设置 UI + 统一读口。`tests/b2ThemeNotifSettings.test.ts` 9 用例（各 default/settings 覆盖/legacy 兜底）。
 - IDE（autoConnectIde、autoInstallIdeExtension；Global config scope）：运行时本即读 GlobalConfig（IdeAutoConnectDialog.tsx:54/105 `config.autoConnectIde !== true`/`=== true`、ide.ts:1299 `getGlobalConfig().autoInstallIdeExtension ?? true`），default false/true 已一致；本轮补 `src/utils/settings/types.ts` 显式 zod 声明以对齐 path/type（上游 settings schema 含此二 key），运行时 source 仍 GlobalConfig 未改。`tests/b2ThemeNotifSettings.test.ts` 2 schema 用例（boolean 接受/非 boolean 拒绝）。
+- thinking/压缩与编辑器（autoCompactEnabled、fileCheckpointingEnabled、editorMode；Any file，复用 verbose 同模式）：`src/utils/settings/types.ts` 加三者显式 zod；`src/utils/config.ts` 加 `getAutoCompactEnabled()`/`getFileCheckpointingEnabled()`/`getEditorMode()`（settings ?? legacy ?? default）。消费者改接并保留 env precedence：autoCompact.ts isAutoCompactEnabled（DISABLE_AUTO_COMPACT 前置 return false）、fileHistory.ts fileHistoryEnabled（!isEnvTruthy(CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING)）、PromptInput/utils.ts isVimModeEnabled 与 vim.ts currentMode。`tests/b2CompactEditorSettings.test.ts` 9 用例（各 default/settings 覆盖/legacy 兜底）。
 
 ## 8. 文件覆盖与相关子系统
 
@@ -119,5 +120,6 @@ coverage：[upstream-config-b2-local-core-ui.yaml](../../architecture/coverage/u
 - autoMemory/终端：autoMemoryDirectory、autoMemoryEnabled、terminalTitleFromRename、autoUpdatesChannel 六维度 aligned（已实现对齐，含 autoMemoryEnabled 的 env/`--bare` precedence 与 autoMemoryDirectory 多源读取，验证+记录，tests/b2TerminalMemory 4 用例）。
 - 终端/界面：theme、preferredNotifChannel、terminalProgressBarEnabled 六维度 aligned（Any file + legacy fallback，补 settings 层 helper + 消费者改接，tests/b2ThemeNotifSettings 9 用例）。
 - IDE：autoConnectIde、autoInstallIdeExtension 六维度 aligned（Global config scope，运行时本即读 GlobalConfig，补 settings schema zod 声明对齐 path/type，tests/b2ThemeNotifSettings 2 schema 用例）。
-- 矩阵 setting aligned=20，`--batch 2` 0 诊断，design-docs 0 errors。
-- 其余 22 条：未切入，按 §4 子系统分组待后续。
+- thinking/压缩与编辑器：autoCompactEnabled、fileCheckpointingEnabled、editorMode 六维度 aligned（Any file，补 settings 层 helper + 消费者改接并保留 env precedence，tests/b2CompactEditorSettings 9 用例）。editorMode 的 /vim 写路径仍 GlobalConfig，与上游写 user settings 有 gap，留待写路径对齐。
+- 矩阵 setting aligned=23，`--batch 2` 0 诊断，design-docs 0 errors。
+- 其余 19 条：未切入，按 §4 子系统分组待后续。

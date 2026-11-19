@@ -1154,6 +1154,47 @@ export function getTerminalProgressBarEnabled(): boolean {
 }
 
 /**
+ * Effective autoCompactEnabled (upstream 2.1.311): the merged settings-file
+ * value wins; a legacy `~/.claude.json` value applies only when no settings
+ * file sets it; defaults to true. The DISABLE_AUTO_COMPACT env override for one
+ * session is handled by the caller (isAutoCompactEnabled).
+ */
+export function getAutoCompactEnabled(): boolean {
+  return (
+    getInitialSettings().autoCompactEnabled ??
+    getGlobalConfig().autoCompactEnabled ??
+    true
+  )
+}
+
+/**
+ * Effective fileCheckpointingEnabled (upstream 2.1.311): the merged
+ * settings-file value wins; a legacy `~/.claude.json` value applies only when
+ * no settings file sets it; defaults to true. The
+ * CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING env override is handled by the caller.
+ */
+export function getFileCheckpointingEnabled(): boolean {
+  return (
+    getInitialSettings().fileCheckpointingEnabled ??
+    getGlobalConfig().fileCheckpointingEnabled ??
+    true
+  )
+}
+
+/**
+ * Effective editorMode (upstream 2.1.311): the merged settings-file value wins;
+ * a legacy `~/.claude.json` value applies only when no settings file sets it;
+ * defaults to "normal".
+ */
+export function getEditorMode(): NonNullable<GlobalConfig['editorMode']> {
+  return (
+    (getInitialSettings().editorMode as GlobalConfig['editorMode']) ??
+    getGlobalConfig().editorMode ??
+    'normal'
+  )
+}
+
+/**
  * Returns the effective value of remoteControlAtStartup. Precedence:
  *   1. User's explicit config value (always wins — honors opt-out)
  *   2. CCR auto-connect default (ant-only build, GrowthBook-gated)
