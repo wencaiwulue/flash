@@ -1630,3 +1630,10 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 - **实现**：独立 UUID 临时文件（`wx`、0600）→ JSON + fsync → close → 原子 rename → 目录 fsync；`.claude` 目录 0700，失败清理并保留旧任务。
 - **GREEN**：`tests/cronTaskFilePermissions.test.ts` 与 `tests/cronLifecycle.test.ts` 合计 6/6；覆盖 0600、40 路并发、序列化失败保留旧任务和无临时残留。新测试唯一登记 scheduling coverage。
 - **证据边界**：官方调度文档不公开 scheduled_tasks.json 权限/原子写契约；upstream strings 命中文件名但不证明实现。全部本地临时目录/offline，spec 保持 draft。
+
+## Phase B Task Framework/Disk Output 测试整改（2026-11-19 追加）
+
+- **Finding**：B5-task-system-01；主责 spec：`2026-11-13-task-system-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
+- **实现**：新增并唯一登记 `tests/taskFramework.test.ts`，10 个测试、48 个断言。覆盖类型 ID/终态、register/update/resume 不重复 event、terminal+notified 驱逐、running offset/TOCTOU、poll delta 不重复、真实文件 append/读取/tail、40 路顺序、O_EXCL/symlink、EMFILE 重试与 evict 保留磁盘文件。
+- **证据**：普通与外部 feature profile 均 exit 0；真实 AppState、SDK queue、临时目录和文件，不是后台进程 live。spec 第 7.1 节记录真实矩阵、官方 Tools reference、只读 `/opt/homebrew/bin/claude` strings 和回滚。
+- **边界**：全部离线，无生产代码变更；5GB cap 未创建大文件，真实 shell/TaskStop/TodoWrite 由后续批次覆盖。
