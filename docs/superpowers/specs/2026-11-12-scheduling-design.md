@@ -1109,12 +1109,27 @@ runJobSupervisor(jobDirectory)
 | cron抖动：一次性任务在mod 30分钟时提前0-90秒 | src/utils/cronTasks.ts:421-445 | 未找到直接测试 | 可通过growthbook配置调整mod、max、floor |
 | 模板作业supervisor detached启动 | src/jobs/supervisor.ts:96-122 | 未找到直接测试 | detached=true，stdio='ignore' |
 | supervisor监控child进程stdout/stderr/close | src/jobs/supervisor.ts:356-422 | 未找到直接测试 | 所有事件追加到transcript |
-| proactive状态管理和subscribe | src/proactive/index.ts:1-96 | 未找到直接测试 | 仅内存，不持久化 |
-| SleepTool仅在proactive激活时启用 | src/tools/SleepTool/SleepTool.ts:53 | 未找到直接测试 | isEnabled()检查isProactiveActive() |
+| proactive状态管理和subscribe | src/proactive/index.ts:1-96 | `tests/scheduling.test.ts`：activate/pause/resume/contextBlocked/deactivate/unsubscribe | 仅内存，不持久化 |
+| SleepTool仅在proactive激活时启用 | src/tools/SleepTool/SleepTool.ts:53 | `tests/scheduling.test.ts`：duration bounds、interruptible flags、abort | isEnabled()检查isProactiveActive() |
 | CronCreateTool验证cron表达式和MAX_JOBS=50 | src/tools/ScheduleCronTool/CronCreateTool.ts:25-116 | 未找到直接测试 | 验证parseCronExpression和nextCronRunMs |
-| RemoteTriggerTool调用claude.ai API管理triggers | src/tools/RemoteTriggerTool/RemoteTriggerTool.ts:46-161 | 未找到直接测试 | 需要oauth认证，beta API |
+| RemoteTriggerTool调用claude.ai API管理triggers | src/tools/RemoteTriggerTool/RemoteTriggerTool.ts:46-161 | `tests/scheduling.test.ts`：list/run 与缺参失败 | axios 边界 dummy auth，未做 OAuth/live API |
 | Cron调度器生命周期 | src/utils/cronScheduler.ts | tests/cronLifecycle.test.ts：一次性任务触发、周期性任务调度、锁竞争接管 | 未覆盖多实例并发场景 |
 | Supervisor指数退避重启 | src/jobs/supervisor.ts | tests/daemon.test.ts：supervisor重启策略、maxRestarts限制、状态清理 | 未覆盖实际worker执行失败场景 |
+
+### 7.1 Scheduling 行为整改（2026-11-20）
+
+关联 Finding：B5-scheduling-01。新增 `tests/scheduling.test.ts` 并唯一登记；8 个测试、42 个断言，普通与外部 feature profile 均通过，无生产代码变更。
+
+| 决策 | 实际行为与验证 | 证据 |
+|---|---|---|
+| Proactive 状态 | activate 幂等、nextTickAt、pause/resume/contextBlocked、deactivate 重置和 unsubscribe 停止通知 | `proactive/index.ts`；真实状态机测试 |
+| Sleep 边界 | min/max duration clamp、missing/duplicate 参数拒绝、interruptible flags true→false、提前 abort 得 interrupted=true | `SleepTool.ts:30-113`；resolve/call 测试 |
+| RemoteTrigger | list/run 的 method/url/body/status/json，dummy auth/org/beta headers；缺 trigger_id/body 在 HTTP 前失败 | `RemoteTriggerTool.ts:78-150`；axios 边界测试 |
+| Classifier 高置信度 | 有效证据写 classification.status=ok，保留 running/pid/generation 等进程字段 | `classifier.ts:217-257`；真实 job state |
+| Classifier 防护 | 无效 evidence 保留 last good；低置信度写 stale+LOW_CONFIDENCE；generation 变化忽略旧结果 | `classifier.ts:231-257`；state 对比测试 |
+| 证据边界 | 真实 proactive/Sleep/RemoteTrigger/classifier 和临时 job state；dummy token 仅内存，无 OAuth、网络、模型或真实后台进程 | mock axios/sideQuery 与临时目录 |
+
+官方调度/proactive 文档不公开这些内部分类和阈值；只读 upstream strings 作辅助，当前契约以仓库生产代码和真实状态文件为准。未覆盖 cron parser/jitter、supervisor 实际 worker 崩溃、远程 trigger live 或 classifier 模型质量。回滚只需移除测试、coverage entry、本节和审计台账，保持原 Finding open、spec draft。
 
 ## 8. 文件覆盖与相关子系统
 
@@ -1129,11 +1144,11 @@ runJobSupervisor(jobDirectory)
 | jobs-schema | 模板作业类型定义、Zod schema | tests/daemon.test.ts |  |
 | jobs-supervisor | supervisor进程管理、child spawn监控、状态合并 | tests/daemon.test.ts |  |
 | jobs-state | 作业目录、锁、原子写、transcript | tests/daemon.test.ts |  |
-| jobs-classifier | 任务分类逻辑 | tests/templateJobs.test.ts |  |
-| proactive-core | 主动唤醒状态管理、subscribe | 未找到专用测试 |  |
+| jobs-classifier | 任务分类逻辑 | tests/templateJobs.test.ts、tests/scheduling.test.ts | 模型质量与真实进程结果映射由 supervisor 主拥有 |
+| proactive-core | 主动唤醒状态管理、subscribe | tests/scheduling.test.ts |  |
 | cron-tools | CronCreate/CronDelete/CronList工具 | tests/cronLifecycle.test.ts |  |
-| sleep-tool | SleepTool实现 | 未找到专用测试 |  |
-| remote-trigger-tool | RemoteTriggerTool实现 | 未找到专用测试 |  |
+| sleep-tool | SleepTool实现 | tests/scheduling.test.ts |  |
+| remote-trigger-tool | RemoteTriggerTool实现 | tests/scheduling.test.ts | 真实 OAuth/live API 不归本测试证明 |
 
 相关子系统：
 - [Task System](./2026-11-13-task-system-design.md)：cron任务触发可能创建后台任务

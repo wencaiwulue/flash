@@ -1715,3 +1715,9 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 - **Finding**：B5-review-analysis-01；主责 spec：`2026-11-12-review-analysis-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
 - **实现**：新增并唯一登记 `tests/reviewAnalysis.test.ts`，5 个测试、21 个断言。覆盖 CtxInspect 完整调用、SessionMeta tool/language/git/token/响应时间/lines/files/messageHours、分支去重、0600 原子缓存 save/load，以及 30 分钟 A→B→A 与 A→B 对照。
 - **证据边界**：真实生产逻辑和临时缓存文件，未执行 facet 模型提取、HTML 报告、真实多进程会话或私有协议。外部 profile 初次在重量级 `messages.ts` 处循环等待，改为本地消息 fixture 后两种 profile 均通过；不将该 fixture 问题记为生产 RED。
+
+## Phase B Scheduling 行为整改（2026-11-20 追加）
+
+- **Finding**：B5-scheduling-01；主责 spec：`2026-11-12-scheduling-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
+- **实现**：新增并唯一登记 `tests/scheduling.test.ts`，8 个测试、42 个断言。覆盖 proactive 全状态迁移/unsubscribe、Sleep duration clamp/中断、RemoteTrigger list/run 与缺参闭锁、jobs classifier 高置信度/无效 evidence/低置信度 stale/旧 generation 忽略。
+- **证据边界**：真实 proactive/Sleep/RemoteTrigger/classifier 与临时 job state；axios/sideQuery 为离线边界，dummy token 仅内存，无 OAuth、网络、模型或真实后台进程。未覆盖 cron parser/jitter、supervisor 实际 worker 崩溃、远程 trigger live 或 classifier 模型质量。
