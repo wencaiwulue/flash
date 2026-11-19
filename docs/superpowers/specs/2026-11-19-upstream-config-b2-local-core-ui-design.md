@@ -96,6 +96,8 @@ showTurnDuration 无 fail-closed 语义：读取失败/未设置时回退默认 
 - 输出/显示开关（已实现对齐，验证+记录证据）：`src/constants/outputStyles.ts`（getOutputStyleConfig 读 getSettings_DEPRECATED()=getInitialSettings()）、`src/utils/messages/systemInit.ts:55`（?? DEFAULT_OUTPUT_STYLE_NAME='default'）、`src/utils/betas.ts:274`（showThinkingSummaries !== true → REDACT_THINKING_BETA_HEADER）、`src/components/permissions/ExitPlanModePermissionRequest/ExitPlanModePermissionRequest.tsx:220` + `src/state/AppStateStore.ts:469`（settings=getInitialSettings()）。
 - `tests/b2DisplaySettings.test.ts`：3 用例（outputStyle/showThinkingSummaries/showClearContextOnPlanAccept 的 source+default），全 pass。
 - 状态栏：`src/utils/settings/types.ts` statusLine 加 refreshInterval(min 1)/hideVimModeIndicator；`src/components/StatusLine.tsx` 加 refreshInterval setInterval 定期 doUpdate；`src/components/PromptInput/PromptInputFooterLeftSide.tsx` showVim 加 `&& !hideVimIndicator`；`src/utils/hooks.ts` executeStatusLineCommand managed-only 已有。`tests/b2StatusLine.test.ts` 3 用例（完整解析/可选字段缺省/refreshInterval min 1）。
+- 终端/界面（theme、preferredNotifChannel、terminalProgressBarEnabled；Any file + legacy fallback，复用 verbose 同模式）：`src/utils/settings/types.ts` 加三者显式 zod；`src/utils/config.ts` 加 `getThemeSetting()`/`getPreferredNotifChannel()`/`getTerminalProgressBarEnabled()`（settings ?? legacy ?? default）。消费者改接：theme 统一 `resolveThemeSetting(getThemeSetting())`（QueryEngine.ts:363/510、Stats.tsx:821/978、LogoV2.tsx:254、FastIcon.tsx:28），terminalProgressBarEnabled 经 Messages.tsx `progressEnabled`；preferredNotifChannel 在 flash 无独立运行时消费者（通知渠道逻辑不经此键），仅设置 UI + 统一读口。`tests/b2ThemeNotifSettings.test.ts` 9 用例（各 default/settings 覆盖/legacy 兜底）。
+- IDE（autoConnectIde、autoInstallIdeExtension；Global config scope）：运行时本即读 GlobalConfig（IdeAutoConnectDialog.tsx:54/105 `config.autoConnectIde !== true`/`=== true`、ide.ts:1299 `getGlobalConfig().autoInstallIdeExtension ?? true`），default false/true 已一致；本轮补 `src/utils/settings/types.ts` 显式 zod 声明以对齐 path/type（上游 settings schema 含此二 key），运行时 source 仍 GlobalConfig 未改。`tests/b2ThemeNotifSettings.test.ts` 2 schema 用例（boolean 接受/非 boolean 拒绝）。
 
 ## 8. 文件覆盖与相关子系统
 
@@ -105,7 +107,7 @@ coverage：[upstream-config-b2-local-core-ui.yaml](../../architecture/coverage/u
 
 | 优先级 | 触发场景与证据 | 建议方向 | 回归风险 | 验收方式 | 工作量 | 置信度 |
 |---|---|---|---|---|---|---|
-| P1 | statusLine schema 缺 refreshInterval/hideVimModeIndicator（types.ts:591 仅 type/command/padding），上游含此二字段及 managed-only 安全限制 | 补两字段 schema + 运行时行为（刷新间隔/vim 指示器开关），核对 managed-only 限制 | 中 | statusLine 各字段行为测试通过 | M | 实测 |
+| P1 | statusLine schema 缺 refreshInterval/hideVimModeIndicator（types.ts:591 仅 type/command/padding），上游含此二字段及 managed-only 安全限制 | 补两字段 schema + 运行时行为（刷新间隔/vim 指示器开关），核对 managed-only 限制 | 中 | statusLine 各字段行为测试通过 | M | 已证实 |
 | P2 | 输出/显示开关 outputStyle/showThinkingSummaries/showClearContextOnPlanAccept default 已文档化、flash 类型一致 | 验证 default/source/runtime 并记录证据，无需改实现 | 低 | 六维度证据齐全 + 矩阵更新 | S | 实测 |
 | P2 | B1 Pre/PostModelSwitch 的 `estimated_cache_write_usd`/`pricing` 字段默认（需定价表） | modelPricing 子系统建定价表后反哺 B1 cache 字段 | 中 | pricing 字段真实值行为测试 | L | 设计推断 |
 
@@ -115,5 +117,7 @@ coverage：[upstream-config-b2-local-core-ui.yaml](../../architecture/coverage/u
 - 输出/显示开关：outputStyle、showThinkingSummaries、showClearContextOnPlanAccept 六维度 aligned（已实现对齐，验证+记录证据，tests/b2DisplaySettings 3 用例）。
 - 状态栏：statusLine、statusLine.type/command/padding/refreshInterval/hideVimModeIndicator 六维度 aligned。type/command/padding 及 managed-only 安全限制（executeStatusLineCommand shouldAllowManagedHooksOnly/shouldDisableAllHooksIncludingManaged/trust）本已实现；本轮补 refreshInterval（types.ts min(1) + StatusLine setInterval 定期 doUpdate）与 hideVimModeIndicator（types.ts + PromptInputFooterLeftSide showVim && !hideVimIndicator）。tests/b2StatusLine 3 用例。
 - autoMemory/终端：autoMemoryDirectory、autoMemoryEnabled、terminalTitleFromRename、autoUpdatesChannel 六维度 aligned（已实现对齐，含 autoMemoryEnabled 的 env/`--bare` precedence 与 autoMemoryDirectory 多源读取，验证+记录，tests/b2TerminalMemory 4 用例）。
-- 矩阵 setting aligned=15，`--batch 2` 0 诊断，design-docs 0 errors。
-- 其余 27 条：未切入，按 §4 子系统分组待后续。
+- 终端/界面：theme、preferredNotifChannel、terminalProgressBarEnabled 六维度 aligned（Any file + legacy fallback，补 settings 层 helper + 消费者改接，tests/b2ThemeNotifSettings 9 用例）。
+- IDE：autoConnectIde、autoInstallIdeExtension 六维度 aligned（Global config scope，运行时本即读 GlobalConfig，补 settings schema zod 声明对齐 path/type，tests/b2ThemeNotifSettings 2 schema 用例）。
+- 矩阵 setting aligned=20，`--batch 2` 0 诊断，design-docs 0 errors。
+- 其余 22 条：未切入，按 §4 子系统分组待后续。

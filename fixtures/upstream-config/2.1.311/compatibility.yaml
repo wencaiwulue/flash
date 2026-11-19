@@ -596,30 +596,36 @@ entries:
     exclusion: null
     ownerBatch: 2
   - id: setting:autoConnectIde
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b2-local-core-ui
+    implementation:
+      - src/utils/config.ts
+      - src/utils/settings/types.ts
+      - src/components/IdeAutoConnectDialog.tsx
+    tests:
+      - tests/b2ThemeNotifSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 scope=Global config；settings/types.ts 显式 zod 声明 + flash 读 GlobalConfig.autoConnectIde（config.ts:258）"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "autoConnectIde?: boolean = 上游 Boolean"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 default=false；config.ts:614 autoConnectIde:false"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "Global config（~/.claude.json）；IdeAutoConnectDialog.tsx:54/105 config.autoConnectIde !== true / === true"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "Global config 单源；!== true 判断等价 default false"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "IdeAutoConnectDialog.tsx:54/105 驱动 IDE 自动连接对话框；main.tsx autoConnectIdeFlag"
+    notes: "Global config scope；补 settings schema zod 声明以对齐 path/type，运行时 source 仍 GlobalConfig（运行时读取未改）"
     exclusion: null
     ownerBatch: 2
   - id: setting:autoContinueAtUsageLimit
@@ -650,30 +656,36 @@ entries:
     exclusion: null
     ownerBatch: 5
   - id: setting:autoInstallIdeExtension
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b2-local-core-ui
+    implementation:
+      - src/utils/config.ts
+      - src/utils/settings/types.ts
+      - src/utils/ide.ts
+    tests:
+      - tests/b2ThemeNotifSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 scope=Global config；settings/types.ts 显式 zod 声明 + flash 读 GlobalConfig.autoInstallIdeExtension（config.ts:259）"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "autoInstallIdeExtension?: boolean = 上游 Boolean"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 default=true；config.ts:615 autoInstallIdeExtension:true"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "Global config（~/.claude.json）；ide.ts:1299 getGlobalConfig().autoInstallIdeExtension ?? true"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "Global config 单源；?? true 等价 default true"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "ide.ts:1299、statusNoticeDefinitions.tsx:225 驱动 IDE 扩展自动安装"
+    notes: "Global config scope；补 settings schema zod 声明以对齐 path/type，运行时 source 仍 GlobalConfig（运行时读取未改）"
     exclusion: null
     ownerBatch: 2
   - id: setting:autoMemoryDirectory
@@ -4225,30 +4237,35 @@ entries:
     exclusion: null
     ownerBatch: final
   - id: setting:preferredNotifChannel
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b2-local-core-ui
+    implementation:
+      - src/utils/config.ts
+      - src/utils/settings/types.ts
+    tests:
+      - tests/b2ThemeNotifSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "settings/types.ts 显式 preferredNotifChannel zod；.passthrough() 保留 settings 文件值"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.string().optional() = 上游 String（NotificationChannel 枚举）"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 default=null→auto；getPreferredNotifChannel ?? 'auto'"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "getPreferredNotifChannel()=getInitialSettings() 为主，getGlobalConfig()（~/.claude.json）旧值 fallback"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "settings > legacy ~/.claude.json > default auto"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "flash 通知渠道读取仅设置 UI（supportedSettings/Config.tsx），无独立运行时消费者；getPreferredNotifChannel() 提供统一读口；tests/b2ThemeNotifSettings 3 用例"
+    notes: "preferredNotifChannel 在 flash 无独立运行时消费者（通知渠道逻辑不经此键）；仅设置 UI + 统一读口"
     exclusion: null
     ownerBatch: 2
   - id: setting:prefersReducedMotion
@@ -7092,29 +7109,35 @@ entries:
     exclusion: null
     ownerBatch: 2
   - id: setting:terminalProgressBarEnabled
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b2-local-core-ui
+    implementation:
+      - src/utils/config.ts
+      - src/utils/settings/types.ts
+      - src/components/Messages.tsx
+    tests:
+      - tests/b2ThemeNotifSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "settings/types.ts 显式 terminalProgressBarEnabled zod；.passthrough() 保留 settings 文件值"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.boolean().optional() = 上游 Boolean"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 default=true；getTerminalProgressBarEnabled ?? true"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "getTerminalProgressBarEnabled()=getInitialSettings() 为主，getGlobalConfig()（~/.claude.json）旧值 fallback"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "settings > legacy ~/.claude.json > default true"
       runtime:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "Messages.tsx progressEnabled=getTerminalProgressBarEnabled() && ...；tests/b2ThemeNotifSettings 3 用例"
     notes: ""
     exclusion: null
     ownerBatch: 2
@@ -7151,29 +7174,36 @@ entries:
     exclusion: null
     ownerBatch: 2
   - id: setting:theme
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b2-local-core-ui
+    implementation:
+      - src/utils/config.ts
+      - src/utils/settings/types.ts
+      - src/QueryEngine.ts
+      - src/components/Stats.tsx
+    tests:
+      - tests/b2ThemeNotifSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "settings/types.ts 显式 theme zod；.passthrough() 保留 settings 文件值"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.string().optional() = 上游 String（ThemeSetting 枚举）"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 default=null→dark；getThemeSetting ?? 'dark'"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "getThemeSetting()=getInitialSettings()（合并 settings）为主，getGlobalConfig()（~/.claude.json）旧值 fallback"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "settings > legacy ~/.claude.json > default dark"
       runtime:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "QueryEngine.ts:363/510、Stats.tsx:821/978、LogoV2.tsx:254、FastIcon.tsx:28 改 resolveThemeSetting(getThemeSetting())；tests/b2ThemeNotifSettings 3 用例"
     notes: ""
     exclusion: null
     ownerBatch: 2

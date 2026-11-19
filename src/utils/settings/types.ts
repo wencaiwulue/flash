@@ -800,6 +800,36 @@ export const SettingsSchema = lazySchema(() =>
         .describe(
           'Show full tool output instead of truncated summaries. Defaults to false. --verbose takes precedence for one session; a value in ~/.claude.json from an older version applies when no settings file sets it.',
         ),
+      theme: z
+        .string()
+        .optional()
+        .describe(
+          'Color theme for the UI. Defaults to "dark". A value in ~/.claude.json from an older version applies when no settings file sets it.',
+        ),
+      preferredNotifChannel: z
+        .string()
+        .optional()
+        .describe(
+          'Preferred notification channel. Defaults to "auto". A value in ~/.claude.json from an older version applies when no settings file sets it.',
+        ),
+      terminalProgressBarEnabled: z
+        .boolean()
+        .optional()
+        .describe(
+          'Show a progress bar in the terminal title/tab. Defaults to true. A value in ~/.claude.json from an older version applies when no settings file sets it.',
+        ),
+      autoConnectIde: z
+        .boolean()
+        .optional()
+        .describe(
+          'Automatically connect to an IDE on startup when exactly one valid IDE is available. Global config (~/.claude.json) scope; defaults to false.',
+        ),
+      autoInstallIdeExtension: z
+        .boolean()
+        .optional()
+        .describe(
+          'Automatically install IDE extensions when running from within an IDE. Global config (~/.claude.json) scope; defaults to true.',
+        ),
       agent: z
         .string()
         .optional()
