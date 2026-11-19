@@ -1678,3 +1678,9 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 - **Finding**：B5-agent-swarms-02；主责 spec：`2026-11-12-agent-swarms-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
 - **实现**：新增并唯一登记 `tests/teamLifecycle.test.ts`，4 个测试、26 个断言。真实 TeamCreate 写入 lead config/fresh task list/AppState、单团队约束、同名唯一命名且原文件不变；TeamDelete 覆盖 active 拒绝、inactive 清理、inbox 清空和无团队幂等。
 - **证据边界**：真实团队文件、原子写、任务目录和 AppState，CLAUDE_CONFIG_DIR 全部临时。官方 Agent Teams 文档与只读 upstream strings 作边界佐证；顺序同名场景不冒充多进程并发，未执行真实 teammate 进程/worktree。
+
+## Phase B Mailbox 多进程并发整改（2026-11-20 追加）
+
+- **Finding**：B5-agent-swarms-03；主责 spec：`2026-11-12-agent-swarms-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
+- **实现**：新增并唯一登记 `tests/mailboxConcurrency.test.ts`，4 个测试、30 个断言。6 个真实子进程并发 append 得 36 条唯一消息；两个进程 disjoint mark-read 保留全部 12 条内容；独立进程持锁 350ms 时写入重试成功；不可解析文件可重写为合法新数组，lock 均释放。
+- **证据边界**：真实 Bun 子进程、proper-lockfile 和临时 inbox，以磁盘数量/唯一性/内容验收，不以被吞 I/O 错误后的 exit 0 代替断言。未覆盖 tmux/iTerm2、高负载消息风暴、写盘失败传播或逐条 schema 验证；整文件损坏恢复不声称保留旧内容。

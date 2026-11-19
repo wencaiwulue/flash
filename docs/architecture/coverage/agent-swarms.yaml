@@ -209,6 +209,12 @@ groups:
     summary: TeamCreate/Delete 真实团队文件、任务目录、活跃成员保护和幂等清理
     files:
       - tests/teamLifecycle.test.ts
+  - id: swarm-mailbox-tests
+    kind: test
+    section: 7
+    summary: Mailbox 多进程并发 append/mark-read、锁重试与损坏恢复
+    files:
+      - tests/mailboxConcurrency.test.ts
   - id: agent-memory-tests
     kind: test
     section: 7

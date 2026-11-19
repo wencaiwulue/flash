@@ -1499,7 +1499,7 @@ type AppState = {
 | TeamDeleteTool 解散团队 | `src/tools/TeamDeleteTool/TeamDeleteTool.ts:1-139` | `tests/teamLifecycle.test.ts`：active 拒绝并保留、inactive 清理、inbox 清空、无团队幂等 | 真实本地目录，无真实 teammate/worktree 进程 |
 | SendMessageTool 消息路由 | `src/tools/SendMessageTool/SendMessageTool.ts:1-800+` | 未找到直接测试文件 | 未覆盖 UDS/Bridge 跨机器路径 |
 | TeamFile 状态持久化 | `src/utils/swarm/teamHelpers.ts:1-684` | 未找到直接测试文件 | 未覆盖并发读写 teamFile |
-| Mailbox 文件邮箱系统 | `src/utils/teammateMailbox.ts:43-1142` | 未找到直接测试文件 | 未覆盖 tmux/iTerm2 后端的并发场景 |
+| Mailbox 文件邮箱系统 | `src/utils/teammateMailbox.ts:43-1142` | `tests/mailboxConcurrency.test.ts`：真实子进程并发 append/mark-read、锁持有重试、不可解析文件恢复 | 本地临时 inbox/proper-lockfile；不覆盖 tmux/iTerm2 后端、高负载消息风暴或逐条 schema 验证 |
 | 双路径权限同步 | `src/utils/swarm/inProcessRunner.ts:1-600+` + `src/utils/swarm/permissionSync.ts:1-600+` + `src/utils/swarm/leaderPermissionBridge.ts` | 未找到直接测试文件 | 仅检查 in-process 路径，未测试 mailbox 路径 |
 | Coordinator 模式协调 | `src/coordinator/coordinatorMode.ts:1-369` | 未找到直接测试文件 | 仅检查系统提示，未验证端到端协调 |
 | Agent 内存快照管理 | `src/tools/AgentTool/agentMemorySnapshot.ts` + `src/tools/AgentTool/agentMemory.ts` | `tests/agentMemorySnapshot.test.ts`: 快照初始化、时间戳验证、保留变更、回滚机制、合并完成验证 | 未覆盖多 agent 同时合并的竞态场景 |
@@ -1568,6 +1568,22 @@ Remote/CCR 没有据此获得 live 凭证、登录、bundle、远程 session 或
 
 回滚只需移除测试、coverage entry、本节和审计台账，保持原 Finding open、spec draft。
 
+### 7.5 Mailbox 多进程并发整改（2026-11-20）
+
+关联 Finding：B5-agent-swarms-03。新增 `tests/mailboxConcurrency.test.ts` 并唯一登记；4 个测试、30 个断言，普通与外部 feature profile 均通过，无生产代码变更。
+
+| 决策 | 实际行为与验证 | 证据 |
+|---|---|---|
+| 并发 append | 6 个真实 Bun 子进程各写 6 条到同一 inbox，最终 36 条文本唯一、全部 unread、JSON 可解析、lock 文件释放 | `teammateMailbox.ts:134-191`；append 测试 |
+| 并发 mark-read | 两个子进程分别标记 disjoint indexes，最终 12 条全部 read 且原始文本完整，不丢消息 | `markMessageAsReadByIndex`；mark 测试 |
+| 锁持有重试 | 独立进程显式持有 proper-lockfile 350ms 时，4 个写入进程仍完成，最终 initial+12 条唯一消息且 lock 释放 | `LOCK_OPTIONS` retries；contention 测试 |
+| 不可解析文件恢复 | 整文件 `{not-json` 时 readMailbox 返回空，后续写入形成只含新消息的合法数组；不声称保留损坏前内容或逐条 schema 清理 | `readMailbox`/write path；corrupt 测试 |
+| 证据边界 | 真实子进程、proper-lockfile 和临时 CLAUDE_CONFIG_DIR；以磁盘消息数量/唯一性/内容验收，不以被吞 I/O 错误后的 exit 0 代替断言 | 测试 spawn/exitSuccess/final reads |
+
+官方 Agent Teams 文档确认 inbox JSON 文件结构与消息交付边界；只读 upstream strings 命中 mailbox/index/lockfile 相关标识；本仓库生产 API 和真实多进程文件状态确定并发契约。未覆盖 tmux/iTerm2 后端、高负载消息风暴、写盘失败向调用方传播或逐条 schema 验证。
+
+初版 mark 测试误用参数顺序和返回值，按真实签名 `(agentName, teamName, messageIndex): Promise<void>` 修正；这是测试签名错误，不是生产 RED。回滚只需移除测试、coverage entry、本节和审计台账，保持原 Finding open、spec draft。
+
 ## 8. 文件覆盖与相关子系统
 
 [Coverage](../../architecture/coverage/agent-swarms.yaml)
@@ -1576,7 +1592,7 @@ Remote/CCR 没有据此获得 live 凭证、登录、bundle、远程 session 或
 |---|---|---|---|
 | agent-tool | AgentTool 实现、fork 子代理、agent memory | `agentToolExecution`：sync/async；`agentToolIsolation`：fork/worktree；`agentToolRouting`：teammate/remote 离线路由；`agentMemorySnapshot` | 自动后台化、真实 teammate/CCR/API cache、真实多 agent 并发和内置 agent 具体行为仍需各自证据 |
 | team-tools | TeamCreateTool、TeamDeleteTool | `tests/teamLifecycle.test.ts`：真实 config/task dir、唯一命名、active 保护和清理 | SendMessageTool、Task*Tool、真实 teammate 进程与多进程同名创建不归本组证据 |
-| swarm-utils | mailbox、teamHelpers、permissionSync、inProcessRunner、backends | 未找到专用测试 | `src/utils/teammate.ts` 等辅助函数不归本组 |
+| swarm-utils | mailbox、teamHelpers、permissionSync、inProcessRunner、backends | `tests/mailboxConcurrency.test.ts`：真实多进程 inbox/lock；`tests/teamFileAtomicWrite.test.ts` | permissionSync、inProcessRunner、backends 与 `src/utils/teammate.ts` 等辅助函数仍需各自证据 |
 | coordinator | Coordinator 模式、系统提示 | 未找到专用测试 | 协调业务逻辑不归本组 |
 
 相关子系统：
