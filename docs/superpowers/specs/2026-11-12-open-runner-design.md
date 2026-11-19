@@ -728,6 +728,20 @@ function setNonDumpable(): void {
 }
 ```
 
+### 7.4 Upstream Proxy Relay 整改（2026-11-20）
+
+关联 Finding：B6-open-runner-07。新增 `tests/upstreamProxyRelay.test.ts` 并唯一登记；5 个测试、20 个断言，普通与外部 feature profile 均通过，无生产代码变更。
+
+| 决策 | 实际行为与验证 | 证据 |
+|---|---|---|
+| Chunk codec | 空、abc、128B、16KiB 及多字节 varint round-trip；错误 tag、截断长度、超长 varint 返回 null | `relay.ts:66-103` |
+| 分片 CONNECT | 三次写入完成 CONNECT+early bytes，首 chunk 携带 CONNECT/Proxy-Authorization，pending early bytes 在 onopen 后发送，200 响应原样返回 | `handleData/openTunnel`；真实 loopback TCP + fake WS |
+| 过大 header | >8192 且无 CRLFCRLF 返回 400 Bad Request 并关闭 | `handleData`；oversize 测试 |
+| 建立前失败 | WS 在 established 前 error 返回 502 Bad Gateway | `openTunnel`；pre-establish error 测试 |
+| 建立后失败 | established 后 error 仅关闭，不注入明文 502 破坏 TLS 流 | `openTunnel`；post-establish error 测试 |
+
+三层证据：公开 CONNECT/WebSocket 基础语义只作背景，私有 CCR proto/auth 不作兼容声明；只读 upstream strings 作辅助；真实 `startNodeRelay`、loopback TCP 和 fake WebSocket 验证当前实现。未执行真实 CCR、上游证书/MITM、代理代理链或 Bun.listen 路径。B6-open-runner-04 的状态迁移工具属于独立改进建议，未在此批次实现。
+
 ## 8. 文件覆盖与相关子系统
 
 [Coverage](../../architecture/coverage/open-runner.yaml)

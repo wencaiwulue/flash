@@ -1026,3 +1026,9 @@
 - **实现**：新增并唯一登记 `tests/deepLink.test.ts`，6 个测试、26 个断言。覆盖 URI/Unicode round-trip、非法输入、handler repo/lastFetch、纯 argv query/repo/cwd、Linux `.desktop` 注册与 current/stale 检查。
 - **证据边界**：真实 parser/handler/launcher/注册逻辑，OS 命令、repo lookup 和 lastFetch 为边界替身；无真实桌面协议、终端或私有协议。macOS trampoline、Windows 注册表、banner UI、多克隆 MRU、shell quoting、worktreeinclude 和 `claude://` 双向链接仍未覆盖。
 - **隔离纠错**：初版测试曾误写真实 Applications/XDG artifact，均确认属于测试后删除；beforeEach 现在重设 HOME/XDG，最终真实路径无残留。Bun namespace 会被原地替换，生产 launcher 通过预先保存的函数引用验证，handler 继续用 mock。
+
+## Phase B Upstream Proxy Relay 整改（2026-11-20 追加）
+
+- **Finding**：B6-open-runner-07；主责 spec：`2026-11-12-open-runner-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
+- **实现**：新增并唯一登记 `tests/upstreamProxyRelay.test.ts`，5 个测试、20 个断言。覆盖 UpstreamProxyChunk 编解码/畸形输入、分片 CONNECT+pending、超大海报头、established 前 502、established 后仅关闭。
+- **证据边界**：真实 `startNodeRelay`、loopback TCP 和 fake WebSocket；未执行真实 CCR、证书/MITM、代理链或 Bun.listen，不声明私有协议兼容。B6-open-runner-04 的状态迁移工具是独立改进建议，未在此批次实现。

@@ -49,6 +49,12 @@ groups:
       - tests/openRunnerProtocol.test.ts
       - tests/openRunnerWorker.test.ts
       - tests/protocolContracts.test.ts
+  - id: upstream-relay-tests
+    kind: test
+    section: 7
+    summary: UpstreamProxyChunk 编解码与 Node CONNECT relay 分片/错误路径
+    files:
+      - tests/upstreamProxyRelay.test.ts
   - id: backends-tests
     kind: test
     section: 7
