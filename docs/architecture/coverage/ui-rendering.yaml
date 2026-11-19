@@ -10,6 +10,7 @@ groups:
     files:
       - tests/uiRenderingCore.test.ts
       - tests/uiRenderingCore.test.tsx
+      - tests/uiRenderingListDiff.test.tsx
   - id: additional-files
     kind: source
     section: 4

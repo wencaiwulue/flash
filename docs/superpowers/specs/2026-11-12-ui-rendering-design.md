@@ -1396,9 +1396,25 @@ Messages 入口
 
 ### 7.3 未覆盖与回滚
 
-StructuredDiff、Messages/VirtualMessageList 的 slicing、scroll gate 和两级 WeakMap 由下一独立批次覆盖；本批不声称完成全部 UI rendering。真实多终端、图片文件、tool result 全类型、远程错误遥测和性能基准未覆盖。
+StructuredDiff、Messages/VirtualMessageList 已由第 7.4 节继续覆盖。真实多终端、图片文件、tool result 全类型、远程错误遥测、27k 消息性能基准和真实 ScrollBox 用户输入 live 仍未覆盖。
 
 回滚须整组移除两份 uiRenderingCore 测试、coverage entries 及本节的最终实测内容，保留原 Finding 历史和既有源文件主责；随后运行 full test/typecheck/build/design checker。不得通过恢复“只检查导出存在”的测试来充当回滚验证。当前无生产代码变更。
+
+### 7.4 StructuredDiff / Messages / VirtualMessageList 实测
+
+`tests/uiRenderingListDiff.test.tsx`：15 个测试、51 个断言。初版大量 `not.toThrow()`/非空断言未验收，已改为以下真实行为：
+
+| 场景 | 真实行为与精确断言 | 证据边界 |
+|---|---|---|
+| StructuredDiff fallback/native | `CLAUDE_CODE_SYNTAX_HIGHLIGHT=0` 走生产 fallback 且 native render 不调用；正常路径真实 `ColorDiff` render，相同 key 命中，width/dim/firstLine/filePath 变体到 4 后清空，原 key 重新计算 | native TypeScript 模块真实离线运行；不把 fallback 当作 native 成功 |
+| 宽度/gutter/失败 | 小数/负数宽度 safeWidth 后内容仍可读；fullscreen 下 gutter cells noSelect=1、content=0；native 抛错由 SentryErrorBoundary 隔离，sibling survives | 无生产 test-only API；不虚构 native 内部自动 fallback |
+| UUID slice anchor | 100→0、251→51、有效 anchor 不前进、丢失 UUID 用 clamped index 并修复、302→102、自定义 cap/step、空列表清空 | 直接调用生产 computeSliceStart，精确 uuid+idx |
+| Messages 容器 | 真实 Hello/Hi、251 条只显示 51..250；transcript 只显示最新 completed thinking，streaming thinking 可见时隐藏 completed | 完整 `toolUseConfirmQueue`、TerminalWriteProvider、AppState 和 TerminalSizeContext；不再用空帧冒充通过 |
+| Virtual scroll gate | 300 条时 non-sticky 只挂载 viewport/overscan 子集，不含 Message 299；plain 包含尾部；sticky tail 包含 Message 299 且不含 Message 0 | fake 仅实现 ScrollBoxHandle 外部接口，VirtualMessageList/useVirtualScroll 为真实实现；spacer 高度不等于 mounted item 数，断言消息行数量而非屏幕高度 |
+
+三层证据：官方 Interactive/Terminal 文档只提供公开渲染语义；本机 `/opt/homebrew/bin/claude` 只读 strings 命中 `VirtualMessageList`，computeSliceStart/RENDER_CACHE/COLD_START_COUNT 等未命中，未据此推断上游实现；本仓库 `StructuredDiff.tsx`、`Messages.tsx`、`useVirtualScroll.ts` 与真实 RED/GREEN 提供直接契约。
+
+回滚本批时移除 `tests/uiRenderingListDiff.test.tsx` 与其 coverage entry、撤销本节及对应台账追加，保持原 Finding open/spec draft，并重新运行全部门禁。
 
 ## 8. 文件覆盖与相关子系统
 

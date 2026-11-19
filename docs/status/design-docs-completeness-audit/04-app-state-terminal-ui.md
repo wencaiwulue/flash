@@ -1608,3 +1608,22 @@ B4-ui-rendering-02 不新增 test-only cache reset API：通过公开组件和 m
 全部离线，真实 Ink/CLI dependencies 不等于物理终端 live。无生产代码变更。StructuredDiff、Messages/VirtualMessageList 由下一批次处理，本批不声称整个 UI rendering 已完成。
 
 **原 Finding 状态**：B4-ui-rendering-01/02 保持 open；spec 保持 draft；原发现不删除，仅追加整改台账。
+
+---
+
+## 整改台账：B4-ui-rendering-01（list/diff 续，2026-11-19 追加）
+
+**Finding ID**：B4-ui-rendering-01；主责 spec：ui-rendering。
+
+新增并唯一登记 `tests/uiRenderingListDiff.test.tsx`，15 个测试、51 个断言：
+
+- StructuredDiff 生产 fallback/native、safeWidth、四级 cache 清空、fullscreen gutter/noSelect 和 native 失败隔离。
+- computeSliceStart 的 cap+step、UUID 保持/丢失修复、二次推进、自定义 cap/step 和空列表。
+- Messages 实际文本/render cap、最新 completed thinking 与 streaming thinking 可见性。
+- 300 条消息的 virtual gate：non-sticky 只挂载子集，sticky 挂载尾部；以消息行数量而不是 spacer 高度判断。
+
+初版 `not.toThrow()`/非空断言未验收。调试中先用 DebugBoundary 证实容器空帧来自缺少 `toolUseConfirmQueue`，另补 TerminalWriteProvider；最终通过真实容器而非掩盖错误。虚拟测试同时避免把 oversized spacer 当成内容过多。
+
+spec 第 7.4 节记录真实矩阵、三层证据、未覆盖项与回滚；本机 strings 命中 VirtualMessageList，其他符号未用于推断上游实现。全部离线，真实 ColorDiff/useVirtualScroll 与 fake ScrollBoxHandle 不等于真实用户滚动 live。无生产代码变更。
+
+**原 Finding 状态**：B4-ui-rendering-01 保持 open；spec 保持 draft；原发现不删除，仅追加整改台账。
