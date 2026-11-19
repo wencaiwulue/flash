@@ -972,23 +972,9 @@
 #### 测试验证
 
 检查coverage中提及的测试文件：
-- ✅ 新增 tests/uiRenderingCore.test.ts 覆盖核心逻辑测试
-- ✅ 测试 hasThinkingContent/areMessagePropsEqual/Markdown工具函数/设计spec证据
-- ❌ 无完整组件渲染测试（需Ink test render环境）
+- ✅ 无 ui-rendering 核心渲染路径测试
+- ❌ 无 Message/Messages/Markdown/StructuredDiff/StreamingMarkdown/VirtualMessageList测试
 - ⚠️ 有部分周边组件测试
-
-#### 整改台账（新增）
-
-**B4-ui-rendering-01 部分整改**：
-- ✅ 新增 tests/uiRenderingCore.test.ts 测试核心业务逻辑
-- ✅ 覆盖 Message 记忆化比较器、thinking块检测、Markdown工具函数、设计spec出口验证
-- ⚠️ 暂未添加完整组件渲染测试（需更复杂的Ink渲染环境）
-- ⚠️ 原 finding 保持 open 状态（按任务要求）
-
-**B4-ui-rendering-02 评估**：
-- ✅ 已确认无需修改生产代码添加测试专用API（按任务约束）
-- ✅ 记录评估：当前无证据表明此设计缺口导致实际问题
-- ⚠️ 原 finding 保持 open 状态
 
 #### 隐私与安全边界审查
 
@@ -1001,7 +987,7 @@
 |------|------|------|
 | Spec 完整性 | ✅ 完整，多项关键决策，多个模块设计卡，完整生命周期证据链 | ⚠️ 上游文档未实时访问 |
 | 源码一致性 | ✅ 所有12个分组源码与spec高度一致 | ⚠️ 无 |
-| 测试覆盖 | ⚠️ 部分覆盖（新增核心逻辑测试） | ⚠️ 缺少完整组件渲染测试 |
+| 测试覆盖 | ❌ 缺少核心渲染路径测试 | ⚠️ 功能正常但无回归保护 |
 | 官方文档 | ❓ 未访问 | ⚠️ 基于现有spec |
 | 上游 CLI | ⚠️ 未提取 strings | ⚠️ 需补充 |
 
@@ -1606,3 +1592,19 @@ coverage 只新增两份测试 entry，既有 stringWidth/truncate 等源文件�
 全部离线，无真实终端点击、模型调用或上游登录/配置写入；真实 Ink 不等于物理终端 live。无生产代码变更，未覆盖 recent-activity 真实 session storage 和超大文本性能。
 
 **原 Finding 状态**：B4-text-formatting-01 保持 open；spec 保持 draft；原发现不删除，仅追加整改台账。
+
+---
+
+## 整改台账：B4-ui-rendering-01/02（2026-11-19 追加）
+
+**Finding ID**：B4-ui-rendering-01/02；主责 spec：ui-rendering。
+
+最终 `tests/uiRenderingCore.test.tsx`（12 个测试/54 断言）与互补的 `tests/uiRenderingCore.test.ts`（1 个 thinking/redacted/user 类型检测测试/4 断言）唯一登记 coverage，合计 13 个测试、58 个断言：真实 Message assistant/user/system/attachment 路由、image paste ID、真实 BashTool、transcript thinking 选择、memo 契约、SentryErrorBoundary 错误隔离；Markdown plain fast path、500 项 MRU、真实 table/highlight；Streaming stable prefix、replacement reset 与未闭合 code fence。
+
+初版 8 个测试只验证 hasThinkingContent、比较器、hash/export 形状，明确没有真实组件渲染，且错误修改了原审计的“测试验证/测试覆盖”段落；该版本未验收。最终由控制器直接重写为 AppState + TerminalSizeContext + renderToScreen 与保留 root/ref 的 Streaming 测试，并恢复原审计原文，只在此追加台账。
+
+B4-ui-rendering-02 不新增 test-only cache reset API：通过公开组件和 marked.lexer 调用验证 A 提升、499 个新 token 后 A 命中/B 驱逐，未读取私有 Map。spec 第 7.2/7.3 节记录真实矩阵、三层证据、未覆盖项与回滚；上游 strings 未命中的符号没有被用于推断实现。
+
+全部离线，真实 Ink/CLI dependencies 不等于物理终端 live。无生产代码变更。StructuredDiff、Messages/VirtualMessageList 由下一批次处理，本批不声称整个 UI rendering 已完成。
+
+**原 Finding 状态**：B4-ui-rendering-01/02 保持 open；spec 保持 draft；原发现不删除，仅追加整改台账。

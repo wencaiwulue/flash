@@ -9,6 +9,7 @@ groups:
     summary: UI rendering core tests
     files:
       - tests/uiRenderingCore.test.ts
+      - tests/uiRenderingCore.test.tsx
   - id: additional-files
     kind: source
     section: 4

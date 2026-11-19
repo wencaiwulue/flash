@@ -1373,53 +1373,32 @@ Messages 入口
 | Thinking 块通过 lastThinkingBlockId 控制 | `src/components/Messages.tsx:454-481`, `src/components/Message.tsx:454-466` | 只在 transcript 模式隐藏历史 thinking |
 | 自定义 memo 比较器优化重渲染 | `src/components/Message.tsx:500-525`, `src/components/MessageRow.tsx:307-355`, `src/components/Messages.tsx:1037-1094` | 比较器可能遗漏新 props |
 
-### 7.2 测试覆盖
+### 7.2 真实测试覆盖
 
-**新增测试文件**: `tests/uiRenderingCore.test.ts`
+最终文件为 `tests/uiRenderingCore.test.tsx`（12 个测试/54 断言）与互补的 `tests/uiRenderingCore.test.ts`（1 个 thinking/redacted/user 类型检测测试/4 断言），合计 13 个测试、58 个断言；初版只测工具函数/导出形状的 8 个测试未被接受。
 
-#### 测试矩阵
-
-| 测试范围 | 测试项 | 状态 | 证据 |
-|---------|--------|------|------|
-| Message 逻辑 | hasThinkingContent 正确识别 thinking 块 | ✅ 已测 | `tests/uiRenderingCore.test.ts` |
-| Message 逻辑 | areMessagePropsEqual  memo 比较器行为 | ✅ 已测 | `tests/uiRenderingCore.test.ts` |
-| Message 逻辑 | lastThinkingBlockId 变更影响 thinking 消息重渲染 | ✅ 已测 | `tests/uiRenderingCore.test.ts` |
-| Message 逻辑 | UUID/verbose/isTranscriptMode 变更触发重渲染 | ✅ 已测 | `tests/uiRenderingCore.test.ts` |
-| Message 逻辑 | isStatic=true 消息不重渲染 | ✅ 已测 | `tests/uiRenderingCore.test.ts` |
-| Markdown 工具 | hashContent 一致性 | ✅ 已测 | `tests/uiRenderingCore.test.ts` |
-| Markdown 工具 | configureMarked 可正常调用 | ✅ 已测 | `tests/uiRenderingCore.test.ts` |
-| 设计规范 | 组件导出测试接口 (hasThinkingContent/areMessagePropsEqual) | ✅ 已测 | `tests/uiRenderingCore.test.ts` |
-| 设计规范 | Markdown/StreamingMarkdown 公开 API 可访问 | ✅ 已测 | `tests/uiRenderingCore.test.ts` |
-| 设计规范 | CC-941 优化实现 (lastThinkingBlockId 仅影响 thinking 消息) | ✅ 已测 | `tests/uiRenderingCore.test.ts` |
-| 完整组件渲染 | Message 组件端到端渲染 | ❌ 未测 | 需要 Ink 测试环境 |
-| 完整组件渲染 | Markdown 组件渲染 | ❌ 未测 | 需要 Ink 测试环境 |
-| 完整组件渲染 | StreamingMarkdown 流式渲染 | ❌ 未测 | 需要 Ink 测试环境 |
+| 场景 | 真实生产行为与断言 | 证据边界 |
+|---|---|---|
+| Message 路由 | `AppStateProvider + TerminalSizeContext + renderToScreen` 渲染 assistant/user/system/directory attachment；user image 显示 `[Image #7]`；真实 BashTool 渲染 tool_use 的 Bash/pwd | 全部真实组件，不 mock 子组件，不检查元素类型代替输出 |
+| Thinking/memo | transcript 中 lastThinkingBlockId 精确选择 first/second thought；static、UUID、verbose、latestBash 的 comparator 契约 | 当前 comparator 对非 static 保持保守重渲染，不虚构更强的 memo 优化 |
+| 错误隔离 | 真实 SentryErrorBoundary 内子组件抛错， sibling `survives` 仍渲染 | 不读取/发送远程错误遥测 |
+| Markdown fast path/cache | plain text 两次渲染均不调用 marked.lexer；A/B 后提升 A，再插入 499 个 token，A 命中而 B 被驱逐，总 lexer 次数 2→501→501→502 | 通过公开组件和 lexer 调用证明 MRU，不读取私有 Map，不新增 test-only reset API（B4-ui-rendering-02 保持现状） |
+| Markdown table/highlight | 真实 MarkdownTable 输出多行表格；shared lazy loader 解析后真实 cli-highlight 渲染代码块 | 不重复 text-formatting 的全部 token 测试；真实 node_modules 离线，不是终端 live |
+| Streaming | 保留同一 root/ref，append 时 stable prefix 不重新 lex；新 block 后 boundary 继续前进；replacement reset；未闭合 code fence 不重复 One/code | `marked.lexer` 记录真实入参，逐 frame 检查输出；boundary 增长时允许重新 lex 新 stable prefix，不把“永不重 lex”绝对化 |
 
 #### 三层证据表
 
-| 设计决策 | 官方文档证据 | 上游二进制证据 | 本仓库源码/测试证据 |
-|---------|------------|--------------|-------------------|
-| switch-case 路由 | ❓ 未访问 | ⚠️ 未提取 strings | `src/components/Message.tsx:103-282`, ✅ 测试验证行为 |
-| 流式稳定边界 | ❓ 未访问 | ⚠️ 未提取 strings | `src/components/Markdown.tsx:163-215` |
-| Markdown token 缓存 MRU | ❓ 未访问 | ⚠️ 未提取 strings | `src/components/Markdown.tsx:24-73`, ✅ 测试验证 hash 一致性 |
-| Diff WeakMap 缓存 | ❓ 未访问 | ⚠️ 未提取 strings | `src/components/StructuredDiff.tsx:21-116` |
-| UUID 锚点切片 | ❓ 未访问 | ⚠️ 未提取 strings | `src/components/Messages.tsx:344-393` |
-| 错误边界静默降级 | ❓ 未访问 | ⚠️ 未提取 strings | `src/components/SentryErrorBoundary.ts:11-28` |
-| lastThinkingBlockId 控制 | ❓ 未访问 | ⚠️ 未提取 strings | `src/components/Messages.tsx:454-481`, ✅ 测试验证行为 |
-| 自定义 memo 比较器 | ❓ 未访问 | ⚠️ 未提取 strings | `src/components/Message.tsx:500-525`, ✅ 测试验证比较器逻辑 |
+| 层 | 实际证据 | 边界 |
+|---|---|---|
+| 官方公开文档 | [Interactive mode](https://code.claude.com/docs/en/interactive-mode.md) 与 [Terminal configuration](https://code.claude.com/docs/en/terminal-config.md) 说明交互渲染、主题和终端差异 | 未公开 Message switch、token MRU 或 Streaming 私有实现 |
+| 本机上游二进制 | 只读 `strings /opt/homebrew/bin/claude` 探测 StreamingMarkdown、stablePrefixRef、lastThinkingBlockId、areMessagePropsEqual、SentryErrorBoundary 等未命中；仅通用 `Thinking` 命中 | 未命中不证明功能不存在；不能用 strings 推断上游 cache/boundary 算法 |
+| 本仓库 | `Message.tsx`、`Markdown.tsx`、`SentryErrorBoundary.ts`、真实 AppState/Ink、上述 lexer/render 测试及 ui-rendering coverage | 源码与 RED/GREEN 是本轮内部实现证据，不冒充上游兼容性或 live |
 
-### 7.3 回滚计划
+### 7.3 未覆盖与回滚
 
-如需回滚本次变更：
+StructuredDiff、Messages/VirtualMessageList 的 slicing、scroll gate 和两级 WeakMap 由下一独立批次覆盖；本批不声称完成全部 UI rendering。真实多终端、图片文件、tool result 全类型、远程错误遥测和性能基准未覆盖。
 
-1. **Git 回滚**: `git revert 4532577`
-   - 移除 `tests/uiRenderingCore.test.ts`
-   - 恢复审计文档原状
-   - 恢复 spec 文档原状
-
-2. **无生产代码变更**: 本次未修改任何生产代码，仅新增测试和文档
-
-3. **门禁检查**: 回滚后重新运行 `bun run build`, `bun run test`, `bun run typecheck`, `bun scripts/check-design-docs.ts` 确认一切正常
+回滚须整组移除两份 uiRenderingCore 测试、coverage entries 及本节的最终实测内容，保留原 Finding 历史和既有源文件主责；随后运行 full test/typecheck/build/design checker。不得通过恢复“只检查导出存在”的测试来充当回滚验证。当前无生产代码变更。
 
 ## 8. 文件覆盖与相关子系统
 
