@@ -1112,6 +1112,48 @@ export function getVerbose(cliVerbose?: boolean): boolean {
 }
 
 /**
+ * Effective theme (upstream 2.1.311): the merged settings-file value wins; a
+ * legacy `~/.claude.json` value applies only when no settings file sets it;
+ * defaults to "dark".
+ */
+export function getThemeSetting(): NonNullable<GlobalConfig['theme']> {
+  return (
+    (getInitialSettings().theme as GlobalConfig['theme']) ??
+    getGlobalConfig().theme ??
+    'dark'
+  )
+}
+
+/**
+ * Effective preferredNotifChannel (upstream 2.1.311): the merged settings-file
+ * value wins; a legacy `~/.claude.json` value applies only when no settings
+ * file sets it; defaults to "auto".
+ */
+export function getPreferredNotifChannel(): NonNullable<
+  GlobalConfig['preferredNotifChannel']
+> {
+  return (
+    (getInitialSettings()
+      .preferredNotifChannel as GlobalConfig['preferredNotifChannel']) ??
+    getGlobalConfig().preferredNotifChannel ??
+    'auto'
+  )
+}
+
+/**
+ * Effective terminalProgressBarEnabled (upstream 2.1.311): the merged
+ * settings-file value wins; a legacy `~/.claude.json` value applies only when
+ * no settings file sets it; defaults to true.
+ */
+export function getTerminalProgressBarEnabled(): boolean {
+  return (
+    getInitialSettings().terminalProgressBarEnabled ??
+    getGlobalConfig().terminalProgressBarEnabled ??
+    true
+  )
+}
+
+/**
  * Returns the effective value of remoteControlAtStartup. Precedence:
  *   1. User's explicit config value (always wins — honors opt-out)
  *   2. CCR auto-connect default (ant-only build, GrowthBook-gated)

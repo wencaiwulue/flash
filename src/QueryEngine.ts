@@ -43,7 +43,7 @@ import type { Message } from './types/message.js'
 import type { OrphanedPermission } from './types/textInputTypes.js'
 import { createAbortController } from './utils/abortController.js'
 import type { AttributionState } from './utils/commitAttribution.js'
-import { getGlobalConfig } from './utils/config.js'
+import { getThemeSetting } from './utils/config.js'
 import { getCwd } from './utils/cwd.js'
 import { isBareMode, isEnvTruthy } from './utils/envUtils.js'
 import { getFastModeState } from './utils/fastMode.js'
@@ -360,7 +360,7 @@ export class QueryEngine {
         customSystemPrompt,
         appendSystemPrompt,
         agentDefinitions: { activeAgents: agents, allAgents: [] },
-        theme: resolveThemeSetting(getGlobalConfig().theme),
+        theme: resolveThemeSetting(getThemeSetting()),
         maxBudgetUsd,
       },
       getAppState,
@@ -507,7 +507,7 @@ export class QueryEngine {
         isNonInteractiveSession: true,
         customSystemPrompt,
         appendSystemPrompt,
-        theme: resolveThemeSetting(getGlobalConfig().theme),
+        theme: resolveThemeSetting(getThemeSetting()),
         agentDefinitions: { activeAgents: agents, allAgents: [] },
         maxBudgetUsd,
       },
