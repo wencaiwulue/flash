@@ -92,6 +92,8 @@ showTurnDuration 无 fail-closed 语义：读取失败/未设置时回退默认 
 - `src/components/messages/SystemTextMessage.tsx`：消费者改用 `getShowTurnDuration()`（runtime）。
 - `tests/b2GlobalConfigPath.test.ts`：4 用例（default/settings 覆盖双向/legacy fallback），经 `setSessionSettingsCache` + `saveGlobalConfig` 注入，全 pass。
 - 上游证据：`fixtures/upstream-config/2.1.311/inventory.json` 的 `setting:showTurnDuration`。
+- 输出/显示开关（已实现对齐，验证+记录证据）：`src/constants/outputStyles.ts`（getOutputStyleConfig 读 getSettings_DEPRECATED()=getInitialSettings()）、`src/utils/messages/systemInit.ts:55`（?? DEFAULT_OUTPUT_STYLE_NAME='default'）、`src/utils/betas.ts:274`（showThinkingSummaries !== true → REDACT_THINKING_BETA_HEADER）、`src/components/permissions/ExitPlanModePermissionRequest/ExitPlanModePermissionRequest.tsx:220` + `src/state/AppStateStore.ts:469`（settings=getInitialSettings()）。
+- `tests/b2DisplaySettings.test.ts`：3 用例（outputStyle/showThinkingSummaries/showClearContextOnPlanAccept 的 source+default），全 pass。
 
 ## 8. 文件覆盖与相关子系统
 
@@ -107,5 +109,7 @@ coverage：[upstream-config-b2-local-core-ui.yaml](../../architecture/coverage/u
 
 ## 10. 实现状态（2026-11-19）
 
-- showTurnDuration：六维度 aligned，矩阵已更新，`--batch 2` 0 诊断，4 测试 pass。
-- 其余 41 条：未切入，按 §4 子系统分组待后续。
+- global-config 读取路径：showTurnDuration 六维度 aligned（`getShowTurnDuration()` + tests/b2GlobalConfigPath 4 用例）。
+- 输出/显示开关：outputStyle、showThinkingSummaries、showClearContextOnPlanAccept 六维度 aligned（已实现对齐，验证+记录证据，tests/b2DisplaySettings 3 用例）。
+- 矩阵 setting aligned=4，`--batch 2` 0 诊断，design-docs 0 errors。
+- 其余 38 条：未切入，按 §4 子系统分组待后续。
