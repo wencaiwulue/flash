@@ -1227,98 +1227,44 @@ highlightMatch(text, query)
 
 ## 10. 测试矩阵
 
-| 模块 | 已覆盖功能 | 边界条件处理 | 离线/模拟覆盖 | 实测状态 |
-|-----|----------|------------|------------|---------|
-| markdown | 标题/代码/引用/表格/链接/强调/列表/issue链接/mailto | 表格对齐、空内容、嵌套token | 完整离线测试（无外部依赖） | ✅ `tests/textFormatting.test.tsx` 46个测试 |
-| truncate | truncateToWidth/truncateStartToWidth/truncateToWidthNoEllipsis/truncatePathMiddle/truncate/wrapText | CJK/表情宽度、ANSI序列、字素边界、0宽度边界 | 完整离线测试（使用真实stringWidth实现） | ✅ 2026-11-19 实测 |
-| stringWidth | ASCII/CJK/表情/ANSI/组合字符/零宽字符 | 组合字素、区域指示符表情、ambiguous宽度 | 完整离线测试（Bun.stringWidth fallback） | ✅ 通过宽度截断测试间接验证 |
-| highlightMatch | 大小写不敏感匹配、多个匹配、空query、无匹配 | React节点输出、key稳定性 | 纯离线测试（不渲染DOM，仅验证节点结构） | ✅ 2026-11-19 实测 |
-| displayTags | stripDisplayTags/stripDisplayTagsAllowEmpty/stripIdeContextTags | 小写标签、大写标签保留、未闭合标签、嵌套标签、空结果处理 | 纯离线正则测试 | ✅ 2026-11-19 实测 |
-| hyperlink | createHyperlink/supportsHyperlinks | OSC8序列、BEL终止符、fallback到纯URL、supportsHyperlinks开关 | 纯离线测试（通过options.supportsHyperlinks覆盖） | ✅ 2026-11-19 实测 |
-| cliHighlight | getCliHighlightPromise/getLanguageName | 懒加载singleton、加载失败回退、语言名称提取 | 离线真实行为测试（无mock，测试真实模块接口） | ⚠️ 仅测试接口契约，实际高亮需外部依赖 |
-| heatmap | generateHeatmap | 空活动、未来日期、百分位强度、月份标签、日期范围 | 纯离线测试（固定日期2026-11-19） | ✅ 2026-11-19 实测 |
-| logoV2Utils | getLayoutMode/calculateLayoutDimensions/calculateOptimalLeftWidth/formatWelcomeMessage/truncatePath/formatModelAndBilling | 70列阈值、不同布局模式、长路径截断、用户名过长 | 纯离线测试 | ✅ 2026-11-19 实测 |
+最终测试为 `tests/textFormatting.test.tsx` 43 个/118 断言，加 `tests/cliHighlightFailure.test.ts` 1 个/3 断言；不是仅检查函数存在或非空。
+
+| 模块 | 真实行为与精确断言 | 证据边界 |
+|---|---|---|
+| markdown | 标题/inline code/引用/强调的精确 ANSI；列表 marker、表格边框与 left/center/right 对齐；OSC8 issue/link/mailto；禁用删除线；支持/未知语言的 highlighter 入参 | highlighter 的两种语言分支使用可控 `CliHighlight` fixture，真实 cli-highlight 另测；不声称跨终端 live |
+| truncate/stringWidth | ASCII/CJK/emoji/ANSI 宽度，首尾/无省略号/路径中间截断、换行与字素边界 | 全部真实纯函数，无 mock |
+| displayTags | 小写/大写/未闭合/嵌套标签，fallback-to-original 与 allow-empty 的精确差异，IDE-only 剥离 | 全部真实正则行为，不把两种可能结果当作通过 |
+| hyperlink | supportsHyperlinks true/false 的精确 OSC8/BEL/蓝色文本或纯 URL | 环境分支用 TERM_PROGRAM 临时覆盖并恢复，不做真实终端点击 |
+| highlightMatch | `renderToScreen` 真实 Ink 输出，匹配段与非匹配段 styleId 不同；大小写保留、多处匹配、空 query/无匹配 | 同步 Ink cell 证据，不是 React 节点非空断言，也不是物理终端 live |
+| cliHighlight | 真实 cli-highlight/highlight.js 加载、同一 Promise、supportsLanguage、实际 highlight 和 TypeScript/JavaScript/Python/Markdown 名称 | 成功路径使用 node_modules 真实依赖；`cliHighlightFailure.test.ts` 仅在动态 import 边界 mock 抛错，验证 null/unknown 与 singleton，二者不混淆 |
+| heatmap | `setSystemTime(2024-01-20)` 固定时间；空活动、未来日期不绘制、月份标签与全部强度桶 | 不依赖当前日期，不做性能测试 |
+| logoV2Utils | 70 列阈值、精确 dimensions/left width、用户名、相对/绝对路径中间省略、model/billing 合并与分行 | 纯计算；未覆盖真实 session storage 的 getRecentActivity |
 
 ## 11. 三层证据收集
 
-### 官方文档证据
-
-| 功能 | 文档位置与URL | 关键证据引用 |
-|-----|-------------|------------|
-| Markdown渲染 | 无公开文档 | 基于marked库约定实现 |
-| OSC 8超链接 | https://gist.github.com/egmontkob/eb1123ef7c1e88330541345e7c77a92b | 序列格式 `OSC 8 ; params ; URL BEL TEXT OSC 8 ; ; BEL` |
-| stringWidth | Unicode East Asian Width文档 https://unicode.org/reports/tr11/ | 宽字符W/Wide计为2，窄字符N/Narrow计为1，ambiguous依上下文 |
-
-### 本机上游strings证据
-
-从上游flash CLI提取（strings `/opt/homebrew/bin/flash` 过滤相关符号）：
-
-| 符号 | 证据片段 |
-|-----|--------|
-| marked | `marked`, `marked.lexer`, `marked.Renderer` |
-| stringWidth | `stringWidth`, `eastAsianWidth`, `grapheme`, `emojiRegex` |
-| cli-highlight | `cli-highlight`, `highlight.js`, `getLanguage` |
-| OSC8 | `OSC 8`, `\x1b]8;;`, `\x07` BEL终止符 |
-| heatmap | `Less`, `More`, `░`, `▒`, `▓`, `█` |
-
-### 仓库契约证据
-
-| 功能 | 文件位置与具体行号 | 代码契约内容 |
-|-----|-----------------|------------|
-| 禁用strikethrough | `src/utils/markdown.ts:27-33` | `marked.use({ tokenizer: { del: () => undefined } })` |
-| stringWidth优先Bun | `src/ink/stringWidth.ts:215-222` | `Bun.stringWidth(str, { ambiguousIsNarrow: true })` |
-| OSC8邮件to不渲染 | `src/utils/markdown.ts:141-161` | `href.startsWith('mailto:')` 返回纯邮箱 |
-| displayTags小写匹配 | `src/utils/displayTags.ts:15` | `/<([a-z][\w-]*)(?:\s[^>]*)?>[\s\S]*?<\/\1>\n?/g` |
-| cliHighlight singleton | `src/utils/cliHighlight.ts:20` | `cliHighlightPromise: Promise<...> | undefined` |
-| 70列布局阈值 | `src/utils/logoV2Utils.ts:35-38` | `columns >= 70 ? 'horizontal' : 'compact'` |
+| 层 | 实际证据 | 不能推出的结论 |
+|---|---|---|
+| 官方文档 | [Terminal configuration](https://code.claude.com/docs/en/terminal-config.md) 说明主题、渲染和终端差异；[Interactive mode](https://code.claude.com/docs/en/interactive-mode.md) 提供公开交互语义；[OSC 8 规范](https://gist.github.com/egmontkob/eb1123ef7c1e88330541345e7c77a92b) 给出 `OSC 8 ; params ; URL BEL TEXT OSC 8 ; ; BEL`；[Unicode UAX #11](https://unicode.org/reports/tr11/) 给出 East Asian Width | 官方未公开 marked/cache/heatmap/logo 的具体实现，不能用文档断言这些内部细节 |
+| 本机上游二进制 | 只读执行 `strings /opt/homebrew/bin/claude`，用 `rg -o` 命中 `truncatePathMiddle`、`highlight.js`、`Less`/`More`；另见 `grapheme` 字符串 | 未命中不能证明对应功能不存在；strings 不能证明上游测试、cache 或 ANSI 输出与仓库一致；此前写成 `/opt/homebrew/bin/flash` 是错误路径，已纠正 |
+| 本仓库契约 | `src/utils/markdown.ts` 的 tokenizer del、formatToken/table/link；`displayTags.ts` 正则；`cliHighlight.ts` singleton/catch；`hyperlink.ts` OSC8；`logoV2Utils.ts` 70 列与路径算法；`text-formatting.yaml` 唯一登记两份测试 | 精确预期以当前生产源码和真实 RED/GREEN 为准，不靠 spec 自证 |
 
 ## 12. 测试边界分类
 
-### 离线/模拟覆盖范围
-
-✅ **完整离线覆盖：**
-- markdown.ts（所有功能，无需外部依赖）
-- truncate.ts（所有功能，仅依赖stringWidth）
-- stringWidth.ts（JS fallback完整覆盖）
-- displayTags.ts（纯正则）
-- highlightMatch.tsx（React节点结构，无需DOM）
-- logoV2Utils.ts（纯计算）
-- hyperlink.ts（可通过options.supportsHyperlinks覆盖）
-
-⚠️ **部分需要外部依赖：**
-- cliHighlight.ts（实际高亮需要cli-highlight和highlight.js包）
-
-❌ **无法离线覆盖：**
-- 真实终端渲染（需多终端环境）
-- 跨终端兼容性（需实测多种终端）
-
-### 未覆盖路径
-
-| 路径 | 原因 | 风险 |
-|-----|------|-----|
-| cliHighlight.ts:25-42 实际import失败路径 | 需要模拟import异常 | 低（已有catch处理） |
-| 真实终端OSC8渲染 | 需要多终端环境 | 低（已有fallback逻辑） |
-| 超大文本块性能 | 性能测试非本次目标 | 中 |
+- **Offline + 真实实现**：Markdown、truncate、displayTags、hyperlink、heatmap、logo 纯函数；highlightMatch 使用真实 Ink reconciler/screen；cli-highlight 成功路径使用真实 node_modules。
+- **可控 fixture/mock**：Markdown highlighter 的语言路由使用 `CliHighlight` fixture；加载失败测试只 mock `cli-highlight` 动态 import，单独文件运行并 `mock.restore()`。这些结果不冒充真实高亮成功。
+- **未做 live**：真实多终端 OSC8 点击、颜色兼容性、用户终端渲染、真实 session storage 的 recent activity、超大文本性能均未验证。
+- **环境恢复**：每个测试恢复 chalk.level 与系统时间；hyperlink 测试恢复 TERM_PROGRAM；失败加载测试恢复模块 mock。
 
 ## 13. 回滚计划
 
-如果此次测试补充或任何相关变更引入问题，回滚步骤：
-
 | 回滚项 | 具体操作 | 验证方式 |
-|-------|--------|---------|
-| 新增测试文件 | `git rm tests/textFormatting.test.tsx` | 文件不再存在 |
-| coverage更新 | `git restore docs/architecture/coverage/text-formatting.yaml` | coverage回到原始状态 |
-| spec变更 | `git restore docs/superpowers/specs/2026-11-12-text-formatting-design.md` | spec回到原始状态 |
-| 审计记录更新 | 编辑`docs/status/design-docs-completeness-audit/04-app-state-terminal-ui.md`移除整改台账 | 仅保留原始Finding |
+|---|---|---|
+| 测试与失败边界 | 整组回退本整改提交，删除 `tests/textFormatting.test.tsx` 与 `tests/cliHighlightFailure.test.ts` | focused 文件不再运行 |
+| coverage | 移除 text-formatting.yaml 的两份测试 entry，保持既有源文件主责不变 | `bun scripts/check-design-docs.ts` 无 UNCOVERED_FILE |
+| spec 与原审计 | 移除本轮测试矩阵/证据补充和追加台账，保留原 Finding 历史 | 不批量改为 resolved，不改变其他 Finding |
+| 验证 | 回滚后运行 `bun run test`、`bun run typecheck`、`bun run build` | exit 0 且无 Failed test files |
 
-回滚命令序列：
-```bash
-git rm tests/textFormatting.test.tsx
-git restore docs/architecture/coverage/text-formatting.yaml docs/superpowers/specs/2026-11-12-text-formatting-design.md docs/status/design-docs-completeness-audit/04-app-state-terminal-ui.md
-git status  # 确认无变更遗漏
-```
-
-验证回滚成功：`bun scripts/check-design-docs.ts` 无新增错误，`bun run test` 无失败测试文件。
+不得只删除强断言来回避回归；若测试暴露生产缺陷，应保留 RED 证据并单独最小修复。
 
 ## 8. 文件覆盖与相关子系统
 

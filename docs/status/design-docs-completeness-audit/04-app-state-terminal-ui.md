@@ -1578,19 +1578,17 @@
 
 **Finding ID**：B4-text-formatting-01；主责 spec：text-formatting。
 
-新增 `tests/textFormatting.test.tsx` 并唯一登记 coverage，46 个测试覆盖全部 8 个类别：
+最终新增并唯一登记 `tests/textFormatting.test.tsx`（43 个测试/118 断言）与 `tests/cliHighlightFailure.test.ts`（1 个测试/3 断言），覆盖全部 8 个类别：
 
-- **Markdown**：configureMarked 删除线禁用、lexer 分词、formatToken 递归处理 heading/code/codespan/strong/em/link/list/table、table 列宽对齐边框、linkifyIssueReferences 自动链接、空输入与边界情况。
-- **宽度截断**：stringWidth CJK/emoji/ANSI/零宽字符识别、sliceAnsi 安全截断、truncateToWidth 保持可见宽度、空与过短输入。
-- **标签剥离**：XML_TAG_BLOCK_PATTERN 只匹配小写标签、stripDisplayTags 空结果返回原内容、stripDisplayTagsAllowEmpty 允许空、stripIdeContextTags 仅剥离 ide_*、用户大写标签保留。
-- **超链接**：OSC8_START/END BEL 终止符、supportsHyperlinks 检测、mailto 不渲染为可点击、fallback 纯 URL、空与无文本情况。
-- **搜索高亮**：highlightMatch 不区分大小写匹配、逆高亮包裹、无匹配原样返回、React 节点结构验证。
-- **cli-highlight**：懒加载单例、getLanguageName 扩展名提取、highlight 接口（模拟 cli-highlight 依赖）。
-- **热图**：GitHub 风格热图生成、百分位计算强度、5 级强度字符、月份标签均匀分布、日期从今天往前、未来日期留空。
-- **logo v2 工具**：getLayoutMode 70列阈值判断 horizontal/compact、calculateLayoutDimensions 左右宽度、calculateOptimalLeftWidth 基于内容、formatWelcomeMessage 用户名处理、truncatePath 复杂路径截断保留首尾+尽量多中间、getRecentActivity 过滤道歉缓存最近会话、formatModelAndBilling 合并/分行显示。
+- Markdown 精确 ANSI、列表 marker、表格对齐、OSC8 issue/link/mailto 和 highlighter 语言路由；宽度/CJK/emoji/ANSI 截断；displayTags 空结果与嵌套/未闭合边界；真实 OSC8/fallback。
+- highlightMatch 通过真实 `renderToScreen` 验证匹配段 inverse styleId、多处匹配与原文保留，不再只做 React 节点非空断言。
+- cli-highlight 成功路径使用真实 node_modules，验证 singleton、supportsLanguage、实际 highlight 与语言名称；独立失败文件只 mock 动态 import，验证 null/unknown 与缓存，随后恢复 mock。
+- heatmap 固定 2024-01-20，验证未来日期不绘制、月份标签和全部强度桶；logo 布局、路径与 model/billing 使用精确输出。
 
-coverage 移除已归 ink-platform 主责的 stringWidth 和 data-structures 主责的 truncate，避免重复登记。spec 新增第 10-13 节：测试矩阵、三层证据（官方文档/上游 strings/仓库契约）、离线/mock/live 边界、未覆盖路径、回滚计划。
+初次 46 个测试版本被独立复审拒绝：多处只检查内容/非空、tag 结果接受两种可能、highlightMatch 无真实渲染、heatmap 依赖当前时间。后续修复 agent 又只提交了两行文档而未保留测试修正；最终由控制器直接重写并实测，未将该 agent 报告当作完成证据。
 
-全部边界离线：marked 在 node_modules 真实但不访问外部、cli-highlight 测试真实懒加载行为（无 jest.mock）、无终端检测 live、无上游二进制访问。无生产代码变更。
+coverage 只新增两份测试 entry，既有 stringWidth/truncate 等源文件主责不变。spec 第 10-13 节记录测试矩阵、真实三层证据（官方 terminal/interactive 文档、只读 `/opt/homebrew/bin/claude` strings、仓库契约）、mock/offline/live 边界和回滚；错误的 `/opt/homebrew/bin/flash` 路径已纠正。
 
-**原 Finding 状态**：B4-text-formatting-01 保持 open；spec 保持 draft 状态；原发现不删除，仅追加整改台账。
+全部离线，无真实终端点击、模型调用或上游登录/配置写入；真实 Ink 不等于物理终端 live。无生产代码变更，未覆盖 recent-activity 真实 session storage 和超大文本性能。
+
+**原 Finding 状态**：B4-text-formatting-01 保持 open；spec 保持 draft；原发现不删除，仅追加整改台账。

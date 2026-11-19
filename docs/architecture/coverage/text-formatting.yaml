@@ -83,3 +83,4 @@ groups:
     summary: 文本格式化测试 - 覆盖 8 大类功能
     files:
       - tests/textFormatting.test.tsx
+      - tests/cliHighlightFailure.test.ts
