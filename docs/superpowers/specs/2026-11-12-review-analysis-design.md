@@ -1825,15 +1825,31 @@ type SessionFacets = {
 | ReviewArtifactTool 使用独立只读代理（仅 Read/Grep/Glob） | `src/tools/ReviewArtifactTool/ReviewArtifactTool.ts:42-83` | `tests/reviewArtifact.test.ts:31-64` 测试验证代理调用 | 测试使用 mock runner，不实际启动代理 |
 | ReviewArtifactTool validateInput 检查 artifact_path/content 互斥 | `src/tools/ReviewArtifactTool/ReviewArtifactTool.ts:159-168` | `tests/reviewArtifact.test.ts:17-29` 测试验证互斥检查 | 测试覆盖三种情况：都不提供、都提供、仅提供一个 |
 | ReviewArtifactTool parseReviewerOutput 提取 JSON（忽略前后文本） | `src/tools/ReviewArtifactTool/ReviewArtifactTool.ts:86-93` | `tests/reviewArtifact.test.ts:92-95` 测试验证解析 | 测试仅验证空 findings 场景 |
-| CtxInspectTool 返回 JSON 不含 gridRows | `src/tools/CtxInspectTool/CtxInspectTool.ts:12-28` | `tests/internalTools.test.ts:72-103` 测试验证不含 gridRows | 测试仅验证格式化函数，不验证完整工具调用 |
-| insights 使用两级缓存（SessionMeta + facets） | `src/commands/insights/sessionMeta.ts:436-496` save/load SessionMeta; `src/commands/insights.ts:2352-2360` save/load facets | 无直接测试 | 缓存目录和格式无版本控制 |
+| CtxInspectTool 返回 JSON 不含 gridRows | `src/tools/CtxInspectTool/CtxInspectTool.ts:12-28` | `tests/internalTools.test.ts` 验证格式化；`tests/reviewAnalysis.test.ts` 验证完整 call | collectContextData 为边界替身，非真实模型上下文 live |
+| insights 使用两级缓存（SessionMeta + facets） | `src/commands/insights/sessionMeta.ts:436-496` save/load SessionMeta; `src/commands/insights.ts:2352-2360` save/load facets | `tests/reviewAnalysis.test.ts` 验证 SessionMeta 0600/save/load/invalid ID | facets 缓存格式无版本控制，未执行真实模型提取 |
 | insights 两级缓存原子写入（临时文件 + fsync + rename） | `src/commands/insights/sessionMeta.ts`、`src/commands/insights.ts`、`tests/insightsFacetCache.test.ts` | 4 个 facet 缓存行为测试，含 40 路并发和失败保留 | 本地临时目录/offline，未执行真实模型提取 |
 | insights 最多分析 200 个会话 | `src/commands/insights.ts:2430-2432` | 无直接测试 | 仅未缓存会话受此限制，已缓存会话全部加载 |
 | insights facet 提取并发 50 个 | `src/commands/insights.ts:2510-2528` | 无直接测试 | 无 API 限流回退逻辑 |
-| sessionMeta 仅对人类消息计算响应时间（排除 tool_result） | `src/commands/insights/sessionMeta.ts:227-239` | 无直接测试 | 响应时间窗口 2-3600 秒硬编码 |
-| detectMultiClauding 使用 30 分钟滑动窗口 | `src/commands/insights.ts:619-701` | 无直接测试 | 仅检测 A→B→A 模式，不检测 A→B→C→A |
-| sessionMeta 分类工具错误（Command Failed/User Rejected/Edit Failed 等） | `src/commands/insights/sessionMeta.ts:250-283` | 无直接测试 | 仅匹配英文错误消息 |
+| sessionMeta 仅对人类消息计算响应时间（排除 tool_result） | `src/commands/insights/sessionMeta.ts:227-239` | `tests/reviewAnalysis.test.ts`：tool_result 不计入人类回合，响应 [15,5] | 响应时间窗口 2-3600 秒硬编码 |
+| detectMultiClauding 使用 30 分钟滑动窗口 | `src/commands/insights.ts:619-701` | `tests/reviewAnalysis.test.ts`：A→B→A 与 A→B 对照 | 仅检测 A→B→A 模式，不检测 A→B→C→A |
+| sessionMeta 分类工具错误（Command Failed/User Rejected/Edit Failed 等） | `src/commands/insights/sessionMeta.ts:250-283` | `tests/reviewAnalysis.test.ts`：exit code → Command Failed | 其他类别与英文错误消息仍需独立边界测试 |
 | insights 过滤元会话（自身 /insights 调用） | `src/commands/insights.ts:2403-2418` | 无直接测试 | 仅匹配特定 prompt 模式 |
+
+### 7.1 Review/Insights 行为整改（2026-11-20）
+
+关联 Finding：B5-review-analysis-01。新增 `tests/reviewAnalysis.test.ts` 并唯一登记；5 个测试、21 个断言，普通与外部 feature profile 均通过，无生产代码变更。
+
+| 决策 | 实际行为与验证 | 证据 |
+|---|---|---|
+| CtxInspect 完整调用 | JSON 包含 model/tokens/rawMax/percentage、deferred 布尔值、messageBreakdown/apiUsage/contextCollapse，不含 gridRows | `CtxInspectTool.ts:12-53`；真实 call + collectContextData 边界 |
+| SessionMeta 统计 | 真实消息 fixture 验证 tool/language/git/token、用户回合、tool error、响应时间、lines/files/messageHours/timestamps，tool_result 不算人类消息 | `sessionMeta.ts:70-404`；logToSessionMeta 测试 |
+| 分支去重 | 同 session 先取 user_message_count 高者，再取 duration 长者 | `deduplicateSessionBranches` 测试 |
+| 原子缓存 | SessionMeta 保存为 0600，load 返回相同对象，非法 session ID 返回 null | `saveSessionMeta/loadCachedSessionMeta` 测试 |
+| Multi-clauding | 30 分钟内 A→B→A 得 1 overlap/2 sessions/3 messages，仅 A→B 不误报，远端 C 不计入 | `insights.ts:637-718`；detect 测试 |
+
+外部 feature profile 初次在加载重量级 `messages.ts` 时出现循环依赖等待；改为本地消息字面量后两种 profile 均通过。被测 sessionMeta/insights/CtxInspect 逻辑仍使用生产实现，fixture 不替代被测逻辑。未执行 facet 模型提取、HTML 报告、真实多进程会话或私有协议。
+
+公开文档不定义这些内部统计细节；只读 upstream strings 作辅助，当前契约以仓库生产代码和真实缓存文件为准。回滚只需移除测试、coverage entry、本节和审计台账，保持原 Finding open、spec draft。
 
 ## 8. 文件覆盖与相关子系统
 
@@ -1845,8 +1861,8 @@ type SessionFacets = {
 |------|-----------|----------------|----------------|
 | review-artifact-tool | ReviewArtifactTool 实现、独立审查代理、JSON 解析 | `tests/reviewArtifact.test.ts` | AgentTool 本身（由 [Agent Swarms](./2026-11-12-agent-swarms-design.md) 主拥有） |
 | ctx-inspect-tool | CtxInspectTool 实现、上下文数据格式化 | `tests/internalTools.test.ts:72-103` | collectContextData（由查询核心 spec 主拥有） |
-| insights-command | insights 主流程、报告生成、并行洞察 | 无直接测试 | HTML/CSS/JS 渲染细节 |
-| session-meta | SessionMeta 提取、缓存加载/保存、工具统计 | 无直接测试 | 原始 JSONL 日志格式（由会话持久化 spec 主拥有） |
+| insights-command | insights 主流程、报告生成、并行洞察 | `tests/reviewAnalysis.test.ts`：multi-clauding | HTML/CSS/JS 渲染与 facet 模型提取 |
+| session-meta | SessionMeta 提取、缓存加载/保存、工具统计 | `tests/reviewAnalysis.test.ts`：统计/去重/0600 cache | 原始 JSONL 日志格式（由会话持久化 spec 主拥有） |
 
 ### 相关子系统
 

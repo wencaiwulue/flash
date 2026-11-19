@@ -1709,3 +1709,9 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 - **Finding**：B5-plan-worktree-01；主责 spec：`2026-11-12-plan-worktree-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
 - **实现**：新增并唯一登记 `tests/planWorktree.test.ts`，6 个测试、33 个断言。覆盖 resume 原 slug、fork 新 slug/同内容、嵌套 slug 扁平化/traversal 拒绝、无会话 no-op、dirty remove 拒绝、显式 discard 后删除、缺失 HEAD 基线 fail-closed、keep 保留和 cwd 恢复。
 - **证据边界**：官方 Worktrees 文档与真实临时 git 仓库；配置保存为内存 no-op，无全局 git 配置或用户配置写入。未覆盖 file snapshot/message 计划恢复、worktreeinclude/sparse、tmux、stale sweep 或 CCR 状态机，不提前声称全部 Finding 范围完成。
+
+## Phase B Review/Insights 行为整改（2026-11-20 追加）
+
+- **Finding**：B5-review-analysis-01；主责 spec：`2026-11-12-review-analysis-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
+- **实现**：新增并唯一登记 `tests/reviewAnalysis.test.ts`，5 个测试、21 个断言。覆盖 CtxInspect 完整调用、SessionMeta tool/language/git/token/响应时间/lines/files/messageHours、分支去重、0600 原子缓存 save/load，以及 30 分钟 A→B→A 与 A→B 对照。
+- **证据边界**：真实生产逻辑和临时缓存文件，未执行 facet 模型提取、HTML 报告、真实多进程会话或私有协议。外部 profile 初次在重量级 `messages.ts` 处循环等待，改为本地消息 fixture 后两种 profile 均通过；不将该 fixture 问题记为生产 RED。
