@@ -3,6 +3,12 @@ spec_id: ui-rendering
 spec: ../../superpowers/specs/2026-11-12-ui-rendering-design.md
 status: draft
 groups:
+  - id: tests
+    kind: test
+    section: 7
+    summary: UI rendering core tests
+    files:
+      - tests/uiRenderingCore.test.ts
   - id: additional-files
     kind: source
     section: 4

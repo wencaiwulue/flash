@@ -972,9 +972,23 @@
 #### 测试验证
 
 检查coverage中提及的测试文件：
-- ✅ 无 ui-rendering 核心渲染路径测试
-- ❌ 无 Message/Messages/Markdown/StructuredDiff/StreamingMarkdown/VirtualMessageList测试
+- ✅ 新增 tests/uiRenderingCore.test.ts 覆盖核心逻辑测试
+- ✅ 测试 hasThinkingContent/areMessagePropsEqual/Markdown工具函数/设计spec证据
+- ❌ 无完整组件渲染测试（需Ink test render环境）
 - ⚠️ 有部分周边组件测试
+
+#### 整改台账（新增）
+
+**B4-ui-rendering-01 部分整改**：
+- ✅ 新增 tests/uiRenderingCore.test.ts 测试核心业务逻辑
+- ✅ 覆盖 Message 记忆化比较器、thinking块检测、Markdown工具函数、设计spec出口验证
+- ⚠️ 暂未添加完整组件渲染测试（需更复杂的Ink渲染环境）
+- ⚠️ 原 finding 保持 open 状态（按任务要求）
+
+**B4-ui-rendering-02 评估**：
+- ✅ 已确认无需修改生产代码添加测试专用API（按任务约束）
+- ✅ 记录评估：当前无证据表明此设计缺口导致实际问题
+- ⚠️ 原 finding 保持 open 状态
 
 #### 隐私与安全边界审查
 
@@ -987,7 +1001,7 @@
 |------|------|------|
 | Spec 完整性 | ✅ 完整，多项关键决策，多个模块设计卡，完整生命周期证据链 | ⚠️ 上游文档未实时访问 |
 | 源码一致性 | ✅ 所有12个分组源码与spec高度一致 | ⚠️ 无 |
-| 测试覆盖 | ❌ 缺少核心渲染路径测试 | ⚠️ 功能正常但无回归保护 |
+| 测试覆盖 | ⚠️ 部分覆盖（新增核心逻辑测试） | ⚠️ 缺少完整组件渲染测试 |
 | 官方文档 | ❓ 未访问 | ⚠️ 基于现有spec |
 | 上游 CLI | ⚠️ 未提取 strings | ⚠️ 需补充 |
 

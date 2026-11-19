@@ -1375,7 +1375,51 @@ Messages 入口
 
 ### 7.2 测试覆盖
 
-**无直接测试覆盖**，相关渲染功能可能在其他模块测试中间接验证。
+**新增测试文件**: `tests/uiRenderingCore.test.ts`
+
+#### 测试矩阵
+
+| 测试范围 | 测试项 | 状态 | 证据 |
+|---------|--------|------|------|
+| Message 逻辑 | hasThinkingContent 正确识别 thinking 块 | ✅ 已测 | `tests/uiRenderingCore.test.ts` |
+| Message 逻辑 | areMessagePropsEqual  memo 比较器行为 | ✅ 已测 | `tests/uiRenderingCore.test.ts` |
+| Message 逻辑 | lastThinkingBlockId 变更影响 thinking 消息重渲染 | ✅ 已测 | `tests/uiRenderingCore.test.ts` |
+| Message 逻辑 | UUID/verbose/isTranscriptMode 变更触发重渲染 | ✅ 已测 | `tests/uiRenderingCore.test.ts` |
+| Message 逻辑 | isStatic=true 消息不重渲染 | ✅ 已测 | `tests/uiRenderingCore.test.ts` |
+| Markdown 工具 | hashContent 一致性 | ✅ 已测 | `tests/uiRenderingCore.test.ts` |
+| Markdown 工具 | configureMarked 可正常调用 | ✅ 已测 | `tests/uiRenderingCore.test.ts` |
+| 设计规范 | 组件导出测试接口 (hasThinkingContent/areMessagePropsEqual) | ✅ 已测 | `tests/uiRenderingCore.test.ts` |
+| 设计规范 | Markdown/StreamingMarkdown 公开 API 可访问 | ✅ 已测 | `tests/uiRenderingCore.test.ts` |
+| 设计规范 | CC-941 优化实现 (lastThinkingBlockId 仅影响 thinking 消息) | ✅ 已测 | `tests/uiRenderingCore.test.ts` |
+| 完整组件渲染 | Message 组件端到端渲染 | ❌ 未测 | 需要 Ink 测试环境 |
+| 完整组件渲染 | Markdown 组件渲染 | ❌ 未测 | 需要 Ink 测试环境 |
+| 完整组件渲染 | StreamingMarkdown 流式渲染 | ❌ 未测 | 需要 Ink 测试环境 |
+
+#### 三层证据表
+
+| 设计决策 | 官方文档证据 | 上游二进制证据 | 本仓库源码/测试证据 |
+|---------|------------|--------------|-------------------|
+| switch-case 路由 | ❓ 未访问 | ⚠️ 未提取 strings | `src/components/Message.tsx:103-282`, ✅ 测试验证行为 |
+| 流式稳定边界 | ❓ 未访问 | ⚠️ 未提取 strings | `src/components/Markdown.tsx:163-215` |
+| Markdown token 缓存 MRU | ❓ 未访问 | ⚠️ 未提取 strings | `src/components/Markdown.tsx:24-73`, ✅ 测试验证 hash 一致性 |
+| Diff WeakMap 缓存 | ❓ 未访问 | ⚠️ 未提取 strings | `src/components/StructuredDiff.tsx:21-116` |
+| UUID 锚点切片 | ❓ 未访问 | ⚠️ 未提取 strings | `src/components/Messages.tsx:344-393` |
+| 错误边界静默降级 | ❓ 未访问 | ⚠️ 未提取 strings | `src/components/SentryErrorBoundary.ts:11-28` |
+| lastThinkingBlockId 控制 | ❓ 未访问 | ⚠️ 未提取 strings | `src/components/Messages.tsx:454-481`, ✅ 测试验证行为 |
+| 自定义 memo 比较器 | ❓ 未访问 | ⚠️ 未提取 strings | `src/components/Message.tsx:500-525`, ✅ 测试验证比较器逻辑 |
+
+### 7.3 回滚计划
+
+如需回滚本次变更：
+
+1. **Git 回滚**: `git revert 4532577`
+   - 移除 `tests/uiRenderingCore.test.ts`
+   - 恢复审计文档原状
+   - 恢复 spec 文档原状
+
+2. **无生产代码变更**: 本次未修改任何生产代码，仅新增测试和文档
+
+3. **门禁检查**: 回滚后重新运行 `bun run build`, `bun run test`, `bun run typecheck`, `bun scripts/check-design-docs.ts` 确认一切正常
 
 ## 8. 文件覆盖与相关子系统
 
