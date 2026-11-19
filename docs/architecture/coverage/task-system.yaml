@@ -9,6 +9,12 @@ groups:
     summary: task core、framework 注册/驱逐/轮询与 disk output 测试
     files:
       - tests/taskFramework.test.ts
+  - id: todo-task-tests
+    kind: test
+    section: 7
+    summary: todo 文件/high-water-mark、claim/block 与 stopTask 测试
+    files:
+      - tests/todoTasks.test.ts
   - id: task-core
     kind: source
     section: 4

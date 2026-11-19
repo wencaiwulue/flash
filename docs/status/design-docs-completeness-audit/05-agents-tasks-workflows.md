@@ -1637,3 +1637,10 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 - **实现**：新增并唯一登记 `tests/taskFramework.test.ts`，10 个测试、48 个断言。覆盖类型 ID/终态、register/update/resume 不重复 event、terminal+notified 驱逐、running offset/TOCTOU、poll delta 不重复、真实文件 append/读取/tail、40 路顺序、O_EXCL/symlink、EMFILE 重试与 evict 保留磁盘文件。
 - **证据**：普通与外部 feature profile 均 exit 0；真实 AppState、SDK queue、临时目录和文件，不是后台进程 live。spec 第 7.1 节记录真实矩阵、官方 Tools reference、只读 `/opt/homebrew/bin/claude` strings 和回滚。
 - **边界**：全部离线，无生产代码变更；5GB cap 未创建大文件，真实 shell/TaskStop/TodoWrite 由后续批次覆盖。
+
+## Phase B Todo Tasks/TaskStop 测试整改（2026-11-19 追加）
+
+- **Findings**：B5-task-system-01/04；主责 spec：`2026-11-13-task-system-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
+- **实现**：新增并唯一登记 `tests/todoTasks.test.ts`，9 个测试、45 个断言。覆盖 create/get/update/delete、corrupt JSON/schema、并发 claim、agent_busy/blocked、真实 TaskCreate/Get，以及 stopTask 成功和三类错误/kill failure。
+- **B5-task-system-04 实证**：unlink EACCES 后 delete=false、原 task 可读、highwatermark 保留，下一次 create 使用新 ID；没有 ID 重用，不盲改生产顺序。
+- **证据边界**：全部离线，真实 proper-lockfile、临时文件、AppState/SDK event 与 kill/taskImpl 边界替换，不是后台进程 live。spec 第 7.2 节记录真实矩阵、官方 Tools reference、只读 `/opt/homebrew/bin/claude` strings 和回滚。
