@@ -7259,30 +7259,36 @@ entries:
     exclusion: null
     ownerBatch: final
   - id: setting:verbose
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b2-local-core-ui
+    implementation:
+      - src/utils/config.ts
+      - src/main.tsx
+      - src/utils/settings/types.ts
+    tests:
+      - tests/b2GlobalConfigPath.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "settings/types.ts 显式 verbose zod；.passthrough() 保留 settings 文件值"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.boolean().optional() = 上游 Boolean"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 default=false；getVerbose ?? false"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "getVerbose()=getInitialSettings()（合并 settings）为主，getGlobalConfig()（~/.claude.json）旧值 fallback"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "--verbose CLI > settings > legacy；viewMode/sticky /focus 覆盖不适用（flash viewMode 仅 UI 视图、无 /focus 命令）"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "main.tsx:1901 verbose=getVerbose(options.verbose) 驱动初始 verbose；tests/b2GlobalConfigPath 6 用例"
+    notes: "viewMode 覆盖属 viewMode 条目；运行时 ctrl+o 切换写回 GlobalConfig（onChangeAppState）未改"
     exclusion: null
     ownerBatch: 2
   - id: setting:viewMode

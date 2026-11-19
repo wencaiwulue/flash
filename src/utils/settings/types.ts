@@ -785,6 +785,12 @@ export const SettingsSchema = lazySchema(() =>
         .describe(
           'Show the "Cooked for" duration after each response. Defaults to true. A value in ~/.claude.json from an older version applies when no settings file sets it.',
         ),
+      verbose: z
+        .boolean()
+        .optional()
+        .describe(
+          'Show full tool output instead of truncated summaries. Defaults to false. --verbose takes precedence for one session; a value in ~/.claude.json from an older version applies when no settings file sets it.',
+        ),
       agent: z
         .string()
         .optional()
