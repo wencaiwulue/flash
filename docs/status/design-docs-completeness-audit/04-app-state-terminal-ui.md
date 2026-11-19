@@ -1591,6 +1591,6 @@
 
 coverage 移除已归 ink-platform 主责的 stringWidth 和 data-structures 主责的 truncate，避免重复登记。spec 新增第 10-13 节：测试矩阵、三层证据（官方文档/上游 strings/仓库契约）、离线/mock/live 边界、未覆盖路径、回滚计划。
 
-全部边界离线：marked 在 node_modules 真实但不访问外部、cli-highlight 用 jest.mock 模拟、无终端检测 live、无上游二进制访问。无生产代码变更。
+全部边界离线：marked 在 node_modules 真实但不访问外部、cli-highlight 测试真实懒加载行为（无 jest.mock）、无终端检测 live、无上游二进制访问。无生产代码变更。
 
 **原 Finding 状态**：B4-text-formatting-01 保持 open；spec 保持 draft 状态；原发现不删除，仅追加整改台账。

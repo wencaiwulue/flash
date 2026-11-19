@@ -1235,7 +1235,7 @@ highlightMatch(text, query)
 | highlightMatch | 大小写不敏感匹配、多个匹配、空query、无匹配 | React节点输出、key稳定性 | 纯离线测试（不渲染DOM，仅验证节点结构） | ✅ 2026-11-19 实测 |
 | displayTags | stripDisplayTags/stripDisplayTagsAllowEmpty/stripIdeContextTags | 小写标签、大写标签保留、未闭合标签、嵌套标签、空结果处理 | 纯离线正则测试 | ✅ 2026-11-19 实测 |
 | hyperlink | createHyperlink/supportsHyperlinks | OSC8序列、BEL终止符、fallback到纯URL、supportsHyperlinks开关 | 纯离线测试（通过options.supportsHyperlinks覆盖） | ✅ 2026-11-19 实测 |
-| cliHighlight | getCliHighlightPromise/getLanguageName | 懒加载singleton、加载失败回退、语言名称提取 | 离线mock测试（避免依赖cli-highlight包） | ⚠️ 仅测试接口契约，实际高亮需外部依赖 |
+| cliHighlight | getCliHighlightPromise/getLanguageName | 懒加载singleton、加载失败回退、语言名称提取 | 离线真实行为测试（无mock，测试真实模块接口） | ⚠️ 仅测试接口契约，实际高亮需外部依赖 |
 | heatmap | generateHeatmap | 空活动、未来日期、百分位强度、月份标签、日期范围 | 纯离线测试（固定日期2026-11-19） | ✅ 2026-11-19 实测 |
 | logoV2Utils | getLayoutMode/calculateLayoutDimensions/calculateOptimalLeftWidth/formatWelcomeMessage/truncatePath/formatModelAndBilling | 70列阈值、不同布局模式、长路径截断、用户名过长 | 纯离线测试 | ✅ 2026-11-19 实测 |
 
