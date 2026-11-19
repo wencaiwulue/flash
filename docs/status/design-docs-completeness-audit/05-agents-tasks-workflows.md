@@ -1691,3 +1691,9 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 - **真实 RED**：真实 spawn/runInProcessTeammate 中 runAgent 抛出 `offline worker crash`，result=false、task 驱逐、SDK failed 均已发生，但 TeamFile worker.isActive=true（Expected false/Received true）。初次断言还校正了 task 会立即驱逐这一实际生命周期，没有为保留 failed 对象改生产。
 - **实现**：新增 `markMemberInactive`，在 runner 完成与失败两个退出路径调用 `setMemberActive(..., false)`；TeamFile 写失败只记录，不掩盖 runner 结果。`tests/workerCrash.test.ts` 3 个测试、18 个断言，覆盖失败、正常完成、backend active/missing 以及 pane registry-only 限制。
 - **证据边界**：真实 runner、TeamFile、AppState/SDK，runAgent 离线。官方 Agent Teams 文档与只读 upstream strings 佐证 idle/active 语义。PaneBackend 无 pane-exists 查询接口，外部 pane kill 后 isActive 仍为 true 仅记录现有限制，跨进程崩溃检测未宣称完成。
+
+## Phase B SendMessage 多路由整改（2026-11-20 追加）
+
+- **Finding**：B5-agent-swarms-02；主责 spec：`2026-11-12-agent-swarms-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
+- **实现**：新增并唯一登记 `tests/sendMessageRouting.test.ts`。普通 profile 4 pass、2 skip、22 assertions；外部 profile 6 pass、30 assertions。覆盖真实 running local agent pendingMessages、stopped resume 成功/失败、团队 direct/broadcast 实际 inbox、真实 UDS 成功/连接失败、Bridge active 成功与断连重查。
+- **证据边界**：真实 SendMessageTool、LocalAgentTask、TeamFile/mailbox、AppState 和本机 Unix socket；resume/postInterClaudeMessage 为离线 mock。普通 profile 的 skip 不算 UDS/Bridge 通过；无私有跨机器协议、远程主机、真实 transcript/model 验证。

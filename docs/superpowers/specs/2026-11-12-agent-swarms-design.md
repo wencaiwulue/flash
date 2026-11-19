@@ -620,7 +620,7 @@ type SendMessageToolOutput =
 **源码测试证据**
 - 实现：`src/tools/SendMessageTool/SendMessageTool.ts`
 - 协议：`src/utils/teammateMailbox.ts`
-- 测试：未找到直接测试文件
+- 测试：`tests/sendMessageRouting.test.ts` 覆盖本地 queue/resume、团队 inbox/broadcast、真实 UDS 和 Bridge 离线成功/断连
 
 ---
 
@@ -1497,7 +1497,7 @@ type AppState = {
 | AgentTool Worktree 隔离 | `src/tools/AgentTool/AgentTool.tsx` (worktree 相关部分) + `src/utils/worktree.ts` | `tests/agentToolIsolation.test.ts`：真实临时 git worktree 的 cwd、无变更删除、有变更保留、失败清理 | 真实本地 git，非 hook VCS/远程仓库；不覆盖 30 天 stale sweep |
 | TeamCreateTool 创建团队 | `src/tools/TeamCreateTool/TeamCreateTool.ts:1-241` | `tests/teamLifecycle.test.ts`：真实 config/task dir/AppState、单团队约束、同名唯一命名且原文件不变 | 顺序场景，未声称多进程并发创建同名团队 |
 | TeamDeleteTool 解散团队 | `src/tools/TeamDeleteTool/TeamDeleteTool.ts:1-139` | `tests/teamLifecycle.test.ts`：active 拒绝并保留、inactive 清理、inbox 清空、无团队幂等 | 真实本地目录，无真实 teammate/worktree 进程 |
-| SendMessageTool 消息路由 | `src/tools/SendMessageTool/SendMessageTool.ts:1-800+` | 未找到直接测试文件 | 未覆盖 UDS/Bridge 跨机器路径 |
+| SendMessageTool 消息路由 | `src/tools/SendMessageTool/SendMessageTool.ts:1-800+` | `tests/sendMessageRouting.test.ts`：本地 queue/resume/failure、真实团队 inbox/broadcast、真实 UDS、Bridge 离线成功/断连 | UDS 仅本机 socket；Bridge resume/post 为 mock 边界，无私有跨机器/live 协议验证 |
 | TeamFile 状态持久化 | `src/utils/swarm/teamHelpers.ts:1-684` | `tests/teamFileAtomicWrite.test.ts`：原子写；`tests/workerCrash.test.ts`：失败/完成后 member.isActive=false | 未覆盖多进程 teamFile 并发读写；pane 外部崩溃仍只有 registry-only 限制证据 |
 | Mailbox 文件邮箱系统 | `src/utils/teammateMailbox.ts:43-1142` | `tests/mailboxConcurrency.test.ts`：真实子进程并发 append/mark-read、锁持有重试、不可解析文件恢复 | 本地临时 inbox/proper-lockfile；不覆盖 tmux/iTerm2 后端、高负载消息风暴或逐条 schema 验证 |
 | 双路径权限同步 | `src/utils/swarm/inProcessRunner.ts:1-600+` + `src/utils/swarm/permissionSync.ts:1-600+` + `src/utils/swarm/leaderPermissionBridge.ts` | 未找到直接测试文件 | 仅检查 in-process 路径，未测试 mailbox 路径 |
@@ -1600,6 +1600,23 @@ Remote/CCR 没有据此获得 live 凭证、登录、bundle、远程 session 或
 
 生产回滚：移除 `markMemberInactive` helper 与完成/失败两个调用，即恢复 RED。完整回滚再移除测试、coverage entry、本节和审计台账，保持原 Finding open、spec draft。
 
+### 7.7 SendMessage 多路由整改（2026-11-20）
+
+继续关联 B5-agent-swarms-02。新增 `tests/sendMessageRouting.test.ts` 并唯一登记；外部 feature profile 6 个测试、30 个断言，普通 profile 4 pass/2 skip/22 assertions。无生产代码变更。
+
+| 决策 | 实际行为与验证 | 证据 |
+|---|---|---|
+| 本地 running agent | 真实 agentNameRegistry+LocalAgentTask，SendMessage 将原文加入 pendingMessages，返回下一 tool round 投递，不调用 resume | `SendMessageTool.ts:800-821`；queue 测试 |
+| 本地 stopped agent | killed task 通过 resume 边界收到 agentId/prompt/parent request ID；resume 异常返回 success=false，不写 teammate inbox | `SendMessageTool.ts:822-871`；resume success/failure 测试 |
+| 团队 direct/broadcast | 真实 TeamFile 和 inbox：worker 收到 direct+broadcast，researcher 仅 broadcast；sender=team-lead，消息均 unread，team config 保留 | `handleMessage`/`handleBroadcast`；mailbox 测试 |
+| UDS | 在真实本机 Unix socket 上收到 `hello uds\n` 并回应 ok:true；缺失 socket 返回 success=false | `SendMessageTool.ts:775-797`；真实 UDS 测试 |
+| Bridge | active 时 post 收到 session target/message 并返回成功；断连时重新检查 handle/active 并失败，post 不再次调用 | `SendMessageTool.ts:742-774`；Bridge 测试 |
+| Feature/资源边界 | UDS_INBOX 未启用的普通 profile 两个场景 skip，外部 profile 实际执行。临时 config/task dirs/socket、AppState、queues、env 均清理 | 测试 beforeEach/afterEach |
+
+官方 Agent Teams 文档确认 direct/broadcast mailbox 文件与发送语义；只读 `/opt/homebrew/bin/claude` strings 命中 postInterClaudeMessage/sendToUdsSocket/断连文案；本仓库生产入口、真实 UDS 和离线 resume/post 边界确定当前路由。Bridge 不验证私有跨机器协议，UDS 不验证远程主机，resume 不验证真实 transcript/model。
+
+初版把 worker/researcher 都断言为 direct+broadcast 两条，实际 researcher 只有 broadcast；按真实收件箱修正，未改生产。回滚只需移除测试、coverage entry、本节和审计台账，保持原 Finding open、spec draft。
+
 ## 8. 文件覆盖与相关子系统
 
 [Coverage](../../architecture/coverage/agent-swarms.yaml)
@@ -1607,7 +1624,7 @@ Remote/CCR 没有据此获得 live 凭证、登录、bundle、远程 session 或
 | 分组 | 主拥有职责 | 相关测试或共享证据 | 不拥有的相邻文件 |
 |---|---|---|---|
 | agent-tool | AgentTool 实现、fork 子代理、agent memory | `agentToolExecution`：sync/async；`agentToolIsolation`：fork/worktree；`agentToolRouting`：teammate/remote 离线路由；`agentMemorySnapshot` | 自动后台化、真实 teammate/CCR/API cache、真实多 agent 并发和内置 agent 具体行为仍需各自证据 |
-| team-tools | TeamCreateTool、TeamDeleteTool | `tests/teamLifecycle.test.ts`：真实 config/task dir、唯一命名、active 保护和清理 | SendMessageTool、Task*Tool、真实 teammate 进程与多进程同名创建不归本组证据 |
+| team-tools | TeamCreateTool、TeamDeleteTool | `tests/teamLifecycle.test.ts`：真实 config/task dir、唯一命名、active 保护和清理；SendMessage 证据见 `tests/sendMessageRouting.test.ts` | Task*Tool、真实 teammate 进程与多进程同名创建不归本组证据 |
 | swarm-utils | mailbox、teamHelpers、permissionSync、inProcessRunner、backends | `mailboxConcurrency`：inbox/lock；`workerCrash`：inactive 转换与 pane 限制；`teamFileAtomicWrite` | permissionSync、其他 backends 与 `src/utils/teammate.ts` 等辅助函数仍需各自证据 |
 | coordinator | Coordinator 模式、系统提示 | 未找到专用测试 | 协调业务逻辑不归本组 |
 

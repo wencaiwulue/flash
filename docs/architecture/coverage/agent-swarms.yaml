@@ -221,6 +221,12 @@ groups:
     summary: in-process worker 失败/完成 inactive 转换和 pane 检测边界
     files:
       - tests/workerCrash.test.ts
+  - id: send-message-routing-tests
+    kind: test
+    section: 7
+    summary: SendMessage 本地 agent、团队 mailbox、真实 UDS 与 Bridge 离线路由
+    files:
+      - tests/sendMessageRouting.test.ts
   - id: agent-memory-tests
     kind: test
     section: 7
