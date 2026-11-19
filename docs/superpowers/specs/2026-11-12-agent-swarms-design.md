@@ -461,7 +461,7 @@ type TeamFile = {
 **源码测试证据**
 - 实现：`src/tools/TeamCreateTool/TeamCreateTool.ts`
 - 底层：`src/utils/swarm/teamHelpers.ts`
-- 测试：未找到直接测试文件
+- 测试：`tests/teamLifecycle.test.ts` 覆盖真实团队文件、任务目录、单团队约束和同名唯一命名
 
 ---
 
@@ -527,7 +527,7 @@ type Output = { success: boolean, message: string, team_name?: string }
 **源码测试证据**
 - 实现：`src/tools/TeamDeleteTool/TeamDeleteTool.ts`
 - 底层：`src/utils/swarm/teamHelpers.ts` (cleanupTeamDirectories, destroyWorktree)
-- 测试：未找到直接测试文件
+- 测试：`tests/teamLifecycle.test.ts` 覆盖 active 拒绝、inactive 清理、inbox 清空和无团队幂等
 
 ---
 
@@ -1495,8 +1495,8 @@ type AppState = {
 | AgentTool 四模式执行 | `src/tools/AgentTool/AgentTool.tsx:1-1669` | `tests/agentToolExecution.test.ts`：sync/async 生命周期；`tests/agentToolRouting.test.ts`：teammate opt-in/spawn/失败与 ant-only remote 成功/eligibility/bundle failure | 仅替换 runAgent、spawnTeammate、eligibility/teleport/remote registration 边界；不执行真实 teammate 进程、CCR、模型或私有协议 |
 | AgentTool Fork 隐式子代理 | `src/tools/AgentTool/forkSubagent.ts:32-210` | `tests/agentToolIsolation.test.ts`：缓存前缀、真实 gate 下 async/exact tools/system prompt/context、递归保护 | 普通 profile 两个 gate 测试 skip，外部 profile 实际执行；runAgent 离线，不验证真实 API cache 命中率 |
 | AgentTool Worktree 隔离 | `src/tools/AgentTool/AgentTool.tsx` (worktree 相关部分) + `src/utils/worktree.ts` | `tests/agentToolIsolation.test.ts`：真实临时 git worktree 的 cwd、无变更删除、有变更保留、失败清理 | 真实本地 git，非 hook VCS/远程仓库；不覆盖 30 天 stale sweep |
-| TeamCreateTool 创建团队 | `src/tools/TeamCreateTool/TeamCreateTool.ts:1-241` | 未找到直接测试文件 | 未覆盖并发创建同名团队 |
-| TeamDeleteTool 解散团队 | `src/tools/TeamDeleteTool/TeamDeleteTool.ts:1-139` | 未找到直接测试文件 | 未覆盖 member.isActive 的完整生命周期 |
+| TeamCreateTool 创建团队 | `src/tools/TeamCreateTool/TeamCreateTool.ts:1-241` | `tests/teamLifecycle.test.ts`：真实 config/task dir/AppState、单团队约束、同名唯一命名且原文件不变 | 顺序场景，未声称多进程并发创建同名团队 |
+| TeamDeleteTool 解散团队 | `src/tools/TeamDeleteTool/TeamDeleteTool.ts:1-139` | `tests/teamLifecycle.test.ts`：active 拒绝并保留、inactive 清理、inbox 清空、无团队幂等 | 真实本地目录，无真实 teammate/worktree 进程 |
 | SendMessageTool 消息路由 | `src/tools/SendMessageTool/SendMessageTool.ts:1-800+` | 未找到直接测试文件 | 未覆盖 UDS/Bridge 跨机器路径 |
 | TeamFile 状态持久化 | `src/utils/swarm/teamHelpers.ts:1-684` | 未找到直接测试文件 | 未覆盖并发读写 teamFile |
 | Mailbox 文件邮箱系统 | `src/utils/teammateMailbox.ts:43-1142` | 未找到直接测试文件 | 未覆盖 tmux/iTerm2 后端的并发场景 |
@@ -1552,6 +1552,22 @@ type AppState = {
 
 Remote/CCR 没有据此获得 live 凭证、登录、bundle、远程 session 或私有协议验证；remote registration 也是 mock 边界，未验证真实 AppState remote task 生命周期。普通/外部 profile 通过不等于 live。回滚只需移除测试、coverage entry、本节和审计台账，保持原 Finding open、spec draft。
 
+### 7.4 TeamCreate/Delete 生命周期整改（2026-11-20）
+
+关联 Finding：B5-agent-swarms-02。新增 `tests/teamLifecycle.test.ts` 并唯一登记；4 个测试、26 个断言，普通与外部 feature profile 均通过，无生产代码变更。
+
+| 决策 | 实际行为与验证 | 证据 |
+|---|---|---|
+| 创建真实团队 | 真实 TeamCreate.call 写入 lead config、创建 fresh task list、设置 leader taskListId 和 AppState teamContext；同一 leader 再建团队在写入前拒绝 | `TeamCreateTool.ts:128-236`；create/guard 测试 |
+| 同名冲突 | 第二个无 teamContext 的调用请求同名时生成不同 slug，原团队文件字节不变，新团队独立存在 | `generateUniqueTeamName`；collision 测试 |
+| 活跃成员保护 | 非 lead 且 isActive!==false 时 TeamDelete 返回 success=false，团队和 AppState 保留；成员转 inactive 后可清理 | `TeamDeleteTool.ts:71-99`；active→inactive 测试 |
+| 清理与幂等 | inactive 团队删除 config/task dirs、清空 inbox/teamContext；无团队再次调用返回 success=true 的 no-op | `TeamDeleteTool.ts:101-134`；cleanup/noop 测试 |
+| 证据边界 | 真实团队文件、原子写、任务目录和 AppState；CLAUDE_CONFIG_DIR 全程临时。无真实 teammate 进程、worktree 或多进程同名创建 | 测试 beforeEach/afterEach |
+
+官方 Agent Teams 文档确认一个 session 一个团队、config/task 目录职责、团队成员与关闭限制；只读 `/opt/homebrew/bin/claude` strings 结合本仓库生产入口验证当前精确路径。顺序同名场景不冒充多进程并发创建证据，真实 teammate 进程和 worktree 清理由各自边界另行验证。
+
+回滚只需移除测试、coverage entry、本节和审计台账，保持原 Finding open、spec draft。
+
 ## 8. 文件覆盖与相关子系统
 
 [Coverage](../../architecture/coverage/agent-swarms.yaml)
@@ -1559,7 +1575,7 @@ Remote/CCR 没有据此获得 live 凭证、登录、bundle、远程 session 或
 | 分组 | 主拥有职责 | 相关测试或共享证据 | 不拥有的相邻文件 |
 |---|---|---|---|
 | agent-tool | AgentTool 实现、fork 子代理、agent memory | `agentToolExecution`：sync/async；`agentToolIsolation`：fork/worktree；`agentToolRouting`：teammate/remote 离线路由；`agentMemorySnapshot` | 自动后台化、真实 teammate/CCR/API cache、真实多 agent 并发和内置 agent 具体行为仍需各自证据 |
-| team-tools | TeamCreateTool、TeamDeleteTool | 未找到专用测试 | 其他工具（SendMessageTool、Task*Tool）不归本组 |
+| team-tools | TeamCreateTool、TeamDeleteTool | `tests/teamLifecycle.test.ts`：真实 config/task dir、唯一命名、active 保护和清理 | SendMessageTool、Task*Tool、真实 teammate 进程与多进程同名创建不归本组证据 |
 | swarm-utils | mailbox、teamHelpers、permissionSync、inProcessRunner、backends | 未找到专用测试 | `src/utils/teammate.ts` 等辅助函数不归本组 |
 | coordinator | Coordinator 模式、系统提示 | 未找到专用测试 | 协调业务逻辑不归本组 |
 

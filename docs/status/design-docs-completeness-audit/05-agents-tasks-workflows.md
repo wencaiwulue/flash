@@ -1672,3 +1672,9 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 - **实现**：新增并唯一登记 `tests/agentToolRouting.test.ts`，6 个测试、25 个断言。覆盖真实外部 opt-in gate、teammate spawn 参数/结果/失败，以及 ant-only remote 的 eligibility→teleport→registration 成功编排、eligibility 拒绝和 bundle failure。
 - **证据边界**：官方 Agent Teams 文档确认默认关闭、env opt-in 和 name 路由；只读 `/opt/homebrew/bin/claude` strings 命中 teammate_spawned/remote_launched。真实 AgentTool，仅 runAgent、spawnTeammate、eligibility/teleport/remote registration 边界替换；无真实 teammate 进程、登录、CCR、bundle、模型或私有协议验证。
 - **上游差异**：公开文档当前描述 teammate 继承 lead permission mode，本快照仍接受显式 `mode:'plan'`；测试只记录快照契约，不声称最新上游 per-teammate mode 兼容。自动后台化、真实多 agent 并发与 remote AppState 生命周期仍未做 live。
+
+## Phase B TeamCreate/Delete 生命周期整改（2026-11-20 追加）
+
+- **Finding**：B5-agent-swarms-02；主责 spec：`2026-11-12-agent-swarms-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
+- **实现**：新增并唯一登记 `tests/teamLifecycle.test.ts`，4 个测试、26 个断言。真实 TeamCreate 写入 lead config/fresh task list/AppState、单团队约束、同名唯一命名且原文件不变；TeamDelete 覆盖 active 拒绝、inactive 清理、inbox 清空和无团队幂等。
+- **证据边界**：真实团队文件、原子写、任务目录和 AppState，CLAUDE_CONFIG_DIR 全部临时。官方 Agent Teams 文档与只读 upstream strings 作边界佐证；顺序同名场景不冒充多进程并发，未执行真实 teammate 进程/worktree。

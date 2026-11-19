@@ -203,6 +203,12 @@ groups:
     summary: teammate opt-in/spawn 路由和 ant-only remote 离线编排、失败路径
     files:
       - tests/agentToolRouting.test.ts
+  - id: team-lifecycle-tests
+    kind: test
+    section: 7
+    summary: TeamCreate/Delete 真实团队文件、任务目录、活跃成员保护和幂等清理
+    files:
+      - tests/teamLifecycle.test.ts
   - id: agent-memory-tests
     kind: test
     section: 7
