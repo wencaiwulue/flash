@@ -1627,3 +1627,23 @@ B4-ui-rendering-02 不新增 test-only cache reset API：通过公开组件和 m
 spec 第 7.4 节记录真实矩阵、三层证据、未覆盖项与回滚；本机 strings 命中 VirtualMessageList，其他符号未用于推断上游实现。全部离线，真实 ColorDiff/useVirtualScroll 与 fake ScrollBoxHandle 不等于真实用户滚动 live。无生产代码变更。
 
 **原 Finding 状态**：B4-ui-rendering-01 保持 open；spec 保持 draft；原发现不删除，仅追加整改台账。
+
+---
+
+## 整改台账：B4-voice-assistant-01（2026-11-19 追加）
+
+**Finding ID**：B4-voice-assistant-01；主责 spec：voice-assistant。
+
+新增并唯一登记 `tests/voiceAssistant.test.tsx`，12 个测试、58 个断言，普通与外部 VOICE_MODE profile 均 exit 0：
+
+- 真实 useVoice/VoiceProvider 的 hold-to-talk、release/finalize、early error 250ms 单次重试与 buffered audio flush。
+- no_data_timeout silent-drop 单次重放，音频字节一致且输出 recovered。
+- focus transcript 即时 flush、生产 terminal-focus-state blur、5s silence 停止及下一 focus cycle 重启。
+- availability/startRecording 失败、卸载后 zombie connection 关闭；stripTrailing/resetAnchor 与 full-width space。
+- normalizeLanguageForSTT、computeLevel、真实 splitIdentifier。
+
+音频设备、STT 和 keyterms 仅在外部接口替换为可控 fake，真实 Hook/provider/terminal-focus-state 完整执行。稳定 insertTextRef 修复了 VOICE_MODE 下 anchor 被 idle effect 清理的测试 harness 问题，没有关闭 feature 或修改生产代码。
+
+spec 第 7 章记录真实矩阵、官方 Voice dictation 文档、只读 `/opt/homebrew/bin/claude` strings、mock/offline/live 边界和回滚。全部离线，无麦克风、OAuth、网络或私有协议验证；未覆盖 tap、真实音频、/voice 全 UI 与物理终端交互。
+
+**原 Finding 状态**：B4-voice-assistant-01 保持 open；spec 保持 draft；原发现不删除，仅追加整改台账。

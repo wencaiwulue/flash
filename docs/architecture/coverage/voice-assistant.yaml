@@ -3,6 +3,12 @@ spec_id: voice-assistant
 spec: ../../superpowers/specs/2026-11-12-voice-assistant-design.md
 status: draft
 groups:
+  - id: voice-assistant-tests
+    kind: test
+    section: 7
+    summary: 语音状态机、focus、重试重放与输入锚点测试
+    files:
+      - tests/voiceAssistant.test.tsx
   - id: commands
     kind: source
     section: 4
