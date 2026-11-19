@@ -779,6 +779,12 @@ export const SettingsSchema = lazySchema(() =>
         .describe(
           'When true, the plan-approval dialog offers a "clear context" option. Defaults to false.',
         ),
+      showTurnDuration: z
+        .boolean()
+        .optional()
+        .describe(
+          'Show the "Cooked for" duration after each response. Defaults to true. A value in ~/.claude.json from an older version applies when no settings file sets it.',
+        ),
       agent: z
         .string()
         .optional()
