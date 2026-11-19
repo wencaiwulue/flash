@@ -677,57 +677,68 @@ entries:
     exclusion: null
     ownerBatch: 2
   - id: setting:autoMemoryDirectory
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b2-local-core-ui
+    implementation:
+      - src/memdir/paths.ts
+      - src/utils/settings/types.ts
+    tests:
+      - tests/b2TerminalMemory.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "types.ts autoMemoryDirectory zod；generated schema diff"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.string().optional() = 上游 string"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 default=null（用默认 memdir 路径）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "getAutoMemPathSetting 按 policy>flag>local>user 多源读 + validateMemoryPath"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "无额外 precedence"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "memdir 路径解析；tests/b2TerminalMemory 用例"
+    notes: "已实现对齐，验证+记录"
     exclusion: null
     ownerBatch: 2
   - id: setting:autoMemoryEnabled
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b2-local-core-ui
+    implementation:
+      - src/memdir/memdir.ts
+      - src/memdir/paths.ts
+      - src/utils/settings/types.ts
+    tests:
+      - tests/b2TerminalMemory.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "types.ts autoMemoryEnabled zod；generated schema diff"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.boolean().optional() = 上游 boolean"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 default=true；getInitialSettings().autoMemoryEnabled===false 才禁用"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "getInitialSettings() 合并 settings"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "CLAUDE_CODE_DISABLE_AUTO_MEMORY > --bare(CLAUDE_CODE_SIMPLE) > settings；paths.ts:24-38"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "memdir.ts:498 禁用判定 + env/bare precedence；tests/b2TerminalMemory 用例"
+    notes: "已实现对齐（含 env/bare precedence），验证+记录"
     exclusion: null
     ownerBatch: 2
   - id: setting:autoMode
@@ -920,30 +931,36 @@ entries:
     exclusion: null
     ownerBatch: 2
   - id: setting:autoUpdatesChannel
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b2-local-core-ui
+    implementation:
+      - src/main.tsx
+      - src/cli/update.ts
+      - src/utils/settings/types.ts
+    tests:
+      - tests/b2TerminalMemory.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "types.ts autoUpdatesChannel zod；generated schema diff"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.string().optional() = 上游 string"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 default=null → 运行时 ?? latest"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "getInitialSettings()?.autoUpdatesChannel ?? latest（update.ts:34/Doctor.tsx:133/main.tsx:6639）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "managed settings 可强制 channel"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "更新 channel 选择；tests/b2TerminalMemory 用例"
+    notes: "已实现对齐，验证+记录"
     exclusion: null
     ownerBatch: 2
   - id: setting:availableModels
@@ -7102,30 +7119,35 @@ entries:
     exclusion: null
     ownerBatch: 2
   - id: setting:terminalTitleFromRename
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b2-local-core-ui
+    implementation:
+      - src/screens/REPL.tsx
+      - src/utils/settings/types.ts
+    tests:
+      - tests/b2TerminalMemory.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "types.ts terminalTitleFromRename zod；generated schema diff"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.boolean().optional() = 上游 boolean"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 default=true；REPL !== false"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "useAppState(s=>s.settings.terminalTitleFromRename)；settings=getInitialSettings()"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "无额外 precedence"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "REPL.tsx:1564 控制终端标题 rename；tests/b2TerminalMemory 用例"
+    notes: "已实现对齐，验证+记录"
     exclusion: null
     ownerBatch: 2
   - id: setting:theme
