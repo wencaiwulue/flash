@@ -542,30 +542,36 @@ entries:
     exclusion: null
     ownerBatch: 3
   - id: setting:autoCompactEnabled
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b2-local-core-ui
+    implementation:
+      - src/utils/config.ts
+      - src/utils/settings/types.ts
+      - src/services/compact/autoCompact.ts
+    tests:
+      - tests/b2CompactEditorSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "settings/types.ts 显式 autoCompactEnabled zod；.passthrough() 保留 settings 文件值"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.boolean().optional() = 上游 Boolean"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 default=true；getAutoCompactEnabled ?? true"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "getAutoCompactEnabled()=getInitialSettings() 为主，getGlobalConfig()（~/.claude.json）旧值 fallback"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "DISABLE_AUTO_COMPACT env 单会话关闭（autoCompact.ts isAutoCompactEnabled 前置 return false）> settings > legacy"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "autoCompact.ts isAutoCompactEnabled 返回 getAutoCompactEnabled()；tests/b2CompactEditorSettings 3 用例"
+    notes: "上游 Any file 严格为 settings-only；flash 保留 GlobalConfig 作 back-compat fallback（超上游兼容），settings 文件优先对齐主来源。DISABLE_COMPACT env 为 flash 额外保留"
     exclusion: null
     ownerBatch: 2
   - id: setting:autoCompactWindow
@@ -2142,30 +2148,37 @@ entries:
     exclusion: null
     ownerBatch: final
   - id: setting:editorMode
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b2-local-core-ui
+    implementation:
+      - src/utils/config.ts
+      - src/utils/settings/types.ts
+      - src/components/PromptInput/utils.ts
+      - src/commands/vim/vim.ts
+    tests:
+      - tests/b2CompactEditorSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "settings/types.ts 显式 editorMode zod；.passthrough() 保留 settings 文件值"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.string().optional() = 上游 String（EditorMode 枚举 normal/vim/emacs）"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 default=null→normal；getEditorMode ?? 'normal'"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "getEditorMode()=getInitialSettings() 为主，getGlobalConfig()（~/.claude.json）旧值 fallback"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "settings > legacy ~/.claude.json > default normal；无 env precedence"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "utils.ts isVimModeEnabled=getEditorMode()==='vim'、vim.ts currentMode=getEditorMode()||'normal'；tests/b2CompactEditorSettings 3 用例"
+    notes: "读路径已 settings 优先；/vim 命令写路径仍 saveGlobalConfig（~/.claude.json），与上游写 user settings 有 gap（settings 文件含 editorMode 时 /vim 切换不生效），留待写路径对齐"
     exclusion: null
     ownerBatch: 2
   - id: setting:effortLevel
@@ -2601,30 +2614,36 @@ entries:
     exclusion: null
     ownerBatch: 5
   - id: setting:fileCheckpointingEnabled
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b2-local-core-ui
+    implementation:
+      - src/utils/config.ts
+      - src/utils/settings/types.ts
+      - src/utils/fileHistory.ts
+    tests:
+      - tests/b2CompactEditorSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "settings/types.ts 显式 fileCheckpointingEnabled zod；.passthrough() 保留 settings 文件值"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.boolean().optional() = 上游 Boolean"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 default=true；getFileCheckpointingEnabled ?? true"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "getFileCheckpointingEnabled()=getInitialSettings() 为主，getGlobalConfig()（~/.claude.json）旧值 fallback"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING env 单会话关闭（fileHistory.ts !isEnvTruthy）> settings > legacy"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "fileHistory.ts fileHistoryEnabled=getFileCheckpointingEnabled()!==false && !env；tests/b2CompactEditorSettings 3 用例"
+    notes: "上游 Any file 严格为 settings-only；flash 保留 GlobalConfig 作 back-compat fallback（超上游兼容），settings 文件优先对齐主来源"
     exclusion: null
     ownerBatch: 2
   - id: setting:fileSuggestion

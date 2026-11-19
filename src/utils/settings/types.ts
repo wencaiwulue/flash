@@ -830,6 +830,24 @@ export const SettingsSchema = lazySchema(() =>
         .describe(
           'Automatically install IDE extensions when running from within an IDE. Global config (~/.claude.json) scope; defaults to true.',
         ),
+      autoCompactEnabled: z
+        .boolean()
+        .optional()
+        .describe(
+          'Enable auto-compact when the context fills. Defaults to true. DISABLE_AUTO_COMPACT turns it off for one session. A value in ~/.claude.json from an older version applies when no settings file sets it.',
+        ),
+      fileCheckpointingEnabled: z
+        .boolean()
+        .optional()
+        .describe(
+          'Enable file checkpointing for rewind/restore. Defaults to true. CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING turns it off for one session. A value in ~/.claude.json from an older version applies when no settings file sets it.',
+        ),
+      editorMode: z
+        .string()
+        .optional()
+        .describe(
+          'Keybinding mode for the prompt input (e.g. "normal" or "vim"). Defaults to "normal". A value in ~/.claude.json from an older version applies when no settings file sets it.',
+        ),
       agent: z
         .string()
         .optional()
