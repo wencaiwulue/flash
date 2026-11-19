@@ -3,6 +3,12 @@ spec_id: deep-link
 spec: ../../superpowers/specs/2026-11-12-deep-link-design.md
 status: draft
 groups:
+  - id: deep-link-tests
+    kind: test
+    section: 7
+    summary: URI 解析、repo/cwd 回退、纯 argv 启动与 Linux 注册 artifact
+    files:
+      - tests/deepLink.test.ts
   - id: deep-link-parse
     kind: source
     section: 4

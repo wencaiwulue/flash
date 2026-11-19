@@ -1019,3 +1019,10 @@
 - **RED**：原 CI `tests/directConnect.test.ts` 的 rotation 用例实际失败；增加受控 eventChain 后，本地 `bun test tests/directConnect.test.ts --timeout 60000` 退出 1，证明 gate 未释放前已错误发送 ready。
 - **GREEN**：`attach()` 仅增加一次 `await runtime.eventChain`，新到事件继续由 replay buffer 承接；同一 focused 命令退出 0（14 pass，0 fail）。
 - **证据边界**：本地 loopback/offline 验证，不表示 CCR 私有协议兼容；官方文档和 upstream strings 边界见主责 spec。原 3 个 remote-control Finding 与历史统计不变。
+
+## Phase B Deep Link 行为整改（2026-11-20 追加）
+
+- **Finding**：B6-deep-link-04；主责 spec：`2026-11-12-deep-link-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
+- **实现**：新增并唯一登记 `tests/deepLink.test.ts`，6 个测试、26 个断言。覆盖 URI/Unicode round-trip、非法输入、handler repo/lastFetch、纯 argv query/repo/cwd、Linux `.desktop` 注册与 current/stale 检查。
+- **证据边界**：真实 parser/handler/launcher/注册逻辑，OS 命令、repo lookup 和 lastFetch 为边界替身；无真实桌面协议、终端或私有协议。macOS trampoline、Windows 注册表、banner UI、多克隆 MRU、shell quoting、worktreeinclude 和 `claude://` 双向链接仍未覆盖。
+- **隔离纠错**：初版测试曾误写真实 Applications/XDG artifact，均确认属于测试后删除；beforeEach 现在重设 HOME/XDG，最终真实路径无残留。Bun namespace 会被原地替换，生产 launcher 通过预先保存的函数引用验证，handler 继续用 mock。
