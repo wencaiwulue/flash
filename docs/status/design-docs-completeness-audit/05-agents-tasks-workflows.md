@@ -1644,3 +1644,10 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 - **实现**：新增并唯一登记 `tests/todoTasks.test.ts`，9 个测试、45 个断言。覆盖 create/get/update/delete、corrupt JSON/schema、并发 claim、agent_busy/blocked、真实 TaskCreate/Get，以及 stopTask 成功和三类错误/kill failure。
 - **B5-task-system-04 实证**：unlink EACCES 后 delete=false、原 task 可读、highwatermark 保留，下一次 create 使用新 ID；没有 ID 重用，不盲改生产顺序。
 - **证据边界**：全部离线，真实 proper-lockfile、临时文件、AppState/SDK event 与 kill/taskImpl 边界替换，不是后台进程 live。spec 第 7.2 节记录真实矩阵、官方 Tools reference、只读 `/opt/homebrew/bin/claude` strings 和回滚。
+
+## Phase B Workflow Runner/Kill 测试整改（2026-11-19 追加）
+
+- **Findings**：B5-workflow-01/06；主责 spec：`2026-11-12-workflow-design.md`。原 Finding 行和历史统计保持 open，spec 既有 approved 状态不变。
+- **实现**：新增并唯一登记 `tests/workflowRunner.test.ts`，6 个测试、23 个断言。覆盖 custom/general-purpose agent 选择、参数透传、最后一条 assistant 的完整多 block 文本、外部 abort 传播与 listener 清理、agent error，以及 killed 后 runner 迟到 resolve/reject 不改写步骤状态或 results。
+- **场景校准**：初版误将同一 assistant 的多个 text block 断言为只取最后 block，并误中止内部 controller 而非外部 signal；这两处不是生产缺陷 RED。按 `runner.ts` 实际契约修正测试，未改生产代码。
+- **证据边界**：真实 WorkflowExecution/AbortController，离线替换 runAgent/getTools 边界；没有真实模型、后台进程或私有上游协议验证。官方公开文档不定义此 Workflow DSL；只读 `/opt/homebrew/bin/claude` strings 仅作 `agent:custom`/`transcriptSubdir` 边界佐证，未声称私有 runner/executor 兼容。

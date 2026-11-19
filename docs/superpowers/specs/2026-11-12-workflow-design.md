@@ -639,8 +639,24 @@ interface LocalWorkflowTaskState extends TaskStateBase {
 | 每个步骤用独立 AbortController | `src/tools/WorkflowTool/executor.ts:38,161-163` | `tests/workflow.test.ts:193-206` | 仅检查 kill 场景 |
 | 执行结果持久化到 JSON 文件 | `src/tasks/LocalWorkflowTask/LocalWorkflowTask.ts:99-113` | `tests/workflow.test.ts:233-261` | 仅检查基本持久化 |
 | WorkflowTool 用 discovery 查找项目 workflows | `src/tools/WorkflowTool/discovery.ts` + `createWorkflowCommand.ts` | `tests/workflow.test.ts:209-232` | 仅检查基本发现 |
-| 步骤执行通过 runAgent 完成 | `src/tools/WorkflowTool/runner.ts:1-55` | 未找到直接测试 runner 的测试 | 仅检查代码实现 |
+| 步骤执行通过 runAgent 完成 | `src/tools/WorkflowTool/runner.ts:1-55` | `tests/workflowRunner.test.ts:72-129` | 离线替换 runAgent/getTools 边界；验证参数、fallback、最后一条 assistant 完整文本、外部 abort、listener 清理和 agent 异常，不是真实模型 live |
 | workflow 完成后更新 AppState 中的 LocalWorkflowTaskState | `src/tasks/LocalWorkflowTask/LocalWorkflowTask.ts:88-94` | `tests/workflow.test.ts:233-261` | 仅检查基本更新 |
+
+### 7.1 Runner 与 kill 迟到结果整改（2026-11-19）
+
+关联 Finding：B5-workflow-01、B5-workflow-06。新增 `tests/workflowRunner.test.ts` 并唯一登记到 `workflow.yaml`；6 个测试、23 个断言，无生产代码变更。
+
+| 决策 | 实际行为与验证 | 证据 |
+|---|---|---|
+| Runner 输出边界 | 收集每条 assistant 消息中的全部 text block，以换行连接同一条消息的文本，返回最后一条 assistant 的完整文本；不会被较早 assistant 消息覆盖 | `runner.ts:28-51`；`tests/workflowRunner.test.ts` 的 earlier/final 两条消息场景 |
+| Agent 选择与调用参数 | 匹配 `step.agentType`，未知类型回退真实 `GENERAL_PURPOSE_AGENT`；原样传递 prompt、tools、transcript 子目录、权限回调和同步 agent 选项 | `runner.ts:14-42`；runner 参数与 fallback 测试 |
+| Abort 与失败清理 | 外部 signal abort 传播到内部 controller，最终 rejection 保留外部 abort reason；`finally` 移除 listener。`runAgent` 自身抛错也直接向上传播 | `runner.ts:23-26,50-54`；外部 abort 与 agent failure 测试 |
+| kill 后迟到 settle | workflow 已为 killed 时，运行中步骤的迟到 resolve/reject 均不改写步骤为 completed/failed，也不写入 results；controllers 清完后 done 以 killed 结束 | `executor.ts:172-195,198-234`；两个 late settle 测试 |
+| 证据边界 | 真实 `WorkflowExecution`、AbortController 和动态 import 后的 runner；仅替换 runAgent/getTools 边界。全部离线，不执行真实模型、后台进程或私有上游协议 | 测试 mock.module 声明及 focused/full 门禁 |
+
+三层证据：官方 Subagents/Tools 文档只提供子 agent 与工具调用的公开边界，不公开本 Workflow DSL；只读 `/opt/homebrew/bin/claude` strings 命中 `agent:custom`、`transcriptSubdir`，未命中本仓库完整 Workflow runner/executor 实现，因此不推断私有上游输出或 kill 语义；实际契约以本仓库 `runner.ts`、`executor.ts` 和上述行为测试为准。
+
+初版测试曾误把同一 assistant 的多个 text block 当成只取最后一个 block，并误中止内部 controller 而非外部 signal；这两处是测试场景错误，不作为生产缺陷 RED。修正场景后生产代码无需改变。回滚只需移除新测试、coverage entry、本节和审计台账，保持原 Finding open。
 
 ## 8. 文件覆盖与相关子系统
 
@@ -650,7 +666,7 @@ interface LocalWorkflowTaskState extends TaskStateBase {
 |---|---|---|---|
 | workflow-schema | Workflow 定义解析、提示插值 | `tests/workflow.test.ts:48-87` |  |
 | workflow-executor | Workflow 执行引擎、DAG 调度、失败传播、重试/跳过/kill | `tests/workflow.test.ts:90-206` |  |
-| workflow-runner | 步骤执行、runAgent 集成 | 未找到直接测试 |  |
+| workflow-runner | 步骤执行、runAgent 集成 | `tests/workflowRunner.test.ts` | 真实模型执行与私有上游 runner 兼容性不归本组 |
 | workflow-tool | Workflow 工具、发现、命令创建 | `tests/workflow.test.ts:209-232` | 其他工具不归本组 |
 | workflow-task | LocalWorkflowTask 实现、任务系统集成 | `tests/workflow.test.ts:233-261` | 其他任务类型不归本组 |
 

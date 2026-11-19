@@ -48,3 +48,4 @@ groups:
     summary: Workflow 测试
     files:
       - tests/workflow.test.ts
+      - tests/workflowRunner.test.ts
