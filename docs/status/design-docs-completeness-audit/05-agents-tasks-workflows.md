@@ -1651,3 +1651,10 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 - **实现**：新增并唯一登记 `tests/workflowRunner.test.ts`，6 个测试、23 个断言。覆盖 custom/general-purpose agent 选择、参数透传、最后一条 assistant 的完整多 block 文本、外部 abort 传播与 listener 清理、agent error，以及 killed 后 runner 迟到 resolve/reject 不改写步骤状态或 results。
 - **场景校准**：初版误将同一 assistant 的多个 text block 断言为只取最后 block，并误中止内部 controller 而非外部 signal；这两处不是生产缺陷 RED。按 `runner.ts` 实际契约修正测试，未改生产代码。
 - **证据边界**：真实 WorkflowExecution/AbortController，离线替换 runAgent/getTools 边界；没有真实模型、后台进程或私有上游协议验证。官方公开文档不定义此 Workflow DSL；只读 `/opt/homebrew/bin/claude` strings 仅作 `agent:custom`/`transcriptSubdir` 边界佐证，未声称私有 runner/executor 兼容。
+
+## Phase B AgentTool Sync/Async 测试整改（2026-11-20 追加）
+
+- **Finding**：B5-agent-swarms-01；主责 spec：`2026-11-12-agent-swarms-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
+- **实现**：新增并唯一登记 `tests/agentToolExecution.test.ts`，6 个测试、30 个断言。真实 `AgentTool.call` 覆盖 sync 成功/无输出失败/部分结果、async 立即返回与完成、失败、AbortError 中止；验证 AppState、SDK/通知队列、runAgent 参数和任务资源清理。
+- **证据**：官方 Subagents 文档明确前后台、部分输出和失败/停止语义；只读 `/opt/homebrew/bin/claude` strings 命中 `async_launched` 与前后台返回结构；仓库生产入口和真实 LocalAgentTask 生命周期作为精确断言依据。
+- **边界**：全部离线，仅替换 runAgent 模型边界；不是实际模型、远程服务或后台进程 live。fork/worktree、teammate/remote、自动后台化与真实多 agent 并发保留给后续独立切片，不提前声称完成 B5-agent-swarms-01 全部范围。

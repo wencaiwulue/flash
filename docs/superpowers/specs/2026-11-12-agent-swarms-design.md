@@ -236,7 +236,7 @@ type RemoteLaunchedOutput = {
 - Fork 路径：`src/tools/AgentTool/forkSubagent.ts`
 - 工具池：`src/tools/AgentTool/loadAgentsDir.ts`
 - 执行器：`src/tools/AgentTool/runAgent.ts`
-- 测试：未找到直接测试文件
+- 测试：`tests/agentToolExecution.test.ts` 覆盖真实 `AgentTool.call` 的同步/异步执行、部分结果、失败、中止与任务清理；runAgent 为离线边界
 
 ---
 
@@ -1492,7 +1492,7 @@ type AppState = {
 
 | 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
 |---|---|---|---|
-| AgentTool 四模式执行 | `src/tools/AgentTool/AgentTool.tsx:1-1669` | 未找到直接测试文件 | 未覆盖四种模式的完整组合 |
+| AgentTool 四模式执行 | `src/tools/AgentTool/AgentTool.tsx:1-1669` | `tests/agentToolExecution.test.ts`：真实 sync/async call、成功、部分输出、失败、abort、任务状态与清理 | 仅替换 runAgent 模型边界；teammate/remote、fork/worktree 和自动后台化仍由后续独立切片覆盖，未做 live |
 | AgentTool Fork 隐式子代理 | `src/tools/AgentTool/forkSubagent.ts:32-210` | 未找到直接测试文件 | feature('FORK_SUBAGENT') 可能未覆盖 |
 | AgentTool Worktree 隔离 | `src/tools/AgentTool/AgentTool.tsx` (worktree 相关部分) + `src/utils/worktree.ts` | 未找到直接测试文件 | 未覆盖有变更保留 worktree 的场景 |
 | TeamCreateTool 创建团队 | `src/tools/TeamCreateTool/TeamCreateTool.ts:1-241` | 未找到直接测试文件 | 未覆盖并发创建同名团队 |
@@ -1504,13 +1504,29 @@ type AppState = {
 | Coordinator 模式协调 | `src/coordinator/coordinatorMode.ts:1-369` | 未找到直接测试文件 | 仅检查系统提示，未验证端到端协调 |
 | Agent 内存快照管理 | `src/tools/AgentTool/agentMemorySnapshot.ts` + `src/tools/AgentTool/agentMemory.ts` | `tests/agentMemorySnapshot.test.ts`: 快照初始化、时间戳验证、保留变更、回滚机制、合并完成验证 | 未覆盖多 agent 同时合并的竞态场景 |
 
+### 7.1 AgentTool 同步/异步执行整改（2026-11-20）
+
+关联 Finding：B5-agent-swarms-01。新增 `tests/agentToolExecution.test.ts` 并唯一登记到 `agent-swarms.yaml`；6 个测试、30 个断言，无生产代码变更。
+
+| 决策 | 实际行为与验证 | 证据 |
+|---|---|---|
+| 同步成功 | 真实 `AgentTool.call` 选择指定 agent、传递用户 prompt、以 `isAsync:false` 调用 runner，返回最后 assistant 文本；前台任务结束后从 AppState 移除，并发出 completed SDK 通知 | `AgentTool.tsx:1044-1669`；sync success 测试 |
+| 同步失败与部分结果 | runner 在 assistant 前失败时向上抛错并清理前台任务；已经产生 assistant 后失败时返回部分文本，同时 SDK 终态通知仍为 failed | `AgentTool.tsx:1510-1639`；两个 failure 测试 |
+| 异步不等待 | `run_in_background:true` 在 runner gate 未释放时即返回 `async_launched`，AppState 已有 running/backgrounded task；释放后由真实 `runAsyncAgentLifecycle` 写入 completed result 和通知 | `AgentTool.tsx:955-1043`；`agentToolUtils.ts:508-687`；gated success 测试 |
+| 异步失败/中止 | runner 普通异常使 task=failed；AbortError 使 task=killed；两者均清理 abortController 并发出对应通知，测试结束后无运行中任务 | `agentToolUtils.ts:638-685`；async failure/abort 测试 |
+| 资源与证据边界 | 真实 AgentTool、LocalAgentTask、AppState、SDK/notification queues 和临时 task output 目录；仅 runAgent 模型执行边界被替换。未执行真实模型、远程服务或后台进程 | 测试 beforeEach/afterEach 与 focused/profile 门禁 |
+
+三层证据：官方 [Subagents 文档](https://code.claude.com/docs/en/sub-agents) 明确前台等待、后台稍后通知、已有文本时 API 错误返回部分输出、后台失败/停止语义；只读 `/opt/homebrew/bin/claude` strings 命中 `async_launched`、真实 async 返回结构和前后台分支；本仓库 `AgentTool.tsx`、`agentToolUtils.ts` 与上述测试验证精确状态和资源清理。测试只证明本快照的离线契约，不声称真实模型或私有上游协议 live 兼容。
+
+本切片不宣称完成 fork/worktree、teammate/remote、自动后台化或真实多 agent 并发。回滚只需移除新测试、coverage entry、本节和审计台账，保持原 Finding open、spec draft。
+
 ## 8. 文件覆盖与相关子系统
 
 [Coverage](../../architecture/coverage/agent-swarms.yaml)
 
 | 分组 | 主拥有职责 | 相关测试或共享证据 | 不拥有的相邻文件 |
 |---|---|---|---|
-| agent-tool | AgentTool 实现、fork 子代理、agent memory | 未找到专用测试 | `src/tools/AgentTool/built-in/` 中的内置 agent 实现不归本组 |
+| agent-tool | AgentTool 实现、fork 子代理、agent memory | `tests/agentToolExecution.test.ts`：sync/async 真实入口与 LocalAgentTask 生命周期；`tests/agentMemorySnapshot.test.ts` | fork/worktree、teammate/remote 与内置 agent 具体行为仍需各自证据 |
 | team-tools | TeamCreateTool、TeamDeleteTool | 未找到专用测试 | 其他工具（SendMessageTool、Task*Tool）不归本组 |
 | swarm-utils | mailbox、teamHelpers、permissionSync、inProcessRunner、backends | 未找到专用测试 | `src/utils/teammate.ts` 等辅助函数不归本组 |
 | coordinator | Coordinator 模式、系统提示 | 未找到专用测试 | 协调业务逻辑不归本组 |

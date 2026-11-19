@@ -185,6 +185,12 @@ groups:
     summary: UI 提示组件
     files:
       - src/components/Spinner/teammateSelectHint.ts
+  - id: agent-tool-execution-tests
+    kind: test
+    section: 7
+    summary: AgentTool 同步/异步真实入口、结果、失败、中止与任务清理
+    files:
+      - tests/agentToolExecution.test.ts
   - id: agent-memory-tests
     kind: test
     section: 7
