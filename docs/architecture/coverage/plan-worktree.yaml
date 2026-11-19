@@ -78,6 +78,12 @@ groups:
       - src/commands/ultraplan.tsx
       - src/components/UltraplanChoiceDialog.tsx
       - src/components/UltraplanLaunchDialog.tsx
+  - id: plan-worktree-tests
+    kind: test
+    section: 7
+    summary: 计划 resume/fork、slug、真实 worktree dirty/baseline 安全门和 keep/remove
+    files:
+      - tests/planWorktree.test.ts
   - id: plan-mode-tests
     kind: test
     section: 7

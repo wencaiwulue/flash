@@ -1703,3 +1703,9 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 - **Finding**：B5-help-feedback-01；主责 spec：`2026-11-12-help-feedback-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
 - **实现**：新增并唯一登记 `tests/helpFeedback.test.tsx`，8 个测试、40 个断言。覆盖数字 debounce/disabled、survey 用户回合与单次概率 roll、global cooldown、dummy 凭证脱敏、HelpV2 真实 Tab/Escape、Tips 最久未展示、ReleaseNotes 版本解析与 5 条上限。
 - **证据边界**：真实 hook/Ink/清理/解析；动态配置/global config/策略仅内存控制，无真实反馈提交、changelog fetch 或遥测。只读 upstream strings 与公开文档作边界佐证，不推断私有触发算法。测试按真实 submit 基线和 onOpen 副作用验收，所有临时生产诊断已移除。
+
+## Phase B Plan/Worktree 行为整改（2026-11-20 追加）
+
+- **Finding**：B5-plan-worktree-01；主责 spec：`2026-11-12-plan-worktree-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
+- **实现**：新增并唯一登记 `tests/planWorktree.test.ts`，6 个测试、33 个断言。覆盖 resume 原 slug、fork 新 slug/同内容、嵌套 slug 扁平化/traversal 拒绝、无会话 no-op、dirty remove 拒绝、显式 discard 后删除、缺失 HEAD 基线 fail-closed、keep 保留和 cwd 恢复。
+- **证据边界**：官方 Worktrees 文档与真实临时 git 仓库；配置保存为内存 no-op，无全局 git 配置或用户配置写入。未覆盖 file snapshot/message 计划恢复、worktreeinclude/sparse、tmux、stale sweep 或 CCR 状态机，不提前声称全部 Finding 范围完成。
