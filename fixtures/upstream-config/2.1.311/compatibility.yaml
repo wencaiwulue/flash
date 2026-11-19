@@ -3549,30 +3549,36 @@ entries:
     exclusion: null
     ownerBatch: final
   - id: setting:outputStyle
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b2-local-core-ui
+    implementation:
+      - src/constants/outputStyles.ts
+      - src/utils/messages/systemInit.ts
+      - src/utils/settings/types.ts
+    tests:
+      - tests/b2DisplaySettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "settings/types.ts:680 outputStyle zod；generated schema diff"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.string().optional() = 上游 string"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 default=null(unset)；运行时 systemInit.ts:55 ?? DEFAULT_OUTPUT_STYLE_NAME='default'"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "getOutputStyleConfig 读 getSettings_DEPRECATED()=getInitialSettings() 合并 settings；scope Any file"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游无额外 precedence；合并 settings 值"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "getOutputStyleConfig 驱动输出样式；tests/b2DisplaySettings outputStyle 用例"
+    notes: "已实现对齐，本轮验证+记录证据"
     exclusion: null
     ownerBatch: 2
   - id: setting:parentSettingsBehavior
@@ -5768,57 +5774,68 @@ entries:
     exclusion: null
     ownerBatch: 3
   - id: setting:showClearContextOnPlanAccept
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b2-local-core-ui
+    implementation:
+      - src/components/permissions/ExitPlanModePermissionRequest/ExitPlanModePermissionRequest.tsx
+      - src/state/AppStateStore.ts
+      - src/utils/settings/types.ts
+    tests:
+      - tests/b2DisplaySettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "settings/types.ts:776 zod；generated schema diff"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.boolean().optional() = 上游 boolean"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 default=false；消费者 ?? false"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "useAppState(s=>s.settings.showClearContextOnPlanAccept)；AppStateStore:469 settings=getInitialSettings() 合并 settings"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游无额外 precedence；合并 settings 值"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "控制 plan-approval 对话框 clear-context 选项；tests/b2DisplaySettings 用例"
+    notes: "已实现对齐，本轮验证+记录证据"
     exclusion: null
     ownerBatch: 2
   - id: setting:showThinkingSummaries
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b2-local-core-ui
+    implementation:
+      - src/utils/betas.ts
+      - src/utils/settings/types.ts
+    tests:
+      - tests/b2DisplaySettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "settings/types.ts:997 zod；generated schema diff"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.boolean().optional() = 上游 boolean"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 default=false；betas.ts:274 !== true（未设置即隐藏 thinking）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "betas.ts:274 getInitialSettings().showThinkingSummaries 合并 settings；scope Any file"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游无额外 precedence；合并 settings 值"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "未设置时 push REDACT_THINKING_BETA_HEADER 隐藏 thinking 摘要；tests/b2DisplaySettings 用例"
+    notes: "已实现对齐，本轮验证+记录证据"
     exclusion: null
     ownerBatch: 2
   - id: setting:showTurnDuration
