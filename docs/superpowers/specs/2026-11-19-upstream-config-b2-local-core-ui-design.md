@@ -114,5 +114,6 @@ coverage：[upstream-config-b2-local-core-ui.yaml](../../architecture/coverage/u
 - global-config 读取路径：showTurnDuration、verbose 六维度 aligned（`getShowTurnDuration()`/`getVerbose()` + tests/b2GlobalConfigPath 10 用例）。verbose 的 viewMode/`/focus` 覆盖不适用（flash 无此特性）。
 - 输出/显示开关：outputStyle、showThinkingSummaries、showClearContextOnPlanAccept 六维度 aligned（已实现对齐，验证+记录证据，tests/b2DisplaySettings 3 用例）。
 - 状态栏：statusLine、statusLine.type/command/padding/refreshInterval/hideVimModeIndicator 六维度 aligned。type/command/padding 及 managed-only 安全限制（executeStatusLineCommand shouldAllowManagedHooksOnly/shouldDisableAllHooksIncludingManaged/trust）本已实现；本轮补 refreshInterval（types.ts min(1) + StatusLine setInterval 定期 doUpdate）与 hideVimModeIndicator（types.ts + PromptInputFooterLeftSide showVim && !hideVimIndicator）。tests/b2StatusLine 3 用例。
-- 矩阵 setting aligned=11，`--batch 2` 0 诊断，design-docs 0 errors。
-- 其余 31 条：未切入，按 §4 子系统分组待后续。
+- autoMemory/终端：autoMemoryDirectory、autoMemoryEnabled、terminalTitleFromRename、autoUpdatesChannel 六维度 aligned（已实现对齐，含 autoMemoryEnabled 的 env/`--bare` precedence 与 autoMemoryDirectory 多源读取，验证+记录，tests/b2TerminalMemory 4 用例）。
+- 矩阵 setting aligned=15，`--batch 2` 0 诊断，design-docs 0 errors。
+- 其余 27 条：未切入，按 §4 子系统分组待后续。
