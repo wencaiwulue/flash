@@ -191,6 +191,12 @@ groups:
     summary: AgentTool 同步/异步真实入口、结果、失败、中止与任务清理
     files:
       - tests/agentToolExecution.test.ts
+  - id: agent-tool-isolation-tests
+    kind: test
+    section: 7
+    summary: fork 缓存前缀、真实 feature gate、递归保护和临时 git worktree 生命周期
+    files:
+      - tests/agentToolIsolation.test.ts
   - id: agent-memory-tests
     kind: test
     section: 7

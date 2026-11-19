@@ -1658,3 +1658,10 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 - **实现**：新增并唯一登记 `tests/agentToolExecution.test.ts`，6 个测试、30 个断言。真实 `AgentTool.call` 覆盖 sync 成功/无输出失败/部分结果、async 立即返回与完成、失败、AbortError 中止；验证 AppState、SDK/通知队列、runAgent 参数和任务资源清理。
 - **证据**：官方 Subagents 文档明确前后台、部分输出和失败/停止语义；只读 `/opt/homebrew/bin/claude` strings 命中 `async_launched` 与前后台返回结构；仓库生产入口和真实 LocalAgentTask 生命周期作为精确断言依据。
 - **边界**：全部离线，仅替换 runAgent 模型边界；不是实际模型、远程服务或后台进程 live。fork/worktree、teammate/remote、自动后台化与真实多 agent 并发保留给后续独立切片，不提前声称完成 B5-agent-swarms-01 全部范围。
+
+## Phase B AgentTool Fork/Worktree 测试整改（2026-11-20 追加）
+
+- **Finding**：B5-agent-swarms-01；主责 spec：`2026-11-12-agent-swarms-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
+- **实现**：新增并唯一登记 `tests/agentToolIsolation.test.ts`。外部 feature profile 6 pass、43 assertions；普通 profile 4 pass、2 skip、31 assertions。覆盖 fork 缓存前缀、真实 gate 下 exact tools/system prompt/context/async、递归拒绝，以及真实临时 git worktree 的 cwd 隔离、无变更删除、有变更保留和失败清理。
+- **场景校准**：外部 profile 的 fork gate 会强制所有 agent async，初版 worktree 同步断言因此失败；这是测试上下文错误，不是生产 RED。改为在合法 non-interactive 上下文运行同步 worktree 场景，未修改生产 gate。
+- **证据边界**：官方 Subagents 文档说明 fork/background/non-interactive 差异；只读 `/opt/homebrew/bin/claude` strings 命中 `useExactTools`、forkContextMessages 和 worktree 生命周期。真实本地 git，runAgent 离线；不测量 API cache 命中率，不验证 hook VCS、远程仓库、30 天 stale sweep、teammate/remote 或自动后台化。

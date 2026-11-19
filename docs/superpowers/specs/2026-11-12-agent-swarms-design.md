@@ -301,7 +301,7 @@ const FORK_PLACEHOLDER_RESULT = 'Fork started — processing in background'
 
 **源码测试证据**
 - 实现：`src/tools/AgentTool/forkSubagent.ts`
-- 测试：未找到直接测试文件
+- 测试：`tests/agentToolIsolation.test.ts` 覆盖缓存前缀、真实 fork feature gate 的 async/精确上下文继承和递归保护；普通 profile 跳过两个 gate 场景，外部 profile 实际执行
 
 ---
 
@@ -364,7 +364,7 @@ type CwdOverride = string | undefined
 **源码测试证据**
 - 实现：`src/tools/AgentTool/AgentTool.tsx` (worktree 相关部分)
 - 底层：`src/utils/worktree.ts`
-- 测试：未找到直接测试文件
+- 测试：`tests/agentToolIsolation.test.ts` 使用真实临时 git 仓库/worktree，覆盖 cwd 隔离、无变更删除、有变更保留和 runner 失败清理
 
 ---
 
@@ -1493,8 +1493,8 @@ type AppState = {
 | 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
 |---|---|---|---|
 | AgentTool 四模式执行 | `src/tools/AgentTool/AgentTool.tsx:1-1669` | `tests/agentToolExecution.test.ts`：真实 sync/async call、成功、部分输出、失败、abort、任务状态与清理 | 仅替换 runAgent 模型边界；teammate/remote、fork/worktree 和自动后台化仍由后续独立切片覆盖，未做 live |
-| AgentTool Fork 隐式子代理 | `src/tools/AgentTool/forkSubagent.ts:32-210` | 未找到直接测试文件 | feature('FORK_SUBAGENT') 可能未覆盖 |
-| AgentTool Worktree 隔离 | `src/tools/AgentTool/AgentTool.tsx` (worktree 相关部分) + `src/utils/worktree.ts` | 未找到直接测试文件 | 未覆盖有变更保留 worktree 的场景 |
+| AgentTool Fork 隐式子代理 | `src/tools/AgentTool/forkSubagent.ts:32-210` | `tests/agentToolIsolation.test.ts`：缓存前缀、真实 gate 下 async/exact tools/system prompt/context、递归保护 | 普通 profile 两个 gate 测试 skip，外部 profile 实际执行；runAgent 离线，不验证真实 API cache 命中率 |
+| AgentTool Worktree 隔离 | `src/tools/AgentTool/AgentTool.tsx` (worktree 相关部分) + `src/utils/worktree.ts` | `tests/agentToolIsolation.test.ts`：真实临时 git worktree 的 cwd、无变更删除、有变更保留、失败清理 | 真实本地 git，非 hook VCS/远程仓库；不覆盖 30 天 stale sweep |
 | TeamCreateTool 创建团队 | `src/tools/TeamCreateTool/TeamCreateTool.ts:1-241` | 未找到直接测试文件 | 未覆盖并发创建同名团队 |
 | TeamDeleteTool 解散团队 | `src/tools/TeamDeleteTool/TeamDeleteTool.ts:1-139` | 未找到直接测试文件 | 未覆盖 member.isActive 的完整生命周期 |
 | SendMessageTool 消息路由 | `src/tools/SendMessageTool/SendMessageTool.ts:1-800+` | 未找到直接测试文件 | 未覆盖 UDS/Bridge 跨机器路径 |
@@ -1520,13 +1520,29 @@ type AppState = {
 
 本切片不宣称完成 fork/worktree、teammate/remote、自动后台化或真实多 agent 并发。回滚只需移除新测试、coverage entry、本节和审计台账，保持原 Finding open、spec draft。
 
+### 7.2 Fork/Worktree 隔离整改（2026-11-20）
+
+继续关联 B5-agent-swarms-01。新增 `tests/agentToolIsolation.test.ts` 并唯一登记；6 个测试在外部 feature profile 全部执行、43 个断言，普通 profile 为 4 pass/2 skip/31 assertions。无生产代码变更。
+
+| 决策 | 实际行为与验证 | 证据 |
+|---|---|---|
+| Fork 缓存前缀 | 同一 parent assistant 下，不同 directive 的 assistant 与 placeholder tool_result 前缀逐值相同，仅末尾 directive 不同；克隆不修改原 parent UUID/content | `forkSubagent.ts:107-169`；prefix 测试 |
+| Fork 生产路由 | 在真实 `FORK_SUBAGENT` profile 且 interactive 上下文，省略 subagent_type 会选择 FORK_AGENT、强制 async，并原样传递 parent tools、renderedSystemPrompt、messages；递归 querySource 在 runAgent 前拒绝 | `AgentTool.tsx:476-539,727-755,810-832,875-911`；两个 gate 测试 |
+| Worktree 无变更清理 | 真实 `AgentTool.call(isolation:'worktree')` 在临时 git 仓库创建 worktree，runner 内 `getCwd()` 指向隔离路径；无变更返回后 worktree 被删除，parent README 不变 | `AgentTool.tsx:859-953,1044-1669`；`worktree.ts:877-995,1119-1148`；clean/failure 测试 |
+| Worktree 有变更保留 | runner 在隔离 cwd 写入新文件后，结果返回 worktreePath/Branch，文件只存在 worktree，不存在 parent checkout；测试后显式清理 | `cleanupWorktreeIfNeeded` 与 changed-worktree 测试 |
+| Gate 与资源边界 | 外部 profile 的 fork gate 会强制所有 agent async，因此 worktree 同步场景使用合法 non-interactive 上下文，不把 async 结果误断言为 sync。配置、session metadata、task output、git 全部隔离到临时目录 | `forkSubagent.ts:32-39`；测试 beforeEach/afterEach |
+
+三层证据：官方 Subagents 文档说明 fork/background 与 non-interactive 的公开行为差异；只读 `/opt/homebrew/bin/claude` strings 命中 `useExactTools`、`forkContextMessages` 和 agent worktree 创建错误/生命周期片段；本仓库生产入口、真实 git worktree 与临时文件系统验证精确隔离和清理。未测量真实 API prompt-cache 命中率，不验证 hook VCS、远程仓库或 30 天 stale sweep。
+
+普通 profile 的两次 skip 是 compile-time feature 未启用的明确分类，不算行为通过；外部 profile 的 6/6 才是 fork gate 证据。回滚只需移除测试、coverage entry、本节和审计台账，保持原 Finding open、spec draft。
+
 ## 8. 文件覆盖与相关子系统
 
 [Coverage](../../architecture/coverage/agent-swarms.yaml)
 
 | 分组 | 主拥有职责 | 相关测试或共享证据 | 不拥有的相邻文件 |
 |---|---|---|---|
-| agent-tool | AgentTool 实现、fork 子代理、agent memory | `tests/agentToolExecution.test.ts`：sync/async 真实入口与 LocalAgentTask 生命周期；`tests/agentMemorySnapshot.test.ts` | fork/worktree、teammate/remote 与内置 agent 具体行为仍需各自证据 |
+| agent-tool | AgentTool 实现、fork 子代理、agent memory | `tests/agentToolExecution.test.ts`：sync/async 生命周期；`tests/agentToolIsolation.test.ts`：fork/worktree；`tests/agentMemorySnapshot.test.ts` | teammate/remote、自动后台化、真实 API cache 命中率和内置 agent 具体行为仍需各自证据 |
 | team-tools | TeamCreateTool、TeamDeleteTool | 未找到专用测试 | 其他工具（SendMessageTool、Task*Tool）不归本组 |
 | swarm-utils | mailbox、teamHelpers、permissionSync、inProcessRunner、backends | 未找到专用测试 | `src/utils/teammate.ts` 等辅助函数不归本组 |
 | coordinator | Coordinator 模式、系统提示 | 未找到专用测试 | 协调业务逻辑不归本组 |
