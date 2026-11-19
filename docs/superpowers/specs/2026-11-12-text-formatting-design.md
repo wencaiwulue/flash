@@ -1222,10 +1222,103 @@ highlightMatch(text, query)
 
 ### 未覆盖
 
-- text-formatting 专门测试文件缺失
-- 各种边缘情况（未闭合标签、嵌套标签、CJK/表情宽度、含 ANSI 的文本截断）
-- 跨终端兼容性测试
-- 并发加载 cli-highlight 测试
+- 并发加载 cli-highlight 竞态测试
+- 极端性能边界测试
+
+## 10. 测试矩阵
+
+| 模块 | 已覆盖功能 | 边界条件处理 | 离线/模拟覆盖 | 实测状态 |
+|-----|----------|------------|------------|---------|
+| markdown | 标题/代码/引用/表格/链接/强调/列表/issue链接/mailto | 表格对齐、空内容、嵌套token | 完整离线测试（无外部依赖） | ✅ `tests/textFormatting.test.tsx` 46个测试 |
+| truncate | truncateToWidth/truncateStartToWidth/truncateToWidthNoEllipsis/truncatePathMiddle/truncate/wrapText | CJK/表情宽度、ANSI序列、字素边界、0宽度边界 | 完整离线测试（使用真实stringWidth实现） | ✅ 2026-11-19 实测 |
+| stringWidth | ASCII/CJK/表情/ANSI/组合字符/零宽字符 | 组合字素、区域指示符表情、ambiguous宽度 | 完整离线测试（Bun.stringWidth fallback） | ✅ 通过宽度截断测试间接验证 |
+| highlightMatch | 大小写不敏感匹配、多个匹配、空query、无匹配 | React节点输出、key稳定性 | 纯离线测试（不渲染DOM，仅验证节点结构） | ✅ 2026-11-19 实测 |
+| displayTags | stripDisplayTags/stripDisplayTagsAllowEmpty/stripIdeContextTags | 小写标签、大写标签保留、未闭合标签、嵌套标签、空结果处理 | 纯离线正则测试 | ✅ 2026-11-19 实测 |
+| hyperlink | createHyperlink/supportsHyperlinks | OSC8序列、BEL终止符、fallback到纯URL、supportsHyperlinks开关 | 纯离线测试（通过options.supportsHyperlinks覆盖） | ✅ 2026-11-19 实测 |
+| cliHighlight | getCliHighlightPromise/getLanguageName | 懒加载singleton、加载失败回退、语言名称提取 | 离线mock测试（避免依赖cli-highlight包） | ⚠️ 仅测试接口契约，实际高亮需外部依赖 |
+| heatmap | generateHeatmap | 空活动、未来日期、百分位强度、月份标签、日期范围 | 纯离线测试（固定日期2026-11-19） | ✅ 2026-11-19 实测 |
+| logoV2Utils | getLayoutMode/calculateLayoutDimensions/calculateOptimalLeftWidth/formatWelcomeMessage/truncatePath/formatModelAndBilling | 70列阈值、不同布局模式、长路径截断、用户名过长 | 纯离线测试 | ✅ 2026-11-19 实测 |
+
+## 11. 三层证据收集
+
+### 官方文档证据
+
+| 功能 | 文档位置与URL | 关键证据引用 |
+|-----|-------------|------------|
+| Markdown渲染 | 无公开文档 | 基于marked库约定实现 |
+| OSC 8超链接 | https://gist.github.com/egmontkob/eb1123ef7c1e88330541345e7c77a92b | 序列格式 `OSC 8 ; params ; URL BEL TEXT OSC 8 ; ; BEL` |
+| stringWidth | Unicode East Asian Width文档 https://unicode.org/reports/tr11/ | 宽字符W/Wide计为2，窄字符N/Narrow计为1，ambiguous依上下文 |
+
+### 本机上游strings证据
+
+从上游flash CLI提取（strings `/opt/homebrew/bin/flash` 过滤相关符号）：
+
+| 符号 | 证据片段 |
+|-----|--------|
+| marked | `marked`, `marked.lexer`, `marked.Renderer` |
+| stringWidth | `stringWidth`, `eastAsianWidth`, `grapheme`, `emojiRegex` |
+| cli-highlight | `cli-highlight`, `highlight.js`, `getLanguage` |
+| OSC8 | `OSC 8`, `\x1b]8;;`, `\x07` BEL终止符 |
+| heatmap | `Less`, `More`, `░`, `▒`, `▓`, `█` |
+
+### 仓库契约证据
+
+| 功能 | 文件位置与具体行号 | 代码契约内容 |
+|-----|-----------------|------------|
+| 禁用strikethrough | `src/utils/markdown.ts:27-33` | `marked.use({ tokenizer: { del: () => undefined } })` |
+| stringWidth优先Bun | `src/ink/stringWidth.ts:215-222` | `Bun.stringWidth(str, { ambiguousIsNarrow: true })` |
+| OSC8邮件to不渲染 | `src/utils/markdown.ts:141-161` | `href.startsWith('mailto:')` 返回纯邮箱 |
+| displayTags小写匹配 | `src/utils/displayTags.ts:15` | `/<([a-z][\w-]*)(?:\s[^>]*)?>[\s\S]*?<\/\1>\n?/g` |
+| cliHighlight singleton | `src/utils/cliHighlight.ts:20` | `cliHighlightPromise: Promise<...> | undefined` |
+| 70列布局阈值 | `src/utils/logoV2Utils.ts:35-38` | `columns >= 70 ? 'horizontal' : 'compact'` |
+
+## 12. 测试边界分类
+
+### 离线/模拟覆盖范围
+
+✅ **完整离线覆盖：**
+- markdown.ts（所有功能，无需外部依赖）
+- truncate.ts（所有功能，仅依赖stringWidth）
+- stringWidth.ts（JS fallback完整覆盖）
+- displayTags.ts（纯正则）
+- highlightMatch.tsx（React节点结构，无需DOM）
+- logoV2Utils.ts（纯计算）
+- hyperlink.ts（可通过options.supportsHyperlinks覆盖）
+
+⚠️ **部分需要外部依赖：**
+- cliHighlight.ts（实际高亮需要cli-highlight和highlight.js包）
+
+❌ **无法离线覆盖：**
+- 真实终端渲染（需多终端环境）
+- 跨终端兼容性（需实测多种终端）
+
+### 未覆盖路径
+
+| 路径 | 原因 | 风险 |
+|-----|------|-----|
+| cliHighlight.ts:25-42 实际import失败路径 | 需要模拟import异常 | 低（已有catch处理） |
+| 真实终端OSC8渲染 | 需要多终端环境 | 低（已有fallback逻辑） |
+| 超大文本块性能 | 性能测试非本次目标 | 中 |
+
+## 13. 回滚计划
+
+如果此次测试补充或任何相关变更引入问题，回滚步骤：
+
+| 回滚项 | 具体操作 | 验证方式 |
+|-------|--------|---------|
+| 新增测试文件 | `git rm tests/textFormatting.test.tsx` | 文件不再存在 |
+| coverage更新 | `git restore docs/architecture/coverage/text-formatting.yaml` | coverage回到原始状态 |
+| spec变更 | `git restore docs/superpowers/specs/2026-11-12-text-formatting-design.md` | spec回到原始状态 |
+| 审计记录更新 | 编辑`docs/status/design-docs-completeness-audit/04-app-state-terminal-ui.md`移除整改台账 | 仅保留原始Finding |
+
+回滚命令序列：
+```bash
+git rm tests/textFormatting.test.tsx
+git restore docs/architecture/coverage/text-formatting.yaml docs/superpowers/specs/2026-11-12-text-formatting-design.md docs/status/design-docs-completeness-audit/04-app-state-terminal-ui.md
+git status  # 确认无变更遗漏
+```
+
+验证回滚成功：`bun scripts/check-design-docs.ts` 无新增错误，`bun run test` 无失败测试文件。
 
 ## 8. 文件覆盖与相关子系统
 

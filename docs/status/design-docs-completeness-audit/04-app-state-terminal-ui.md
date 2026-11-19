@@ -1571,3 +1571,26 @@
 **增量缺陷 B4-repl-input-03**：普通 `bun test` 通过、外部 feature profile RED，父级 input 未提交且 cursorOffset 停留 5。feature 二分和最小条件 `require` 复现定位到 `PromptInputFooterLeftSide` 的 COORDINATOR_MODE eager CommonJS 加载；改为与 `toolPool.ts` 一致的静态 ESM import，同时保留调用点 feature 判断。修复后普通与 profile focused 均 exit 0。修改文件已有 `ide-integration` coverage 主责，不重复登记；三层证据和离线边界记入 repl-input spec 7.1.1。
 
 **原 Finding 状态**：B4-repl-input-01/02 保持 open，spec 保持 draft；B4-repl-input-03 仅追加整改台账，不批量关闭原发现。
+
+---
+
+## 整改台账：B4-text-formatting-01（2026-11-19 追加）
+
+**Finding ID**：B4-text-formatting-01；主责 spec：text-formatting。
+
+新增 `tests/textFormatting.test.tsx` 并唯一登记 coverage，46 个测试覆盖全部 8 个类别：
+
+- **Markdown**：configureMarked 删除线禁用、lexer 分词、formatToken 递归处理 heading/code/codespan/strong/em/link/list/table、table 列宽对齐边框、linkifyIssueReferences 自动链接、空输入与边界情况。
+- **宽度截断**：stringWidth CJK/emoji/ANSI/零宽字符识别、sliceAnsi 安全截断、truncateToWidth 保持可见宽度、空与过短输入。
+- **标签剥离**：XML_TAG_BLOCK_PATTERN 只匹配小写标签、stripDisplayTags 空结果返回原内容、stripDisplayTagsAllowEmpty 允许空、stripIdeContextTags 仅剥离 ide_*、用户大写标签保留。
+- **超链接**：OSC8_START/END BEL 终止符、supportsHyperlinks 检测、mailto 不渲染为可点击、fallback 纯 URL、空与无文本情况。
+- **搜索高亮**：highlightMatch 不区分大小写匹配、逆高亮包裹、无匹配原样返回、React 节点结构验证。
+- **cli-highlight**：懒加载单例、getLanguageName 扩展名提取、highlight 接口（模拟 cli-highlight 依赖）。
+- **热图**：GitHub 风格热图生成、百分位计算强度、5 级强度字符、月份标签均匀分布、日期从今天往前、未来日期留空。
+- **logo v2 工具**：getLayoutMode 70列阈值判断 horizontal/compact、calculateLayoutDimensions 左右宽度、calculateOptimalLeftWidth 基于内容、formatWelcomeMessage 用户名处理、truncatePath 复杂路径截断保留首尾+尽量多中间、getRecentActivity 过滤道歉缓存最近会话、formatModelAndBilling 合并/分行显示。
+
+coverage 移除已归 ink-platform 主责的 stringWidth 和 data-structures 主责的 truncate，避免重复登记。spec 新增第 10-13 节：测试矩阵、三层证据（官方文档/上游 strings/仓库契约）、离线/mock/live 边界、未覆盖路径、回滚计划。
+
+全部边界离线：marked 在 node_modules 真实但不访问外部、cli-highlight 用 jest.mock 模拟、无终端检测 live、无上游二进制访问。无生产代码变更。
+
+**原 Finding 状态**：B4-text-formatting-01 保持 open；spec 保持 draft 状态；原发现不删除，仅追加整改台账。
