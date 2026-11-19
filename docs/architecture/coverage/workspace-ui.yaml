@@ -3,6 +3,12 @@ spec_id: workspace-ui
 spec: ../../superpowers/specs/2026-11-12-workspace-ui-design.md
 status: draft
 groups:
+  - id: workspace-command-tests
+    kind: test
+    section: 7
+    summary: /add-dir、/diff、/sandbox-toggle 真实命令测试
+    files:
+      - tests/workspaceCommands.test.tsx
   - id: add-dir-command
     kind: source
     section: 4

@@ -1647,3 +1647,21 @@ spec 第 7.4 节记录真实矩阵、三层证据、未覆盖项与回滚；本�
 spec 第 7 章记录真实矩阵、官方 Voice dictation 文档、只读 `/opt/homebrew/bin/claude` strings、mock/offline/live 边界和回滚。全部离线，无麦克风、OAuth、网络或私有协议验证；未覆盖 tap、真实音频、/voice 全 UI 与物理终端交互。
 
 **原 Finding 状态**：B4-voice-assistant-01 保持 open；spec 保持 draft；原发现不删除，仅追加整改台账。
+
+---
+
+## 整改台账：B4-workspace-ui-01/03（2026-11-19 追加）
+
+**Finding ID**：B4-workspace-ui-01；增量缺陷 B4-workspace-ui-03；主责 spec：workspace-ui。
+
+新增并唯一登记 `tests/workspaceCommands.test.tsx`，10 个测试、40 个断言，普通与外部 feature profile 均 exit 0：
+
+- /add-dir session/remember、真实选择菜单与无参数输入/Escape、missing path；permission Map/bootstrap/refreshConfig 精确验证。
+- local settings 实际写入与持久化失败消息；/diff 临时 git clean；/sandbox-toggle 平台/policy/依赖/exclude 各分支。
+- 所有目录、git repo、settings 和 sandbox 均隔离，未修改 global git config 或真实用户设置。
+
+**增量缺陷 B4-workspace-ui-03**：真实 RED 证明 `persistPermissionUpdate(addDirectories)` 忽略 `updateSettingsForSource` 返回的 `{error}`，写失败仍错报 saved。已在该分支抛出 `result.error`，复用 add-dir 既有 catch，session 权限/bootstrap 保持成功并显示 Failed to save。修改文件主责为 permissions，未重复登记；spec 记录跨子系统契约与回滚限制。
+
+全部离线；Ink、真实文件/git 与 SandboxManager 边界 fake 不等于真实 sandbox live。spec 第 7.1 节和原审计仅追加整改记录，B4-workspace-ui-02 的 refreshConfig 不等待取舍保持不变。
+
+**原 Finding 状态**：B4-workspace-ui-01/02 保持 open；spec 保持 draft；B4-workspace-ui-03 只追加增量整改台账，不批量关闭原发现。
