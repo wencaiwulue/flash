@@ -1665,3 +1665,10 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 - **实现**：新增并唯一登记 `tests/agentToolIsolation.test.ts`。外部 feature profile 6 pass、43 assertions；普通 profile 4 pass、2 skip、31 assertions。覆盖 fork 缓存前缀、真实 gate 下 exact tools/system prompt/context/async、递归拒绝，以及真实临时 git worktree 的 cwd 隔离、无变更删除、有变更保留和失败清理。
 - **场景校准**：外部 profile 的 fork gate 会强制所有 agent async，初版 worktree 同步断言因此失败；这是测试上下文错误，不是生产 RED。改为在合法 non-interactive 上下文运行同步 worktree 场景，未修改生产 gate。
 - **证据边界**：官方 Subagents 文档说明 fork/background/non-interactive 差异；只读 `/opt/homebrew/bin/claude` strings 命中 `useExactTools`、forkContextMessages 和 worktree 生命周期。真实本地 git，runAgent 离线；不测量 API cache 命中率，不验证 hook VCS、远程仓库、30 天 stale sweep、teammate/remote 或自动后台化。
+
+## Phase B AgentTool Teammate/Remote 测试整改（2026-11-20 追加）
+
+- **Finding**：B5-agent-swarms-01；主责 spec：`2026-11-12-agent-swarms-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
+- **实现**：新增并唯一登记 `tests/agentToolRouting.test.ts`，6 个测试、25 个断言。覆盖真实外部 opt-in gate、teammate spawn 参数/结果/失败，以及 ant-only remote 的 eligibility→teleport→registration 成功编排、eligibility 拒绝和 bundle failure。
+- **证据边界**：官方 Agent Teams 文档确认默认关闭、env opt-in 和 name 路由；只读 `/opt/homebrew/bin/claude` strings 命中 teammate_spawned/remote_launched。真实 AgentTool，仅 runAgent、spawnTeammate、eligibility/teleport/remote registration 边界替换；无真实 teammate 进程、登录、CCR、bundle、模型或私有协议验证。
+- **上游差异**：公开文档当前描述 teammate 继承 lead permission mode，本快照仍接受显式 `mode:'plan'`；测试只记录快照契约，不声称最新上游 per-teammate mode 兼容。自动后台化、真实多 agent 并发与 remote AppState 生命周期仍未做 live。

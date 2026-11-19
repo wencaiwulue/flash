@@ -236,7 +236,7 @@ type RemoteLaunchedOutput = {
 - Fork 路径：`src/tools/AgentTool/forkSubagent.ts`
 - 工具池：`src/tools/AgentTool/loadAgentsDir.ts`
 - 执行器：`src/tools/AgentTool/runAgent.ts`
-- 测试：`tests/agentToolExecution.test.ts` 覆盖真实 `AgentTool.call` 的同步/异步执行、部分结果、失败、中止与任务清理；runAgent 为离线边界
+- 测试：`tests/agentToolExecution.test.ts` 覆盖真实 `AgentTool.call` 的同步/异步执行、部分结果、失败、中止与任务清理；`tests/agentToolRouting.test.ts` 覆盖 teammate opt-in/spawn 和 ant-only remote 离线编排；runAgent/spawn/CCR 为离线边界
 
 ---
 
@@ -1492,7 +1492,7 @@ type AppState = {
 
 | 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
 |---|---|---|---|
-| AgentTool 四模式执行 | `src/tools/AgentTool/AgentTool.tsx:1-1669` | `tests/agentToolExecution.test.ts`：真实 sync/async call、成功、部分输出、失败、abort、任务状态与清理 | 仅替换 runAgent 模型边界；teammate/remote、fork/worktree 和自动后台化仍由后续独立切片覆盖，未做 live |
+| AgentTool 四模式执行 | `src/tools/AgentTool/AgentTool.tsx:1-1669` | `tests/agentToolExecution.test.ts`：sync/async 生命周期；`tests/agentToolRouting.test.ts`：teammate opt-in/spawn/失败与 ant-only remote 成功/eligibility/bundle failure | 仅替换 runAgent、spawnTeammate、eligibility/teleport/remote registration 边界；不执行真实 teammate 进程、CCR、模型或私有协议 |
 | AgentTool Fork 隐式子代理 | `src/tools/AgentTool/forkSubagent.ts:32-210` | `tests/agentToolIsolation.test.ts`：缓存前缀、真实 gate 下 async/exact tools/system prompt/context、递归保护 | 普通 profile 两个 gate 测试 skip，外部 profile 实际执行；runAgent 离线，不验证真实 API cache 命中率 |
 | AgentTool Worktree 隔离 | `src/tools/AgentTool/AgentTool.tsx` (worktree 相关部分) + `src/utils/worktree.ts` | `tests/agentToolIsolation.test.ts`：真实临时 git worktree 的 cwd、无变更删除、有变更保留、失败清理 | 真实本地 git，非 hook VCS/远程仓库；不覆盖 30 天 stale sweep |
 | TeamCreateTool 创建团队 | `src/tools/TeamCreateTool/TeamCreateTool.ts:1-241` | 未找到直接测试文件 | 未覆盖并发创建同名团队 |
@@ -1536,13 +1536,29 @@ type AppState = {
 
 普通 profile 的两次 skip 是 compile-time feature 未启用的明确分类，不算行为通过；外部 profile 的 6/6 才是 fork gate 证据。回滚只需移除测试、coverage entry、本节和审计台账，保持原 Finding open、spec draft。
 
+### 7.3 Teammate/Remote 路由整改（2026-11-20）
+
+继续关联 B5-agent-swarms-01。新增 `tests/agentToolRouting.test.ts` 并唯一登记；6 个测试、25 个断言，普通与外部 feature profile 均通过，无生产代码变更。
+
+| 决策 | 实际行为与验证 | 证据 |
+|---|---|---|
+| Teammate gate | 外部上下文未 opt-in 时，team_name+name 在 spawn 前失败；`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` 且 killswitch 默认允许时进入真实 spawn 分支 | `AgentTool.tsx:414-474`；`agentSwarmsEnabled.ts:24-44`；gate-off/spawn 测试 |
+| Teammate spawn 路由 | 真实 `AgentTool.call` 原样传递 prompt/team/name/model/plan mode/request ID，返回 `teammate_spawned` 及 spawn 数据；spawn 异常直接传播且不回落 runAgent | `AgentTool.tsx:437-474`；spawn success/failure 测试 |
+| Remote 成功编排 | ant-only + isolation=remote 时依次执行 eligibility、teleport、remote registration，返回 taskId/sessionUrl/outputFile；不进入本地 runAgent | `AgentTool.tsx:665-711`；remote success 测试 |
+| Remote 失败闭锁 | eligibility 失败在 teleport 前抛出格式化原因；teleport 空 session 保留 bundle failure hint，且不注册 remote task | `AgentTool.tsx:667-687`；eligibility/bundle failure 测试 |
+| 边界与清理 | 仅 runAgent、spawnTeammate、eligibility/teleport/remote registration 被替换；真实 AgentTool 路由和输出对象。配置、task output、env、队列均隔离/恢复 | 测试 mock.module 与 afterEach |
+
+三层证据：官方 [Agent Teams 文档](https://code.claude.com/docs/en/agent-teams) 明确实验能力默认关闭、`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` opt-in、name 触发 teammate、model/plan 的公开行为；只读 `/opt/homebrew/bin/claude` strings 命中 `teammate_spawned`、`remote_launched` 与 `Cannot launch remote agent`；本仓库源码和测试验证精确路由。公开文档当前描述 teammate 继承 lead permission mode，而本快照保留显式 `mode:'plan'` 参数；本测试只记录该快照行为，不声称与最新上游 per-teammate mode 语义一致。
+
+Remote/CCR 没有据此获得 live 凭证、登录、bundle、远程 session 或私有协议验证；remote registration 也是 mock 边界，未验证真实 AppState remote task 生命周期。普通/外部 profile 通过不等于 live。回滚只需移除测试、coverage entry、本节和审计台账，保持原 Finding open、spec draft。
+
 ## 8. 文件覆盖与相关子系统
 
 [Coverage](../../architecture/coverage/agent-swarms.yaml)
 
 | 分组 | 主拥有职责 | 相关测试或共享证据 | 不拥有的相邻文件 |
 |---|---|---|---|
-| agent-tool | AgentTool 实现、fork 子代理、agent memory | `tests/agentToolExecution.test.ts`：sync/async 生命周期；`tests/agentToolIsolation.test.ts`：fork/worktree；`tests/agentMemorySnapshot.test.ts` | teammate/remote、自动后台化、真实 API cache 命中率和内置 agent 具体行为仍需各自证据 |
+| agent-tool | AgentTool 实现、fork 子代理、agent memory | `agentToolExecution`：sync/async；`agentToolIsolation`：fork/worktree；`agentToolRouting`：teammate/remote 离线路由；`agentMemorySnapshot` | 自动后台化、真实 teammate/CCR/API cache、真实多 agent 并发和内置 agent 具体行为仍需各自证据 |
 | team-tools | TeamCreateTool、TeamDeleteTool | 未找到专用测试 | 其他工具（SendMessageTool、Task*Tool）不归本组 |
 | swarm-utils | mailbox、teamHelpers、permissionSync、inProcessRunner、backends | 未找到专用测试 | `src/utils/teammate.ts` 等辅助函数不归本组 |
 | coordinator | Coordinator 模式、系统提示 | 未找到专用测试 | 协调业务逻辑不归本组 |

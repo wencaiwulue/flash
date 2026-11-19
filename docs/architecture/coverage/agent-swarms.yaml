@@ -197,6 +197,12 @@ groups:
     summary: fork 缓存前缀、真实 feature gate、递归保护和临时 git worktree 生命周期
     files:
       - tests/agentToolIsolation.test.ts
+  - id: agent-tool-routing-tests
+    kind: test
+    section: 7
+    summary: teammate opt-in/spawn 路由和 ant-only remote 离线编排、失败路径
+    files:
+      - tests/agentToolRouting.test.ts
   - id: agent-memory-tests
     kind: test
     section: 7
