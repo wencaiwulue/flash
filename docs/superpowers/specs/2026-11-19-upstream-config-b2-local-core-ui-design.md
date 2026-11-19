@@ -87,11 +87,12 @@ showTurnDuration 无 fail-closed 语义：读取失败/未设置时回退默认 
 
 ## 7. 代码与测试证据
 
-- `src/utils/settings/types.ts`：`showTurnDuration` 显式 zod（path/type/default）。
-- `src/utils/config.ts`：`getShowTurnDuration()` + `getInitialSettings` import（source/precedence）。
+- `src/utils/settings/types.ts`：`showTurnDuration`、`verbose` 显式 zod（path/type/default）。
+- `src/utils/config.ts`：`getShowTurnDuration()`、`getVerbose(cliVerbose)` + `getInitialSettings` import（source/precedence）。
 - `src/components/messages/SystemTextMessage.tsx`：消费者改用 `getShowTurnDuration()`（runtime）。
-- `tests/b2GlobalConfigPath.test.ts`：4 用例（default/settings 覆盖双向/legacy fallback），经 `setSessionSettingsCache` + `saveGlobalConfig` 注入，全 pass。
-- 上游证据：`fixtures/upstream-config/2.1.311/inventory.json` 的 `setting:showTurnDuration`。
+- `src/main.tsx:1901`：`verbose = getVerbose(options.verbose)`（runtime，CLI>settings>legacy）。viewMode/sticky `/focus` 覆盖不适用——flash viewMode 仅 UI 视图（DiffDialog/LogSelector）、无 `/focus` 命令。
+- `tests/b2GlobalConfigPath.test.ts`：10 用例（showTurnDuration 4 + verbose 6，含 CLI 覆盖），经 `setSessionSettingsCache` + `saveGlobalConfig` 注入，全 pass。
+- 上游证据：`fixtures/upstream-config/2.1.311/inventory.json` 的 `setting:showTurnDuration`、`setting:verbose`。
 - 输出/显示开关（已实现对齐，验证+记录证据）：`src/constants/outputStyles.ts`（getOutputStyleConfig 读 getSettings_DEPRECATED()=getInitialSettings()）、`src/utils/messages/systemInit.ts:55`（?? DEFAULT_OUTPUT_STYLE_NAME='default'）、`src/utils/betas.ts:274`（showThinkingSummaries !== true → REDACT_THINKING_BETA_HEADER）、`src/components/permissions/ExitPlanModePermissionRequest/ExitPlanModePermissionRequest.tsx:220` + `src/state/AppStateStore.ts:469`（settings=getInitialSettings()）。
 - `tests/b2DisplaySettings.test.ts`：3 用例（outputStyle/showThinkingSummaries/showClearContextOnPlanAccept 的 source+default），全 pass。
 
@@ -103,13 +104,13 @@ coverage：[upstream-config-b2-local-core-ui.yaml](../../architecture/coverage/u
 
 | 优先级 | 触发场景与证据 | 建议方向 | 回归风险 | 验收方式 | 工作量 | 置信度 |
 |---|---|---|---|---|---|---|
-| P1 | verbose 仅读 GlobalConfig（config.ts:219），上游 scope Any file 且含 `--verbose`/`viewMode`/`/focus` precedence | 补 settings 文件主来源 + 核对 CLI/viewMode precedence，消费者逐一接线 | 中 | verbose 优先级行为测试通过 | M | 待运行验证 |
+| P1 | statusLine schema 缺 refreshInterval/hideVimModeIndicator（types.ts:591 仅 type/command/padding），上游含此二字段及 managed-only 安全限制 | 补两字段 schema + 运行时行为（刷新间隔/vim 指示器开关），核对 managed-only 限制 | 中 | statusLine 各字段行为测试通过 | M | 实测 |
 | P2 | 输出/显示开关 outputStyle/showThinkingSummaries/showClearContextOnPlanAccept default 已文档化、flash 类型一致 | 验证 default/source/runtime 并记录证据，无需改实现 | 低 | 六维度证据齐全 + 矩阵更新 | S | 实测 |
 | P2 | B1 Pre/PostModelSwitch 的 `estimated_cache_write_usd`/`pricing` 字段默认（需定价表） | modelPricing 子系统建定价表后反哺 B1 cache 字段 | 中 | pricing 字段真实值行为测试 | L | 设计推断 |
 
 ## 10. 实现状态（2026-11-19）
 
-- global-config 读取路径：showTurnDuration 六维度 aligned（`getShowTurnDuration()` + tests/b2GlobalConfigPath 4 用例）。
+- global-config 读取路径：showTurnDuration、verbose 六维度 aligned（`getShowTurnDuration()`/`getVerbose()` + tests/b2GlobalConfigPath 10 用例）。verbose 的 viewMode/`/focus` 覆盖不适用（flash 无此特性）。
 - 输出/显示开关：outputStyle、showThinkingSummaries、showClearContextOnPlanAccept 六维度 aligned（已实现对齐，验证+记录证据，tests/b2DisplaySettings 3 用例）。
-- 矩阵 setting aligned=4，`--batch 2` 0 诊断，design-docs 0 errors。
+- 矩阵 setting aligned=5，`--batch 2` 0 诊断，design-docs 0 errors。
 - 其余 38 条：未切入，按 §4 子系统分组待后续。

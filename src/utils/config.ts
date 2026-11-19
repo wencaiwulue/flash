@@ -1100,6 +1100,18 @@ export function getShowTurnDuration(): boolean {
 }
 
 /**
+ * Effective verbose (upstream 2.1.311) precedence: the `--verbose` CLI flag for
+ * one session, then the merged settings-file value, then the legacy
+ * `~/.claude.json` value; defaults to false. viewMode/sticky /focus overrides
+ * do not exist in flash.
+ */
+export function getVerbose(cliVerbose?: boolean): boolean {
+  return (
+    cliVerbose ?? getInitialSettings().verbose ?? getGlobalConfig().verbose ?? false
+  )
+}
+
+/**
  * Returns the effective value of remoteControlAtStartup. Precedence:
  *   1. User's explicit config value (always wins — honors opt-out)
  *   2. CCR auto-connect default (ant-only build, GrowthBook-gated)

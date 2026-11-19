@@ -98,6 +98,7 @@ import {
 import {
   checkHasTrustDialogAccepted,
   getGlobalConfig,
+  getVerbose,
   getRemoteControlAtStartup,
   isAutoUpdaterDisabled,
   saveGlobalConfig,
@@ -1898,7 +1899,10 @@ async function run(): Promise<CommanderCommand> {
       // Extract these separately so they can be modified if needed
       let outputFormat = options.outputFormat
       let inputFormat = options.inputFormat
-      let verbose = options.verbose ?? getGlobalConfig().verbose
+      // Upstream 2.1.311 precedence: --verbose CLI flag, then the merged
+      // settings-file value, then the legacy ~/.claude.json value (default
+      // false). viewMode/sticky /focus overrides do not exist in flash.
+      let verbose = getVerbose(options.verbose)
       let print = options.print
       const init = options.init ?? false
       const initOnly = options.initOnly ?? false
