@@ -13,6 +13,12 @@ groups:
       - src/commands/feedback/index.ts
       - src/components/FeedbackSurvey/feedbackSurveyShared.ts
       - src/utils/dxt/helpers.ts
+  - id: help-feedback-tests
+    kind: test
+    section: 7
+    summary: Survey debounce/触发/cooldown、脱敏、HelpV2、Tips 与 ReleaseNotes 行为
+    files:
+      - tests/helpFeedback.test.tsx
   - id: commands
     kind: source
     section: 4
