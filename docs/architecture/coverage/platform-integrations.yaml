@@ -3,6 +3,12 @@ spec_id: platform-integrations
 spec: ../../superpowers/specs/2026-11-12-platform-integrations-design.md
 status: draft
 groups:
+  - id: platform-integrations-tests
+    kind: test
+    section: 7
+    summary: Desktop MCP 配置、Chrome 扩展、Mobile QR 与 Slack 安装行为
+    files:
+      - tests/platformIntegrations.test.tsx
   - id: additional-files
     kind: source
     section: 4

@@ -1032,3 +1032,9 @@
 - **Finding**：B6-open-runner-07；主责 spec：`2026-11-12-open-runner-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
 - **实现**：新增并唯一登记 `tests/upstreamProxyRelay.test.ts`，5 个测试、20 个断言。覆盖 UpstreamProxyChunk 编解码/畸形输入、分片 CONNECT+pending、超大海报头、established 前 502、established 后仅关闭。
 - **证据边界**：真实 `startNodeRelay`、loopback TCP 和 fake WebSocket；未执行真实 CCR、证书/MITM、代理链或 Bun.listen，不声明私有协议兼容。B6-open-runner-04 的状态迁移工具是独立改进建议，未在此批次实现。
+
+## Phase B Platform Integrations 行为整改（2026-11-20 追加）
+
+- **Finding**：B6-platform-integrations-03；主责 spec：`2026-11-12-platform-integrations-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
+- **实现**：新增并唯一登记 `tests/platformIntegrations.test.tsx`，4 个测试、14 个断言。覆盖 schema-valid Desktop MCP 配置/缺失与非法 JSON、非默认 Chrome profile 扩展检测、真实 iOS/Android QR Tab/Escape、Slack 安装计数和失败 URL。
+- **证据边界**：真实生产逻辑与临时目录；openBrowser/os.homedir 为离线边界，未执行 native messaging、真实浏览器、OAuth、WSL 或私有协议。WSL 路径枚举、native messaging host、QR 失败降级、Desktop upsell 和其他浏览器平台未覆盖。

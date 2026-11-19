@@ -967,6 +967,20 @@ Claude Desktop 配置：
 - 网络错误情况下的降级行为测试
 - Desktop upsell 提示计数与 dismiss 状态持久化
 
+### 7.3 Platform Integrations 行为整改（2026-11-20）
+
+关联 Finding：B6-platform-integrations-03。新增 `tests/platformIntegrations.test.tsx` 并唯一登记；4 个测试、14 个断言，普通与外部 feature profile 均通过，无生产代码变更。
+
+| 决策 | 实际行为与验证 | 证据 |
+|---|---|---|
+| Desktop MCP 配置 | schema-valid server 保留，非法 server 忽略；文件缺失/非法 JSON 返回空对象 | `claudeDesktop.ts:98-152`；临时 config 测试 |
+| Chrome 扩展检测 | 在 `Profile 1` 找到 production extension，空路径返回未安装 | `setupPortable.ts:147-224`；临时 profile 测试 |
+| Mobile QR | 真实生成 iOS/Android QR，Tab 切换商店 URL，Escape onDone | `mobile.tsx` + AppStateProvider/KeybindingSetup |
+| Slack 安装 | 成功打开 marketplace，计数 1→2；失败时返回手动 URL | `install-slack-app.ts`；openBrowser 边界测试 |
+| 证据边界 | 真实 Desktop/Chrome/Mobile/Slack 逻辑与临时目录，未执行 native messaging、真实浏览器、OAuth、WSL 或私有协议 | mock openBrowser/os.homedir |
+
+公开文档不定义这些内部配置路径与错误分类；只读 upstream strings 作辅助，当前契约以仓库实现和临时文件为准。WSL 路径枚举、native messaging host、QR 失败降级、Desktop upsell 和其他浏览器平台未覆盖，保持 7.2 未覆盖清单。
+
 ## 8. 文件覆盖与相关子系统
 
 [Coverage](../../architecture/coverage/platform-integrations.yaml)
