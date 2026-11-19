@@ -1805,6 +1805,23 @@ type SandboxDependencyCheck = {
 
 回滚时不得恢复“忽略写入错误”的旧实现；若整组回退测试与文档，必须同时接受并重新评估该已知错报。回滚后运行 full test/typecheck/build/design checker，保持原 Finding open/spec draft。
 
+### 7.2 真实组件测试与 Fullscreen 边界
+
+`tests/workspaceComponents.test.tsx`：7 个测试、33 个断言，普通与外部 feature profile 均通过。
+
+| 场景 | 真实行为与断言 |
+|---|---|
+| DiffDialog | Current/Turn 双来源切换、list/detail/返回/关闭；6 文件时 `↓ 1 more file`，不显示第 6 个文件 |
+| CustomSelect | disabled option 不选中、方向键/Enter/Escape；input option 保留 abc 文本并提交 custom |
+| Overlay | activeOverlays 注册与 unmount 清理，`process.stdout` 的 invalidatePrevFrame 调用；autocomplete 保留注册 |
+| UnseenDivider | tool_use+text 回合计数、tool-only floor=1、scroll-away 基线一次、负向 shift、jumpToNew/onRepin 清理 |
+
+三层证据：官方 [Terminal configuration](https://code.claude.com/docs/en/terminal-config.md) 的 fullscreen/主题语义；本机 `/opt/homebrew/bin/claude` 只读 strings 命中 DiffDialog，其余组件符号未用于推断实现；仓库 DiffDialog/CustomSelect/overlay/FullscreenLayout 与真实 Ink 测试。全部离线，不把 Ink frame 当物理终端 live。
+
+**未覆盖**：当前 AlternateScreen/ScrollBox harness 未能稳定生成可读的 new-message pill 与 sticky prompt frame，因此不声称这两项通过；FullscreenLayout modal 的结构、真实鼠标/键盘 scroll 和多终端兼容仍需独立环境验证。没有为通过测试而修改 FullscreenLayout 生产实现或添加 test-only API。
+
+回滚移除测试及 coverage entry、撤销本节和原审计追加台账，保持原 Finding open/spec draft，重新运行 full test/typecheck/build/design checker。
+
 ## 8. 文件覆盖与相关子系统
 
 [Coverage](../../architecture/coverage/workspace-ui.yaml)

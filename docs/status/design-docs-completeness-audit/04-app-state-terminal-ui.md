@@ -1665,3 +1665,20 @@ spec 第 7 章记录真实矩阵、官方 Voice dictation 文档、只读 `/opt/
 全部离线；Ink、真实文件/git 与 SandboxManager 边界 fake 不等于真实 sandbox live。spec 第 7.1 节和原审计仅追加整改记录，B4-workspace-ui-02 的 refreshConfig 不等待取舍保持不变。
 
 **原 Finding 状态**：B4-workspace-ui-01/02 保持 open；spec 保持 draft；B4-workspace-ui-03 只追加增量整改台账，不批量关闭原发现。
+
+---
+
+## 整改台账：B4-workspace-ui-01（components，2026-11-19 追加）
+
+**Finding ID**：B4-workspace-ui-01；主责 spec：workspace-ui。
+
+新增并唯一登记 `tests/workspaceComponents.test.tsx`，7 个测试、33 个断言，普通与外部 feature profile 均 exit 0：
+
+- DiffDialog Current/Turn 双来源、list/detail/返回/关闭和 6 文件分页指示器。
+- CustomSelect disabled/方向键/Enter/Escape 与 input option 文本保留。
+- Overlay 注册、unmount 清理和 process.stdout invalidatePrevFrame。
+- UnseenDivider 回合计数、tool-only floor=1、scroll-away 基线、shift/jumpToNew/onRepin。
+
+spec 第 7.2 节记录真实矩阵、三层证据和未覆盖边界。当前 AlternateScreen/ScrollBox harness 未能稳定生成可读的 new-message pill 与 sticky prompt frame，明确未声称通过；未修改生产实现。全部离线，真实 Ink 不等于物理终端 live。
+
+**原 Finding 状态**：B4-workspace-ui-01 保持 open；spec 保持 draft；原发现不删除，仅追加整改台账。
