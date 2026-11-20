@@ -848,6 +848,12 @@ export const SettingsSchema = lazySchema(() =>
         .describe(
           'Keybinding mode for the prompt input (e.g. "normal" or "vim"). Defaults to "normal". A value in ~/.claude.json from an older version applies when no settings file sets it.',
         ),
+      teammateMode: z
+        .enum(['auto', 'tmux', 'in-process'])
+        .optional()
+        .describe(
+          'How to spawn teammates. Defaults to "auto". --teammate-mode takes precedence for one session. A value in ~/.claude.json from an older version applies when no settings file sets it.',
+        ),
       agent: z
         .string()
         .optional()
