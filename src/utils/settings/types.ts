@@ -335,26 +335,37 @@ export const SettingsSchema = lazySchema(() =>
         .describe('Environment variables to set for flash sessions'),
       // Attribution for commits and PRs
       attribution: z
-        .object({
-          commit: z
-            .string()
-            .optional()
-            .describe(
-              'Attribution text for git commits, including any trailers. ' +
-                'Empty string hides attribution.',
-            ),
-          pr: z
-            .string()
-            .optional()
-            .describe(
-              'Attribution text for pull request descriptions. ' +
-                'Empty string hides attribution.',
-            ),
-        })
+        .union([
+          z.object({
+            commit: z
+              .string()
+              .optional()
+              .describe(
+                'Attribution text for git commits, including any trailers. ' +
+                  'Empty string hides attribution.',
+              ),
+            pr: z
+              .string()
+              .optional()
+              .describe(
+                'Attribution text for pull request descriptions. ' +
+                  'Empty string hides attribution.',
+              ),
+            sessionUrl: z
+              .boolean()
+              .optional()
+              .describe(
+                'Include the claude.ai session link in cloud and Remote Control ' +
+                  'commits. Defaults to true; set false to omit it.',
+              ),
+          }),
+          z.literal(false),
+        ])
         .optional()
         .describe(
-          'Customize attribution text for commits and PRs. ' +
-            'Each field defaults to the standard flash attribution if not set.',
+          'Customize attribution text for commits and PRs, or false to hide all ' +
+            'attribution (false requires v2.1.281+). Each field defaults to the ' +
+            'standard flash attribution if not set.',
         ),
       includeCoAuthoredBy: z
         .boolean()

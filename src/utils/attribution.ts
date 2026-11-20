@@ -54,12 +54,22 @@ export function getAttributionTexts(): AttributionTexts {
     return { commit: '', pr: '' }
   }
 
+  const settings = getInitialSettings()
+
+  // attribution: false hides all attribution (requires v2.1.281+).
+  if (settings.attribution === false) {
+    return { commit: '', pr: '' }
+  }
+
   if (getClientType() === 'remote') {
     const remoteSessionId = process.env.CLAUDE_CODE_REMOTE_SESSION_ID
     if (remoteSessionId) {
       const ingressUrl = process.env.SESSION_INGRESS_URL
       // Skip for local dev - URLs won't persist
-      if (!isRemoteSessionLocal(remoteSessionId, ingressUrl)) {
+      if (
+        !isRemoteSessionLocal(remoteSessionId, ingressUrl) &&
+        (settings.attribution?.sessionUrl ?? true)
+      ) {
         const sessionUrl = getRemoteSessionUrl(remoteSessionId, ingressUrl)
         return { commit: sessionUrl, pr: sessionUrl }
       }
@@ -78,8 +88,6 @@ export function getAttributionTexts(): AttributionTexts {
       : 'Claude Opus 4.6'
   const defaultAttribution = `🤖 Generated with [flash](${PRODUCT_URL})`
   const defaultCommit = `Co-Authored-By: ${modelName} <noreply@anthropic.com>`
-
-  const settings = getInitialSettings()
 
   // New attribution setting takes precedence over deprecated includeCoAuthoredBy
   if (settings.attribution) {
@@ -301,22 +309,30 @@ export async function getEnhancedPRAttribution(
     return ''
   }
 
+  const settings = getInitialSettings()
+
+  // attribution: false hides all attribution (requires v2.1.281+).
+  if (settings.attribution === false) {
+    return ''
+  }
+
   if (getClientType() === 'remote') {
     const remoteSessionId = process.env.CLAUDE_CODE_REMOTE_SESSION_ID
     if (remoteSessionId) {
       const ingressUrl = process.env.SESSION_INGRESS_URL
       // Skip for local dev - URLs won't persist
-      if (!isRemoteSessionLocal(remoteSessionId, ingressUrl)) {
+      if (
+        !isRemoteSessionLocal(remoteSessionId, ingressUrl) &&
+        (settings.attribution?.sessionUrl ?? true)
+      ) {
         return getRemoteSessionUrl(remoteSessionId, ingressUrl)
       }
     }
     return ''
   }
 
-  const settings = getInitialSettings()
-
   // Custom attribution (including an explicit empty string) is authoritative.
-  if (settings.attribution?.pr !== undefined) {
+  if (settings.attribution && settings.attribution.pr !== undefined) {
     return settings.attribution.pr
   }
 
