@@ -3327,30 +3327,35 @@ entries:
     exclusion: null
     ownerBatch: final
   - id: setting:model
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b2-local-core-ui
+    implementation:
+      - src/utils/settings/types.ts
+      - src/utils/model/model.ts
+    tests:
+      - tests/b2ModelTeammateSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "settings/types.ts:375 model 显式 zod"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.string() = 上游 String（模型别名或完整 ID）"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 default=null；getUserSpecifiedModelSetting 无设置返回 undefined（回退内置默认）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "model.ts getUserSpecifiedModelSetting 读 getSettings_DEPRECATED()=getInitialSettings().model（Any file 合并 settings）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "/model（getMainLoopModelOverride）> ANTHROPIC_MODEL env > settings.model；availableModels allowlist 过滤（isModelAllowed）"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "model.ts getUserSpecifiedModelSetting 驱动会话模型选择；tests/b2ModelTeammateSettings 4 用例（含 env precedence + allowlist 阻断）"
+    notes: "已实现对齐（读 settings + 完整 precedence + allowlist），本轮验证+记录"
     exclusion: null
     ownerBatch: 2
   - id: setting:modelOverrides
