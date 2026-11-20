@@ -1,0 +1,8 @@
+schema_version: 1
+spec_id: upstream-config-b3-security-filesystem
+spec: ../../superpowers/specs/2026-11-20-upstream-config-b3-security-filesystem-design.md
+status: draft
+# 本 spec 是 B3 安全与文件系统（permissions/sandbox/attribution/托管 hooks 限制）
+# 对齐设计；运行时代码主归属由 settings、config、permissions、sandbox 等既有
+# coverage 维护，避免重复拥有文件。
+groups: []
