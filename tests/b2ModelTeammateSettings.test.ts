@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'bun:test'
 import { getTeammateMode, saveGlobalConfig } from '../src/utils/config.ts'
+import { getUserSpecifiedModelSetting } from '../src/utils/model/model.ts'
 import { resolveOverriddenModel } from '../src/utils/model/modelStrings.ts'
 import { setSessionSettingsCache } from '../src/utils/settings/settingsCache.ts'
 import { SettingsSchema } from '../src/utils/settings/types.ts'
@@ -74,5 +75,44 @@ describe('modelOverrides (already read from getInitialSettings)', () => {
       'claude-opus-4-6': 'arn:aws:bedrock:us-east-1/opus',
     })
     expect(resolveOverriddenModel('claude-sonnet-4-6')).toBe('claude-sonnet-4-6')
+  })
+})
+
+describe('model (settings + ANTHROPIC_MODEL precedence + availableModels allowlist)', () => {
+  beforeEach(() => {
+    setSessionSettingsCache({ settings: {}, errors: [] })
+    delete process.env.ANTHROPIC_MODEL
+  })
+
+  it('returns undefined when nothing sets the model', () => {
+    expect(getUserSpecifiedModelSetting()).toBeUndefined()
+  })
+
+  it('reads the model from settings', () => {
+    setSessionSettingsCache({
+      settings: { model: 'claude-opus-4-6' },
+      errors: [],
+    })
+    expect(getUserSpecifiedModelSetting()).toBe('claude-opus-4-6')
+  })
+
+  it('ANTHROPIC_MODEL takes precedence over settings', () => {
+    setSessionSettingsCache({
+      settings: { model: 'claude-opus-4-6' },
+      errors: [],
+    })
+    process.env.ANTHROPIC_MODEL = 'claude-sonnet-4-6'
+    expect(getUserSpecifiedModelSetting()).toBe('claude-sonnet-4-6')
+  })
+
+  it('availableModels allowlist blocks a model not in the list', () => {
+    setSessionSettingsCache({
+      settings: {
+        model: 'claude-opus-4-6',
+        availableModels: ['claude-sonnet-4-6'],
+      },
+      errors: [],
+    })
+    expect(getUserSpecifiedModelSetting()).toBeUndefined()
   })
 })
