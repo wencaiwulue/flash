@@ -3354,30 +3354,35 @@ entries:
     exclusion: null
     ownerBatch: 2
   - id: setting:modelOverrides
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b2-local-core-ui
+    implementation:
+      - src/utils/settings/types.ts
+      - src/utils/model/modelStrings.ts
+    tests:
+      - tests/b2ModelTeammateSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "settings/types.ts:391 modelOverrides 显式 zod（record）"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.record(z.string(),z.string()) = 上游 object mapping model ID→provider model ID"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 default=null；getInitialSettings().modelOverrides 为 undefined 时 applyModelOverrides 返回原 ms、resolveOverriddenModel 返回原 modelId"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "modelStrings.ts applyModelOverrides/resolveOverriddenModel 读 getInitialSettings().modelOverrides（Any file 合并 settings）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "无额外 precedence；映射表，管理员经 managed settings 用于 Bedrock/Foundry 路由"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "modelStrings.ts 消费者（模型字符串覆盖 + 反向解析）；tests/b2ModelTeammateSettings 3 用例"
+    notes: "已实现对齐（本即读 getInitialSettings），本轮验证+记录"
     exclusion: null
     ownerBatch: 2
   - id: setting:modelPicker
@@ -7101,30 +7106,36 @@ entries:
       sourceAnchor: "#teammatedefaultmodel"
     ownerBatch: 2
   - id: setting:teammateMode
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b2-local-core-ui
+    implementation:
+      - src/utils/config.ts
+      - src/utils/settings/types.ts
+      - src/utils/swarm/backends/teammateModeSnapshot.ts
+    tests:
+      - tests/b2ModelTeammateSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "settings/types.ts 显式 teammateMode zod（enum auto/tmux/in-process）"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.enum(['auto','tmux','in-process']) = 上游 String"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 default=null→auto；getTeammateMode ?? 'auto'"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "getTeammateMode()=getInitialSettings() 为主，getGlobalConfig()（~/.claude.json）旧值 fallback（上游 sourceRules 明确读 legacy）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "--teammate-mode CLI override（captureTeammateModeSnapshot cliTeammateModeOverride 优先）> settings > legacy"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "teammateModeSnapshot.ts captureTeammateModeSnapshot=getTeammateMode()；tests/b2ModelTeammateSettings 4 用例"
+    notes: "UI 设置（Config.tsx globalConfig.teammateMode）与 clearCliTeammateModeOverride 写路径仍 GlobalConfig，与读路径 settings 优先存在同源 gap，留待写路径对齐"
     exclusion: null
     ownerBatch: 2
   - id: setting:terminalProgressBarEnabled

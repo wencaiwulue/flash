@@ -1195,6 +1195,21 @@ export function getEditorMode(): NonNullable<GlobalConfig['editorMode']> {
 }
 
 /**
+ * Effective teammateMode (upstream 2.1.311): the merged settings-file value
+ * wins; a legacy `~/.claude.json` value applies only when no settings file sets
+ * it (upstream explicitly reads this legacy value); defaults to "auto". The
+ * --teammate-mode CLI override for one session is handled by the caller
+ * (captureTeammateModeSnapshot).
+ */
+export function getTeammateMode(): NonNullable<GlobalConfig['teammateMode']> {
+  return (
+    (getInitialSettings().teammateMode as GlobalConfig['teammateMode']) ??
+    getGlobalConfig().teammateMode ??
+    'auto'
+  )
+}
+
+/**
  * Returns the effective value of remoteControlAtStartup. Precedence:
  *   1. User's explicit config value (always wins — honors opt-out)
  *   2. CCR auto-connect default (ant-only build, GrowthBook-gated)
