@@ -59,7 +59,8 @@ status: draft
 
 ## 7. 代码与测试证据
 
-（随各子系统切入补充，沿用 B2 模式：config.ts/settings helper + 消费者改接 + tests/b3*.test.ts。）
+- attribution（首个切入，建立 B3 工作法样板）：`src/utils/settings/types.ts` attribution 改 `z.union([object{commit,pr,sessionUrl}, z.literal(false)])`（补 sessionUrl 字段 + false 选项）；`src/utils/attribution.ts` getAttributionTexts/getEnhancedPRAttribution 开头加 `settings.attribution===false → 返回空`（隐藏所有归属），remote 分支加 `settings.attribution?.sessionUrl ?? true` 控制 session 链接省略。commit/pr 本即读 settings.attribution.commit/pr（默认 + 空字符串隐藏），验证+记录。`tests/b3AttributionSettings.test.ts` 8 用例（schema object/false/sessionUrl + getAttributionTexts 自定义/空字符串/false/includeCoAuthoredBy/默认）。
+- 测试基建：attribution.ts import 工具 prompt 常量触发 REPLTool/constants ↔ FileReadTool/prompt 循环依赖（flash 固有）。测试用 `mock.module(FileReadTool/prompt)` + 动态 import 打破循环，归属逻辑可单测。
 
 ## 8. 文件覆盖与相关子系统
 
@@ -76,4 +77,6 @@ coverage：[upstream-config-b3-security-filesystem.yaml](../../architecture/cove
 ## 10. 实现状态（2026-11-20）
 
 - B3 启动：范围确认为 70 条（attribution 4 / permissions ~14 / sandbox ~50 / allowManagedHooksOnly 1 / env 2），切入顺序 attribution → permissions → allowManagedHooksOnly → sandbox。
-- 尚未切入具体条目；下一子系统为 attribution（4 条）。
+- attribution：attribution、attribution.commit、attribution.pr、attribution.sessionUrl 六维度 aligned（commit/pr 已对齐验证+记录；补 attribution:false 隐藏所有归属 + sessionUrl 字段与 remote 控制，tests/b3AttributionSettings 8 用例）。fail-closed：attribution:false 隐藏所有归属、sessionUrl:false 省略 session 链接，均非安全敏感（仅归属文案/链接显隐）。
+- 矩阵 setting aligned=30（B2 26 + B3 attribution 4），`--batch 3` 0 诊断，design-docs 0 errors。
+- 下一子系统：permissions（~14 条）。

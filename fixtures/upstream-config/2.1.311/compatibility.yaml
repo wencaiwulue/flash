@@ -434,111 +434,131 @@ entries:
     exclusion: null
     ownerBatch: final
   - id: setting:attribution
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b3-security-filesystem
+    implementation:
+      - src/utils/settings/types.ts
+      - src/utils/attribution.ts
+    tests:
+      - tests/b3AttributionSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "settings/types.ts attribution 改 z.union([object{commit,pr,sessionUrl}, z.literal(false)])"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.union([object, z.literal(false)]) = 上游 object|false（false 需 v2.1.281+）"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 default=null；无 attribution 时用默认归属"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "getAttributionTexts/getEnhancedPRAttribution 读 getInitialSettings().attribution（Any file）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "CLAUDE.md/memory 归属说明 > commit/pr 行（除非 managed）；attribution:false 隐藏所有归属"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "attribution.ts 两函数开头 settings.attribution===false → 返回空（隐藏所有）；tests/b3AttributionSettings false 用例"
+    notes: "fail-closed：attribution:false 隐藏所有归属（返回空字符串）；非安全敏感，仅归属文案。本轮补 false 选项"
     exclusion: null
     ownerBatch: 3
   - id: setting:attribution.commit
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b3-security-filesystem
+    implementation:
+      - src/utils/settings/types.ts
+      - src/utils/attribution.ts
+    tests:
+      - tests/b3AttributionSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "settings/types.ts attribution.commit 显式 zod"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.string().optional() = 上游 String"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 default=null→`Co-Authored-By: <model> <noreply@anthropic.com>`；getAttributionTexts commit ?? defaultCommit"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "getAttributionTexts 读 settings.attribution.commit（Any file）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "空字符串隐藏归属；CLAUDE.md/memory 归属说明 > commit 行（除非 managed）"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "getAttributionTexts().commit 驱动 git commit trailer；tests/b3AttributionSettings 自定义/空字符串用例"
+    notes: "已实现对齐（读取+默认+空字符串隐藏），验证+记录"
     exclusion: null
     ownerBatch: 3
   - id: setting:attribution.pr
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b3-security-filesystem
+    implementation:
+      - src/utils/settings/types.ts
+      - src/utils/attribution.ts
+    tests:
+      - tests/b3AttributionSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "settings/types.ts attribution.pr 显式 zod"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.string().optional() = 上游 String"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 default=null→`🤖 Generated with flash`；getAttributionTexts pr ?? defaultAttribution"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "getAttributionTexts/getEnhancedPRAttribution 读 settings.attribution.pr（Any file）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "空字符串隐藏归属；CLAUDE.md/memory 归属说明 > pr 行（除非 managed）"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "getAttributionTexts().pr / getEnhancedPRAttribution 驱动 PR 描述归属；tests/b3AttributionSettings 自定义/空字符串用例"
+    notes: "已实现对齐（读取+默认+空字符串隐藏），验证+记录"
     exclusion: null
     ownerBatch: 3
   - id: setting:attribution.sessionUrl
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b3-security-filesystem
+    implementation:
+      - src/utils/settings/types.ts
+      - src/utils/attribution.ts
+    tests:
+      - tests/b3AttributionSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "settings/types.ts attribution.sessionUrl 显式 zod（本轮新增）"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.boolean().optional() = 上游 Boolean"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 default=true；remote 分支 settings.attribution?.sessionUrl ?? true"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "getAttributionTexts/getEnhancedPRAttribution remote 分支读 settings.attribution?.sessionUrl（Any file）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "无额外 precedence；false 省略 claude.ai session 链接"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "remote 分支 sessionUrl===false 时跳过 getRemoteSessionUrl 返回空（省略 session 链接）；tests/b3AttributionSettings schema 用例"
+    notes: "fail-closed：sessionUrl 仅控制 cloud/Remote Control commits 的 session 链接显隐，false 省略；非安全敏感。本轮补 zod + remote 控制"
     exclusion: null
     ownerBatch: 3
   - id: setting:autoCompactEnabled
