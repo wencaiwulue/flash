@@ -46,6 +46,7 @@ import {
 } from './settingsCache.js'
 import { type SettingsJson, SettingsSchema } from './types.js'
 import {
+  filterInvalidHookSettings,
   filterInvalidPermissionRules,
   formatZodError,
   type SettingsWithErrors,
@@ -81,6 +82,7 @@ export function loadManagedFileSettings(): {
 
   const { settings, errors: baseErrors } = parseSettingsFile(
     getManagedSettingsFilePath(),
+    { allowHookEntryRecovery: false },
   )
   errors.push(...baseErrors)
   if (settings && Object.keys(settings).length > 0) {
@@ -103,6 +105,7 @@ export function loadManagedFileSettings(): {
     for (const name of entries) {
       const { settings, errors: fileErrors } = parseSettingsFile(
         join(dropInDir, name),
+        { allowHookEntryRecovery: false },
       )
       errors.push(...fileErrors)
       if (settings && Object.keys(settings).length > 0) {
@@ -128,7 +131,10 @@ export function getManagedFileSettingsPresence(): {
   hasBase: boolean
   hasDropIns: boolean
 } {
-  const { settings: base } = parseSettingsFile(getManagedSettingsFilePath())
+  const { settings: base } = parseSettingsFile(
+    getManagedSettingsFilePath(),
+    { allowHookEntryRecovery: false },
+  )
   const hasBase = !!base && Object.keys(base).length > 0
 
   let hasDropIns = false
@@ -175,12 +181,20 @@ function handleFileSystemError(error: unknown, path: string): void {
  * @param source The source of the settings (optional, for error reporting)
  * @returns Parsed settings data and validation errors
  */
-export function parseSettingsFile(path: string): {
+type ParseSettingsOptions = {
+  allowHookEntryRecovery?: boolean
+}
+
+export function parseSettingsFile(
+  path: string,
+  options: ParseSettingsOptions = {},
+): {
   settings: SettingsJson | null
   errors: ValidationError[]
 } {
+  const allowHookEntryRecovery = options.allowHookEntryRecovery !== false
   const cached = getCachedParsedFile(path)
-  if (cached) {
+  if (cached?.allowHookEntryRecovery === allowHookEntryRecovery) {
     // Clone so callers (e.g. mergeWith in getSettingsForSourceUncached,
     // updateSettingsForSource) can't mutate the cached entry.
     return {
@@ -188,8 +202,8 @@ export function parseSettingsFile(path: string): {
       errors: cached.errors,
     }
   }
-  const result = parseSettingsFileUncached(path)
-  setCachedParsedFile(path, result)
+  const result = parseSettingsFileUncached(path, { allowHookEntryRecovery })
+  setCachedParsedFile(path, { ...result, allowHookEntryRecovery })
   // Clone the first return too — the caller may mutate before
   // another caller reads the same cache entry.
   return {
@@ -198,7 +212,10 @@ export function parseSettingsFile(path: string): {
   }
 }
 
-function parseSettingsFileUncached(path: string): {
+function parseSettingsFileUncached(
+  path: string,
+  options: Required<ParseSettingsOptions>,
+): {
   settings: SettingsJson | null
   errors: ValidationError[]
 } {
@@ -210,20 +227,25 @@ function parseSettingsFileUncached(path: string): {
       return { settings: {}, errors: [] }
     }
 
-    const data = safeParseJSON(content, false)
+    // Filters mutate their input; keep the memoized JSON value isolated across
+    // settings-cache resets and different hook recovery modes.
+    const data = clone(safeParseJSON(content, false))
 
     // Filter invalid permission rules before schema validation so one bad
     // rule doesn't cause the entire settings file to be rejected.
     const ruleWarnings = filterInvalidPermissionRules(data, path)
+    const hookWarnings = options.allowHookEntryRecovery
+      ? filterInvalidHookSettings(data, path)
+      : []
 
     const result = SettingsSchema().safeParse(data)
 
     if (!result.success) {
       const errors = formatZodError(result.error, path)
-      return { settings: null, errors: [...ruleWarnings, ...errors] }
+      return { settings: null, errors: [...ruleWarnings, ...hookWarnings, ...errors] }
     }
 
-    return { settings: result.data, errors: ruleWarnings }
+    return { settings: result.data, errors: [...ruleWarnings, ...hookWarnings] }
   } catch (error) {
     handleFileSystemError(error, path)
     return { settings: null, errors: [] }

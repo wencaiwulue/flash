@@ -148,7 +148,12 @@ specs:
     spec: docs/superpowers/specs/2026-11-16-upstream-configuration-alignment-design.md
     coverage: docs/architecture/coverage/upstream-configuration-alignment.yaml
     batch: 3
-    status: draft
+    status: approved
+  - id: upstream-config-b0-baseline
+    spec: docs/superpowers/specs/2026-11-16-upstream-config-b0-baseline-design.md
+    coverage: docs/architecture/coverage/upstream-config-b0-baseline.yaml
+    batch: 3
+    status: approved
   - id: skills
     spec: docs/superpowers/specs/2026-11-12-skills-design.md
     coverage: docs/architecture/coverage/skills.yaml
@@ -353,6 +358,26 @@ specs:
     spec: docs/superpowers/specs/2026-11-16-webbrowser-bundled-support-design.md
     coverage: docs/architecture/coverage/webbrowser-bundled-support.yaml
     batch: 5
+    status: draft
+  - id: upstream-config-task-2-multi-baseline
+    spec: docs/superpowers/specs/2026-11-18-upstream-config-task-2-multi-baseline-design.md
+    coverage: docs/architecture/coverage/upstream-config-task-2-multi-baseline.yaml
+    batch: 3
+    status: approved
+  - id: upstream-config-b1-hooks-env
+    spec: docs/superpowers/specs/2026-11-18-upstream-config-b1-hooks-env-design.md
+    coverage: docs/architecture/coverage/upstream-config-b1-hooks-env.yaml
+    batch: 1
+    status: draft
+  - id: upstream-config-b2-local-core-ui
+    spec: docs/superpowers/specs/2026-11-19-upstream-config-b2-local-core-ui-design.md
+    coverage: docs/architecture/coverage/upstream-config-b2-local-core-ui.yaml
+    batch: 2
+    status: draft
+  - id: upstream-config-b3-security-filesystem
+    spec: docs/superpowers/specs/2026-11-20-upstream-config-b3-security-filesystem-design.md
+    coverage: docs/architecture/coverage/upstream-config-b3-security-filesystem.yaml
+    batch: 3
     status: draft
 exclusions:
   - glob: src/entrypoints/sdk/coreTypes.generated.ts

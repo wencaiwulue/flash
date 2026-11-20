@@ -28,7 +28,7 @@ import { collapseBackgroundBashNotifications } from '../utils/collapseBackground
 import { collapseHookSummaries } from '../utils/collapseHookSummaries.js'
 import { collapseReadSearchGroups } from '../utils/collapseReadSearch.js'
 import { collapseTeammateShutdowns } from '../utils/collapseTeammateShutdowns.js'
-import { getGlobalConfig } from '../utils/config.js'
+import { getTerminalProgressBarEnabled } from '../utils/config.js'
 import { isEnvTruthy } from '../utils/envUtils.js'
 import { isFullscreenEnvEnabled } from '../utils/fullscreen.js'
 import { applyGrouping } from '../utils/groupToolUses.js'
@@ -772,7 +772,7 @@ const MessagesImpl = ({
   const { progress } = useTerminalNotification()
   const prevProgressState = useRef<string | null>(null)
   const progressEnabled =
-    getGlobalConfig().terminalProgressBarEnabled &&
+    getTerminalProgressBarEnabled() &&
     !getIsRemoteMode() &&
     !(proactiveModule?.isProactiveActive() ?? false)
   useEffect(() => {

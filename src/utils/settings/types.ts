@@ -335,26 +335,37 @@ export const SettingsSchema = lazySchema(() =>
         .describe('Environment variables to set for flash sessions'),
       // Attribution for commits and PRs
       attribution: z
-        .object({
-          commit: z
-            .string()
-            .optional()
-            .describe(
-              'Attribution text for git commits, including any trailers. ' +
-                'Empty string hides attribution.',
-            ),
-          pr: z
-            .string()
-            .optional()
-            .describe(
-              'Attribution text for pull request descriptions. ' +
-                'Empty string hides attribution.',
-            ),
-        })
+        .union([
+          z.object({
+            commit: z
+              .string()
+              .optional()
+              .describe(
+                'Attribution text for git commits, including any trailers. ' +
+                  'Empty string hides attribution.',
+              ),
+            pr: z
+              .string()
+              .optional()
+              .describe(
+                'Attribution text for pull request descriptions. ' +
+                  'Empty string hides attribution.',
+              ),
+            sessionUrl: z
+              .boolean()
+              .optional()
+              .describe(
+                'Include the claude.ai session link in cloud and Remote Control ' +
+                  'commits. Defaults to true; set false to omit it.',
+              ),
+          }),
+          z.literal(false),
+        ])
         .optional()
         .describe(
-          'Customize attribution text for commits and PRs. ' +
-            'Each field defaults to the standard flash attribution if not set.',
+          'Customize attribution text for commits and PRs, or false to hide all ' +
+            'attribution (false requires v2.1.281+). Each field defaults to the ' +
+            'standard flash attribution if not set.',
         ),
       includeCoAuthoredBy: z
         .boolean()
@@ -593,6 +604,15 @@ export const SettingsSchema = lazySchema(() =>
           type: z.literal('command'),
           command: z.string(),
           padding: z.number().optional(),
+          refreshInterval: z
+            .number()
+            .min(1)
+            .optional()
+            .describe('Status line command refresh interval in seconds (min 1)'),
+          hideVimModeIndicator: z
+            .boolean()
+            .optional()
+            .describe('Hide the vim mode indicator in the status line area'),
         })
         .optional()
         .describe('Custom status line display configuration'),
@@ -778,6 +798,72 @@ export const SettingsSchema = lazySchema(() =>
         .optional()
         .describe(
           'When true, the plan-approval dialog offers a "clear context" option. Defaults to false.',
+        ),
+      showTurnDuration: z
+        .boolean()
+        .optional()
+        .describe(
+          'Show the "Cooked for" duration after each response. Defaults to true. A value in ~/.claude.json from an older version applies when no settings file sets it.',
+        ),
+      verbose: z
+        .boolean()
+        .optional()
+        .describe(
+          'Show full tool output instead of truncated summaries. Defaults to false. --verbose takes precedence for one session; a value in ~/.claude.json from an older version applies when no settings file sets it.',
+        ),
+      theme: z
+        .string()
+        .optional()
+        .describe(
+          'Color theme for the UI. Defaults to "dark". A value in ~/.claude.json from an older version applies when no settings file sets it.',
+        ),
+      preferredNotifChannel: z
+        .string()
+        .optional()
+        .describe(
+          'Preferred notification channel. Defaults to "auto". A value in ~/.claude.json from an older version applies when no settings file sets it.',
+        ),
+      terminalProgressBarEnabled: z
+        .boolean()
+        .optional()
+        .describe(
+          'Show a progress bar in the terminal title/tab. Defaults to true. A value in ~/.claude.json from an older version applies when no settings file sets it.',
+        ),
+      autoConnectIde: z
+        .boolean()
+        .optional()
+        .describe(
+          'Automatically connect to an IDE on startup when exactly one valid IDE is available. Global config (~/.claude.json) scope; defaults to false.',
+        ),
+      autoInstallIdeExtension: z
+        .boolean()
+        .optional()
+        .describe(
+          'Automatically install IDE extensions when running from within an IDE. Global config (~/.claude.json) scope; defaults to true.',
+        ),
+      autoCompactEnabled: z
+        .boolean()
+        .optional()
+        .describe(
+          'Enable auto-compact when the context fills. Defaults to true. DISABLE_AUTO_COMPACT turns it off for one session. A value in ~/.claude.json from an older version applies when no settings file sets it.',
+        ),
+      fileCheckpointingEnabled: z
+        .boolean()
+        .optional()
+        .describe(
+          'Enable file checkpointing for rewind/restore. Defaults to true. CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING turns it off for one session. A value in ~/.claude.json from an older version applies when no settings file sets it.',
+        ),
+      editorMode: z
+        .string()
+        .optional()
+        .describe(
+          'Keybinding mode for the prompt input (e.g. "normal" or "vim"). Defaults to "normal". A value in ~/.claude.json from an older version applies when no settings file sets it.',
+        ),
+      teammateMode: z
+        .enum(['auto', 'tmux', 'in-process'])
+        .optional()
+        .describe(
+          'How to spawn teammates. Defaults to "auto". --teammate-mode takes precedence for one session. A value in ~/.claude.json from an older version applies when no settings file sets it.',
         ),
       agent: z
         .string()

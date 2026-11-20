@@ -29,6 +29,11 @@ import {
 } from '../../utils/model/model.js'
 import { isModelAllowed } from '../../utils/model/modelAllowlist.js'
 import { validateModel } from '../../utils/model/validateModel.js'
+import {
+  executePostModelSwitchHooks,
+  executePreModelSwitchHooks,
+} from '../../utils/hooks.js'
+import { getPromptCache1hEligible } from '../../bootstrap/state.js'
 
 function ModelPickerWrapper({
   onDone,
@@ -58,6 +63,13 @@ function ModelPickerWrapper({
     model: string | null,
     effort: EffortLevel | undefined,
   ): void {
+    void handleSelectAsync(model, effort)
+  }
+
+  async function handleSelectAsync(
+    model: string | null,
+    effort: EffortLevel | undefined,
+  ): Promise<void> {
     logEvent('tengu_model_command_menu', {
       action:
         model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -66,6 +78,30 @@ function ModelPickerWrapper({
       to_model:
         model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     })
+
+    // PreModelSwitch (upstream 2.1.311): picker source. deny/block/timeout
+    // cancels the switch (fail-closed). cache_ttl is real; remaining cache
+    // fields use defaults pending query-layer usage + pricing (B1 spec).
+    const switchFields = {
+      from_model: mainLoopModel ?? getDefaultMainLoopModelSetting(),
+      to_model: model ?? getDefaultMainLoopModelSetting(),
+      requested_model: model,
+      source: 'picker' as const,
+      context_tokens: 0,
+      prompt_cache_warm: false,
+      cache_ttl: (getPromptCache1hEligible() ? '1h' : '5m') as '1h' | '5m',
+      estimated_cache_write_usd: 0,
+      pricing: 'default' as const,
+    }
+    let switchBlocked: string | undefined
+    for await (const r of executePreModelSwitchHooks(switchFields)) {
+      if (r.blockingError) switchBlocked = r.blockingError.blockingError
+    }
+    if (switchBlocked) {
+      onDone(switchBlocked, { display: 'system' })
+      return
+    }
+
     setAppState(prev => ({
       ...prev,
       mainLoopModel: model,
@@ -114,6 +150,18 @@ function ModelPickerWrapper({
     }
 
     onDone(message)
+
+    // PostModelSwitch (upstream 2.1.311): async, non-cancellable, waits at most
+    // 5s. GAP: additionalContext delivery to the next request needs query-layer
+    // integration; results are drained here.
+    void (async () => {
+      for await (const r of executePostModelSwitchHooks({
+        ...switchFields,
+        source: 'picker' as const,
+      })) {
+        void r
+      }
+    })()
   }
 
   return (
@@ -145,6 +193,7 @@ function SetModelAndClose({
 }): React.ReactNode {
   const isFastMode = useAppState(s => s.fastMode)
   const setAppState = useSetAppState()
+  const currentModel = useAppState(s => s.mainLoopModel)
   const model = args === 'default' ? null : args
 
   React.useEffect(() => {
@@ -176,13 +225,13 @@ function SetModelAndClose({
 
       // Skip validation for default model
       if (!model) {
-        setModel(null)
+        await setModel(null)
         return
       }
 
       // Skip validation for known aliases - they're predefined and should work
       if (isKnownAlias(model)) {
-        setModel(model)
+        await setModel(model)
         return
       }
 
@@ -193,7 +242,7 @@ function SetModelAndClose({
         const { valid, error } = await validateModel(model)
 
         if (valid) {
-          setModel(model)
+          await setModel(model)
         } else {
           onDone(error || `Model '${model}' not found`, {
             display: 'system',
@@ -206,7 +255,32 @@ function SetModelAndClose({
       }
     }
 
-    function setModel(modelValue: string | null): void {
+    async function setModel(modelValue: string | null): Promise<void> {
+      // PreModelSwitch (upstream 2.1.311): deny/block/timeout cancels the
+      // switch (fail-closed). cache_ttl is real (1h prompt-cache eligibility).
+      // GAP: context_tokens / prompt_cache_warm / estimated_cache_write_usd /
+      // pricing need a query-layer last-response usage + pricing subsystem
+      // (tracked in the B1 spec decision table).
+      const switchFields = {
+        from_model: currentModel ?? getDefaultMainLoopModelSetting(),
+        to_model: modelValue ?? getDefaultMainLoopModelSetting(),
+        requested_model: args ? args : null,
+        source: 'command' as const,
+        context_tokens: 0,
+        prompt_cache_warm: false,
+        cache_ttl: (getPromptCache1hEligible() ? '1h' : '5m') as '1h' | '5m',
+        estimated_cache_write_usd: 0,
+        pricing: 'default' as const,
+      }
+      let switchBlocked: string | undefined
+      for await (const r of executePreModelSwitchHooks(switchFields)) {
+        if (r.blockingError) switchBlocked = r.blockingError.blockingError
+      }
+      if (switchBlocked) {
+        onDone(switchBlocked, { display: 'system' })
+        return
+      }
+
       setAppState(prev => ({
         ...prev,
         mainLoopModel: modelValue,
@@ -246,6 +320,18 @@ function SetModelAndClose({
       }
 
       onDone(message)
+
+      // PostModelSwitch (upstream 2.1.311): async, non-cancellable, waits at
+      // most 5s. GAP: additionalContext delivery to the next request needs
+      // query-layer integration; results are drained here.
+      void (async () => {
+        for await (const r of executePostModelSwitchHooks({
+          ...switchFields,
+          source: 'command' as const,
+        })) {
+          void r
+        }
+      })()
     }
 
     void handleModelChange()

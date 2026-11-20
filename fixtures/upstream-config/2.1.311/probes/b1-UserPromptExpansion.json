@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "upstreamVersion": "2.1.311",
+  "event": "UserPromptExpansion",
+  "cases": [
+    {
+      "mode": "record",
+      "stdin": [
+        {
+          "session_id": "a825ade7-f8dc-43e0-bb5e-e5162e0d575c",
+          "transcript_path": "/var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b1-UserPromptExpansion-xqLPYt/.claude/projects/-private-var-folders-p5-5yk3txnn3td6jb095qq42k0m0000gn-T-b1-UserPromptExpansion-xqLPYt-project/a825ade7-f8dc-43e0-bb5e-e5162e0d575c.jsonl",
+          "cwd": "/private/var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b1-UserPromptExpansion-xqLPYt/project",
+          "prompt_id": "d6306274-757e-4ad5-aeab-62bc6f32e108",
+          "permission_mode": "auto",
+          "hook_event_name": "UserPromptExpansion",
+          "expansion_type": "slash_command",
+          "command_name": "probe",
+          "command_args": "a b",
+          "command_source": "projectSettings",
+          "prompt": "/probe a b"
+        }
+      ],
+      "transcriptTail": "ons and prompt inje\u001btion before \u001bxecuting, runs \u001b\u001b▎\u001b\u001bhe ones\u001bit \u001bssesses as lower-\u001bi\u001bk,\u001band blocks the rest.\u001b\u001b▎\u001b\u001bpermission-modes\u001b\u001b❯\u001b \u001b/probe a b\u001b                                                                    \u001b\u001b\u001b\u001b \u001b\u001bThought for \u001b9s\u001b\u001b\u001b\u001b\u001b\u001b\u001b\u001b⏺\u001b\u001ba b\u001b\u001b\u001b✻\u001b \u001bWorked for 9s · done 1:15 PM\u001b\u001b\u001b\u001b\u001b❯ \u001b/exit\u001b                                                                         \u001b\u001b\u001b✽\u001bAccomplish\u001bing\u001b… \u001b\u001b  ⎿  Tip: Start with small features or bug fixes, tell Claude to propose a plan,\u001b\u001b \u001b   \u001ban\u001bve\u001bify\u001bits suggested edits\u001b❯ \u001b\u001b · esc to interrupt\u001b\u001b\u001b\u001b\u001b\u001b\u001b\u001b\u001b\u001b[<u\u001b\u001b[>4m\u001b[>4m\u001b[<u\u001b\u001b\u001b(B\u000f\u001b\u001b\u001b\u001b\u001b\u001b\u001b7\u001b\u001b8\u001b\u001b(B\u000f\u001b\u001b\u001b\u001b\u001b\u001b[>4m\u001b\u001b\u001b\u001b[<u\u001b\u001b7\u001b\u001b8\u001b\u001b\u001b\n\u001bResume this session with:\u001b\n\u001bclaude --resume a825ade7-f8dc-43e0-bb5e-e5162e0d575c\u001b\n\u001b\u001b\u001b"
+    },
+    {
+      "mode": "context",
+      "stdin": [
+        {
+          "session_id": "9b6646b0-98fc-4223-81c0-4a98712fb864",
+          "transcript_path": "/var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b1-UserPromptExpansion-IOFgwy/.claude/projects/-private-var-folders-p5-5yk3txnn3td6jb095qq42k0m0000gn-T-b1-UserPromptExpansion-IOFgwy-project/9b6646b0-98fc-4223-81c0-4a98712fb864.jsonl",
+          "cwd": "/private/var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b1-UserPromptExpansion-IOFgwy/project",
+          "prompt_id": "ed41c035-d153-426e-b372-dd76f1609a53",
+          "permission_mode": "auto",
+          "hook_event_name": "UserPromptExpansion",
+          "expansion_type": "slash_command",
+          "command_name": "probe",
+          "command_args": "a b",
+          "command_source": "projectSettings",
+          "prompt": "/probe a b"
+        }
+      ],
+      "transcriptTail": "b\u001b\u001b\u001b✻\u001bBaked for 10s ·\u001bdone \u001b:15 PM\u001b\u001b\u001b❯ \u001b\u001b\u001b\u001b\u001b\u001b(B\u000f\u001b\u001b\u001b\u001b\u001b\u001b\u001b\u001b\u001b\u001b❯\u001b \u001b/probe a b\u001b                                                                    \u001b\u001b\u001b\u001b \u001b\u001bThought for \u001b4s\u001b\u001b\u001b\u001b\u001b\u001b\u001b\u001b⏺\u001b\u001b\u001bSkill\u001b(/probe)\u001b\u001b\u001b  ⎿  \u001bSuccessfully\u001bloaded\u001bskill\u001b\u001b\u001b\u001b\u001bThought for \u001b6s\u001b \u001b\u001b\u001b\u001b\u001b\u001b⏺\u001b\u001ba\u001bb\u001b\u001b\u001b\u001b✻\u001b \u001bBaked for 10s · done 1:15 PM\u001b\u001b❯ \u001b/exit\u001b                                                                         \u001b\u001b\u001b✽\u001bBeboppin'… \u001b\u001b  ⎿  Tip: Start with small features or bug fixes, tell Claude to propose a plan,\u001b\u001b \u001b   \u001band verify\u001bits suggested edits\u001b❯ \u001b\u001b · esc to interrupt\u001b\u001b\u001b\u001b\u001b\u001b\u001b\u001b\u001b\u001b[<u\u001b\u001b[>4m\u001b[>4m\u001b[<u\u001b\u001b\u001b(B\u000f\u001b\u001b\u001b\u001b\u001b\u001b\u001b7\u001b\u001b8\u001b\u001b(B\u000f\u001b\u001b\u001b\u001b\u001b\u001b[>4m\u001b\u001b\u001b\u001b[<u\u001b\u001b7\u001b\u001b8\u001b\u001b\u001b\n\u001bResume this session with:\u001b\n\u001bclaude --resume 9b6646b0-98fc-4223-81c0-4a98712fb864\u001b\n\u001b\u001b\u001b"
+    },
+    {
+      "mode": "block",
+      "stdin": [
+        {
+          "session_id": "d80fabff-6d6f-497f-9e1d-1327bb0cb014",
+          "transcript_path": "/var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b1-UserPromptExpansion-Zxa71p/.claude/projects/-private-var-folders-p5-5yk3txnn3td6jb095qq42k0m0000gn-T-b1-UserPromptExpansion-Zxa71p-project/d80fabff-6d6f-497f-9e1d-1327bb0cb014.jsonl",
+          "cwd": "/private/var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b1-UserPromptExpansion-Zxa71p/project",
+          "prompt_id": "bba3605a-04f4-4c69-bb57-d77f081df03f",
+          "permission_mode": "auto",
+          "hook_event_name": "UserPromptExpansion",
+          "expansion_type": "slash_command",
+          "command_name": "probe",
+          "command_args": "a b",
+          "command_source": "projectSettings",
+          "prompt": "/probe a b"
+        }
+      ],
+      "transcriptTail": " mode is now Claude Code's default permission mode.\u001b\u001b\u001b▎\u001b\u001bAuto mode lets Claude handle permission prompts automatically. Claude checks \u001b\u001b▎\u001b\u001beach tool call for risky actions and prompt inje\u001btion before \u001bxecuting, runs \u001b\u001b▎\u001b\u001bhe ones\u001bit \u001bssesses as lower-\u001bi\u001bk,\u001band blocks the rest.\u001b\u001b▎\u001b\u001bpermission-modes\u001b\u001b⏺\u001bUserPromptExpansion operation blocked by hook:\u001b\u001b\u001b \u001b\u001b[/opt/homebrew/lib/node_modules/bun/bin/bun.exe /var/folders/p5/5yk3tx\u001b\u001b\u001b \u001b\u001bnn3td6jb095qq42k0m0000gn/T/b1-UserPromptExpansion-Zxa71p/recorder.js \u001b\u001b\u001b \u001b\u001bUserPromptExpansion /var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b\u001b\u001b \u001b\u001b1-UserPromptExpansion-Zxa71p/out\u001b\u001b\n\u001bResume this session with:\u001b\n\u001bclaude --resume d80fabff-6d6f-497f-9e1d-1327bb0cb014\u001b\n\u001b\u001b\u001b"
+    },
+    {
+      "mode": "exit1",
+      "stdin": [
+        {
+          "session_id": "1f21d613-acc1-4d05-8118-1c948b51e3cb",
+          "transcript_path": "/var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b1-UserPromptExpansion-TvKz6v/.claude/projects/-private-var-folders-p5-5yk3txnn3td6jb095qq42k0m0000gn-T-b1-UserPromptExpansion-TvKz6v-project/1f21d613-acc1-4d05-8118-1c948b51e3cb.jsonl",
+          "cwd": "/private/var/folders/p5/5yk3txnn3td6jb095qq42k0m0000gn/T/b1-UserPromptExpansion-TvKz6v/project",
+          "prompt_id": "39c038ba-8827-4dd1-ad2d-13b05da97047",
+          "permission_mode": "auto",
+          "hook_event_name": "UserPromptExpansion",
+          "expansion_type": "slash_command",
+          "command_name": "probe",
+          "command_args": "a b",
+          "command_source": "projectSettings",
+          "prompt": "/probe a b"
+        }
+      ],
+      "transcriptTail": "\u001b\u001b\u001b✢\u001b\u001bthinking\u001b\u001b\u001b\u001b\u001b\u001b\u001b·\u001b\u001bthinking\u001b\u001b\u001b\u001b\u001b\u001b\u001bthinking\u001b\u001b\u001b\u001b\u001b\u001b\u001b…\u001b\u001bthinking\u001b\u001b\u001b\u001b\u001b\u001b\u001b9\u001b\u001bthinking\u001b\u001b\u001b\u001b\u001b\u001b✢\u001b\u001bg\u001b\u001bthinking\u001b\u001b\u001b\u001b\u001b\u001b✳\u001b\u001bthinking\u001b\u001b\u001b\u001b\u001b\u001b\u001bn\u001b\u001b\u001b\u001b\u001b\u001b✶\u001b\u001bi\u001b\u001b…\u001b\u001b\u001b\u001b\u001b\u001b\u001b✻\u001b\u001bthinking\u001b\u001b\u001b\u001b\u001b\u001b✽\u001b\u001be\u001b\u001bg\u001b\u001bthinking\u001b\u001b\u001b\u001b\u001b\u001b\u001bthinking\u001b\u001b\u001b\u001b\u001b\u001b\u001bi\u001b\u001bn\u001b\u001bthinking\u001b\u001b\u001b\u001b\u001b\u001b\u001b10s · ↓\u001b \u001b142 tokens · \u001bthinking\u001b)\u001b\u001b\u001b\u001b\u001b\u001b✻\u001b\u001bg\u001b\u001bi\u001b\u001bthinking\u001b\u001b\u001b\u001b\u001b\u001b✶\u001b\u001bthinking\u001b\u001b\u001b\u001b\u001b\u001b✳\u001b\u001bo\u001b\u001be\u001b\u001b\u001b\u001b\u001b\u001b\u001bo\u001b\u001bi\u001b\u001b\u001b\u001b\u001b\u001b\u001b✢\u001b\u001bthinking\u001b\u001b\u001b\u001b\u001b\u001b·\u001b\u001bB\u001b\u001bg\u001b\u001bthinking\u001b\u001b\u001b\u001b\u001b\u001b\u001bthinking\u001b\u001b\u001b\u001b\u001b\u001b\u001bo\u001b\u001b1\u001b\u001bthinking\u001b\u001b\u001b\u001b\u001b\u001b\u001bthinking\u001b\u001b\u001b\u001b\u001b\u001b✢\u001bo\u001b\u001bthinking\u001b\u001b\u001b\u001b\u001b\u001b✳\u001bB\u001b\u001bthinking\u001b\u001b\u001b\u001b\u001b\u001b✶\u001b\u001b\u001b\u001b\u001b\u001b\u001b✻\u001b\u001bthinking\u001b\u001b\u001b\u001b\u001b\u001b✽\u001b\u001bthinking\u001b\u001b\u001b\u001b\u001b\u001b\u001bthinking\u001b\u001b\u001b\u001b\u001b\u001b\u001b2\u001b\u001bthinking\u001b\u001b\u001b\u001b(B\u000f\u001b\u001b\u001b\u001b\u001b\u001b\u001b\u001b\u001b\u001b\u001b\u001b[<u\u001b\u001b[>4m\u001b[>4m\u001b[<u\u001b\u001b\u001b(B\u000f\u001b\u001b\u001b\u001b\u001b\u001b\u001b7\u001b\u001b8\u001b\u001b(B\u000f\u001b\u001b\u001b\u001b\u001b\u001b[>4m\u001b\u001b\u001b\u001b[<u\u001b\u001b7\u001b\u001b8\u001b\u001b\u001b\n\u001bResume this session with:\u001b\n\u001bclaude --resume 1f21d613-acc1-4d05-8118-1c948b51e3cb\u001b\n\u001b\u001b\u001b"
+    }
+  ]
+}

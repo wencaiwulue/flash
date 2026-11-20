@@ -4,7 +4,7 @@ import { getSdkBetas } from '../../bootstrap/state.js'
 import type { QuerySource } from '../../constants/querySource.js'
 import type { ToolUseContext } from '../../Tool.js'
 import type { Message } from '../../types/message.js'
-import { getGlobalConfig } from '../../utils/config.js'
+import { getAutoCompactEnabled } from '../../utils/config.js'
 import { getContextWindowForModel } from '../../utils/context.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
@@ -153,8 +153,7 @@ export function isAutoCompactEnabled(): boolean {
     return false
   }
   // Check if user has disabled auto-compact in their settings
-  const userConfig = getGlobalConfig()
-  return userConfig.autoCompactEnabled
+  return getAutoCompactEnabled()
 }
 
 export async function shouldAutoCompact(

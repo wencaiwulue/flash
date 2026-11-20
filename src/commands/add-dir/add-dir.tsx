@@ -16,6 +16,7 @@ import {
 } from '../../utils/permissions/PermissionUpdate.js'
 import type { PermissionUpdateDestination } from '../../utils/permissions/PermissionUpdateSchema.js'
 import { SandboxManager } from '../../utils/sandbox/sandbox-adapter.js'
+import { executeDirectoryAddedHooks } from '../../utils/hooks.js'
 import {
   addDirHelpMessage,
   validateDirectoryForWorkspace,
@@ -90,6 +91,17 @@ export async function call(
       setAdditionalDirectoriesForClaudeMd([...currentDirs, path])
     }
     SandboxManager.refreshConfig()
+
+    // DirectoryAdded (upstream 2.1.311): background, non-blocking. Output
+    // cannot cancel the addition, so results are drained and discarded.
+    void (async () => {
+      for await (const result of executeDirectoryAddedHooks(
+        path,
+        'slash_command',
+      )) {
+        void result
+      }
+    })()
 
     let message: string
 

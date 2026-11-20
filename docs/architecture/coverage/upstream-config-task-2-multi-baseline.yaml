@@ -1,0 +1,7 @@
+schema_version: 1
+spec_id: upstream-config-task-2-multi-baseline
+spec: ../../superpowers/specs/2026-11-18-upstream-config-task-2-multi-baseline-design.md
+status: approved
+# 本 spec 是多基线迁移与完整性门禁的基础设施；兼容性矩阵中仅 ownerBatch 由此维护，
+# 矩阵其余部分仍由 B0 baseline spec 拥有，避免重复覆盖。
+groups: []

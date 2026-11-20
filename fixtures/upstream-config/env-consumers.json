@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "consumers": {
+    "CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS": [
+      {
+        "file": "src/utils/subagentLimits.ts",
+        "purpose": "getMaxConcurrentSubagents() reads the cap (default 20); acquireSubagentSlot() enforces it"
+      },
+      {
+        "file": "src/tools/AgentTool/runAgent.ts",
+        "purpose": "acquires/releases a concurrency slot around the agent query loop (try/finally)"
+      }
+    ],
+    "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": [
+      {
+        "file": "src/utils/subagentLimits.ts",
+        "purpose": "getMaxSubagentSpawnDepth() reads the cap (default 3); acquireSubagentSlot() enforces it"
+      },
+      {
+        "file": "src/tools/AgentTool/AgentTool.tsx",
+        "purpose": "stamps depth = parent depth + 1 on the subagent context at spawn"
+      }
+    ]
+  }
+}

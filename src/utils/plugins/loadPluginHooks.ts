@@ -56,6 +56,12 @@ function convertPluginHooksToMatchers(
     InstructionsLoaded: [],
     CwdChanged: [],
     FileChanged: [],
+    PostToolBatch: [],
+    UserPromptExpansion: [],
+    PreModelSwitch: [],
+    PostModelSwitch: [],
+    DirectoryAdded: [],
+    MessageDisplay: [],
   }
 
   if (!plugin.hooksConfig) {
@@ -118,6 +124,12 @@ export const loadPluginHooks = memoize(async (): Promise<void> => {
     InstructionsLoaded: [],
     CwdChanged: [],
     FileChanged: [],
+    PostToolBatch: [],
+    UserPromptExpansion: [],
+    PreModelSwitch: [],
+    PostModelSwitch: [],
+    DirectoryAdded: [],
+    MessageDisplay: [],
   }
 
   // Process each enabled plugin

@@ -23,7 +23,11 @@ import {
   createProjectOnboardingFeed,
   createGuestPassesFeed,
 } from './feedConfigs.js'
-import { getGlobalConfig, saveGlobalConfig } from 'src/utils/config.js'
+import {
+  getGlobalConfig,
+  getThemeSetting,
+  saveGlobalConfig,
+} from 'src/utils/config.js'
 import { resolveThemeSetting } from 'src/utils/systemTheme.js'
 import { getInitialSettings } from 'src/utils/settings/settings.js'
 import {
@@ -251,7 +255,7 @@ export function LogoV2(): React.ReactNode {
   // Calculate layout and display values
   const layoutMode = getLayoutMode(columns)
 
-  const userTheme = resolveThemeSetting(getGlobalConfig().theme)
+  const userTheme = resolveThemeSetting(getThemeSetting())
   const borderTitle = ` ${color('claude', userTheme)('flash')} ${color('inactive', userTheme)(`v${version}`)} `
   const compactBorderTitle = color('claude', userTheme)(' flash ')
 

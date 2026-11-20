@@ -3,11 +3,10 @@ import {
   logEvent,
 } from '../../services/analytics/index.js'
 import type { LocalCommandCall } from '../../types/command.js'
-import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
+import { getEditorMode, saveGlobalConfig } from '../../utils/config.js'
 
 export const call: LocalCommandCall = async () => {
-  const config = getGlobalConfig()
-  let currentMode = config.editorMode || 'normal'
+  let currentMode = getEditorMode() || 'normal'
 
   // Handle backward compatibility - treat 'emacs' as 'normal'
   if (currentMode === 'emacs') {

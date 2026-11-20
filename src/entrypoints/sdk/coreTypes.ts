@@ -26,8 +26,10 @@ export const HOOK_EVENTS = [
   'PreToolUse',
   'PostToolUse',
   'PostToolUseFailure',
+  'PostToolBatch',
   'Notification',
   'UserPromptSubmit',
+  'UserPromptExpansion',
   'SessionStart',
   'SessionEnd',
   'Stop',
@@ -36,6 +38,8 @@ export const HOOK_EVENTS = [
   'SubagentStop',
   'PreCompact',
   'PostCompact',
+  'PreModelSwitch',
+  'PostModelSwitch',
   'PermissionRequest',
   'PermissionDenied',
   'Setup',
@@ -50,6 +54,8 @@ export const HOOK_EVENTS = [
   'InstructionsLoaded',
   'CwdChanged',
   'FileChanged',
+  'DirectoryAdded',
+  'MessageDisplay',
 ] as const
 
 export const EXIT_REASONS = [
