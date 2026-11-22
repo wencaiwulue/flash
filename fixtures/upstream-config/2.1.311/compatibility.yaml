@@ -7887,29 +7887,33 @@ entries:
     ownerBatch: final
   - id: setting:worktree
     status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    implementation:
+      - src/utils/settings/types.ts
+      - src/utils/worktree.ts
+    tests:
+      - tests/b3WorktreeSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "settings/types.ts:490 worktree z.object({symlinkDirectories,sparsePaths}).optional()"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.object({symlinkDirectories,sparsePaths}) = 上游 object 子集（缺 baseRef/bgIsolation/location）"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游默认 unset（optional）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "getInitialSettings().worktree（worktree.ts:323,583）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "--worktree flag 的 worktree 创建配置"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: partial
+        evidence: "2 子项 aligned（sparsePaths/symlinkDirectories）；baseRef/bgIsolation/location 功能缺口"
+    notes: "父对象。2 子项 aligned；baseRef/bgIsolation/location 为功能缺口（无 zod/运行时）"
     exclusion: null
     ownerBatch: 3
   - id: setting:worktree.baseRef
@@ -7936,7 +7940,7 @@ entries:
       runtime:
         status: missing
         evidence: ""
-    notes: ""
+    notes: "功能缺口：上游 active（基线内），flash 无 zod/运行时。Any file，worktree 基础 ref"
     exclusion: null
     ownerBatch: 3
   - id: setting:worktree.bgIsolation
@@ -7963,7 +7967,7 @@ entries:
       runtime:
         status: missing
         evidence: ""
-    notes: ""
+    notes: "功能缺口：上游 active（基线内），flash 无 zod/运行时。Any file，后台隔离"
     exclusion: null
     ownerBatch: 3
   - id: setting:worktree.location
@@ -7990,61 +7994,71 @@ entries:
       runtime:
         status: missing
         evidence: ""
-    notes: ""
+    notes: "功能缺口：上游 active（基线内），flash 无 zod/运行时。User，worktree 位置"
     exclusion: null
     ownerBatch: 3
   - id: setting:worktree.sparsePaths
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b3-security-filesystem
+    implementation:
+      - src/utils/settings/types.ts
+      - src/utils/worktree.ts
+    tests:
+      - tests/b3WorktreeSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "settings/types.ts:500 worktree.sparsePaths z.array(z.string())"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.array(z.string()) = 上游目录路径数组（相对仓库根）"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "默认无稀疏（不稀疏检出）；上游 default=None"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "getInitialSettings().worktree?.sparsePaths（worktree.ts:323）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "sparsePaths 非空时应用 git sparse-checkout --cone（worktree.ts:325,338）"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "worktree.ts:323-354 git sparse-checkout set --cone -- <paths>；tests/b3WorktreeSettings schema 用例"
+    notes: "cone mode 稀疏检出（大 monorepo 加速，仅写出列出路径）；默认无稀疏"
     exclusion: null
     ownerBatch: 3
   - id: setting:worktree.symlinkDirectories
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b3-security-filesystem
+    implementation:
+      - src/utils/settings/types.ts
+      - src/utils/worktree.ts
+    tests:
+      - tests/b3WorktreeSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "settings/types.ts:492 worktree.symlinkDirectories z.array(z.string())"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.array(z.string()) = 上游目录路径数组（相对仓库根）"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "默认 ?? []（无符号链接，types.ts:497 明确 no directories symlinked by default）；上游 default=None"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "getInitialSettings().worktree?.symlinkDirectories ?? []（worktree.ts:583-586）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "符号链接目录从主仓库到 worktree（避免磁盘膨胀）"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "worktree.ts:583-586 symlinkDirectories(repoRoot, worktreePath, dirs)；tests/b3WorktreeSettings schema 用例"
+    notes: "符号链接目录（node_modules/.cache 等）从主仓库到 worktree，避免磁盘膨胀；默认无符号链接"
     exclusion: null
     ownerBatch: 3
   - id: setting:wslInheritsWindowsSettings
@@ -12827,7 +12841,7 @@ entries:
       runtime:
         status: missing
         evidence: ""
-    notes: ""
+    notes: "功能缺口：上游 active，Set to 1 停止权限请求未应答时的 Notification hooks（Agent SDK canUseTool 场景）；flash 无实现（Notification hooks 正常运行）"
     exclusion: null
     ownerBatch: 3
   - id: env:CLAUDE_CODE_DISABLE_POLICY_SKILLS
@@ -13669,7 +13683,7 @@ entries:
       runtime:
         status: missing
         evidence: ""
-    notes: ""
+    notes: "功能缺口：上游 active，Set to 1 在 bypassPermissions 下危险 rm 无提示（移除破坏性删除安全提示）；flash 无实现（保持 rm 安全提示，更安全默认）"
     exclusion: null
     ownerBatch: 3
   - id: env:CLAUDE_CODE_EXIT_AFTER_STOP_DELAY

@@ -71,6 +71,8 @@ status: draft
 - sandbox 基础批 aligned（11 条）：enabled ?? false、autoAllowBashIfSandboxed ?? true（基线 2.1.311 默认 true，v2.1.324 上游才改 false）、allowUnsandboxedCommands ?? true、failIfUnavailable ?? false（enabled && failIfUnavailable → isSandboxRequired fail-closed）、excludedCommands、ignoreViolations、enableWeakerNestedSandbox/enableWeakerNetworkIsolation（透传，默认 false 严格）、ripgrep/ripgrep.command/ripgrep.args（?? 系统 ripgrep）。
 - sandbox network/filesystem aligned：network 7 条（allowedDomains 提取 + WebFetch allow 规则合并、allowManagedDomainsOnly managed-only、allowUnixSockets macOS only、allowAllUnixSockets/allowLocalBinding/httpProxyPort/socksProxyPort 透传）；filesystem 5 条（allowWrite 默认 cwd/temp、denyWrite 含 settings anti-escape、denyRead、allowRead > denyRead re-allow、allowManagedReadPathsOnly managed-only 343 条件）。fail-closed：denyWrite 防 escape、managed-only 域名/读路径。network/filesystem 父对象标 partial（deniedDomains/strictAllowlist/tlsTerminate/disabled 等子项缺口）。
 - sandbox 收尾：20 条 missing 功能缺口（用 python 精准替换 notes 行批量记录，不重格式化 YAML；diff 仅 20 notes 行，避免 parse/stringify 的 1334 行格式噪声）。deniedDomains 标 partial（功能等价：permissions.deny WebFetch(domain:) 规则实现拒绝域名，无独立 zod 字段，tests/b3SandboxSettings convert evil.com 用例）。sandbox 父对象标 partial（23 aligned + deniedDomains partial + 19 missing）。
+- worktree（B3 文件系统子系统）：sparsePaths（worktree.ts:323-354 git sparse-checkout --cone）、symlinkDirectories（worktree.ts:583-586 符号链接 ?? []，默认无符号链接）六维度 aligned，tests/b3WorktreeSettings 3 用例；baseRef/bgIsolation/location 功能缺口（无 zod/运行时）。
+- B3 env：2 个权限相关 env（CLAUDE_CODE_DISABLE_PERMISSION_PROMPT_NOTIFY_HOOKS、CLAUDE_CODE_EVEN_MORE_DANGEROUSLY_SKIP_PERMISSIONS）均为功能缺口（上游 active，flash 无实现）。EVEN_MORE_DANGEROUSLY 未实现 = 保持 rm 安全提示（更安全默认）；DISABLE_PERMISSION_PROMPT_NOTIFY_HOOKS 未实现 = Notification hooks 正常运行。
 
 ## 8. 文件覆盖与相关子系统
 
@@ -93,5 +95,6 @@ coverage：[upstream-config-b3-security-filesystem.yaml](../../architecture/cove
 - allowManagedHooksOnly：六维度 aligned（Managed scope + boolean + managed-only runtime，tests/b3AllowManagedHooksOnly 5 用例）。fail-closed：非 managed 源不能启用、非 managed disableAllHooks 强制 managed-only。
 - sandbox（读取路径已 aligned）：基础批 11 + network 7 + filesystem 5 = 23 条 aligned；deniedDomains partial（功能等价，permissions.deny WebFetch 实现）；19 条 missing（功能缺口，notes 记录）；父对象 partial。tests/b3SandboxSettings 11 用例。fail-closed：denyWrite 防 escape、failIfUnavailable、managed-only 域名/读路径、allowRead > denyRead。
 - 矩阵 setting aligned=60（B2 26 + B3 34），`--batch 3` 0 诊断，design-docs 0 errors。
-- B3 读取路径对齐基本完成：attribution 4 + permissions 6 + allowManagedHooksOnly 1 + sandbox 23 = 34 aligned。剩余为功能缺口（permissions.blockReads、sandbox 19 条）、feature 门控（disableAutoMode）、功能等价（deniedDomains）、afterBaseline blocked（2 条）。
-- B3 剩余：2 个 env（B3 相关环境变量）+ 功能缺口实现（如需，非读取路径对齐范畴）。
+- worktree：sparsePaths/symlinkDirectories 六维度 aligned（worktree.ts 稀疏检出/符号链接，tests/b3WorktreeSettings 3 用例）；baseRef/bgIsolation/location 功能缺口。
+- B3 读取路径对齐完成：**36 aligned**（attribution 4 + permissions 6 + allowManagedHooksOnly 1 + sandbox 23 + worktree 2），40 个 B3 测试全过。矩阵 setting aligned=62（B2 26 + B3 36），`--batch 3` 0 诊断，design-docs 0 errors。
+- B3 剩余（非读取路径对齐范畴，留作后续子系统）：功能缺口实现（permissions.blockReads、sandbox 19 条、worktree 3 条、2 env）、feature 门控（disableAutoMode）、功能等价（deniedDomains）、afterBaseline blocked（2 条）。父对象 permissions/sandbox/network/filesystem/worktree 待功能缺口解决后标 aligned。
