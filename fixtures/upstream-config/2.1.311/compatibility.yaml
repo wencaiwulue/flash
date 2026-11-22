@@ -3720,29 +3720,35 @@ entries:
     ownerBatch: final
   - id: setting:permissions
     status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    implementation:
+      - src/utils/settings/types.ts
+      - src/utils/permissions/permissions.ts
+      - src/utils/permissions/permissionSetup.ts
+    tests:
+      - tests/b3PermissionsSettings.test.ts
+      - tests/b3PermissionRules.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "settings/types.ts PermissionsSchema（generateSettingsJSONSchema 覆盖 permissions object）"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.object({allow,deny,ask,defaultMode,disableBypassPermissionsMode,additionalDirectories,...}).passthrough() = 上游 object"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游默认 null/unset（各子字段独立默认）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "getSettings_DEPRECATED().permissions / getInitialSettings().permissions（Any file）"
       precedence:
-        status: missing
-        evidence: ""
+        status: partial
+        evidence: "求值 deny>ask>tool-specific>allow 已对齐；子项 precedence 见各条目"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: partial
+        evidence: "6 子项 aligned（allow/ask/deny/defaultMode/disableBypass/additionalDirectories）；disableAutoMode feature-gated、blockReads 功能缺口"
+    notes: "父对象。子项：6 aligned（allow/ask/deny/defaultMode/disableBypassPermissionsMode/additionalDirectories）；disableAutoMode partial（TRANSCRIPT_CLASSIFIER 门控）；blockReads missing（功能缺口）；blockWrites/denyInsteadOfPrompting blocked（afterBaseline v2.1.314/v2.1.319）。全部非 blocked 子项 aligned 后才标父对象 aligned"
     exclusion: null
     ownerBatch: 3
   - id: setting:permissions.additionalDirectories
@@ -3780,57 +3786,69 @@ entries:
     exclusion: null
     ownerBatch: 3
   - id: setting:permissions.allow
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b3-security-filesystem
+    implementation:
+      - src/utils/settings/types.ts
+      - src/utils/permissions/permissions.ts
+    tests:
+      - tests/b3PermissionRules.test.ts
+      - tests/b3PermissionsSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "settings/types.ts PermissionsSchema.allow"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.array(rule string) = 上游规则字符串数组"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游默认 []（无 allow 规则）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "settings.allow 经 syncPermissionRulesFromDisk 入 toolPermissionContext.alwaysAllowRules；getAllowRules/toolAlwaysAllowedRule 读取（permissions.ts:122,275）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "求值顺序 deny(1a) > ask(1b) > tool-specific > allow（allow 最后，仅前面无异议时生效）"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "checkRuleBasedPermissions 求值；tests/b3PermissionRules（deny 优先于 allow、仅 allow→null、无关工具不受影响）"
+    notes: "fail-closed：allow 不覆盖 deny/ask（deny/ask 优先于 allow）"
     exclusion: null
     ownerBatch: 3
   - id: setting:permissions.ask
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b3-security-filesystem
+    implementation:
+      - src/utils/settings/types.ts
+      - src/utils/permissions/permissions.ts
+    tests:
+      - tests/b3PermissionRules.test.ts
+      - tests/b3PermissionsSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "settings/types.ts PermissionsSchema.ask"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.array(rule string) = 上游规则字符串数组"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游默认 []（无 ask 规则）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "settings.ask 经 syncPermissionRulesFromDisk 入 toolPermissionContext.alwaysAskRules；getAskRules/getAskRuleForTool 读取（permissions.ts:223,297）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "deny(1a) > ask(1b) > tool-specific；ask 强制返回 ask（用户提示）"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "checkRuleBasedPermissions 1b 求值；tests/b3PermissionRules（ask 强制 prompt、deny 优先于 ask）"
+    notes: "fail-closed：ask 强制 prompt；safetyCheck(.git/.claude/.vscode/shell configs) bypass-immune 必须 prompt（permissions.ts:1144-1152）；sandbox auto-allow Bash 为例外"
     exclusion: null
     ownerBatch: 3
   - id: setting:permissions.blockReadsOutsideWorkingDirectories
@@ -3857,7 +3875,7 @@ entries:
       runtime:
         status: missing
         evidence: ""
-    notes: ""
+    notes: "功能缺口：上游 active（v2.1.257+，Any file），阻止读取工作目录外文件；flash 无 zod 字段、无运行时实现。留待后续实现（需新增 zod + 文件读取路径限制，fail-closed：阻止越界读取）"
     exclusion: null
     ownerBatch: 3
   - id: setting:permissions.blockWritesOutsideWorkingDirectories
@@ -3920,30 +3938,36 @@ entries:
     exclusion: null
     ownerBatch: 3
   - id: setting:permissions.deny
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b3-security-filesystem
+    implementation:
+      - src/utils/settings/types.ts
+      - src/utils/permissions/permissions.ts
+    tests:
+      - tests/b3PermissionRules.test.ts
+      - tests/b3PermissionsSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "settings/types.ts PermissionsSchema.deny"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.array(rule string) = 上游规则字符串数组"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游默认 []（无 deny 规则）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "settings.deny 经 syncPermissionRulesFromDisk 入 toolPermissionContext.alwaysDenyRules；getDenyRules/getDenyRuleForTool 读取（permissions.ts:213,287）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "deny 最先检查（checkRuleBasedPermissions 1a），优先于 ask/allow/tool-specific"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "checkRuleBasedPermissions 1a 求值；tests/b3PermissionRules（deny 优先于 allow、deny 优先于 ask、无关工具不受影响）"
+    notes: "fail-closed：deny 优先于一切（拒绝优先于 allow/ask）；规则经 permissionRuleValueFromString 解析"
     exclusion: null
     ownerBatch: 3
   - id: setting:permissions.denyInsteadOfPrompting
@@ -3974,30 +3998,33 @@ entries:
     exclusion: null
     ownerBatch: 3
   - id: setting:permissions.disableAutoMode
-    status: missing
-    implementation: []
+    status: partial
+    implementation:
+      - src/utils/settings/types.ts
+      - src/utils/permissions/permissionSetup.ts
     tests: []
-    evidence: []
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: partial
+        evidence: "settings/types.ts:71-78 disableAutoMode 受 feature('TRANSCRIPT_CLASSIFIER') 门控；feature off 时 generateSettingsJSONSchema 不含（已验证 permissions keys 无 disableAutoMode）"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.enum(['disable']) = 上游 'disable' 字面量（feature on 时）"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游默认不禁用（unset）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "permissionSetup.ts:1164,1272-1275 读 settings.permissions.disableAutoMode 并禁用 auto mode（feature on 时）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "settings.disableAutoMode='disable' → 禁用 auto mode"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: partial
+        evidence: "运行时读取已实现但受 TRANSCRIPT_CLASSIFIER feature 门控，feature off 时不可用"
+    notes: "feature-gated：disableAutoMode 门控在 TRANSCRIPT_CLASSIFIER（与 autoMode 子系统一致），feature off 时 schema/运行时不可用；上游为 active Any file 配置，flash 有意门控，feature on 时功能完整"
     exclusion: null
     ownerBatch: 3
   - id: setting:permissions.disableBypassPermissionsMode
