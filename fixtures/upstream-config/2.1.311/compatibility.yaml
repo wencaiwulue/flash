@@ -4666,29 +4666,33 @@ entries:
     ownerBatch: final
   - id: setting:sandbox
     status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    implementation:
+      - src/entrypoints/sandboxTypes.ts
+      - src/utils/sandbox/sandbox-adapter.ts
+    tests:
+      - tests/b3SandboxSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "sandboxTypes.ts:91 SandboxSettingsSchema（settings/types.ts:716 sandbox 引用）"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.object({enabled,network,filesystem,excludedCommands,failIfUnavailable,autoAllowBashIfSandboxed,allowUnsandboxedCommands,ignoreViolations,enableWeaker*,ripgrep,...}) = 上游 object 子集"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游默认 unset（optional）；enabled 默认 false"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "getSettings_DEPRECATED().sandbox / getInitialSettings().sandbox（sandbox-adapter.ts convertToSandboxRuntimeConfig）"
       precedence:
-        status: missing
-        evidence: ""
+        status: partial
+        evidence: "deny 优先于 allow、managed-only 字段（域名/读路径）优先；子项 precedence 见各条目"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: partial
+        evidence: "23 子项 aligned（基础批 11 + network 7 + filesystem 5）；deniedDomains partial（permissions.deny WebFetch 实现）；19 子项 missing（功能缺口）"
+    notes: "父对象。23 子项 aligned；deniedDomains partial（功能等价）；19 子项 missing（功能缺口：allowAppleEvents/allowNestedUserNamespaces/bwrapPath/socatPath/credentials.*/filesystem.disabled/allowMachLookup/strictAllowlist/tlsTerminate.*，上游 active 基线内）。全部非 blocked 子项 aligned 后才标父对象 aligned"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.allowAppleEvents
@@ -4715,7 +4719,7 @@ entries:
       runtime:
         status: missing
         evidence: ""
-    notes: ""
+    notes: "功能缺口：上游 active（基线内），flash 无 zod/运行时。macOS，允许 Apple events"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.allowNestedUserNamespaces
@@ -4742,7 +4746,7 @@ entries:
       runtime:
         status: missing
         evidence: ""
-    notes: ""
+    notes: "功能缺口：上游 active（基线内），flash 无 zod/运行时。v2.1.305，Linux 嵌套 user namespaces"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.allowUnsandboxedCommands
@@ -4833,7 +4837,7 @@ entries:
       runtime:
         status: missing
         evidence: ""
-    notes: ""
+    notes: "功能缺口：上游 active（基线内），flash 无 zod/运行时。Managed，Linux bubblewrap 路径"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.credentials
@@ -4860,7 +4864,7 @@ entries:
       runtime:
         status: missing
         evidence: ""
-    notes: ""
+    notes: "功能缺口：上游 active（基线内），flash 无 zod/运行时。Any file，沙箱凭据注入（父对象）"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.credentials.allowPlaintextInject
@@ -4887,7 +4891,7 @@ entries:
       runtime:
         status: missing
         evidence: ""
-    notes: ""
+    notes: "功能缺口：上游 active（基线内），flash 无 zod/运行时。User or managed，允许明文注入"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.credentials.awsPairs
@@ -4914,7 +4918,7 @@ entries:
       runtime:
         status: missing
         evidence: ""
-    notes: ""
+    notes: "功能缺口：上游 active（基线内），flash 无 zod/运行时。v2.1.224，AWS 凭据对"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.credentials.envVars
@@ -4941,7 +4945,7 @@ entries:
       runtime:
         status: missing
         evidence: ""
-    notes: ""
+    notes: "功能缺口：上游 active（基线内），flash 无 zod/运行时。Any file，凭据环境变量"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.credentials.files
@@ -4968,7 +4972,7 @@ entries:
       runtime:
         status: missing
         evidence: ""
-    notes: ""
+    notes: "功能缺口：上游 active（基线内），flash 无 zod/运行时。Any file，凭据文件"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.credentials.sigv4
@@ -4995,7 +4999,7 @@ entries:
       runtime:
         status: missing
         evidence: ""
-    notes: ""
+    notes: "功能缺口：上游 active（基线内），flash 无 zod/运行时。v2.1.224，AWS SigV4"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.credentials.sigv4.presigned
@@ -5022,7 +5026,7 @@ entries:
       runtime:
         status: missing
         evidence: ""
-    notes: ""
+    notes: "功能缺口：上游 active（基线内），flash 无 zod/运行时。v2.1.224，presigned URL"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.credentials.sigv4.sigv4a
@@ -5049,7 +5053,7 @@ entries:
       runtime:
         status: missing
         evidence: ""
-    notes: ""
+    notes: "功能缺口：上游 active（基线内），flash 无 zod/运行时。v2.1.224，SigV4A"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.credentials.sigv4.streaming
@@ -5076,7 +5080,7 @@ entries:
       runtime:
         status: missing
         evidence: ""
-    notes: ""
+    notes: "功能缺口：上游 active（基线内），flash 无 zod/运行时。v2.1.224，streaming 签名"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.enableWeakerNestedSandbox
@@ -5454,7 +5458,7 @@ entries:
       runtime:
         status: missing
         evidence: ""
-    notes: ""
+    notes: "功能缺口：上游 active（基线内），flash 无 zod/运行时。User or managed，禁用文件系统隔离"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.ignoreViolations
@@ -5608,7 +5612,7 @@ entries:
       runtime:
         status: missing
         evidence: ""
-    notes: ""
+    notes: "功能缺口：上游 active（基线内），flash 无 zod/运行时。macOS，Mach lookup"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.network.allowManagedDomainsOnly
@@ -5708,30 +5712,33 @@ entries:
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.network.deniedDomains
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: partial
+    implementation:
+      - src/utils/sandbox/sandbox-adapter.ts
+    tests:
+      - tests/b3SandboxSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: missing
-        evidence: ""
+        evidence: "无独立 zod 字段（flash 用 permissions.deny WebFetch(domain:) 规则表达，有意差异）"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "通过 permissions.deny 的 WebFetch(domain:) 规则字符串表达拒绝域名"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "默认 []（无拒绝域名）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "permissions.deny 的 WebFetch(domain:) 规则（convertToSandboxRuntimeConfig:212-220，全源生效）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "deny 域名优先于 allow；deniedDomains 全源生效（managed-only 时仍生效）"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "convertToSandboxRuntimeConfig:212-220 提取 deniedDomains；tests/b3SandboxSettings convert 用例（evil.com）"
+    notes: "部分实现：上游为独立字段；flash 用 permissions.deny 的 WebFetch(domain:) 规则实现拒绝域名（convertToSandboxRuntimeConfig:212-220），无独立 zod 字段（有意差异，功能等价）"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.network.httpProxyPort
@@ -5822,7 +5829,7 @@ entries:
       runtime:
         status: missing
         evidence: ""
-    notes: ""
+    notes: "功能缺口：上游 active（基线内），flash 无 zod/运行时。v2.1.219，严格 allowlist"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.network.tlsTerminate
@@ -5849,7 +5856,7 @@ entries:
       runtime:
         status: missing
         evidence: ""
-    notes: ""
+    notes: "功能缺口：上游 active（基线内），flash 无 zod/运行时。User or managed，TLS 终止（父对象）"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.network.tlsTerminate.caCertPath
@@ -5876,7 +5883,7 @@ entries:
       runtime:
         status: missing
         evidence: ""
-    notes: ""
+    notes: "功能缺口：上游 active（基线内），flash 无 zod/运行时。CA 证书路径"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.network.tlsTerminate.caKeyPath
@@ -5903,7 +5910,7 @@ entries:
       runtime:
         status: missing
         evidence: ""
-    notes: ""
+    notes: "功能缺口：上游 active（基线内），flash 无 zod/运行时。CA 密钥路径"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.ripgrep
@@ -6026,7 +6033,7 @@ entries:
       runtime:
         status: missing
         evidence: ""
-    notes: ""
+    notes: "功能缺口：上游 active（基线内），flash 无 zod/运行时。Managed，socat 路径"
     exclusion: null
     ownerBatch: 3
   - id: setting:showClearContextOnPlanAccept

@@ -70,6 +70,7 @@ status: draft
 - 测试基建（sandbox）：convertToSandboxRuntimeConfig 是 export 可直接注入 settings 测 anti-escape/domain 提取/字段透传；shouldAllowManagedSandboxDomainsOnly 是 export，spyOn(settingsModule.getSettingsForSource) 对命名 import 的 live binding 在 bun 生效（无需 module-object import）。YAML matrix 不能 parse/stringify 批量更新（去引号+折行产生 1334 行 diff），必须逐条 Edit 保格式。
 - sandbox 基础批 aligned（11 条）：enabled ?? false、autoAllowBashIfSandboxed ?? true（基线 2.1.311 默认 true，v2.1.324 上游才改 false）、allowUnsandboxedCommands ?? true、failIfUnavailable ?? false（enabled && failIfUnavailable → isSandboxRequired fail-closed）、excludedCommands、ignoreViolations、enableWeakerNestedSandbox/enableWeakerNetworkIsolation（透传，默认 false 严格）、ripgrep/ripgrep.command/ripgrep.args（?? 系统 ripgrep）。
 - sandbox network/filesystem aligned：network 7 条（allowedDomains 提取 + WebFetch allow 规则合并、allowManagedDomainsOnly managed-only、allowUnixSockets macOS only、allowAllUnixSockets/allowLocalBinding/httpProxyPort/socksProxyPort 透传）；filesystem 5 条（allowWrite 默认 cwd/temp、denyWrite 含 settings anti-escape、denyRead、allowRead > denyRead re-allow、allowManagedReadPathsOnly managed-only 343 条件）。fail-closed：denyWrite 防 escape、managed-only 域名/读路径。network/filesystem 父对象标 partial（deniedDomains/strictAllowlist/tlsTerminate/disabled 等子项缺口）。
+- sandbox 收尾：20 条 missing 功能缺口（用 python 精准替换 notes 行批量记录，不重格式化 YAML；diff 仅 20 notes 行，避免 parse/stringify 的 1334 行格式噪声）。deniedDomains 标 partial（功能等价：permissions.deny WebFetch(domain:) 规则实现拒绝域名，无独立 zod 字段，tests/b3SandboxSettings convert evil.com 用例）。sandbox 父对象标 partial（23 aligned + deniedDomains partial + 19 missing）。
 
 ## 8. 文件覆盖与相关子系统
 
@@ -90,6 +91,7 @@ coverage：[upstream-config-b3-security-filesystem.yaml](../../architecture/cove
 - permissions（读取路径已 aligned）：allow/ask/deny/defaultMode/disableBypassPermissionsMode/additionalDirectories 六维度 aligned（tests/b3PermissionsSettings 8 + tests/b3PermissionRules 5 = 13 用例）。fail-closed：deny 优先于 allow/ask、ask 强制 prompt（safetyCheck bypass-immune）、defaultMode remote 忽略 bypassPermissions、disableBypass 阻止 bypass（Statsig 优先）。
 - permissions 剩余：disableAutoMode partial（TRANSCRIPT_CLASSIFIER 门控，feature off 时 schema/运行时不可用，上游 active）；blockReadsOutsideWorkingDirectories missing（功能缺口，需新增 zod + 读取路径限制）；父对象 permissions partial（待此二项）；blocked 2 条核对完成（Requires v2.1.314/v2.1.319 afterBaseline）。
 - allowManagedHooksOnly：六维度 aligned（Managed scope + boolean + managed-only runtime，tests/b3AllowManagedHooksOnly 5 用例）。fail-closed：非 managed 源不能启用、非 managed disableAllHooks 强制 managed-only。
-- sandbox（进行中）：基础批 11 + network 7 + filesystem 5 = 23 条 aligned，tests/b3SandboxSettings 11 用例。fail-closed：denyWrite 防 escape、failIfUnavailable 沙箱不可用则失败、managed-only 域名/读路径、allowRead > denyRead。
-- 矩阵 setting aligned=60（B2 26 + B3 attribution 4 + permissions 6 + allowManagedHooksOnly 1 + sandbox 23），`--batch 3` 0 诊断，design-docs 0 errors。
-- sandbox 剩余：20 条 missing（功能缺口：allowAppleEvents/allowNestedUserNamespaces/bwrapPath/socatPath/credentials.*/filesystem.disabled/network.allowMachLookup/deniedDomains/strictAllowlist/tlsTerminate.*，上游 active 基线内）+ 父对象。
+- sandbox（读取路径已 aligned）：基础批 11 + network 7 + filesystem 5 = 23 条 aligned；deniedDomains partial（功能等价，permissions.deny WebFetch 实现）；19 条 missing（功能缺口，notes 记录）；父对象 partial。tests/b3SandboxSettings 11 用例。fail-closed：denyWrite 防 escape、failIfUnavailable、managed-only 域名/读路径、allowRead > denyRead。
+- 矩阵 setting aligned=60（B2 26 + B3 34），`--batch 3` 0 诊断，design-docs 0 errors。
+- B3 读取路径对齐基本完成：attribution 4 + permissions 6 + allowManagedHooksOnly 1 + sandbox 23 = 34 aligned。剩余为功能缺口（permissions.blockReads、sandbox 19 条）、feature 门控（disableAutoMode）、功能等价（deniedDomains）、afterBaseline blocked（2 条）。
+- B3 剩余：2 个 env（B3 相关环境变量）+ 功能缺口实现（如需，非读取路径对齐范畴）。
