@@ -4746,57 +4746,67 @@ entries:
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.allowUnsandboxedCommands
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b3-security-filesystem
+    implementation:
+      - src/entrypoints/sandboxTypes.ts
+      - src/utils/sandbox/sandbox-adapter.ts
+    tests:
+      - tests/b3SandboxSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "sandboxTypes.ts:113 allowUnsandboxedCommands z.boolean()"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.boolean() = 上游 Boolean"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 default=True；flash areUnsandboxedCommandsAllowed ?? true（sandbox-adapter.ts:476）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "getSettings_DEPRECATED().sandbox.allowUnsandboxedCommands（sandbox-adapter.ts:475-476）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "控制是否允许 unsandboxed 命令（excludedCommands/dangerouslyDisableSandbox 路径）"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "areUnsandboxedCommandsAllowed ?? true（sandbox-adapter.ts:476,657,686）；tests/b3SandboxSettings schema 用例"
+    notes: "默认 true（允许 unsandboxed 命令）；设为 false 时强制所有命令沙箱化"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.autoAllowBashIfSandboxed
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b3-security-filesystem
+    implementation:
+      - src/entrypoints/sandboxTypes.ts
+      - src/utils/sandbox/sandbox-adapter.ts
+    tests:
+      - tests/b3SandboxSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "sandboxTypes.ts:112 autoAllowBashIfSandboxed z.boolean()"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.boolean() = 上游 Boolean"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游基线 2.1.311 默认 true（v2.1.324 起改默认 false）；flash isAutoAllowBashIfSandboxedEnabled ?? true（sandbox-adapter.ts:471）跟随基线"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "getSettings_DEPRECATED().sandbox.autoAllowBashIfSandboxed（sandbox-adapter.ts:470-471）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "sandboxed Bash 自动 allow（配合 ask 规则的 canSandboxAutoAllow 例外，permissions.ts:1094-1110）"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "isAutoAllowBashIfSandboxedEnabled ?? true；tests/b3SandboxSettings schema 用例"
+    notes: "版本差异：基线 2.1.311 默认 true，上游 v2.1.324 改默认 false（更严格）；flash 跟随基线 ?? true"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.bwrapPath
@@ -5070,138 +5080,163 @@ entries:
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.enableWeakerNestedSandbox
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b3-security-filesystem
+    implementation:
+      - src/entrypoints/sandboxTypes.ts
+      - src/utils/sandbox/sandbox-adapter.ts
+    tests:
+      - tests/b3SandboxSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "sandboxTypes.ts:124 enableWeakerNestedSandbox z.boolean()"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.boolean() = 上游 Boolean"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 default=False；flash 透传 undefined → 下游默认 false（sandbox-adapter.ts:376）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "settings.sandbox.enableWeakerNestedSandbox（convertToSandboxRuntimeConfig，sandbox-adapter.ts:376）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "放宽嵌套沙箱隔离（默认 false，严格）"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "convertToSandboxRuntimeConfig 透传（sandbox-adapter.ts:376）；tests/b3SandboxSettings convert 用例"
+    notes: "放宽嵌套沙箱隔离（非 fail-closed 方向，默认 false 严格）"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.enableWeakerNetworkIsolation
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b3-security-filesystem
+    implementation:
+      - src/entrypoints/sandboxTypes.ts
+      - src/utils/sandbox/sandbox-adapter.ts
+    tests:
+      - tests/b3SandboxSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "sandboxTypes.ts:125 enableWeakerNetworkIsolation z.boolean()"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.boolean() = 上游 Boolean"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 default=False；flash 透传 undefined → 下游默认 false（sandbox-adapter.ts:377-378）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "settings.sandbox.enableWeakerNetworkIsolation（convertToSandboxRuntimeConfig，sandbox-adapter.ts:377-378）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "放宽网络隔离（默认 false，严格）"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "convertToSandboxRuntimeConfig 透传（sandbox-adapter.ts:377-378）；tests/b3SandboxSettings convert 用例"
+    notes: "放宽网络隔离（非 fail-closed 方向，默认 false 严格）"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.enabled
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b3-security-filesystem
+    implementation:
+      - src/entrypoints/sandboxTypes.ts
+      - src/utils/sandbox/sandbox-adapter.ts
+    tests:
+      - tests/b3SandboxSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "sandboxTypes.ts:94 enabled z.boolean()"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.boolean() = 上游 Boolean"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 default=False；flash getSandboxEnabledSetting ?? false（sandbox-adapter.ts:462）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "getSettings_DEPRECATED().sandbox.enabled（sandbox-adapter.ts:461-462）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "settings.sandbox.enabled 为沙箱总开关"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "getSandboxEnabledSetting ?? false → SandboxManager.isSandboxingEnabled；tests/b3SandboxSettings schema 用例"
+    notes: "默认关闭（?? false）；开启后启用沙箱隔离"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.excludedCommands
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b3-security-filesystem
+    implementation:
+      - src/entrypoints/sandboxTypes.ts
+      - src/utils/sandbox/sandbox-adapter.ts
+    tests:
+      - tests/b3SandboxSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "sandboxTypes.ts:134 excludedCommands z.array(z.string())"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.array(z.string()) = 上游 string 数组"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 default=None（[]，无排除命令）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "getSettings_DEPRECATED().sandbox.excludedCommands（sandbox-adapter.ts:698,837）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "excludedCommands 中的命令跳过沙箱（配合 allowUnsandboxedCommands）"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "sandbox-adapter.ts:698,837 读取并排除沙箱；tests/b3SandboxSettings schema 用例"
+    notes: "排除沙箱的命令列表；这些命令不沙箱化运行"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.failIfUnavailable
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b3-security-filesystem
+    implementation:
+      - src/entrypoints/sandboxTypes.ts
+      - src/utils/sandbox/sandbox-adapter.ts
+    tests:
+      - tests/b3SandboxSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "sandboxTypes.ts:95 failIfUnavailable z.boolean()"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.boolean() = 上游 Boolean"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 default=False；flash isSandboxRequired 中 settings.sandbox.failIfUnavailable ?? false（sandbox-adapter.ts:483）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "getSettings_DEPRECATED().sandbox.failIfUnavailable（sandbox-adapter.ts:480-484）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "enabled && failIfUnavailable → isSandboxRequired（沙箱不可用时失败）"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "isSandboxRequired = getSandboxEnabledSetting() && (failIfUnavailable ?? false)（sandbox-adapter.ts:479-485）；tests/b3SandboxSettings schema 用例"
+    notes: "fail-closed：enabled && failIfUnavailable=true 时沙箱不可用则失败（而非降级运行）"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.filesystem
@@ -5394,30 +5429,35 @@ entries:
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.ignoreViolations
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b3-security-filesystem
+    implementation:
+      - src/entrypoints/sandboxTypes.ts
+      - src/utils/sandbox/sandbox-adapter.ts
+    tests:
+      - tests/b3SandboxSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "sandboxTypes.ts:123 ignoreViolations z.record(z.string(), z.array(z.string()))"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.record(string, string[]) = 上游 map<string, string[]>"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 default=None（不忽略任何违规）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "settings.sandbox.ignoreViolations（convertToSandboxRuntimeConfig，sandbox-adapter.ts:375）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "按工具记录要忽略的沙箱违规"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "convertToSandboxRuntimeConfig 透传 ignoreViolations（sandbox-adapter.ts:375）；tests/b3SandboxSettings convert 用例"
+    notes: "按工具忽略指定沙箱违规（放宽隔离，非 fail-closed 方向）"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.network
@@ -5799,84 +5839,99 @@ entries:
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.ripgrep
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b3-security-filesystem
+    implementation:
+      - src/entrypoints/sandboxTypes.ts
+      - src/utils/sandbox/sandbox-adapter.ts
+    tests:
+      - tests/b3SandboxSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "sandboxTypes.ts:135 ripgrep z.object({command,args}).optional()"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.object({command:z.string(),args:z.array(z.string()).optional()}) = 上游 object"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "默认系统 ripgrep（settings.sandbox?.ripgrep ?? {command:rgPath,args:rgArgs}，sandbox-adapter.ts:353-355）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "settings.sandbox?.ripgrep ?? 系统 ripgrep 默认（sandbox-adapter.ts:353）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "自定义 ripgrep 覆盖系统默认；用于沙箱文件搜索"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "ripgrepConfig（sandbox-adapter.ts:353-355）+ checkDependencies（452-455）；tests/b3SandboxSettings schema 用例"
+    notes: "父对象。自定义沙箱内 ripgrep 命令；默认系统 ripgrep"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.ripgrep.args
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b3-security-filesystem
+    implementation:
+      - src/entrypoints/sandboxTypes.ts
+      - src/utils/sandbox/sandbox-adapter.ts
+    tests:
+      - tests/b3SandboxSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "sandboxTypes.ts:138 ripgrep.args z.array(z.string()).optional()"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.array(z.string()) = 上游 string 数组"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "默认系统 ripgrep 参数 rgArgs（ripgrepCommand()，sandbox-adapter.ts:352-355）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "settings.sandbox.ripgrep.args ?? rgArgs（sandbox-adapter.ts:353-355）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "自定义 args 覆盖系统 rgArgs；checkDependencies 使用（452-455）"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "ripgrepConfig.args + checkDependencies args（sandbox-adapter.ts:353-355,452-455）；tests/b3SandboxSettings schema 用例"
+    notes: "沙箱内 ripgrep 参数；默认系统 rgArgs"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.ripgrep.command
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b3-security-filesystem
+    implementation:
+      - src/entrypoints/sandboxTypes.ts
+      - src/utils/sandbox/sandbox-adapter.ts
+    tests:
+      - tests/b3SandboxSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "sandboxTypes.ts:137 ripgrep.command z.string()（required）"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.string() = 上游 string"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "默认系统 ripgrep 路径 rgPath（ripgrepCommand()，sandbox-adapter.ts:352-354）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "settings.sandbox.ripgrep.command ?? rgPath（sandbox-adapter.ts:353-354）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "自定义 command 覆盖系统 rgPath；checkDependencies 校验（452-455）"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "ripgrepConfig.command + checkDependencies command（sandbox-adapter.ts:353-355,452-455）；tests/b3SandboxSettings schema 用例"
+    notes: "沙箱内 ripgrep 可执行文件路径；默认系统 ripgrep"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.socatPath
