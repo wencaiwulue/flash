@@ -137,30 +137,36 @@ entries:
     exclusion: null
     ownerBatch: 4
   - id: setting:allowManagedHooksOnly
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b3-security-filesystem
+    implementation:
+      - src/utils/settings/types.ts
+      - src/utils/hooks/hooksConfigSnapshot.ts
+      - src/utils/hooks/hooksSettings.ts
+    tests:
+      - tests/b3AllowManagedHooksOnly.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "settings/types.ts:524 allowManagedHooksOnly z.boolean()"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.boolean() = 上游 Boolean"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 default=unset（hooks from every scope + plugin run）；未设时 shouldAllowManagedHooksOnly=false"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 Scope=Managed；flash 仅读 getSettingsForSource('policySettings')（hooksConfigSnapshot.ts:19,27,63）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "仅 managed 可设置；非 managed 源设置无效（scope Managed）；非 managed disableAllHooks 强制 managed-only"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "policySettings.allowManagedHooksOnly===true → 只 managed hooks（getHooksFromAllowedSources 返回 policySettings.hooks）；tests/b3AllowManagedHooksOnly 5 用例"
+    notes: "fail-closed：Managed scope（非 managed 源不能启用，防提权）；on 时只 managed hooks，忽略 user/project/local；非 managed disableAllHooks 强制 managed-only（非 managed 不能禁用 managed hooks）"
     exclusion: null
     ownerBatch: 3
   - id: setting:allowManagedMcpServersOnly
