@@ -3746,30 +3746,37 @@ entries:
     exclusion: null
     ownerBatch: 3
   - id: setting:permissions.additionalDirectories
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b3-security-filesystem
+    implementation:
+      - src/utils/settings/types.ts
+      - src/utils/permissions/permissionSetup.ts
+      - src/utils/sandbox/sandbox-adapter.ts
+      - src/utils/permissions/PermissionUpdate.ts
+    tests:
+      - tests/b3PermissionsSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "settings/types.ts PermissionsSchema.additionalDirectories"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.array(z.string()) = 上游 string 数组"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游默认 []（无额外允许目录）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "permissionSetup.ts:995 / sandbox-adapter.ts:296 / PermissionUpdate.ts:250,261,303,311 读 settings.permissions.additionalDirectories"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "settings.additionalDirectories 合并入允许目录集合（与 working dir 并列）"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "permissionSetup/sandbox-adapter/PermissionUpdate 读取并加入允许目录；tests/b3PermissionsSettings schema 用例"
+    notes: "授权扩展（非 fail-closed 限制）：additionalDirectories 扩大允许访问的目录集合"
     exclusion: null
     ownerBatch: 3
   - id: setting:permissions.allow
@@ -3881,30 +3888,35 @@ entries:
     exclusion: null
     ownerBatch: 3
   - id: setting:permissions.defaultMode
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b3-security-filesystem
+    implementation:
+      - src/utils/settings/types.ts
+      - src/utils/permissions/permissionSetup.ts
+    tests:
+      - tests/b3PermissionsSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "settings/types.ts PermissionsSchema.defaultMode（generateSettingsJSONSchema 覆盖）"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.enum(PermissionMode) = 上游 enum"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 default=null；未设 defaultMode 时按 CLI/优先级求值"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "initialPermissionModeFromCLI 读 getSettings_DEPRECATED().permissions.defaultMode（permissionSetup.ts:743-773）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "dangerouslySkipPermissions > --permission-mode > settings.defaultMode；remote(CLAUDE_CODE_REMOTE) 仅 acceptEdits/plan/default"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "permissionSetup.ts orderedModes 求值；tests/b3PermissionsSettings fail-closed 用例（defaultMode 生效/disable 阻止 bypass/remote 忽略 bypass）"
+    notes: "fail-closed：remote 环境忽略 bypassPermissions defaultMode（防 remote 授予完全访问）并告警"
     exclusion: null
     ownerBatch: 3
   - id: setting:permissions.deny
@@ -3989,30 +4001,35 @@ entries:
     exclusion: null
     ownerBatch: 3
   - id: setting:permissions.disableBypassPermissionsMode
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b3-security-filesystem
+    implementation:
+      - src/utils/settings/types.ts
+      - src/utils/permissions/permissionSetup.ts
+    tests:
+      - tests/b3PermissionsSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "settings/types.ts PermissionsSchema.disableBypassPermissionsMode"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.enum(['disable']) = 上游 'disable' 字面量"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游默认不禁用（unset）；未设时 bypassPermissions 可用"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "initialPermissionModeFromCLI 读 settings.permissions.disableBypassPermissionsMode（permissionSetup.ts:705-711）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "Statsig gate(tengu_disable_bypass_permissions_mode) 优先于 settings（growthBook || settings 任一禁用即禁用）"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "permissionSetup.ts:777-792 遇 bypassPermissions 且 disabled → continue 跳过并给 settings/org 通知；tests/b3PermissionsSettings fail-closed 用例"
+    notes: "fail-closed：禁用时跳过 bypassPermissions 模式并通知（阻止进入完全访问）；Statsig gate 优先于 settings"
     exclusion: null
     ownerBatch: 3
   - id: setting:plansDirectory

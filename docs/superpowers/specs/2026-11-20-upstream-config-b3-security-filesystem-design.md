@@ -61,6 +61,8 @@ status: draft
 
 - attribution（首个切入，建立 B3 工作法样板）：`src/utils/settings/types.ts` attribution 改 `z.union([object{commit,pr,sessionUrl}, z.literal(false)])`（补 sessionUrl 字段 + false 选项）；`src/utils/attribution.ts` getAttributionTexts/getEnhancedPRAttribution 开头加 `settings.attribution===false → 返回空`（隐藏所有归属），remote 分支加 `settings.attribution?.sessionUrl ?? true` 控制 session 链接省略。commit/pr 本即读 settings.attribution.commit/pr（默认 + 空字符串隐藏），验证+记录。`tests/b3AttributionSettings.test.ts` 8 用例（schema object/false/sessionUrl + getAttributionTexts 自定义/空字符串/false/includeCoAuthoredBy/默认）。
 - 测试基建：attribution.ts import 工具 prompt 常量触发 REPLTool/constants ↔ FileReadTool/prompt 循环依赖（flash 固有）。测试用 `mock.module(FileReadTool/prompt)` + 动态 import 打破循环，归属逻辑可单测。
+- permissions（第二个切入，已实现条目验证+记录）：defaultMode/disableBypassPermissionsMode/additionalDirectories 六维度 aligned。运行时本即读 `getSettings_DEPRECATED().permissions`（permissionSetup.ts `initialPermissionModeFromCLI`），本轮验证 + 补 fail-closed 行为测试。fail-closed：①defaultMode 在 remote(CLAUDE_CODE_REMOTE) 仅 acceptEdits/plan/default，bypassPermissions defaultMode 被忽略并告警（防 remote 授予完全访问）；②disableBypassPermissionsMode 阻止进入 bypassPermissions（Statsig gate 优先于 settings），跳过并通知。additionalDirectories 为授权扩展（非 fail-closed 限制），permissionSetup/sandbox-adapter/PermissionUpdate 读取并合入允许目录。`tests/b3PermissionsSettings.test.ts` 8 用例（schema 5 + fail-closed 行为 3：defaultMode 生效/disable 阻止 bypass+notification/remote 忽略 bypass）。
+- 测试基建（permissions）：bun:test 的 `vi` 无 stubEnv/unstubAllEnvs，环境变量用 `process.env` 直接设置 + afterEach `delete`；settings 注入用 `setSessionSettingsCache`（`src/utils/settings/settingsCache.ts`，非 sessionSettingsCache）；`initialPermissionModeFromCLI({permissionModeCli,dangerouslySkipPermissions})` 可直接注入 settings/remote 测 fail-closed，Statsig gate 测试环境默认 false。
 
 ## 8. 文件覆盖与相关子系统
 
@@ -78,5 +80,7 @@ coverage：[upstream-config-b3-security-filesystem.yaml](../../architecture/cove
 
 - B3 启动：范围确认为 70 条（attribution 4 / permissions ~14 / sandbox ~50 / allowManagedHooksOnly 1 / env 2），切入顺序 attribution → permissions → allowManagedHooksOnly → sandbox。
 - attribution：attribution、attribution.commit、attribution.pr、attribution.sessionUrl 六维度 aligned（commit/pr 已对齐验证+记录；补 attribution:false 隐藏所有归属 + sessionUrl 字段与 remote 控制，tests/b3AttributionSettings 8 用例）。fail-closed：attribution:false 隐藏所有归属、sessionUrl:false 省略 session 链接，均非安全敏感（仅归属文案/链接显隐）。
-- 矩阵 setting aligned=30（B2 26 + B3 attribution 4），`--batch 3` 0 诊断，design-docs 0 errors。
-- 下一子系统：permissions（~14 条）。
+- permissions（进行中）：defaultMode、disableBypassPermissionsMode、additionalDirectories 六维度 aligned（运行时本即读 getSettings_DEPRECATED，验证 + fail-closed 行为测试，tests/b3PermissionsSettings 8 用例）。fail-closed：defaultMode remote 忽略 bypassPermissions、disableBypass 阻止 bypass（Statsig 优先）。
+- 矩阵 setting aligned=33（B2 26 + B3 attribution 4 + permissions 3），`--batch 3` 0 诊断。
+- 待深入：permissions.allow/ask/deny（deny 优先、ask 强制 prompt 的求值优先级 fail-closed）、disableAutoMode（受 TRANSCRIPT_CLASSIFIER feature 门控，需确认 schemaPaths 是否含）、blockReadsOutsideWorkingDirectories（功能缺口，无 zod/运行时）；父对象 permissions 待子项全 aligned；blocked 2 条（blockWrites v2.1.314、denyInsteadOfPrompting v2.1.319 均 afterBaseline）保持 blocked。
+- 下一子系统：permissions 剩余 → allowManagedHooksOnly → sandbox。
