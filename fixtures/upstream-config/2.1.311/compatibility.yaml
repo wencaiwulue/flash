@@ -5241,164 +5241,193 @@ entries:
     ownerBatch: 3
   - id: setting:sandbox.filesystem
     status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    implementation:
+      - src/entrypoints/sandboxTypes.ts
+      - src/utils/sandbox/sandbox-adapter.ts
+    tests:
+      - tests/b3SandboxSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "sandboxTypes.ts:47 SandboxFilesystemConfigSchema z.object(...).optional()"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.object({allowWrite,denyWrite,denyRead,allowRead,allowManagedReadPathsOnly}) = 上游 object 子集"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游默认 unset（optional）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "settings.sandbox.filesystem（convertToSandboxRuntimeConfig，sandbox-adapter.ts:332-348）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "deny 优先于 allow；allowRead > denyRead；denyWrite 含 settings anti-escape"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: partial
+        evidence: "5 子项 aligned（allowWrite/denyWrite/denyRead/allowRead/allowManagedReadPathsOnly）；filesystem.disabled 功能缺口"
+    notes: "父对象。5 子项 aligned；filesystem.disabled 为功能缺口"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.filesystem.allowManagedReadPathsOnly
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b3-security-filesystem
+    implementation:
+      - src/entrypoints/sandboxTypes.ts
+      - src/utils/sandbox/sandbox-adapter.ts
+    tests:
+      - tests/b3SandboxSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "sandboxTypes.ts:78 allowManagedReadPathsOnly z.boolean()"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.boolean() = 上游 Boolean"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "默认 false（合并各源 allowRead）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "getSettingsForSource('policySettings').sandbox.filesystem.allowManagedReadPathsOnly（Managed scope，shouldAllowManagedReadPathsOnly，sandbox-adapter.ts:159-163）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "Managed scope；on 时只 policySettings allowRead（convertToSandboxRuntimeConfig:343 条件）"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "shouldAllowManagedReadPathsOnly（159-163）+ convertToSandboxRuntimeConfig:343 条件（!managedOnly || source==='policySettings'）"
+    notes: "fail-closed：Managed scope（非 managed 不能启用）；on 时只 policySettings allowRead，其他源 allowRead 忽略"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.filesystem.allowRead
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b3-security-filesystem
+    implementation:
+      - src/entrypoints/sandboxTypes.ts
+      - src/utils/sandbox/sandbox-adapter.ts
+    tests:
+      - tests/b3SandboxSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "sandboxTypes.ts:71 allowRead z.array(z.string())"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.array(z.string()) = 上游 string 数组"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "默认 []（无额外 re-allow 路径）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "fs.allowRead（344-346），受 allowManagedReadPathsOnly 控制（343：on 时仅 policySettings）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "allowRead takes precedence over denyRead（re-allow within denyRead regions，sandboxTypes.ts:75-76）"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "convertToSandboxRuntimeConfig 提取（sandbox-adapter.ts:344-346），managed-only 条件（343）"
+    notes: "re-allow within denyRead（allowRead > denyRead）；managed-only 时只 policySettings allowRead"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.filesystem.allowWrite
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b3-security-filesystem
+    implementation:
+      - src/entrypoints/sandboxTypes.ts
+      - src/utils/sandbox/sandbox-adapter.ts
+    tests:
+      - tests/b3SandboxSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "sandboxTypes.ts:50 allowWrite z.array(z.string())"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.array(z.string()) = 上游 string 数组"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "默认含 cwd('.') + temp dir（convertToSandboxRuntimeConfig，sandbox-adapter.ts:225）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "fs.allowWrite（334-336）+ Edit(...) allow 规则 + 默认 cwd/temp（225）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "merged with Edit(...) allow 规则；denyWrite 优先于 allowWrite"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "convertToSandboxRuntimeConfig 提取（sandbox-adapter.ts:334-336）；tests/b3SandboxSettings convert 用例（allowWrite 含 cwd/temp）"
+    notes: "merged with Edit allow 规则 + 默认 cwd/temp；标准路径语义（/path=absolute，#30067）"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.filesystem.denyRead
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b3-security-filesystem
+    implementation:
+      - src/entrypoints/sandboxTypes.ts
+      - src/utils/sandbox/sandbox-adapter.ts
+    tests:
+      - tests/b3SandboxSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "sandboxTypes.ts:64 denyRead z.array(z.string())"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.array(z.string()) = 上游 string 数组"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "默认 []（无额外禁止读取路径）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "fs.denyRead（340-342）+ Read(...) deny 规则（323-325）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "denyRead 优先（allowRead re-allow 为例外）；merged with Read(...) deny 规则"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "convertToSandboxRuntimeConfig 提取（sandbox-adapter.ts:340-342,323-325）"
+    notes: "merged with Read deny 规则；denyRead 区域内禁止读取"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.filesystem.denyWrite
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b3-security-filesystem
+    implementation:
+      - src/entrypoints/sandboxTypes.ts
+      - src/utils/sandbox/sandbox-adapter.ts
+    tests:
+      - tests/b3SandboxSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "sandboxTypes.ts:57 denyWrite z.array(z.string())"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.array(z.string()) = 上游 string 数组"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "默认含 settings.json 路径 anti-escape（convertToSandboxRuntimeConfig，sandbox-adapter.ts:230-244）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "fs.denyWrite（337-339）+ Edit(...) deny 规则 + settings.json anti-escape（230-244）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "denyWrite 优先于 allowWrite（deny 优先）；settings.json 总是 deny（anti-escape）"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "convertToSandboxRuntimeConfig 提取（sandbox-adapter.ts:337-339）+ anti-escape（230-244）；tests/b3SandboxSettings convert 用例（denyWrite 含 settings）"
+    notes: "fail-closed：settings.json 总是 denyWrite（防 sandbox escape 提权）；merged with Edit deny 规则"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.filesystem.disabled
@@ -5462,83 +5491,97 @@ entries:
     ownerBatch: 3
   - id: setting:sandbox.network
     status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    implementation:
+      - src/entrypoints/sandboxTypes.ts
+      - src/utils/sandbox/sandbox-adapter.ts
+    tests:
+      - tests/b3SandboxSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "sandboxTypes.ts:14 SandboxNetworkConfigSchema z.object(...).optional()"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.object({allowedDomains,allowManagedDomainsOnly,allowUnixSockets,allowAllUnixSockets,allowLocalBinding,httpProxyPort,socksProxyPort}) = 上游 object 子集"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游默认 unset（optional）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "settings.sandbox.network（convertToSandboxRuntimeConfig，sandbox-adapter.ts:360-368）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "managed-only 时 allowManagedDomainsOnly 优先（仅 managed 域名）"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: partial
+        evidence: "7 子项 aligned（allowedDomains/allowManagedDomainsOnly/allowUnixSockets/allowAllUnixSockets/allowLocalBinding/httpProxyPort/socksProxyPort）；deniedDomains/strictAllowlist/tlsTerminate.*/allowMachLookup 功能缺口"
+    notes: "父对象。7 子项 aligned；deniedDomains（flash 用 permissions.deny WebFetch 规则代替）、strictAllowlist、tlsTerminate.*、allowMachLookup 为功能缺口"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.network.allowAllUnixSockets
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b3-security-filesystem
+    implementation:
+      - src/entrypoints/sandboxTypes.ts
+      - src/utils/sandbox/sandbox-adapter.ts
+    tests:
+      - tests/b3SandboxSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "sandboxTypes.ts:31 allowAllUnixSockets z.boolean()"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.boolean() = 上游 Boolean"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "默认 false（不允许所有 socket）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "settings.sandbox.network.allowAllUnixSockets（convertToSandboxRuntimeConfig，sandbox-adapter.ts:364）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "true 时允许所有 Unix socket（两平台均禁用 socket 阻断）"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "convertToSandboxRuntimeConfig 透传（sandbox-adapter.ts:364）"
+    notes: "true 时允许所有 Unix socket（放宽网络隔离，非 fail-closed 方向）"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.network.allowLocalBinding
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b3-security-filesystem
+    implementation:
+      - src/entrypoints/sandboxTypes.ts
+      - src/utils/sandbox/sandbox-adapter.ts
+    tests:
+      - tests/b3SandboxSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "sandboxTypes.ts:37 allowLocalBinding z.boolean()"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.boolean() = 上游 Boolean"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "默认 false（不允许本地绑定）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "settings.sandbox.network.allowLocalBinding（convertToSandboxRuntimeConfig，sandbox-adapter.ts:365）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "允许沙箱内进程绑定本地端口"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "convertToSandboxRuntimeConfig 透传（sandbox-adapter.ts:365）；tests/b3SandboxSettings convert 用例"
+    notes: "允许沙箱内进程绑定本地端口"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.network.allowMachLookup
@@ -5569,84 +5612,99 @@ entries:
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.network.allowManagedDomainsOnly
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b3-security-filesystem
+    implementation:
+      - src/entrypoints/sandboxTypes.ts
+      - src/utils/sandbox/sandbox-adapter.ts
+    tests:
+      - tests/b3SandboxSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "sandboxTypes.ts:18 allowManagedDomainsOnly z.boolean()"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.boolean() = 上游 Boolean"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "默认 false（合并各源域名）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "getSettingsForSource('policySettings').sandbox.network.allowManagedDomainsOnly（Managed scope，shouldAllowManagedSandboxDomainsOnly，sandbox-adapter.ts:152-156）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "Managed scope；on 时只用 managed 域名（user/project/local/flag 忽略），deniedDomains 仍全源生效"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "shouldAllowManagedSandboxDomainsOnly（152-156）+ convertToSandboxRuntimeConfig managed-only 分支（182-196）；tests/b3SandboxSettings managed-only 用例（managed.com 用、user.com 忽略）"
+    notes: "fail-closed：Managed scope（非 managed 不能启用）；on 时只 managed 域名，deniedDomains 仍全源生效"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.network.allowUnixSockets
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b3-security-filesystem
+    implementation:
+      - src/entrypoints/sandboxTypes.ts
+      - src/utils/sandbox/sandbox-adapter.ts
+    tests:
+      - tests/b3SandboxSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "sandboxTypes.ts:25 allowUnixSockets z.array(z.string())"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.array(z.string()) = 上游 string 数组"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "默认 []（无额外允许 socket）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "settings.sandbox.network.allowUnixSockets（convertToSandboxRuntimeConfig，sandbox-adapter.ts:363）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "macOS only：允许的 Unix socket 路径（Linux seccomp 不能按路径过滤，被忽略）"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "convertToSandboxRuntimeConfig 透传（sandbox-adapter.ts:363）"
+    notes: "macOS only：允许的 Unix socket 路径；Linux 忽略（seccomp 限制）"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.network.allowedDomains
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b3-security-filesystem
+    implementation:
+      - src/entrypoints/sandboxTypes.ts
+      - src/utils/sandbox/sandbox-adapter.ts
+    tests:
+      - tests/b3SandboxSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "sandboxTypes.ts:17 allowedDomains z.array(z.string())"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.array(z.string()) = 上游 string 数组"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "默认 []（无额外允许域名）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "settings.sandbox.network.allowedDomains（198）+ permissions.allow WebFetch(domain:) 规则（201-209）合并提取"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "allowManagedDomainsOnly on 时只用 managed 域名（182-196），否则合并 user 域名 + WebFetch allow 规则"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "convertToSandboxRuntimeConfig 提取 allowedDomains（sandbox-adapter.ts:184,198）；tests/b3SandboxSettings convert 用例"
+    notes: "允许域名 = sandbox.network.allowedDomains + permissions.allow WebFetch(domain:) 规则合并；managed-only 时仅 managed"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.network.deniedDomains
@@ -5677,57 +5735,67 @@ entries:
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.network.httpProxyPort
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b3-security-filesystem
+    implementation:
+      - src/entrypoints/sandboxTypes.ts
+      - src/utils/sandbox/sandbox-adapter.ts
+    tests:
+      - tests/b3SandboxSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "sandboxTypes.ts:38 httpProxyPort z.number()"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.number() = 上游 number"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "默认 unset（不启用 HTTP 代理）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "settings.sandbox.network.httpProxyPort（convertToSandboxRuntimeConfig，sandbox-adapter.ts:366）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "沙箱 HTTP 代理端口"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "convertToSandboxRuntimeConfig 透传（sandbox-adapter.ts:366）；tests/b3SandboxSettings convert 用例"
+    notes: "沙箱 HTTP 代理端口"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.network.socksProxyPort
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b3-security-filesystem
+    implementation:
+      - src/entrypoints/sandboxTypes.ts
+      - src/utils/sandbox/sandbox-adapter.ts
+    tests:
+      - tests/b3SandboxSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "sandboxTypes.ts:39 socksProxyPort z.number()"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.number() = 上游 number"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "默认 unset（不启用 SOCKS 代理）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "settings.sandbox.network.socksProxyPort（convertToSandboxRuntimeConfig，sandbox-adapter.ts:367）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "沙箱 SOCKS 代理端口"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "convertToSandboxRuntimeConfig 透传（sandbox-adapter.ts:367）"
+    notes: "沙箱 SOCKS 代理端口"
     exclusion: null
     ownerBatch: 3
   - id: setting:sandbox.network.strictAllowlist
