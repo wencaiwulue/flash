@@ -1038,3 +1038,25 @@
 - **Finding**：B6-platform-integrations-03；主责 spec：`2026-11-12-platform-integrations-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
 - **实现**：新增并唯一登记 `tests/platformIntegrations.test.tsx`，4 个测试、14 个断言。覆盖 schema-valid Desktop MCP 配置/缺失与非法 JSON、非默认 Chrome profile 扩展检测、真实 iOS/Android QR Tab/Escape、Slack 安装计数和失败 URL。
 - **证据边界**：真实生产逻辑与临时目录；openBrowser/os.homedir 为离线边界，未执行 native messaging、真实浏览器、OAuth、WSL 或私有协议。WSL 路径枚举、native messaging host、QR 失败降级、Desktop upsell 和其他浏览器平台未覆盖。
+
+## Phase B Remote Control 行为整改（2026-11-23 追加）
+
+- **Finding**：B6-remote-control-01, B6-remote-control-02；主责 spec：`2026-11-12-remote-control-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
+- **实现**：
+  - **修复 B6-remote-control 隐藏缺陷**：SessionsWebSocket handleClose 曾要求 `previousState === 'connected'`，导致重连中 socket 关闭时（previousState = connecting）直接放弃，普通 5 次预算无法耗尽。移除该检查后，所有 close（除 PERMANENT_CLOSE_CODES 和显式 closed）都消耗 reconnectAttempts 直到 MAX_RECONNECT_ATTEMPTS。
+  - **RED first**：先写真实 public-behavior 耗尽测试，运行在原始 src/remote/SessionsWebSocket.ts（未改变）确认 RED（仅 1 次 onReconnecting，不调用 final onClose）。
+  - **GREEN**：仅修改 handleClose 一处，移除 `previousState === 'connected'` 检查，保持所有其他逻辑（MAX_RECONNECT_ATTEMPTS=5、MAX_SESSION_NOT_FOUND_RETRIES=3、reconnectAttempts 重置、ping 等）不变。
+  - **完整测试**：新增并唯一登记 `tests/remoteControl.test.ts`（追加到 remote-control.yaml 的 remote-tests 分组），23 个测试、90 个断言，覆盖：
+    - sdkMessageAdapter：assistant/system/compact-boundary/result-error/tool-progress/unknown/user 消息完整转换
+    - SessionsWebSocket：connect/ping/4003 permanent/close cleanup/close prevents further reconnects/normal reconnect schedules with 2000ms/4001 retries with increasing delays/4001 resets after success/reconnect() forces with 500ms/normal reconnect exhausts budget and calls onClose/4001 exhausts budget and calls onClose
+    - RemoteSessionManager：onClose maps to onDisconnected
+  - **viewerOnly 修正**：移除无意义 viewerOnly 构造测试，改为 spec 中明确 viewerOnly 实际边界。原 spec "viewerOnly 永不放弃"不准确，实际 `src/hooks/useRemoteSession.ts` 仅在 `!config?.viewerOnly` 时创建响应超时并调用 manager.reconnect；SessionsWebSocket 无 viewerOnly 参数，仍受自身重连预算限制。
+- **证据边界**：
+  - RED/GREEN 证据：本地 bun test 输出，RED 在修改前，GREEN 在修改后。
+  - 三层证据：1. 官方文档：未重新获取（遵循边界，原 audit 已声明）；2. 本机上游 binary：仍为原 audit 提取；3. 外部契约：direct-connect-v1 不变，CCR 私有协议无契约。
+  - 未声明私有协议兼容，未连接 CCR 私有服务，仅 local/offline 验证。
+- **spec 更新**：
+  - 决策表添加修复后的重连策略说明，含三层证据边界
+  - 明确 viewerOnly 真实边界
+  - 第 7 节测试证据更新为 tests/remoteControl.test.ts
+- **所有门控同步通过**：bun test tests/remoteControl.test.ts（0 fail）、bun run test tests/remoteControl.test.ts（0 fail）、bun run typecheck（0 error）、bun run build（success）、bun scripts/check-design-docs.ts（0 error，仅 draft spec warnings）、git diff --check（clean）。
