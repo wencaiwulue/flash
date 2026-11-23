@@ -2809,8 +2809,10 @@ entries:
     ownerBatch: 4
   - id: setting:forceLoginMethod
     status: partial
+    spec: upstream-config-b4-integration-managed
     implementation: []
-    tests: []
+    tests:
+      - tests/b4IntegrationSettings.test.ts
     evidence: []
     dimensions:
       path:
@@ -2831,36 +2833,42 @@ entries:
       runtime:
         status: missing
         evidence: ""
-    notes: ""
+    notes: "GAP：上游 forceLoginMethod 还 honors \"gateway\"（与 forceLoginGatewayUrl 同源），flash zod enum 仅 [claudeai, console]，缺 gateway；登录流程 cli/handlers/auth.ts:131 仅 claudeai/console 二选一。b4 测试确认 gateway safeParse fail。补 gateway 需登录流程支持，难项跳过。"
     exclusion: null
     ownerBatch: 4
   - id: setting:forceLoginOrgUUID
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b4-integration-managed
+    implementation:
+      - src/utils/settings/types.ts
+      - src/utils/auth.ts
+    tests:
+      - tests/b4IntegrationSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "settings/types.ts:692 forceLoginOrgUUID z.string().optional()"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.string() = 上游 string"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 unset；未设时不强制 org"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 Any file，仅 managed 强制；flash 仅读 getSettingsForSource('policySettings')（auth.ts validateForceLoginOrg）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "managed-enforced：仅 managed settings 强制 org UUID"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "validateForceLoginOrg 读 policySettings.forceLoginOrgUUID，profile 获取失败 fail closed（valid:false）；main.tsx:3440 调用；tests/b4IntegrationSettings 5 用例"
+    notes: "fail-closed：仅 managed 强制 org UUID；profile 获取失败拒绝登录（valid:false）"
     exclusion: null
     ownerBatch: 4
+
   - id: setting:forceRemoteSettingsRefresh
     status: missing
     implementation: []
@@ -4093,32 +4101,38 @@ entries:
     exclusion: null
     ownerBatch: final
   - id: setting:pluginConfigs
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b4-integration-managed
+    implementation:
+      - src/utils/settings/types.ts
+      - src/utils/plugins/mcpbHandler.ts
+    tests:
+      - tests/b4IntegrationSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "settings/types.ts:881 pluginConfigs z.record(pluginId -> {mcpServers?, options?})"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "record(pluginId -> {mcpServers?, options?}) = 上游 object（pluginId -> {options, mcpServers}）"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 unset"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 User or managed"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "user/managed 可设置"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "mcpbHandler.ts:149,292 读写 pluginConfigs[pluginId].mcpServers[serverName]/options；tests/b4IntegrationSettings 5 用例"
+    notes: "插件配置：pluginId -> {mcpServers, options}，敏感值入 secure storage"
     exclusion: null
     ownerBatch: 4
+
   - id: setting:pluginSuggestionMarketplaces
     status: missing
     implementation: []
@@ -4147,32 +4161,38 @@ entries:
     exclusion: null
     ownerBatch: 4
   - id: setting:pluginTrustMessage
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b4-integration-managed
+    implementation:
+      - src/utils/settings/types.ts
+      - src/utils/plugins/marketplaceHelpers.ts
+    tests:
+      - tests/b4IntegrationSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "settings/types.ts:1189 pluginTrustMessage z.string()"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.string() = 上游 string"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 unset"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 Managed；flash 仅读 getSettingsForSource('policySettings')（marketplaceHelpers.ts:184）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "managed-only：仅 managed settings 生效"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "getSettingsForSource('policySettings')?.pluginTrustMessage（marketplaceHelpers.ts:184）；tests/b4IntegrationSettings 5 用例"
+    notes: "managed-only 插件信任提示消息"
     exclusion: null
     ownerBatch: 4
+
   - id: setting:policyHelper
     status: missing
     implementation: []
@@ -4503,32 +4523,38 @@ entries:
     exclusion: null
     ownerBatch: final
   - id: setting:remote.defaultEnvironmentId
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b4-integration-managed
+    implementation:
+      - src/utils/settings/types.ts
+      - src/utils/teleport.tsx
+    tests:
+      - tests/b4IntegrationSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "settings/types.ts:924 remote.defaultEnvironmentId z.string()"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "z.string() = 上游 string"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 unset"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "上游 Any file；ccpool_ ID 只从 user/managed/--settings 读"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "user/managed/--settings 可设置"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "teleport.tsx:1329 读 settings.remote.defaultEnvironmentId，匹配 environment_id（1354-1367）；tests/b4IntegrationSettings 5 用例"
+    notes: "默认 teleport 环境 ID（ccpool_ 前缀）"
     exclusion: null
     ownerBatch: 4
+
   - id: setting:remoteControlAtStartup
     status: missing
     implementation: []

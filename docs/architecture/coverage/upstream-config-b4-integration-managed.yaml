@@ -1,0 +1,8 @@
+schema_version: 1
+spec_id: upstream-config-b4-integration-managed
+spec: ../../superpowers/specs/2026-11-16-upstream-config-b4-integration-managed-design.md
+status: draft
+# 本 spec 是 B4 集成与托管（MCP/auth/remote managed settings/Remote Control/
+# cross-session）对齐设计；运行时代码主归属由 settings、auth、plugins、teleport
+# 等既有 coverage 维护，避免重复拥有文件。
+groups: []
