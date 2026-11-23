@@ -57,6 +57,26 @@ function registerCommandHook(event: string, json: unknown) {
   })
 }
 
+function registerCommandHookWithMatcher(
+  event: string,
+  matcher: string,
+  json: unknown,
+) {
+  registerHookCallbacks({
+    [event]: [
+      {
+        matcher,
+        hooks: [
+          { type: 'command', command: `echo '${JSON.stringify(json)}'` },
+        ],
+        pluginRoot: process.cwd(),
+        pluginName: 'b1-matcher',
+        pluginId: 'b1-matcher@local',
+      },
+    ],
+  })
+}
+
 function makeContext() {
   const appState = getDefaultAppState()
   const abortController = new AbortController()
@@ -222,5 +242,65 @@ describe('B1 trigger points (real command hooks)', () => {
       ),
     )
     expect(results.find(r => r.blockingError)).toBeDefined()
+  })
+})
+
+describe('Pre/PostModelSwitch canonical to_model matcher', () => {
+  function deny(reason: string) {
+    return {
+      hookSpecificOutput: {
+        hookEventName: 'PreModelSwitch',
+        permissionDecision: 'deny',
+        permissionDecisionReason: reason,
+      },
+    }
+  }
+
+  it('alias matcher (opus) matches the canonical to_model', async () => {
+    registerCommandHookWithMatcher('PreModelSwitch', 'opus', deny('matched'))
+    const results = await drain(executePreModelSwitchHooks(modelFields))
+    expect(results.find(r => r.blockingError)?.blockingError?.blockingError).toBe(
+      'matched',
+    )
+  })
+
+  it('non-matching matcher (sonnet) does not run the hook', async () => {
+    registerCommandHookWithMatcher(
+      'PreModelSwitch',
+      'sonnet',
+      deny('should-not-run'),
+    )
+    const results = await drain(executePreModelSwitchHooks(modelFields))
+    expect(results.find(r => r.blockingError)).toBeUndefined()
+  })
+
+  it('date-suffixed matcher matches the canonical to_model', async () => {
+    registerCommandHookWithMatcher(
+      'PreModelSwitch',
+      'claude-opus-4-6-20251001',
+      deny('matched'),
+    )
+    const results = await drain(executePreModelSwitchHooks(modelFields))
+    expect(results.find(r => r.blockingError)).toBeDefined()
+  })
+
+  it('[1m]-suffixed matcher matches (1m ignored)', async () => {
+    registerCommandHookWithMatcher(
+      'PreModelSwitch',
+      'claude-opus-4-6[1m]',
+      deny('matched'),
+    )
+    const results = await drain(executePreModelSwitchHooks(modelFields))
+    expect(results.find(r => r.blockingError)).toBeDefined()
+  })
+
+  it('pipe list with a non-matching alias still does not run', async () => {
+    registerCommandHookWithMatcher(
+      'PreModelSwitch',
+      'sonnet|haiku',
+      deny('should-not-run'),
+    )
+    const results = await drain(executePreModelSwitchHooks(modelFields))
+    expect(results.find(r => r.blockingError)).toBeUndefined()
   })
 })

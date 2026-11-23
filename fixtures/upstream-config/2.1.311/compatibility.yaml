@@ -8437,6 +8437,7 @@ entries:
     tests:
       - tests/b1HookEvents.test.ts
       - tests/b1HookTriggers.test.ts
+      - tests/b1CanonicalModelMatch.test.ts
     evidence:
       - fixtures/upstream-config/2.1.311/probes/b1-PostModelSwitch.json
     dimensions:
@@ -8453,8 +8454,8 @@ entries:
         status: partial
         evidence: "command wired; auto/resume/picker/sdk sources not wired (gap)"
       precedence:
-        status: partial
-        evidence: "canonical to_model matcher not implemented; runs all hooks (upstream fail-safe)"
+        status: aligned
+        evidence: "canonical to_model matcher implemented: canonicalizeModelForMatch (model.ts) strips [1m] + alias/date/provider normalized; getMatchingHooks Pre/PostModelSwitch case + filter canonicalize both to_model and matcher (tests/b1CanonicalModelMatch 8 + b1HookTriggers matcher 5)"
       runtime:
         status: partial
         evidence: "fires async after switch; additionalContext next-request delivery not wired (gap)"
@@ -8586,6 +8587,7 @@ entries:
     tests:
       - tests/b1HookEvents.test.ts
       - tests/b1HookTriggers.test.ts
+      - tests/b1CanonicalModelMatch.test.ts
     evidence:
       - fixtures/upstream-config/2.1.311/probes/b1-PreModelSwitch.json
     dimensions:
@@ -8602,8 +8604,8 @@ entries:
         status: partial
         evidence: "command wired; picker/sdk sources not wired (gap)"
       precedence:
-        status: partial
-        evidence: "canonical to_model matcher not implemented; runs all hooks (upstream fail-safe)"
+        status: aligned
+        evidence: "canonical to_model matcher implemented: canonicalizeModelForMatch (model.ts) strips [1m] + alias/date/provider normalized; getMatchingHooks Pre/PostModelSwitch case + filter canonicalize both to_model and matcher (tests/b1CanonicalModelMatch 8 + b1HookTriggers matcher 5)"
       runtime:
         status: partial
         evidence: "deny cancels switch (wired); ask interactive prompt not implemented (gap)"

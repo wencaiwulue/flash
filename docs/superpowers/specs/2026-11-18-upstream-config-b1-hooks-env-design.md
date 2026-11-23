@@ -237,7 +237,7 @@ coverage：[upstream-config-b1-hooks-env.yaml](../../architecture/coverage/upstr
 - ModelPicker 的 picker 路径（source=picker）已接 Pre/PostModelSwitch：`handleSelect` 拆为同步包装 + `handleSelectAsync`，先 await Pre（deny/block/timeout 取消并 `onDone` 显示），通过后 setAppState 切换，Post 异步 drain。`requested_model` 取 picker 原始选择值（无 picker probe 实测，按 source 语义推断）。
 - prompt_id 已接入 `createBaseHookInput`：复用既有 per-turn `getPromptId()`（`bootstrap/state.ts:1755`，turn 边界 `processTextPrompt`/`processSlashCommand` 用 `randomUUID()` 设置），非 prompt hook 携带最近 turn id，对齐上游实测 payload。
 - 27 hooks 审计、真实矩阵 --batch 1 未在本轮跑。字段提取行为测试（`tests/b1HookEvents.test.ts` 10 pass，`1a1e865`）与触发点集成测试（`tests/b1HookTriggers.test.ts` 8 pass，真实 command hook 验证触发→解析→结果链，`1b6393d`）已补。
-- DirectoryAdded matcher 已接 source（`1a1e865`）；UserPromptExpansion matcher 接 command_name、DirectoryAdded 接 source（getMatchingHooks switch，`1b6393d`）；Pre/PostModelSwitch matcher 的 canonical to_model 未实现，按上游 fail-safe 运行全部。
+- DirectoryAdded matcher 已接 source（`1a1e865`）；UserPromptExpansion matcher 接 command_name、DirectoryAdded 接 source（getMatchingHooks switch，`1b6393d`）；Pre/PostModelSwitch 的 canonical to_model matcher 已接（本轮）：`canonicalizeModelForMatch`（model.ts，去 [1m] + alias/日期/provider 归一，复用 getCanonicalName/parseUserSpecifiedModel），getMatchingHooks 的 Pre/PostModelSwitch case + filter 双向 canonical（to_model 与 matcher 均归一）。tests/b1CanonicalModelMatch 8 用例 + b1HookTriggers matcher 5 用例（alias/date/[1m]/pipe/非匹配/regex 透传）。
 
 ### 验证
 - typecheck/build/全量 test（exit 0）通过；design-docs 0 errors；headlessHooks/settingsHookCompatibility/settingsManagedHookCompatibility 共 29 pass；subagentLimits 7 pass；b1HookEvents 10 pass；b1HookTriggers 8 pass。

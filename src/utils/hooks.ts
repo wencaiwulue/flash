@@ -5,6 +5,7 @@
  */
 import { basename } from 'path'
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
+import { canonicalizeModelForMatch } from './model/model.js'
 import { pathExists } from './file.js'
 import { wrapSpawn } from './ShellCommand.js'
 import { TaskOutput } from './task/TaskOutput.js'
@@ -1719,8 +1720,10 @@ export async function getMatchingHooks(
       case 'DirectoryAdded':
         matchQuery = hookInput.source
         break
-      // Pre/PostModelSwitch match on canonical to_model upstream; canonicalization
-      // is not implemented, so matchQuery stays undefined → all hooks run (fail-safe).
+      case 'PreModelSwitch':
+      case 'PostModelSwitch':
+        matchQuery = canonicalizeModelForMatch(hookInput.to_model)
+        break
       case 'InstructionsLoaded':
         matchQuery = hookInput.load_reason
         break
@@ -1740,11 +1743,19 @@ export async function getMatchingHooks(
     })
 
     // Extract hooks with their plugin context (if any)
+    // Pre/PostModelSwitch match on the canonical to_model; canonicalize the
+    // configured matcher too so alias/date/provider/[1m] forms all match.
+    const isModelSwitch =
+      hookInput.hook_event_name === 'PreModelSwitch' ||
+      hookInput.hook_event_name === 'PostModelSwitch'
     const filteredMatchers = matchQuery
-      ? hookMatchers.filter(
-          matcher =>
-            !matcher.matcher || matchesPattern(matchQuery, matcher.matcher),
-        )
+      ? hookMatchers.filter(matcher => {
+          if (!matcher.matcher) return true
+          const pattern = isModelSwitch
+            ? canonicalizeModelForMatch(matcher.matcher)
+            : matcher.matcher
+          return matchesPattern(matchQuery, pattern)
+        })
       : hookMatchers
 
     const matchedHooks: MatchedHook[] = filteredMatchers.flatMap(matcher => {

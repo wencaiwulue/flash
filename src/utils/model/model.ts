@@ -285,6 +285,35 @@ export function getCanonicalName(fullModelName: ModelName): ModelShortName {
   return firstPartyNameToCanonical(resolveOverriddenModel(fullModelName))
 }
 
+/**
+ * Canonicalize a model name for Pre/PostModelSwitch hook matcher comparison.
+ * Upstream matches on the canonical to_model: [1m] stripped, alias/date/provider
+ * normalized (e.g. 'opus', 'claude-opus-4-6-20251001', 'claude-opus-4-6[1m]',
+ * 'us.anthropic.claude-3-5-haiku-20241022-v1:0' all normalize). Pipe-separated
+ * lists are canonicalized per segment; regex matchers pass through unchanged.
+ * Falls back to the stripped input if canonicalization fails (fail-safe).
+ */
+export function canonicalizeModelForMatch(model: string): string {
+  if (model.includes('|')) {
+    return model
+      .split('|')
+      .map(s => canonicalizeModelForMatch(s.trim()))
+      .join('|')
+  }
+  // Only canonicalize simple model names; regex matchers pass through unchanged.
+  if (!/^[a-zA-Z0-9_.:[\]-]+$/i.test(model)) {
+    return model
+  }
+  const stripped = model.replace(/\[1m]$/i, '').trim()
+  try {
+    return getCanonicalName(
+      parseUserSpecifiedModel(stripped as ModelName),
+    ).replace(/\[1m]$/i, '')
+  } catch {
+    return stripped
+  }
+}
+
 // @[MODEL LAUNCH]: Update the default model description strings shown to users.
 export function getClaudeAiUserDefaultModelDescription(
   fastMode = false,
