@@ -156,6 +156,12 @@
         "file": "src/services/api/logging.ts",
         "purpose": "logging.ts:155 includes ANTHROPIC_SMALL_FAST_MODEL in request logging metadata when set"
       }
+    ],
+    "ENABLE_PROMPT_CACHING_1H_BEDROCK": [
+      {
+        "file": "src/services/api/claude.ts",
+        "purpose": "claude.ts:395 isEnvTruthy(process.env.ENABLE_PROMPT_CACHING_1H_BEDROCK) enables 1h prompt caching on Bedrock (deprecated; superseded by ENABLE_PROMPT_CACHING_1H)"
+      }
     ]
   }
 }

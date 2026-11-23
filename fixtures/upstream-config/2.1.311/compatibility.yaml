@@ -138,6 +138,11 @@ entries:
     ownerBatch: 4
   - id: setting:allowManagedHooksOnly
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b3-security-filesystem
     implementation:
       - src/utils/settings/types.ts
@@ -441,6 +446,11 @@ entries:
     ownerBatch: final
   - id: setting:attribution
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b3-security-filesystem
     implementation:
       - src/utils/settings/types.ts
@@ -473,6 +483,11 @@ entries:
     ownerBatch: 3
   - id: setting:attribution.commit
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b3-security-filesystem
     implementation:
       - src/utils/settings/types.ts
@@ -505,6 +520,11 @@ entries:
     ownerBatch: 3
   - id: setting:attribution.pr
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b3-security-filesystem
     implementation:
       - src/utils/settings/types.ts
@@ -537,6 +557,11 @@ entries:
     ownerBatch: 3
   - id: setting:attribution.sessionUrl
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b3-security-filesystem
     implementation:
       - src/utils/settings/types.ts
@@ -569,6 +594,11 @@ entries:
     ownerBatch: 3
   - id: setting:autoCompactEnabled
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b2-local-core-ui
     implementation:
       - src/utils/config.ts
@@ -629,6 +659,11 @@ entries:
     ownerBatch: 2
   - id: setting:autoConnectIde
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b2-local-core-ui
     implementation:
       - src/utils/config.ts
@@ -689,6 +724,11 @@ entries:
     ownerBatch: 5
   - id: setting:autoInstallIdeExtension
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b2-local-core-ui
     implementation:
       - src/utils/config.ts
@@ -722,6 +762,11 @@ entries:
     ownerBatch: 2
   - id: setting:autoMemoryDirectory
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b2-local-core-ui
     implementation:
       - src/memdir/paths.ts
@@ -754,6 +799,11 @@ entries:
     ownerBatch: 2
   - id: setting:autoMemoryEnabled
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b2-local-core-ui
     implementation:
       - src/memdir/memdir.ts
@@ -976,6 +1026,11 @@ entries:
     ownerBatch: 2
   - id: setting:autoUpdatesChannel
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b2-local-core-ui
     implementation:
       - src/main.tsx
@@ -1764,7 +1819,7 @@ entries:
     exclusion: null
     ownerBatch: final
   - id: setting:disableArtifact
-    status: excluded
+    status: ignored-by-design
     implementation: []
     tests: []
     evidence: []
@@ -2175,6 +2230,11 @@ entries:
     ownerBatch: final
   - id: setting:editorMode
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b2-local-core-ui
     implementation:
       - src/utils/config.ts
@@ -2614,6 +2674,11 @@ entries:
     ownerBatch: 5
   - id: setting:feedbackSurveyRate
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b5-independent-features
     implementation:
       - src/utils/settings/types.ts
@@ -2647,6 +2712,11 @@ entries:
 
   - id: setting:fileCheckpointingEnabled
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b2-local-core-ui
     implementation:
       - src/utils/config.ts
@@ -2844,6 +2914,11 @@ entries:
     ownerBatch: 4
   - id: setting:forceLoginOrgUUID
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b4-integration-managed
     implementation:
       - src/utils/settings/types.ts
@@ -3146,7 +3221,7 @@ entries:
     exclusion: null
     ownerBatch: 4
   - id: setting:keybindingFlavor
-    status: excluded
+    status: ignored-by-design
     implementation: []
     tests: []
     evidence: []
@@ -3368,6 +3443,11 @@ entries:
     ownerBatch: final
   - id: setting:model
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b2-local-core-ui
     implementation:
       - src/utils/settings/types.ts
@@ -3400,6 +3480,11 @@ entries:
     ownerBatch: 2
   - id: setting:modelOverrides
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b2-local-core-ui
     implementation:
       - src/utils/settings/types.ts
@@ -3648,6 +3733,11 @@ entries:
     ownerBatch: final
   - id: setting:outputStyle
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b2-local-core-ui
     implementation:
       - src/constants/outputStyles.ts
@@ -3773,6 +3863,11 @@ entries:
     ownerBatch: 3
   - id: setting:permissions.additionalDirectories
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b3-security-filesystem
     implementation:
       - src/utils/settings/types.ts
@@ -3807,6 +3902,11 @@ entries:
     ownerBatch: 3
   - id: setting:permissions.allow
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b3-security-filesystem
     implementation:
       - src/utils/settings/types.ts
@@ -3840,6 +3940,11 @@ entries:
     ownerBatch: 3
   - id: setting:permissions.ask
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b3-security-filesystem
     implementation:
       - src/utils/settings/types.ts
@@ -3927,6 +4032,11 @@ entries:
     ownerBatch: 3
   - id: setting:permissions.defaultMode
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b3-security-filesystem
     implementation:
       - src/utils/settings/types.ts
@@ -3959,6 +4069,11 @@ entries:
     ownerBatch: 3
   - id: setting:permissions.deny
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b3-security-filesystem
     implementation:
       - src/utils/settings/types.ts
@@ -4049,6 +4164,11 @@ entries:
     ownerBatch: 3
   - id: setting:permissions.disableBypassPermissionsMode
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b3-security-filesystem
     implementation:
       - src/utils/settings/types.ts
@@ -4108,6 +4228,11 @@ entries:
     ownerBatch: final
   - id: setting:pluginConfigs
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b4-integration-managed
     implementation:
       - src/utils/settings/types.ts
@@ -4168,6 +4293,11 @@ entries:
     ownerBatch: 4
   - id: setting:pluginTrustMessage
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b4-integration-managed
     implementation:
       - src/utils/settings/types.ts
@@ -4363,6 +4493,11 @@ entries:
     ownerBatch: final
   - id: setting:preferredNotifChannel
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b2-local-core-ui
     implementation:
       - src/utils/config.ts
@@ -4530,6 +4665,11 @@ entries:
     ownerBatch: final
   - id: setting:remote.defaultEnvironmentId
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b4-integration-managed
     implementation:
       - src/utils/settings/types.ts
@@ -4783,6 +4923,11 @@ entries:
     ownerBatch: 3
   - id: setting:sandbox.allowUnsandboxedCommands
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b3-security-filesystem
     implementation:
       - src/entrypoints/sandboxTypes.ts
@@ -4815,6 +4960,11 @@ entries:
     ownerBatch: 3
   - id: setting:sandbox.autoAllowBashIfSandboxed
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b3-security-filesystem
     implementation:
       - src/entrypoints/sandboxTypes.ts
@@ -5117,6 +5267,11 @@ entries:
     ownerBatch: 3
   - id: setting:sandbox.enableWeakerNestedSandbox
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b3-security-filesystem
     implementation:
       - src/entrypoints/sandboxTypes.ts
@@ -5149,6 +5304,11 @@ entries:
     ownerBatch: 3
   - id: setting:sandbox.enableWeakerNetworkIsolation
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b3-security-filesystem
     implementation:
       - src/entrypoints/sandboxTypes.ts
@@ -5181,6 +5341,11 @@ entries:
     ownerBatch: 3
   - id: setting:sandbox.enabled
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b3-security-filesystem
     implementation:
       - src/entrypoints/sandboxTypes.ts
@@ -5213,6 +5378,11 @@ entries:
     ownerBatch: 3
   - id: setting:sandbox.excludedCommands
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b3-security-filesystem
     implementation:
       - src/entrypoints/sandboxTypes.ts
@@ -5245,6 +5415,11 @@ entries:
     ownerBatch: 3
   - id: setting:sandbox.failIfUnavailable
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b3-security-filesystem
     implementation:
       - src/entrypoints/sandboxTypes.ts
@@ -5308,6 +5483,11 @@ entries:
     ownerBatch: 3
   - id: setting:sandbox.filesystem.allowManagedReadPathsOnly
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b3-security-filesystem
     implementation:
       - src/entrypoints/sandboxTypes.ts
@@ -5340,6 +5520,11 @@ entries:
     ownerBatch: 3
   - id: setting:sandbox.filesystem.allowRead
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b3-security-filesystem
     implementation:
       - src/entrypoints/sandboxTypes.ts
@@ -5372,6 +5557,11 @@ entries:
     ownerBatch: 3
   - id: setting:sandbox.filesystem.allowWrite
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b3-security-filesystem
     implementation:
       - src/entrypoints/sandboxTypes.ts
@@ -5404,6 +5594,11 @@ entries:
     ownerBatch: 3
   - id: setting:sandbox.filesystem.denyRead
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b3-security-filesystem
     implementation:
       - src/entrypoints/sandboxTypes.ts
@@ -5436,6 +5631,11 @@ entries:
     ownerBatch: 3
   - id: setting:sandbox.filesystem.denyWrite
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b3-security-filesystem
     implementation:
       - src/entrypoints/sandboxTypes.ts
@@ -5495,6 +5695,11 @@ entries:
     ownerBatch: 3
   - id: setting:sandbox.ignoreViolations
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b3-security-filesystem
     implementation:
       - src/entrypoints/sandboxTypes.ts
@@ -5558,6 +5763,11 @@ entries:
     ownerBatch: 3
   - id: setting:sandbox.network.allowAllUnixSockets
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b3-security-filesystem
     implementation:
       - src/entrypoints/sandboxTypes.ts
@@ -5590,6 +5800,11 @@ entries:
     ownerBatch: 3
   - id: setting:sandbox.network.allowLocalBinding
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b3-security-filesystem
     implementation:
       - src/entrypoints/sandboxTypes.ts
@@ -5649,6 +5864,11 @@ entries:
     ownerBatch: 3
   - id: setting:sandbox.network.allowManagedDomainsOnly
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b3-security-filesystem
     implementation:
       - src/entrypoints/sandboxTypes.ts
@@ -5681,6 +5901,11 @@ entries:
     ownerBatch: 3
   - id: setting:sandbox.network.allowUnixSockets
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b3-security-filesystem
     implementation:
       - src/entrypoints/sandboxTypes.ts
@@ -5713,6 +5938,11 @@ entries:
     ownerBatch: 3
   - id: setting:sandbox.network.allowedDomains
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b3-security-filesystem
     implementation:
       - src/entrypoints/sandboxTypes.ts
@@ -5775,6 +6005,11 @@ entries:
     ownerBatch: 3
   - id: setting:sandbox.network.httpProxyPort
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b3-security-filesystem
     implementation:
       - src/entrypoints/sandboxTypes.ts
@@ -5807,6 +6042,11 @@ entries:
     ownerBatch: 3
   - id: setting:sandbox.network.socksProxyPort
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b3-security-filesystem
     implementation:
       - src/entrypoints/sandboxTypes.ts
@@ -5947,6 +6187,11 @@ entries:
     ownerBatch: 3
   - id: setting:sandbox.ripgrep
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b3-security-filesystem
     implementation:
       - src/entrypoints/sandboxTypes.ts
@@ -5979,6 +6224,11 @@ entries:
     ownerBatch: 3
   - id: setting:sandbox.ripgrep.args
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b3-security-filesystem
     implementation:
       - src/entrypoints/sandboxTypes.ts
@@ -6011,6 +6261,11 @@ entries:
     ownerBatch: 3
   - id: setting:sandbox.ripgrep.command
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b3-security-filesystem
     implementation:
       - src/entrypoints/sandboxTypes.ts
@@ -6070,6 +6325,11 @@ entries:
     ownerBatch: 3
   - id: setting:showClearContextOnPlanAccept
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b2-local-core-ui
     implementation:
       - src/components/permissions/ExitPlanModePermissionRequest/ExitPlanModePermissionRequest.tsx
@@ -6103,6 +6363,11 @@ entries:
     ownerBatch: 2
   - id: setting:showThinkingSummaries
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b2-local-core-ui
     implementation:
       - src/utils/betas.ts
@@ -6135,6 +6400,11 @@ entries:
     ownerBatch: 2
   - id: setting:showTurnDuration
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b2-local-core-ui
     implementation:
       - src/utils/settings/types.ts
@@ -6789,6 +7059,11 @@ entries:
     ownerBatch: final
   - id: setting:statusLine
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b2-local-core-ui
     implementation:
       - src/utils/settings/types.ts
@@ -6822,6 +7097,11 @@ entries:
     ownerBatch: 2
   - id: setting:statusLine.command
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b2-local-core-ui
     implementation:
       - src/components/StatusLine.tsx
@@ -6855,6 +7135,11 @@ entries:
     ownerBatch: 2
   - id: setting:statusLine.hideVimModeIndicator
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b2-local-core-ui
     implementation:
       - src/utils/settings/types.ts
@@ -6887,6 +7172,11 @@ entries:
     ownerBatch: 2
   - id: setting:statusLine.padding
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b2-local-core-ui
     implementation:
       - src/components/StatusLine.tsx
@@ -6919,6 +7209,11 @@ entries:
     ownerBatch: 2
   - id: setting:statusLine.refreshInterval
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b2-local-core-ui
     implementation:
       - src/utils/settings/types.ts
@@ -6951,6 +7246,11 @@ entries:
     ownerBatch: 2
   - id: setting:statusLine.type
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b2-local-core-ui
     implementation:
       - src/utils/settings/types.ts
@@ -7344,6 +7644,11 @@ entries:
     ownerBatch: 2
   - id: setting:teammateMode
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b2-local-core-ui
     implementation:
       - src/utils/config.ts
@@ -7377,6 +7682,11 @@ entries:
     ownerBatch: 2
   - id: setting:terminalProgressBarEnabled
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b2-local-core-ui
     implementation:
       - src/utils/config.ts
@@ -7410,6 +7720,11 @@ entries:
     ownerBatch: 2
   - id: setting:terminalTitleFromRename
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b2-local-core-ui
     implementation:
       - src/screens/REPL.tsx
@@ -7442,6 +7757,11 @@ entries:
     ownerBatch: 2
   - id: setting:theme
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b2-local-core-ui
     implementation:
       - src/utils/config.ts
@@ -7611,6 +7931,11 @@ entries:
     ownerBatch: final
   - id: setting:verbose
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b2-local-core-ui
     implementation:
       - src/utils/config.ts
@@ -7805,7 +8130,7 @@ entries:
     exclusion: null
     ownerBatch: final
   - id: setting:voiceEnabled
-    status: excluded
+    status: ignored-by-design
     implementation: []
     tests: []
     evidence: []
@@ -8031,6 +8356,11 @@ entries:
     ownerBatch: 3
   - id: setting:worktree.sparsePaths
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b3-security-filesystem
     implementation:
       - src/utils/settings/types.ts
@@ -8063,6 +8393,11 @@ entries:
     ownerBatch: 3
   - id: setting:worktree.symlinkDirectories
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b3-security-filesystem
     implementation:
       - src/utils/settings/types.ts
@@ -8318,6 +8653,11 @@ entries:
     ownerBatch: 1
   - id: hook:MessageDisplay
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b1-hooks-env
     implementation:
       - src/utils/hooks.ts
@@ -8496,6 +8836,11 @@ entries:
     ownerBatch: 1
   - id: hook:PostToolBatch
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b1-hooks-env
     implementation:
       - src/utils/hooks.ts
@@ -8943,6 +9288,11 @@ entries:
     ownerBatch: 1
   - id: hook:UserPromptExpansion
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b1-hooks-env
     implementation:
       - src/utils/hooks.ts
@@ -9382,6 +9732,11 @@ entries:
     ownerBatch: final
   - id: env:ANTHROPIC_CUSTOM_MODEL_OPTION
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b5-independent-features
     implementation:
       - src/utils/model/modelOptions.ts
@@ -9414,6 +9769,11 @@ entries:
 
   - id: env:ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b5-independent-features
     implementation:
       - src/utils/model/modelOptions.ts
@@ -9446,6 +9806,11 @@ entries:
 
   - id: env:ANTHROPIC_CUSTOM_MODEL_OPTION_NAME
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b5-independent-features
     implementation:
       - src/utils/model/modelOptions.ts
@@ -9613,6 +9978,11 @@ entries:
     ownerBatch: 5
   - id: env:ANTHROPIC_DEFAULT_HAIKU_MODEL
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b5-independent-features
     implementation:
       - src/utils/model/modelOptions.ts
@@ -9645,6 +10015,11 @@ entries:
 
   - id: env:ANTHROPIC_DEFAULT_HAIKU_MODEL_DESCRIPTION
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b5-independent-features
     implementation:
       - src/utils/model/modelOptions.ts
@@ -9677,6 +10052,11 @@ entries:
 
   - id: env:ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b5-independent-features
     implementation:
       - src/utils/model/modelOptions.ts
@@ -9763,6 +10143,11 @@ entries:
     ownerBatch: 5
   - id: env:ANTHROPIC_DEFAULT_OPUS_MODEL
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b5-independent-features
     implementation:
       - src/utils/model/modelOptions.ts
@@ -9795,6 +10180,11 @@ entries:
 
   - id: env:ANTHROPIC_DEFAULT_OPUS_MODEL_DESCRIPTION
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b5-independent-features
     implementation:
       - src/utils/model/modelOptions.ts
@@ -9827,6 +10217,11 @@ entries:
 
   - id: env:ANTHROPIC_DEFAULT_OPUS_MODEL_NAME
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b5-independent-features
     implementation:
       - src/utils/model/modelOptions.ts
@@ -9886,6 +10281,11 @@ entries:
     ownerBatch: 5
   - id: env:ANTHROPIC_DEFAULT_SONNET_MODEL
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b5-independent-features
     implementation:
       - src/utils/model/modelOptions.ts
@@ -9918,6 +10318,11 @@ entries:
 
   - id: env:ANTHROPIC_DEFAULT_SONNET_MODEL_DESCRIPTION
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b5-independent-features
     implementation:
       - src/utils/model/modelOptions.ts
@@ -9950,6 +10355,11 @@ entries:
 
   - id: env:ANTHROPIC_DEFAULT_SONNET_MODEL_NAME
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b5-independent-features
     implementation:
       - src/utils/model/modelOptions.ts
@@ -10252,6 +10662,11 @@ entries:
     ownerBatch: final
   - id: env:ANTHROPIC_MODEL
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b5-independent-features
     implementation:
       - src/main.tsx
@@ -10337,7 +10752,7 @@ entries:
     exclusion: null
     ownerBatch: final
   - id: env:ANTHROPIC_SMALL_FAST_MODEL
-    status: excluded
+    status: ignored-by-design
     implementation: []
     tests: []
     evidence: []
@@ -10370,6 +10785,11 @@ entries:
     ownerBatch: 5
   - id: env:ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b5-independent-features
     implementation:
       - src/services/api/client.ts
@@ -11406,6 +11826,11 @@ entries:
     ownerBatch: final
   - id: env:CLAUDE_CODE_AUTO_MODE_MODEL
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b5-independent-features
     implementation:
       - src/utils/permissions/yoloClassifier.ts
@@ -12442,6 +12867,11 @@ entries:
     ownerBatch: final
   - id: env:CLAUDE_CODE_DISABLE_FAST_MODE
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b5-independent-features
     implementation:
       - src/utils/fastMode.ts
@@ -12501,6 +12931,11 @@ entries:
     ownerBatch: final
   - id: env:CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b5-independent-features
     implementation:
       - src/components/FeedbackSurvey/useMemorySurvey.tsx
@@ -12641,6 +13076,11 @@ entries:
     ownerBatch: final
   - id: env:CLAUDE_CODE_DISABLE_LEGACY_MODEL_REMAP
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b5-independent-features
     implementation:
       - src/utils/model/model.ts
@@ -14460,6 +14900,11 @@ entries:
     ownerBatch: final
   - id: env:CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b1-hooks-env
     implementation:
       - src/utils/subagentLimits.ts
@@ -14633,6 +15078,11 @@ entries:
     ownerBatch: 1
   - id: env:CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b1-hooks-env
     implementation:
       - src/utils/subagentLimits.ts
@@ -16454,6 +16904,11 @@ entries:
     ownerBatch: 4
   - id: env:CLAUDE_CODE_SKIP_FAST_MODE_NETWORK_ERRORS
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b5-independent-features
     implementation:
       - src/utils/fastMode.ts
@@ -16702,6 +17157,11 @@ entries:
     ownerBatch: final
   - id: env:CLAUDE_CODE_SUBAGENT_MODEL
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b5-independent-features
     implementation:
       - src/utils/model/agent.ts
@@ -18143,6 +18603,11 @@ entries:
     ownerBatch: final
   - id: env:DISABLE_FEEDBACK_COMMAND
     status: aligned
+    verifiedVersion: 2.1.311
+    currentReview:
+      by: kimi
+      at: 2026-11-16
+      baseline: 2.1.311
     spec: upstream-config-b5-independent-features
     implementation:
       - src/commands/feedback/feedbackAvailability.ts
@@ -18660,7 +19125,7 @@ entries:
     exclusion: null
     ownerBatch: final
   - id: env:ENABLE_PROMPT_CACHING_1H_BEDROCK
-    status: excluded
+    status: ignored-by-design
     implementation: []
     tests: []
     evidence: []
