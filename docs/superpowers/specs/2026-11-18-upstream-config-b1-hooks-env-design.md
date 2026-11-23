@@ -242,3 +242,12 @@ coverage：[upstream-config-b1-hooks-env.yaml](../../architecture/coverage/upstr
 ### 验证
 - typecheck/build/全量 test（exit 0）通过；design-docs 0 errors；headlessHooks/settingsHookCompatibility/settingsManagedHookCompatibility 共 29 pass；subagentLimits 7 pass；b1HookEvents 10 pass；b1HookTriggers 8 pass。
 
+### 难项跳过（2026-11-23 路线：先完成 B1-B5，太难记下跳过）
+按用户路线，以下难项记录跳过，不阻塞 B1 收尾：
+- **cache 字段真实值**（context_tokens/prompt_cache_warm/estimated_cache_write_usd/pricing）：需 query 层 last-response usage 追踪 + 模型定价表两个子系统（当前 STATE.modelUsage 为按模型累计值、无 last-response 追踪、无定价表），超出接线范围，跳过。
+- **PostModelSwitch additionalContext 下一请求投递**：需 query 主循环注入点 + 模块级状态队列 + 上游 5s/顺延/只保留最后语义（query 层集成），跳过。
+- **27-hook 逐事件 probe 实测审计**：30 条 partial hook 的六维度对齐需逐事件 probe 实测（三层证据），工程量大，跳过。当前 matrix hook aligned=3（MessageDisplay/PostToolBatch/UserPromptExpansion），Pre/PostModelSwitch precedence 已 aligned（canonical matcher）。
+- **DirectoryAdded register_repo_root**：属 B4 SDK 范畴，转 B4。
+
+B1 收尾状态：6 事件接线 + subagent env 限额 + canonical to_model matcher 完成；上述难项按路线跳过。matrix hook aligned=3，B1 不追求 matrix 全 aligned（27-hook 审计已跳过）。
+
