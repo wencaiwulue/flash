@@ -2613,32 +2613,38 @@ entries:
     exclusion: null
     ownerBatch: 5
   - id: setting:feedbackSurveyRate
-    status: partial
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b5-independent-features
+    implementation:
+      - src/utils/settings/types.ts
+      - src/components/FeedbackSurvey/useFeedbackSurvey.tsx
+    tests:
+      - tests/b5ModelEnvSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
         status: aligned
-        evidence: generated schema diff
+        evidence: "feedbackSurveyRate（settings key）"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "number"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "unset"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "settings 文件"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "settings 文件"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "useFeedbackSurvey.tsx:88 getInitialSettings().feedbackSurveyRate（survey 采样率）；types.ts zod number"
+    notes: "feedback survey 采样率"
     exclusion: null
     ownerBatch: 5
+
   - id: setting:fileCheckpointingEnabled
     status: aligned
     spec: upstream-config-b2-local-core-ui
@@ -9375,86 +9381,101 @@ entries:
     exclusion: null
     ownerBatch: final
   - id: env:ANTHROPIC_CUSTOM_MODEL_OPTION
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b5-independent-features
+    implementation:
+      - src/utils/model/modelOptions.ts
+    tests:
+      - tests/b5ModelEnvSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "ANTHROPIC_CUSTOM_MODEL_OPTION（process.env）"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "string（model ID）"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "unset"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env（process.env）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env 添加自定义 model 条目（不替换内置 alias）"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "modelOptions.ts getModelOptions:481 读 ANTHROPIC_CUSTOM_MODEL_OPTION，push 自定义条目；tests/b5ModelEnvSettings 验证"
+    notes: "/model picker 自定义 model 条目"
     exclusion: null
     ownerBatch: 5
+
   - id: env:ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b5-independent-features
+    implementation:
+      - src/utils/model/modelOptions.ts
+    tests:
+      - tests/b5ModelEnvSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION（process.env）"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "string"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "unset（默认 Custom model (<id>)）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env（process.env）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env 覆盖自定义条目描述"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "modelOptions.ts getModelOptions description=ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION ?? Custom model (<id>)；tests/b5 验证默认回退"
+    notes: "自定义 model 描述"
     exclusion: null
     ownerBatch: 5
+
   - id: env:ANTHROPIC_CUSTOM_MODEL_OPTION_NAME
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b5-independent-features
+    implementation:
+      - src/utils/model/modelOptions.ts
+    tests:
+      - tests/b5ModelEnvSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "ANTHROPIC_CUSTOM_MODEL_OPTION_NAME（process.env）"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "string"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "unset（显示识别名或 ID）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env（process.env）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env 覆盖自定义条目显示名"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "modelOptions.ts getModelOptions label=ANTHROPIC_CUSTOM_MODEL_OPTION_NAME ?? envCustomModel；tests/b5 验证"
+    notes: "自定义 model 显示名"
     exclusion: null
     ownerBatch: 5
+
   - id: env:ANTHROPIC_CUSTOM_MODEL_OPTION_SUPPORTED_CAPABILITIES
     status: missing
     implementation: []
@@ -9591,86 +9612,101 @@ entries:
     exclusion: null
     ownerBatch: 5
   - id: env:ANTHROPIC_DEFAULT_HAIKU_MODEL
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b5-independent-features
+    implementation:
+      - src/utils/model/modelOptions.ts
+    tests:
+      - tests/b5ModelEnvSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "ANTHROPIC_DEFAULT_HAIKU_MODEL（process.env）"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "string（model ID）"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "unset"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env（process.env）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env 覆盖内置 haiku alias 解析"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "modelOptions.ts 读 process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL（haiku alias + 后台功能）"
+    notes: "haiku alias 自定义 model ID"
     exclusion: null
     ownerBatch: 5
+
   - id: env:ANTHROPIC_DEFAULT_HAIKU_MODEL_DESCRIPTION
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b5-independent-features
+    implementation:
+      - src/utils/model/modelOptions.ts
+    tests:
+      - tests/b5ModelEnvSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "ANTHROPIC_DEFAULT_HAIKU_MODEL_DESCRIPTION（process.env）"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "string"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "unset"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env（process.env）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env 覆盖默认描述"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "modelOptions.ts haiku description=ANTHROPIC_DEFAULT_HAIKU_MODEL_DESCRIPTION ?? 默认"
+    notes: "/model picker Haiku 描述"
     exclusion: null
     ownerBatch: 5
+
   - id: env:ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b5-independent-features
+    implementation:
+      - src/utils/model/modelOptions.ts
+    tests:
+      - tests/b5ModelEnvSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME（process.env）"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "string"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "unset"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env（process.env）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env 覆盖默认显示名"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "modelOptions.ts haiku label=ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME ?? customHaikuModel"
+    notes: "/model picker Haiku 显示名"
     exclusion: null
     ownerBatch: 5
+
   - id: env:ANTHROPIC_DEFAULT_HAIKU_MODEL_SUPPORTED_CAPABILITIES
     status: missing
     implementation: []
@@ -9726,86 +9762,101 @@ entries:
     exclusion: null
     ownerBatch: 5
   - id: env:ANTHROPIC_DEFAULT_OPUS_MODEL
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b5-independent-features
+    implementation:
+      - src/utils/model/modelOptions.ts
+    tests:
+      - tests/b5ModelEnvSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "ANTHROPIC_DEFAULT_OPUS_MODEL（process.env）"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "string（model ID）"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "unset"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env（process.env）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env 覆盖内置 opus alias 解析"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "modelOptions.ts getCustomOpusOption 读 process.env.ANTHROPIC_DEFAULT_OPUS_MODEL（3P provider 时 opus alias 解析 + opusplan Plan Mode）"
+    notes: "opus alias 自定义 model ID；仅 3P provider 生效"
     exclusion: null
     ownerBatch: 5
+
   - id: env:ANTHROPIC_DEFAULT_OPUS_MODEL_DESCRIPTION
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b5-independent-features
+    implementation:
+      - src/utils/model/modelOptions.ts
+    tests:
+      - tests/b5ModelEnvSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "ANTHROPIC_DEFAULT_OPUS_MODEL_DESCRIPTION（process.env）"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "string"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "unset（默认 Custom Opus model...）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env（process.env）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env 覆盖默认描述"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "modelOptions.ts getCustomOpusOption description=ANTHROPIC_DEFAULT_OPUS_MODEL_DESCRIPTION ?? 默认"
+    notes: "/model picker Opus 描述"
     exclusion: null
     ownerBatch: 5
+
   - id: env:ANTHROPIC_DEFAULT_OPUS_MODEL_NAME
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b5-independent-features
+    implementation:
+      - src/utils/model/modelOptions.ts
+    tests:
+      - tests/b5ModelEnvSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME（process.env）"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "string"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "unset（显示识别的名称或 ID）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env（process.env）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env 覆盖默认显示名"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "modelOptions.ts getCustomOpusOption label=ANTHROPIC_DEFAULT_OPUS_MODEL_NAME ?? customOpusModel"
+    notes: "/model picker Opus 显示名"
     exclusion: null
     ownerBatch: 5
+
   - id: env:ANTHROPIC_DEFAULT_OPUS_MODEL_SUPPORTED_CAPABILITIES
     status: missing
     implementation: []
@@ -9834,86 +9885,101 @@ entries:
     exclusion: null
     ownerBatch: 5
   - id: env:ANTHROPIC_DEFAULT_SONNET_MODEL
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b5-independent-features
+    implementation:
+      - src/utils/model/modelOptions.ts
+    tests:
+      - tests/b5ModelEnvSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "ANTHROPIC_DEFAULT_SONNET_MODEL（process.env）"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "string（model ID）"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "unset"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env（process.env）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env 覆盖内置 sonnet alias 解析"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "modelOptions.ts getCustomSonnetOption 读 process.env.ANTHROPIC_DEFAULT_SONNET_MODEL（3P 时 sonnet alias + opusplan 非 Plan）"
+    notes: "sonnet alias 自定义 model ID；仅 3P provider 生效"
     exclusion: null
     ownerBatch: 5
+
   - id: env:ANTHROPIC_DEFAULT_SONNET_MODEL_DESCRIPTION
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b5-independent-features
+    implementation:
+      - src/utils/model/modelOptions.ts
+    tests:
+      - tests/b5ModelEnvSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "ANTHROPIC_DEFAULT_SONNET_MODEL_DESCRIPTION（process.env）"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "string"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "unset"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env（process.env）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env 覆盖默认描述"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "modelOptions.ts getCustomSonnetOption description=ANTHROPIC_DEFAULT_SONNET_MODEL_DESCRIPTION ?? 默认"
+    notes: "/model picker Sonnet 描述"
     exclusion: null
     ownerBatch: 5
+
   - id: env:ANTHROPIC_DEFAULT_SONNET_MODEL_NAME
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b5-independent-features
+    implementation:
+      - src/utils/model/modelOptions.ts
+    tests:
+      - tests/b5ModelEnvSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME（process.env）"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "string"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "unset"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env（process.env）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env 覆盖默认显示名"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "modelOptions.ts getCustomSonnetOption label=ANTHROPIC_DEFAULT_SONNET_MODEL_NAME ?? customSonnetModel"
+    notes: "/model picker Sonnet 显示名"
     exclusion: null
     ownerBatch: 5
+
   - id: env:ANTHROPIC_DEFAULT_SONNET_MODEL_SUPPORTED_CAPABILITIES
     status: missing
     implementation: []
@@ -10185,32 +10251,37 @@ entries:
     exclusion: null
     ownerBatch: final
   - id: env:ANTHROPIC_MODEL
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b5-independent-features
+    implementation:
+      - src/main.tsx
+    tests:
+      - tests/b5ModelEnvSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "ANTHROPIC_MODEL（process.env）"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "string（model ID/alias）"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "unset"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env（process.env）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "options.model 优先于 env"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "main.tsx:2998 explicitModel = options.model || process.env.ANTHROPIC_MODEL"
+    notes: "全局默认 model 设置"
     exclusion: null
     ownerBatch: 5
+
   - id: env:ANTHROPIC_ORGANIZATION_ID
     status: missing
     implementation: []
@@ -10298,32 +10369,37 @@ entries:
       sourceAnchor: "#variables"
     ownerBatch: 5
   - id: env:ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b5-independent-features
+    implementation:
+      - src/services/api/client.ts
+    tests:
+      - tests/b5ModelEnvSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION（process.env）"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "string（AWS region）"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "unset"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env（process.env）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env 覆盖 Haiku-class model AWS region"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "client.ts 读 process.env.ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION（Bedrock/Mantle 时覆盖 Haiku region）"
+    notes: "Bedrock Haiku-class model region 覆盖"
     exclusion: null
     ownerBatch: 5
+
   - id: env:ANTHROPIC_VERTEX_BASE_URL
     status: missing
     implementation: []
@@ -11329,32 +11405,37 @@ entries:
     exclusion: null
     ownerBatch: final
   - id: env:CLAUDE_CODE_AUTO_MODE_MODEL
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b5-independent-features
+    implementation:
+      - src/utils/permissions/yoloClassifier.ts
+    tests:
+      - tests/b5ModelEnvSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "CLAUDE_CODE_AUTO_MODE_MODEL（process.env）"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "string（model ID）"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "unset"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env（process.env）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env 设置 auto mode classifier model"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "yoloClassifier.ts 读 process.env.CLAUDE_CODE_AUTO_MODE_MODEL（auto mode classifier 请求 model）"
+    notes: "auto mode classifier model"
     exclusion: null
     ownerBatch: 5
+
   - id: env:CLAUDE_CODE_AUTO_MODE_SERVER
     status: missing
     implementation: []
@@ -12360,32 +12441,37 @@ entries:
     exclusion: null
     ownerBatch: final
   - id: env:CLAUDE_CODE_DISABLE_FAST_MODE
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b5-independent-features
+    implementation:
+      - src/utils/fastMode.ts
+    tests:
+      - tests/b5ModelEnvSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "CLAUDE_CODE_DISABLE_FAST_MODE（process.env）"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "boolean-as-'1'"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "unset（默认启用 fast mode）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env（process.env）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env=1 禁用"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "fastMode.ts:39 isFastModeEnabled()=!isEnvTruthy(CLAUDE_CODE_DISABLE_FAST_MODE)；tests/b5 验证"
+    notes: "禁用 fast mode"
     exclusion: null
     ownerBatch: 5
+
   - id: env:CLAUDE_CODE_DISABLE_FEATURE_FLAGS
     status: blocked
     implementation: []
@@ -12414,32 +12500,37 @@ entries:
     exclusion: null
     ownerBatch: final
   - id: env:CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b5-independent-features
+    implementation:
+      - src/components/FeedbackSurvey/useMemorySurvey.tsx
+    tests:
+      - tests/b5ModelEnvSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY（process.env）"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "boolean-as-'1'"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "unset（默认启用 survey）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env（process.env）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env=1 禁用（DISABLE_TELEMETRY/DO_NOT_TRACK 等也禁用）"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "useMemorySurvey.tsx 读 process.env.CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY（禁用会话质量 survey）"
+    notes: "禁用 \"How is Claude doing?\" survey"
     exclusion: null
     ownerBatch: 5
+
   - id: env:CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING
     status: missing
     implementation: []
@@ -12549,32 +12640,37 @@ entries:
     exclusion: null
     ownerBatch: final
   - id: env:CLAUDE_CODE_DISABLE_LEGACY_MODEL_REMAP
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b5-independent-features
+    implementation:
+      - src/utils/model/model.ts
+    tests:
+      - tests/b5ModelEnvSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "CLAUDE_CODE_DISABLE_LEGACY_MODEL_REMAP（process.env）"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "boolean-as-'1'"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "unset（默认 remap）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env（process.env）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env=1 禁用 remap"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "model.ts 读 process.env.CLAUDE_CODE_DISABLE_LEGACY_MODEL_REMAP（禁用 Opus 4/4.1→当前 Opus remap；Bedrock/GCP/Azure 不 remap）"
+    notes: "禁用 legacy Opus model remap"
     exclusion: null
     ownerBatch: 5
+
   - id: env:CLAUDE_CODE_DISABLE_MCP_TASK_BACKGROUND
     status: missing
     implementation: []
@@ -16357,32 +16453,37 @@ entries:
     exclusion: null
     ownerBatch: 4
   - id: env:CLAUDE_CODE_SKIP_FAST_MODE_NETWORK_ERRORS
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b5-independent-features
+    implementation:
+      - src/utils/fastMode.ts
+    tests:
+      - tests/b5ModelEnvSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "CLAUDE_CODE_SKIP_FAST_MODE_NETWORK_ERRORS（process.env）"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "boolean-as-'1'"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "unset"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env（process.env）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env=1 网络检查失败视为可用"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "fastMode.ts:128 读 CLAUDE_CODE_SKIP_FAST_MODE_NETWORK_ERRORS（可用性检查失败视为可用，仍 honor org disabled）"
+    notes: "fast mode 网络错误跳过"
     exclusion: null
     ownerBatch: 5
+
   - id: env:CLAUDE_CODE_SKIP_FAST_MODE_ORG_CHECK
     status: missing
     implementation: []
@@ -16600,32 +16701,37 @@ entries:
     exclusion: null
     ownerBatch: final
   - id: env:CLAUDE_CODE_SUBAGENT_MODEL
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b5-independent-features
+    implementation:
+      - src/utils/model/agent.ts
+    tests:
+      - tests/b5ModelEnvSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "CLAUDE_CODE_SUBAGENT_MODEL（process.env）"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "string（model ID/alias）"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "unset"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env（process.env）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env 优先（两个来源优先于其他）"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "agent.ts:43 if(process.env.CLAUDE_CODE_SUBAGENT_MODEL) return parseUserSpecifiedModel(...)"
+    notes: "subagent/teammate/workflow agent 默认 model"
     exclusion: null
     ownerBatch: 5
+
   - id: env:CLAUDE_CODE_SUBAGENT_MODEL_FORCE
     status: missing
     implementation: []
@@ -18036,32 +18142,37 @@ entries:
     exclusion: null
     ownerBatch: final
   - id: env:DISABLE_FEEDBACK_COMMAND
-    status: missing
-    implementation: []
-    tests: []
-    evidence: []
+    status: aligned
+    spec: upstream-config-b5-independent-features
+    implementation:
+      - src/commands/feedback/feedbackAvailability.ts
+    tests:
+      - tests/b5ModelEnvSettings.test.ts
+    evidence:
+      - fixtures/upstream-config/2.1.311/inventory.json
     dimensions:
       path:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "DISABLE_FEEDBACK_COMMAND（process.env）"
       type:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "boolean-as-'1'"
       default:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "unset（默认启用 /feedback）"
       source:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env（process.env）"
       precedence:
-        status: missing
-        evidence: ""
+        status: aligned
+        evidence: "env=1 禁用 /feedback /bug /share"
       runtime:
-        status: missing
-        evidence: ""
-    notes: ""
+        status: aligned
+        evidence: "feedbackAvailability.ts 读 process.env.DISABLE_FEEDBACK_COMMAND（禁用 /feedback 及 /bug /share）"
+    notes: "禁用 /feedback 命令"
     exclusion: null
     ownerBatch: 5
+
   - id: env:DISABLE_GROWTHBOOK
     status: missing
     implementation: []

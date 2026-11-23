@@ -41,6 +41,7 @@
 | `upstream-config-b2-local-core-ui` | 2 | draft | [B2：本地核心与界面对齐设计](../superpowers/specs/2026-11-19-upstream-config-b2-local-core-ui-design.md) | [coverage](coverage/upstream-config-b2-local-core-ui.yaml) |
 | `upstream-config-b3-security-filesystem` | 3 | draft | [B3：安全与文件系统对齐设计](../superpowers/specs/2026-11-20-upstream-config-b3-security-filesystem-design.md) | [coverage](coverage/upstream-config-b3-security-filesystem.yaml) |
 | `upstream-config-b4-integration-managed` | 4 | draft | [B4：集成与托管对齐设计](../superpowers/specs/2026-11-16-upstream-config-b4-integration-managed-design.md) | [coverage](coverage/upstream-config-b4-integration-managed.yaml) |
+| `upstream-config-b5-independent-features` | 5 | draft | [B5：独立功能子项目对齐设计](../superpowers/specs/2026-11-16-upstream-config-b5-independent-features-design.md) | [coverage](coverage/upstream-config-b5-independent-features.yaml) |
 | `skills` | 3 | draft | [Skills 技能发现、加载与执行设计](../superpowers/specs/2026-11-12-skills-design.md) | [coverage](coverage/skills.yaml) |
 | `app-state` | 4 | draft | [App State 应用状态、订阅与生命周期设计](../superpowers/specs/2026-11-12-app-state-design.md) | [coverage](coverage/app-state.yaml) |
 | `assistant-ui` | 4 | draft | [Assistant UI 助手会话与历史交互设计](../superpowers/specs/2026-11-12-assistant-ui-design.md) | [coverage](coverage/assistant-ui.yaml) |

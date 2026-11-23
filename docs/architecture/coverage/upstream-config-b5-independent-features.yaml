@@ -1,0 +1,8 @@
+schema_version: 1
+spec_id: upstream-config-b5-independent-features
+spec: ../../superpowers/specs/2026-11-16-upstream-config-b5-independent-features-design.md
+status: draft
+# 本 spec 是 B5 独立功能子项目（model 环境变量 / fast mode / feedback /
+# subagent model / artifact / auto mode 等）对齐设计；运行时代码主归属由
+# model、fastMode、FeedbackSurvey、settings 等既有 coverage 维护，避免重复拥有文件。
+groups: []
