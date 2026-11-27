@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { setSessionSettingsCache } from '../src/utils/settings/settingsCache.ts'
 import { SettingsSchema } from '../src/utils/settings/types.ts'
 
@@ -41,8 +41,18 @@ describe('attribution schema (object | false, sessionUrl)', () => {
 })
 
 describe('getAttributionTexts', () => {
+  const originalModel = process.env.ANTHROPIC_MODEL
+
   beforeEach(() => {
     setSettings({})
+    // Keep model resolution deterministic and off the credential-dependent
+    // subscription/default-model path (CI has no ANTHROPIC_MODEL or auth env).
+    process.env.ANTHROPIC_MODEL = 'claude-sonnet-4-6'
+  })
+
+  afterEach(() => {
+    if (originalModel === undefined) delete process.env.ANTHROPIC_MODEL
+    else process.env.ANTHROPIC_MODEL = originalModel
   })
 
   it('attribution: false hides all attribution', () => {
