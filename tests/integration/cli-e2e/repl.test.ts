@@ -57,17 +57,22 @@ describe('REPL interaction', () => {
   test('unknown slash command shows error and process stays alive', { timeout: 90_000 }, async () => {
     const { session } = await startRepl()
 
-    session.write('/definitely-not-a-valid-command-xyz\r')
-    await session.waitFor('Unknown skill:', 15_000)
+    try {
+      session.write('/definitely-not-a-valid-command-xyz\r')
+      await session.waitFor('Unknown skill:', 15_000)
 
-    // 进程存活：双 Ctrl+C 干净退出
-    session.write('\x03')
-    await new Promise(r => setTimeout(r, 300))
-    session.write('\x03')
-
-    const exitCode = await session.exited()
-    expect(exitCode).toBeDefined()
-    expect([0, 130, -1]).toContain(exitCode)
+      // 直接断言进程未提前退出；双 Ctrl+C 退出由独立用例覆盖。
+      const exitedEarly = await Promise.race([
+        session.exited().then(() => true),
+        new Promise<false>(resolve => setTimeout(() => resolve(false), 300)),
+      ])
+      expect(exitedEarly).toBe(false)
+    } catch (error) {
+      console.error(`unknown-slash output:\n${session.rawOutput()}`)
+      throw error
+    } finally {
+      await session.kill().catch(() => {})
+    }
   })
 
   test('/exit command exits the REPL', { timeout: 90_000 }, async () => {
