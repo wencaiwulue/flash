@@ -63,8 +63,10 @@ describe('print mode with mock API', () => {
     toClose.push({ sandbox, mock })
     mock.enqueue({ type: 'text', text: 'ok' })
     await runPrint(['-p', 'hi'], sandbox, mock.url)
-    // count_tokens 是否被调用取决于实现；只断言"若调用则 mock 正确应答"，路径记录留作 B0 对照
-    const paths = mock.requests.map(r => r.path)
+    // count_tokens 是否被调用取决于实现；只断言"若调用则 mock 正确应答"，路径记录留作 B0 对照。
+    // apiPreconnect.ts 会有意发送 HEAD / 预热连接；Linux 上它先于主请求完成并进入记录。
+    const apiRequests = mock.requests.filter(r => !(r.method === 'HEAD' && r.path === '/'))
+    const paths = apiRequests.map(r => r.path)
     expect(paths.every(p => p === '/v1/messages' || p === '/v1/messages/count_tokens')).toBe(true)
   })
 })

@@ -28,8 +28,9 @@ describe('CLI startup and exit', () => {
       const session = await spawnPty({
         cmd: [process.execPath, await distMainPath()],
         cwd: sandbox.project,
-        // Don't set ANTHROPIC_API_KEY to avoid dialog
-        env: sandbox.env,
+        // Don't set ANTHROPIC_API_KEY to avoid dialog. CI mode changes startup
+        // behavior, so this interactive PTY test explicitly runs without it.
+        env: { ...sandbox.env, CI: '' },
       })
       try {
         // Wait for the banner which has "flash"

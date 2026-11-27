@@ -27,7 +27,8 @@ async function startRepl(): Promise<{ session: PtySession; sandbox: Sandbox; moc
   const session = await spawnPty({
     cmd: [process.execPath, await distMainPath()],
     cwd: sandbox.project,
-    env: { ...sandbox.env, ANTHROPIC_API_KEY: MOCK_API_KEY, ANTHROPIC_BASE_URL: mock.url },
+    // Interactive PTY behavior should not inherit the outer CI mode.
+    env: { ...sandbox.env, CI: '', ANTHROPIC_API_KEY: MOCK_API_KEY, ANTHROPIC_BASE_URL: mock.url },
   })
   toClose.push({ session, sandbox, mock })
 
