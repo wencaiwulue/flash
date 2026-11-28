@@ -8,6 +8,8 @@ status: draft
 
 # SDK Query、Session、控制面与 Checkpoint 设计
 
+2026-11-28 修订：补充 classic `query()` 的 options.hooks、env 恢复、按轮 interrupt、终端错误、进程内 MCP form elicitation 与 continue/resume/forkSession 目标。具体 dist 集成测试设计见 `docs/superpowers/specs/2026-11-28-agent-sdk-integration-testing-design.md`；这些条目在实施前均为目标，不是已完成事实。
+
 ## 1. 问题与约束
 
 SDK 调用方需要的不只是发送一个 prompt。可靠的查询还包括异步输入输出、权限与控制请求、会话恢复、上下文读取、任务停止，以及按消息恢复文件状态。若这些能力各自维护状态，模型消息、持久化消息和文件快照会失去同一 UUID 的对应关系，取消和恢复也无法形成一致的生命周期。
@@ -18,6 +20,16 @@ SDK 调用方需要的不只是发送一个 prompt。可靠的查询还包括异
 - **恢复语义分离但配套**：session 恢复对话，checkpoint 恢复该消息对应的文件状态；两者需要协调，但不能合并成一次不透明的全量恢复
 
 ## 2. 设计理由与备选方案
+
+### Classic Query 集成契约决策（2026-11-28）
+
+| 决策 | 实际机制 | 为什么采用 | 备选方案及不采用原因 | 代价 | 证据 |
+|---|---|---|---|---|---|
+| classic options 直挂 query | `createSdkQuery` 消费 hooks/env/continue/resume/forkSession；新内部 `sdkQuerySession.ts` 只解析 session | 公开类型已有 classic 字段，缺的是运行时接线；session helper 复用 loader/storage | 用 unstable_v2：不是同一 API；复制 CLI resume：容易与 DAG/compact 格式漂移 | 需要 dist 集成测试覆盖进程全局资源 | 官方 sessions/streaming 文档；本机上游 2.1.212 strings 的 fork/resume 参数映射；`runtimeTypes.ts:241-473`、`sdkQuery.ts` 当前未消费这些字段 |
+| interrupt 按轮、外部 abort 按 query | 每轮子 AbortController 链接外部 signal；末次错误 result 后抛出 | interrupt 后 streaming input 可继续，外部取消仍能终止整个 query | 复用单一 controller：后续轮永久 aborted；所有错误只 yield：丢失末次异常 | channel 需提供关闭且排空判断 | 官方 streaming-vs-single-mode/agent-loop；binary 每轮 controller 和 `error_max_turns`/`error_during_execution`；`sdkQuery.ts:335,532-595` |
+| hook 注册按身份释放 | `registerHookCallbacks` 返回捕获 matcher 引用的幂等 lease；cleanup 仅移除本次注册 | 当前全局追加/全量 clear 会泄漏或误删其他所有者 | 按事件清空：同事件兄弟被误删；不清理：重复触发 | 需覆盖 setup 失败与重复 return | 官方 hooks 文档证明 options.hooks 和 matcher；binary 只证明注册符号/执行路径，不证明 unregister；`state.ts:1423-1469` |
+| MCP form elicitation 复用 hook 顺序 | in-process client 声明 capability；Elicitation hooks → onElicitation → 默认 decline → ElicitationResult hooks | 与上游未处理自动 decline 和本仓库现有 hook handler 一致 | URL 模式：分支和 UI 不同，非本阶段；真实 MCP：违背离线约束 | 需补公开类型及 mock server 场景 | 官方 TypeScript/MCP/custom-tools；binary setMcpServers/onElicitation 片段；`elicitationHandler.ts:68-170`、`sdkQuery.ts:189-245` |
+| token usage 走真实 API 路径 | `getContextUsage()` 经 collectContextData/analyzeContextUsage 调 mock count_tokens | 证明生产调用链，避免空 VCR fixture | 本地估算代替：不能证明 API 接线；真实网络：违反离线 | 多分类可能多请求，断言需允许 | 官方 TypeScript getContextUsage full 说明；`sdkControl.ts:26-46`；16 个 token-count fixture 均为 null 且无文件名消费者 |
 
 ### 公开 API 分层设计
 
@@ -115,14 +127,58 @@ SDK 调用方需要的不只是发送一个 prompt。可靠的查询还包括异
 - 复用同一消息转换与持久化规则，避免 CLI 与 SDK 行为漂移
 - 让控制方法直接操作现有生产状态，不引入影子状态
 - 按消息精确关联文件快照和回滚，同时提供无副作用 dry run
+- classic `query()` 正确消费 options.hooks/env/continue/resume/forkSession，并在真实 dist 形态下验证消息、错误、MCP 与 token usage
+- 所有 query 持有资源在正常、错误、中断和 setup 失败路径都有明确所有者与幂等清理
 
 ### 非目标
 
 - 不重新实现模型传输协议，不把 remote-control 当作 query 默认实现
 - 不把 CLI UI 状态复制到 SDK，不把 session 恢复等同于文件系统回滚
 - 不用全局 checkpoint 配置共享不同 query 的快照
+- 本阶段不删除旧 v2 导出、不实现 resumeSessionAt/URL elicitation，不增加真实网络或进程 MCP 和额外并发隔离
 
 ## 4. 架构、模块与数据流
+
+### 架构与资源边界图
+
+```text
+SDK caller
+  └─ agentSdkTypes.ts（公开 classic query / session accessors）
+       ├─ sdkQuery.ts
+       │    ├─ UserMessageChannel → QueryEngine.ask → SDKMessage
+       │    ├─ canUseTool / hooks / MCP / env / per-turn abort
+       │    └─ cleanupPromise → clients + hooks + env + persistence
+       ├─ sdkQuerySession.ts（目标新增）
+       │    └─ continue/resume/fork → sdkSessions + sessionStoragePortable
+       ├─ sdkSessionConversation.ts（既有 v2 包装，本阶段不替代 classic）
+       └─ sdkControl.ts → context/settings/tasks/plugins
+
+持久化边界：session JSONL 与 file history 写文件系统；channel、abort、leases 仅存内存。
+外部边界：集成验收只用本地 mock API 和 in-process MCP，不读真实凭据或外部 MCP。
+```
+
+### 关键流程与失败路径
+
+| 流程 | 主路径 | 失败/终止路径 |
+|---|---|---|
+| Query | 输入 channel → 快照 → ask → assistant/tool/result | 输入 fail 直接抛出；末次 error result 先 yield 后 throw；finally 清理 |
+| 中断 | 每轮 controller 链接外部 signal | interrupt 仅结束当前轮；外部 abort/close 终止 query 并清理 |
+| Hooks | options.hooks 注册到共享 registry，按 matcher 执行 | setup/结束释放本次身份 lease；释放 A 不影响 B/plugin |
+| MCP | in-memory client/server 连接、发现、调用 | 失败状态/errors 可见；form elicitation 未处理默认 decline；close 两端 |
+| Resume/fork | loader 恢复 initialMessages 和 session ID | 不存在/非法 ID 明确失败；fork 写新 ID 且不改源 transcript |
+| Token usage | 当前 messages/tools → collectContextData → count_tokens | API 错误向调用方传播，不以 null fixture 伪装结果 |
+
+### 核心对象生命周期七列表
+
+| 对象 | 创建/获取 | 运行/读写 | 恢复/分叉 | 中断/关闭 | 清理 | 失败语义 |
+|---|---|---|---|---|---|---|
+| Query/channel | query 工厂创建并接收 string/AsyncIterable | FIFO 输入、逐轮输出 | session options 提供历史 | interrupt 当前轮；return/close 全 query | cleanupPromise 仅一次 | 输入错误与末次错误 result 向调用方传播 |
+| AbortController | 外部 controller + 每轮子 controller | 传入模型/工具/hooks/MCP | 新轮新建子 controller | interrupt 子级；外部 abort 父级 | 移除 signal listener | 外部已 abort 不可按轮复活 |
+| Persistence lease | 首次初始化按 persistSession 获取 | 同值引用计数 | resume 后沿用同一存储 | 随 query 结束释放 | 最后用户恢复旧值 | 不同值并发明确报错；release 幂等 |
+| Hook lease | 注册时捕获实际 matcher 引用 | 共享 registry 执行 callback | 不适用 | setup 失败或 query 清理触发 | 按身份移除且幂等 | 不误删其他 owner；hook 错误按事件契约处理 |
+| MCP connection | options/setMcpServers 建立 | list tools、call、elicitation | 显式替换新实例恢复 | client/server 成对 close | cleanupClients 全部执行 | 连接失败进入状态/errors；未处理 form 默认 decline |
+| Session transcript | 新 session 或 loader 读取 | 追加 user/assistant/system | resume 保 ID；fork 复制新 ID | abort 后可从已写边界恢复 | flushSessionStorage | 非法/不存在明确失败；fork 源不变 |
+| FileCheckpointing | 每 query 创建 | 按 user UUID 等快照/回滚 | fork 不复制文件快照 | 随 query 回收 | pending map 不持久化 | dry run 不写；未知 ID/未启用返回错误 |
 
 ### 公开 API 层级
 
@@ -150,8 +206,9 @@ SDK 调用方需要的不只是发送一个 prompt。可靠的查询还包括异
 | 模块 | 设计职责 | 公开边界 | 内部依赖 |
 |---|---|---|---|
 | `agentSdkTypes.ts` | 类型聚合与公开 API 重导出 | 所有公开类型与函数 | `sdkQuery.ts`、`sdkSessionConversation.ts`、`sdkSessions.ts` |
-| `sdkQuery.ts` | 创建异步 query，串联消息 channel、控制请求、权限和清理 | `createSdkQuery()` 工厂函数 | `QueryEngine.ask`、`sdkControl.ts`、`fileCheckpointing.ts` |
-| `sdkSessionConversation.ts` | 会话包装器，管理后台消费流 | `createSdkSession()`、`resumeSdkSession()`、`promptSdkSession()` | `sdkQuery.ts`、`sdkSessions.ts` |
+| `sdkQuery.ts` | 创建异步 query，串联 channel、hooks/env、权限、MCP、按轮中断和统一清理 | `createSdkQuery()` 工厂函数 | `QueryEngine.ask`、`sdkControl.ts`、`sdkQuerySession.ts`、`fileCheckpointing.ts` |
+| `sdkQuerySession.ts`（目标新增） | classic continue/resume/forkSession 解析，不产生第二套存储 | 内部 resolver | `sdkSessions.ts`、`sessionStoragePortable.ts` |
+| `sdkSessionConversation.ts` | 既有 v2 会话包装器，管理后台消费流；不承担 classic options | `createSdkSession()`、`resumeSdkSession()`、`promptSdkSession()` | `sdkQuery.ts`、`sdkSessions.ts` |
 | `sdkSessions.ts` | 读取、列表、重命名、标记、分叉 JSONL session | `listSdkSessions()`、`getSdkSessionMessages()` 等 | `sessionChainRecovery.ts`、`sessionStoragePortable.ts` |
 | `sessionChainRecovery.ts` | 恢复并行 assistant 分支与工具结果 | `recoverOrphanedParallelToolResults()` | 纯函数，无外部依赖 |
 | `sdkControl.ts` | 上下文使用、标志/设置、停止任务、重载插件 | `getSdkContextUsage()`、`applySdkFlagSettings()` 等 | `bootstrap/state.ts`、`settings/settings.ts`、`plugins/refresh.ts` |
@@ -1023,17 +1080,25 @@ export function emitTaskTerminatedSdk(taskId, status, opts): void
 | `push()` 在 `close()` 后 | 抛出 `Error("Cannot stream input after the query closes")` | 不可用 |
 | `fail(error)` | 关闭 channel，存储错误 | `iterate()` 会抛出错误 |
 | `query.return()` | 触发完整清理流程 | `close()` 安全幂等 |
-| `query.interrupt()` | 中止 AbortController，触发模型循环中断 | 仍需调用 `return()` 完成清理 |
+| `query.interrupt()` | 当前实现中止共享 AbortController；目标改为仅中止当前轮 | streaming input 可在下一轮继续；return/close 仍负责最终清理 |
+
+### Classic Query 终端与所有权目标
+
+- 错误 result 必须先 yield，使调用方取得 `session_id`、errors 和 usage；single-shot 或输入关闭且排空的末轮随后抛出。
+- streaming input 仍有后续消息时，较早轮错误不终止整个 query；外部 abort 与按轮 interrupt 不得混为同一生命周期。
+- options.env 只恢复本次触碰的键；options.hooks 只释放本次注册；MCP client/server、cleanup registry、session flush 和 persistence lease 都在同一幂等出口收尾。
+- form elicitation 的顺序为 Elicitation hooks → onElicitation → 默认 decline → ElicitationResult hooks；URL 模式不在本阶段。
 
 ### Query 清理保证
 
-| 退出路径 | `cleanupClients` | `runCleanupFunctions` | `flushSessionStorage` | `releasePersistence` |
-|---|---|---|---|---|
-| 正常 `for await` 完成 | ✓ | ✓ | ✓ | ✓ |
-| `query.return()` | ✓ | ✓ | ✓ | ✓ |
-| `query.return()` 多次调用 | 仅第一次 | 仅第一次 | 仅第一次 | 仅第一次 |
-| 迭代器抛出错误 | ✓ | ✓ | ✓ | ✓ |
-| `query.interrupt()` | 需配合 `return()` | 需配合 `return()` | 需配合 `return()` | 需配合 `return()` |
+| 退出路径 | `cleanupClients` | `runCleanupFunctions` | `flushSessionStorage` | `releasePersistence` | `releaseHooks`（目标） | `restoreEnv`（目标） |
+|---|---|---|---|---|---|---|
+| 正常 `for await` 完成 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `query.return()` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `query.return()` 多次调用 | 仅第一次 | 仅第一次 | 仅第一次 | 仅第一次 | 仅第一次 | 仅第一次 |
+| 迭代器抛出错误 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| 按轮 `query.interrupt()`（目标） | 本轮不清，末轮统一清理 | 本轮不清 | 本轮不清 | 本轮不清 | 本轮不清 | 本轮不清 |
+| 外部 abort/`close()` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 ### 工程取舍
 
@@ -1070,6 +1135,15 @@ export function emitTaskTerminatedSdk(taskId, status, opts): void
 - `applySdkFlagSettings()` 必须删除 null 键
 - 模型变化必须更新 override 和 metadata
 
+### Dist 集成验收（2026-11-28 目标）
+
+- `tests/integration/sdk/` 的 dist-import、query-lifecycle、hooks、mcp、sessions、token-count 六文件全部实际运行，无新增 skip。
+- query 测试证明消息顺序、canUseTool allow/deny/updatedInput、env 恢复、末次错误 result+throw、按轮 interrupt 与外部 abort。
+- hooks 测试证明 options.hooks 和 matcher 生效，A 的幂等释放不影响 B；MCP 测试证明发现、调用、显式替换恢复及 form elicitation。
+- classic sessions 测试证明 continue/resume 历史进入下一次真实模型请求，fork 新 ID 且源 transcript 不变，abort 后可 resume；不得以 v2 调用替代。
+- token-count 通过真实 `getContextUsage()` 和 mock `/v1/messages/count_tokens` 验证；16 个 null fixture 仅在再次确认无消费者后删除。
+- config-acceptance 的 Elicitation/ElicitationResult 只有真实场景通过后才改为 active。
+
 ## 7. 代码与测试证据
 
 ### 状态所有权
@@ -1077,6 +1151,9 @@ export function emitTaskTerminatedSdk(taskId, status, opts): void
 | 状态 | 所有者 | 访问边界 | 持久化 |
 |---|---|---|---|
 | `activePersistenceLease` | `sdkQuery.ts` | 模块级私有 | 否 |
+| `registeredHooks` 中的 query 注册项（目标） | 每次注册 lease | 按 matcher 引用归属；共享 registry 只执行 | 否 |
+| options.env 旧值 lease（目标） | 每个 Query 实例 | 仅本次触碰的键 | 否 |
+| 当前轮 AbortController（目标） | 每个 Query 的当前轮 | 链接 query 级外部 signal | 否 |
 | `UserMessageChannel.queue` | 每个 Query 实例 | Query 内部 | 否 |
 | `FileCheckpointing.#pendingSnapshots` | 每个 Query 实例 | Query 内部 | 否 |
 | `LocalSdkSession.#messages` | 每个 Session 实例 | Session 内部 | 否 |
@@ -1106,6 +1183,13 @@ export function emitTaskTerminatedSdk(taskId, status, opts): void
 - DAG 恢复不读取 analytics 或 CLI UI 状态 ✓
 - 控制面不复制生产状态逻辑 ✓
 
+### 2026-11-28 上游与仓库证据
+
+- 官方 Agent SDK sessions/streaming-vs-single-mode/agent-loop/hooks/typescript/MCP/custom-tools 页面：确认 classic continue/resume/fork、错误 result 后抛出、按轮 interrupt、options.hooks、setMcpServers、getContextUsage 和 onElicitation 默认 decline。
+- 本机上游二进制 2.1.212 的目标 strings：确认 fork/resume 参数映射和校验、setMcpServers added/removed/errors、每轮 controller 与错误 subtype；未从 registerHookCallbacks 字符串推断 unregister 行为。
+- 仓库：`runtimeTypes.ts` 已声明 classic options，`sdkQuery.ts` 尚未消费 hooks/session fields 且 env 不恢复；`state.ts` 注册只追加/全清；`sdkSessions.ts` 与 `sdkSessionConversation.ts` 提供可复用 loader；16 个 token-count fixtures 全为 `{tokenCount:null}` 且未发现文件名消费者。
+- 当前只完成文档和证据收集，新增 dist 集成测试尚未创建或运行，不能记为 pass。
+
 ## 8. 文件覆盖与相关子系统
 
 本设计的覆盖率文件位于 [Coverage](../../architecture/coverage/sdk-query-sessions.yaml)。
@@ -1113,12 +1197,17 @@ export function emitTaskTerminatedSdk(taskId, status, opts): void
 ### 相关文件
 
 - `src/entrypoints/agentSdkTypes.ts`：公开 API 类型与重导出
-- `src/entrypoints/sdk/sdkQuery.ts`：Query 创建与生命周期
-- `src/entrypoints/sdk/sdkSessionConversation.ts`：Session 包装器
-- `src/entrypoints/sdk/sdkSessions.ts`：Session 访问器
-- `src/entrypoints/sdk/sessionChainRecovery.ts`：DAG 恢复算法
-- `src/entrypoints/sdk/sdkControl.ts`：控制面方法
-- `src/entrypoints/sdk/fileCheckpointing.ts`：文件快照与回滚
+- `src/entrypoints/sdk/runtimeTypes.ts`：classic Options/Query 与回调类型
+- `src/utils/sdkQuery.ts`：Query 创建与生命周期
+- `src/utils/sdkQuerySession.ts`（目标新增）：classic continue/resume/forkSession 解析
+- `src/utils/sdkSessionConversation.ts`：既有 v2 Session 包装器
+- `src/utils/sdkSessions.ts`：Session 访问器、loader 与 fork
+- `src/utils/sessionChainRecovery.ts`：DAG 恢复算法
+- `src/utils/sdkControl.ts`：控制面方法
+- `src/utils/fileCheckpointing.ts`：文件快照与回滚
+- `src/bootstrap/state.ts`：共享 hook registry；唯一 coverage 主责仍为 app-state
+- `docs/superpowers/specs/2026-11-28-agent-sdk-integration-testing-design.md`：dist 集成测试工程设计与三层证据
+- `docs/superpowers/plans/2026-11-28-agent-sdk-integration-testing.md`：分阶段 TDD 实施计划
 
 ### 相关子系统
 
@@ -1130,6 +1219,7 @@ export function emitTaskTerminatedSdk(taskId, status, opts): void
 
 | 优先级 | 触发场景与证据 | 建议方向 | 回归风险 | 验收方式 | 工作量 | 置信度 |
 |---|---|---|---|---|---|---|
+| P1 | classic Options 中的 hooks/continue/resume/forkSession 未被 createSdkQuery 消费，且无 dist SDK 集成目录 | 按 2026-11-28 配套 plan 分阶段红测，补 hook 身份 lease、按轮 abort、session resolver 和真实 token usage | 中 —— 涉及进程全局状态和所有退出路径 | 六个 dist 测试文件、config elicitation active、全套件/typecheck/build/design gate 退出 0 | L | 待运行验证 |
 | P2 | 当前设计要求调用 `interrupt()` 后仍需调用 `return()` 完成清理，但这容易被误用。证据：`src/utils/sdkQuery.ts` 中 `interrupt()` 与 `return()` 的分离实现 | 明确 `interrupt()` 与 `return()` 的组合契约；在 `interrupt()` 内部启动清理但仍允许 `return()` 安全调用 | 低 —— 可保持向后兼容 | 测试调用 `interrupt()` 后调用 `return()` 是安全的，且清理只执行一次 | S | 设计推断 |
 | P2 | `UserMessageChannel` 和 MCP 连接当前没有超时配置，可能导致查询挂起。证据：`src/utils/sdkQuery.ts` 中 `UserMessageChannel` 和 MCP 客户端的实现 | 增加可配置的超时机制，对用户输入等待、模型响应、MCP 执行等分别设置超时 | 中 —— 超时可能中断正常的长耗时操作 | 测试超时能正确触发并清理资源 | M | 设计推断 |
 | P2 | 当前仅限制 `persistSession` 不同的并发，建议实现真正的交错持久化支持，或提供更明确的错误恢复路径。证据：`src/utils/sdkQuery.ts` 中 `acquireSessionPersistence()` 的检查 | 改进并发 query 限制：或实现真正的交错持久化支持，或提供更明确的错误恢复路径和冲突避免机制 | 中 —— 需谨慎处理全局状态 | 测试不同 `persistSession` 值的并发 query 有更清晰的错误或支持交错执行 | M | 设计推断 |
