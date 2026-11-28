@@ -1,5 +1,6 @@
 import type { ConfigScope } from 'src/services/mcp/types.js'
 import type { ZodError, ZodIssue } from 'zod/v4'
+import { HOOK_EVENTS } from '../../entrypoints/sdk/coreTypes.js'
 import { jsonParse } from '../slowOperations.js'
 import { plural } from '../stringUtils.js'
 import { validatePermissionRule } from './permissionValidation.js'
@@ -60,6 +61,8 @@ export type ValidationError = {
   suggestion?: string
   /** Link to relevant documentation */
   docLink?: string
+  /** Validation severity; omitted means error for backwards compatibility */
+  severity?: 'error' | 'warning'
   /** MCP-specific metadata - only present for MCP configuration errors */
   mcpErrorMetadata?: {
     /** Which configuration scope this error came from */
@@ -168,6 +171,7 @@ export function formatZodError(
       invalidValue,
       suggestion: tip?.suggestion,
       docLink: tip?.docLink,
+      severity: 'error',
     }
   })
 }
@@ -242,6 +246,7 @@ export function filterInvalidPermissionRules(
           path: `permissions.${key}`,
           message: `Non-string value in ${key} array was removed`,
           invalidValue: rule,
+          severity: 'warning',
         })
         return false
       }
@@ -255,11 +260,70 @@ export function filterInvalidPermissionRules(
           path: `permissions.${key}`,
           message,
           invalidValue: rule,
+          severity: 'warning',
         })
         return false
       }
       return true
     })
+  }
+  return warnings
+}
+
+const KNOWN_HOOK_EVENTS = new Set<string>(HOOK_EVENTS)
+const HOOKS_DOC_LINK = 'https://code.claude.com/docs/en/hooks'
+
+/** Filters only invalid hook containers and entries, preserving matcher validation. */
+export function filterInvalidHookSettings(
+  data: unknown,
+  filePath: string,
+): ValidationError[] {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return []
+  const obj = data as Record<string, unknown>
+  if (!('hooks' in obj)) return []
+
+  const hooks = obj.hooks
+  if (!hooks || typeof hooks !== 'object' || Array.isArray(hooks)) {
+    const received = getReceivedType(hooks)
+    delete obj.hooks
+    return [{
+      file: filePath,
+      path: 'hooks',
+      message: `"hooks" must be an object mapping event names to matcher arrays; received ${received}. This field was ignored`,
+      invalidValue: received,
+      docLink: HOOKS_DOC_LINK,
+      severity: 'warning',
+    }]
+  }
+
+  const warnings: ValidationError[] = []
+  for (const event of Object.keys(hooks)) {
+    if (!KNOWN_HOOK_EVENTS.has(event)) {
+      delete (hooks as Record<string, unknown>)[event]
+      warnings.push({
+        file: filePath,
+        path: `hooks.${event}`,
+        message: `Unknown hook event "${event}" was ignored. Valid events: ${HOOK_EVENTS.join(', ')}`,
+        invalidValue: event,
+        docLink: HOOKS_DOC_LINK,
+        severity: 'warning',
+      })
+      continue
+    }
+
+    const value = (hooks as Record<string, unknown>)[event]
+    if (!Array.isArray(value)) {
+      const received = getReceivedType(value)
+      delete (hooks as Record<string, unknown>)[event]
+      warnings.push({
+        file: filePath,
+        path: `hooks.${event}`,
+        message: `Hook event "${event}" must be an array of matchers; received ${received}. This entry was ignored`,
+        invalidValue: received,
+        docLink: HOOKS_DOC_LINK,
+        severity: 'warning',
+      })
+    }
   }
   return warnings
 }

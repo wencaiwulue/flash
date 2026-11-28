@@ -226,6 +226,30 @@ export type FileChangedHookInput = z.infer<
   ReturnType<typeof schemas.FileChangedHookInputSchema>
 >
 
+export type PostToolBatchHookInput = z.infer<
+  ReturnType<typeof schemas.PostToolBatchHookInputSchema>
+>
+
+export type UserPromptExpansionHookInput = z.infer<
+  ReturnType<typeof schemas.UserPromptExpansionHookInputSchema>
+>
+
+export type PreModelSwitchHookInput = z.infer<
+  ReturnType<typeof schemas.PreModelSwitchHookInputSchema>
+>
+
+export type PostModelSwitchHookInput = z.infer<
+  ReturnType<typeof schemas.PostModelSwitchHookInputSchema>
+>
+
+export type DirectoryAddedHookInput = z.infer<
+  ReturnType<typeof schemas.DirectoryAddedHookInputSchema>
+>
+
+export type MessageDisplayHookInput = z.infer<
+  ReturnType<typeof schemas.MessageDisplayHookInputSchema>
+>
+
 export type ExitReason = z.infer<
   ReturnType<typeof schemas.ExitReasonSchema>
 >
@@ -288,6 +312,26 @@ export type CwdChangedHookSpecificOutput = z.infer<
 
 export type FileChangedHookSpecificOutput = z.infer<
   ReturnType<typeof schemas.FileChangedHookSpecificOutputSchema>
+>
+
+export type UserPromptExpansionHookSpecificOutput = z.infer<
+  ReturnType<typeof schemas.UserPromptExpansionHookSpecificOutputSchema>
+>
+
+export type PostToolBatchHookSpecificOutput = z.infer<
+  ReturnType<typeof schemas.PostToolBatchHookSpecificOutputSchema>
+>
+
+export type MessageDisplayHookSpecificOutput = z.infer<
+  ReturnType<typeof schemas.MessageDisplayHookSpecificOutputSchema>
+>
+
+export type PreModelSwitchHookSpecificOutput = z.infer<
+  ReturnType<typeof schemas.PreModelSwitchHookSpecificOutputSchema>
+>
+
+export type PostModelSwitchHookSpecificOutput = z.infer<
+  ReturnType<typeof schemas.PostModelSwitchHookSpecificOutputSchema>
 >
 
 export type SyncHookJSONOutput = z.infer<

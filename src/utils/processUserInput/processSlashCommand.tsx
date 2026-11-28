@@ -58,6 +58,7 @@ import { getFsImplementation } from '../fsOperations.js'
 import { isFullscreenEnvEnabled } from '../fullscreen.js'
 import { toArray } from '../generators.js'
 import { registerSkillHooks } from '../hooks/registerSkillHooks.js'
+import { executeUserPromptExpansionHooks } from '../hooks.js'
 import { logError } from '../log.js'
 import { enqueuePendingNotification } from '../messageQueueManager.js'
 import {
@@ -1169,6 +1170,49 @@ async function getMessagesForPromptSlashCommand(
 
   const result = await command.getPromptForCommand(args, context)
 
+  // UserPromptExpansion (upstream 2.1.311): fires when a prompt-type slash
+  // command expands. Matches on command_name; prompt is the raw user input.
+  // exit 2 / block / continue:false aborts the expansion (fail-closed).
+  // additionalContext is appended to the expansion; suppressOriginalPrompt
+  // drops the expanded text, keeping only the hook-provided context.
+  const rawPrompt = `/${command.name}${args ? ` ${args}` : ''}`
+  let expansionBlocking: string | undefined
+  const expansionContexts: string[] = []
+  let suppressOriginalPrompt = false
+  for await (const r of executeUserPromptExpansionHooks(
+    command.source === 'mcp' ? 'mcp_prompt' : 'slash_command',
+    command.name,
+    args,
+    command.source,
+    rawPrompt,
+    context,
+    context.getAppState().toolPermissionContext.mode,
+    context.abortController.signal,
+  )) {
+    if (r.blockingError) expansionBlocking = r.blockingError.blockingError
+    if (r.additionalContexts) expansionContexts.push(...r.additionalContexts)
+    if (r.suppressOriginalPrompt !== undefined)
+      suppressOriginalPrompt = r.suppressOriginalPrompt
+  }
+  if (expansionBlocking) {
+    return {
+      messages: [
+        createUserMessage({
+          content: expansionBlocking,
+          isMeta: true,
+        }),
+      ],
+      shouldQuery: false,
+      command,
+    }
+  }
+  const expansionContext: ContentBlockParam[] = expansionContexts.length
+    ? [{ type: 'text', text: expansionContexts.join('\n\n') }]
+    : []
+  const expandedResult: ContentBlockParam[] = suppressOriginalPrompt
+    ? expansionContext
+    : [...result, ...expansionContext]
+
   // Register skill hooks if defined. Under ["hooks"]-only (skills not locked),
   // user skills still load and reach this point — block hook REGISTRATION here
   // where source is known. Mirrors the agent frontmatter gate in runAgent.ts.
@@ -1211,8 +1255,8 @@ async function getMessagesForPromptSlashCommand(
   // Create content for the main message, including any pasted images
   const mainMessageContent: ContentBlockParam[] =
     imageContentBlocks.length > 0 || precedingInputBlocks.length > 0
-      ? [...imageContentBlocks, ...precedingInputBlocks, ...result]
-      : result
+      ? [...imageContentBlocks, ...precedingInputBlocks, ...expandedResult]
+      : expandedResult
 
   // Extract attachments from command arguments (@-mentions, MCP resources,
   // agent mentions in SKILL.md). skipSkillDiscovery prevents the SKILL.md

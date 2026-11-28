@@ -338,6 +338,17 @@ function StatusLineInner({
     void doUpdate()
   }, [statusLineCommand, doUpdate])
 
+  // refreshInterval (upstream 2.1.311): re-run the status line command every N
+  // seconds (min 1), in addition to the event-driven updates above.
+  const refreshInterval = settings?.statusLine?.refreshInterval
+  useEffect(() => {
+    if (!refreshInterval || refreshInterval < 1) return
+    const id = setInterval(() => {
+      void doUpdate()
+    }, refreshInterval * 1000)
+    return () => clearInterval(id)
+  }, [refreshInterval, doUpdate])
+
   // Separate effect for logging on mount
   useEffect(() => {
     const statusLine = settings?.statusLine

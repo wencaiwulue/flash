@@ -1,0 +1,167 @@
+{
+  "schemaVersion": 1,
+  "consumers": {
+    "CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS": [
+      {
+        "file": "src/utils/subagentLimits.ts",
+        "purpose": "getMaxConcurrentSubagents() reads the cap (default 20); acquireSubagentSlot() enforces it"
+      },
+      {
+        "file": "src/tools/AgentTool/runAgent.ts",
+        "purpose": "acquires/releases a concurrency slot around the agent query loop (try/finally)"
+      }
+    ],
+    "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": [
+      {
+        "file": "src/utils/subagentLimits.ts",
+        "purpose": "getMaxSubagentSpawnDepth() reads the cap (default 3); acquireSubagentSlot() enforces it"
+      },
+      {
+        "file": "src/tools/AgentTool/AgentTool.tsx",
+        "purpose": "stamps depth = parent depth + 1 on the subagent context at spawn"
+      }
+    ],
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": [
+      {
+        "file": "src/utils/model/modelOptions.ts",
+        "purpose": "getCustomOpusOption() reads it (3P provider): opus alias resolution + opusplan Plan Mode model ID"
+      }
+    ],
+    "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME": [
+      {
+        "file": "src/utils/model/modelOptions.ts",
+        "purpose": "getCustomOpusOption() label = NAME ?? customOpusModel (/model picker Opus display name)"
+      }
+    ],
+    "ANTHROPIC_DEFAULT_OPUS_MODEL_DESCRIPTION": [
+      {
+        "file": "src/utils/model/modelOptions.ts",
+        "purpose": "getCustomOpusOption() description = DESCRIPTION ?? default Custom Opus model (/model picker)"
+      }
+    ],
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": [
+      {
+        "file": "src/utils/model/modelOptions.ts",
+        "purpose": "getCustomSonnetOption() reads it (3P provider): sonnet alias + opusplan non-Plan model ID"
+      }
+    ],
+    "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME": [
+      {
+        "file": "src/utils/model/modelOptions.ts",
+        "purpose": "getCustomSonnetOption() label = NAME ?? customSonnetModel (/model picker Sonnet display name)"
+      }
+    ],
+    "ANTHROPIC_DEFAULT_SONNET_MODEL_DESCRIPTION": [
+      {
+        "file": "src/utils/model/modelOptions.ts",
+        "purpose": "getCustomSonnetOption() description = DESCRIPTION ?? default Custom Sonnet model"
+      }
+    ],
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": [
+      {
+        "file": "src/utils/model/modelOptions.ts",
+        "purpose": "haiku custom option reads it: haiku alias + background functionality model ID"
+      }
+    ],
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME": [
+      {
+        "file": "src/utils/model/modelOptions.ts",
+        "purpose": "haiku custom option label = NAME ?? customHaikuModel (/model picker Haiku display name)"
+      }
+    ],
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL_DESCRIPTION": [
+      {
+        "file": "src/utils/model/modelOptions.ts",
+        "purpose": "haiku custom option description = DESCRIPTION ?? default Custom Haiku model"
+      }
+    ],
+    "ANTHROPIC_CUSTOM_MODEL_OPTION": [
+      {
+        "file": "src/utils/model/modelOptions.ts",
+        "purpose": "getModelOptions():481 pushes a custom /model picker entry for this model ID (does not replace built-in aliases)"
+      }
+    ],
+    "ANTHROPIC_CUSTOM_MODEL_OPTION_NAME": [
+      {
+        "file": "src/utils/model/modelOptions.ts",
+        "purpose": "getModelOptions() custom entry label = NAME ?? envCustomModel"
+      }
+    ],
+    "ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION": [
+      {
+        "file": "src/utils/model/modelOptions.ts",
+        "purpose": "getModelOptions() custom entry description = DESCRIPTION ?? `Custom model (<id>)`"
+      }
+    ],
+    "ANTHROPIC_MODEL": [
+      {
+        "file": "src/main.tsx",
+        "purpose": "main.tsx:2998 explicitModel = options.model || process.env.ANTHROPIC_MODEL (global default model)"
+      }
+    ],
+    "CLAUDE_CODE_SUBAGENT_MODEL": [
+      {
+        "file": "src/utils/model/agent.ts",
+        "purpose": "agent.ts:43 returns parseUserSpecifiedModel(env) as the default subagent/teammate/workflow-agent model"
+      }
+    ],
+    "CLAUDE_CODE_DISABLE_LEGACY_MODEL_REMAP": [
+      {
+        "file": "src/utils/model/model.ts",
+        "purpose": "reads env to disable Opus 4/4.1 -> current Opus remap (no remap on Bedrock/GCP/Azure)"
+      }
+    ],
+    "ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION": [
+      {
+        "file": "src/services/api/client.ts",
+        "purpose": "overrides AWS region for the Haiku-class model on Bedrock/Mantle"
+      }
+    ],
+    "CLAUDE_CODE_AUTO_MODE_MODEL": [
+      {
+        "file": "src/utils/permissions/yoloClassifier.ts",
+        "purpose": "sets the model for auto-mode classifier requests"
+      }
+    ],
+    "CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY": [
+      {
+        "file": "src/components/FeedbackSurvey/useMemorySurvey.tsx",
+        "purpose": "env=1 disables the session-quality survey"
+      }
+    ],
+    "DISABLE_FEEDBACK_COMMAND": [
+      {
+        "file": "src/commands/feedback/feedbackAvailability.ts",
+        "purpose": "env=1 disables /feedback (and /bug /share)"
+      }
+    ],
+    "CLAUDE_CODE_DISABLE_FAST_MODE": [
+      {
+        "file": "src/utils/fastMode.ts",
+        "purpose": "fastMode.ts:39 isFastModeEnabled() = !isEnvTruthy(env)"
+      }
+    ],
+    "CLAUDE_CODE_SKIP_FAST_MODE_NETWORK_ERRORS": [
+      {
+        "file": "src/utils/fastMode.ts",
+        "purpose": "fastMode.ts:128 env=1 treats a failed availability check as available (still honors org-disabled)"
+      }
+    ],
+    "ANTHROPIC_SMALL_FAST_MODEL": [
+      {
+        "file": "src/utils/model/model.ts",
+        "purpose": "model.ts:38 returns process.env.ANTHROPIC_SMALL_FAST_MODEL || getDefaultHaikuModel() (deprecated small/fast model override)"
+      },
+      {
+        "file": "src/services/api/logging.ts",
+        "purpose": "logging.ts:155 includes ANTHROPIC_SMALL_FAST_MODEL in request logging metadata when set"
+      }
+    ],
+    "ENABLE_PROMPT_CACHING_1H_BEDROCK": [
+      {
+        "file": "src/services/api/claude.ts",
+        "purpose": "claude.ts:395 isEnvTruthy(process.env.ENABLE_PROMPT_CACHING_1H_BEDROCK) enables 1h prompt caching on Bedrock (deprecated; superseded by ENABLE_PROMPT_CACHING_1H)"
+      }
+    ]
+  }
+}

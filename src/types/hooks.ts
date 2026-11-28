@@ -160,6 +160,28 @@ export const syncHookResponseSchema = lazySchema(() =>
           hookEventName: z.literal('WorktreeCreate'),
           worktreePath: z.string(),
         }),
+        z.object({
+          hookEventName: z.literal('UserPromptExpansion'),
+          additionalContext: z.string().optional(),
+          suppressOriginalPrompt: z.boolean().optional(),
+        }),
+        z.object({
+          hookEventName: z.literal('PostToolBatch'),
+          additionalContext: z.string().optional(),
+        }),
+        z.object({
+          hookEventName: z.literal('MessageDisplay'),
+          displayContent: z.string().optional(),
+        }),
+        z.object({
+          hookEventName: z.literal('PreModelSwitch'),
+          permissionDecision: z.enum(['allow', 'deny', 'ask']).optional(),
+          permissionDecisionReason: z.string().optional(),
+        }),
+        z.object({
+          hookEventName: z.literal('PostModelSwitch'),
+          additionalContext: z.string().optional(),
+        }),
       ])
       .optional(),
   }),

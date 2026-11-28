@@ -36,6 +36,8 @@ export type SubagentContext = {
   parentSessionId?: string
   /** Agent type - 'subagent' for Agent tool agents */
   agentType: 'subagent'
+  /** Nesting depth (1 = first-level subagent). Used for spawn-depth limits. */
+  depth?: number
   /** The subagent's type name (e.g., "Explore", "Bash", "code-reviewer") */
   subagentName?: string
   /** Whether this is a built-in agent (vs user-defined custom agent) */
@@ -74,6 +76,8 @@ export type TeammateAgentContext = {
   isTeamLead: boolean
   /** Agent type - 'teammate' for swarm teammates */
   agentType: 'teammate'
+  /** Nesting depth. Used for spawn-depth limits. */
+  depth?: number
   /** The request_id in the invoking agent that spawned or resumed this
    *  teammate. Undefined for teammates started outside a tool call
    *  (e.g. session start). Updated on each resume. */

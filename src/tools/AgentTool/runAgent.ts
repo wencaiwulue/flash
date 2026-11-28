@@ -55,6 +55,10 @@ import {
 import { registerFrontmatterHooks } from '../../utils/hooks/registerFrontmatterHooks.js'
 import { clearSessionHooks } from '../../utils/hooks/sessionHooks.js'
 import { executeSubagentStartHooks } from '../../utils/hooks.js'
+import {
+  acquireSubagentSlot,
+  getCurrentSubagentDepth,
+} from '../../utils/subagentLimits.js'
 import { createUserMessage } from '../../utils/messages.js'
 import { getAgentModel } from '../../utils/model/agent.js'
 import type { ModelAlias } from '../../utils/model/aliases.js'
@@ -744,7 +748,11 @@ export async function* runAgent({
   // Track the last recorded message UUID for parent chain continuity
   let lastRecordedUuid: UUID | null = initialMessages.at(-1)?.uuid ?? null
 
+  let releaseSubagentSlot: (() => void) | undefined
   try {
+    // Subagent spawn limits (upstream 2.1.311): depth + concurrency caps.
+    // Throws SubagentLimitError when either cap is exceeded, refusing spawn.
+    releaseSubagentSlot = acquireSubagentSlot(getCurrentSubagentDepth())
     for await (const message of query({
       messages: initialMessages,
       systemPrompt: agentSystemPrompt,
@@ -814,6 +822,8 @@ export async function* runAgent({
       agentDefinition.callback()
     }
   } finally {
+    // Release the subagent concurrency slot (no-op if acquire threw)
+    releaseSubagentSlot?.()
     // Clean up agent-specific MCP servers (runs on normal completion, abort, or error)
     await mcpCleanup()
     // Clean up agent's session hooks

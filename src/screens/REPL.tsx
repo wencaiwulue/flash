@@ -314,6 +314,7 @@ import type { ScopedMcpServerConfig } from '../services/mcp/types.js'
 import { randomUUID, type UUID } from 'crypto'
 import { processSessionStartHooks } from '../utils/sessionStart.js'
 import {
+  executeMessageDisplayHooks,
   executeSessionEndHooks,
   getSessionEndHookTimeoutMs,
 } from '../utils/hooks.js'
@@ -1943,6 +1944,11 @@ export function REPL({
   // Ref instead of state to avoid triggering React re-renders on every
   // streaming text_delta. The spinner reads this via its animation timer.
   const responseLengthRef = useRef(0)
+  // MessageDisplay (upstream 2.1.311): stable per-turn/per-message UUIDs and a
+  // per-message delta index for the interactive streaming display hook.
+  const messageDisplayTurnRef = useRef(randomUUID())
+  const messageDisplayMessageRef = useRef(randomUUID())
+  const messageDisplayIndexRef = useRef(0)
   // API performance metrics ref for ant-only spinner display (TTFT/OTPS).
   // Accumulates metrics from all API requests in a turn for P50 aggregation.
   const apiMetricsRef = useRef<
@@ -3433,7 +3439,41 @@ export function REPL({
   })
 
   const onQueryEvent = useCallback(
-    (event: Parameters<typeof handleMessageFromStream>[0]) => {
+    async (event: Parameters<typeof handleMessageFromStream>[0]) => {
+      // MessageDisplay (upstream 2.1.311): interactive REPL fires the hook per
+      // display batch; displayContent replaces the rendered delta only (the
+      // transcript and model-visible text are unchanged). Awaited here in the
+      // data layer before the delta is appended to streamingText.
+      if (event.type === 'stream_event') {
+        if (event.event.type === 'message_start') {
+          messageDisplayMessageRef.current = randomUUID()
+          messageDisplayIndexRef.current = 0
+        } else if (
+          event.event.type === 'content_block_delta' &&
+          event.event.delta.type === 'text_delta'
+        ) {
+          const deltaText = event.event.delta.text
+          let displayDelta = deltaText
+          for await (const r of executeMessageDisplayHooks({
+            turn_id: messageDisplayTurnRef.current,
+            message_id: messageDisplayMessageRef.current,
+            index: messageDisplayIndexRef.current++,
+            final: false,
+            delta: deltaText,
+          })) {
+            if (r.displayContent) displayDelta = r.displayContent
+          }
+          if (displayDelta !== deltaText) {
+            event = {
+              ...event,
+              event: {
+                ...event.event,
+                delta: { ...event.event.delta, text: displayDelta },
+              },
+            }
+          }
+        }
+      }
       handleMessageFromStream(
         event,
         newMessage => {
@@ -3760,7 +3800,7 @@ export function REPL({
         toolUseContext,
         querySource: getQuerySourceForREPL(),
       })) {
-        onQueryEvent(event)
+        await onQueryEvent(event)
       }
 
 

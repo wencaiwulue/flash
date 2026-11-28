@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-11-17T08:57:19Z",
+  "documents": {
+    "settingsReference": {
+      "url": "https://code.claude.com/docs/en/settings-reference.md",
+      "sha256": "7817edfb51a85bfab3fb0b06fc9e7263c626f663169c1031ebeddda8576a6f2f",
+      "capturedAt": "2026-11-17T08:57:19Z"
+    },
+    "settings": {
+      "url": "https://code.claude.com/docs/en/settings.md",
+      "sha256": "bc72fdd5dc45fdf7ea3ce5d480628ce1fcb31aa09b6b796316f1db8ac02eb5e9",
+      "capturedAt": "2026-11-17T08:57:19Z"
+    },
+    "hooksReference": {
+      "url": "https://code.claude.com/docs/en/hooks.md",
+      "sha256": "a1cc3f82511cfbb06eb9b8641bfb63526d0f2086d87cc338e5d012d14b246abf",
+      "capturedAt": "2026-11-17T08:57:19Z"
+    },
+    "envVars": {
+      "url": "https://code.claude.com/docs/en/env-vars.md",
+      "sha256": "a24a90eedaff614c964b8196dfb35b618c4eca853410636e29d921091c12cd95",
+      "capturedAt": "2026-11-17T08:57:19Z"
+    },
+    "llms": {
+      "url": "https://code.claude.com/docs/llms.txt",
+      "sha256": "e9facc02d6ee636e3d33998eda655565ca48d21cc0dd07fdae812ec63af861d7",
+      "capturedAt": "2026-11-17T08:57:19Z"
+    }
+  },
+  "binary": {
+    "version": "2.1.311 (Claude Code)",
+    "commit": "e7d3b8365a0f",
+    "platform": "darwin-arm64",
+    "sha256": "85d8c08707fcfd1e78ffa0204eefbc6ec9e4fe22f375fb2767ef85d957ed3161"
+  },
+  "probeDirectory": "probes"
+}

@@ -36,7 +36,7 @@ import {
   formatNumber,
   formatSecondsShort,
 } from '../../utils/format.js'
-import { getGlobalConfig } from '../../utils/config.js'
+import { getShowTurnDuration } from '../../utils/config.js'
 import Link from '../../ink/components/Link.js'
 import ThemedText from '../design-system/ThemedText.js'
 import { CtrlOToExpand } from '../CtrlOToExpand.js'
@@ -358,7 +358,9 @@ function TurnDurationMessage({
     return running.length > 0 ? getPillLabel(running) : null
   })
 
-  const showTurnDuration = getGlobalConfig().showTurnDuration ?? true
+  // Upstream 2.1.311: settings-file value wins; ~/.claude.json legacy value is
+  // the fallback when no settings file sets it; default true.
+  const showTurnDuration = getShowTurnDuration()
 
   const duration = formatDuration(message.durationMs)
   const hasBudget = message.budgetLimit !== undefined

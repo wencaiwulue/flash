@@ -5,6 +5,7 @@
  */
 import { basename } from 'path'
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
+import { canonicalizeModelForMatch } from './model/model.js'
 import { pathExists } from './file.js'
 import { wrapSpawn } from './ShellCommand.js'
 import { TaskOutput } from './task/TaskOutput.js'
@@ -35,6 +36,7 @@ import {
   addToTurnHookDuration,
   getOriginalCwd,
   getMainThreadAgentType,
+  getPromptId,
 } from '../bootstrap/state.js'
 import { checkHasTrustDialogAccepted } from './config.js'
 import {
@@ -97,6 +99,12 @@ import type {
   ConfigChangeHookInput,
   CwdChangedHookInput,
   FileChangedHookInput,
+  PostToolBatchHookInput,
+  UserPromptExpansionHookInput,
+  PreModelSwitchHookInput,
+  PostModelSwitchHookInput,
+  DirectoryAddedHookInput,
+  MessageDisplayHookInput,
   InstructionsLoadedHookInput,
   UserPromptSubmitHookInput,
   PermissionRequestHookInput,
@@ -311,6 +319,7 @@ export function createBaseHookInput(
   permission_mode?: string
   agent_id?: string
   agent_type?: string
+  prompt_id?: string
 } {
   const resolvedSessionId = sessionId ?? getSessionId()
   // agent_type: subagent's type (from toolUseContext) takes precedence over
@@ -324,6 +333,10 @@ export function createBaseHookInput(
     permission_mode: permissionMode,
     agent_id: agentInfo?.agentId,
     agent_type: resolvedAgentType,
+    // prompt_id: per-turn UUID set at the prompt boundary (processTextPrompt /
+    // processSlashCommand). Non-prompt hooks carry the most recent turn's id,
+    // matching upstream payloads.
+    prompt_id: getPromptId() ?? undefined,
   }
 }
 
@@ -345,6 +358,8 @@ export interface HookResult {
   permissionBehavior?: 'ask' | 'deny' | 'allow' | 'passthrough'
   hookPermissionDecisionReason?: string
   additionalContext?: string
+  suppressOriginalPrompt?: boolean
+  displayContent?: string
   initialUserMessage?: string
   updatedInput?: Record<string, unknown>
   updatedMCPToolOutput?: unknown
@@ -365,6 +380,8 @@ export type AggregatedHookResult = {
   hookSource?: string
   permissionBehavior?: PermissionResult['behavior']
   additionalContexts?: string[]
+  suppressOriginalPrompt?: boolean
+  displayContent?: string
   initialUserMessage?: string
   updatedInput?: Record<string, unknown>
   updatedMCPToolOutput?: unknown
@@ -486,7 +503,7 @@ function parseHttpHookOutput(body: string): {
   }
 }
 
-function processHookJSONOutput({
+export function processHookJSONOutput({
   json,
   command,
   hookName,
@@ -703,6 +720,44 @@ function processHookJSONOutput({
             }
           }
         }
+        break
+      case 'UserPromptExpansion':
+        result.additionalContext = json.hookSpecificOutput.additionalContext
+        result.suppressOriginalPrompt =
+          json.hookSpecificOutput.suppressOriginalPrompt
+        break
+      case 'PostToolBatch':
+        result.additionalContext = json.hookSpecificOutput.additionalContext
+        break
+      case 'PostModelSwitch':
+        result.additionalContext = json.hookSpecificOutput.additionalContext
+        break
+      case 'MessageDisplay':
+        result.displayContent = json.hookSpecificOutput.displayContent
+        break
+      case 'PreModelSwitch':
+        if (json.hookSpecificOutput.permissionDecision) {
+          switch (json.hookSpecificOutput.permissionDecision) {
+            case 'allow':
+              result.permissionBehavior = 'allow'
+              break
+            case 'deny':
+              result.permissionBehavior = 'deny'
+              result.blockingError = {
+                blockingError:
+                  json.hookSpecificOutput.permissionDecisionReason ||
+                  json.reason ||
+                  'Model switch blocked by a PreModelSwitch hook',
+                command,
+              }
+              break
+            case 'ask':
+              result.permissionBehavior = 'ask'
+              break
+          }
+        }
+        result.hookPermissionDecisionReason =
+          json.hookSpecificOutput.permissionDecisionReason
         break
     }
   }
@@ -1659,6 +1714,16 @@ export async function getMatchingHooks(
       case 'ConfigChange':
         matchQuery = hookInput.source
         break
+      case 'UserPromptExpansion':
+        matchQuery = hookInput.command_name
+        break
+      case 'DirectoryAdded':
+        matchQuery = hookInput.source
+        break
+      case 'PreModelSwitch':
+      case 'PostModelSwitch':
+        matchQuery = canonicalizeModelForMatch(hookInput.to_model)
+        break
       case 'InstructionsLoaded':
         matchQuery = hookInput.load_reason
         break
@@ -1678,11 +1743,19 @@ export async function getMatchingHooks(
     })
 
     // Extract hooks with their plugin context (if any)
+    // Pre/PostModelSwitch match on the canonical to_model; canonicalize the
+    // configured matcher too so alias/date/provider/[1m] forms all match.
+    const isModelSwitch =
+      hookInput.hook_event_name === 'PreModelSwitch' ||
+      hookInput.hook_event_name === 'PostModelSwitch'
     const filteredMatchers = matchQuery
-      ? hookMatchers.filter(
-          matcher =>
-            !matcher.matcher || matchesPattern(matchQuery, matcher.matcher),
-        )
+      ? hookMatchers.filter(matcher => {
+          if (!matcher.matcher) return true
+          const pattern = isModelSwitch
+            ? canonicalizeModelForMatch(matcher.matcher)
+            : matcher.matcher
+          return matchesPattern(matchQuery, pattern)
+        })
       : hookMatchers
 
     const matchedHooks: MatchedHook[] = filteredMatchers.flatMap(matcher => {
@@ -2797,6 +2870,14 @@ async function* executeHooks({
       }
     }
 
+    if (result.displayContent) {
+      yield { displayContent: result.displayContent }
+    }
+
+    if (result.suppressOriginalPrompt !== undefined) {
+      yield { suppressOriginalPrompt: result.suppressOriginalPrompt }
+    }
+
     if (result.initialUserMessage) {
       logForDebugging(
         `Hook ${hookEvent} (${getHookDisplayText(result.hook)}) provided initialUserMessage (${result.initialUserMessage.length} chars)`,
@@ -3582,6 +3663,186 @@ export async function* executePostToolHooks<ToolInput, ToolResponse>(
     signal,
     timeoutMs,
     toolUseContext,
+  })
+}
+
+/**
+ * Execute PostToolBatch hooks once after all parallel tool calls in a turn resolve,
+ * before the next model request. No matcher. tool_calls carries each call's
+ * serialized content (failed tools included, no error field). additionalContext is
+ * injected; continue:false / decision:"block" stops the agentic loop; exit 2 stops
+ * the loop; other exit codes continue.
+ */
+export async function* executePostToolBatchHooks(
+  toolCalls: PostToolBatchHookInput['tool_calls'],
+  toolUseContext: ToolUseContext,
+  permissionMode?: string,
+  signal?: AbortSignal,
+  timeoutMs: number = TOOL_HOOK_EXECUTION_TIMEOUT_MS,
+): AsyncGenerator<AggregatedHookResult> {
+  const appState = toolUseContext.getAppState()
+  const sessionId = toolUseContext.agentId ?? getSessionId()
+  if (!hasHookForEvent('PostToolBatch', appState, sessionId)) {
+    return
+  }
+
+  const hookInput: PostToolBatchHookInput = {
+    ...createBaseHookInput(permissionMode, undefined, toolUseContext),
+    hook_event_name: 'PostToolBatch',
+    tool_calls: toolCalls,
+  }
+
+  yield* executeHooks({
+    hookInput,
+    toolUseID: toolCalls[0]?.tool_use_id ?? 'batch',
+    signal,
+    timeoutMs,
+    toolUseContext,
+  })
+}
+
+/**
+ * Execute UserPromptExpansion hooks after a slash command or MCP prompt is expanded,
+ * before it reaches the model. matcher matches command_name. prompt is the original
+ * input (not the expanded text). additionalContext is delivered with the expansion;
+ * decision:"block" / exit 2 blocks the expansion; other exit codes continue.
+ */
+export async function* executeUserPromptExpansionHooks(
+  expansionType: 'slash_command' | 'mcp_prompt',
+  commandName: string,
+  commandArgs: string,
+  commandSource: string | undefined,
+  prompt: string,
+  toolUseContext: ToolUseContext,
+  permissionMode?: string,
+  signal?: AbortSignal,
+  timeoutMs: number = TOOL_HOOK_EXECUTION_TIMEOUT_MS,
+): AsyncGenerator<AggregatedHookResult> {
+  const appState = toolUseContext.getAppState()
+  const sessionId = toolUseContext.agentId ?? getSessionId()
+  if (!hasHookForEvent('UserPromptExpansion', appState, sessionId)) {
+    return
+  }
+
+  const hookInput: UserPromptExpansionHookInput = {
+    ...createBaseHookInput(permissionMode, undefined, toolUseContext),
+    hook_event_name: 'UserPromptExpansion',
+    expansion_type: expansionType,
+    command_name: commandName,
+    command_args: commandArgs,
+    command_source: commandSource,
+    prompt,
+  }
+
+  yield* executeHooks({
+    hookInput,
+    toolUseID: `expansion-${commandName}`,
+    matchQuery: commandName,
+    signal,
+    timeoutMs,
+    toolUseContext,
+  })
+}
+
+type BaseHookFields = keyof ReturnType<typeof createBaseHookInput>
+
+/**
+ * DirectoryAdded (upstream 2.1.311): fires after a directory is added to the
+ * working set. Background, non-blocking — output cannot cancel the addition.
+ * source is slash_command (/add-dir) or register_repo_root (not yet implemented
+ * in flash). No hookSpecificOutput.
+ */
+export async function* executeDirectoryAddedHooks(
+  directory: string,
+  source: DirectoryAddedHookInput['source'],
+  signal?: AbortSignal,
+  timeoutMs: number = TOOL_HOOK_EXECUTION_TIMEOUT_MS,
+): AsyncGenerator<AggregatedHookResult> {
+  const hookInput: DirectoryAddedHookInput = {
+    ...createBaseHookInput(undefined),
+    hook_event_name: 'DirectoryAdded',
+    directory,
+    source,
+  }
+  yield* executeHooks({
+    hookInput,
+    toolUseID: `directory-added-${directory}`,
+    matchQuery: source,
+    signal,
+    timeoutMs,
+  })
+}
+
+/**
+ * PreModelSwitch (upstream 2.1.311): fires before a model switch. deny/block/
+ * timeout cancels the switch (fail-closed); ask on a non-warm cache switches
+ * directly. Default timeout 30s. Upstream matches on the canonical to_model
+ * (alias/date/provider normalized, [1m] stripped); canonicalization is not yet
+ * implemented, so per the upstream fallback we run ALL hooks and let each hook
+ * inspect to_model itself (fail-safe).
+ */
+export async function* executePreModelSwitchHooks(
+  fields: Omit<PreModelSwitchHookInput, BaseHookFields | 'hook_event_name'>,
+  signal?: AbortSignal,
+  timeoutMs: number = 30_000,
+): AsyncGenerator<AggregatedHookResult> {
+  const hookInput: PreModelSwitchHookInput = {
+    ...createBaseHookInput(undefined),
+    hook_event_name: 'PreModelSwitch',
+    ...fields,
+  }
+  yield* executeHooks({
+    hookInput,
+    toolUseID: `pre-model-switch-${fields.to_model}`,
+    signal,
+    timeoutMs,
+  })
+}
+
+/**
+ * PostModelSwitch (upstream 2.1.311): fires after a model switch. Async,
+ * non-cancellable; additionalContext is delivered with the next request. Waits
+ * at most 5s. source adds auto/resume beyond PreModelSwitch.
+ */
+export async function* executePostModelSwitchHooks(
+  fields: Omit<PostModelSwitchHookInput, BaseHookFields | 'hook_event_name'>,
+  signal?: AbortSignal,
+  timeoutMs: number = 5_000,
+): AsyncGenerator<AggregatedHookResult> {
+  const hookInput: PostModelSwitchHookInput = {
+    ...createBaseHookInput(undefined),
+    hook_event_name: 'PostModelSwitch',
+    ...fields,
+  }
+  yield* executeHooks({
+    hookInput,
+    toolUseID: `post-model-switch-${fields.to_model}`,
+    signal,
+    timeoutMs,
+  })
+}
+
+/**
+ * MessageDisplay (upstream 2.1.311): fires when a message is rendered.
+ * displayContent replaces the rendered text only; exit 2 / failure shows the
+ * original. Default timeout 10s, synchronous. No matcher.
+ */
+export async function* executeMessageDisplayHooks(
+  fields: Omit<MessageDisplayHookInput, BaseHookFields | 'hook_event_name'>,
+  signal?: AbortSignal,
+  timeoutMs: number = 10_000,
+): AsyncGenerator<AggregatedHookResult> {
+  const hookInput: MessageDisplayHookInput = {
+    ...createBaseHookInput(undefined),
+    hook_event_name: 'MessageDisplay',
+    ...fields,
+  }
+  yield* executeHooks({
+    hookInput,
+    toolUseID: `message-display-${fields.message_id}`,
+    signal,
+    timeoutMs,
+    forceSyncExecution: true,
   })
 }
 

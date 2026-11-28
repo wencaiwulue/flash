@@ -1,0 +1,7 @@
+schema_version: 1
+spec_id: upstream-config-b0-baseline
+spec: ../../superpowers/specs/2026-11-16-upstream-config-b0-baseline-design.md
+status: approved
+# 本 spec 是路线批次的证据与解析改造设计；运行时代码主归属仍由 settings、
+# hooks-system 等既有 coverage 维护，避免重复拥有文件。
+groups: []

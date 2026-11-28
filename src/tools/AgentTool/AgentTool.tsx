@@ -48,6 +48,7 @@ import {
 import { assembleToolPool } from '../../tools.js'
 import { asAgentId } from '../../types/ids.js'
 import { runWithAgentContext } from '../../utils/agentContext.js'
+import { getCurrentSubagentDepth } from '../../utils/subagentLimits.js'
 import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js'
 import { getCwd, runWithCwdOverride } from '../../utils/cwd.js'
 import { logForDebugging } from '../../utils/debug.js'
@@ -989,6 +990,7 @@ export const AgentTool = buildTool({
         invokingRequestId: assistantMessage?.requestId,
         invocationKind: 'spawn' as const,
         invocationEmitted: false,
+        depth: getCurrentSubagentDepth() + 1,
       }
 
       // Workload propagation: handlePromptSubmit wraps the entire turn in
@@ -1057,6 +1059,7 @@ export const AgentTool = buildTool({
         invokingRequestId: assistantMessage?.requestId,
         invocationKind: 'spawn' as const,
         invocationEmitted: false,
+        depth: getCurrentSubagentDepth() + 1,
       }
 
       // Wrap entire sync agent execution in context for analytics attribution

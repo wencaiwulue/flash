@@ -30,6 +30,7 @@ import type { MemoryType } from './memory/types.js'
 import { normalizePathForConfigKey } from './path.js'
 import { getEssentialTrafficOnlyReason } from './privacyLevel.js'
 import { getManagedFilePath } from './settings/managedPath.js'
+import { getInitialSettings } from './settings/settings.js'
 import type { ThemeSetting } from './theme.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -1083,6 +1084,129 @@ export function getGlobalConfig(): GlobalConfig {
       getConfig(getGlobalClaudeFile(), createDefaultGlobalConfig),
     )
   }
+}
+
+/**
+ * Effective showTurnDuration (upstream 2.1.311): the merged settings-file value
+ * wins; a legacy `~/.claude.json` value applies only when no settings file sets
+ * it; defaults to true.
+ */
+export function getShowTurnDuration(): boolean {
+  return (
+    getInitialSettings().showTurnDuration ??
+    getGlobalConfig().showTurnDuration ??
+    true
+  )
+}
+
+/**
+ * Effective verbose (upstream 2.1.311) precedence: the `--verbose` CLI flag for
+ * one session, then the merged settings-file value, then the legacy
+ * `~/.claude.json` value; defaults to false. viewMode/sticky /focus overrides
+ * do not exist in flash.
+ */
+export function getVerbose(cliVerbose?: boolean): boolean {
+  return (
+    cliVerbose ?? getInitialSettings().verbose ?? getGlobalConfig().verbose ?? false
+  )
+}
+
+/**
+ * Effective theme (upstream 2.1.311): the merged settings-file value wins; a
+ * legacy `~/.claude.json` value applies only when no settings file sets it;
+ * defaults to "dark".
+ */
+export function getThemeSetting(): NonNullable<GlobalConfig['theme']> {
+  return (
+    (getInitialSettings().theme as GlobalConfig['theme']) ??
+    getGlobalConfig().theme ??
+    'dark'
+  )
+}
+
+/**
+ * Effective preferredNotifChannel (upstream 2.1.311): the merged settings-file
+ * value wins; a legacy `~/.claude.json` value applies only when no settings
+ * file sets it; defaults to "auto".
+ */
+export function getPreferredNotifChannel(): NonNullable<
+  GlobalConfig['preferredNotifChannel']
+> {
+  return (
+    (getInitialSettings()
+      .preferredNotifChannel as GlobalConfig['preferredNotifChannel']) ??
+    getGlobalConfig().preferredNotifChannel ??
+    'auto'
+  )
+}
+
+/**
+ * Effective terminalProgressBarEnabled (upstream 2.1.311): the merged
+ * settings-file value wins; a legacy `~/.claude.json` value applies only when
+ * no settings file sets it; defaults to true.
+ */
+export function getTerminalProgressBarEnabled(): boolean {
+  return (
+    getInitialSettings().terminalProgressBarEnabled ??
+    getGlobalConfig().terminalProgressBarEnabled ??
+    true
+  )
+}
+
+/**
+ * Effective autoCompactEnabled (upstream 2.1.311): the merged settings-file
+ * value wins; a legacy `~/.claude.json` value applies only when no settings
+ * file sets it; defaults to true. The DISABLE_AUTO_COMPACT env override for one
+ * session is handled by the caller (isAutoCompactEnabled).
+ */
+export function getAutoCompactEnabled(): boolean {
+  return (
+    getInitialSettings().autoCompactEnabled ??
+    getGlobalConfig().autoCompactEnabled ??
+    true
+  )
+}
+
+/**
+ * Effective fileCheckpointingEnabled (upstream 2.1.311): the merged
+ * settings-file value wins; a legacy `~/.claude.json` value applies only when
+ * no settings file sets it; defaults to true. The
+ * CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING env override is handled by the caller.
+ */
+export function getFileCheckpointingEnabled(): boolean {
+  return (
+    getInitialSettings().fileCheckpointingEnabled ??
+    getGlobalConfig().fileCheckpointingEnabled ??
+    true
+  )
+}
+
+/**
+ * Effective editorMode (upstream 2.1.311): the merged settings-file value wins;
+ * a legacy `~/.claude.json` value applies only when no settings file sets it;
+ * defaults to "normal".
+ */
+export function getEditorMode(): NonNullable<GlobalConfig['editorMode']> {
+  return (
+    (getInitialSettings().editorMode as GlobalConfig['editorMode']) ??
+    getGlobalConfig().editorMode ??
+    'normal'
+  )
+}
+
+/**
+ * Effective teammateMode (upstream 2.1.311): the merged settings-file value
+ * wins; a legacy `~/.claude.json` value applies only when no settings file sets
+ * it (upstream explicitly reads this legacy value); defaults to "auto". The
+ * --teammate-mode CLI override for one session is handled by the caller
+ * (captureTeammateModeSnapshot).
+ */
+export function getTeammateMode(): NonNullable<GlobalConfig['teammateMode']> {
+  return (
+    (getInitialSettings().teammateMode as GlobalConfig['teammateMode']) ??
+    getGlobalConfig().teammateMode ??
+    'auto'
+  )
 }
 
 /**
