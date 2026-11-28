@@ -282,4 +282,3 @@ describe('unseen divider helpers', () => {
     await waitFor(() => api!.dividerYRef.current === null)
   })
 })
-
