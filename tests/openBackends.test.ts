@@ -243,20 +243,43 @@ async function startFakeChromeCdp(): Promise<{ endpoint: string }> {
     }
   }
   executable ??= chromium.executablePath()
+  // stderr is captured in a small ring buffer so a hung or failing startup can
+  // be diagnosed; Chrome exits silently otherwise and CI shows no clue.
+  const stderrChunks: string[] = []
+  let stderrBytes = 0
+  const stderrTail = (): string => {
+    const text = stderrChunks.join('').trim()
+    return text.slice(-2048)
+  }
   const child = spawn(
     executable,
     [
       '--headless=new',
       '--no-first-run',
       '--no-default-browser-check',
+      // Hosted runners ship a small /dev/shm, a known cause of silent Chrome
+      // startup hangs that never bind the remote debugging port.
+      '--disable-dev-shm-usage',
       '--remote-debugging-address=127.0.0.1',
       '--remote-allow-origins=*',
       `--remote-debugging-port=${port}`,
       `--user-data-dir=${fakeProfile}`,
       'about:blank',
     ],
-    { stdio: 'ignore', detached: process.platform !== 'win32' },
+    {
+      stdio: ['ignore', 'ignore', 'pipe'],
+      detached: process.platform !== 'win32',
+    },
   )
+  child.stderr?.on('data', (chunk: Buffer) => {
+    const text = chunk.toString('utf8')
+    stderrChunks.push(text)
+    stderrBytes += text.length
+    while (stderrBytes > 8192 && stderrChunks.length > 1) {
+      stderrBytes -= stderrChunks[0]!.length
+      stderrChunks.shift()
+    }
+  })
   fakeChild = child
   fakeChildren.add(child)
   let startupError: unknown
@@ -265,11 +288,20 @@ async function startFakeChromeCdp(): Promise<{ endpoint: string }> {
   })
 
   let lastError: unknown
-  // The first headless Chrome launch on a hosted Linux runner can be cold.
+  // The first headless Chrome launch on a hosted Linux runner can be cold, and
+  // occasionally fails to bind the port for tens of seconds (main CI run
+  // 46152926024 exhausted the old 20s window with the process still alive).
+  // Poll with an adaptive delay for ~35s before giving up.
   for (let attempt = 0; attempt < 400; attempt++) {
-    if (startupError) throw startupError
+    if (startupError) {
+      throw new Error(
+        `Fake CDP Chromium failed to start: ${String(startupError)}\nstderr:\n${stderrTail()}`,
+      )
+    }
     if (child.exitCode !== null) {
-      throw new Error(`Fake CDP Chromium exited with ${child.exitCode}`)
+      throw new Error(
+        `Fake CDP Chromium exited with ${child.exitCode}\nstderr:\n${stderrTail()}`,
+      )
     }
     try {
       const response = await fetch(`${endpoint}/json/version`)
@@ -281,9 +313,13 @@ async function startFakeChromeCdp(): Promise<{ endpoint: string }> {
     } catch (error) {
       lastError = error
     }
-    await Bun.sleep(50)
+    await Bun.sleep(attempt < 100 ? 50 : 100)
   }
-  if (lastError) throw lastError
+  if (lastError) {
+    throw new Error(
+      `Fake CDP Chromium never served ${endpoint}/json/version within the startup budget: ${String(lastError)}\nstderr:\n${stderrTail()}`,
+    )
+  }
 
   return { endpoint }
 }
@@ -508,7 +544,7 @@ describe('open Chrome configuration and endpoint safety', () => {
     const client = await getOpenChromeClient(chromeContext(endpoint))
     expect(client).toBeDefined()
     expect((await client.listTools()).tools.length).toBeGreaterThan(0)
-  }, 30_000)
+  }, { timeout: 60_000, retry: 2 })
 })
 
 describe('open Chrome CDP lifecycle and tools', () => {
