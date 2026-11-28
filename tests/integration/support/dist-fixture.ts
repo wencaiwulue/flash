@@ -7,6 +7,7 @@ export interface StalenessOptions {
   root?: string
   marker?: string
   sourceGlobs?: string[]
+  build?: () => Promise<void>
 }
 
 const DEFAULT_SOURCE_GLOBS = ['src/**/*.{ts,tsx}', 'scripts/*.{ts,tsx}', 'package.json']
@@ -40,13 +41,17 @@ export async function ensureFreshDist(opts: StalenessOptions = {}): Promise<stri
   const root = opts.root ?? repoRoot
   if (await isDistStale(opts)) {
     console.log('[dist-fixture] dist is stale or missing, running `bun run build` ...')
-    const child = Bun.spawn({
-      cmd: [process.execPath, 'run', 'build'],
-      cwd: root,
-      stdout: 'inherit',
-      stderr: 'inherit',
-    })
-    if ((await child.exited) !== 0) throw new Error('bun run build failed')
+    if (opts.build) {
+      await opts.build()
+    } else {
+      const child = Bun.spawn({
+        cmd: [process.execPath, 'run', 'build'],
+        cwd: root,
+        stdout: 'inherit',
+        stderr: 'inherit',
+      })
+      if ((await child.exited) !== 0) throw new Error('bun run build failed')
+    }
   }
   return join(root, 'dist')
 }
@@ -55,6 +60,6 @@ export async function distMainPath(): Promise<string> {
   return join(await ensureFreshDist(), 'main.js')
 }
 
-export async function distSdkPath(): Promise<string> {
-  return join(await ensureFreshDist(), 'sdk.mjs')
+export async function distSdkPath(opts: StalenessOptions = {}): Promise<string> {
+  return join(await ensureFreshDist({ ...opts, marker: 'dist/sdk.mjs' }), 'sdk.mjs')
 }
