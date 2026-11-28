@@ -161,20 +161,36 @@ describe('classic SDK context usage', () => {
           usage.apiUsage.cache_read_input_tokens
         : expectedContentTokens
       expect(usage.totalTokens).toBe(expectedReportedTotal)
-    } finally {
-      if (query) {
-        await query.return(undefined)
-        expect(process.env.ANTHROPIC_BASE_URL).toBe(externalBaseUrl)
-        expect(process.env.ANTHROPIC_API_KEY).toBe(externalApiKey)
-        if (countRequestCount !== undefined) {
-          expect(
-            harness.mock.requests.filter(
-              request => request.path === '/v1/messages/count_tokens',
-            ),
-          ).toHaveLength(countRequestCount)
-        }
+
+      // Resume only after usage is complete. Unlike the array snapshot above,
+      // this fails if count_tokens caused a late assistant/result emission.
+      const trailingMessages: unknown[] = []
+      while (true) {
+        const next = await withDeadline(
+          query.next(),
+          'SDK query completion after context usage',
+        )
+        if (next.done) break
+        trailingMessages.push(next.value)
       }
-      await harness.cleanup()
+      expect(trailingMessages).toEqual([])
+    } finally {
+      try {
+        if (query) {
+          await query.return(undefined)
+          expect(process.env.ANTHROPIC_BASE_URL).toBe(externalBaseUrl)
+          expect(process.env.ANTHROPIC_API_KEY).toBe(externalApiKey)
+          if (countRequestCount !== undefined) {
+            expect(
+              harness.mock.requests.filter(
+                request => request.path === '/v1/messages/count_tokens',
+              ),
+            ).toHaveLength(countRequestCount)
+          }
+        }
+      } finally {
+        await harness.cleanup()
+      }
     }
   }, TEST_TIMEOUT_MS)
 })
