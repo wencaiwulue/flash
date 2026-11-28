@@ -1250,3 +1250,11 @@ export function emitTaskTerminatedSdk(taskId, status, opts): void
 - 绿测：`bun run test:integration tests/integration/sdk/hooks.test.ts tests/integration/sdk/query-lifecycle.test.ts` 退出 0，分别 5 pass 与 15 pass；覆盖 matcher 命中/不命中、UserPromptSubmit/PreToolUse/PostToolUse 顺序、payload/toolUseID/AbortSignal、deny 无副作用、allow/updatedInput 真实生效、共享 matcher 的 A/B ownership、无 hooks query 不继承回调，以及其他 owner 在 return、末次错误和 setup 失败后保留。
 - 回归：`bun test tests/headlessHooks.test.ts tests/sdkQueryLifecycle.test.ts` 退出 0（13 pass）；`bun test tests/commitAttributionWave2.test.ts` 退出 0（8 pass）；`bun run typecheck` 退出 0；`bun scripts/check-design-docs.ts` 为 0 errors、112 个既有 draft/uncovered warnings。
 - 范围边界：本任务未实现 MCP、elicitation 或 classic sessions，也未宣称解决进程全局 env/hooks 的交错并发隔离。
+
+## 11. Task 34A 实施证据（2026-11-28）
+
+- TDD 红测：`bun run test:integration tests/integration/sdk/sessions.test.ts` 在实现前为 0 pass / 8 fail。两个 fresh query 得到同一个 UUID；`continue+resume`、两种 `resumeSessionAt` 与非法 resume 均未抛错；resume 的第二次 `/v1/messages` 只含新 prompt，不含源会话历史。
+- 实现：新增 `sdkQuerySession.ts`，fresh 每次 `randomUUID()`；continue 通过 `listSdkSessions({dir,limit:1})` 选择最近会话；resume/fork 复用 `resolveSessionFilePath`、`forkSdkSession`、`loadSdkSessionTranscript`。`createSdkQuery` 将解析结果接入原有 session/initialMessages 路径，并在每次 switch 后重置 transcript pointer、清理上一 session 的元数据缓存。loader/writer 使用 canonical cwd；resume 的 `switchSession` 第二参数使用 `dirname(resolved.filePath)`，与 transcript 实际目录一致。
+- 绿测：sessions 为 8 pass / 0 fail；sessions + query-lifecycle 合计 8 + 15 pass；完整 `--suite=sdk` 五个文件合计 38 pass / 0 fail，覆盖 fresh 隔离、无副作用校验、resume、continue、fork 源字节不变、fork 独立恢复及 gated abort 后恢复。
+- 回归与门禁：`bun test tests/sdkSessions.test.ts tests/sessionChainRecovery.test.ts tests/sdkQueryLifecycle.test.ts` 为 5 pass / 0 fail；`bun run typecheck` 与正常 `bun run build` 均退出 0；`bun scripts/check-design-docs.ts` 为 0 errors、112 个既有 warnings。新 source 和 sessions 测试各只登记一个 coverage 组。
+- 范围边界：未实现 token-count 或 `resumeSessionAt` 截断，未删除 v2 导出，未改变进程全局 session/env/persistence 的交错并发限制。

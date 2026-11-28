@@ -35,9 +35,10 @@ groups:
   - id: sdk-query-lifecycle
     kind: source
     section: 4
-    summary: Classic Query 生命周期，channel、canUseTool、hooks/env、MCP、按轮中断、终端错误与幂等清理
+    summary: Classic Query 生命周期、classic session 解析，channel、canUseTool、hooks/env、MCP、按轮中断、终端错误与幂等清理
     files:
       - src/utils/sdkQuery.ts
+      - src/utils/sdkQuerySession.ts
   - id: sdk-session-conversation
     kind: source
     section: 4
@@ -79,6 +80,7 @@ groups:
       - tests/sdkRewind.test.ts
       - tests/sdkMcp.test.ts
       - tests/integration/sdk/query-lifecycle.test.ts
+      - tests/integration/sdk/sessions.test.ts
       - tests/integration/sdk/hooks.test.ts
       - tests/integration/sdk/mcp.test.ts
       - tests/integration/support/mcp.ts

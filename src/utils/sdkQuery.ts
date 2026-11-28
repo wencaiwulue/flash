@@ -50,7 +50,16 @@ import { createFileStateCacheWithSizeLimit } from '../utils/fileStateCache.js'
 import { asSessionId } from '../types/ids.js'
 import type { Message } from '../types/message.js'
 import { runCleanupFunctions } from './cleanupRegistry.js'
-import { flushSessionStorage } from './sessionStorage.js'
+import {
+  clearSessionMetadata,
+  flushSessionStorage,
+  resetSessionFilePointer,
+} from './sessionStorage.js'
+import { canonicalizePath } from './sessionStoragePortable.js'
+import {
+  resolveSdkQuerySession,
+  validateSdkQuerySessionOptions,
+} from './sdkQuerySession.js'
 import { FileCheckpointing } from './fileCheckpointing.js'
 import { getModelOptions } from './model/modelOptions.js'
 import { getMainLoopModel } from './model/model.js'
@@ -438,19 +447,18 @@ export function createSdkQuery({
 
   const initialize = () => {
     setupPromise ??= (async () => {
+      validateSdkQuerySessionOptions(options)
       releaseHooks = registerSdkHooks(options.hooks)
       releasePersistence = acquireSessionPersistence(
         options.persistSession !== false,
       )
       const cwd = options.cwd ?? process.cwd()
-      setOriginalCwd(cwd)
+      const storageCwd = await canonicalizePath(cwd)
+      setOriginalCwd(storageCwd)
       setCwdState(cwd)
       setIsInteractive(false)
       setClientType('sdk')
       setSessionSource('sdk')
-      if (session) {
-        switchSession(asSessionId(session.id), (await session.projectDir) ?? null)
-      }
 
       if (options.env) {
         const previousEnv = new Map<string, string | undefined>()
@@ -471,6 +479,23 @@ export function createSdkQuery({
           else process.env[key] = value
         }
       }
+
+      let resolvedSession = session
+      let resolvedInitialMessages = initialMessages
+      if (!resolvedSession) {
+        const classicSession = await resolveSdkQuerySession(options, storageCwd)
+        resolvedSession = classicSession.session
+        resolvedInitialMessages = classicSession.initialMessages
+      }
+      if (resolvedSession) {
+        switchSession(
+          asSessionId(resolvedSession.id),
+          (await resolvedSession.projectDir) ?? null,
+        )
+        clearSessionMetadata()
+        await resetSessionFilePointer()
+      }
+
       debug('init:start')
       enableConfigs()
       debug('init:done')
@@ -542,7 +567,7 @@ export function createSdkQuery({
         thinkingConfig,
         userSpecifiedModel: options.model,
         readFileCache: createFileStateCacheWithSizeLimit(100),
-        mutableMessages: (await initialMessages) ?? [],
+        mutableMessages: (await resolvedInitialMessages) ?? [],
         fileCheckpointing,
         releasePersistence: releasePersistence!,
       }
