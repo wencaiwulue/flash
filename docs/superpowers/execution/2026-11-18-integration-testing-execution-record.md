@@ -1,6 +1,6 @@
 ---
 id: integration-testing-execution-record
-title: 集成测试体系执行记录（子项目 0+1 与 2）
+title: 集成测试体系执行记录（子项目 0+1+2+3）
 date: 2026-11-18
 status: final
 ---
@@ -36,6 +36,19 @@ status: final
 
 最终状态：`bun run test:integration` 20 文件全绿，28 pass / 48 skip（每个 skip 有 `SKIP [<原因>] <条目>` 行），typecheck 干净，无 src/ 改动。
 
+### 1.3 子项目 3：Agent SDK 集成套件（2026-11-28 完成）
+
+| 交付物 | 内容 |
+|---|---|
+| 设计门禁 | `2026-11-28-agent-sdk-integration-testing-design.md` + 配套 plan；三层上游证据；更新 sdk-query-sessions spec/coverage |
+| 测试支撑 | `support/sdk.ts` 负责 dist 加载、消息/可控输入、watchdog、pauseAtResult 与有序清理；`distSdkPath()` 改以 `dist/sdk.mjs` 为新鲜度 marker；mock-anthropic 增加可释放/可 abort 的 gated responses |
+| 六组 SDK 测试 | dist-import、query-lifecycle、hooks、mcp、sessions、token-count；全部真实 dist + 本地 mock、无真实凭据/网络 |
+| 必要产品接线 | `options.hooks` 注册与 per-occurrence 幂等释放；options.env 拥有键恢复；每轮 interrupt 与 query 级外部 abort；末次错误 result 后抛出；MCP form elicitation（初始化前注册 handler）；classic continue/resume/forkSession 的真实 transcript 行为；公开 `Query.getContextUsage()` |
+| config 联动 | parser 新增 `mcp_elicitation` trigger；Elicitation/ElicitationResult 从 prereq-blocked 点亮为 active，严格 per-event marker、内容与 fallback 计数断言 |
+| 清理 | 16 个 `{tokenCount:null}` 空录制在确认无运行时消费者后删除；不新增 VCR 录制 |
+
+最终状态：SDK 套件 6 文件 39 pass / 0 fail / 无 test.skip；全量 integration 26 文件通过；config-acceptance 8 文件通过；全量 unit、typecheck、build、CLI/SDK smoke、design-docs（0 errors）均通过。逐任务评审中发现的延迟关闭吞错、共享 matcher 误删、config marker 串用、初始化期 elicitation、usage 后尾部消息漏检等问题均已修复并复审通过。
+
 ## 2. 如何做的
 
 - **流程**：superpowers 全链路 —— brainstorming（分层提问 + 决策表 spec）→ writing-plans（任务级 TDD 计划）→ subagent-driven development（每任务独立子代理实现 + 独立评审 + 修复循环）→ 终审（全分支 diff，逐项 triage Minor）。台账 `.superpowers/sdd/progress.md` 防压缩丢失。
@@ -61,7 +74,7 @@ status: final
 
 | 未做项 | 原因 |
 |---|---|
-| 子项目 3（Agent SDK 集成套件） | 排序在 0→1→2→3 之末；需独立 spec→plan→执行（query 循环、hook 接线、mock MCP、dist 形态导入、token-count fixtures 迁移） |
+| 子项目 3（Agent SDK 集成套件） | 原排序在 0→1→2→3 之末，需独立 spec→plan→执行；已于 2026-11-28 完成，交付与证据见 §1.3 |
 | managed 注入与 fail-closed 验收 | **源码形态在本仓库不可运行**：`USER_TYPE=ant` 使 `src/tools.ts:16-22` require ant 专属私有模块（REPLTool.js、SuggestBackgroundPRTool.js），快照中不存在（dist 由构建期 feature 门控替换）。用户裁决降级为 `blocked-by-prereq:source-form-missing-ant-modules`；spec §1.2 已修订。待私有模块可用（或私有仓库）后点亮 |
 | B0 三类 hook 局部容错运行时 | 属 B0 批次（`2026-11-16-upstream-config-b0-baseline`），本轮只编码验收（`blocked-by-batch:B0`）；运行时仍是 `src/schemas/hooks.ts:212` partialRecord |
 | B1 六个新事件运行时协议 | UserPromptExpansion/PostToolBatch/MessageDisplay/DirectoryAdded/PreModelSwitch/PostModelSwitch 属 B1（正确名单经纠正——曾有实现者伪造其中 5 个名字） |
@@ -82,6 +95,6 @@ status: final
 
 ## 6. 后续入口
 
-- 子项目 3 spec：新会话直接引用本文件 + 总体架构 spec + 台账即可续。
+- 子项目 3 已完成；其独立设计/计划、三层证据、逐任务红绿记录与 coverage 更新见 §1.3 所列文件。
 - B0/B1 批次落地时：改 fixtures 的 `status` 字段点亮对应验收（无需改测试逻辑）。
-- PR #18 现状：CLI e2e 与 config-acceptance 两次终审均 Ready to merge = Yes；合并决策待用户。
+- PR #18 现状：CLI e2e、config-acceptance 与 SDK 子项目 3 均已实现并通过本地及 CI 验证；合并决策待用户。
