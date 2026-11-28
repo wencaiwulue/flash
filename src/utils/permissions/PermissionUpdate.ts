@@ -256,11 +256,12 @@ export function persistPermissionUpdate(update: PermissionUpdate): void {
 
       if (dirsToAdd.length > 0) {
         const updatedDirs = [...existingDirs, ...dirsToAdd]
-        updateSettingsForSource(update.destination, {
+        const result = updateSettingsForSource(update.destination, {
           permissions: {
             additionalDirectories: updatedDirs,
           },
         })
+        if (result.error) throw result.error
       }
       break
     }

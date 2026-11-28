@@ -47,6 +47,10 @@ import {
 } from './prompts.js'
 import {
   DEFAULT_SESSION_MEMORY_CONFIG,
+  MemoryPathValidator,
+  PathTraversalError,
+  checkAndInvalidateDeletedFiles,
+  getLastSummarizedMessageId,
   getSessionMemoryConfig,
   getToolCallsBetweenUpdates,
   hasMetInitializationThreshold,
@@ -96,13 +100,11 @@ function getSessionMemoryRemoteConfig(): Partial<SessionMemoryConfig> {
 // Module State
 // ============================================================================
 
-let lastMemoryMessageUuid: string | undefined
-
 /**
  * Reset the last memory message UUID (for testing)
  */
 export function resetLastMemoryMessageUuid(): void {
-  lastMemoryMessageUuid = undefined
+  // No-op now - use resetSessionMemoryState from sessionMemoryUtils instead
 }
 
 function countToolCallsSince(
@@ -147,9 +149,10 @@ export function shouldExtractMemory(messages: Message[]): boolean {
   const hasMetTokenThreshold = hasMetUpdateThreshold(currentTokenCount)
 
   // Check if we've met the tool calls threshold
+  const lastSummarizedId = getLastSummarizedMessageId()
   const toolCallsSinceLastUpdate = countToolCallsSince(
     messages,
-    lastMemoryMessageUuid,
+    lastSummarizedId,
   )
   const hasMetToolCallThreshold =
     toolCallsSinceLastUpdate >= getToolCallsBetweenUpdates()
@@ -169,15 +172,8 @@ export function shouldExtractMemory(messages: Message[]): boolean {
     (hasMetTokenThreshold && hasMetToolCallThreshold) ||
     (hasMetTokenThreshold && !hasToolCallsInLastTurn)
 
-  if (shouldExtract) {
-    const lastMessage = messages[messages.length - 1]
-    if (lastMessage?.uuid) {
-      lastMemoryMessageUuid = lastMessage.uuid
-    }
-    return true
-  }
-
-  return false
+  // We don't set the cursor here - we set it after successful extraction
+  return shouldExtract
 }
 
 async function setupSessionMemoryFile(
@@ -190,6 +186,8 @@ async function setupSessionMemoryFile(
   await fs.mkdir(sessionMemoryDir, { mode: 0o700 })
 
   const memoryPath = getSessionMemoryPath()
+  const pathValidator = new MemoryPathValidator()
+  await pathValidator.validateRealPathContainment(memoryPath)
 
   // Create the memory file if it doesn't exist (wx = O_CREAT|O_EXCL)
   try {
@@ -292,6 +290,9 @@ const extractSessionMemory = sequential(async function (
 
   // Initialize config from remote (lazy, only once)
   initSessionMemoryConfigIfNeeded()
+
+  // Check for deleted memory files and invalidate cursor if needed
+  checkAndInvalidateDeletedFiles()
 
   if (!shouldExtractMemory(messages)) {
     return

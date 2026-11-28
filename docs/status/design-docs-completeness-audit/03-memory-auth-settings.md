@@ -222,7 +222,17 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 - `OAuthService.startOAuthFlow()`：启动本地服务器 `AuthCodeListener`，生成 PKCE `codeVerifier`/`codeChallenge`/`state`，构建两条授权 URL，等待授权码（自动或手动），交换 tokens，获取 profile
 - 双路径设计：自动浏览器回调 + 手动代码输入 fallback
 
-**发现 B3-auth-01**：Keychain 缓存 30 秒，跨进程刷新后另一个进程最多 30 秒才看到新 token（spec 中已记录为改进建议，P1）。严重度：P1，置信度：已证实（src/utils/secureStorage/macOsKeychainHelpers.ts:69-91）。
+**发现 B3-auth-01**：Keychain 缓存 30 秒，跨进程刷新后另一个进程最多 30 秒才看到新 token。严重度：P1，置信度：已证实（src/utils/secureStorage/macOsKeychainHelpers.ts:69-91，无跨进程失效机制，仅 30 秒 TTL）。
+
+**修复证据 B3-auth-01**：已修复，使用共享 cache-version 标记（~/.claude/.keychain-cache-version.json）：
+- 每次写入（update/delete/clearKeychainCache）时原子更新 UUID（temp file + rename）
+- 读取前检查版本标记，变更则立即刷新缓存，无视 30 秒 TTL
+- 同时保留 TTL 作为降级策略（版本标记损坏时）
+- 证据：
+  - src/utils/secureStorage/macOsKeychainHelpers.ts:90-124（getKeychainCacheVersionPath/touchKeychainCacheVersion/isKeychainCacheVersionCurrent/clearKeychainCache）
+  - src/utils/secureStorage/macOsKeychainStorage.ts:32-84（read/readAsync 双重检查）
+  - tests/macOsKeychainHelpers.test.ts:33-96（跨进程行为测试）
+- 验证：测试覆盖完整，类型检查/构建通过
 
 **发现 B3-auth-02**：auth 子系统缺少专用测试文件，仅 `oauthRefresh.test.ts` 和 `linuxSecretStorage.test.ts`，大量核心逻辑无测试覆盖。严重度：P2，置信度：已证实（tests/ 目录扫描确认）。
 
@@ -237,9 +247,9 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 检查 coverage 中提及的测试文件：
 - ✅ tests/oauthRefresh.test.ts：OAuth refresh 并发去重、redaction、status
 - ✅ tests/linuxSecretStorage.test.ts：Linux libsecret 存储读写、fallback
+- ✅ tests/auth.test.ts：plainTextStorage、fallbackStorage、OAuth crypto、AuthCodeListener、authFileDescriptor 测试
 - ❌ 无 auth-core 测试：多来源优先级、托管会话隔离、401 处理、apiKeyHelper
 - ❌ 无 secure-storage-macos 测试：Keychain 缓存、stale-while-error、stdin/argv fallback
-- ❌ 无 oauth-service 测试：双路径登录、PKCE、授权码交换
 
 #### 上游证据
 
@@ -1317,6 +1327,13 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 
 ✅ **Git 仓库发现**：findGitRoot 向上遍历搜索 .git → LRU 缓存 50 条目 → 支持普通仓库/子模块/工作树 → resolveCanonicalRoot 双向验证
 
+## 整改台账（2026-11-18 追加，不改变原发现与历史统计）
+
+- **关联 Finding**：`B3-memory-02`；主责 spec：`docs/superpowers/specs/2026-11-12-memory-design.md`。
+- **测试补全**：新增 `tests/memory.test.ts`，覆盖 cursor 重启恢复、原子 sidecar、删除失效、提取等待，以及真实文件系统上的内部/逃逸 symlink。`tests/contextCompaction.test.ts` 同时补齐 PTL、附件恢复与长会话可观察不变量。
+- **整改中发现并修复**：Session Memory `MemoryPathValidator` 错用 `FsOperations` 不存在的异步 `realpath`/`lstat`，异常被 deepest-ancestor 循环吞掉后可能接受逃逸路径。RED：`bun test tests/contextCompaction.test.ts tests/memory.test.ts --timeout 60000` 退出 1，文件与目录 symlink 逃逸用例均实际失败；改用契约内 `realpathSync`/`lstatSync` 后，四文件 focused 命令退出 0（61 pass，0 fail）。
+- **边界**：全部为本地临时目录/offline 验证；未执行模型提取、远程同步或私有协议验证。原 Finding ID、原发现和历史统计均保留。
+
 ✅ **Git 元数据读取**：readGitHead 直接读取 .git/HEAD → resolveRef 验证 ref 名称白名单 → 优先松散 ref → packed-refs → commonDir 回退 → getCommonDir 获取共享 git 目录
 
 ✅ **Git 状态获取**：getGitState 并行获取 → getBranch/getHead/getRemote/getRemoteUrl/getStatus/getWorktreeCount → GitFileWatcher 缓存分支/HEAD/远程URL/默认分支
@@ -1390,6 +1407,206 @@ strings 证据边界（需补充，但本次审计重点在源码验证）。
 | sessions-share | ✅ 已审计 |
 
 **当前进度**：9/9 已审计，batch 3 完整
+
+---
+
+## 修复台账：B3-memory-01, B3-memory-03, B3-memory-06
+
+### 修复概述
+
+针对 memory 子系统的 3 个路径验证漏洞进行了统一修复，确保读取路径与写入路径采用相同的安全标准。
+
+### 发现 B3-memory-01：team memory 读取路径验证不足
+
+**问题**：`isTeamMemPath` 仅做字符串前缀检查，不解析 symlink；而 `validateTeamMemWritePath` 做完整 symlink 解析。
+
+**修复**：
+- `isTeamMemPath` 直接执行共享 `realPathContainment` 同步真实路径检查，不再依赖调用方另选验证器
+- `validateTeamMemReadPath` 保留 async API 并用于 `readLocalTeamMemory` 读取前重验
+- 内部 symlink 允许，文件/目录逃逸与 dangling symlink 失败关闭
+
+**证据**：
+- `src/memdir/teamMemPaths.ts`：新增 `validateTeamMemReadPath` 函数
+- `src/services/teamMemorySync/index.ts`：集成验证到 `readLocalTeamMemory`
+
+### 发现 B3-memory-03：auto memory 读取路径验证不足
+
+**问题**：`isAutoMemPath` 仅做字符串前缀检查，无 symlink 解析。
+
+**修复**：
+- `isAutoMemPath` 直接执行共享 `realPathContainment` 同步真实路径检查
+- `validateAutoMemReadPath` 复用同一实现，`PathTraversalError` 统一从 `realPathContainment.ts` 导出，不再维护重复错误类和重复 deepest-ancestor 逻辑
+
+**证据**：
+- `src/memdir/paths.ts`：新增验证函数和错误类
+
+### 发现 B3-memory-06：readLocalTeamMemory 缺少 symlink 重验证
+
+**问题**：`readLocalTeamMemory` 遍历 team 目录读取文件，但对发现的文件没有二次验证 symlink。
+
+**修复**：
+- 更新 `readLocalTeamMemory` 函数，对每个文件路径调用 `validateTeamMemReadPath` 验证
+- 使用验证后的真实路径进行读取
+- 验证失败时记录警告并跳过该文件
+
+**证据**：
+- `src/services/teamMemorySync/index.ts`：集成路径验证
+
+### 修复决策表
+
+| 维度 | 选择 | 说明 |
+|------|------|------|
+| 验证深度 | symlink + realpath | 与写入验证一致，确保安全边界 |
+| 性能策略 | 保留同步 API，执行 realpath I/O | 分类器本身失败关闭，不能靠调用方选择安全 API |
+| 错误处理 | fail closed，验证失败跳过 | 安全优先，不读取有风险的文件 |
+| 向后兼容 | 函数签名与内部 symlink/新文件行为保留 | lexical-only 逃逸行为按安全缺陷修正 |
+
+### 三层证据收集
+
+#### 1. 官方文档边界
+
+查阅官方 Claude Code 文档关于记忆系统的说明：
+- 团队记忆目录设计为安全沙箱
+- 不期望通过 symlink 逃出该目录
+- 没有找到关于 symlink 处理的具体文档
+
+#### 2. 上游 CLI strings 边界
+
+对 `/opt/homebrew/bin/claude` 执行 strings 搜索：
+- `isAutoMemPath`、`isTeamMemPath`、`realpathDeepestExisting`、`validateAutoMemReadPath`、`validateTeamMemReadPath` 均无匹配（`rg` 退出 1）
+- 不据此推断上游读取路径校验实现，也不把本地修复描述为上游 wire 契约
+
+#### 3. 本地源码/契约边界
+
+**修复证据已集成到代码库**：
+- 新增验证函数与现有写入验证使用相同的 `realpathDeepestExisting` 模式
+- 内存中已有的 `MemoryPathValidator`（session memory）也使用相同模式
+- 所有新验证使用已有的 `PathTraversalError`，保持一致的错误契约
+
+### RED/GREEN 测试验证
+
+#### RED（旧实现对照）
+- 从 `a7f4f21` 临时恢复旧分类器并对真实 symlink 执行，输出 `teamEscapeAccepted:true`、`autoEscapeAccepted:true`，退出 1；临时源码已删除。
+- 初次评审还确认 `validateAutoMemReadPath` 无生产调用方，新增 helper 不能替代执行层修复。
+
+#### GREEN（最终修复后）
+- `isTeamMemPath`/`isAutoMemPath` 直接拒绝文件和目录 symlink 逃逸，内部 symlink 继续可用。
+- `readLocalTeamMemory` 真实调用返回普通 entry，不包含逃逸 entry。
+- `bun test tests/memoryPathValidation.test.ts tests/memoryPaths.test.ts tests/memory.test.ts tests/sessionMemory.test.ts --timeout 60000`：退出 0，55 pass，0 fail。
+
+### 测试覆盖
+
+新增测试：
+- `tests/memoryPathValidation.test.ts`：验证修复的安全边界
+- `tests/memory.test.ts`：已存在的 session memory 验证测试（部分覆盖类似场景）
+
+### 说明
+
+本次完成 3 个 memory 相关发现的修复，确保记忆目录读取路径与写入路径采用相同的安全标准。
+
+---
+
+## 整改台账：B3-sessions-share-01（2026-11-19 追加）
+
+**Finding ID**：B3-sessions-share-01；主责 spec：sessions-share。
+
+新增 `tests/export.test.ts` 并唯一登记 export-test coverage，7 个测试、21 个断言：首条提示/文件名、45 条消息按 5 条一块的 9-chunk/progress/plain text、合法新文件、traversal/absolute/symlink/missing-parent/overwrite 安全。
+
+**真实 RED→生产修复**：旧 `/export` 直接 join 路径并写入，测试复现 traversal、symlink 逃逸和覆盖已有文件。`resolveExportOutputPath` 现在执行词法 + realpath containment；`writeFileSync_DEPRECATED` 的 flush 分支现在把 `options.flag` 传给 `openSync`，`flag:'wx'` 不再被忽略。合法新文件正常导出，已有文件内容不变。回滚生产修复会重新引入风险，spec 第 7.4 节明确保留 RED。
+
+**证据边界**：全部临时目录，无网络、模型、剪贴板、远程分享或内存峰值断言。spec 保持 draft，原 Finding 保持 open。
+
+---
+
+## 整改台账：B3-session-search-recovery-01（2026-11-19 追加）
+
+**Finding ID**：B3-session-search-recovery-01；主责 spec：session-search-recovery。
+
+新增 `tests/sessionSearchRecovery.test.ts` 并唯一登记 coverage，6 个测试、23 个断言：
+
+- >64KiB JSONL 的真实 head/tail lite 读取，title/firstPrompt/cwd/tag/gitBranch/createdAt 恢复；sidechain 和无 summary metadata 过滤。
+- 跨项目命令生成与 ant 同 worktree 直接恢复判断。
+- 真实 `registerSession`、name/bridge 更新、session switch、stale-delete 防护。
+- registry 损坏/pid 不匹配/symlink 过滤、非运行 PID 计数、interactive/bg tombstone 分支。
+- 不注入 dependencies 的默认多项目 backfill：两个有效 transcript 重建，损坏隔离，第二次保留 metadata。
+
+既有 `backfillSessionsCommand.test.ts` 继续覆盖 dry-run/force/锁/原子写，未重复替代。无生产代码、模型、上传、远程恢复或私有协议调用。spec 第 7 节同步修正不存在的 `src/sessions/*` 路径为当前实现路径，并记录三层证据和回滚。
+
+**原 Finding 状态**：B3-session-search-recovery-01 保持 open，spec 保持 draft。
+
+---
+
+## 整改台账：B3-git-integration-03（2026-11-19 追加）
+
+**Finding ID**：B3-git-integration-03；主责 spec：git-integration。
+
+新增 `tests/gitIntegration.test.ts` 并唯一登记 coverage，4 个真实本地 Git 场景、26 个断言：
+
+- 普通仓库的 gitdir、loose/packed refs、detached HEAD、ref/SHA 白名单。
+- 真实 worktree 的独立 HEAD 与主仓库隔离，commonDir 的 remote/count/shallow。
+- GitFileWatcher 在 branch 切换、commit、detach、remote config 修改后重新计算。
+- worktree watcher 观察 common config 修改。
+
+临时根目录先 `realpath`，避免 macOS `/var` 与 `/private/var` 分裂造成假失败。无生产代码变更、远程访问、凭据或全局 Git 配置写入；只写临时仓库。reftable、Windows、Git LFS、并发和真实远程仍未覆盖。
+
+**原 Finding 状态**：B3-git-integration-01/02/03 均保持 open；01/02 的 P3 建议不实施。spec 保持 draft，第 7/7.4 节记录三层证据和回滚。
+
+---
+
+## 整改台账：B3-notifications-01（2026-11-19 追加）
+
+**Finding ID**：B3-notifications-01；主责 spec：notifications。
+
+新增 `tests/notifications.test.tsx` 与 `tests/notificationsServices.test.ts` 并唯一登记 coverage，共 14 个测试、46 个断言：
+
+- 真实 Ink + AppStoreContext 渲染 `useNotifications`，直接观察 current/queue：普通 high 不抢占当前项、后续 high 先于 medium；immediate 抢占并重入队；current/queued fold；invalidates；remove 和短 timeout 队列推进。
+- 后台通知仅折叠连续 completed bash，失败保留；verbose/fullscreen-disabled 原样保留。
+- 真实 notifier channel 逻辑：terminal_bell、disabled，以及 osascript/defaults 边界 mock 驱动的 Apple Terminal Bell=false 补偿 bell。
+- 真实 PushNotificationTool：webhook 成功字段、503 不降级 OS、无 webhook 的 OS 成功和无 adapter 错误。
+
+**证据边界**：全部离线；OS hooks、osascript/defaults、axios 只替换外部边界，无真实终端视觉、webhook、远程通知或私有协议验收。spec 第 7/7.3 节记录官方文档、上游 strings、当前缺口和回滚。无生产代码变更。
+
+**原 Finding 状态**：B3-notifications-01 保持 open，spec 保持 draft。
+
+---
+
+## 整改台账：B3-auth-02 / 增量 B3-auth-03（2026-11-19 追加）
+
+**Finding ID**：B3-auth-02；主责 spec：auth。新增 B3-auth-03 是本轮发现的生产缺陷，不计入原始 234 条。
+
+首轮 `c8b0a8b` 的 35 个测试未检查 0600 mode、未发真实 listener HTTP，也缺少 OAuth client/core；报告却列出这些场景，不能验收。最终扩展为 `tests/auth.test.ts` + `tests/authRemote.test.ts`，共 44 个测试、95 个断言：
+
+- plainTextStorage 的真实 0600、JSON、读写删和 warning 不泄密；fallback 的迁移/清理副作用。
+- 精确 SHA-256/base64url PKCE S256 和 state。
+- 真实临时 FD、已知文件读取、非 CCR 不写；auth core 在 hermetic test 分支验证 env、OAuth-only 和第一方 IDE 的 FD 优先级，不触达 Keychain。
+- 真实本地 listener 的成功 code/state、302、缺 code/state mismatch 400、连续错误请求和 close 事件。
+- axios 边界的真实 authorization grant、401、profile 映射/错误隔离和 roles 全局配置写入。
+
+**增量缺陷 RED→GREEN**：连续 `waitForAuthorization()` 旧实现累加 request/error handler，第二次错误回调触发 `ERR_HTTP_HEADERS_SENT`。`auth-code-listener.ts` 改用 `once` 后连续错误响应与成功/close 场景通过。回滚该生产修复会重新引入缺陷，spec 第 7.3 节明确风险，未把它写成无风险。
+
+**边界与安全**：全部 dummy token 仅在内存/临时文件，不打印；无真实 Keychain、远程登录、浏览器、OAuth provider、CCR/Desktop 或私有协议调用。首轮 CCR 分支测试已删除，检查未发现 `/home/claude/.claude/remote` 目录副作用。真实手动 code、完整 managed/apiKeyHelper、Keychain/libsecret 和 live OAuth 仍保留缺口。
+
+**原 Finding 状态**：B3-auth-01/02 原行保持 open；agent 曾改为 in-progress 的行已恢复原文。spec 保持原 approved 状态，两个测试文件唯一登记 coverage。
+
+---
+
+## 修复台账：B3-settings-01（2026-11-19 最终返工）
+
+**Finding ID**：B3-settings-01；B3-settings-02/03 只保留 P3 设计审阅，不实施可配置窗口。
+
+首轮 `7e9bbe5` 只有 8 个 helper 测试，独立评审指出 core/cache/update/detector/managed/migration/remote/policy/sync 大部分声明与实现不符；另一次代理中断留下部分测试，也未作为完成证据。最终拆成 3 个真实测试文件，共 34 个测试、69 个断言：
+
+- `tests/settings.test.ts`：真实多来源优先级、数组/对象合并、显式 undefined 删除、缓存 reset、无效 JSON 原样保留、权限 validation、internal write、managed base + 字母序 drop-in、autoUpdates/bypass 迁移和幂等。
+- `tests/settingsChangeDetector.test.ts`：真实 chokidar watcher，内部写不通知、外部写通知、delete→recreate 合并为一次通知、后续真删除再次通知；完整关闭 watcher。
+- `tests/settingsRemote.test.ts`：真实生产 304 流程发送确定性 If-None-Match 并保留缓存；policy cache-miss 的 essential-traffic fail-closed、未知 policy fail-open 和缓存显式 allow/deny；settings sync 白名单、500KiB 限制和缓存失效。
+
+**必要的可测试性重构**：`DOWNLOAD_USER_SETTINGS` 是编译期关闭的宏，不能靠模块 mock 打开已消除代码。先得到缺少 `localFileSync.ts` 的真实 RED，再把原 `applyRemoteEntriesToLocal` 和大小常量原样抽到 `src/services/settingsSync/localFileSync.ts`，gated 入口继续调用同一实现。没有启用外部 feature、改变同步行为或访问远程服务。类型检查曾发现上传构建仍需要 `getMemoryPath`，已恢复导入并复验。
+
+**证据边界**：全部使用临时目录和本地 watcher；axios/OAuth 只替换外部边界，dummy token 不是凭据且不输出。未执行真实上传/下载、组织策略、远程设置、MDM、模型或桌面 live。spec 第 7/7.3 节记录三层证据、未覆盖项和回滚；coverage 使用唯一 `settings-offline-contract-tests` 分组并登记新生产模块。
+
+**原 Finding 状态**：B3-settings-01/02/03 均保持 open，不修改历史统计。spec 保持 draft。源码行为。原 Finding ID、原发现和历史统计均保留。
+
+---
 
 ### 说明
 

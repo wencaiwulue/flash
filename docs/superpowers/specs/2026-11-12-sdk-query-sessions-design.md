@@ -1071,6 +1071,12 @@ export function emitTaskTerminatedSdk(taskId, status, opts): void
 - session-persistence 负责持久化消息历史，sdkEventQueue 负责临时运行时事件流
 - 两者通过 `session_id`：关联，但独立存储和消费
 
+**当前验证与 heap monitor 边界（B0-sdk-query-sessions-01）**
+- `tests/sdkEventQueue.test.ts` 10 项：FIFO、交互模式不排队、1000 容量丢弃最旧、drain 清空、uuid/session_id、task termination 参数和显式 disabled heap monitor。
+- `resetSdkEventQueueForTests()` 只允许 `NODE_ENV=test`，避免生产清理其他会话事件；queue 仍是进程级单例。
+- `sdkHeapDumpMonitor` 维持 `{enabled:false}`：这是 Ant 内部 heap 工具依赖，本仓库 external build 不伪造 dump 生命周期或远程上传；`startSdkMemoryMonitor()` 可重复调用且无启用副作用。若未来提供真实实现，必须另建资源生命周期、文件权限和测试，不以存根冒充完成。
+- spec 保持 draft；原 Finding 行保持 open，整改证据只追加台账。
+
 ### 4.10 架构与资源边界图
 
 ```text

@@ -6,6 +6,10 @@
 
 import { readdir } from 'fs/promises'
 import { basename, join } from 'path'
+import {
+  MemoryPathValidator,
+  PathTraversalError,
+} from '../services/SessionMemory/sessionMemoryUtils.js'
 import { parseFrontmatter } from '../utils/frontmatterParser.js'
 import { readFileInRange } from '../utils/readFileInRange.js'
 import { type MemoryType, parseMemoryType } from './memoryTypes.js'
@@ -37,6 +41,7 @@ export async function scanMemoryFiles(
   signal: AbortSignal,
 ): Promise<MemoryHeader[]> {
   try {
+    const validator = new MemoryPathValidator(memoryDir)
     const entries = await readdir(memoryDir, { recursive: true })
     const mdFiles = entries.filter(
       f => f.endsWith('.md') && basename(f) !== 'MEMORY.md',
@@ -44,18 +49,28 @@ export async function scanMemoryFiles(
 
     const headerResults = await Promise.allSettled(
       mdFiles.map(async (relativePath): Promise<MemoryHeader> => {
-        const filePath = join(memoryDir, relativePath)
+        // Fast-path plausibility check first
+        const candidatePath = join(memoryDir, relativePath)
+        if (!validator.isPlausiblyWithinMemoryDir(candidatePath)) {
+          throw new PathTraversalError(
+            `Path ${candidatePath} is not within memory directory ${memoryDir}`,
+          )
+        }
+
+        // Full realpath validation
+        const validatedPath = await validator.validateRealPathContainment(candidatePath)
+
         const { content, mtimeMs } = await readFileInRange(
-          filePath,
+          validatedPath,
           0,
           FRONTMATTER_MAX_LINES,
           undefined,
           signal,
         )
-        const { frontmatter } = parseFrontmatter(content, filePath)
+        const { frontmatter } = parseFrontmatter(content, validatedPath)
         return {
           filename: relativePath,
-          filePath,
+          filePath: validatedPath,
           mtimeMs,
           description: frontmatter.description || null,
           type: parseMemoryType(frontmatter.type),

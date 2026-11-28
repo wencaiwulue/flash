@@ -65,6 +65,7 @@ groups:
   - id: remote-tests
     kind: test
     section: 7
-    summary: 远程控制与 direct-connect 测试：认证、幂等、重放、权限、空闲回收、Unix socket
+    summary: 远程控制与 direct-connect 测试：认证、幂等、重放、权限、空闲回收、Unix socket、SessionsWebSocket 重连、sdkMessageAdapter 转换
     files:
       - tests/directConnect.test.ts
+      - tests/remoteControl.test.ts

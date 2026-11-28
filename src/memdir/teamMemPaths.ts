@@ -3,16 +3,9 @@ import { dirname, join, resolve, sep } from 'path'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 import { getErrnoCode } from '../utils/errors.js'
 import { getAutoMemPath, isAutoMemoryEnabled } from './paths.js'
+import { isRealPathContainedSync, PathTraversalError } from './realPathContainment.js'
 
-/**
- * Error thrown when a path validation detects a traversal or injection attempt.
- */
-export class PathTraversalError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'PathTraversalError'
-  }
-}
+export { PathTraversalError } from './realPathContainment.js'
 
 /**
  * Sanitize a file path key by rejecting dangerous patterns.
@@ -208,15 +201,44 @@ async function isRealPathWithinTeamDir(
 /**
  * Check if a resolved absolute path is within the team memory directory.
  * Uses path.resolve() to convert relative paths and eliminate traversal segments.
- * Does NOT resolve symlinks — for write validation use validateTeamMemWritePath()
- * or validateTeamMemKey() which include symlink resolution.
+ * Does NOT resolve symlinks - for security-sensitive validation use
+ * validateTeamMemWritePath(), validateTeamMemReadPath(), or validateTeamMemKey()
+ * which include symlink resolution.
+ *
+ * NOTE: This synchronous check resolves the deepest existing path and the
+ * team root so permission and read classification fail closed on symlink escapes.
  */
 export function isTeamMemPath(filePath: string): boolean {
-  // SECURITY: resolve() converts to absolute and eliminates .. segments,
-  // preventing path traversal attacks (e.g. "team/../../etc/passwd")
+  return isRealPathContainedSync(filePath, getTeamMemPath())
+}
+
+/**
+ * Validate that an absolute file path is safe for reading from team memory.
+ * Returns the resolved real path if valid.
+ * Throws PathTraversalError if the path contains injection vectors or escapes
+ * the directory via symlink (PSR M22186).
+ *
+ * B3-memory-01 FIX: This validates symlink containment before reads, ensuring
+ * symlinks can't escape the team directory.
+ */
+export async function validateTeamMemReadPath(filePath: string): Promise<string> {
+  if (filePath.includes('\0')) {
+    throw new PathTraversalError(`Null byte in path: "${filePath}"`)
+  }
+
   const resolvedPath = resolve(filePath)
   const teamDir = getTeamMemPath()
-  return resolvedPath.startsWith(teamDir)
+
+  if (!resolvedPath.startsWith(teamDir)) {
+    throw new PathTraversalError(`Path escapes team memory directory: "${filePath}"`)
+  }
+
+  const realPath = await realpathDeepestExisting(resolvedPath)
+  if (!(await isRealPathWithinTeamDir(realPath))) {
+    throw new PathTraversalError(`Path escapes team memory directory via symlink: "${filePath}"`)
+  }
+
+  return realPath
 }
 
 /**

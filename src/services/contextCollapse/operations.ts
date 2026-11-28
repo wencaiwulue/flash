@@ -1,5 +1,5 @@
 import type { Message } from '../../types/message.js'
-import { collapseStore } from './store.js'
+import { collapseStore, type ContextCollapseState } from './store.js'
 
 function uuidOf(message: Message): string | undefined {
   return 'uuid' in message && typeof message.uuid === 'string'
@@ -8,9 +8,13 @@ function uuidOf(message: Message): string | undefined {
 }
 
 /** Replay committed spans over full history. Already projected views are stable. */
-export function projectView<T extends Message>(messages: T[]): T[] {
+export function projectView<T extends Message>(
+  messages: T[],
+  state?: ContextCollapseState,
+): T[] {
+  const store = state ?? collapseStore
   let view: Message[] = [...messages]
-  for (const commit of collapseStore.committed) {
+  for (const commit of store.committed) {
     if (view.some(message => uuidOf(message) === commit.summaryUuid)) continue
     const first = view.findIndex(
       message => uuidOf(message) === commit.firstArchivedUuid,

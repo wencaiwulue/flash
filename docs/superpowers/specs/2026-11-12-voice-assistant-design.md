@@ -689,47 +689,31 @@ type NormalizedLanguage = {
 
 ## 7. 代码与测试证据
 
-| 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
-|---|---|---|---|
-| 延迟加载音频模块：第一次按键才 import voice.ts | `src/hooks/useVoice.ts:136-141, src/services/voice.ts:40-60` | 无直接测试覆盖 | 手动验证第一次按键触发权限弹窗 |
-| 音频缓冲 + 并行连接：同时启动录音和连接 WebSocket | `src/hooks/useVoice.ts:626-632` | 无直接测试覆盖 | 手动验证音频在连接前被缓冲 |
-| 静默drop 检测与重放：fullAudioRef 缓存完整音频，finalize() 检测 no-data timeout 且有音频信号时重放一遍 | `src/hooks/useVoice.ts:336-369` | 无直接测试覆盖 | 手动验证静默drop 时重放逻辑 |
-| 键释放检测：两个 timeout（releaseTimer + repeatFallbackTimer）+ 看到 auto-repeat 才启动 releaseTimer | `src/hooks/useVoice.ts:160-167, 1092-1098, 1108-1119` | 无直接测试覆盖 | 手动验证按键释放检测逻辑 |
-| Key terms 提升 STT 准确率：全局术语 + 项目名 + 分支名 + 最近文件名 | `src/services/voiceKeyterms.ts:66-106` | 无直接测试覆盖 | 手动验证 key terms 通过 query 参数传递 |
-| 录音可用性预检查：probe arecord 等，检测环境 | `src/services/voice.ts:282-336, 99-142` | 无直接测试覆盖 | 手动验证 arecord probe 逻辑 |
-| Focus 模式 5s 静默超时：focus 模式下停止录音机制 | `src/hooks/useVoice.ts:234-239` | 无直接测试覆盖 | 手动验证 Focus 模式静默超时 |
-| 语音 API 端点自带 silence detection：voice_stream 使用 Deepgram 语音活动检测 | `src/services/voiceStreamSTT.ts:145-150` | 无直接测试覆盖 | 手动验证端点检测参数传递 |
-| 语音状态共享：VoiceContext + useVoiceState() 钩子 | `src/context/voice.tsx` | 无直接测试覆盖 | 手动验证状态共享机制 |
-| 终端输入集成：stripTrailing() 清理占位空格，handleVoiceTranscript() 插入最终文本，锚定前缀后缀 | `src/hooks/useVoiceIntegration.tsx:163-213, 306-338, 405-710` | 无直接测试覆盖 | 手动验证输入集成逻辑 |
+最终 `tests/voiceAssistant.test.tsx`：12 个测试、58 个断言，普通与外部 VOICE_MODE profile 均通过。
 
-### 7.1 核心模块
-
-| 文件 | 关键符号 | 说明 |
+| 场景 | 真实生产行为与断言 | 证据边界 |
 |---|---|---|
-| `src/voice/voiceModeEnabled.ts` | `isVoiceGrowthBookEnabled()`、`hasVoiceAuth()`、`isVoiceModeEnabled()` | 语音模式启用检查（Growthbook kill-switch + OAuth） |
-| `src/services/voice.ts` | `loadAudioNapi()`、`startRecording()`、`stopRecording()`、`checkVoiceDependencies()`、`checkRecordingAvailability()`、`requestMicrophonePermission()`、`probeArecord()`、`linuxHasAlsaCards()` | 录音核心逻辑、平台适配（原生/arecord/sox）、环境检查、权限请求 |
-| `src/services/voiceKeyterms.ts` | `getVoiceKeyterms()`、`splitIdentifier()`、`fileNameWords()` | STT 提升术语生成 |
-| `src/services/voiceStreamSTT.ts` | `connectVoiceStream()`、`isVoiceStreamAvailable()`、`FINALIZE_TIMEOUT_MS`、`KEEPALIVE_INTERVAL_MS` | voice_stream WebSocket 连接、协议处理、finalize 逻辑、重连逻辑、Nova 3 开关 |
-| `src/context/voice.tsx` | `VoiceProvider`、`useVoiceState()`、`useSetVoiceState()`、`useGetVoiceState()` | 语音状态共享上下文 |
-| `src/hooks/useVoice.ts` | `useVoice()`、`startRecordingSession()`、`finishRecording()`、`cleanup()`、`handleKeyEvent()`、`computeLevel()`、`normalizeLanguageForSTT()`、`RELEASE_TIMEOUT_MS`、`FOCUS_SILENCE_TIMEOUT_MS`、`AUDIO_LEVEL_BARS` | 语音主 hook、hold-to-talk 逻辑、focus 模式逻辑、静默drop 重放、early error 重试、键释放检测 |
-| `src/hooks/useVoiceEnabled.ts` | `useVoiceEnabled()` | React hook，结合 user intent + auth + growthbook |
-| `src/hooks/useVoiceIntegration.tsx` | `useVoiceIntegration()`、`stripTrailing()`、`resetAnchor()`、`useVoiceKeybindingHandler()`、`VoiceKeybindingHandler()` | 与终端输入框集成、键事件处理、占位文本管理、临时占位符波形显示锚定 |
-| `src/commands/voice/voice.ts` | `call()` | `/voice` 命令实现、预检查、启用/禁用、提示显示 |
+| hold-to-talk | 首次 keypress 启动一次，auto-repeat 后 release 触发一次 finalize，transcript 精确为 hello，stop 幂等 | 真实 useVoice/VoiceProvider；fake 仅音频和 STT 外部接口 |
+| early error | 首次 pre-transcript error 后等待 250ms 只重试一次，连接前音频在第二次 onReady 完整 flush，后续无第三次连接 | 可控 earlyError/normal 连接，非真实网络 |
+| silent drop | no_data_timeout + hadAudioSignal + wsConnected 触发一次 replay，原音频字节一致并输出 recovered，不循环 | 可控 noData/replaySuccess；不声称私有 CE pod 行为已 live 验证 |
+| focus | final transcript 立即 flush 且保持 recording，生产 `setTerminalFocused(false)` 后 finalize；5s silence 后停止，下一 focus cycle 重新启动 | 真实 terminal-focus-state 与 Hook effect；不读取物理终端焦点 |
+| 失败/清理 | availability=false、startRecording=false 返回精确错误且不创建 STT；卸载后的 zombie retry connection 被关闭且不注入文本 | mock 仅设备/连接边界，状态机完整执行 |
+| stripTrailing/anchor | `hel  world` → `hel world`，resetAnchor → `helworld`；full-width space 按 hold-key 处理，prefix/suffix 不被覆盖 | 稳定生产式 inputValueRef/insertTextRef，覆盖普通与 VOICE_MODE |
+| helpers | 支持/回退语言、PCM RMS、splitIdentifier 的 camel/kebab/snake/path 与短片段过滤 | 纯函数离线，不代替状态机覆盖 |
 
-### 7.2 未覆盖行为（基于代码阅读）
+### 7.1 三层证据与 mock 边界
 
-- 完整 hold-to-talk 端到端流程测试
-- Focus 模式自动录音/停止/静默超时测试
-- 静默drop 检测与重放测试
-- early error 透明重试测试
-- arecord/sox 子进程 fallback 测试
-- 键释放检测 timer 竞态测试（auto-repeat 到达顺序、fallback 定时器等）
-- stripTrailing() 清理多余空格、锚定前缀后缀测试
-- 多语言代码列表外语言 fallback 到英文测试
-- 远程/CCR 环境禁用语音测试
-- macOS 权限请求与拒绝测试
-- 音频电平直方图波形显示测试
-- Nova 3 开关行为测试（禁用 auto-finalize、使用 conversation-engine）
+| 层 | 实际证据 | 不能推出的结论 |
+|---|---|---|
+| 官方公开文档 | [Voice dictation](https://code.claude.com/docs/en/voice-dictation.md) 说明 hold/tap、释放后插入光标位置、语言列表、Claude.ai/麦克风要求、连接与音频错误 | 文档不公开 silent-drop replay、early retry 250ms、focus 5s 或本仓库 WebSocket 私有协议实现 |
+| 本机上游二进制 | 只读 `strings /opt/homebrew/bin/claude` 命中 FIRST_PRESS_FALLBACK_MS、stripTrailing、retrying once、no_data_timeout、silentDropRetried、early voice_stream error、Voice connection failed | strings 不证明重放成功、状态时序或私有协议兼容；没有执行上游语音服务 |
+| 本仓库 | `useVoice.ts`、`useVoiceIntegration.tsx`、VoiceProvider/terminal-focus-state、可控 voice.ts/voiceStreamSTT 边界及上述测试 | fake 结果是 offline 行为验证，不是麦克风、OAuth、网络或私有协议 live |
+
+### 7.2 未覆盖行为与回滚
+
+- 真实麦克风/原生音频、arecord/SoX 子进程 fallback、macOS 权限、OAuth/Claude.ai、真实 WebSocket/Nova 3、私有协议和物理终端交互未验证。
+- tap 模式、/voice 命令全部 UI、真实 keybinding listener 顺序、远程/CCR 禁用矩阵与波形完整 UI 仍需后续环境或独立批次。
+- 回滚整组移除测试及 coverage entry、撤销本节和原审计追加台账，保持原 Finding open/spec draft，并重新运行 full test/typecheck/build/design checker；不得用 mock 结果声称环境阻塞项已通过。
 
 ## 8. 文件覆盖与相关子系统
 

@@ -17,3 +17,4 @@ groups:
       - tests/playwrightInlinePlugin.test.ts
       - tests/interactiveStartup.test.ts
       - tests/toolSmokeClassify.test.ts
+      - tests/claudeInChromeWiring.test.ts

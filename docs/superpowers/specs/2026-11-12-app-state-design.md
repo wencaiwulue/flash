@@ -3,7 +3,7 @@ id: app-state
 batch: 4
 title: App State 应用状态、订阅与生命周期设计
 date: 2026-11-12
-status: draft
+status: approved
 ---
 
 # App State 应用状态、订阅与生命周期设计
@@ -51,6 +51,7 @@ Claude Code 需要管理应用级别的共享状态（设置、权限模式、�
 | 计算选择器：纯函数无状态 | `selectors.ts` 中的 `getViewedTeammateTask`、`getActiveAgentForInput` 是纯函数，接收 AppState 参数返回计算结果 | 简单、可测试、无缓存一致性问题；由 React 组件调用时配合 useAppState 自动重新计算 | 带缓存的选择器（Reselect）：需要维护缓存 key，当前场景下计算简单，收益不高 | 每次调用都重新计算，计算复杂时可能有性能问题（当前实现下可接受） | `src/state/selectors.ts:1-76` |
 | Teammate 视图逻辑集中在 teammateViewHelpers | `enterTeammateView`、`exitTeammateView`、`stopOrDismissAgent` 等辅助函数封装任务状态的复杂转换逻辑 | 避免组件中散落重复的状态转换代码；集中管理任务 retain/release、evictAfter 设置、viewSelectionMode 切换等 | 直接在组件中修改 AppState：代码重复，容易遗漏某个字段的更新 | 辅助函数需传入 setAppState，依赖 AppState 的类型定义 | `src/state/teammateViewHelpers.ts:46-141` |
 | **无订阅者过滤/去重** | `setState` 无条件调用所有 listeners，包括触发更新的模块本身 | 简单、可预测；调用链清晰，没有隐式行为 | 跟踪调用栈/订阅者身份并过滤：增加复杂度，容易出错；延迟通知批处理：引入更多状态，难以推理 | 订阅者必须自己处理可能的循环更新；比较 oldState/newState 或使用标志位避免递归 | `src/state/store.ts:26` [B4-app-state-01] |
+| **FIFO 通知队列与嵌套更新防护** | `setState` 检测是否正在通知 (`isNotifying`)，如果是则将更新加入队列 (`updateQueue`)，当前通知完成后按顺序处理队列；调用 listeners 时使用展开的 `[...listeners]` 避免通知期间 unsubscribe 导致的问题 | 防止嵌套 setState 调用导致栈溢出；确保所有更新按顺序处理；通知期间 unsubscribe 不影响当前迭代 | 同步处理所有嵌套更新：导致栈溢出风险；不处理队列：可能丢失更新或顺序不一致 | 增加少量状态管理；队列处理确保顺序；测试覆盖嵌套场景 | `src/state/store.ts:14-35` [Remediation] |
 
 ## 3. 目标与非目标
 
@@ -600,7 +601,24 @@ Object.is(prev, new) → false → 组件重新渲染
 
 ### 7.3 测试覆盖
 
-**无直接测试覆盖**，相关测试可能在其他模块测试中间接验证。
+| 场景 | 真实测试与不变量 | 证据边界 |
+|---|---|---|
+| Store FIFO | `tests/appStateStore.test.ts` 覆盖嵌套 setState、FIFO 和 unsubscribe | 保留既有修复，不重复实施 |
+| selector 渲染隔离 | `tests/appStateReact.test.tsx` 真实 Ink/Provider：verbose 变化只重渲染 verbose probe，tasks 变化只重渲染 tasks probe，同引用更新无通知 | 不做 React 版本/浏览器 DOM live；使用当前 Ink renderer |
+| Provider 嵌套错误 | 嵌套 Provider 在 Ink 输出中包含明确的 `can not be nested` 错误 | Ink 捕获并展示错误，不是未捕获 rejection |
+| 外部设置同步 | 临时 userSettings 文件变更 + `notifyChange` 更新 `AppState.settings.model/verbose` | 不错误断言 top-level model/verbose；真实 UI/MDM/live 未覆盖 |
+| onChange 配置副作用 | `tests/appStateOnChange.test.ts` 验证 verbose/expandedView 全局配置、settings env 清缓存、model settings/bootstrap override | auth/settings/managedEnv/sessionState 只替换外部边界，无真实凭据或远程 |
+| 权限外部化 | default→bubble 只发 raw mode；bubble→plan 发 raw plan 和 CCR metadata `{permission_mode:'plan',is_ultraplan_mode:true}` | 不执行真实 CCR/SDK 控制通道 |
+
+### 7.4 三层证据与回滚
+
+| 层级 | 只读证据 | 边界 |
+|---|---|---|
+| 官方文档 | [Settings](https://code.claude.com/docs/en/settings)说明运行中 watch/reload；[Commands](https://code.claude.com/docs/en/commands)提供权限/模型相关公开命令语义 | AppState selector、onChange 字段映射和 CCR 外部化属于本仓库实现，不能从公开文档推断 |
+| 本机上游二进制 | `strings $(command -v claude)` 命中 `useSyncExternalStore`、`onChangeAppState`、Provider 嵌套错误和 `clearApiKeyHelperCache` | 只证明符号存在，不证明渲染次数或控制通道 live |
+| 本仓库 | 既有 store 测试 + 新 React/onChange 测试，共 7 个新测试、28 个断言 | 全部离线，不是浏览器、桌面、真实凭据或 CCR live |
+
+本轮无生产代码变更。回滚只需删除两个测试文件、coverage entries 和本节证据；spec 保持原 approved 状态，B4-app-state-01/02 原 Finding 保持 open。
 
 ## 8. 文件覆盖与相关子系统
 

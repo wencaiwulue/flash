@@ -136,3 +136,4 @@ groups:
     files:
       - tests/bashClassifier.test.ts
       - tests/bashPermissionsClassifier.test.ts
+      - tests/shell-tools.test.ts

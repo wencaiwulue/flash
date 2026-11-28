@@ -1,10 +1,13 @@
 import { execFileSync } from 'child_process'
+import { randomUUID } from 'crypto'
 import { constants as fsConstants, type Dirent } from 'fs'
 import {
   copyFile,
   mkdir,
   mkdtemp,
+  open,
   readdir,
+  rename,
   readFile,
   rm,
   unlink,
@@ -519,7 +522,7 @@ async function formatTranscriptWithSummarization(
   return header + summaries.join('\n\n---\n\n')
 }
 
-async function loadCachedFacets(
+export async function loadCachedFacets(
   sessionId: string,
 ): Promise<SessionFacets | null> {
   const facetPath = join(getFacetsDir(), `${sessionId}.json`)
@@ -537,21 +540,36 @@ async function loadCachedFacets(
     }
     return parsed
   } catch {
+    // Invalid JSON must also invalidate the cache so the next run re-extracts.
+    await unlink(facetPath).catch(() => undefined)
     return null
   }
 }
 
-async function saveFacets(facets: SessionFacets): Promise<void> {
+export async function saveFacets(facets: SessionFacets): Promise<void> {
+  const directory = getFacetsDir()
+  await mkdir(directory, { recursive: true, mode: 0o700 })
+  const facetPath = join(directory, `${facets.session_id}.json`)
+  const temporaryPath = `${facetPath}.${randomUUID()}.tmp`
+  let handle: Awaited<ReturnType<typeof open>> | undefined
   try {
-    await mkdir(getFacetsDir(), { recursive: true })
-  } catch {
-    // Directory may already exist
+    handle = await open(temporaryPath, 'wx', 0o600)
+    await handle.writeFile(jsonStringify(facets, null, 2), 'utf8')
+    await handle.sync()
+    await handle.close()
+    handle = undefined
+    await rename(temporaryPath, facetPath)
+    const directoryHandle = await open(directory, 'r')
+    try {
+      await directoryHandle.sync()
+    } finally {
+      await directoryHandle.close()
+    }
+  } catch (error) {
+    if (handle) await handle.close().catch(() => undefined)
+    await unlink(temporaryPath).catch(() => undefined)
+    throw error
   }
-  const facetPath = join(getFacetsDir(), `${facets.session_id}.json`)
-  await writeFile(facetPath, jsonStringify(facets, null, 2), {
-    encoding: 'utf-8',
-    mode: 0o600,
-  })
 }
 
 

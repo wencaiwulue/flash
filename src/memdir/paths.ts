@@ -2,6 +2,12 @@ import memoize from 'lodash-es/memoize.js'
 import { homedir } from 'os'
 import { isAbsolute, join, normalize, sep } from 'path'
 import {
+  isRealPathContainedSync,
+  validateRealPathContainmentSync,
+} from './realPathContainment.js'
+
+export { PathTraversalError } from './realPathContainment.js'
+import {
   getIsNonInteractiveSession,
   getProjectRoot,
 } from '../bootstrap/state.js'
@@ -270,9 +276,18 @@ export function getAutoMemEntrypoint(): string {
  * user's explicit choice from a trusted settings source (projectSettings is
  * excluded — see getAutoMemPathSetting), and hasAutoMemPathOverride() remains
  * false for it.
+ *
+ * NOTE: This synchronous check resolves the deepest existing path and auto
+ * memory root so permission and read classification fail closed on escapes.
  */
 export function isAutoMemPath(absolutePath: string): boolean {
-  // SECURITY: Normalize to prevent path traversal bypasses via .. segments
-  const normalizedPath = normalize(absolutePath)
-  return normalizedPath.startsWith(getAutoMemPath())
+  return isRealPathContainedSync(absolutePath, getAutoMemPath())
+}
+
+/**
+ * Validate that an absolute file path is safe for reading from auto memory.
+ * Returns the canonical real path if valid.
+ */
+export async function validateAutoMemReadPath(filePath: string): Promise<string> {
+  return validateRealPathContainmentSync(filePath, getAutoMemPath())
 }

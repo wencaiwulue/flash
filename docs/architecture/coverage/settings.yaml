@@ -23,6 +23,14 @@ groups:
     files:
       - tests/envCommand.test.ts
       - tests/envLessPerpetual.test.ts
+  - id: settings-offline-contract-tests
+    kind: test
+    section: 7
+    summary: Settings 本地配置、变更检测和远程边界的离线契约测试
+    files:
+      - tests/settings.test.ts
+      - tests/settingsChangeDetector.test.ts
+      - tests/settingsRemote.test.ts
   - id: commands
     kind: source
     section: 4
@@ -130,6 +138,7 @@ groups:
     summary: 用户设置跨设备同步，包括上传（CLI）、下载（CCR）、增量变更检测
     files:
       - src/services/settingsSync/index.ts
+      - src/services/settingsSync/localFileSync.ts
       - src/services/settingsSync/types.ts
   - id: settings-migrations
     kind: source

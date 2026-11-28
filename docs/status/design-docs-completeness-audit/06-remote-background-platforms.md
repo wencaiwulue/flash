@@ -1012,3 +1012,51 @@
 
 **审计完成时间**：2026-11-16
 **审计者**：Claude Code Audit Agent
+
+## 增量整改台账（2026-11-18 追加，不改变上述历史统计）
+
+- **新增 Finding `B6-remote-control-04`（P2，fixed）**：PR #19 Linux CI 发现 direct-connect `attach()` 未等待 `runtime.eventChain`，可能在事件写入/轮转完成前发送 ready，导致 `replay_reset` 缺失。主责 spec：`2026-11-12-remote-control-design.md`。
+- **RED**：原 CI `tests/directConnect.test.ts` 的 rotation 用例实际失败；增加受控 eventChain 后，本地 `bun test tests/directConnect.test.ts --timeout 60000` 退出 1，证明 gate 未释放前已错误发送 ready。
+- **GREEN**：`attach()` 仅增加一次 `await runtime.eventChain`，新到事件继续由 replay buffer 承接；同一 focused 命令退出 0（14 pass，0 fail）。
+- **证据边界**：本地 loopback/offline 验证，不表示 CCR 私有协议兼容；官方文档和 upstream strings 边界见主责 spec。原 3 个 remote-control Finding 与历史统计不变。
+
+## Phase B Deep Link 行为整改（2026-11-20 追加）
+
+- **Finding**：B6-deep-link-04；主责 spec：`2026-11-12-deep-link-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
+- **实现**：新增并唯一登记 `tests/deepLink.test.ts`，6 个测试、26 个断言。覆盖 URI/Unicode round-trip、非法输入、handler repo/lastFetch、纯 argv query/repo/cwd、Linux `.desktop` 注册与 current/stale 检查。
+- **证据边界**：真实 parser/handler/launcher/注册逻辑，OS 命令、repo lookup 和 lastFetch 为边界替身；无真实桌面协议、终端或私有协议。macOS trampoline、Windows 注册表、banner UI、多克隆 MRU、shell quoting、worktreeinclude 和 `claude://` 双向链接仍未覆盖。
+- **隔离纠错**：初版测试曾误写真实 Applications/XDG artifact，均确认属于测试后删除；beforeEach 现在重设 HOME/XDG，最终真实路径无残留。Bun namespace 会被原地替换，生产 launcher 通过预先保存的函数引用验证，handler 继续用 mock。
+
+## Phase B Upstream Proxy Relay 整改（2026-11-20 追加）
+
+- **Finding**：B6-open-runner-07；主责 spec：`2026-11-12-open-runner-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
+- **实现**：新增并唯一登记 `tests/upstreamProxyRelay.test.ts`，5 个测试、20 个断言。覆盖 UpstreamProxyChunk 编解码/畸形输入、分片 CONNECT+pending、超大海报头、established 前 502、established 后仅关闭。
+- **证据边界**：真实 `startNodeRelay`、loopback TCP 和 fake WebSocket；未执行真实 CCR、证书/MITM、代理链或 Bun.listen，不声明私有协议兼容。B6-open-runner-04 的状态迁移工具是独立改进建议，未在此批次实现。
+
+## Phase B Platform Integrations 行为整改（2026-11-20 追加）
+
+- **Finding**：B6-platform-integrations-03；主责 spec：`2026-11-12-platform-integrations-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
+- **实现**：新增并唯一登记 `tests/platformIntegrations.test.tsx`，4 个测试、14 个断言。覆盖 schema-valid Desktop MCP 配置/缺失与非法 JSON、非默认 Chrome profile 扩展检测、真实 iOS/Android QR Tab/Escape、Slack 安装计数和失败 URL。
+- **证据边界**：真实生产逻辑与临时目录；openBrowser/os.homedir 为离线边界，未执行 native messaging、真实浏览器、OAuth、WSL 或私有协议。WSL 路径枚举、native messaging host、QR 失败降级、Desktop upsell 和其他浏览器平台未覆盖。
+
+## Phase B Remote Control 行为整改（2026-11-23 追加）
+
+- **Finding**：B6-remote-control-01, B6-remote-control-02；主责 spec：`2026-11-12-remote-control-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
+- **实现**：
+  - **修复 B6-remote-control 隐藏缺陷**：SessionsWebSocket handleClose 曾要求 `previousState === 'connected'`，导致重连中 socket 关闭时（previousState = connecting）直接放弃，普通 5 次预算无法耗尽。移除该检查后，所有 close（除 PERMANENT_CLOSE_CODES 和显式 closed）都消耗 reconnectAttempts 直到 MAX_RECONNECT_ATTEMPTS。
+  - **RED first**：先写真实 public-behavior 耗尽测试，运行在原始 src/remote/SessionsWebSocket.ts（未改变）确认 RED（仅 1 次 onReconnecting，不调用 final onClose）。
+  - **GREEN**：仅修改 handleClose 一处，移除 `previousState === 'connected'` 检查，保持所有其他逻辑（MAX_RECONNECT_ATTEMPTS=5、MAX_SESSION_NOT_FOUND_RETRIES=3、reconnectAttempts 重置、ping 等）不变。
+  - **完整测试**：新增并唯一登记 `tests/remoteControl.test.ts`（追加到 remote-control.yaml 的 remote-tests 分组），23 个测试、90 个断言，覆盖：
+    - sdkMessageAdapter：assistant/system/compact-boundary/result-error/tool-progress/unknown/user 消息完整转换
+    - SessionsWebSocket：connect/ping/4003 permanent/close cleanup/close prevents further reconnects/normal reconnect schedules with 2000ms/4001 retries with increasing delays/4001 resets after success/reconnect() forces with 500ms/normal reconnect exhausts budget and calls onClose/4001 exhausts budget and calls onClose
+    - RemoteSessionManager：onClose maps to onDisconnected
+  - **viewerOnly 修正**：移除无意义 viewerOnly 构造测试，改为 spec 中明确 viewerOnly 实际边界。原 spec "viewerOnly 永不放弃"不准确，实际 `src/hooks/useRemoteSession.ts` 仅在 `!config?.viewerOnly` 时创建响应超时并调用 manager.reconnect；SessionsWebSocket 无 viewerOnly 参数，仍受自身重连预算限制。
+- **证据边界**：
+  - RED/GREEN 证据：本地 bun test 输出，RED 在修改前，GREEN 在修改后。
+  - 三层证据：1. 官方文档：未重新获取（遵循边界，原 audit 已声明）；2. 本机上游 binary：仍为原 audit 提取；3. 外部契约：direct-connect-v1 不变，CCR 私有协议无契约。
+  - 未声明私有协议兼容，未连接 CCR 私有服务，仅 local/offline 验证。
+- **spec 更新**：
+  - 决策表添加修复后的重连策略说明，含三层证据边界
+  - 明确 viewerOnly 真实边界
+  - 第 7 节测试证据更新为 tests/remoteControl.test.ts
+- **所有门控同步通过**：bun test tests/remoteControl.test.ts（0 fail）、bun run test tests/remoteControl.test.ts（0 fail）、bun run typecheck（0 error）、bun run build（success）、bun scripts/check-design-docs.ts（0 error，仅 draft spec warnings）、git diff --check（clean）。

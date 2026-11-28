@@ -269,9 +269,11 @@ export function writeFileSync_DEPRECATED(
       typeof options === 'object' && 'mode' in options
         ? options.mode
         : undefined
+    const flag =
+      typeof options === 'object' && 'flag' in options ? options.flag : undefined
     let fd: number | undefined
     try {
-      fd = openSync(filePath, 'w', mode)
+      fd = openSync(filePath, flag ?? 'w', mode)
       fsWriteFileSync(fd, data, { encoding: encoding ?? undefined })
       fsyncSync(fd)
     } finally {

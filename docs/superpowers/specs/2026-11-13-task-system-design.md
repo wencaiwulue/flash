@@ -1267,6 +1267,41 @@ export function notifyTasksUpdated(): void
 | TaskCreateTool 实现 | `src/tools/TaskCreateTool/TaskCreateTool.ts:1-139` | 未找到直接测试 | 仅检查代码实现 |
 | TaskUpdateTool 实现 | `src/tools/TaskUpdateTool/TaskUpdateTool.ts:1-407` | 未找到直接测试 | 仅检查代码实现 |
 
+### 7.1 真实 framework/disk output 测试
+
+`tests/taskFramework.test.ts`：10 个测试、48 个断言，普通与外部 feature profile 均通过。
+
+| 场景 | 真实行为与断言 | 证据边界 |
+|---|---|---|
+| task core | 全部类型 ID prefix/alphabet、pending/running 非终态、createTaskStateBase 初始字段 | 真实 Task.ts，无 mock |
+| register/update/resume | 首次 task_started 一次、same-reference no-op、running 更新；retain/startTime/messages/diskLoaded/pendingMessages 保留且 replacement 不重复发 event | 真实 AppState + SDK queue，未调用后台 agent |
+| eviction | terminal+notified 才驱逐，running/未通知/retain grace 保留，getRunningTasks 只返回 running | 真实框架状态转换 |
+| disk output | first/second 精确 delta/newOffset、tail omission、40 append 顺序、missing file、evict 保留磁盘文件 | 临时 CLAUDE_CODE_TMPDIR 和真实 DiskTaskOutput 队列 |
+| 安全/失败 | O_EXCL 与既有 symlink 不跟随且 target 不变；EMFILE 首次 open 失败后重试，original-new 保留 | 只 mock open 一次注入故障，真实重试和文件内容 |
+| attachments/poll | running offset 更新、completed 不用 stale offset 覆盖、terminal eviction；poll delta 不重复、无完成附件重复发送 | 真实 generate/apply/pollTasks，非真实后台进程 |
+
+三层证据：官方 [Tools reference](https://code.claude.com/docs/en/tools-reference.md) 说明 TaskCreate/Get/List/Update/Stop、TaskOutput 现状及 background output file；本机 `/opt/homebrew/bin/claude` 只读 strings 命中 DiskTaskOutput、MAX_TASK_OUTPUT_BYTES、initTaskOutput、task_started；仓库 Task/framework/diskOutput 与真实临时文件。文档未公开 cache/eviction/offset 细节，未据此推断。
+
+全部离线，真实文件和 AppState 不等于后台任务 live。无生产代码变更，5GB cap 未创建大文件，未覆盖实际 process kill、真实 shell 输出和 TaskStop/TodoWrite（后续任务）。
+
+回滚移除测试及 coverage entry、撤销本节和原审计追加台账，保持原 Finding open/spec draft，重新运行 full test/typecheck/build/design checker。
+
+### 7.2 Todo/TaskStop 与 high-water-mark 实证
+
+`tests/todoTasks.test.ts`：9 个测试、45 个断言，普通与外部 feature profile 均通过。
+
+| 场景 | 真实行为与断言 | 证据边界 |
+|---|---|---|
+| create/get/update/delete | 连续 ID 1/2/3、字段合并、list、missing、corrupt JSON/schema null、sanitizePathComponent | 真实 proper-lockfile 与临时 task 文件 |
+| B5-task-system-04 | 注入 unlink EACCES 后 delete=false、原 task 可读、.highwatermark 保留，下一次 create 使用新 ID 而不重用 | 实证当前顺序没有 ID 重用，不盲改生产顺序 |
+| claim/block | 两个并发 claim 只有一个 already_claimed；同 owner 幂等成功；agent_busy、blocked、block 完成后成功、missing | 真实 task/list lockfile 与状态转换 |
+| TaskCreate/Get | 真实工具入口创建并读取 task，expandedView=tasks | 无模型/远程调用 |
+| stopTask | running shell 调 kill 一次、notified=true、stopped SDK event；not_found/not_running/unsupported_type；kill 抛错无 stopped event | 只替换 kill/taskImpl 边界，未执行真实进程 kill |
+
+三层证据：官方 Tools reference 说明 TaskCreate/Get/Update/Stop、TaskOutput 与 background 语义；本机 `/opt/homebrew/bin/claude` 只读 strings 命中 highwatermark、already_claimed、agent_busy、stopTask/StopTaskError；仓库 utils/tasks.ts、stopTask.ts 与真实文件/锁/异常注入。全部离线，未修改生产实现。
+
+回滚移除测试及 coverage entry、撤销本节和 Phase B 台账，保持原 Finding open/spec draft，重新运行 full test/typecheck/build/design checker。
+
 ## 8. 文件覆盖与相关子系统
 
 [Coverage](../../architecture/coverage/task-system.yaml)

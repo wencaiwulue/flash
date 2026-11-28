@@ -25,6 +25,12 @@ groups:
     summary: 通用会话渲染导出，分块流式渲染降低内存峰值
     files:
       - src/utils/exportRenderer.tsx
+  - id: export-test
+    kind: test
+    section: 7
+    summary: /export 分块渲染、文件名、路径边界和独占写入测试
+    files:
+      - tests/export.test.ts
   - id: ccshare
     kind: source
     section: 4

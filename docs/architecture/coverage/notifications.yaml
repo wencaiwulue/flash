@@ -65,3 +65,5 @@ groups:
     files:
       - tests/orgWarningNotification.test.ts
       - tests/headlessHooks.test.ts
+      - tests/notifications.test.tsx
+      - tests/notificationsServices.test.ts

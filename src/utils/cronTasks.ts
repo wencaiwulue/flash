@@ -11,7 +11,7 @@
 
 import { randomUUID } from 'crypto'
 import { readFileSync } from 'fs'
-import { mkdir, writeFile } from 'fs/promises'
+import { mkdir, open, rename, unlink } from 'fs/promises'
 import { join } from 'path'
 import {
   addSessionCronTask,
@@ -167,18 +167,35 @@ export async function writeCronTasks(
   dir?: string,
 ): Promise<void> {
   const root = dir ?? getProjectRoot()
-  await mkdir(join(root, '.claude'), { recursive: true })
+  const directory = join(root, '.claude')
+  await mkdir(directory, { recursive: true, mode: 0o700 })
   // Strip the runtime-only `durable` flag — everything on disk is durable
   // by definition, and keeping the flag out means readCronTasks() naturally
   // yields durable: undefined without having to set it explicitly.
   const body: CronFile = {
     tasks: tasks.map(({ durable: _durable, ...rest }) => rest),
   }
-  await writeFile(
-    getCronFilePath(root),
-    jsonStringify(body, null, 2) + '\n',
-    'utf-8',
-  )
+  const filePath = getCronFilePath(root)
+  const temporaryPath = `${filePath}.${randomUUID()}.tmp`
+  let handle: Awaited<ReturnType<typeof open>> | undefined
+  try {
+    handle = await open(temporaryPath, 'wx', 0o600)
+    await handle.writeFile(jsonStringify(body, null, 2) + '\n', 'utf8')
+    await handle.sync()
+    await handle.close()
+    handle = undefined
+    await rename(temporaryPath, filePath)
+    const directoryHandle = await open(directory, 'r')
+    try {
+      await directoryHandle.sync()
+    } finally {
+      await directoryHandle.close()
+    }
+  } catch (error) {
+    if (handle) await handle.close().catch(() => undefined)
+    await unlink(temporaryPath).catch(() => undefined)
+    throw error
+  }
 }
 
 /**

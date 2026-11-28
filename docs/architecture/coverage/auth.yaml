@@ -1,7 +1,7 @@
 schema_version: 1
 spec_id: auth
 spec: ../../superpowers/specs/2026-11-12-auth-design.md
-status: draft
+status: approved
 groups:
   - id: additional-files
     kind: source
@@ -142,7 +142,11 @@ groups:
   - id: test-auth
     kind: test
     section: 7
-    summary: 认证相关测试（oauthRefresh.test.ts、linuxSecretStorage.test.ts）
+    summary: 认证相关测试（oauthRefresh.test.ts、linuxSecretStorage.test.ts、auth.test.ts、macOsKeychainHelpers.test.ts、macOsKeychainCrossProcess.test.ts）
     files:
       - tests/oauthRefresh.test.ts
       - tests/linuxSecretStorage.test.ts
+      - tests/auth.test.ts
+      - tests/authRemote.test.ts
+      - tests/macOsKeychainHelpers.test.ts
+      - tests/macOsKeychainCrossProcess.test.ts

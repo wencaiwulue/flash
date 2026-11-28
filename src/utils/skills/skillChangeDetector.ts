@@ -15,6 +15,7 @@ import {
   getSkillsPath,
   onDynamicSkillsLoaded,
 } from '../../skills/loadSkillsDir.js'
+import { handleDirectoryDeletion, getTrackedDirs } from '../../skills/skillLifecycle.js'
 import { resetSentSkillNames } from '../attachments.js'
 import { registerCleanup } from '../cleanupRegistry.js'
 import { logForDebugging } from '../debug.js'
@@ -65,6 +66,7 @@ const USE_POLLING = typeof Bun !== 'undefined'
 let watcher: FSWatcher | null = null
 let reloadTimer: ReturnType<typeof setTimeout> | null = null
 const pendingChangedPaths = new Set<string>()
+const watchedDynamicDirs = new Set<string>() // Track dynamically added watch paths
 let initialized = false
 let disposed = false
 let dynamicSkillsCallbackRegistered = false
@@ -87,19 +89,6 @@ export async function initialize(): Promise<void> {
   if (initialized || disposed) return
   initialized = true
 
-  // Register callback for when dynamic skills are loaded (only once)
-  if (!dynamicSkillsCallbackRegistered) {
-    dynamicSkillsCallbackRegistered = true
-    onDynamicSkillsLoaded(() => {
-      // Clear memoization caches so new skills are picked up
-      // Note: we use clearCommandMemoizationCaches (not clearCommandsCache)
-      // because clearCommandsCache would call clearSkillCaches which
-      // wipes out the dynamic skills we just loaded
-      clearCommandMemoizationCaches()
-      // Notify listeners that skills changed
-      skillsChanged.emit()
-    })
-  }
 
   const paths = await getWatchablePaths()
   if (paths.length === 0) return
@@ -135,6 +124,29 @@ export async function initialize(): Promise<void> {
   watcher.on('change', handleChange)
   watcher.on('unlink', handleChange)
 
+  // Also watch for directory deletions (for conditional skill cleanup)
+  watcher.on('unlinkDir', (dirPath) => {
+    logForDebugging(`[skills] Detected directory deletion: ${dirPath}`)
+    handleDirectoryDeletion(dirPath)
+    unwatchDir(dirPath)
+  })
+
+  // Register callback for when dynamic skills are loaded (watch new dirs too)
+  if (!dynamicSkillsCallbackRegistered) {
+    dynamicSkillsCallbackRegistered = true
+    onDynamicSkillsLoaded(() => {
+      // Clear memoization caches so new skills are picked up
+      // Note: we use clearCommandMemoizationCaches (not clearCommandsCache)
+      // because clearCommandsCache would call clearSkillCaches which
+      // wipes out the dynamic skills we just loaded
+      clearCommandMemoizationCaches()
+      // Notify listeners that skills changed
+      skillsChanged.emit()
+      // Also watch any newly discovered directories
+      watchNewDynamicDirs()
+    })
+  }
+
   // Register cleanup to properly dispose of the file watcher during graceful shutdown
   unregisterCleanup = registerCleanup(async () => {
     await dispose()
@@ -160,6 +172,7 @@ export function dispose(): Promise<void> {
     reloadTimer = null
   }
   pendingChangedPaths.clear()
+  watchedDynamicDirs.clear()
   skillsChanged.clear()
   return closePromise
 }
@@ -280,6 +293,34 @@ function scheduleReload(changedPath: string): void {
 }
 
 /**
+ * Watch newly discovered dynamic skill directories
+ * Idempotent - safe to call multiple times
+ */
+function watchNewDynamicDirs(): void {
+  if (!watcher || disposed) return
+
+  // Get all tracked directories from skillLifecycle
+  const trackedDirs = getTrackedDirs()
+  for (const dir of trackedDirs) {
+    if (!watchedDynamicDirs.has(dir)) {
+      logForDebugging(`[skills] Now watching dynamically discovered dir: ${dir}`)
+      watcher.add(dir)
+      watchedDynamicDirs.add(dir)
+    }
+  }
+}
+
+/**
+ * Unwatch a directory (idempotent)
+ */
+function unwatchDir(dir: string): void {
+  if (watchedDynamicDirs.has(dir)) {
+    watcher?.unwatch(dir)
+    watchedDynamicDirs.delete(dir)
+  }
+}
+
+/**
  * Reset internal state for testing purposes only.
  */
 export async function resetForTesting(overrides?: {
@@ -298,6 +339,7 @@ export async function resetForTesting(overrides?: {
     reloadTimer = null
   }
   pendingChangedPaths.clear()
+  watchedDynamicDirs.clear()
   skillsChanged.clear()
   initialized = false
   disposed = false

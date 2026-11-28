@@ -94,6 +94,7 @@ import { getSettings_DEPRECATED } from './settings/settings.js'
 import { jsonParse, jsonStringify } from './slowOperations.js'
 import type { ContentReplacementRecord } from './toolResultStorage.js'
 import { validateUuid } from './uuid.js'
+import * as lockfile from './lockfile.js'
 
 // Cache MACRO.VERSION at module level to work around bun --define bug in async contexts
 // See: https://github.com/oven-sh/bun/issues/26168
@@ -632,14 +633,40 @@ class Project {
     }, this.FLUSH_INTERVAL_MS)
   }
 
-  private async appendToFile(filePath: string, data: string): Promise<void> {
+  private async ensureFileExists(filePath: string): Promise<void> {
     try {
-      await fsAppendFile(filePath, data, { mode: 0o600 })
+      await stat(filePath)
     } catch {
-      // Directory may not exist — some NFS-like filesystems return
-      // unexpected error codes, so don't discriminate on code.
+      // File doesn't exist - create it
       await mkdir(dirname(filePath), { recursive: true, mode: 0o700 })
-      await fsAppendFile(filePath, data, { mode: 0o600 })
+      await writeFile(filePath, '', { mode: 0o600 })
+    }
+  }
+
+  private async appendToFile(filePath: string, data: string): Promise<void> {
+    // Ensure file exists before locking (proper-lockfile requires existing file)
+    await this.ensureFileExists(filePath)
+
+    let release: (() => Promise<void>) | undefined
+    try {
+      release = await lockfile.lock(filePath, {
+        // Retry a few times with reasonable backoff
+        retries: { retries: 5, minTimeout: 10, maxTimeout: 100 },
+        // Allow stale locks older than 10s to be cleaned up
+        stale: 10000,
+      })
+
+      try {
+        await fsAppendFile(filePath, data, { mode: 0o600 })
+      } catch {
+        // Directory may not exist (race) — recreate and try again
+        await mkdir(dirname(filePath), { recursive: true, mode: 0o700 })
+        await fsAppendFile(filePath, data, { mode: 0o600 })
+      }
+    } finally {
+      if (release) {
+        await release()
+      }
     }
   }
 
@@ -998,6 +1025,12 @@ class Project {
     startingParentUuid?: UUID | null,
     teamInfo?: { teamName?: string; agentName?: string },
   ) {
+    // Rebind before trackWrite starts: flush() waits for active writers, so
+    // doing this inside appendEntry/trackWrite would self-deadlock.
+    if (this.sessionFile !== null && this.sessionFile !== getTranscriptPath()) {
+      await this.flush()
+      this.sessionFile = getTranscriptPath()
+    }
     return this.trackWrite(async () => {
       let parentUuid: UUID | null = startingParentUuid ?? null
 

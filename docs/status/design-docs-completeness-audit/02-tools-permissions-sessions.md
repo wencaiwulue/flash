@@ -1134,3 +1134,143 @@ bun -e 'const file = "docs/status/design-docs-completeness-audit/02-tools-permis
 本 batch 已完成所有 12 个子系统的审计：attachments、bridge、buddy、computer-use、file-tools、lsp、mcp、onboarding-ui、permissions、session-persistence、shell-tools、tool-framework。
 
 ---
+
+## 整改台账：B2-permissions-01 / B2-permissions-03（2026-11-18 追加）
+
+- 新增 `tests/permissions.test.ts` 并唯一登记 permissions coverage：拒绝跟踪状态机、PermissionMode 工具函数、权限规则解析、危险规则检测、权限结果工厂、空权限上下文、规则优先级逻辑、dontAsk 模式决策逻辑、auto mode 安全门、bypass permissions 模式、完整权限决策流模型。
+- **无新增缺陷**：原实现完整符合 spec，无需代码改动。仅补充测试覆盖。
+- spec 已更新实际测试证据；原 Finding 行与历史统计保持 open。全部本地 fake transport/offline，无真实 classifier、模型或凭据调用。
+
+---
+
+## 整改台账：B2-attachments-01 / B2-attachments-03（2026-11-18 追加）
+
+- 新增 `tests/attachments.test.ts` 并唯一登记 attachments coverage：mention 去重、错误隔离、nested memory 去重、PDF reference、日期与 queued command。
+- **新增增量缺陷**：原实现只有 `AbortController` 定时器，挂起的 MCP `readResource` 仍让 `Promise.all` 永久等待。初次 RED 为 5 秒超时；user/thread/main 三段聚合均改为 `allSettled + race(1000ms)` 后，预算内返回已完成的 queued command。
+- spec 已更新实际超时机制、证据和回滚；原 Finding 行与历史统计保持 open。全部本地 fake transport/offline，无真实 MCP、模型或凭据调用。
+
+---
+
+## 整改台账：B2-file-tools-01 / B2-file-tools-03（2026-11-18 追加）
+
+- 新增 `tests/file-tools.test.ts` 并唯一登记 file-tools coverage：并发修改检测、read 去重、引号规范化、安全写/编辑、离线/本地验证。
+- 验证原实现：tengu_read_dedup_killswitch 在 `FileReadTool.ts:536-539` 正确实现，getFeatureValue_CACHED_MAY_BE_STALE 检查；writeTextContent 使用 temp file 原子写 + 回退机制；findActualString 引号规范化完整。
+- **无新增缺陷**：原实现完整符合 spec，无需代码改动。仅补充测试覆盖。
+- spec 保持 draft 状态；原 Finding 行与历史统计保持 open。全部离线/本地验证，无凭据或模型调用。
+
+---
+
+## 整改台账：B2-shell-tools-01 / B2-shell-tools-04（2026-11-18 追加）
+
+- 新增 `tests/shell-tools.test.ts` 并唯一登记 shell-tools coverage：EndTruncatingAccumulator 输出截断、TaskOutput 文件管理、Shell 基本命令执行、AbortController 进程清理、超时行为、状态跟踪、文件 I/O 安全、复合命令安全、工作目录跟踪、大输出处理、清理与资源释放、回归测试边缘情况。
+- 验证原实现完整流程：argv/command 解析通过 tree-sitter AST + legacy regex fallback；foreground/background 转换通过 registerForeground + backgroundExistingForegroundTask + LocalShellTask；输出截断通过 EndTruncatingAccumulator 保留开头和结尾；沙箱行为通过 SandboxManager.wrapWithSandbox + convertToSandboxRuntimeConfig + Git 裸仓库防护；失败/超时清理通过 ShellCommand.kill + treeKill 进程树终止。
+- **无新增缺陷**：原实现完整符合 spec，无需代码改动。仅补充测试覆盖。
+- spec 保持 draft 状态；原 Finding 行与历史统计保持 open。全部使用无害本地命令（echo/sleep/cat），无凭据、无网络、无破坏性命令、无真实模型调用；测试验证可观测行为（输出内容、退出码、状态转换、清理安全性），而非 mock 调用计数或源码文本。
+
+---
+
+## 整改台账：B2-tool-framework-01 和 B2-tool-framework-04（2026-11-18 追加）
+
+- 新增 `tests/tool-framework.test.ts` 并唯一登记 tool-framework coverage：Tool 接口、buildTool 默认值填充、工具池组装与去重、ToolUseContext 隔离结构、流式与批量执行等价性、禁用工具分支、错误传播
+- 无新增缺陷：原实现完整符合 spec，无需代码改动。仅补充测试覆盖
+- spec 保持 draft 状态；原 Finding 行与历史统计保持 open。全部离线/本地验证，无凭据/模型调用
+
+---
+
+## 整改台账：B2-bridge-01 / B2-bridge-04（2026-11-18 追加）
+
+- 新增 `tests/bridge.test.ts` 并唯一登记 bridge coverage：权限回调 axios 10s 超时、token refresh generation、capacity wake、stale/corrupt pointer 清理、真实 git worktree sibling fanout。
+- **新增增量缺陷**：`/var` 与 `/private/var` 使新写 pointer 与 fanout 读取命名空间分裂。写入统一 canonicalize，读取同时尝试 lexical/canonical 路径，真实 worktree 恢复通过。
+- spec 已补当前证据与回滚；原 Finding 行和历史统计保持 open。全部本地 fake transport/temp git/offline，无真实远程服务、OAuth 或私有协议验证。
+
+---
+
+## 整改台账：B2-lsp-01 / B2-lsp-03（2026-11-18 追加）
+
+- 新增 `tests/lsp.test.ts` 并唯一登记 lsp coverage：ContentModified 自动重试逻辑、诊断注册表去重/容量限制/跨回合 LRU、通知处理隔离、服务器实例生命周期基本行为。
+- 扩展 `tests/fixtures/fake-lsp-server.ts` 支持测试所需的额外 LSP 方法（textDocument/hover、textDocument/definition、textDocument/references、textDocument/documentSymbol、workspace/symbol、textDocument/implementation、textDocument/prepareCallHierarchy、callHierarchy/incomingCalls、callHierarchy/outgoingCalls、x-set-diagnostics、x-set-content-modified、x-set-symbols、x-set-definitions、x-set-references）。
+- **无新增缺陷**：原实现完整符合 spec，无需代码改动。仅补充测试覆盖。验证内容包括：ContentModified 最多 3 次重试、指数退避延迟 500ms/1s/2s、诊断去重和容量限制（每文件最多 10 条，总共最多 30 条）、按严重度排序（Error < Warning < Info < Hint）、跨回合 LRU 去重、编辑文件时清除已交付诊断。
+- spec 已更新实际测试证据与回滚；原 Finding 行和历史统计保持 open。全部使用本地 fake transport，无需真实 LSP 服务器、无网络访问、无凭据调用。
+
+---
+
+## 整改台账：B2-lsp-01 / B2-lsp-03 真实场景测试（2026-11-18 追加）
+
+**Finding ID**：B2-lsp-01 / B2-lsp-03
+
+**整改内容**：
+1. **ContentModified 重试延迟验证**：
+   - 添加真实时序测试（500ms/1s/2s 指数退避）
+   - 实测完整重试序列约 3.5s
+   - 验证 3 次失败后第 4 次成功，4 次失败后最终抛出
+
+2. **完整 publishDiagnostics 通知流程**：
+   - 从 fake server 发送 publishDiagnostics
+   - 经过 notification handler 处理
+   - 最终注册到 diagnostic registry
+   - 验证完整端到端流程
+
+3. **shutdown/exit 和服务器隔离**：
+   - 验证一个 server 停止不影响另一个
+   - 无跨服务器污染
+
+4. **LSPTool gitignore 过滤**：
+   - 使用真实 temp git repo
+   - 包含 .gitignore 文件
+   - 验证 git check-ignore 识别 node_modules/ 等路径
+
+**验证结果**：
+- 所有 19 个 LSP 测试通过
+- 无源码断言
+- 无模型调用
+- 无网络请求
+- 所有测试有界且确定性
+
+**spec 更新**：保持 draft，更新了第 10 节整改记录，补充实际测试证据和回滚计划
+
+**原 Finding 状态**：B2-lsp-01 和 B2-lsp-03 保持 open，不修改历史统计
+
+---
+
+## 整改台账：B2-mcp-01 / B2-mcp-03（2026-11-18 追加）
+
+**Finding ID**：B2-mcp-01 / B2-mcp-03
+
+**整改内容**：返工 `tests/mcp-lifecycle.test.ts` 并唯一登记 mcp coverage。前一轮只构造状态对象、检查名称和基础连接，不能支撑此前写入本节的完整生命周期声明；本轮改用 MCP 官方 SDK `Client`、`Server`、`InMemoryTransport.createLinkedPair()` 和请求 schema，验证可观察协议行为：
+
+- 初始化能力协商，真实 `tools/list`、`resources/list`、`prompts/list` 及空列表
+- `tools/call` 成功结果、结构化内容、可恢复 `isError:true` 结果和 `_meta` 传播
+- 已关闭 peer 的初始化失败；关闭后请求拒绝和重复清理
+- 新 client 经新 transport pair 重连同一 server，重新枚举并保留 server 端调用计数
+- 两个 server 并发执行，单个 handler 异常不影响另一个 server，且出错 server 后续调用可恢复
+- 真实 `setMcpServerEnabled` / `isMcpServerDisabled` 的项目配置禁用/启用转换
+- `normalizeNameForMCP` / `buildMcpToolName` 名称规范化
+
+**验证结果**：focused 10 pass、0 fail、38 assertions；无生产代码变更。独立评审发现的前一轮证据与声明不匹配已通过替换浅测试和收缩声明整改。
+
+**证据边界**：全部离线；协议测试使用 SDK 内存 server，不是外部 live MCP 服务。没有 OAuth、凭据、模型、Chrome/desktop 或私有协议调用。禁用测试在 `NODE_ENV=test` 的项目配置内存分支运行，不写用户配置。当前结果不证明生产 `connectToServer` 的 onclose/memoize 重连、OAuth、企业策略组合、stdio 信号清理、生产并发上限或内存使用，这些缺口保留在 spec 第 7.3 节。
+
+**spec 更新**：保持 draft；第 7 节记录真实测试、三层证据、未覆盖项和回滚计划。
+
+**原 Finding 状态**：B2-mcp-01 和 B2-mcp-03 保持 open，不修改历史统计。
+
+---
+
+## 整改台账：B2-session-persistence-01 / B2-session-persistence-02 / B2-session-persistence-04（2026-11-18 追加）
+
+**Finding ID**：B2-session-persistence-01 / B2-session-persistence-02 / B2-session-persistence-04
+
+**整改内容**：新增并唯一登记 `tests/sessionPersistenceRecovery.test.ts`。首轮浅测试及一次错误的 reviewer 修改均未通过验收；最终版本共 10 个测试、36 个硬断言：
+
+1. **真实崩溃重启**：Bun 子进程写两条完整 JSONL 后追加截断尾行并以 42 退出；父进程验证退出码、有效 UUID 集合、leaf 和恢复链。另验证无效行隔离。
+2. **惰性创建与 resume**：真实 cache-only title/agent-setting/mode 在首条消息前不创建文件；首条消息物化 metadata；`adoptResumedSessionFile` 后续写完整。
+3. **removeMessageByUuid 三分支**：末尾 truncate；<50MiB 且目标在 64KiB 尾窗外时 slow-path rewrite；>50MiB guarded slow path 后文件逐字节不变，目标和其他消息保留。最后一项是直接返回的保护行为，不追加 tombstone。
+4. **compact 恢复**：>5MiB 文件只加载最后 boundary 后缀并验证精确链；preservedSegment 的 head 改接 anchor、anchor sibling 改接 tail、其他旧消息删除、最终用户/assistant 顺序精确匹配；小文件对照保留旧消息。
+
+**验证结果**：focused 10 pass、0 fail、36 assertions；无生产代码变更。全部使用临时文件和本地子进程，无模型、凭据、网络、用户配置或远程 SessionStore 调用。
+
+**证据边界**：三层证据记录在 spec 第 10.2 节。官方文档支持进程重启后 resume 的公开语义；本机 strings 只证明相关符号存在；当前仓库测试证明上述本地行为。未验证 >1GB 性能、更多崩溃时序、多 boundary/损坏 metadata 组合、定期 reAppend 或远程 live。
+
+**spec 更新**：保持原 approved 状态；第 7/10 节记录真实测试与剩余边界，并更正“大文件会追加 tombstone”的错误描述为“逐字节不变、原记录保留”。
+
+**原 Finding 状态**：B2-session-persistence-01/02/04 保持 open，不修改历史统计。

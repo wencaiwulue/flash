@@ -1229,14 +1229,14 @@ installed_plugins.json V2格式：
 
 | 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
 |---------|---------|----------------|---------|
-| 插件ID格式为name@marketplace | src/utils/plugins/pluginIdentifier.ts | 无直接测试 | 仅处理name@marketplace |
-| 分scope安装，V2格式数组 | src/utils/plugins/installedPluginsManager.ts | 无直接测试 | migration仅启动时运行 |
-| intent/state分离，启动时同步 | src/utils/plugins/installedPluginsManager.ts | 无直接测试 | sync仅处理新增 |
-| 版本化缓存目录 | src/utils/plugins/pluginLoader.ts | 无直接测试 | version计算逻辑复杂 |
-| 缓存优先启动，两套路径 | src/utils/plugins/pluginLoader.ts | 无直接测试 | cache-only路径在MCP/LSP初始化时使用 |
-| 错误隔离，继续加载 | src/utils/plugins/pluginLoader.ts | 无直接测试 | 用for loop + try/catch实现 |
-| 跨市场依赖默认阻止 | src/utils/plugins/dependencyResolver.ts | 无直接测试 | root的allowCross是唯一例外 |
-| 依赖固定点降级 | src/utils/plugins/dependencyResolver.ts | 无直接测试 | 降级是session-only |
+| 插件ID格式为name@marketplace | src/utils/plugins/pluginIdentifier.ts | `tests/plugins.integration.test.ts`：addInstalledPlugin 以该 ID 写入并读回注册表 | 本地 user scope，不执行远程 marketplace |
+| 分scope安装，V2格式数组 | src/utils/plugins/installedPluginsManager.ts | `tests/plugins.integration.test.ts`：`loadInstalledPluginsV2` 返回一个 user installation entry | migration 不在本集成用例执行 |
+| intent/state分离，启动时同步 | src/utils/plugins/installedPluginsManager.ts | `loadAllPluginsCacheOnly` 在空配置下返回 enabled/disabled/errors 结构，不触发网络 | 只验证离线启动基线 |
+| 版本化缓存目录 | src/utils/plugins/pluginLoader.ts | `tests/plugins.integration.test.ts`：copyPluginToVersionedCache 生成 marketplace/plugin/version 路径并可读回 manifest | 临时目录，不执行安装脚本 |
+| 缓存优先启动，两套路径 | src/utils/plugins/pluginLoader.ts | `loadAllPluginsCacheOnly` 空配置与本地 createPluginFromPath 场景 | 未执行 full marketplace refresh/live 下载 |
+| 错误隔离，继续加载 | src/utils/plugins/pluginLoader.ts | 缺 name 的 manifest 被 schema 拒绝；其他有效插件路径仍可加载 | 本地 fixture，不声称全生命周期已覆盖 |
+| 跨市场依赖默认阻止 | src/utils/plugins/dependencyResolver.ts | verifyAndDemote 对未满足依赖返回 demoted/error；满足依赖不降级 | 只验证公开 resolver 行为 |
+| 依赖固定点降级 | src/utils/plugins/dependencyResolver.ts | 多插件依赖场景不改变 settings，结果由 demoted/errors 表达 | session-only、无真实包执行 |
 
 ## 8. 文件覆盖与相关子系统
 

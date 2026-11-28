@@ -18,6 +18,8 @@ import { accumulateUsage, updateUsage } from 'src/services/api/claude.js'
 import type { NonNullableUsage } from 'src/services/api/logging.js'
 import { EMPTY_USAGE } from 'src/services/api/logging.js'
 import stripAnsi from 'strip-ansi'
+import { ContextCollapseSession } from './services/contextCollapse/index.js'
+import { MicrocompactSession } from './services/compact/microCompact.js'
 import type { Command } from './commands.js'
 import { getSlashCommandToolSkills } from './commands.js'
 import {
@@ -109,12 +111,18 @@ import {
 
 // Dead code elimination: conditional import for coordinator mode
 /* eslint-disable @typescript-eslint/no-require-imports */
-const getCoordinatorUserContext: (
+async function getCoordinatorUserContext(
   mcpClients: ReadonlyArray<{ name: string }>,
   scratchpadDir?: string,
-) => { [k: string]: string } = feature('COORDINATOR_MODE')
-  ? require('./coordinator/coordinatorMode.js').getCoordinatorUserContext
-  : () => ({})
+): Promise<{ [k: string]: string }> {
+  if (!feature('COORDINATOR_MODE')) return {}
+  // Resolve lazily so coordinator initialization never affects QueryEngine's
+  // module graph or the external build's CommonJS interop.
+  const { getCoordinatorUserContext } = await import(
+    './coordinator/coordinatorMode.js'
+  )
+  return getCoordinatorUserContext(mcpClients, scratchpadDir)
+}
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 // Dead code elimination: conditional import for snip compaction
@@ -196,6 +204,9 @@ export class QueryEngine {
   // many turns in SDK mode.
   private discoveredSkillNames = new Set<string>()
   private loadedNestedMemoryPaths = new Set<string>()
+  // Session-scoped state isolation
+  private readonly contextCollapseSession: ContextCollapseSession
+  private readonly microcompactSession: MicrocompactSession
 
   constructor(config: QueryEngineConfig) {
     this.config = config
@@ -204,6 +215,8 @@ export class QueryEngine {
     this.permissionDenials = []
     this.readFileState = config.readFileCache
     this.totalUsage = EMPTY_USAGE
+    this.contextCollapseSession = new ContextCollapseSession()
+    this.microcompactSession = new MicrocompactSession(config.userSpecifiedModel)
   }
 
   async *submitMessage(
@@ -301,10 +314,10 @@ export class QueryEngine {
     headlessProfilerCheckpoint('after_getSystemPrompt')
     const userContext = {
       ...baseUserContext,
-      ...getCoordinatorUserContext(
+      ...(await getCoordinatorUserContext(
         mcpClients,
         isScratchpadEnabled() ? getScratchpadDir() : undefined,
-      ),
+      )),
     }
 
     // When an SDK caller provides a custom system prompt AND has set
@@ -392,6 +405,8 @@ export class QueryEngine {
         })
       },
       setSDKStatus,
+      contextCollapseSession: this.contextCollapseSession,
+      microcompactSession: this.microcompactSession,
     }
 
     // Handle orphaned permission (only once per engine lifetime)
@@ -524,6 +539,8 @@ export class QueryEngine {
       updateFileHistoryState: processUserInputContext.updateFileHistoryState,
       updateAttributionState: processUserInputContext.updateAttributionState,
       setSDKStatus,
+      contextCollapseSession: this.contextCollapseSession,
+      microcompactSession: this.microcompactSession,
     }
 
     headlessProfilerCheckpoint('before_skills_plugins')

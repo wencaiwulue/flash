@@ -93,6 +93,7 @@ groups:
     summary: 模型 API 相关测试
     files:
       - tests/antModelOverrides.test.ts
+      - tests/modelApi.test.ts
   - id: constants-model
     kind: source
     section: 4

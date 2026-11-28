@@ -3,7 +3,7 @@ id: auth
 batch: 3
 title: Auth OAuth 与安全凭据存储设计
 date: 2026-11-12
-status: draft
+status: approved
 ---
 
 # Auth OAuth 与安全凭据存储设计
@@ -51,7 +51,7 @@ Claude Code 需要支持多种认证方式：OAuth 2.0（Claude.ai 用户）、A
 | 托管会话隔离：`isManagedOAuthContext()` 阻止读取用户本地凭据 | `CLAUDE_CODE_REMOTE` 或 `CLAUDE_CODE_ENTRYPOINT === 'claude-desktop'` 时禁用用户本地 settings 的 apiKeyHelper 和 auth 配置 | CCR/Claude Desktop 有自己的认证注入机制，用户本地配置不应干扰托管会话，避免组织策略被绕过 | 不隔离：托管会话可能意外使用用户本地 API key，导致组织策略失效 | 需要明确标记托管环境并在多个检查点应用 | `src/utils/auth.ts:91-96` |
 | OAuth 令牌刷新并发去重：同一进程内 `pendingRefreshCheck` + 跨进程文件锁 | 同进程内用 `pendingRefreshCheck` 变量去重；跨进程用 lockfile 锁 `~/.claude` 目录 | 多个 CLI 实例或同一实例内多个请求同时触发刷新时，避免重复刷新导致令牌失效 | 无去重：可能触发多个刷新请求，导致某些令牌被服务器立即吊销；只用进程内去重：跨进程场景仍有问题 | 需要实现两层去重，增加复杂度 | `src/utils/auth.ts:1427-1562` |
 | 安全存储分层 fallback：Keychain → libsecret → plaintext | `getSecureStorage()` 返回 `createFallbackStorage(primary, plainTextStorage)` | 优先使用平台原生安全存储；如果失败（如 Keychain 锁定、libsecret 不可用），fallback 到 plaintext 并警告用户，可用性优先 | 不 fallback：安全存储失败时无法使用 OAuth，可用性差；只用 plaintext：安全风险太高 | 需要维护多套存储实现，测试各平台 fallback 路径 | `src/utils/secureStorage/index.ts:10-20` |
-| 安全存储缓存：30 秒 TTL + stale-while-error | `macOsKeychainStorage` 使用 `KEYCHAIN_CACHE_TTL_MS = 30_000`，读取失败时如果有旧缓存继续使用 | 避免频繁调用 `security` 命令（每次约 500ms）；瞬时错误时不影响可用性 | 无缓存：每次读取都 spawn 子进程，慢且可能阻塞；每次出错都返回 null：瞬时错误导致用户"被登出" | 跨进程变更可能有最多 30 秒延迟 | `src/utils/secureStorage/macOsKeychainHelpers.ts:69-91` |
+| 安全存储缓存：30 秒 TTL + 跨进程版本标记 + stale-while-error | `macOsKeychainStorage` 使用 `KEYCHAIN_CACHE_TTL_MS = 30_000`，配合 `~/.claude/.keychain-cache-version.json` 版本标记；读取失败时如果有旧缓存继续使用 | 避免频繁调用 `security` 命令（每次约 500ms）；瞬时错误时不影响可用性；版本标记使跨进程变更立即可见 | 无缓存：每次读取都 spawn 子进程，慢且可能阻塞；每次出错都返回 null：瞬时错误导致用户"被登出"；只用 TTL：跨进程变更有最多 30 秒延迟 | 需要维护版本标记文件的原子读写；标记损坏时回退到真实读取 | `src/utils/secureStorage/macOsKeychainHelpers.ts:69-135` |
 | 令牌过期提前 5 分钟：`isOAuthTokenExpired()` 加 buffer | `expiresAt` 比较时加 5 分钟 buffer，提前触发刷新 | 避免用户发起请求时才发现令牌过期，导致请求失败；提前刷新保证用户体验 | 不加 buffer：用户请求可能因过期而失败；buffer 太长：令牌刷新频率高 | 需平衡安全性和用户体验，5 分钟是合理值 | `src/utils/auth.ts:344-353` |
 | 日志边界：绝不记录完整 token，错误消息中 redact | `safeRefreshError()` 在错误消息中替换 token 为 `<redacted>`；所有日志使用 token 前缀或只记录状态 | 防止敏感 token 意外出现在日志、错误消息、终端输出中，避免泄露风险 | 不 redact：日志泄露可能导致账户被盗；完全不记录：调试困难 | 需要在所有输出 token 的地方做 redact，容易遗漏 | `src/commands/oauth-refresh/oauthRefresh.ts:34-41` |
 | Keychain 预取：启动时并行读取，避免阻塞主线程 | `startKeychainPrefetch()` 在 main.tsx 顶部启动，`ensureKeychainPrefetchCompleted()` 等待完成；预取结果 prime 缓存 | macOS Keychain 读取慢（约 33ms），并行读取与模块初始化重叠，减少启动总时间 | 同步读取：启动时阻塞主线程，感觉慢；不缓存：每次读取都慢 | 需要在启动流程早期启动预取，同时保持代码简单 | `src/utils/secureStorage/keychainPrefetch.ts:66-89` |
@@ -59,6 +59,7 @@ Claude Code 需要支持多种认证方式：OAuth 2.0（Claude.ai 用户）、A
 | refresh 时 scope 扩展：Claude.ai 用户不指定 scope，获取完整权限 | `refreshOAuthToken()` 中 Claude.ai 用户传 `undefined` 作为 scope，后端允许扩展 | 新增权限时无需用户重新登录，自动获得新 scope | 总是指定原始 scope：新增功能需要用户重新登录，体验差；强制重新登录：打扰用户 | 依赖后端的 scope 扩展策略 | `src/services/oauth/client.ts:146-273` |
 | API key 验证：保留用户原始文件，只在内存中验证 | `saveApiKey()` 不修改用户原始文件，只验证后保存到 Keychain/config | 避免破坏用户的自定义配置，只验证格式而不重写 | 修改用户原始文件：可能丢失用户注释或其他配置；不验证：无效 key 直到使用时才发现 | 需要正确的验证逻辑，同时保留用户原始文件 | `src/utils/auth.ts:1094-1160` |
 | 401 错误处理：对比 token + 并发去重 | `handleOAuth401Error()` 用 `pending401Handlers` Map 按 token 去重，先从安全存储重新读取看是否已被刷新 | 服务器返回 401 时，可能是本地缓存过期，也可能是真的需要刷新；并发 401 时只处理一次 | 每次 401 都刷新：可能与另一个进程的刷新冲突；不检查安全存储：错过另一个进程已刷新的 token | 需要处理并发和跨进程场景 | `src/utils/auth.ts:1339-1392` |
+| Keychain 跨进程失效：版本标记文件 + 原子 UUID 更新 | `~/.claude/.keychain-cache-version.json` 存储随机 UUID；`touchKeychainCacheVersion()` 原子更新（temp file + rename）；`read()`/`readAsync()` 双重检查（TTL AND 版本匹配） | 跨进程变更立即可见，无需等待 30 秒 TTL；原子写入避免竞态；双重检查保证降级路径 | 只依赖版本标记：标记损坏时无法读取；只用 TTL：跨进程延迟不可接受 | 需要维护标记文件，处理标记损坏的情况 | `src/utils/secureStorage/macOsKeychainHelpers.ts:90-124`, `tests/macOsKeychainCrossProcess.test.ts` |
 
 ## 3. 目标与非目标
 
@@ -747,17 +748,23 @@ type AuthTokenSource =
 
 | 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
 |---|---|---|---|
-| 多来源认证优先级：托管 FD > 环境变量 > 安全存储 > apiKeyHelper | `src/utils/auth.ts:152-206` | 需查找相关测试 | 未找到直接测试覆盖 |
+| 多来源认证优先级：托管 FD > 环境变量 > 安全存储 > apiKeyHelper | `src/utils/auth.ts` 的 `getAnthropicApiKeyWithSource` | `tests/auth.test.ts` 在 `NODE_ENV=test` hermetic 分支验证显式 env、OAuth-only 和第一方 IDE 的临时 FD 优先级，不触达 Keychain | 尚未覆盖安全存储/apiKeyHelper/完整 managed context 组合，官方公开优先级与本仓库 FD 扩展不能混为一谈 |
 | 托管会话隔离：isManagedOAuthContext() 阻止读取用户本地凭据 | `src/utils/auth.ts:91-96` | 需查找相关测试 | 未找到直接测试覆盖 |
 | OAuth 令牌刷新并发去重：同一进程内 pendingRefreshCheck + 跨进程文件锁 | `src/utils/auth.ts:1427-1562` | `tests/oauthRefresh.test.ts` | 有基本测试覆盖并发去重逻辑 |
-| 安全存储分层 fallback：Keychain → libsecret → plaintext | `src/utils/secureStorage/index.ts:10-20` | `tests/linuxSecretStorage.test.ts` | 有 Linux fallback 测试覆盖 |
+| 安全存储分层 fallback：Keychain → libsecret → plaintext | `src/utils/secureStorage/index.ts:10-20` | `tests/linuxSecretStorage.test.ts`、`tests/auth.test.ts` | 有 Linux fallback 测试和完整 fallback 行为测试覆盖 |
 | 安全存储缓存：30 秒 TTL + stale-while-error | `src/utils/secureStorage/macOsKeychainHelpers.ts:69-91` | 需查找相关测试 | 未找到直接测试覆盖 |
 | 令牌过期提前 5 分钟：isOAuthTokenExpired() 加 buffer | `src/utils/auth.ts:344-353` | 需查找相关测试 | 未找到直接测试覆盖 |
 | 日志边界：绝不记录完整 token，错误消息中 redact | `src/commands/oauth-refresh/oauthRefresh.ts:34-41` | `tests/oauthRefresh.test.ts` | 有测试验证 redaction 行为 |
 | Keychain 预取：启动时并行读取，避免阻塞主线程 | `src/utils/secureStorage/keychainPrefetch.ts:66-89` | 需查找相关测试 | 未找到直接测试覆盖 |
-| OAuth 登录双路径：自动浏览器回调 + 手动代码输入 | `src/services/oauth/index.ts:32-131` | 需查找相关测试 | 未找到直接测试覆盖 |
+| OAuth 登录双路径：自动浏览器回调 + 手动代码输入 | `src/services/oauth/index.ts:32-131` | `tests/auth.test.ts` | 有 AuthCodeListener 本地服务器和 state 验证测试覆盖 |
 | refresh 时 scope 扩展：Claude.ai 用户不指定 scope | `src/services/oauth/client.ts:146-273` | 需查找相关测试 | 未找到直接测试覆盖 |
 | 401 错误处理：对比 token + 并发去重 | `src/utils/auth.ts:1339-1392` | 需查找相关测试 | 未找到直接测试覆盖 |
+| plainTextStorage 权限 0o600、无效 JSON 处理 | `src/utils/secureStorage/plainTextStorage.ts:44-69` | `tests/auth.test.ts` | 有完整测试覆盖文件权限、JSON 解析、删除操作 |
+| fallbackStorage primary/secondary 迁移逻辑 | `src/utils/secureStorage/fallbackStorage.ts:27-62` | `tests/auth.test.ts` | 有完整测试覆盖 primary 成功、fallback、迁移清理、stale 防护 |
+| OAuth crypto PKCE verifier/challenge | `src/services/oauth/crypto.ts` | `tests/auth.test.ts` 验证唯一性、base64url，并用独立 SHA-256/base64url 计算精确校验 S256 challenge | 不证明 provider 端接受，未执行远程登录 |
+| AuthCodeListener 本地随机端口服务器 | `src/services/oauth/auth-code-listener.ts` | `tests/auth.test.ts` 发真实本地 HTTP：成功 code/state、302 redirect、缺 code/state mismatch 的 400、连续错误请求及 server close 事件 | 新增 B3-auth-03 修复重复 wait 注册多 handler；不打开浏览器、不验证外部 provider 或手动输入路径 |
+| authFileDescriptor FD/CCR 文件读取 | `src/utils/authFileDescriptor.ts` | `tests/auth.test.ts` 验证已知文件、空文件/whitespace、真实临时 FD 读取及非 CCR 不写文件 | 不访问真实 CCR FD/目录，不验证 subprocess 私有环境 |
+| OAuth token exchange/profile/roles | `src/services/oauth/client.ts`、`getOauthProfile.ts` | `tests/authRemote.test.ts` 以 axios 边界替身验证 grant body/header、401、profile 映射/错误隔离和 roles 全局配置写入 | 不执行真实 token exchange、refresh 或 profile 请求；refresh 主路径沿用 oauthRefresh 既有证据 |
 
 ### 7.1 核心模块
 
@@ -792,10 +799,84 @@ type AuthTokenSource =
 - 托管会话（CCR/Claude Desktop）隔离测试
 - 强制组织验证（validateForceLoginOrg）完整流程测试
 - security -i stdin 模式与 argv fallback 测试
-- CCR FD token 读取与 subprocess 持久化测试
 - apiKeyHelper SWR（stale-while-revalidate）缓存行为测试
 - Keychain 预取与缓存 priming 测试
 - auth.ts 中 _apiKeyHelperEpoch 竞态避免测试
+- OAuth 手动 code 输入、真实浏览器/provider、手动组织和额外 scope/401 组合的 live 验收
+
+### 7.3 三层证据、增量 Finding 与回滚
+
+| 层级 | 只读证据 | 边界 |
+|---|---|---|
+| 官方文档 | [Authentication](https://code.claude.com/docs/en/authentication)说明浏览器/手动 code 登录、公开凭据优先级和 plaintext 0600 fallback | 未公开本仓库 FD 分支、listener handler 注册、token exchange/profile 内部实现或重复 wait 语义 |
+| 本机上游二进制 | `strings $(command -v claude)` 命中 `code_challenge_method`、`waitForAuthorizationCode`、`exchangeCodeForTokens`、`CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR` | 只证明相关符号存在，不证明上游也有重复 handler 缺陷或采用相同修复 |
+| 本仓库 | 44 个离线测试/95 个断言，真实临时文件/FD、本地 HTTP listener、axios 边界的 client/profile/roles | 不等于真实 Keychain/libsecret、浏览器、OAuth provider、CCR/Desktop 或私有协议 live 验收 |
+
+**新增 B3-auth-03**：连续调用 `waitForAuthorization()` 时，旧实现用 `on('request')`/`on('error')` 累加 handler。真实 RED 在第二次错误回调中触发 `ERR_HTTP_HEADERS_SENT`；改为 `once` 后，缺 code 与 state mismatch 能分别返回一次 400，成功 redirect 与 close 也通过。该 Finding 属于本轮增量，不计入原始 234 条。
+
+**回滚**：测试与文档可随 coverage 一并回退。生产回滚需恢复 `startLocalListener` 的两行注册方式，但这会重新引入 B3-auth-03，不能描述为无风险回滚；执行前必须保留失败复现并评估重复 wait 调用方。spec 保持原 approved 状态，B3-auth-01/02 原 Finding 保持 open。
+
+## 附录 A：跨进程 Keychain 缓存失效机制
+
+### A.1 问题与动机
+在原始设计中，macOS Keychain 缓存仅依赖 30 秒 TTL 来处理跨进程变更，这导致：
+- 进程 A 刷新 token 后，进程 B 最多可能等待 30 秒才能看到新 token
+- 尽管有 401 错误处理机制作为补偿，但仍存在用户体验问题
+
+### A.2 设计解决方案：版本标记文件
+引入共享版本标记文件 `~/.claude/.keychain-cache-version.json`，其结构为：
+```json
+{ "version": "uuid-v4-random-string" }
+```
+
+### A.3 完整生命周期
+
+#### A.3.1 写入路径（标记更新）
+所有修改 Keychain 内容的操作都会先更新标记：
+1. `update()` → `clearKeychainCache()` → `touchKeychainCacheVersion()`
+2. `delete()` → `clearKeychainCache()` → `touchKeychainCacheVersion()`
+3. `clearOAuthTokenCache()` → `clearKeychainCache()` → `touchKeychainCacheVersion()`
+4. `handleOAuth401Error()` → `clearOAuthTokenCache()` → 间接调用
+
+`touchKeychainCacheVersion()` 的实现保证原子性：
+- 先写入临时文件 `{versionPath}.tmp-{pid}`
+- 然后重命名临时文件为目标路径（POSIX 原子操作）
+
+#### A.3.2 读取路径（双重检查）
+每次读取 Keychain 时都会检查两个条件：
+1. TTL 检查：`Date.now() - cachedAt < 30000`
+2. 版本检查：`isKeychainCacheVersionCurrent(cacheVersion)`
+
+只有两个条件都满足时才直接返回缓存，否则读取真实 Keychain。
+
+#### A.3.3 降级策略
+当版本标记出现以下情况时，系统安全降级：
+- 标记文件不存在 → 仅依赖 TTL
+- 标记文件内容无效 JSON → 仅依赖 TTL
+- 版本匹配但 TTL 过期 → 读取真实 Keychain
+
+降级时不影响 stale-while-error 行为（读取失败时仍返回旧缓存）。
+
+### A.4 三层证据对齐
+
+| 证据层 | 状态 | 说明/证据 |
+|---|---|---|
+| 1. 官方文档 | N/A | 此机制是 flash 仓库特有的本地优化，不涉及外部 API/协议，无官方文档参考 |
+| 2. 上游二进制 | 无匹配符号 | 检查 `/opt/homebrew/bin/claude` (v2.1.212 Claude Code) 后未发现对应机制，因为 flash 是教学研究快照，与上游产品独立演进 |
+| 3. 本地源码/契约 | 完整对齐 | 实现与 spec 完全一致，契约文件存在：<br>- 源码：`src/utils/secureStorage/macOsKeychainHelpers.ts:90-124` (版本标记)<br>- 源码：`src/utils/secureStorage/macOsKeychainStorage.ts:32-107` (双重检查)<br>- 测试：`tests/macOsKeychainHelpers.test.ts` (单元测试)<br>- 覆盖：`docs/architecture/coverage/auth.yaml` (注册分组) |
+
+### A.5 回滚策略
+如需回滚此修复：
+1. 移除 `macOsKeychainHelpers.ts` 中的版本标记相关代码（`getKeychainCacheVersionPath`/`touchKeychainCacheVersion`/`isKeychainCacheVersionCurrent`）
+2. 恢复 `keychainCacheState.cache` 结构，移除 `cacheVersion` 字段
+3. 恢复 `macOsKeychainStorage.ts` 中的读取逻辑，只保留 TTL 检查
+4. 版本标记文件可保留（自动忽略）或删除（不影响功能）
+
+### A.6 测试覆盖
+- ✅ 基本单元测试：版本标记创建/更新/验证
+- ✅ 降级场景：标记缺失/无效时的行为
+- ✅ 预取场景：无标记时的缓存初始化
+- ❌ 端到端跨进程测试（需多进程协调，暂未实现）
 
 ## 8. 文件覆盖与相关子系统
 
@@ -821,7 +902,7 @@ type AuthTokenSource =
 | oauth-auth-code-listener | OAuth 回调本地服务器（自动路径） |
 | cli-auth-handlers | /login、/logout、/auth 命令处理 |
 | cmd-oauth-refresh | /oauth-refresh 命令实现、token redaction |
-| test-auth | 认证相关测试（oauthRefresh.test.ts、linuxSecretStorage.test.ts） |
+| test-auth | 认证相关测试（oauthRefresh.test.ts、linuxSecretStorage.test.ts、auth.test.ts） |
 
 ### 8.2 共享证据但由其他 spec 主拥有的文件
 

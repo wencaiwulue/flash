@@ -942,12 +942,28 @@ Windows 注册表与路径：
 
 | 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
 |---|---|---|---|
-| 协议格式正确解析 | `src/utils/deepLink/parseDeepLink.ts:35-41` | 需补充测试 | 未找到直接测试覆盖 |
-| 严格安全验证 | `src/utils/deepLink/parseDeepLink.ts:33-41,50-50,113-159` | 需补充测试 | 未找到直接测试覆盖 |
-| 终端检测分层 | `src/utils/deepLink/terminalPreference.ts:38-54` + `src/utils/deepLink/terminalLauncher.ts:64-121` | 需补充测试 | 未找到直接测试覆盖 |
-| macOS 独立 .app trampoline | `src/utils/deepLink/registerProtocol.ts:72-138` | 需补充测试 | 未找到直接测试覆盖 |
-| 安全 banner 强制显示 | `src/utils/deepLink/banner.ts:43-75` | 需补充测试 | 未找到直接测试覆盖 |
-| repo 参数通过 githubRepoPaths 解析 | `src/utils/deepLink/protocolHandler.ts:116-136` | 需补充测试 | 未找到直接测试覆盖 |
+| 协议格式正确解析 | `src/utils/deepLink/parseDeepLink.ts:35-41` | `tests/deepLink.test.ts`：q/cwd/repo 与 Unicode round-trip | 不执行桌面 URL 调用 |
+| 严格安全验证 | `src/utils/deepLink/parseDeepLink.ts:33-41,50-50,113-159` | `tests/deepLink.test.ts`：scheme/action、相对 cwd、非法 repo、控制字符、5001 字符拒绝 | Windows 8191 后备限制保持设计权衡 |
+| 终端检测分层 | `src/utils/deepLink/terminalPreference.ts:38-54` + `src/utils/deepLink/terminalLauncher.ts:64-121` | `tests/deepLink.test.ts`：Ghostty 存储偏好与纯 argv query/repo/fetch/cwd | 不启动真实终端或其他终端类型 |
+| macOS 独立 .app trampoline | `src/utils/deepLink/registerProtocol.ts:72-138` | 未覆盖 macOS trampoline；`tests/deepLink.test.ts` 覆盖 Linux `.desktop` 写入与 current/stale 检查 | 不调用 LaunchServices/xdg-mime，真实 OS artifact 不写用户目录 |
+| 安全 banner 强制显示 | `src/utils/deepLink/banner.ts:43-75` | 未覆盖 banner UI；`readLastFetchTime` 在 handler 中传递 123ms | banner 文案、freshness 显示仍需独立测试 |
+| repo 参数通过 githubRepoPaths 解析 | `src/utils/deepLink/protocolHandler.ts:116-136` | `tests/deepLink.test.ts`：MRU repo hit + lastFetch，invalid URI 不启动 | repo lookup 为边界替身，未覆盖多克隆 MRU |
+
+### 7.1 Deep Link 行为整改（2026-11-20）
+
+关联 Finding：B6-deep-link-04。新增 `tests/deepLink.test.ts` 并唯一登记；6 个测试、26 个断言，普通与外部 feature profile 均通过，无生产代码变更。
+
+| 决策 | 实际行为与验证 | 证据 |
+|---|---|---|
+| URI 与危险输入 | q/cwd/repo/Unicode round-trip；非法 scheme/action、相对 cwd、非法 repo、控制字符和 >5000 query 均拒绝 | `parseDeepLink.ts`；parser 测试 |
+| Handler 编排 | MRU repo hit 后传递 cwd/repo/lastFetchMs=123 给当前 executable；非法 URI 返回 1 且不启动 | `protocolHandler.ts`；handler 测试 |
+| 纯 argv 启动 | Ghostty 存储偏好下 query、repo、fetch、cwd 均作为独立 argv，shell metacharacters 不解释 | `terminalLauncher.ts`；保存的真实函数引用与 exec mock |
+| Linux 注册 | 临时 XDG `.desktop` 包含 scheme/Exec，current=true、other binary=false，xdg-mime 不调用 | `registerProtocol.ts`；Linux 注册测试 |
+| 证据边界 | OS 命令、repo lookup、lastFetch 为边界替身；真实 parser/handler/launcher/注册逻辑。无真实桌面协议、终端或私有协议验证 | mock 与临时 HOME/XDG |
+
+测试隔离还验证了 `os.homedir()`、Bun 模块 namespace 和 beforeEach 恢复顺序不能用来推断安全性；环境隔离在每个 beforeEach 重新设置。测试期间误写到真实 Applications/XDG 的 artifact 已确认属于测试并删除，最终真实路径无残留。
+
+macOS trampoline、Windows 注册表、banner UI、多克隆 MRU、shell quoting、`.worktreeinclude` 和 `claude://` 桌面双向链接仍未覆盖，保留在 8.2 未覆盖行为清单。回滚只需移除测试、coverage entry、本节和审计台账，保持原 Finding open、spec draft。
 
 ### 8.1 核心模块
 

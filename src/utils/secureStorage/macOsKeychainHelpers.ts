@@ -14,8 +14,11 @@
  * cost when keychainPrefetch.ts pulls this file in.
  */
 
+import { randomUUID } from 'crypto'
 import { createHash } from 'crypto'
 import { userInfo } from 'os'
+import { readFileSync, renameSync, writeFileSync } from 'fs'
+import { join } from 'path'
 import { getOauthConfig } from 'src/constants/oauth.js'
 import { getClaudeConfigHomeDir } from '../envUtils.js'
 import type { SecureStorageData } from './types.js'
@@ -69,7 +72,7 @@ export function getUsername(): string {
 export const KEYCHAIN_CACHE_TTL_MS = 30_000
 
 export const keychainCacheState: {
-  cache: { data: SecureStorageData | null; cachedAt: number } // cachedAt 0 = invalid
+  cache: { data: SecureStorageData | null; cachedAt: number; cacheVersion: string | null } // cachedAt 0 = invalid
   // Incremented on every cache invalidation. readAsync() captures this before
   // spawning and skips its cache write if a newer generation exists, preventing
   // a stale subprocess result from overwriting fresh data written by update().
@@ -79,13 +82,43 @@ export const keychainCacheState: {
   // a stale in-flight promise.
   readInFlight: Promise<SecureStorageData | null> | null
 } = {
-  cache: { data: null, cachedAt: 0 },
+  cache: { data: null, cachedAt: 0, cacheVersion: null },
   generation: 0,
   readInFlight: null,
 }
 
+export function getKeychainCacheVersionPath(): string {
+  return join(getClaudeConfigHomeDir(), '.keychain-cache-version.json')
+}
+
+export function touchKeychainCacheVersion(): void {
+  const marker = getKeychainCacheVersionPath()
+  const temporary = `${marker}.tmp-${process.pid}`
+  writeFileSync(temporary, JSON.stringify({ version: randomUUID() }), { mode: 0o600 })
+  renameSync(temporary, marker)
+}
+
+export function isKeychainCacheVersionCurrent(cachedVersion: string | null): boolean {
+  if (!cachedVersion) return false
+  try {
+    const marker = JSON.parse(readFileSync(getKeychainCacheVersionPath(), 'utf8'))
+    return marker.version === cachedVersion
+  } catch {
+    return false
+  }
+}
+
 export function clearKeychainCache(): void {
-  keychainCacheState.cache = { data: null, cachedAt: 0 }
+  // Touch the version marker first to signal any other processes that cache is invalid
+  touchKeychainCacheVersion()
+  let currentVersion: string | null = null
+  try {
+    const marker = JSON.parse(readFileSync(getKeychainCacheVersionPath(), 'utf8'))
+    currentVersion = marker.version
+  } catch {
+    // If we can't read the version we just wrote, proceed without it
+  }
+  keychainCacheState.cache = { data: null, cachedAt: 0, cacheVersion: currentVersion }
   keychainCacheState.generation++
   keychainCacheState.readInFlight = null
 }
@@ -107,5 +140,13 @@ export function primeKeychainCacheFromPrefetch(stdout: string | null): void {
       return
     }
   }
-  keychainCacheState.cache = { data, cachedAt: Date.now() }
+  // Get current version marker for priming
+  let cacheVersion: string | null = null
+  try {
+    const marker = JSON.parse(readFileSync(getKeychainCacheVersionPath(), 'utf8'))
+    cacheVersion = marker.version
+  } catch {
+    // If no version marker exists yet, that's fine - we'll check on next read
+  }
+  keychainCacheState.cache = { data, cachedAt: Date.now(), cacheVersion }
 }

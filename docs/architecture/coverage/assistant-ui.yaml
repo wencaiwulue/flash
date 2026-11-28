@@ -10,6 +10,12 @@ groups:
     files:
       - src/commands/assistant/assistant.tsx
       - src/commands/assistant/index.ts
+  - id: assistant-ui-tests
+    kind: test
+    section: 7
+    summary: Assistant 会话发现、分页和 Ink 选择测试
+    files:
+      - tests/assistantUi.test.tsx
   - id: assistant-ui-core
     kind: source
     section: 4

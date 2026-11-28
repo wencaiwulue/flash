@@ -41,13 +41,14 @@ status: draft
 | 决策 | 实际机制 | 为什么采用 | 备选方案及不采用原因 | 代价 | 证据 |
 |---|---|---|---|---|---|
 | 序列号重放机制 | 每条事件附加单调递增 `seq`；重连时通过 `after=N` 重放 | 确保重连时不丢失不重复；允许从任意点恢复 | 仅重连后新消息：会丢失断线期间的会话进展；完全从头重放：对于长会话太慢 | 服务器需要存储和读取事件日志；客户端需要跟踪 last_seq | `src/server/sessionManager.ts:674-704` |
+| attach 在读取事件快照前等待既有写入与轮转 | 连接先登记为 replaying，再 `await runtime.eventChain`；等待期间的新事件进入 buffered，随后按 seq 重放 | 防止 ready 在 rotation 前发出而漏掉 `replay_reset`，或在旧快照后重复/遗漏事件 | 直接 readFile：存在已完成 emit 尚未落盘的竞态；等待全部未来事件：会永久阻塞 | attach 需要等待既有 I/O；通过 connection buffer 限制等待边界 | 官方 [Remote Control](https://code.claude.com/docs/en/remote-control.md) 只承诺多端同步与断线重连，不公开此私有实现；本机 `/opt/homebrew/bin/claude` `strings` 未命中 `replay_reset/replayed_from/eventChain`，不据此推断上游；本仓库 `direct-connect-v1` 要求 ready 首帧、事件 append 后发送，`tests/directConnect.test.ts` 受控 eventChain RED→GREEN |
 | WebSocket 消息采用 NDJSON 帧 | 每条消息单独一行 JSON；支持批量发送 | 避免帧边界解析复杂性；允许简单地缓冲和重发 | 二进制协议：增加实现复杂度；单消息连接：过于低效 | 每行需要是完整 JSON；需要过滤空行 | `src/server/server.ts:242-251` |
 | 权限响应 ID 幂等去重 | 每个 `control_response` 包含 `request_id`；记录已处理 ID 哈希；冲突时发送错误并忽略 | 避免重复执行权限决策；网络重发不会导致不一致 | 依赖 TCP 可靠传输：WebSocket 重连时仍可能重发；客户端自行去重：服务器无法保护后端 | 内存占用与未完成权限请求数成正比；需要持久化请求哈希 | `src/server/sessionManager.ts:827-841` |
 | 会话状态分离：starting/running/detached/stopping/stopped | WebSocket attach 时转为 running；detach 后进入 detached；可自动回收 idle detached | 允许会话在无客户端时继续运行；可安全重启服务器 | 无状态：每次都重新创建会话；单运行态：无法区分有/无客户端 | 状态转换复杂度增加；需要 idle sweep 机制 | `src/server/types.ts:31-39` |
 | 直接连接服务器认证采用 Bearer token + 时间安全比较 | `Authorization: Bearer <token>`；SHA-256 哈希比较 | 防止时序攻击；token 不在 URL 中出现 | URL 查询参数 token：易出现在日志中；cookie：不适合 CLI 场景 | 每次请求都需要验证；token 生成和管理由调用方负责 | `src/server/server.ts:30-42` |
 | Unix socket 路径权限严格限制 | socket 权限 0o600；父目录 0o700 | 防止非授权用户访问本地服务器 | 世界可读：存在安全风险；仅 TCP：Unix 域 socket 更高效且不需要端口分配 | 需要确保目录存在和权限正确；跨平台差异处理 | `src/server/server.ts:94-95,290-295` |
 | CCR 模式采用"HTTP 发输入 + WebSocket 收输出"分离 | `sendEventToRemoteSession` 通过 POST；`SessionsWebSocket` 接收流 | 利用 HTTP 的可靠性传递用户输入；WebSocket 提供低延迟下行 | 全 WebSocket：需要更复杂的流控；全 HTTP：轮询延迟高 | 两个通道需要共享会话上下文；发送失败需要单独处理 | `src/remote/RemoteSessionManager.ts:219-242` |
-| WebSocket 重连策略：指数退避 + 有限重试 + 会话不存在特殊处理 | 首次重连 2000ms；最大 5 次；4001 最多 3 次（处理 compaction 短暂不可用） | 平衡快速恢复与服务器负载；处理临时性会话不可用 | 无限重试：浪费资源；无重试：用户体验差 | 状态需要在重连间保持；viewerOnly 模式永不放弃 | `src/remote/SessionsWebSocket.ts:17-26,234-288` |
+| WebSocket 重连策略：固定 2000ms 延迟 + 有限重试 + 会话不存在特殊处理 | 首次重连 2000ms；普通 close 最多 5 次；4001 最多 3 次（处理 compaction 短暂不可用）；重连中 socket 关闭仍消耗重试预算 | 平衡快速恢复与服务器负载；处理临时性会话不可用；修复：重连中 socket 未 open 就关闭时仍消耗预算 | 无限重试：浪费资源；无重试：用户体验差；原有 previousState === 'connected' 检查：过早放弃 | 状态需要在重连间保持；成功 open 时清零普通/4001 计数；viewerOnly 仅影响 useRemoteSession watchdog，不影响 WebSocket 重连预算 | 三层证据：1. 官方文档：主 spec 已记录 Remote Control 官方页只承诺多端同步与断线重连，无公开 legacy WebSocket 具体重试次数/退避；2026-11-22 重新抓取 https://code.claude.com/docs/en/remote-control 时 WebFetch 域校验失败、curl 30 秒超时、WebSearch 403；不声称本轮读取新官方内容；2. 本机上游二进制：/opt/homebrew/Caskroom/claude-code/2.1.212/claude strings 显示 SessionsV2Client.handleStreamEnd 先检查预算再递增，无 previousState === 'connected' 门槛；二进制未提供 legacy SessionsWebSocket 精确 5 次实现，不虚构；3. 仓库契约：docs/external-stubs/contracts/direct-connect-v1.md 是独立 Direct Connect 协议，不限制 CCR 私有协议；实现：`src/remote/SessionsWebSocket.ts:17-26,234-288`；测试：`tests/remoteControl.test.ts` |
 | 控制消息与 SDK 消息复用同一通道 | 通过 `type` 字段区分：`control_request`/`control_response`/`control_cancel_request` 与 SDK 类型 | 避免建立多个连接；权限请求与消息流自然同步 | 分离控制通道：增加资源占用和复杂度 | 接收方需要过滤和路由不同类型 | `src/remote/RemoteSessionManager.ts:153-183` |
 | SDK 消息适配器将远程格式转换为 REPL 格式 | `convertSDKMessage` 转换 `assistant`/`result`/`system` 等类型 | 远程和本地可以使用相同的渲染路径 | 两套渲染逻辑：代码重复且易不一致 | 适配器需要处理多种消息类型；部分类型直接忽略 | `src/remote/sdkMessageAdapter.ts:257-371` |
 | 事件日志自动轮转防止无限增长 | 写入时检查大小；超过限制时只保留后半部分事件 | 防止磁盘耗尽；保留足够重放历史 | 不限制：有磁盘耗尽风险；完整历史：存储成本高 | 可能需要回放重置（`replay_reset: true`）；旧事件永久丢失 | `src/server/sessionManager.ts:706-724` |
@@ -506,7 +507,7 @@ WebSocket 升级 GET /sessions/{id}/ws?after=N
 ```text
 网络中断 → WebSocket close（非 4003 永久拒绝）
   → `SessionsWebSocket.handleClose` 或 `DirectConnectSessionManager` 检测
-  → 检查重试次数（5 次，viewerOnly 永不放弃）
+  → 检查重试次数（普通最多 5 次，4001 最多 3 次）
   → `scheduleReconnect` (2000ms)
   → `onReconnecting` 回调
   → 计时器到期 → `connect()`
@@ -672,8 +673,9 @@ private reconnectTimer: NodeJS.Timeout | null = null
 
 ##### 设计取舍/备选
 - **Header 认证 vs 消息认证**: 选择 Header，避免在消息帧中暴露 token（更安全）
-- **5次重试上限 vs 无限重试**: 选择有限重试，避免服务器过载；viewerOnly 模式永不放弃
-- **指数退避 vs 固定延迟**: 选择固定2000ms首次，简化实现且足够用户体验
+- **5次重试上限 vs 无限重试**: 选择有限重试，避免服务器过载
+- **固定 2000ms 延迟 vs 指数退避**: 选择固定 2000ms 延迟，简化实现且足够用户体验
+- **viewerOnly 边界**: viewerOnly 仅影响 `useRemoteSession` hook（跳过响应 watchdog，不主动调用 manager.reconnect），SessionsWebSocket 仍受自身 MAX_RECONNECT_ATTEMPTS=5 和 MAX_SESSION_NOT_FOUND_RETRIES=3 限制
 
 ##### 源码测试证据
 - **src/remote/SessionsWebSocket.ts:17-26, 234-288**: 重连策略实现
@@ -1048,7 +1050,7 @@ type SessionState = 'starting' | 'running' | 'detached' | 'stopping' | 'stopped'
 #### 设计取舍/备选
 - **detached 状态**: 允许会话在无客户端时继续运行，用户可断线重连
 - **idle 超时**: 防止孤儿会话无限运行，默认可配置
-- **viewerOnly 永不放弃**: 辅助模式下持续尝试重连
+- **viewerOnly 边界**: viewerOnly 仅影响 `useRemoteSession` hook（跳过响应 watchdog，不主动调用 manager.reconnect），SessionsWebSocket 仍受自身 MAX_RECONNECT_ATTEMPTS=5 和 MAX_SESSION_NOT_FOUND_RETRIES=3 限制
 
 #### 源码测试证据
 - **src/remote/SessionsWebSocket.ts:234-288**: CCR 重连策略
@@ -1184,9 +1186,9 @@ private ownerId: string = randomUUID()
 | Bearer token + 时间安全比较 | `src/server/server.ts:30-42` | `tests/directConnect.test.ts:192-218`（loopback 需要认证、幂等、max sessions） | 认证测试使用假 token；生产 token 由外部提供 |
 | Unix socket 权限严格限制 | `src/server/server.ts:94-95,290-295` | `tests/directConnect.test.ts:403-415`（Unix socket 私有权限与真实传输） | Unix socket 测试仅在支持的平台运行 |
 | HTTP 发输入 + WebSocket 收输出分离 | `src/remote/RemoteSessionManager.ts:219-242` |（无直接测试；通过集成验证） | 发送路径依赖 teleport API |
-| WebSocket 重连策略 | `src/remote/SessionsWebSocket.ts:17-26,234-288` |（无直接测试；设计推断） | 重连逻辑在浏览器/Bun 环境行为可能不同 |
+| WebSocket 重连策略 | `src/remote/SessionsWebSocket.ts:17-26,234-288` | `tests/remoteControl.test.ts`（普通重连耗尽 5 次、4001 耗尽 3 次、重连中 socket 关闭仍消耗预算） | 使用 mock WebSocket 和可控 timer 离线验证 |
 | 控制消息与 SDK 消息复用通道 | `src/remote/RemoteSessionManager.ts:153-183` |（设计推断） | 消息路由逻辑主要在客户端 |
-| SDK 消息适配器 | `src/remote/sdkMessageAdapter.ts:257-371` |（无直接测试；通过集成验证） | 适配器转换覆盖主要消息类型 |
+| SDK 消息适配器 | `src/remote/sdkMessageAdapter.ts:257-371` | `tests/remoteControl.test.ts`（assistant/system/result/tool_progress/user 消息完整转换） | 代表性消息完整字段断言验证 |
 | 事件日志自动轮转 | `src/server/sessionManager.ts:706-724` | `tests/directConnect.test.ts:417-430`（事件轮转广告 replay_reset） | 轮转阈值可配置；测试使用小值加速 |
 | 原子索引写入 | `src/server/sessionManager.ts:310-322` | `tests/directConnect.test.ts:432-443`（幂等记录在重启后存活） | 原子性通过文件系统 rename 保证 |
 | 空闲会话回收 | `src/server/sessionManager.ts:927-940` | `tests/directConnect.test.ts:324-335`（idle 回收 detached 会话） | 回收间隔需要足够短以便测试 |
@@ -1219,5 +1221,4 @@ private ownerId: string = randomUUID()
 | P2 | `SessionsWebSocket` 重连逻辑没有单元测试；行为依赖环境差异 | 添加 WebSocket 重连单元测试（使用 mock WebSocket） | 低（仅新增测试） | 验证重连延迟、次数、4001 特殊处理逻辑 | M | 已证实（测试缺口明显） |
 | P2 | `sdkMessageAdapter` 没有独立单元测试；转换逻辑通过集成验证 | 添加适配器测试，覆盖所有消息类型转换 | 低（仅新增测试） | 验证输入输出对，包括边界情况（无效消息、未知类型） | S | 已证实（测试缺口明显） |
 | P2 | 事件日志重播重置后没有机制同步初始状态；客户端可能需要从头重建上下文 | 考虑在 `replay_reset` 时附加会话快照或摘要 | 中（需要协议变更） | 验证重置后客户端能正确重建视图 | L | 设计推断（基于当前实现的限制） |
-| P3 | viewerOnly 模式永不放弃重连，但没有指数退避上限延迟调整；可能造成过多重连尝试 | 为 viewerOnly 模式增加更长的重连延迟或动态调整 | 低（仅改变计时参数） | 验证 viewerOnly 重连更温和且仍最终成功 | S | 设计推断 |
 | P3 | `RemoteSessionManager.pendingPermissions` 没有超时清理；服务器永远不取消时可能内存泄漏 | 为 pending 权限添加超时机制，自动清理并通知调用方 | 中（需要新状态和回调） | 验证超时后正确清理且 UI 得到通知 | M | 设计推断 |

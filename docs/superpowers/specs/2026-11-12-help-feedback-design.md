@@ -1167,7 +1167,24 @@ closed → open → [good/bad/fine] → [transcript_prompt?] → [thanks]
 
 ### 7.2 测试覆盖
 
-**无直接测试覆盖**，相关功能可能在其他模块测试中间接验证。
+`tests/helpFeedback.test.tsx`：8 个测试、40 个断言，普通与外部 feature profile 均通过。真实 hook/Ink/UDS 无关的纯函数与解析逻辑离线执行，动态配置/global config/策略只在内存中控制。
+
+### 7.3 Help/Feedback 行为整改（2026-11-20）
+
+关联 Finding：B5-help-feedback-01。无生产代码变更。
+
+| 决策 | 实际行为与验证 | 证据 |
+|---|---|---|
+| 数字输入 debounce | 快速输入只接受最后数字并 trim，once 阻止后续触发；disabled 取消 pending timer | `useDebouncedDigitInput.ts` 与真实 hook 测试 |
+| Survey 触发与概率 | 不足用户回合不触发；eligible 后同一 submitCount 不新增 roll，下一 submitCount 才新增 | `useFeedbackSurvey.tsx:220-333`；turn/probability 测试 |
+| Global cooldown | 最近展示阻止打开；超过 `minTimeBetweenGlobalFeedbackMs` 后 `shouldOpen → effect → onOpen` 写入新时间戳 | `getGlobalConfig` 内存替身与 onOpen 副作用测试 |
+| 脱敏 | Anthropic/AWS/GCP/service account/header/Bearer/generic dummy secrets 均被清理，普通文本保留 | `Feedback.tsx:82-149` |
+| HelpV2 | 真实 KeybindingSetup 下 Tab 切换到 custom 空列表，Escape 调用 onClose | `HelpV2.tsx`、design-system Tabs |
+| Tips/ReleaseNotes | 最久未展示 tip 优先；日期版本标题解析，最新 unseen 最多 5 条，当前版本不重复 | `tipScheduler.ts`、`releaseNotes.ts` |
+
+三层证据：公开交互/反馈文档只作公开行为边界，不推断私有触发算法；只读 `/opt/homebrew/bin/claude` strings 命中 `tengu_feedback_survey_config`、`No custom commands found`、脱敏与 ReleaseNotes 标识；本仓库真实 hook、Ink、清理和解析代码提供精确契约。未执行真实反馈网络提交、GitHub changelog fetch、遥测或私有上游 live。
+
+调试校准：React rerender 会重置部分 session 基线，测试按真实新增用户回合数触发，不假设固定 roll 总数；global 场景以 onOpen 时间戳副作用验收，避免依赖 Ink state flush。所有临时生产诊断已移除。回滚只需移除测试、coverage entry、本节和审计台账，保持原 Finding open、spec draft。
 
 ## 8. 文件覆盖与相关子系统
 

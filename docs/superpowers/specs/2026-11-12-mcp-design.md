@@ -1436,15 +1436,31 @@ emit tengu_mcp_tools_commands_loaded
 | `tests/sdkMcp.test.ts` | SDK in-process服务器注册元数据和调用工具 | createSdkMcpServer、tool装饰器工作正常，_meta(anthropic/searchHint/alwaysLoad)正确传递 |
 | `tests/monitorMcpTask.test.ts` | 监控MCP任务 | MonitorTool相关功能 |
 | `tests/monitorMcpToolCall.test.ts` | 监控MCP工具调用 | MonitorTool相关功能 |
+| `tests/mcp-lifecycle.test.ts` | SDK `Client`/`Server` + `InMemoryTransport.createLinkedPair()` 协议交互 | 初始化能力协商；`tools/list`、`resources/list`、`prompts/list`（含空列表）；`tools/call` 的结构化结果、`isError`、`_meta`；关闭后拒绝请求；新 client 重连同一 server；双 server 并发和单个 handler 异常隔离 |
+| `tests/mcp-lifecycle.test.ts` | 真实 `setMcpServerEnabled` / `isMcpServerDisabled` 与名称工具 | 项目配置的禁用/启用转换；普通服务器使用 opt-out 语义；MCP 名称规范化和完整名称构造 |
 
-### 7.3 未覆盖行为(基于代码阅读)
+### 7.3 当前证据边界与未覆盖行为
 
-- 完整的重连场景: onclose→缓存清除→下次connectToServer
-- OAuth完整流程: discovery→token获取→刷新→401重试
-- 企业策略完整测试: allowManagedMcpServersOnly、allowedMcpServers、deniedMcpServers
-- stdio清理escalator: SIGINT→SIGTERM→SIGKILL超时序列
-- 并发连接多个服务器时的内存使用
-- 需要认证服务器15分钟缓存过期后的行为
+2026-11-18 的补充测试使用 MCP 官方 SDK 的内存传输，协议请求和响应均经过真实 schema 与 client/server 分发，不是构造连接状态对象或检查源码文本。禁用分支调用生产配置函数，在 `NODE_ENV=test` 的项目配置内存分支执行，不写用户配置。
+
+这些测试**不等同于**生产 `connectToServer` 集成或 live 验收，仍未覆盖：
+
+- 生产重连缓存路径：`onclose` → memoize 缓存清除 → 下一次 `connectToServer`；当前重连测试只证明新 SDK client 能连接同一 server 且 server 端状态保留
+- OAuth 完整流程：discovery → token 获取/刷新 → 401 重试，以及 needs-auth 15 分钟缓存过期
+- 企业策略完整组合：allowManagedMcpServersOnly、allowedMcpServers、deniedMcpServers
+- stdio 清理 escalator：SIGINT → SIGTERM → SIGKILL 的真实子进程时序
+- 生产批处理并发上限和多服务器内存使用；当前双 server 测试只验证协议错误隔离
+- Chrome、Computer Use、OAuth、远程 HTTP/SSE/WebSocket 等需要专用环境或凭据的 live 场景
+
+### 7.4 三层证据与回滚
+
+| 决策/边界 | 官方文档证据 | 本机上游二进制只读证据 | 本仓库契约与测试证据 |
+|---|---|---|---|
+| 连接后枚举工具、资源和 prompts | [MCP 文档](https://code.claude.com/docs/en/mcp)列出 `tools/list`、`prompts/list`、`resources/list` | `strings $(command -v claude)` 命中上述三个方法及 `tools/call` | `client.ts` 的 fetch/call 路径；`tests/mcp-lifecycle.test.ts` 的真实 SDK 请求 |
+| 普通服务器禁用是项目级 opt-out | 同一文档说明 `/mcp` 禁用保留配置，`disabledMcpServers` 按项目记录 | 同一 strings 检查命中 `enabledMcpServers`、`disabledMcpServers` | `config.ts` 的 `isMcpServerDisabled` / `setMcpServerEnabled`；测试真实开关转换 |
+| 本轮重连证据不扩展为生产缓存验证 | 文档区分不同传输和运行模式的恢复策略，不能用单一内存场景代表全部 | strings 只能证明协议标记存在，不能证明运行状态迁移 | 测试使用新 SDK client/server transport pair；生产 `onclose`/memoize 路径仍列为缺口 |
+
+回归命令：`bun test tests/mcp-lifecycle.test.ts --timeout 10000`。本轮没有生产代码变更；回滚只需删除该测试文件、移除 `mcp.yaml` 中对应 test entry，并删除本节新增证据，不改变运行行为。spec 保持 draft，原 Finding 保持 open。
 
 ## 8. 文件覆盖与相关子系统
 

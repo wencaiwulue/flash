@@ -124,8 +124,8 @@ export class AuthCodeListener {
 
   private startLocalListener(onReady: () => Promise<void>): void {
     // Server is already created and listening, just set up handlers
-    this.localServer.on('request', this.handleRedirect.bind(this))
-    this.localServer.on('error', this.handleError.bind(this))
+    this.localServer.once('request', this.handleRedirect.bind(this))
+    this.localServer.once('error', this.handleError.bind(this))
 
     // Server is already listening, so we can call onReady immediately
     void onReady()

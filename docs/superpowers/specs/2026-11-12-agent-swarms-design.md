@@ -236,7 +236,7 @@ type RemoteLaunchedOutput = {
 - Fork 路径：`src/tools/AgentTool/forkSubagent.ts`
 - 工具池：`src/tools/AgentTool/loadAgentsDir.ts`
 - 执行器：`src/tools/AgentTool/runAgent.ts`
-- 测试：未找到直接测试文件
+- 测试：`tests/agentToolExecution.test.ts` 覆盖真实 `AgentTool.call` 的同步/异步执行、部分结果、失败、中止与任务清理；`tests/agentToolRouting.test.ts` 覆盖 teammate opt-in/spawn 和 ant-only remote 离线编排；runAgent/spawn/CCR 为离线边界
 
 ---
 
@@ -301,7 +301,7 @@ const FORK_PLACEHOLDER_RESULT = 'Fork started — processing in background'
 
 **源码测试证据**
 - 实现：`src/tools/AgentTool/forkSubagent.ts`
-- 测试：未找到直接测试文件
+- 测试：`tests/agentToolIsolation.test.ts` 覆盖缓存前缀、真实 fork feature gate 的 async/精确上下文继承和递归保护；普通 profile 跳过两个 gate 场景，外部 profile 实际执行
 
 ---
 
@@ -364,7 +364,7 @@ type CwdOverride = string | undefined
 **源码测试证据**
 - 实现：`src/tools/AgentTool/AgentTool.tsx` (worktree 相关部分)
 - 底层：`src/utils/worktree.ts`
-- 测试：未找到直接测试文件
+- 测试：`tests/agentToolIsolation.test.ts` 使用真实临时 git 仓库/worktree，覆盖 cwd 隔离、无变更删除、有变更保留和 runner 失败清理
 
 ---
 
@@ -461,7 +461,7 @@ type TeamFile = {
 **源码测试证据**
 - 实现：`src/tools/TeamCreateTool/TeamCreateTool.ts`
 - 底层：`src/utils/swarm/teamHelpers.ts`
-- 测试：未找到直接测试文件
+- 测试：`tests/teamLifecycle.test.ts` 覆盖真实团队文件、任务目录、单团队约束和同名唯一命名
 
 ---
 
@@ -527,7 +527,7 @@ type Output = { success: boolean, message: string, team_name?: string }
 **源码测试证据**
 - 实现：`src/tools/TeamDeleteTool/TeamDeleteTool.ts`
 - 底层：`src/utils/swarm/teamHelpers.ts` (cleanupTeamDirectories, destroyWorktree)
-- 测试：未找到直接测试文件
+- 测试：`tests/teamLifecycle.test.ts` 覆盖 active 拒绝、inactive 清理、inbox 清空和无团队幂等
 
 ---
 
@@ -620,7 +620,7 @@ type SendMessageToolOutput =
 **源码测试证据**
 - 实现：`src/tools/SendMessageTool/SendMessageTool.ts`
 - 协议：`src/utils/teammateMailbox.ts`
-- 测试：未找到直接测试文件
+- 测试：`tests/sendMessageRouting.test.ts` 覆盖本地 queue/resume、团队 inbox/broadcast、真实 UDS 和 Bridge 离线成功/断连
 
 ---
 
@@ -706,8 +706,9 @@ readTeamFile(teamName)
 
 writeTeamFileAsync(teamName, teamFile)
   → getTeamDir → mkdir recursive
-  → writeFile 原子化写入
-  → logForDebugging
+  → open(UUID.tmp, 'wx', 0o600) → write JSON → fsync → close
+  → rename(tmp, config.json) → fsync(teamDir)
+  → 任一失败关闭 handle 并清理 tmp；rename 前旧 config 不变
 
 成员更新示例：
   → readTeamFile(teamName)
@@ -725,7 +726,11 @@ writeTeamFileAsync(teamName, teamFile)
 
 **源码测试证据**
 - 实现：`src/utils/swarm/teamHelpers.ts`
-- 测试：未找到直接测试文件
+- 测试：`tests/teamFileAtomicWrite.test.ts`（8 项）：普通读写、权限、无临时残留、40 路真实 async 并发、序列化失败保留旧内容。
+- 官方文档：[Agent teams](https://code.claude.com/docs/en/agent-teams.md) 明确 team config 位于 `~/.claude/teams/{team-name}/config.json`，并说明本地状态更新与 inbox 写入失败语义；未公开 TeamFile 原子写实现。
+- 上游二进制：本机 `/opt/homebrew/bin/claude` `strings` 命中 `writeTeamFileAsync`、`updateTeamFile`、`readTeamFileAsync` 与 lock release 相关符号；这些符号不能证明上游采用相同 temp+rename 实现。
+- 本地证据：`src/jobs/state.ts` 的 `writeJsonAtomic` 提供 temp+rename 参考；本实现使用独立 UUID 临时文件避免并发互覆，最终读者只见完整旧/新 JSON。
+- 回滚：撤销原子写前必须保留现有文件备份并恢复并发/故障测试；不得通过删除回归断言接受半写 JSON。spec 保持 draft，待用户审阅。
 
 ---
 
@@ -1487,17 +1492,130 @@ type AppState = {
 
 | 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
 |---|---|---|---|
-| AgentTool 四模式执行 | `src/tools/AgentTool/AgentTool.tsx:1-1669` | 未找到直接测试文件 | 未覆盖四种模式的完整组合 |
-| AgentTool Fork 隐式子代理 | `src/tools/AgentTool/forkSubagent.ts:32-210` | 未找到直接测试文件 | feature('FORK_SUBAGENT') 可能未覆盖 |
-| AgentTool Worktree 隔离 | `src/tools/AgentTool/AgentTool.tsx` (worktree 相关部分) + `src/utils/worktree.ts` | 未找到直接测试文件 | 未覆盖有变更保留 worktree 的场景 |
-| TeamCreateTool 创建团队 | `src/tools/TeamCreateTool/TeamCreateTool.ts:1-241` | 未找到直接测试文件 | 未覆盖并发创建同名团队 |
-| TeamDeleteTool 解散团队 | `src/tools/TeamDeleteTool/TeamDeleteTool.ts:1-139` | 未找到直接测试文件 | 未覆盖 member.isActive 的完整生命周期 |
-| SendMessageTool 消息路由 | `src/tools/SendMessageTool/SendMessageTool.ts:1-800+` | 未找到直接测试文件 | 未覆盖 UDS/Bridge 跨机器路径 |
-| TeamFile 状态持久化 | `src/utils/swarm/teamHelpers.ts:1-684` | 未找到直接测试文件 | 未覆盖并发读写 teamFile |
-| Mailbox 文件邮箱系统 | `src/utils/teammateMailbox.ts:43-1142` | 未找到直接测试文件 | 未覆盖 tmux/iTerm2 后端的并发场景 |
+| AgentTool 四模式执行 | `src/tools/AgentTool/AgentTool.tsx:1-1669` | `tests/agentToolExecution.test.ts`：sync/async 生命周期；`tests/agentToolRouting.test.ts`：teammate opt-in/spawn/失败与 ant-only remote 成功/eligibility/bundle failure | 仅替换 runAgent、spawnTeammate、eligibility/teleport/remote registration 边界；不执行真实 teammate 进程、CCR、模型或私有协议 |
+| AgentTool Fork 隐式子代理 | `src/tools/AgentTool/forkSubagent.ts:32-210` | `tests/agentToolIsolation.test.ts`：缓存前缀、真实 gate 下 async/exact tools/system prompt/context、递归保护 | 普通 profile 两个 gate 测试 skip，外部 profile 实际执行；runAgent 离线，不验证真实 API cache 命中率 |
+| AgentTool Worktree 隔离 | `src/tools/AgentTool/AgentTool.tsx` (worktree 相关部分) + `src/utils/worktree.ts` | `tests/agentToolIsolation.test.ts`：真实临时 git worktree 的 cwd、无变更删除、有变更保留、失败清理 | 真实本地 git，非 hook VCS/远程仓库；不覆盖 30 天 stale sweep |
+| TeamCreateTool 创建团队 | `src/tools/TeamCreateTool/TeamCreateTool.ts:1-241` | `tests/teamLifecycle.test.ts`：真实 config/task dir/AppState、单团队约束、同名唯一命名且原文件不变 | 顺序场景，未声称多进程并发创建同名团队 |
+| TeamDeleteTool 解散团队 | `src/tools/TeamDeleteTool/TeamDeleteTool.ts:1-139` | `tests/teamLifecycle.test.ts`：active 拒绝并保留、inactive 清理、inbox 清空、无团队幂等 | 真实本地目录，无真实 teammate/worktree 进程 |
+| SendMessageTool 消息路由 | `src/tools/SendMessageTool/SendMessageTool.ts:1-800+` | `tests/sendMessageRouting.test.ts`：本地 queue/resume/failure、真实团队 inbox/broadcast、真实 UDS、Bridge 离线成功/断连 | UDS 仅本机 socket；Bridge resume/post 为 mock 边界，无私有跨机器/live 协议验证 |
+| TeamFile 状态持久化 | `src/utils/swarm/teamHelpers.ts:1-684` | `tests/teamFileAtomicWrite.test.ts`：原子写；`tests/workerCrash.test.ts`：失败/完成后 member.isActive=false | 未覆盖多进程 teamFile 并发读写；pane 外部崩溃仍只有 registry-only 限制证据 |
+| Mailbox 文件邮箱系统 | `src/utils/teammateMailbox.ts:43-1142` | `tests/mailboxConcurrency.test.ts`：真实子进程并发 append/mark-read、锁持有重试、不可解析文件恢复 | 本地临时 inbox/proper-lockfile；不覆盖 tmux/iTerm2 后端、高负载消息风暴或逐条 schema 验证 |
 | 双路径权限同步 | `src/utils/swarm/inProcessRunner.ts:1-600+` + `src/utils/swarm/permissionSync.ts:1-600+` + `src/utils/swarm/leaderPermissionBridge.ts` | 未找到直接测试文件 | 仅检查 in-process 路径，未测试 mailbox 路径 |
 | Coordinator 模式协调 | `src/coordinator/coordinatorMode.ts:1-369` | 未找到直接测试文件 | 仅检查系统提示，未验证端到端协调 |
 | Agent 内存快照管理 | `src/tools/AgentTool/agentMemorySnapshot.ts` + `src/tools/AgentTool/agentMemory.ts` | `tests/agentMemorySnapshot.test.ts`: 快照初始化、时间戳验证、保留变更、回滚机制、合并完成验证 | 未覆盖多 agent 同时合并的竞态场景 |
+
+### 7.1 AgentTool 同步/异步执行整改（2026-11-20）
+
+关联 Finding：B5-agent-swarms-01。新增 `tests/agentToolExecution.test.ts` 并唯一登记到 `agent-swarms.yaml`；6 个测试、30 个断言，无生产代码变更。
+
+| 决策 | 实际行为与验证 | 证据 |
+|---|---|---|
+| 同步成功 | 真实 `AgentTool.call` 选择指定 agent、传递用户 prompt、以 `isAsync:false` 调用 runner，返回最后 assistant 文本；前台任务结束后从 AppState 移除，并发出 completed SDK 通知 | `AgentTool.tsx:1044-1669`；sync success 测试 |
+| 同步失败与部分结果 | runner 在 assistant 前失败时向上抛错并清理前台任务；已经产生 assistant 后失败时返回部分文本，同时 SDK 终态通知仍为 failed | `AgentTool.tsx:1510-1639`；两个 failure 测试 |
+| 异步不等待 | `run_in_background:true` 在 runner gate 未释放时即返回 `async_launched`，AppState 已有 running/backgrounded task；释放后由真实 `runAsyncAgentLifecycle` 写入 completed result 和通知 | `AgentTool.tsx:955-1043`；`agentToolUtils.ts:508-687`；gated success 测试 |
+| 异步失败/中止 | runner 普通异常使 task=failed；AbortError 使 task=killed；两者均清理 abortController 并发出对应通知，测试结束后无运行中任务 | `agentToolUtils.ts:638-685`；async failure/abort 测试 |
+| 资源与证据边界 | 真实 AgentTool、LocalAgentTask、AppState、SDK/notification queues 和临时 task output 目录；仅 runAgent 模型执行边界被替换。未执行真实模型、远程服务或后台进程 | 测试 beforeEach/afterEach 与 focused/profile 门禁 |
+
+三层证据：官方 [Subagents 文档](https://code.claude.com/docs/en/sub-agents) 明确前台等待、后台稍后通知、已有文本时 API 错误返回部分输出、后台失败/停止语义；只读 `/opt/homebrew/bin/claude` strings 命中 `async_launched`、真实 async 返回结构和前后台分支；本仓库 `AgentTool.tsx`、`agentToolUtils.ts` 与上述测试验证精确状态和资源清理。测试只证明本快照的离线契约，不声称真实模型或私有上游协议 live 兼容。
+
+本切片不宣称完成 fork/worktree、teammate/remote、自动后台化或真实多 agent 并发。回滚只需移除新测试、coverage entry、本节和审计台账，保持原 Finding open、spec draft。
+
+### 7.2 Fork/Worktree 隔离整改（2026-11-20）
+
+继续关联 B5-agent-swarms-01。新增 `tests/agentToolIsolation.test.ts` 并唯一登记；6 个测试在外部 feature profile 全部执行、43 个断言，普通 profile 为 4 pass/2 skip/31 assertions。无生产代码变更。
+
+| 决策 | 实际行为与验证 | 证据 |
+|---|---|---|
+| Fork 缓存前缀 | 同一 parent assistant 下，不同 directive 的 assistant 与 placeholder tool_result 前缀逐值相同，仅末尾 directive 不同；克隆不修改原 parent UUID/content | `forkSubagent.ts:107-169`；prefix 测试 |
+| Fork 生产路由 | 在真实 `FORK_SUBAGENT` profile 且 interactive 上下文，省略 subagent_type 会选择 FORK_AGENT、强制 async，并原样传递 parent tools、renderedSystemPrompt、messages；递归 querySource 在 runAgent 前拒绝 | `AgentTool.tsx:476-539,727-755,810-832,875-911`；两个 gate 测试 |
+| Worktree 无变更清理 | 真实 `AgentTool.call(isolation:'worktree')` 在临时 git 仓库创建 worktree，runner 内 `getCwd()` 指向隔离路径；无变更返回后 worktree 被删除，parent README 不变 | `AgentTool.tsx:859-953,1044-1669`；`worktree.ts:877-995,1119-1148`；clean/failure 测试 |
+| Worktree 有变更保留 | runner 在隔离 cwd 写入新文件后，结果返回 worktreePath/Branch，文件只存在 worktree，不存在 parent checkout；测试后显式清理 | `cleanupWorktreeIfNeeded` 与 changed-worktree 测试 |
+| Gate 与资源边界 | 外部 profile 的 fork gate 会强制所有 agent async，因此 worktree 同步场景使用合法 non-interactive 上下文，不把 async 结果误断言为 sync。配置、session metadata、task output、git 全部隔离到临时目录 | `forkSubagent.ts:32-39`；测试 beforeEach/afterEach |
+
+三层证据：官方 Subagents 文档说明 fork/background 与 non-interactive 的公开行为差异；只读 `/opt/homebrew/bin/claude` strings 命中 `useExactTools`、`forkContextMessages` 和 agent worktree 创建错误/生命周期片段；本仓库生产入口、真实 git worktree 与临时文件系统验证精确隔离和清理。未测量真实 API prompt-cache 命中率，不验证 hook VCS、远程仓库或 30 天 stale sweep。
+
+普通 profile 的两次 skip 是 compile-time feature 未启用的明确分类，不算行为通过；外部 profile 的 6/6 才是 fork gate 证据。回滚只需移除测试、coverage entry、本节和审计台账，保持原 Finding open、spec draft。
+
+### 7.3 Teammate/Remote 路由整改（2026-11-20）
+
+继续关联 B5-agent-swarms-01。新增 `tests/agentToolRouting.test.ts` 并唯一登记；6 个测试、25 个断言，普通与外部 feature profile 均通过，无生产代码变更。
+
+| 决策 | 实际行为与验证 | 证据 |
+|---|---|---|
+| Teammate gate | 外部上下文未 opt-in 时，team_name+name 在 spawn 前失败；`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` 且 killswitch 默认允许时进入真实 spawn 分支 | `AgentTool.tsx:414-474`；`agentSwarmsEnabled.ts:24-44`；gate-off/spawn 测试 |
+| Teammate spawn 路由 | 真实 `AgentTool.call` 原样传递 prompt/team/name/model/plan mode/request ID，返回 `teammate_spawned` 及 spawn 数据；spawn 异常直接传播且不回落 runAgent | `AgentTool.tsx:437-474`；spawn success/failure 测试 |
+| Remote 成功编排 | ant-only + isolation=remote 时依次执行 eligibility、teleport、remote registration，返回 taskId/sessionUrl/outputFile；不进入本地 runAgent | `AgentTool.tsx:665-711`；remote success 测试 |
+| Remote 失败闭锁 | eligibility 失败在 teleport 前抛出格式化原因；teleport 空 session 保留 bundle failure hint，且不注册 remote task | `AgentTool.tsx:667-687`；eligibility/bundle failure 测试 |
+| 边界与清理 | 仅 runAgent、spawnTeammate、eligibility/teleport/remote registration 被替换；真实 AgentTool 路由和输出对象。配置、task output、env、队列均隔离/恢复 | 测试 mock.module 与 afterEach |
+
+三层证据：官方 [Agent Teams 文档](https://code.claude.com/docs/en/agent-teams) 明确实验能力默认关闭、`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` opt-in、name 触发 teammate、model/plan 的公开行为；只读 `/opt/homebrew/bin/claude` strings 命中 `teammate_spawned`、`remote_launched` 与 `Cannot launch remote agent`；本仓库源码和测试验证精确路由。公开文档当前描述 teammate 继承 lead permission mode，而本快照保留显式 `mode:'plan'` 参数；本测试只记录该快照行为，不声称与最新上游 per-teammate mode 语义一致。
+
+Remote/CCR 没有据此获得 live 凭证、登录、bundle、远程 session 或私有协议验证；remote registration 也是 mock 边界，未验证真实 AppState remote task 生命周期。普通/外部 profile 通过不等于 live。回滚只需移除测试、coverage entry、本节和审计台账，保持原 Finding open、spec draft。
+
+### 7.4 TeamCreate/Delete 生命周期整改（2026-11-20）
+
+关联 Finding：B5-agent-swarms-02。新增 `tests/teamLifecycle.test.ts` 并唯一登记；4 个测试、26 个断言，普通与外部 feature profile 均通过，无生产代码变更。
+
+| 决策 | 实际行为与验证 | 证据 |
+|---|---|---|
+| 创建真实团队 | 真实 TeamCreate.call 写入 lead config、创建 fresh task list、设置 leader taskListId 和 AppState teamContext；同一 leader 再建团队在写入前拒绝 | `TeamCreateTool.ts:128-236`；create/guard 测试 |
+| 同名冲突 | 第二个无 teamContext 的调用请求同名时生成不同 slug，原团队文件字节不变，新团队独立存在 | `generateUniqueTeamName`；collision 测试 |
+| 活跃成员保护 | 非 lead 且 isActive!==false 时 TeamDelete 返回 success=false，团队和 AppState 保留；成员转 inactive 后可清理 | `TeamDeleteTool.ts:71-99`；active→inactive 测试 |
+| 清理与幂等 | inactive 团队删除 config/task dirs、清空 inbox/teamContext；无团队再次调用返回 success=true 的 no-op | `TeamDeleteTool.ts:101-134`；cleanup/noop 测试 |
+| 证据边界 | 真实团队文件、原子写、任务目录和 AppState；CLAUDE_CONFIG_DIR 全程临时。无真实 teammate 进程、worktree 或多进程同名创建 | 测试 beforeEach/afterEach |
+
+官方 Agent Teams 文档确认一个 session 一个团队、config/task 目录职责、团队成员与关闭限制；只读 `/opt/homebrew/bin/claude` strings 结合本仓库生产入口验证当前精确路径。顺序同名场景不冒充多进程并发创建证据，真实 teammate 进程和 worktree 清理由各自边界另行验证。
+
+回滚只需移除测试、coverage entry、本节和审计台账，保持原 Finding open、spec draft。
+
+### 7.5 Mailbox 多进程并发整改（2026-11-20）
+
+关联 Finding：B5-agent-swarms-03。新增 `tests/mailboxConcurrency.test.ts` 并唯一登记；4 个测试、30 个断言，普通与外部 feature profile 均通过，无生产代码变更。
+
+| 决策 | 实际行为与验证 | 证据 |
+|---|---|---|
+| 并发 append | 6 个真实 Bun 子进程各写 6 条到同一 inbox，最终 36 条文本唯一、全部 unread、JSON 可解析、lock 文件释放 | `teammateMailbox.ts:134-191`；append 测试 |
+| 并发 mark-read | 两个子进程分别标记 disjoint indexes，最终 12 条全部 read 且原始文本完整，不丢消息 | `markMessageAsReadByIndex`；mark 测试 |
+| 锁持有重试 | 独立进程显式持有 proper-lockfile 350ms 时，4 个写入进程仍完成，最终 initial+12 条唯一消息且 lock 释放 | `LOCK_OPTIONS` retries；contention 测试 |
+| 不可解析文件恢复 | 整文件 `{not-json` 时 readMailbox 返回空，后续写入形成只含新消息的合法数组；不声称保留损坏前内容或逐条 schema 清理 | `readMailbox`/write path；corrupt 测试 |
+| 证据边界 | 真实子进程、proper-lockfile 和临时 CLAUDE_CONFIG_DIR；以磁盘消息数量/唯一性/内容验收，不以被吞 I/O 错误后的 exit 0 代替断言 | 测试 spawn/exitSuccess/final reads |
+
+官方 Agent Teams 文档确认 inbox JSON 文件结构与消息交付边界；只读 upstream strings 命中 mailbox/index/lockfile 相关标识；本仓库生产 API 和真实多进程文件状态确定并发契约。未覆盖 tmux/iTerm2 后端、高负载消息风暴、写盘失败向调用方传播或逐条 schema 验证。
+
+初版 mark 测试误用参数顺序和返回值，按真实签名 `(agentName, teamName, messageIndex): Promise<void>` 修正；这是测试签名错误，不是生产 RED。回滚只需移除测试、coverage entry、本节和审计台账，保持原 Finding open、spec draft。
+
+### 7.6 Worker 崩溃/完成状态整改（2026-11-20）
+
+关联 Finding：B5-agent-swarms-06。新增 `tests/workerCrash.test.ts` 并唯一登记；3 个测试、18 个断言。真实 runner 失败复现 TeamFile 一直 active 的增量实现缺陷，已做小范围生产修复。
+
+| 决策 | 实际行为与验证 | 证据 |
+|---|---|---|
+| 真实 RED | runInProcessTeammate 的 runAgent 抛出 `offline worker crash` 后，result.success=false、task 被驱逐、SDK failed 已发出，但 TeamFile worker.isActive 仍为 true | 修复前 `worker-crash-red.log`，最终断言 Expected false / Received true |
+| 失败路径修复 | catch 在 failed task/notification 收尾前调用 `markMemberInactive`，同步 TeamFile false；backend.isActive 也因 task 不存在返回 false | `inProcessRunner.ts` catch 与 `setMemberActive`；failure 测试 |
+| 正常完成修复 | 正常 aborted completion 同样标记 inactive，task 驱逐、SDK completed 与 TeamFile 一致 | completion 分支与 completion 测试 |
+| 失败隔离 | TeamFile 写入异常由 markMemberInactive 记录，不掩盖原 runner 结果或阻止 task/SDK 清理 | helper try/catch |
+| Pane 边界 | PaneBackendExecutor 只对 unknown agent 返回 false；已注册记录即使外部 pane 已 kill 仍返回 true。该测试记录 registry-only 限制，不声称跨进程崩溃检测已修复 | `PaneBackendExecutor.ts:329-344`；pane boundary 测试 |
+
+三层证据：官方 Agent Teams 文档明确成员 idle/停止状态与 TeamDelete 活跃成员约束；只读 `/opt/homebrew/bin/claude` strings 命中 `setMemberActive`；本仓库真实 runner、TeamFile、AppState/SDK 事件给出 RED/GREEN。PaneBackend 当前没有 pane-exists 查询接口，跨进程外部崩溃检测仍需独立后端设计，不能用本测试冒充完成。
+
+生产回滚：移除 `markMemberInactive` helper 与完成/失败两个调用，即恢复 RED。完整回滚再移除测试、coverage entry、本节和审计台账，保持原 Finding open、spec draft。
+
+### 7.7 SendMessage 多路由整改（2026-11-20）
+
+继续关联 B5-agent-swarms-02。新增 `tests/sendMessageRouting.test.ts` 并唯一登记；外部 feature profile 6 个测试、30 个断言，普通 profile 4 pass/2 skip/22 assertions。无生产代码变更。
+
+| 决策 | 实际行为与验证 | 证据 |
+|---|---|---|
+| 本地 running agent | 真实 agentNameRegistry+LocalAgentTask，SendMessage 将原文加入 pendingMessages，返回下一 tool round 投递，不调用 resume | `SendMessageTool.ts:800-821`；queue 测试 |
+| 本地 stopped agent | killed task 通过 resume 边界收到 agentId/prompt/parent request ID；resume 异常返回 success=false，不写 teammate inbox | `SendMessageTool.ts:822-871`；resume success/failure 测试 |
+| 团队 direct/broadcast | 真实 TeamFile 和 inbox：worker 收到 direct+broadcast，researcher 仅 broadcast；sender=team-lead，消息均 unread，team config 保留 | `handleMessage`/`handleBroadcast`；mailbox 测试 |
+| UDS | 在真实本机 Unix socket 上收到 `hello uds\n` 并回应 ok:true；缺失 socket 返回 success=false | `SendMessageTool.ts:775-797`；真实 UDS 测试 |
+| Bridge | active 时 post 收到 session target/message 并返回成功；断连时重新检查 handle/active 并失败，post 不再次调用 | `SendMessageTool.ts:742-774`；Bridge 测试 |
+| Feature/资源边界 | UDS_INBOX 未启用的普通 profile 两个场景 skip，外部 profile 实际执行。临时 config/task dirs/socket、AppState、queues、env 均清理 | 测试 beforeEach/afterEach |
+
+官方 Agent Teams 文档确认 direct/broadcast mailbox 文件与发送语义；只读 `/opt/homebrew/bin/claude` strings 命中 postInterClaudeMessage/sendToUdsSocket/断连文案；本仓库生产入口、真实 UDS 和离线 resume/post 边界确定当前路由。Bridge 不验证私有跨机器协议，UDS 不验证远程主机，resume 不验证真实 transcript/model。
+
+初版把 worker/researcher 都断言为 direct+broadcast 两条，实际 researcher 只有 broadcast；按真实收件箱修正，未改生产。回滚只需移除测试、coverage entry、本节和审计台账，保持原 Finding open、spec draft。
 
 ## 8. 文件覆盖与相关子系统
 
@@ -1505,9 +1623,9 @@ type AppState = {
 
 | 分组 | 主拥有职责 | 相关测试或共享证据 | 不拥有的相邻文件 |
 |---|---|---|---|
-| agent-tool | AgentTool 实现、fork 子代理、agent memory | 未找到专用测试 | `src/tools/AgentTool/built-in/` 中的内置 agent 实现不归本组 |
-| team-tools | TeamCreateTool、TeamDeleteTool | 未找到专用测试 | 其他工具（SendMessageTool、Task*Tool）不归本组 |
-| swarm-utils | mailbox、teamHelpers、permissionSync、inProcessRunner、backends | 未找到专用测试 | `src/utils/teammate.ts` 等辅助函数不归本组 |
+| agent-tool | AgentTool 实现、fork 子代理、agent memory | `agentToolExecution`：sync/async；`agentToolIsolation`：fork/worktree；`agentToolRouting`：teammate/remote 离线路由；`agentMemorySnapshot` | 自动后台化、真实 teammate/CCR/API cache、真实多 agent 并发和内置 agent 具体行为仍需各自证据 |
+| team-tools | TeamCreateTool、TeamDeleteTool | `tests/teamLifecycle.test.ts`：真实 config/task dir、唯一命名、active 保护和清理；SendMessage 证据见 `tests/sendMessageRouting.test.ts` | Task*Tool、真实 teammate 进程与多进程同名创建不归本组证据 |
+| swarm-utils | mailbox、teamHelpers、permissionSync、inProcessRunner、backends | `mailboxConcurrency`：inbox/lock；`workerCrash`：inactive 转换与 pane 限制；`teamFileAtomicWrite` | permissionSync、其他 backends 与 `src/utils/teammate.ts` 等辅助函数仍需各自证据 |
 | coordinator | Coordinator 模式、系统提示 | 未找到专用测试 | 协调业务逻辑不归本组 |
 
 相关子系统：

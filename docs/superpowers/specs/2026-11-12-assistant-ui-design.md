@@ -877,16 +877,25 @@ cursorRef 保持不变 → 用户可以再次滚动重试
 
 | 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
 |---|---|---|---|
-| 会话选择列表格式 | `src/components/AssistantSessionChooser.tsx` | 无直接覆盖 | 会话列表选择 UI 实现 |
-| 历史消息分页策略 | `src/hooks/useAssistantHistory.ts:37-43,214-239` | 无直接覆盖 | 手动验证分页加载逻辑 |
-| 只读 Viewer 模式 | `src/utils/remote.ts` | 无直接覆盖 | 手动验证 viewerOnly 模式行为 |
-| 滚动锚定实现 | `src/hooks/useAssistantHistory.ts:88-95,198-208` | 无直接覆盖 | 手动验证滚动锚定逻辑 |
+| 会话发现与排序 | `src/assistant/sessionDiscovery.ts` | `tests/assistantUi.test.tsx` 验证 id/session_id 归一化、无效记录过滤、machine_name/时间映射、lastActiveAt 降序和请求参数 | axios 仅替换远程边界，不验证私有服务 |
+| 最新/更旧分页 | `src/assistant/sessionHistory.ts` | latest 使用 anchor_to_latest，older 使用 before_id，events/firstId/hasMore 映射，非 200 返回 null | 只验证单页与 cursor，不执行真实网络重试 |
+| 会话选择 UI | `src/assistant/AssistantSessionChooser.tsx` | 真实 Ink + AppStateProvider + KeybindingSetup：空列表文案、Enter 选择 session id、Escape cancel | 当前实现没有 `useAssistantHistory` 滚动锚定模块；不把 chooser 误写为完整远程 viewer |
+| daemonBridge 队列与清理 | `src/assistant/daemonBridge.ts` + 既有 `tests/daemonBridge.test.ts` | 既有 core 注入测试覆盖 initialize 过滤、inbound/control/permission 队列、state listener 和幂等 teardown | 归 bridge spec 主责，不在 assistant-ui 重复登记 |
 
-### 未覆盖测试
-- 会话列表分页加载的边界情况（刚好填满、不足、超过 10 页）
-- 网络错误重试机制
-- viewerOnly 模式权限请求处理
-- Token 加密存储验证
+### 当前未覆盖测试
+- 多页（超过两页）组合、真实网络重试和私有服务端行为
+- viewerOnly 权限请求和真实远程 viewer 的滚动锚定（当前 chooser 无此模块）
+- Token 加密存储与真实 OAuth/桌面 live
+
+### 7.3 三层证据与回滚
+
+| 层级 | 只读证据 | 边界 |
+|---|---|---|
+| 官方文档 | [Remote Control](https://code.claude.com/docs/en/remote-control)说明跨设备继续本地会话和同步历史 | 未公开分页 cursor、会话归一化、Chooser 输入或 daemon queue 内部实现 |
+| 本机上游二进制 | `strings $(command -v claude)` 命中 `fetchLatestEvents`、`before_id` 等分页标记 | 只证明相关符号存在，不证明私有 API 或 WebSocket live 兼容 |
+| 本仓库 | 新 `tests/assistantUi.test.tsx` 4 个测试/14 个断言 + 既有 `tests/daemonBridge.test.ts` | 全部 axios/core 边界离线，无真实远程、OAuth、浏览器或桌面验证 |
+
+本轮无生产代码变更。回滚只需删除新测试与 coverage entry；spec 保持 draft，B4-assistant-ui-01 原 Finding 保持 open。
 
 ## 8. 文件覆盖与相关子系统
 

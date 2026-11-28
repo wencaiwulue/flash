@@ -240,7 +240,6 @@ export class SessionsWebSocket {
 
     this.ws = null
 
-    const previousState = this.state
     this.state = 'closed'
 
     // Permanent codes: stop reconnecting — server has definitively ended the session
@@ -271,11 +270,8 @@ export class SessionsWebSocket {
       return
     }
 
-    // Attempt reconnection if we were connected
-    if (
-      previousState === 'connected' &&
-      this.reconnectAttempts < MAX_RECONNECT_ATTEMPTS
-    ) {
+    // Attempt reconnection if we have remaining budget
+    if (this.reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
       this.reconnectAttempts++
       this.scheduleReconnect(
         RECONNECT_DELAY_MS,

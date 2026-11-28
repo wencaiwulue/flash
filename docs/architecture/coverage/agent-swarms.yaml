@@ -185,12 +185,60 @@ groups:
     summary: UI 提示组件
     files:
       - src/components/Spinner/teammateSelectHint.ts
+  - id: agent-tool-execution-tests
+    kind: test
+    section: 7
+    summary: AgentTool 同步/异步真实入口、结果、失败、中止与任务清理
+    files:
+      - tests/agentToolExecution.test.ts
+  - id: agent-tool-isolation-tests
+    kind: test
+    section: 7
+    summary: fork 缓存前缀、真实 feature gate、递归保护和临时 git worktree 生命周期
+    files:
+      - tests/agentToolIsolation.test.ts
+  - id: agent-tool-routing-tests
+    kind: test
+    section: 7
+    summary: teammate opt-in/spawn 路由和 ant-only remote 离线编排、失败路径
+    files:
+      - tests/agentToolRouting.test.ts
+  - id: team-lifecycle-tests
+    kind: test
+    section: 7
+    summary: TeamCreate/Delete 真实团队文件、任务目录、活跃成员保护和幂等清理
+    files:
+      - tests/teamLifecycle.test.ts
+  - id: swarm-mailbox-tests
+    kind: test
+    section: 7
+    summary: Mailbox 多进程并发 append/mark-read、锁重试与损坏恢复
+    files:
+      - tests/mailboxConcurrency.test.ts
+  - id: worker-lifecycle-tests
+    kind: test
+    section: 7
+    summary: in-process worker 失败/完成 inactive 转换和 pane 检测边界
+    files:
+      - tests/workerCrash.test.ts
+  - id: send-message-routing-tests
+    kind: test
+    section: 7
+    summary: SendMessage 本地 agent、团队 mailbox、真实 UDS 与 Bridge 离线路由
+    files:
+      - tests/sendMessageRouting.test.ts
   - id: agent-memory-tests
     kind: test
     section: 7
     summary: Agent 内存快照测试（快照初始化、时间戳验证、保留变更、回滚机制）
     files:
       - tests/agentMemorySnapshot.test.ts
+  - id: team-file-atomic-write-tests
+    kind: test
+    section: 7
+    summary: TeamFile 原子写入测试（临时文件、fsync、原子 rename、权限设置）
+    files:
+      - tests/teamFileAtomicWrite.test.ts
   - id: agent-tool-uncovered
     kind: source
     section: 4

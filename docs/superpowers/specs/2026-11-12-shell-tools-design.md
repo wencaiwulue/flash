@@ -1070,13 +1070,13 @@ Shell.ts exec()
 |---------|---------|----------------|---------|
 | 命令用 tree-sitter 解析，fallback 到 regex | `src/utils/bash/ast.ts` `parseForSecurityFromAst()` | `tests/bashParser.test.ts` 验证各种命令结构 | tree-sitter 在某些构建中不可用，需测试 legacy 路径 |
 | 权限分类器用 sideQuery 调用小模型 | `src/utils/permissions/bashClassifier.ts` `classifyBashCommand()` | `tests/bashClassifier.test.ts` 验证分类、prompt 规则解析、分类器不可用 fallback | 侧查询可能失败/超时，需测试不可用路径 |
-| 沙箱配置从权限规则生成 | `src/utils/sandbox/sandbox-adapter.ts` `convertToSandboxRuntimeConfig()` | 需补充测试 | sandbox-runtime 包的行为是外部依赖 |
-| 命令超时与进程组终止 | `src/utils/Shell.ts` 超时逻辑、kill 逻辑 | 需补充测试 | 跨平台进程组行为有差异（Windows vs POSIX） |
-| 输出截断保留两端 | `src/utils/stringUtils.ts` `EndTruncatingAccumulator` | 需补充测试 | 截断点选择是启发式 |
-| 大输出持久化 | `src/utils/toolResultStorage.ts` `buildLargeToolResultMessage()` | 需补充测试 | 临时文件生命周期管理（何时删除） |
-| 后台任务管理 | `src/tasks/LocalShellTask/LocalShellTask.ts` | 需补充测试 | 任务持久化与恢复不在当前范围 |
-| Bash/PowerShell 共享抽象 | `src/utils/shell/shellProvider.ts` `ShellProvider` 接口 | 需补充测试 | PowerShell 支持仅限 Windows |
-| Git 裸仓库防护 | `src/utils/sandbox/sandbox-adapter.ts` bareGitRepoScrubPaths、`scrubBareGitRepoFiles()` | 需补充测试 | 仅保护特定路径，不是全面 Git 安全 |
+| 沙箱配置从权限规则生成 | `src/utils/sandbox/sandbox-adapter.ts` `convertToSandboxRuntimeConfig()` | `tests/shell-tools.test.ts`：路径前缀、写入允许列表、managed-domain 配置 | 仅离线配置，不依赖容器/特权 sandbox |
+| 命令超时与进程组终止 | `src/utils/Shell.ts` 超时逻辑、kill 逻辑 | `tests/shell-tools.test.ts`：child+grandchild 进程树终止、超时退出状态、interrupt/非 interrupt abort、失败清理 | POSIX 本地进程组；未声称 Windows 实测 |
+| 输出截断保留两端 | `src/utils/stringUtils.ts` `EndTruncatingAccumulator` | `tests/shell-tools.test.ts`：保留开头、字节统计、清空、溢出写盘和释放 | 只验证当前保留策略 |
+| 大输出持久化 | `src/utils/toolResultStorage.ts` `buildLargeToolResultMessage()` | `tests/shell-tools.test.ts`：TaskOutput stdout/stderr、行数/字节、overflow、clear/delete | 临时目录生命周期 |
+| 后台任务管理 | `src/tasks/LocalShellTask/LocalShellTask.ts` | `tests/shell-tools.test.ts`：running→completed/killed/backgrounded、已完成不可再 background、registerForeground API | 不覆盖跨重启恢复 |
+| Bash/PowerShell 共享抽象 | `src/utils/shell/shellProvider.ts` `ShellProvider` 接口 | `tests/shell-tools.test.ts`：双方 spawn args、cwd tracking、sandbox args、环境变量 | PowerShell 仅离线 provider 验证，非 Windows live |
+| Git 裸仓库防护 | `src/utils/sandbox/sandbox-adapter.ts` bareGitRepoScrubPaths、`scrubBareGitRepoFiles()` | `tests/shell-tools.test.ts`：现有 HEAD/objects/refs/hooks/config 均进入 denyWrite | 仅验证现有文件保护；缺失文件 scrub 路径未做 bwrap live |
 | 复合命令权限检查 | `src/tools/BashTool/bashPermissions.ts` `checkCommandOperatorPermissions()` | `tests/bashPermissionsClassifier.test.ts` 验证复合命令处理 | 子命令数量限制为 50，超过返回 ask |
 
 ### 未覆盖

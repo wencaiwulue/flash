@@ -37,15 +37,24 @@ function context(model: string) {
   }
 }
 
-async function main() {
-  if (process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_AUTH_TOKEN) {
+export function validateCredentialSources(
+  env: NodeJS.ProcessEnv,
+): 'api_key' | 'bearer' | null {
+  const hasKey = Boolean(env.ANTHROPIC_API_KEY)
+  const hasToken = Boolean(env.ANTHROPIC_AUTH_TOKEN)
+  if (hasKey && hasToken) {
     throw new Error('ANTHROPIC_API_KEY and ANTHROPIC_AUTH_TOKEN are mutually exclusive')
   }
-  if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) {
+  return hasKey ? 'api_key' : hasToken ? 'bearer' : null
+}
+
+export async function main() {
+  enableConfigs()
+  const source = validateCredentialSources(process.env)
+  if (!source) {
     console.log('MODEL_LIVE_SKIPPED')
     return
   }
-  enableConfigs()
   const model = getMainLoopModel()
   const toolContext = context(model)
   const workflow = parseWorkflowDefinition({
@@ -100,8 +109,10 @@ async function main() {
   console.log('REACTIVE_COMPACTION_LIVE_OK')
 }
 
-try {
-  await main()
-} finally {
-  await runCleanupFunctions()
+if (import.meta.main) {
+  try {
+    await main()
+  } finally {
+    await runCleanupFunctions()
+  }
 }

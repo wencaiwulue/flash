@@ -172,3 +172,4 @@ groups:
     files:
       - tests/monitorMcpTask.test.ts
       - tests/monitorMcpToolCall.test.ts
+      - tests/mcp-lifecycle.test.ts

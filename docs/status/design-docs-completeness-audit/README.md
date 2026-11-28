@@ -39,7 +39,7 @@ Design docs: 0 errors, 73 warnings
 | session-persistence | 2 | 7/7 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（关键路径无测试） | 4 | [02-tools-permissions-sessions.md#session-persistence](02-tools-permissions-sessions.md#session-persistence) |
 | shell-tools | 2 | 13/13 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（关键路径无测试） | 4 | [02-tools-permissions-sessions.md#shell-tools](02-tools-permissions-sessions.md#shell-tools) |
 | tool-framework | 2 | 7/7 | 完整 | 一致 | 有边界搜索但未完整对齐 | 部分充分（关键路径无测试） | 4 | [02-tools-permissions-sessions.md#tool-framework](02-tools-permissions-sessions.md#tool-framework) |
-| auth | 3 | 20/20 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（仅 oauthRefresh 和 linuxSecretStorage） | 2 | [03-memory-auth-settings.md#auth](03-memory-auth-settings.md#auth) |
+| auth | 3 | 20/20 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ✅ 充分（有完整测试，B3-auth-01 已修复） | 2 | [03-memory-auth-settings.md#auth](03-memory-auth-settings.md#auth) |
 | commit-attribution | 3 | 6/6 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ✅ 充分（有完整测试） | 3 | [03-memory-auth-settings.md#commit-attribution](03-memory-auth-settings.md#commit-attribution) |
 | git-integration | 3 | 9/9 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（测试不完整） | 3 | [03-memory-auth-settings.md#git-integration](03-memory-auth-settings.md#git-integration) |
 | memory | 3 | 7/7 | 完整 | 一致 | ⚠️ 不充分（仅源码） | ⚠️ 部分充分（无测试） | 6 | [03-memory-auth-settings.md#memory](03-memory-auth-settings.md#memory) |
@@ -86,7 +86,7 @@ Design docs: 0 errors, 73 warnings
 | network-security | 7 | 7/7 | 完整 | 一致 | N/A | 部分充分（有测试） | 6 | [07-build-runtime-stubs.md#network-security](07-build-runtime-stubs.md#network-security) |
 | runtime-lifecycle | 7 | 11/11 | 完整 | 一致 | N/A | 部分充分（无测试） | 6 | [07-build-runtime-stubs.md#runtime-lifecycle](07-build-runtime-stubs.md#runtime-lifecycle) |
 | telemetry | 7 | 1/1 | 完整 | 一致 | N/A | 部分充分（无测试） | 4 | [07-build-runtime-stubs.md#telemetry](07-build-runtime-stubs.md#telemetry) |
-| test-validation | 7 | 11/11 | 完整 | 一致 | N/A | 部分充分（有测试） | 6 | [07-build-runtime-stubs.md#test-validation](07-build-runtime-stubs.md#test-validation) |
+| test-validation | 7 | 11/11 | 完整 | 一致 | N/A | ✅ 充分（有完整测试，B7-test-validation-06 已修复） | 6 | [07-build-runtime-stubs.md#test-validation](07-build-runtime-stubs.md#test-validation) |
 | web-tools | 7 | 9/9 | 完整 | 一致 | N/A | 部分充分（有测试） | 5 | [07-build-runtime-stubs.md#web-tools](07-build-runtime-stubs.md#web-tools) |
 
 ## 分类统计与整改顺序
@@ -149,7 +149,7 @@ Design docs: 0 errors, 73 warnings
 | 实现一致 | 9 |
 | 发现总数 | 26 |
 | P0 | 0 |
-| P1 | 1 |
+| P1 | 0 (1 已修复) |
 | P2 | 12 |
 | P3 | 13 |
 
@@ -248,10 +248,10 @@ Design docs: 0 errors, 73 warnings
 | 严重度 | 数量 |
 |--------|------|
 | P0 | 0 |
-| P1 | 2 |
-| P2 | 97 |
+| P1 | 1（原 2，1 个已修复） |
+| P2 | 98（原 97，新增 1 个测试） |
 | P3 | 135（原 136，1 个 rejected） |
-| **总计** | **234** |
+| **总计** | **234**（原 235，1 个修复 +1 个新增测试） |
 
 ### 误报记录（rejected）
 
@@ -274,27 +274,26 @@ Design docs: 0 errors, 73 warnings
 
 | ID | 主责 | 说明 | 证据 | 依赖 | 验收条件 | 来源 |
 |----|------|------|------|------|----------|------|
-| B3-auth-01 | auth | Keychain 缓存 30 秒，跨进程刷新后另一个进程最多 30 秒才看到新 token | `src/utils/secureStorage/macOsKeychainHelpers.ts:69-91` | None | 每次读取 tokens 时检查磁盘 mtime 或 Keychain 自身修改时间，变更则立即清缓存 | [03-memory-auth-settings.md](03-memory-auth-settings.md) |
-| B7-test-validation-06 | test-validation | `scripts/live-model-validation.ts` 在 `enableConfigs()` 前检查凭据，standalone 脚本的 settings 初始化契约需要明确，凭据互斥检查需要集中处理 | `scripts/live-model-validation.ts:40-48` | None | 明确 standalone 脚本的 settings 初始化契约，集中处理凭据互斥检查 | [07-build-runtime-stubs.md](07-build-runtime-stubs.md) |
+| B3-auth-01 ✅ | auth | [已修复] Keychain 缓存 30 秒，跨进程刷新后另一个进程最多 30 秒才看到新 token | `src/utils/secureStorage/macOsKeychainHelpers.ts:90-109` | None | 使用共享 cache-version 标记（~/.claude/.keychain-cache-version.json），每次写入时原子更新 UUID，读取前检查版本，变更则立即刷新缓存 | [03-memory-auth-settings.md](03-memory-auth-settings.md) |
+| B7-test-validation-06 ✅ | test-validation | [已修复] `scripts/live-model-validation.ts` 在 `enableConfigs()` 前检查凭据，standalone 脚本的 settings 初始化契约需要明确，凭据互斥检查需要集中处理 | `scripts/live-model-validation.ts:40-48` | None | 明确 standalone 脚本的 settings 初始化契约，集中处理凭据互斥检查 | [07-build-runtime-stubs.md](07-build-runtime-stubs.md) |
 
 ---
 
 ## 完整整改优先级
 
-### P1 问题（2 项）
+### P1 问题（0 项，2 项已修复）
 
-1. **B3-auth-01**：（主责：auth）
-   - 描述：Keychain 缓存 30 秒，跨进程刷新后另一个进程最多 30 秒才看到新 token
-   - 证据：`src/utils/secureStorage/macOsKeychainHelpers.ts:69-91`
-   - 依赖：None
-   - 验收：每次读取 tokens 时检查磁盘 mtime 或 Keychain 自身修改时间，变更则立即清缓存
+1. **B3-auth-01 ✅ 已修复**：（主责：auth）
+   - 描述：[已修复] Keychain 缓存 30 秒，跨进程刷新后另一个进程最多 30 秒才看到新 token
+   - 证据：`src/utils/secureStorage/macOsKeychainHelpers.ts:90-109, src/utils/secureStorage/macOsKeychainStorage.ts:26-199`
+   - 修复方案：使用共享 cache-version 标记（~/.claude/.keychain-cache-version.json），每次写入时原子更新 UUID，读取前检查版本，变更则立即刷新缓存
    - 来源：[03-memory-auth-settings.md](03-memory-auth-settings.md)
 
-2. **B7-test-validation-06**：（主责：test-validation）
-   - 描述：`scripts/live-model-validation.ts` 在 `enableConfigs()` 前检查凭据，standalone 脚本的 settings 初始化契约需要明确，凭据互斥检查需要集中处理
-   - 证据：`scripts/live-model-validation.ts:40-48`
-   - 依赖：None
-   - 验收：明确 standalone 脚本的 settings 初始化契约，集中处理凭据互斥检查
+2. **B7-test-validation-06 ✅ 已修复**：（主责：test-validation）
+   - 描述：[已修复] `scripts/live-model-validation.ts` 在 `enableConfigs()` 前检查凭据，standalone 脚本的 settings 初始化契约需要明确，凭据互斥检查需要集中处理
+   - 证据：`scripts/live-model-validation.ts:40-48`（修复前）
+   - 修复方案：将 `enableConfigs()` 移至凭据检查之前，提取纯函数 `validateCredentialSources()` 便于测试，添加 `import.meta.main` 保护，创建完整测试覆盖四种凭据场景
+   - 验收：测试覆盖无凭据/仅 API Key/仅 Bearer Token/两者都有四种场景，错误信息不包含实际凭据，settings 初始化优先于凭据检查
    - 来源：[07-build-runtime-stubs.md](07-build-runtime-stubs.md)
 
 ### P2 问题（97 项，优先级排序）
@@ -385,3 +384,118 @@ Design docs: 0 errors, 73 warnings
 | cross-subsystem | ✅ 已完成 | 横向契约审查，9 项发现 |
 
 **总体状态**：✅ **审计完成** - 所有 69 个子系统已覆盖（含新增 webbrowser-bundled-support），发现已登记，无 P0 问题，2 项 P1 问题待修复。完整报告请参考各 batch 文件及 [cross-subsystem.md](cross-subsystem.md)。注：总计 234 项有效发现，另有 1 项误报（B1-cli-startup-01）已标记 rejected。
+
+---
+
+## Task 4 整改验证报告
+
+### 整改项
+1. **Workflow skipCause 实现**：添加 `skipCause?: 'user' | 'dependency'` 到 `WorkflowAgentState`
+   - `skip()` 设置 `skipCause: 'user'`
+   - `propagateSkips()` 设置 `skipCause: 'dependency'`
+   - `retry()` 仅重置 `status === 'skipped' && skipCause === 'dependency'`，保留手动跳过节点
+   - **证据**：`src/tools/WorkflowTool/executor.ts:10-15, 69-77, 79-102, 141-158`
+
+2. **AppState FIFO 通知队列**：添加 `isNotifying` 和 `updateQueue` 到 `createStore`
+   - 检测通知期间的嵌套更新并入队
+   - 当前通知完成后按 FIFO 顺序处理队列
+   - 使用 `[...listeners]` 复制 listeners，避免通知期间 unsubscribe 导致问题
+   - **证据**：`src/state/store.ts:14-35`
+
+3. **测试覆盖**：
+   - 添加 `tests/appStateStore.test.ts`：覆盖嵌套更新、FIFO 顺序、unsubscribe 等场景
+   - 扩展 `tests/workflow.test.ts`：添加 skipCause 相关测试
+   - **证据**：`tests/appStateStore.test.ts:1-101`, `tests/workflow.test.ts:207-292`
+
+4. **Coverage 清单更新**：添加 `app-state-store-tests` 到 `docs/architecture/coverage/app-state.yaml`
+   - **证据**：`docs/architecture/coverage/app-state.yaml:17-22`
+
+5. **Spec 更新**：在 app-state 和 workflow 设计文档中添加整改证据标记 [Remediation]
+   - **证据**：
+     - `docs/superpowers/specs/2026-11-12-app-state-design.md:54`
+     - `docs/superpowers/specs/2026-11-12-workflow-design.md:38-41`
+
+### 验证结果
+- ✅ **聚焦测试**：16 个测试全部通过（`tests/workflow.test.ts` + `tests/appStateStore.test.ts`）
+- ✅ **类型检查**：`bun run typecheck` 无错误
+- ✅ **构建**：`bun run build` 成功
+
+### 提交信息
+```
+commit <SHA>
+Author: ...
+Date:   ...
+
+    Complete workflow and app-state evidence
+
+    - Add skipCause to WorkflowAgentState
+    - Implement FIFO notification queue in createStore
+    - Add tests for both changes
+    - Update design specs with evidence
+    - Update coverage manifest
+
+    Co-authored-by: Claude <noreply@anthropic.com>
+```
+
+---
+
+## Task 8 Spec 审阅与最终门禁报告
+
+### 批准的 Spec 清单（8 个）
+
+| Spec ID | Batch | 设计文档 | 主责 Finding |
+|---------|-------|----------|-------------|
+| `auth` | 3 | [Auth OAuth 与安全凭据存储设计](../../superpowers/specs/2026-11-12-auth-design.md) | B3-auth-01 ✅ 已修复 |
+| `test-validation` | 7 | [Test Validation 测试运行、Live 验证与证据边界设计](../../superpowers/specs/2026-11-12-test-validation-design.md) | B7-test-validation-06 ✅ 已修复 |
+| `skills` | 3 | [Skills 技能发现、加载与执行设计](../../superpowers/specs/2026-11-12-skills-design.md) | B3-skills-01, B3-skills-02, B3-skills-03, B3-skills-04, B3-skills-05, B3-skills-06 |
+| `workflow` | 5 | [Workflow DAG 编排与失败传播设计](../../superpowers/specs/2026-11-12-workflow-design.md) | B5-workflow-01, B5-workflow-02, B5-workflow-03, B5-workflow-04, B5-workflow-05, B5-workflow-06 |
+| `app-state` | 4 | [App State 应用状态、订阅与生命周期设计](../../superpowers/specs/2026-11-12-app-state-design.md) | B4-app-state-01, B4-app-state-02 |
+| `context-compaction` | 1 | [Context Compaction 历史压缩与溢出恢复设计](../../superpowers/specs/2026-11-12-context-compaction-design.md) | B1-context-compaction-01, B1-context-compaction-02, B1-context-compaction-03 |
+| `memory` | 3 | [Memory 记忆加载、提取与同步设计](../../superpowers/specs/2026-11-12-memory-design.md) | B3-memory-01, B3-memory-02, B3-memory-03, B3-memory-04, B3-memory-05, B3-memory-06 |
+| `session-persistence` | 2 | [Session Persistence 会话记录、恢复与文件历史设计](../../superpowers/specs/2026-11-12-session-persistence-design.md) | B2-session-persistence-01, B2-session-persistence-02, B2-session-persistence-03, B2-session-persistence-04 |
+
+### 证据边界与最终门禁
+
+**设计文档检查**：
+- ✅ 8 个批准的 spec 均包含完整的 9 个章节
+- ✅ 所有 spec 均包含「三视图」（架构与资源边界图、关键流程与失败路径、核心对象生命周期七列表）
+- ✅ 8 个批准 spec 的 frontmatter、对应 manifest 条目、coverage YAML 与 INDEX.md 状态均已同步为 `approved`
+
+**验证结果**：
+- ✅ `bun scripts/check-design-docs.ts`：0 错误，62 警告（预期：62 DRAFT_SPEC，0 UNCOVERED_FILE）
+- ⚠️ `bun scripts/check-design-docs.ts --require-approved`：退出 1；该模式把剩余 62 个 `DRAFT_SPEC` 全部提升为错误。8 个批准 spec 不再产生 DRAFT_SPEC，但全仓严格模式不是独立通过项，实际结果如实保留。
+- ✅ `bun run test`：退出 0，无 `Failed test files`
+- ✅ `bun run typecheck`：退出 0
+- ✅ `bun run build`：退出 0
+- ✅ `git diff --check`：退出 0
+
+**证据边界与未决项**：本次行为回归均为 mock/offline、本地临时目录或本机独立进程验证；未执行真实模型提取、远程同步或完整 live 环境验收，也未将官方文档、upstream `strings` 或 stub 结果提升为 live 证据。不声明私有 native-messaging、bridge 或扩展配对协议兼容。62 个未批准 spec 和未执行的 live 项均不标为 fixed/verified。
+
+**剩余未批准 Spec**：
+- 62 个 spec 保持 `draft` 状态，待后续用户审阅后逐批批准
+- 原始发现、rejected 记录、历史统计均保持不变，无降级或删除
+
+### 增量审计约定
+
+后续 PR 遵循以下增量审计约定：
+
+1. **仅审计变更**：仅审计变更文件归属的 spec，不重新审计所有 70 个 spec
+2. **主责 Spec 明确**：每个变更文件通过 manifest/coverage 明确唯一主责 spec
+3. **证据更新要求**：若变更影响设计，需同步更新对应 spec 的「代码与测试证据」章节
+4. **状态保持谨慎**：仅在用户明确批准时才将 spec 状态从 `draft` 改为 `approved`
+5. **重新全审计触发条件**：
+   - 核心 context/query/session/memory 模型重大变更
+   - 上游 Claude Code 重大版本更新
+   - 广泛的文件归属重组
+   - 定期复审（每季度）
+
+### 总体状态
+
+✅ **Task 8 完成**：8 个 spec 已批准，常规门禁通过；全仓 `--require-approved` 因剩余 62 个 draft 按设计退出 1，结果已记录，不表述为严格模式全绿。
+
+**当前清单统计**：
+- 总计：70 个注册 spec
+- 已批准：8 个
+- 草稿：62 个
+- 计划：0 个
+- 未覆盖文件：0 个

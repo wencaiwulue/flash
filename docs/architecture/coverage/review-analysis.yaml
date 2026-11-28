@@ -30,9 +30,16 @@ groups:
       - src/utils/analyzeContext.ts
       - src/utils/readEditContext.ts
       - src/utils/workloadContext.ts
+  - id: review-analysis-tests
+    kind: test
+    section: 7
+    summary: CtxInspect、SessionMeta 统计/缓存、分支去重和 multi-clauding 行为
+    files:
+      - tests/reviewAnalysis.test.ts
   - id: review-test
     kind: test
     section: 7
     summary: 审查测试 - 审查工具相关测试
     files:
       - tests/reviewArtifact.test.ts
+      - tests/insightsFacetCache.test.ts

@@ -127,6 +127,12 @@ groups:
       - src/tools/RemoteTriggerTool/RemoteTriggerTool.ts
       - src/tools/RemoteTriggerTool/prompt.ts
       - src/tools/RemoteTriggerTool/UI.tsx
+  - id: scheduling-tests
+    kind: test
+    section: 7
+    summary: proactive、SleepTool、RemoteTrigger 与 jobs classifier 行为
+    files:
+      - tests/scheduling.test.ts
   - id: cron-lifecycle-tests
     kind: test
     section: 7
@@ -139,3 +145,9 @@ groups:
     summary: 模板作业测试
     files:
       - tests/templateJobs.test.ts
+  - id: cron-file-permissions-tests
+    kind: test
+    section: 7
+    summary: scheduled_tasks.json 权限、原子写与失败恢复测试
+    files:
+      - tests/cronTaskFilePermissions.test.ts

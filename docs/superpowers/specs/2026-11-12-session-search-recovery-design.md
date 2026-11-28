@@ -1218,38 +1218,44 @@ resume as normal (but projectPath = undefined)
 
 ### 7.1 核心实现文件
 
-- **会话发现**：
-  - `src/sessions/list.ts` - `listSessionsImpl`、`parseSessionInfoFromLite`
-  - `src/sessions/assistant-sessions.ts` - `discoverAssistantSessions`
-  - `src/sessions/worktree-paths.ts` - `getWorktreePathsPortable`
+- **会话发现与 lite 读取**：
+  - `src/utils/listSessionsImpl.ts` - `listSessionsImpl`、`parseSessionInfoFromLite`
+  - `src/utils/sessionStoragePortable.ts` - `readSessionLite`
+  - `src/assistant/sessionDiscovery.ts` - 远程助手会话发现
 
-- **会话搜索**：
-  - `src/sessions/search.ts` - `agenticSessionSearch`、`extractTranscript`
-  - `src/sessions/log-contains-query.ts` - `logContainsQuery`
-
-- **会话恢复**：
-  - `src/sessions/load.ts` - `loadConversationForResume`
-  - `src/sessions/deserialize-messages.ts` - `deserializeMessagesWithInterruptDetection`
-  - `src/sessions/detect-turn-interruption.ts` - `detectTurnInterruption`
-  - `src/sessions/cross-project-resume.ts` - `checkCrossProjectResume`
+- **会话搜索与恢复**：
+  - `src/utils/agenticSessionSearch.ts` - AI 搜索与转录本提取
+  - `src/utils/conversationRecovery.ts` - 消息恢复与中断检测
+  - `src/utils/crossProjectResume.ts` - `checkCrossProjectResume`
 
 - **并发会话**：
-  - `src/sessions/concurrent.ts` - `registerSession`、`updateSessionActivity`、`writeSessionTombstone`
+  - `src/utils/concurrentSessions.ts` - `registerSession`、`updateSessionActivity`、`writeSessionTombstone`、registry 读写/删除
 
 - **历史回填**：
-  - `src/sessions/backfill.ts` - `backfillSessionMetadata`
-  - `src/sessions/session-meta-cache.ts` - `saveSessionMeta`、`loadCachedSessionMeta`
+  - `src/commands/backfill-sessions/backfill-sessions.ts` - `backfillSessionMetadata`
+  - `src/commands/insights/sessionMeta.ts` - `saveSessionMeta`、`loadCachedSessionMeta`
 
-- **共享会话**：
-  - `src/sessions/ccshare.ts` - `parseCcshareId`、`loadCcshare`
+- **共享会话**：ccshare 解析、受限下载和跨域确认（由相邻共享契约共同验证）
 
-### 7.2 测试覆盖
+### 7.2 测试覆盖与证据边界
 
-现有测试覆盖：
-- 会话列表功能
-- ccshare 解析与下载
-- 中断检测逻辑
-- 并发会话注册
+| 场景 | 真实测试与不变量 | 边界 |
+|---|---|---|
+| lite 头尾读取 | `tests/sessionSearchRecovery.test.ts` 创建 >64KiB JSONL，User title 覆盖 AI/lastPrompt，firstPrompt/cwd/tag/gitBranch/createdAt 精确恢复；sidechain 与无 summary metadata 返回 null | 未做 >1GB 性能或真实会话列表 UI 验收 |
+| 跨项目恢复 | `checkCrossProjectResume` 对 showAllProjects=false 不跨项目，外部项目生成带引号的 cd+resume 命令，ant 同 worktree 直接恢复 | 不执行 cd、远程恢复或真实 shell；路径仅为 fixture |
+| 并发注册与更新 | 真实 `registerSession` 写入 0600/0700，`updateSessionName/BridgeId` 和 session switch 更新 PID 文件；旧 sessionId 删除失败，新 ID 成功 | 未启动第二个完整 CLI；cleanup 在临时目录且允许重复删除 |
+| registry 与 tombstone | 损坏 JSON、pid 不匹配和 symlink 被过滤，非运行 PID 不计数；interactive 不写 tombstone，bg 写入完整记录 | 未验证全部 PID namespace/start-token/tmux 私有组合 |
+| 默认多项目 backfill | 不注入 dependencies，真实三个项目目录：两个有效 transcript 重建 metadata，损坏 transcript 隔离失败；第二次 valid=2/rebuilt=0 | 无模型、上传或远程重算；既有 backfillSessionsCommand 继续覆盖 dry-run/force/锁/原子写 |
+
+### 7.3 三层证据与回滚
+
+| 层级 | 只读证据 | 边界 |
+|---|---|---|
+| 官方文档 | [Agent SDK Sessions](https://code.claude.com/docs/en/agent-sdk/sessions)：会话本地持久化、跨进程 continue/resume、JSONL 路径和 fork 语义 | 未公开 lite 头尾算法、registry/tombstone、backfill 或 ant worktree 分支实现 |
+| 本机上游二进制 | `strings $(command -v claude)` 命中 `readSessionLite` 及相关 transcript 读取符号 | 只证明符号存在；不把其他未验证函数名或私有运行行为作为兼容证明 |
+| 本仓库 | 6 个新测试/23 个断言 + 既有 `backfillSessionsCommand.test.ts`，真实临时 JSONL、PID registry、metadata 和锁 | 全部本地离线，不是多 CLI、云端会话、真实跨项目 UI 或私有协议 live |
+
+本轮无生产代码变更。回滚只需删除 `tests/sessionSearchRecovery.test.ts`、coverage entry 和本节证据；spec 保持 draft，B3-session-search-recovery-01 原 Finding 保持 open。
 
 ## 8. 文件覆盖与相关子系统
 

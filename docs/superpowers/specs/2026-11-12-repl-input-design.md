@@ -2127,6 +2127,27 @@ lazySpaceInputFilter(input, key) → input'
 - `src/keybindings/match.test.ts`
 - `src/keybindings/parser.test.ts`
 
+### 7.1 真实测试与三层证据
+
+| 场景 | 真实测试与不变量 | 证据边界 |
+|---|---|---|
+| PromptInput insertTextRef | `tests/replInput.test.tsx` 用真实父组件 input 更新：先断言父级 input 提交为 hello world，再断言 cursorOffset=11；setInputWithCursor 后 offset=1 | 外部 feature profile 同测；不覆盖全部键盘、Footer、对话框和真实终端交互 |
+| 大文本粘贴 | >10000 字符合成 Truncated text #2 引用，首尾保留，中间 payload 与既有 IDs 不变 | 不验证真实剪贴板/图片 |
+| useInputBuffer | 快速 push 的 debounce 与 maxBufferSize=2，undo 返回前一项，clear 后不可 undo | 不评价 1000ms 防抖 UX 取舍（P3 不变） |
+| 投机建议 | usePromptSuggestion 文本可见、markAccepted、logOutcome 后完整重置 | 不调用真实 suggestion 模型 |
+| inputMode/Vim | prompt/bash payload 保真；真实 Cursor 执行 x 与 2x，文本/register/count 精确；count 状态为 `digits:'2'` | 不覆盖全部 motion/operator 或完整 VimTextInput UI |
+| 三层证据 | 官方 interactive/terminal 文档提供公开输入语义；本机 strings 命中 Truncated text/insertTextRef；当前测试 8 个/35 断言 | 全部离线，不是模型、终端、剪贴板或真实用户交互 live |
+
+### 7.1.1 外部 feature profile 的 coordinator ESM 修复（B4-repl-input-03）
+
+| 决策 | 证据 | 失败路径与回滚 |
+|---|---|---|
+| `PromptInputFooterLeftSide` 使用静态 ESM `isCoordinatorMode` import，保留调用点 `feature('COORDINATOR_MODE')` 判断 | 普通 `bun test` 通过而 `bun run test` RED：父级 input 保持 `hello`、cursorOffset=5；feature 二分定位到 COORDINATOR_MODE。最小复现证明同一条件 `require` 会阻断后续 React 更新，静态 ESM import 对照通过 | 不启用 coordinator 环境开关；仅替换模块加载方式。不得单独恢复 eager require，否则会重新引入本缺陷 |
+| 与既有 coordinator 加载整改一致 | `src/utils/toolPool.ts` 已采用静态 ESM import；`src/QueryEngine.ts` 的异步路径采用 `await import()`。修改文件原有 coverage 主责为 `ide-integration`，本测试唯一登记 `repl-input`，不重复登记源文件 | 全量测试同时覆盖 external profile；构建检查 bundled/external 形态 |
+| 上游只约束公开输入行为，不虚构上游模块加载实现 | 官方 [Interactive mode](https://code.claude.com/docs/en/interactive-mode.md) 文档要求交互输入与光标编辑；本机 `/opt/homebrew/bin/claude` 只读 `strings` 命中 `insertTextRef`、`setInputWithCursor`、`CLAUDE_CODE_COORDINATOR_MODE`；仓库 `scripts/externalFeatureProfile.ts` 包含 COORDINATOR_MODE | 文档和 strings 不能证明上游使用 ESM/CJS；本决策由本仓库 RED/GREEN 与既有契约直接支持 |
+
+回滚须整组回退测试、Footer import 与 coverage entry，并重新验证外部 feature profile；spec 保持 draft，B4-repl-input-01/02 原 Finding 均保持 open，B4-repl-input-03 为本次增量缺陷台账。
+
 ## 8. 文件覆盖与相关子系统
 
 [Coverage](../../architecture/coverage/repl-input.yaml)

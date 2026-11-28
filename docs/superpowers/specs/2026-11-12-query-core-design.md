@@ -1010,10 +1010,15 @@ QueryEngine.submitMessage()
 | `tests/reactiveCompact.test.ts` | strips media and calls shared compactor without duplicate PreCompact | `reactiveCompactOnPromptTooLong` 可以 strip media，调用 compactor |
 | `tests/reactiveCompact.test.ts` | maps too-few-groups, abort, exhausted outcomes | 各种 outcome 正确映射 |
 | `tests/reactiveCompact.test.ts` | merges hook messages and performs success cleanup once | `tryReactiveCompact` 合并 hook 消息，只调用一次 onSuccess cleanup；hasAttempted=true 时不再尝试 |
+| `tests/queryCore.integration.test.ts` | multi-turn persistence, reload, compact boundary and independent engines | 两个真实 QueryEngine 的离线 fake-model 多轮写入各自 JSONL；UUID/parent 链不重复；compact boundary 先于后续消息且重复 record 不重复回放 |
+| `tests/queryCore.integration.test.ts` | switchSession 后 Project.sessionFile 重绑定 | `insertMessageChain` 在进入 `trackWrite` 前 flush 旧文件并切换路径，避免旧 session 文件包含新 sessionId；不在 `appendEntry` 内 flush，以免自死锁 |
+
+### 7.3.1 Session 切换缓存边界（B0-query-core-01 增量实证）
+
+集成测试初次失败显示：切换 session 后，缓存的 `Project.sessionFile` 仍指向旧 JSONL，导致新 sessionId 的消息进入旧文件。修复是在 `insertMessageChain()` 调用 `trackWrite()` 之前比较 `getTranscriptPath()`，先 flush 旧文件再重绑定；`appendEntry()` 内不等待 flush，避免 trackWrite 自等待。全功能 profile 还暴露了 coordinator 的 CommonJS `require` 互操作问题，最终统一为 `submitMessage()` 内 `await import('./coordinator/coordinatorMode.js')` 并 await 调用，避免 eager require 与未定义导出。官方 [Agent SDK Sessions](https://code.claude.com/docs/en/agent-sdk/sessions.md) 只提供 continue/resume/fork 语义，不公开本缓存策略；本机 `/opt/homebrew/bin/claude` `strings` 命中 `switchSession/resetProjectForTesting/sessionFile`，但不能证明上游切换实现；本地 `tests/sessionConcurrency.test.ts` 的 SDK fork 场景与本集成测试共同验证文件隔离。回滚必须保留“旧文件 flush 完成后才写新文件”“不能在 trackWrite 内自等待”和“coordinator 惰性异步解析”三条不变量。增量 Finding：B0-query-core-02（session 文件重绑定）、B0-query-core-03（coordinator 惰性加载）；spec 保持 draft，待用户审阅。
 
 ### 7.3 未覆盖行为（基于代码阅读）
 
-- 完整的多 turn QueryEngine 场景
 - error watermark 在环形缓冲区 wrap-around 情况下的边界行为
 - maxBudgetUsd 在中间消息触发的场景
 - structured output retries 逻辑

@@ -497,3 +497,9 @@ projectView() 应用到当前消息
 1. **补充 B1 发现的测试缺口**：context-compaction 其余模块、model-api 其余模块、cli-startup 的单元测试。
 2. **验证真实模型/API 实时行为**：在有网络环境下验证 API 行为。
 3. **评估设计风险的优先级**：B1-context-compaction-02/03（模块级全局状态）是否需要在 batch 2+ 中重构。
+
+## 整改台账：B1-model-api-01（2026-11-18 追加）
+
+- 新增 `tests/modelApi.test.ts` 并唯一登记 model-api coverage：38 个直接生产函数测试，覆盖模型解析与别名、provider 环境选择、Bedrock 区域/ARN 工具、validateModel 非 API 路径及配置映射。
+- spec 7.2 已补测试证据；原 Finding 行保持 open，历史统计不变。
+- **边界**：全部为本地 env/离线路径，未执行真实模型、Bedrock/Vertex/Foundry 或凭据验证；live API/cache 命中不标为已验证。spec 保持 draft。

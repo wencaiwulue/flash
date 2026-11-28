@@ -978,16 +978,15 @@ use[X]Notification()
 
 | 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
 |---------|---------|----------------|---------|
-| 单横幅 + 队列而非多横幅堆叠 | `src/context/notifications.tsx:54-93` processQueue()；`src/context/notifications.tsx:307-312` getNext() | 无专门测试 | 不支持通知历史或回顾 |
-| Immediate 优先级立即抢占并重新入队 | `src/context/notifications.tsx:98-151` immediate 分支；`src/hooks/notifs/useFastModeNotification.tsx:45-49,70-75` 使用 immediate | 无专门测试 | 不支持横幅用户操作 |
-| Fold 合并相同 key 通知而非替换 | `src/context/notifications.tsx:157-216` fold 处理 | 无专门测试 | 调用方需实现 fold 逻辑 |
-| Invalidates 机制主动移除过时通知 | `src/context/notifications.tsx:228-234` invalidates 处理；`src/hooks/notifs/useFastModeNotification.tsx:82-83,91` 使用 invalidates | 无专门测试 | 需要仔细处理状态更新分支 |
-| 后台任务通知只折叠成功完成 | `src/utils/collapseBackgroundBashNotifications.ts:22` 检查 status；`src/utils/collapseBackgroundBashNotifications.ts:41-84` 折叠逻辑 | 无专门测试 | 失败任务仍可能造成视觉噪声 |
-| Apple Terminal 禁用 bell 时反而发送 bell | `src/services/notifier.ts:110-161` isAppleTerminalBellDisabled()；`src/services/notifier.ts:83-103` sendAuto() | 无专门测试 | 逻辑反直觉，需要解释 |
-| PushNotificationTool webhook 失败不自动降级到 OS 通知 | `src/tools/PushNotificationTool/PushNotificationTool.ts:47-51` webhook 失败抛出；`src/tools/PushNotificationTool/PushNotificationTool.ts:52-58` OS 通知分支 | 无专门测试 | 用户可能预期通知能送达，实际未送达 |
-| 所有通知 Hook 都检查 getIsRemoteMode() | `src/hooks/notifs/useStartupNotification.ts:28`；`src/hooks/notifs/useFastModeNotification.tsx:27,56,69` 等所有 hooks | 无专门测试 | 每个 hook 重复相同检查，代码冗余 |
-| UseStartupNotification 封装通用模式 | `src/hooks/notifs/useStartupNotification.ts:19-41` 实现；多个 hooks 使用 | 无专门测试 | 增加一层抽象，灵活性略降 |
-| 横幅通知默认 8 秒超时 | `src/context/notifications.tsx:41` DEFAULT_TIMEOUT_MS = 8000 | 无专门测试 | 阅读慢的用户可能错过，阅读快的用户觉得等待久 |
+| 单横幅 + 队列而非多横幅堆叠 | `src/context/notifications.tsx` 的 `processQueue` / `getNext` | `tests/notifications.test.tsx` 用真实 Ink + AppStoreContext 观察 current/queue：当前项不被 high 抢占，后续 high 先于 medium，最终清空 | 不支持通知历史；普通 high 与 immediate 的抢占语义不同 |
+| Immediate 优先级立即抢占并重新入队 | `src/context/notifications.tsx` immediate 分支 | 真实 hook 测试 urgent 替换 ordinary，ordinary 保留在队列并在 urgent 超时后恢复 | 不测试横幅用户操作 |
+| Fold 合并相同 key 通知而非替换 | `src/context/notifications.tsx` fold 处理 | 真实 hook 分别合并 current 与 queued 同 key，文本精确累加且无重复项 | 调用方 fold 逻辑使用测试函数，不推断各生产 hook 的合并策略 |
+| Invalidates 机制主动移除过时通知 | `src/context/notifications.tsx` invalidates 处理 | normal fresh 清除 stale current；immediate urgent 清除 fresh，队列不保留失效项 | 未覆盖所有生产 hook 的组合 |
+| 后台任务通知只折叠成功完成 | `src/utils/collapseBackgroundBashNotifications.ts` | 连续 3/2 条 completed 精确合成，failed 保留原对象；verbose 与 fullscreen-disabled 保留原数组 | 不测量真实终端视觉噪声 |
+| Apple Terminal 禁用 bell 时反而发送 bell | `src/services/notifier.ts` | `tests/notificationsServices.test.ts` 以 osascript/defaults 边界 mock 驱动真实 plist 判断，Bell=false 时仅调用 notifyBell；terminal_bell/disabled 也验证 | 未执行真实 OS 命令或验证窗口/Dock 视觉效果 |
+| PushNotificationTool webhook 失败不自动降级到 OS 通知 | `src/tools/PushNotificationTool/PushNotificationTool.ts` | axios mock 验证成功 body/header、503 抛出且 OS 不调用；无 webhook 时 OS 成功，无 adapter 抛出 | 未执行真实 webhook 或 OS 通知 |
+| 通知 Hook 的远程隔离 | `src/hooks/notifs/*` | `tests/orgWarningNotification.test.ts` 继续提供远程模式证据 | 未逐一重测所有 hooks，不能把单一 hook 扩展为全部 live 证明 |
+| 横幅 timeout 与 remove 生命周期 | `src/context/notifications.tsx` | 真实短 timeout 驱动队列推进；remove current 后下一项立即显示，remove queued 后清空 | 不使用 8 秒墙钟等待，不验证真实用户阅读体验 |
 
 ### 7.1 现有相关测试
 
@@ -995,15 +994,23 @@ use[X]Notification()
 |---|---|---|
 | `tests/orgWarningNotification.test.ts` | 组织警告通知功能：Settings schema 验证、权限检查逻辑、通知添加行为、远程模式检查 | 验证了 useAntOrgWarningNotification hook 的核心逻辑 |
 
-### 7.2 未覆盖行为（基于代码阅读）
+### 7.2 当前未覆盖行为
 
-- notifications 核心功能无专门测试文件
-- 各种通知场景（immediate 抢占、fold 合并、invalidates 移除、队列处理）
-- 跨终端 OS 通知兼容性测试
-- 远程模式通知行为测试
-- PushNotificationTool webhook 失败/成功测试
-- 后台任务通知折叠的完整测试
-- 没有外部 live 验证测试
+- 跨终端 OS 通知、Apple Terminal 窗口/Dock、iTerm2/kitty/ghostty 的真实视觉效果
+- 所有通知 hook 的逐一远程模式和生产 fold/invalidates 组合
+- 真实 webhook 成功/失败、超时、取消和外部网络行为
+- 默认 8 秒的墙钟体验与终端 UI 的最终排版；本轮用短 timeout 验证状态机
+- 私有桌面/远程通知协议和 live 验证
+
+### 7.3 三层证据与回滚
+
+| 层级 | 只读证据 | 边界 |
+|---|---|---|
+| 官方文档 | [Terminal config](https://code.claude.com/docs/en/terminal-config.md)说明 preferredNotifChannel、Apple Terminal bell、Notification hook；[Hooks guide](https://code.claude.com/docs/en/hooks-guide.md)说明自定义通知命令 | 未公开 useNotifications 队列/fold/invalidates、PushNotification webhook 或 plist 读取的内部实现 |
+| 本机上游二进制 | `strings $(command -v claude)` 命中 `preferredNotifChannel`、`notifications_disabled`、`background commands completed`、`invalidates` | 只证明相关标记存在，不证明终端或 webhook 实际送达 |
+| 本仓库 | `tests/notifications.test.tsx` 的真实 Ink/AppStore 状态迁移和 `tests/notificationsServices.test.ts` 的生产 adapter 逻辑，共 14 个测试、46 个断言 | 全部离线；OS 命令、hook、axios 只替换外部边界，不是终端/远程 live |
+
+本轮无生产代码变更。回滚只需删除两个测试文件、coverage entries 和本节证据；不影响通知运行行为。spec 保持 draft，B3-notifications-01 原 Finding 保持 open。
 
 ## 8. 文件覆盖与相关子系统
 

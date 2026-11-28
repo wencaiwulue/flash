@@ -1450,3 +1450,235 @@
 ### 说明
 
 本次完成所有 11 个子系统的深度生命周期审计，包括新增的 voice-assistant 和 workspace-ui。README 已统一更新。
+
+---
+
+## 整改台账：B4-app-state-02（2026-11-19 追加）
+
+**Finding ID**：B4-app-state-02；主责 spec：app-state。
+
+新增 `tests/appStateReact.test.tsx` 与 `tests/appStateOnChange.test.ts` 并唯一登记 coverage，7 个测试、28 个断言：
+
+- 真实 Ink/Provider 的 selector 渲染隔离、同引用更新跳过、Provider 嵌套错误输出、临时 userSettings 变更同步 `AppState.settings`。
+- onChange 的 verbose/expandedView 全局配置、settings env 清 auth/provider 缓存、model settings/bootstrap override，以及权限 raw/external metadata 区分。
+
+既有 `appStateStore.test.ts` 继续证明 FIFO 嵌套更新和 unsubscribe，不重复实施。auth/settings/managedEnv/sessionState 只替换外部边界，无真实凭据、浏览器、桌面或 CCR live。无生产代码变更。
+
+**原 Finding 状态**：B4-app-state-01/02 保持 open；spec 保持原 approved 状态，第 7.3/7.4 节记录实际证据、三层边界和回滚。
+
+---
+
+## 整改台账：B4-assistant-ui-01（2026-11-19 追加）
+
+**Finding ID**：B4-assistant-ui-01；主责 spec：assistant-ui。
+
+新增 `tests/assistantUi.test.tsx` 并唯一登记 coverage，4 个测试、14 个断言：
+
+- 会话发现 id/session_id 归一化、无效过滤、machine_name/时间映射、lastActiveAt 降序。
+- latest anchor_to_latest 与 older before_id 分页、events/firstId/hasMore、非 200 返回 null。
+- 真实 Ink + AppStateProvider + KeybindingSetup 的空列表、Enter 选择、Escape 取消。
+
+既有 `tests/daemonBridge.test.ts` 继续覆盖 core 注入、队列和 teardown，归 bridge 主责，不重复登记。spec 同步修正已不存在的 `src/components`/`src/hooks/useAssistantHistory` 路径为当前实现，并明确 chooser 不等同完整远程 viewer。
+
+全部 axios/core 边界离线，无真实远程、OAuth、滚动 viewer、桌面或私有 WebSocket 验证。无生产代码变更。
+
+**原 Finding 状态**：B4-assistant-ui-01 保持 open，spec 保持 draft。
+
+---
+
+## 整改台账：B4-commands-framework-01（2026-11-19 追加）
+
+**Finding ID**：B4-commands-framework-01；主责 spec：commands-framework。
+
+新增 `tests/commandsFramework.test.ts` 并唯一登记 coverage，7 个测试、30 个断言：
+
+- claude.ai/console availability 的 subscriber、3P 和第一方 URL 分支。
+- 真实 registry 的 REMOTE_SAFE 过滤、BRIDGE_SAFE 类型与 compact 白名单。
+- name/alias 查找、missing 错误、workflow/plugin 描述。
+- `looksLikeCommand` 名称/路径分支，以及真实 `processTextPrompt` 的 prompt id、附件顺序、图片和 paste IDs。
+
+全部 auth/provider 边界离线，无登录、模型、全源命令聚合或真实远程执行。无生产代码变更，spec 第 7.2/7.3 节明确未覆盖范围。
+
+**原 Finding 状态**：B4-commands-framework-01 保持 open，spec 保持 draft。
+
+---
+
+## 整改台账：B4-cost-tracking-01（2026-11-19 追加）
+
+**Finding ID**：B4-cost-tracking-01；主责 spec：cost-tracking。
+
+新增 `tests/costTracking.test.ts` 并唯一登记 coverage，7 个测试、26 个断言：
+
+- input/output/cacheRead/cacheWrite/webSearch 精确成本 48.95，Opus fast tier 与 unknown-model 降级。
+- add/save/reset/restore 成本，只有匹配 sessionId 恢复。
+- console/claude.ai billing 的认证、角色、override。
+- 5h early warning、429 rejected、停止处理后 allowed 和 overage disabled reason 缓存。
+
+全部使用内存 config、dummy auth 和 headers，无真实价格/组织/API/远程验证。时间相对 fallback、并发、Advisor、/extra-usage 和真实 UI 未覆盖。无生产代码变更。
+
+**原 Finding 状态**：B4-cost-tracking-01 保持 open，spec 保持 draft。
+
+---
+
+## 整改台账：B4-ide-integration-01（2026-11-19 追加）
+
+**Finding ID**：B4-ide-integration-01；主责 spec：ide-integration。
+
+新增 `tests/ideIntegration.test.ts` 并唯一登记 coverage，4 个测试、17 个断言：
+
+- lockfile mtime 排序、当前 workspace 的有效 ws 检测、includeInvalid 分支。
+- dead pid 和 corrupt JSON 清理，当前 pid/有效 lockfile 保留。
+- WSL C:\\ 手动 fallback、不同 distro 保留与匹配检查。
+- diff 同内容无 edit、单 hunk 替换和 multiple hunks 上下文。
+
+全部临时文件，无真实 IDE/WSL/RPC/端口连接或私有协议验证。祖先 PID、轮询、tab 生命周期、P3 并发锁和崩溃清理未覆盖。无生产代码变更。
+
+**原 Finding 状态**：B4-ide-integration-01/02 保持 open，spec 保持 draft。
+
+---
+
+## 整改台账：B4-ink-platform-01（2026-11-19 追加）
+
+**Finding ID**：B4-ink-platform-01；主责 spec：ink-platform。
+
+新增 `tests/inkPlatform.test.tsx` 并唯一登记 coverage，6 个测试、17 个断言：
+
+- 分段 CSI u、SGR mouse、DA1 输入解析和 bracketed paste 状态机。
+- Wide/SpacerTail、hyperlink intern 和 Narrow 覆盖清理。
+- 共享 CharPool 下 diffEach 精确变更；LogUpdate 非 TTY 全帧和 TTY patch。
+- 真实 production reconciler 文本渲染。
+
+独立 CharPool 的 ID 冲突会先隐藏 diff，测试明确跨帧共享 pool 的必要性，未把假 fixture 当成生产缺陷。无生产代码变更。60fps、全部终端协议、真实键盘/剪贴板、SIGCONT 和终端兼容性 live 未覆盖。
+
+**原 Finding 状态**：B4-ink-platform-01 保持 open，spec 保持 draft。
+
+---
+
+## 整改台账：B4-repl-input-01（2026-11-19 追加）
+
+**Finding ID**：B4-repl-input-01；主责 spec：repl-input。
+
+新增 `tests/replInput.test.tsx` 并唯一登记 coverage，8 个测试、35 个断言：
+
+- 真实父组件 input 更新的 insertTextRef：文本插入与 cursorOffset=11/1。
+- 大粘贴 Truncated text 引用与中间 payload/IDs。
+- useInputBuffer debounce、maxBufferSize、undo/clear。
+- usePromptSuggestion 接受和提交后重置。
+- prompt/bash mode、真实 Cursor 的 x/2x 与 `digits:'2'` 状态。
+
+常量 input prop 不能验证 React 内部 cursor，已改为生产式父组件更新；`act()` 不支持当前 Ink 环境，最终没有使用该 helper。完整键盘/Footer/对话框/真实剪贴板和模型 live 未覆盖，P3 undo UX 取舍不变。
+
+**增量缺陷 B4-repl-input-03**：普通 `bun test` 通过、外部 feature profile RED，父级 input 未提交且 cursorOffset 停留 5。feature 二分和最小条件 `require` 复现定位到 `PromptInputFooterLeftSide` 的 COORDINATOR_MODE eager CommonJS 加载；改为与 `toolPool.ts` 一致的静态 ESM import，同时保留调用点 feature 判断。修复后普通与 profile focused 均 exit 0。修改文件已有 `ide-integration` coverage 主责，不重复登记；三层证据和离线边界记入 repl-input spec 7.1.1。
+
+**原 Finding 状态**：B4-repl-input-01/02 保持 open，spec 保持 draft；B4-repl-input-03 仅追加整改台账，不批量关闭原发现。
+
+---
+
+## 整改台账：B4-text-formatting-01（2026-11-19 追加）
+
+**Finding ID**：B4-text-formatting-01；主责 spec：text-formatting。
+
+最终新增并唯一登记 `tests/textFormatting.test.tsx`（43 个测试/118 断言）与 `tests/cliHighlightFailure.test.ts`（1 个测试/3 断言），覆盖全部 8 个类别：
+
+- Markdown 精确 ANSI、列表 marker、表格对齐、OSC8 issue/link/mailto 和 highlighter 语言路由；宽度/CJK/emoji/ANSI 截断；displayTags 空结果与嵌套/未闭合边界；真实 OSC8/fallback。
+- highlightMatch 通过真实 `renderToScreen` 验证匹配段 inverse styleId、多处匹配与原文保留，不再只做 React 节点非空断言。
+- cli-highlight 成功路径使用真实 node_modules，验证 singleton、supportsLanguage、实际 highlight 与语言名称；独立失败文件只 mock 动态 import，验证 null/unknown 与缓存，随后恢复 mock。
+- heatmap 固定 2024-01-20，验证未来日期不绘制、月份标签和全部强度桶；logo 布局、路径与 model/billing 使用精确输出。
+
+初次 46 个测试版本被独立复审拒绝：多处只检查内容/非空、tag 结果接受两种可能、highlightMatch 无真实渲染、heatmap 依赖当前时间。后续修复 agent 又只提交了两行文档而未保留测试修正；最终由控制器直接重写并实测，未将该 agent 报告当作完成证据。
+
+coverage 只新增两份测试 entry，既有 stringWidth/truncate 等源文件主责不变。spec 第 10-13 节记录测试矩阵、真实三层证据（官方 terminal/interactive 文档、只读 `/opt/homebrew/bin/claude` strings、仓库契约）、mock/offline/live 边界和回滚；错误的 `/opt/homebrew/bin/flash` 路径已纠正。
+
+全部离线，无真实终端点击、模型调用或上游登录/配置写入；真实 Ink 不等于物理终端 live。无生产代码变更，未覆盖 recent-activity 真实 session storage 和超大文本性能。
+
+**原 Finding 状态**：B4-text-formatting-01 保持 open；spec 保持 draft；原发现不删除，仅追加整改台账。
+
+---
+
+## 整改台账：B4-ui-rendering-01/02（2026-11-19 追加）
+
+**Finding ID**：B4-ui-rendering-01/02；主责 spec：ui-rendering。
+
+最终 `tests/uiRenderingCore.test.tsx`（12 个测试/54 断言）与互补的 `tests/uiRenderingCore.test.ts`（1 个 thinking/redacted/user 类型检测测试/4 断言）唯一登记 coverage，合计 13 个测试、58 个断言：真实 Message assistant/user/system/attachment 路由、image paste ID、真实 BashTool、transcript thinking 选择、memo 契约、SentryErrorBoundary 错误隔离；Markdown plain fast path、500 项 MRU、真实 table/highlight；Streaming stable prefix、replacement reset 与未闭合 code fence。
+
+初版 8 个测试只验证 hasThinkingContent、比较器、hash/export 形状，明确没有真实组件渲染，且错误修改了原审计的“测试验证/测试覆盖”段落；该版本未验收。最终由控制器直接重写为 AppState + TerminalSizeContext + renderToScreen 与保留 root/ref 的 Streaming 测试，并恢复原审计原文，只在此追加台账。
+
+B4-ui-rendering-02 不新增 test-only cache reset API：通过公开组件和 marked.lexer 调用验证 A 提升、499 个新 token 后 A 命中/B 驱逐，未读取私有 Map。spec 第 7.2/7.3 节记录真实矩阵、三层证据、未覆盖项与回滚；上游 strings 未命中的符号没有被用于推断实现。
+
+全部离线，真实 Ink/CLI dependencies 不等于物理终端 live。无生产代码变更。StructuredDiff、Messages/VirtualMessageList 由下一批次处理，本批不声称整个 UI rendering 已完成。
+
+**原 Finding 状态**：B4-ui-rendering-01/02 保持 open；spec 保持 draft；原发现不删除，仅追加整改台账。
+
+---
+
+## 整改台账：B4-ui-rendering-01（list/diff 续，2026-11-19 追加）
+
+**Finding ID**：B4-ui-rendering-01；主责 spec：ui-rendering。
+
+新增并唯一登记 `tests/uiRenderingListDiff.test.tsx`，15 个测试、51 个断言：
+
+- StructuredDiff 生产 fallback/native、safeWidth、四级 cache 清空、fullscreen gutter/noSelect 和 native 失败隔离。
+- computeSliceStart 的 cap+step、UUID 保持/丢失修复、二次推进、自定义 cap/step 和空列表。
+- Messages 实际文本/render cap、最新 completed thinking 与 streaming thinking 可见性。
+- 300 条消息的 virtual gate：non-sticky 只挂载子集，sticky 挂载尾部；以消息行数量而不是 spacer 高度判断。
+
+初版 `not.toThrow()`/非空断言未验收。调试中先用 DebugBoundary 证实容器空帧来自缺少 `toolUseConfirmQueue`，另补 TerminalWriteProvider；最终通过真实容器而非掩盖错误。虚拟测试同时避免把 oversized spacer 当成内容过多。
+
+spec 第 7.4 节记录真实矩阵、三层证据、未覆盖项与回滚；本机 strings 命中 VirtualMessageList，其他符号未用于推断上游实现。全部离线，真实 ColorDiff/useVirtualScroll 与 fake ScrollBoxHandle 不等于真实用户滚动 live。无生产代码变更。
+
+**原 Finding 状态**：B4-ui-rendering-01 保持 open；spec 保持 draft；原发现不删除，仅追加整改台账。
+
+---
+
+## 整改台账：B4-voice-assistant-01（2026-11-19 追加）
+
+**Finding ID**：B4-voice-assistant-01；主责 spec：voice-assistant。
+
+新增并唯一登记 `tests/voiceAssistant.test.tsx`，12 个测试、58 个断言，普通与外部 VOICE_MODE profile 均 exit 0：
+
+- 真实 useVoice/VoiceProvider 的 hold-to-talk、release/finalize、early error 250ms 单次重试与 buffered audio flush。
+- no_data_timeout silent-drop 单次重放，音频字节一致且输出 recovered。
+- focus transcript 即时 flush、生产 terminal-focus-state blur、5s silence 停止及下一 focus cycle 重启。
+- availability/startRecording 失败、卸载后 zombie connection 关闭；stripTrailing/resetAnchor 与 full-width space。
+- normalizeLanguageForSTT、computeLevel、真实 splitIdentifier。
+
+音频设备、STT 和 keyterms 仅在外部接口替换为可控 fake，真实 Hook/provider/terminal-focus-state 完整执行。稳定 insertTextRef 修复了 VOICE_MODE 下 anchor 被 idle effect 清理的测试 harness 问题，没有关闭 feature 或修改生产代码。
+
+spec 第 7 章记录真实矩阵、官方 Voice dictation 文档、只读 `/opt/homebrew/bin/claude` strings、mock/offline/live 边界和回滚。全部离线，无麦克风、OAuth、网络或私有协议验证；未覆盖 tap、真实音频、/voice 全 UI 与物理终端交互。
+
+**原 Finding 状态**：B4-voice-assistant-01 保持 open；spec 保持 draft；原发现不删除，仅追加整改台账。
+
+---
+
+## 整改台账：B4-workspace-ui-01/03（2026-11-19 追加）
+
+**Finding ID**：B4-workspace-ui-01；增量缺陷 B4-workspace-ui-03；主责 spec：workspace-ui。
+
+新增并唯一登记 `tests/workspaceCommands.test.tsx`，10 个测试、40 个断言，普通与外部 feature profile 均 exit 0：
+
+- /add-dir session/remember、真实选择菜单与无参数输入/Escape、missing path；permission Map/bootstrap/refreshConfig 精确验证。
+- local settings 实际写入与持久化失败消息；/diff 临时 git clean；/sandbox-toggle 平台/policy/依赖/exclude 各分支。
+- 所有目录、git repo、settings 和 sandbox 均隔离，未修改 global git config 或真实用户设置。
+
+**增量缺陷 B4-workspace-ui-03**：真实 RED 证明 `persistPermissionUpdate(addDirectories)` 忽略 `updateSettingsForSource` 返回的 `{error}`，写失败仍错报 saved。已在该分支抛出 `result.error`，复用 add-dir 既有 catch，session 权限/bootstrap 保持成功并显示 Failed to save。修改文件主责为 permissions，未重复登记；spec 记录跨子系统契约与回滚限制。
+
+全部离线；Ink、真实文件/git 与 SandboxManager 边界 fake 不等于真实 sandbox live。spec 第 7.1 节和原审计仅追加整改记录，B4-workspace-ui-02 的 refreshConfig 不等待取舍保持不变。
+
+**原 Finding 状态**：B4-workspace-ui-01/02 保持 open；spec 保持 draft；B4-workspace-ui-03 只追加增量整改台账，不批量关闭原发现。
+
+---
+
+## 整改台账：B4-workspace-ui-01（components，2026-11-19 追加）
+
+**Finding ID**：B4-workspace-ui-01；主责 spec：workspace-ui。
+
+新增并唯一登记 `tests/workspaceComponents.test.tsx`，7 个测试、33 个断言，普通与外部 feature profile 均 exit 0：
+
+- DiffDialog Current/Turn 双来源、list/detail/返回/关闭和 6 文件分页指示器。
+- CustomSelect disabled/方向键/Enter/Escape 与 input option 文本保留。
+- Overlay 注册、unmount 清理和 process.stdout invalidatePrevFrame。
+- UnseenDivider 回合计数、tool-only floor=1、scroll-away 基线、shift/jumpToNew/onRepin。
+
+spec 第 7.2 节记录真实矩阵、三层证据和未覆盖边界。当前 AlternateScreen/ScrollBox harness 未能稳定生成可读的 new-message pill 与 sticky prompt frame，明确未声称通过；未修改生产实现。全部离线，真实 Ink 不等于物理终端 live。
+
+**原 Finding 状态**：B4-workspace-ui-01 保持 open；spec 保持 draft；原发现不删除，仅追加整改台账。

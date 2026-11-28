@@ -10,6 +10,12 @@ groups:
     files:
       - src/utils/sdkEventQueue.ts
       - src/utils/sdkHeapDumpMonitor.ts
+  - id: sdk-event-queue-test
+    kind: test
+    section: 7
+    summary: Tests for SDK event queue behavior
+    files:
+      - tests/sdkEventQueue.test.ts
   - id: additional-files-test
     kind: test
     section: 7

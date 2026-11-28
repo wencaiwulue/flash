@@ -47,6 +47,7 @@ groups:
     files:
       - tests/toolPool.test.ts
       - tests/internalTools.test.ts
+      - tests/tool-framework.test.ts
   - id: uncovered-tools
     kind: source
     section: 4

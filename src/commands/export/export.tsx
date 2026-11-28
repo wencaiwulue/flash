@@ -1,4 +1,5 @@
-import { join } from 'path'
+import { realpathSync } from 'fs'
+import { dirname, isAbsolute, relative, resolve, sep } from 'path'
 import React from 'react'
 import { ExportDialog } from '../../components/ExportDialog.js'
 import type { ToolUseContext } from '../../Tool.js'
@@ -56,6 +57,46 @@ export function sanitizeFilename(text: string): string {
     .replace(/^-|-$/g, '') // Remove leading/trailing hyphens
 }
 
+export function resolveExportOutputPath(
+  filename: string,
+  cwd = getCwd(),
+): string {
+  const requested = filename.trim()
+  if (!requested || requested.includes('\0')) {
+    throw new Error('Provide a non-empty output filename.')
+  }
+  const finalFilename = requested.endsWith('.txt')
+    ? requested
+    : requested.replace(/\.[^.]+$/, '') + '.txt'
+  if (isAbsolute(finalFilename)) {
+    throw new Error(
+      'Use a relative output path inside the current working directory.',
+    )
+  }
+
+  const destination = resolve(cwd, finalFilename)
+  const fromCwd = relative(cwd, destination)
+  if (fromCwd === '..' || fromCwd.startsWith(`..${sep}`) || isAbsolute(fromCwd)) {
+    throw new Error(
+      'The output path must stay inside the current working directory.',
+    )
+  }
+
+  // Do not let a symlinked parent redirect the write outside the workspace.
+  // The parent must exist because /export does not create directories.
+  const realCwd = realpathSync(cwd)
+  const realParent = realpathSync(dirname(destination))
+  const realFromCwd = relative(realCwd, realParent)
+  if (
+    realFromCwd === '..' ||
+    realFromCwd.startsWith(`..${sep}`) ||
+    isAbsolute(realFromCwd)
+  ) {
+    throw new Error('The output path must not escape through a symbolic link.')
+  }
+  return destination
+}
+
 async function exportWithReactRenderer(
   context: ToolUseContext,
 ): Promise<string> {
@@ -74,15 +115,12 @@ export async function call(
   // If args are provided, write directly to file and skip dialog
   const filename = args.trim()
   if (filename) {
-    const finalFilename = filename.endsWith('.txt')
-      ? filename
-      : filename.replace(/\.[^.]+$/, '') + '.txt'
-    const filepath = join(getCwd(), finalFilename)
-
     try {
+      const filepath = resolveExportOutputPath(filename)
       writeFileSync_DEPRECATED(filepath, content, {
         encoding: 'utf-8',
         flush: true,
+        flag: 'wx',
       })
       onDone(`Conversation exported to: ${filepath}`)
       return null

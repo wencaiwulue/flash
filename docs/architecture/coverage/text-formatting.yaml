@@ -77,3 +77,10 @@ groups:
     files:
       - src/constants/figures.ts
       - src/constants/outputStyles.ts
+  - id: text-formatting-tests
+    kind: test
+    section: 7
+    summary: 文本格式化测试 - 覆盖 8 大类功能
+    files:
+      - tests/textFormatting.test.tsx
+      - tests/cliHighlightFailure.test.ts

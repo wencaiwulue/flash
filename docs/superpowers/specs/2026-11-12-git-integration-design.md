@@ -1043,10 +1043,10 @@ createWorktreeForSession(sessionId, slug, tmuxSessionName?, options?)
 
 | 设计陈述 | 源码证据 | 测试场景与不变量 | 证据边界 |
 | --- | --- | --- | --- |
-| 仓库发现与 LRU 缓存 | `src/utils/git.ts` findGitRoot、createFindGitRoot | 需补充 | 最大 50 条缓存 |
-| Worktree 双向验证 | `src/utils/git.ts` resolveCanonicalRoot | 需补充 | 只验证 Git 创建的 Worktree 结构 |
-| Git 元数据直接读取与监听 | `src/utils/git/gitFilesystem.ts` GitFileWatcher、readGitHead、resolveRef | 需补充 | packed-refs 以外的 ref 存储（如 reftable）未支持 |
-| Ref/SHA 验证 | `src/utils/git/gitFilesystem.ts` isSafeRefName、isValidGitSha | 需补充 | 白名单可能拒绝某些合法但罕见的 ref |
+| 仓库发现与 Git dir 解析 | `src/utils/git/gitFilesystem.ts` 的 `resolveGitDir`、`getCommonDir` | `tests/gitIntegration.test.ts` 验证普通仓库与真实 worktree gitdir/commonDir，macOS 使用 realpath 临时根目录 | findGitRoot LRU 大小与跨平台更多路径仍需独立覆盖 |
+| Worktree 独立 HEAD 与共享状态 | `readWorktreeHeadSha`、`getHeadForDir`、`getRemoteUrlForDir`、`getWorktreeCountFromFs`、`isShallowClone` | 新 commit 只推进 worktree HEAD；主仓库保持旧 SHA；remote/count/shallow 从 commonDir 读取 | 仅本地 Git 创建的结构，不执行远程同步或 hook-based worktree |
+| Git 元数据直接读取与监听 | `GitFileWatcher`、`readGitHead`、`resolveRef` | loose/packed refs 和 detached HEAD；watcher 在 branch 切换、commit、detach、remote config 修改后重新计算；worktree 观察 common config | packed-refs 以外的 ref 存储（如 reftable）未支持，未做 Windows live |
+| Ref/SHA 验证 | `isSafeRefName`、`isValidGitSha` | 合法 feature 名接受，路径逃逸/shell 元字符和伪 SHA 拒绝 | 白名单可能拒绝某些合法但罕见的 ref |
 | Diff 解析与限制 | `src/utils/gitDiff.ts` fetchGitDiff、parseGitDiff、parseShortstat | 需补充 | 最大文件大小、最大行数、最大文件数限制 |
 | Worktree 创建与恢复 | `src/utils/worktree.ts` getOrCreateWorktree、validateWorktreeSlug | 需补充 | hook-based worktree 行为由外部 hook 定义 |
 | Worktree 清理与 stale 回收 | `src/utils/worktree.ts` cleanupWorktree、cleanupStaleAgentWorktrees | 需补充 | 只回收匹配 ephemeral 模式的 Worktree |
@@ -1056,16 +1056,25 @@ createWorktreeForSession(sessionId, slug, tmuxSessionName?, options?)
 
 ### 7.2 现有测试列表
 
-- 需补充查找 Git 相关测试
+- `tests/changedFiles.test.ts`：既有变更文件相关测试
+- `tests/gitIntegration.test.ts`：4 个真实临时 Git 仓库场景、26 个断言，覆盖 direct metadata/worktree/watcher
 
 ### 7.3 边界与未覆盖
 
-- 浅克隆（shallow clone）某些操作受限
-- reftable ref 存储未支持（Git 新版本）
-- Windows 路径规范化某些边缘情况
-- 并发 Git 操作（如同时在多个 Worktree 执行 Git）
-- Git LFS 大文件处理
-- 子模块递归操作
+- reftable ref 存储、Windows 路径、Git LFS 和子模块递归操作
+- 多进程并发 Git 操作与 watcher 高频事件竞态
+- 真实远程 fetch/push、凭据提示和 hook-based worktree 生命周期
+- findGitRoot LRU 容量和 bare repo 防护的更多组合
+
+### 7.4 三层证据与回滚
+
+| 层级 | 只读证据 | 边界 |
+|---|---|---|
+| 官方文档 | [Claude Code worktrees](https://code.claude.com/docs/en/worktrees)与链接的 Git worktree 文档：独立工作目录/分支，共享仓库历史、remote 与 .git 元数据 | 未公开 GitFileWatcher 缓存/监听实现或 reftable 支持矩阵 |
+| 本机上游二进制 | `strings $(command -v claude)` 命中 `resetGitFileWatcher`、`readWorktreeHeadSha`、`packed-refs`、`commondir`、`refs/remotes/origin/HEAD` | 只证明相关实现符号存在，不证明全部平台/运行时行为 |
+| 本仓库 | 真实 `git init`、commit、pack-refs、checkout、worktree add 和本地文件事件，4 个测试/26 个断言 | 无远程、凭据、模型或全局 Git 配置写入；只写临时仓库 |
+
+本轮无生产代码变更。回滚只需删除测试与 coverage entry；spec 保持 draft，B3-git-integration-01/02/03 原 Finding 均保持 open，01/02 的 P3 设计建议不在本阶段实施。
 
 ## 8. 文件覆盖与相关子系统
 

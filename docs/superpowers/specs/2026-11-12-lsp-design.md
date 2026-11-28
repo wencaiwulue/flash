@@ -1187,3 +1187,41 @@ gitignore 过滤（适用操作：findReferences/definition/implementation/works
 | P2 | 未实现 LSP 选择范围，无直接测试 | 支持 LSP 选择范围（selection ranges） | 中：需新增工具接口或扩展现有接口 | 增加 selection ranges 获取、展示的集成测试 | M | 待运行验证 |
 | P2 | 未实现 LSP 语义高亮，无直接测试 | 实现 LSP 语义高亮（semantic tokens） | 高：需处理大量数据、增量更新、缓存等 | 增加 semantic tokens 获取、增量更新、缓存的测试 | L | 待运行验证 |
 | P2 | 未实现 LSP 草稿缩进，无直接测试 | 支持 LSP 草稿缩进（linked editing ranges） | 中：需新增工具接口或扩展现有接口 | 增加 linked editing ranges 获取、展示、联动编辑的集成测试 | M | 待运行验证 |
+
+---
+
+## 10. 整改记录（2026-11-18）
+
+### 发现 B2-lsp-01 / B2-lsp-03 整改
+
+**问题**：
+- B2-lsp-01：spec 完整列出所有模块设计，但部分标注"未找到直接测试"
+- B2-lsp-03：关键路径（LSPTool 完整操作、诊断去重和容量限制、ContentModified 完整重试逻辑）无针对性测试
+
+**整改措施**：
+1. 新增 `tests/lsp.test.ts` 并在 lsp.yaml coverage 中注册
+2. 测试覆盖内容：
+   - ContentModified 自动重试（最多 3 次，失败后抛出）
+   - ContentModified 指数退避延迟验证（实测 500ms/1s/2s）
+   - 诊断注册表（注册、去重、容量限制、严重度排序、跨回合 LRU 去重、编辑清除）
+   - publishDiagnostics 完整通知流程（fake server → notification handler → registry）
+   - shutdown/exit 流程和服务器隔离（一个 server 失败不影响另一个）
+   - LSPTool gitignore 过滤（真实 temp git repo + .gitignore 文件）
+3. 扩展 `tests/fixtures/fake-lsp-server.ts` 支持测试所需的额外 LSP 方法
+4. 无代码缺陷：原实现完整符合 spec，仅补充测试覆盖
+
+**验证结果**：
+- 所有 LSP 测试通过（19 个测试，包含 lspLifecycle.test.ts 的 4 个）
+- ContentModified 重试逻辑验证通过（3 次失败后最终成功，4 次失败后最终抛出）
+- ContentModified 指数退避延迟实测通过（完整序列约 3.5s）
+- 诊断去重和容量限制验证通过
+- 完整 publishDiagnostics 流程验证通过
+- 服务器隔离验证通过
+- gitignore 过滤通过真实 git repo 验证
+- 所有测试使用本地 fake transport，无需真实 LSP 服务器或网络访问
+- 无源码断言，无模型调用，无网络请求
+
+**回滚计划**：
+如需回滚，删除 `tests/lsp.test.ts` 中的新增测试并恢复 `tests/fixtures/fake-lsp-server.ts` 至整改前状态
+
+**spec 状态**：保持 draft

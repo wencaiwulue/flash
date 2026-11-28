@@ -1787,6 +1787,41 @@ type SandboxDependencyCheck = {
 | 沙箱 refreshConfig async 不等待 | `src/commands/add-dir/add-dir.tsx:84-92` | 无直接覆盖 | 注释说明竞态风险 |
 | CustomSelect 三种布局模式 | `src/components/CustomSelect/select.tsx:312-909` | 无直接覆盖 | compact/expanded/compact-vertical |
 
+### 7.1 真实命令测试与持久化缺陷整改
+
+`tests/workspaceCommands.test.tsx`：10 个测试、40 个断言，普通与外部 feature profile 均通过。
+
+| 场景 | 真实行为与断言 | 证据边界 |
+|---|---|---|
+| /add-dir session | 真实选择菜单确认后 permission Map 包含外部目录，bootstrap 包含目录，refreshConfig 调用一次 | 临时 cwd 与外部目录隔离；不把 cwd 内目录误当新增 |
+| remember | 选择“remember”后隔离 local settings 实际写入目录；输入路径成功与 Escape 取消、missing path 不变更权限 | 真实 Ink/AddWorkspaceDirectory/PermissionUpdate 与文件系统，非 snapshot |
+| 持久化失败 | settings.local.json 为目录时，session 权限/bootstrap 仍成功，但消息包含 Failed to save，而非错报 saved | 真实 RED 驱动的生产修复 B4-workspace-ui-03；详见下表 |
+| /diff | lazy import 真实 DiffDialog，在临时 git 仓库显示 Working tree is clean 与 Uncommitted changes | 本地 git，无 global config 或远程 |
+| /sandbox-toggle | WSL1、enabledPlatforms、policy lock、空/未知 exclude、有效 exclude 精确消息和隔离写入；required errors 仅 Dependencies，warnings 全部 tabs | 只替换 SandboxManager 平台/依赖边界，不写真实 sandbox 配置 |
+
+**增量缺陷 B4-workspace-ui-03**：`updateSettingsForSource` 返回 `{ error }`，而 `persistPermissionUpdate(addDirectories)` 忽略它，导致写入失败仍显示“saved”。最小修复为在该分支检查并抛出 `result.error`，由 add-dir 既有 catch 生成失败消息；session 权限/bootstrap 不回滚。修改文件 `src/utils/permissions/PermissionUpdate.ts` 的 coverage 主责仍是 permissions，本测试只登记 workspace-ui，不重复登记源文件。
+
+三层证据：官方 [Permissions](https://code.claude.com/docs/en/permissions.md) 说明 additionalDirectories 权限语义；本机 `/opt/homebrew/bin/claude` 只读 strings 命中 Failed to save to local settings、Failed to read raw settings、additionalDirectories；仓库 `settings.ts` 的 `{error}` 返回契约、add-dir 既有 catch 和真实 RED/GREEN 直接支持修复。文档/strings 不用于证明其他权限分支的行为。
+
+回滚时不得恢复“忽略写入错误”的旧实现；若整组回退测试与文档，必须同时接受并重新评估该已知错报。回滚后运行 full test/typecheck/build/design checker，保持原 Finding open/spec draft。
+
+### 7.2 真实组件测试与 Fullscreen 边界
+
+`tests/workspaceComponents.test.tsx`：7 个测试、33 个断言，普通与外部 feature profile 均通过。
+
+| 场景 | 真实行为与断言 |
+|---|---|
+| DiffDialog | Current/Turn 双来源切换、list/detail/返回/关闭；6 文件时 `↓ 1 more file`，不显示第 6 个文件 |
+| CustomSelect | disabled option 不选中、方向键/Enter/Escape；input option 保留 abc 文本并提交 custom |
+| Overlay | activeOverlays 注册与 unmount 清理，`process.stdout` 的 invalidatePrevFrame 调用；autocomplete 保留注册 |
+| UnseenDivider | tool_use+text 回合计数、tool-only floor=1、scroll-away 基线一次、负向 shift、jumpToNew/onRepin 清理 |
+
+三层证据：官方 [Terminal configuration](https://code.claude.com/docs/en/terminal-config.md) 的 fullscreen/主题语义；本机 `/opt/homebrew/bin/claude` 只读 strings 命中 DiffDialog，其余组件符号未用于推断实现；仓库 DiffDialog/CustomSelect/overlay/FullscreenLayout 与真实 Ink 测试。全部离线，不把 Ink frame 当物理终端 live。
+
+**未覆盖**：当前 AlternateScreen/ScrollBox harness 未能稳定生成可读的 new-message pill 与 sticky prompt frame，因此不声称这两项通过；FullscreenLayout modal 的结构、真实鼠标/键盘 scroll 和多终端兼容仍需独立环境验证。没有为通过测试而修改 FullscreenLayout 生产实现或添加 test-only API。
+
+回滚移除测试及 coverage entry、撤销本节和原审计追加台账，保持原 Finding open/spec draft，重新运行 full test/typecheck/build/design checker。
+
 ## 8. 文件覆盖与相关子系统
 
 [Coverage](../../architecture/coverage/workspace-ui.yaml)

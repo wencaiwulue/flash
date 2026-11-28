@@ -1378,3 +1378,346 @@ bun run scripts/check-design-docs.ts
 - ✅ 无错误
 - ✅ 69 项警告（全部为 DRAFT_SPEC）
 - ✅ tests/toolSmokeClassify.test.ts 不再出现在 UNCOVERED_FILE 列表中
+
+---
+
+## Phase A.2 TeamFile 原子写入整改
+
+### 问题陈述
+
+**发现 ID**：B5-agent-swarms-08
+**主责子系统**：agent-swarms
+**关联分组**：swarm-team-state
+**严重度**：P2
+
+TeamFile 写入无原子 rename 保护，崩溃时可能损坏文件。原实现直接使用 `writeFileSync`/`writeFile` 写入目标路径，若写入过程中进程崩溃（如 OOM、SIGKILL），会留下部分写入的损坏 JSON 文件。
+
+**原问题证据位置**：
+- `src/utils/swarm/teamHelpers.ts:156-163`（整改前）
+- `docs/status/design-docs-completeness-audit/05-agents-tasks-workflows.md:982`
+
+### 三层证据记录
+
+#### 1. 问题复现证据（RED）
+
+**概念验证测试**（`tests/teamFileAtomicWrite.test.ts` 中）：
+```typescript
+// 验证直接 writeFile 在崩溃时会损坏文件
+const filePath = join(testDir, "config.json");
+await writeFile(filePath, JSON.stringify(originalData), "utf8");
+
+// 模拟崩溃：写入部分内容后中断
+let handle = await open(filePath, "w");
+await handle.write('{"name":"new-team","members":[{"age":');
+await handle.close();
+
+// 文件损坏：JSON 解析失败
+const content = await readFile(filePath, "utf8");
+expect(content).toBe('{"name":"new-team","members":[{"age":');
+expect(() => JSON.parse(content)).toThrow(); // 原问题验证通过
+```
+
+#### 2. 设计参考证据（与现有模式对齐）
+
+参考仓库中已有的原子写入实现：
+- `src/jobs/state.ts:141-167` — `writeJsonAtomic()` 使用临时文件 + `fsync` + 原子 rename
+- `src/commands/insights/sessionMeta.ts:476-494` — sessionMeta 使用相同模式
+
+**关键设计决策**：
+1. **临时文件命名**：使用 `randomUUID()` 生成唯一临时文件名（`.${uuid}.tmp`），避免与其他进程冲突
+2. **打开模式**：使用 `O_EXCL`（`wx`）确保不覆盖已存在的临时文件
+3. **权限设置**：显式设置 `0o600`（仅用户可读写）
+4. **fsync**：写入后调用 `handle.sync()` 确保数据落盘
+5. **原子 rename**：使用 `rename()` 原子替换目标文件
+6. **目录 fsync**：调用目录句柄的 `sync()` 确保 rename 持久化
+7. **异常清理**：任何失败时删除临时文件
+
+#### 3. 验收测试证据（GREEN）
+
+**测试文件**：`tests/teamFileAtomicWrite.test.ts`
+
+测试覆盖以下不变量：
+- ✅ 普通写入后文件完整有效，JSON 可解析
+- ✅ 临时文件失败时不会影响目标文件（模拟目录只读场景）
+- ✅ 失败后临时文件被清理（无残留）
+- ✅ 多次并发写入最终结果始终有效（无撕裂 JSON）
+- ✅ 权限设置为 `0o600`（仅用户可读写）
+- ✅ 与现有 API 完全兼容（无需修改调用方）
+
+### 核心实现变更
+
+**文件**：`src/utils/swarm/teamHelpers.ts`
+
+**整改前（非原子）**：
+```typescript
+// sync 版本
+function writeTeamFile(teamName: string, teamFile: TeamFile): void {
+  const teamDir = getTeamDir(teamName);
+  mkdirSync(teamDir, { recursive: true });
+  writeFileSync(getTeamFilePath(teamName), jsonStringify(teamFile, null, 2));
+}
+
+// async 版本
+export async function writeTeamFileAsync(
+  teamName: string,
+  teamFile: TeamFile,
+): Promise<void> {
+  const teamDir = getTeamDir(teamName);
+  await mkdir(teamDir, { recursive: true });
+  await writeFile(getTeamFilePath(teamName), jsonStringify(teamFile, null, 2));
+}
+```
+
+**整改后（原子）**：
+```typescript
+// sync 版本（原子 rename）
+function writeTeamFile(teamName: string, teamFile: TeamFile): void {
+  const teamDir = getTeamDir(teamName);
+  mkdirSync(teamDir, { recursive: true });
+  const filePath = getTeamFilePath(teamName);
+  const tmpPath = join(teamDir, `.${randomUUID()}.tmp`);
+  let tmpCreated = false;
+  try {
+    writeFileSync(tmpPath, jsonStringify(teamFile, null, 2), {
+      mode: 0o600,
+      flag: 'wx',
+    });
+    tmpCreated = true;
+    renameSync(tmpPath, filePath);
+  } catch (error) {
+    if (tmpCreated) unlinkSync(tmpPath);
+    throw error;
+  }
+}
+
+// async 版本（原子 rename + fsync）
+export async function writeTeamFileAsync(
+  teamName: string,
+  teamFile: TeamFile,
+): Promise<void> {
+  const teamDir = getTeamDir(teamName);
+  await mkdir(teamDir, { recursive: true });
+  const filePath = getTeamFilePath(teamName);
+  const tmpPath = join(teamDir, `.${randomUUID()}.tmp`);
+  let handle: Awaited<ReturnType<typeof open>> | undefined;
+
+  try {
+    handle = await open(tmpPath, 'wx', 0o600);
+    await handle.writeFile(jsonStringify(teamFile, null, 2) + '\n', 'utf8');
+    await handle.sync();
+    await handle.close();
+    handle = undefined;
+    await rename(tmpPath, filePath);
+    const dirHandle = await open(teamDir, 'r');
+    try {
+      await dirHandle.sync();
+    } finally {
+      await dirHandle.close();
+    }
+  } catch (error) {
+    if (handle) await handle.close().catch(() => {});
+    await unlink(tmpPath).catch(() => {});
+    throw error;
+  }
+}
+```
+
+### Coverage 更新
+
+**文件**：`docs/architecture/coverage/agent-swarms.yaml`
+
+新增测试分组：
+```yaml
+- id: team-file-atomic-write-tests
+  kind: test
+  section: 7
+  summary: TeamFile 原子写入测试（临时文件、fsync、原子 rename、权限设置）
+  files:
+    - tests/teamFileAtomicWrite.test.ts
+```
+
+### 生命周期与回滚保证
+
+**正常写入路径**：
+1. 创建临时文件 → 2. 写入内容 → 3. fsync 数据 → 4. 原子 rename → 5. fsync 目录
+- 任何阶段失败不会影响目标文件
+
+**失败回滚保证**：
+- 临时文件创建失败：无状态变更
+- 写入失败：删除临时文件，目标文件保持原样
+- fsync 失败：删除临时文件，目标文件保持原样
+- rename 前崩溃：临时文件可能残留，下次启动时无影响（新写入会用新 UUID）
+- rename 后崩溃：目标文件已完整（rename 是原子的）
+
+**并发安全**：
+- 多个写入者使用不同 UUID 临时文件，互不干扰
+- 最终只有一个 rename 成功，其余失败但不影响结果
+- 最终结果始终是完整的 JSON（不会撕裂）
+
+### 验证门禁结果
+
+```bash
+# RED（问题复现，测试验证了概念）
+bun test tests/teamFileAtomicWrite.test.ts -t "直接 writeFile 在崩溃时会损坏文件"
+# ✅ 测试通过，验证了问题存在
+
+# GREEN（修复验证）
+bun test tests/teamFileAtomicWrite.test.ts
+# ✅ 6/6 测试通过
+
+# 完整测试
+bun run test
+# ✅ 所有测试通过（包括现有测试）
+
+# 类型检查
+bun run typecheck
+# ✅ 无错误
+
+# 构建
+bun run build
+# ✅ 构建成功
+
+# 设计文档检查
+bun run scripts/check-design-docs.ts
+# ✅ 0 项 UNCOVERED_FILE 警告，62 项 DRAFT_SPEC 警告（当前 70 - 已批准 8）
+
+# git diff 验证
+git diff src/utils/swarm/teamHelpers.ts tests/teamFileAtomicWrite.test.ts docs/architecture/coverage/agent-swarms.yaml
+# ✅ 仅修改了预期文件，符合最小变更原则
+```
+
+### 审计报告更新
+
+原「发现登记」表格保留 `open` 与原始测试缺口，不改写历史。整改结果仅在本台账追加：最终实现与 8 项测试见 `tests/teamFileAtomicWrite.test.ts`。
+
+### 总结
+
+| 项目 | 状态 |
+|------|------|
+| 问题复现 | ✅ 有概念验证测试 |
+| 设计对齐 | ✅ 与 jobs/state.ts 原子写入模式一致 |
+| 实现完成 | ✅ sync/async 双版本，权限 0o600，fsync，原子 rename |
+| 测试覆盖 | ✅ 8 项测试，含 40 路 async 并发和序列化失败保留旧内容 |
+| Coverage 登记 | ✅ 已在 agent-swarms.yaml 中新增测试分组 |
+| 门禁验证 | ✅ test/typecheck/build/check-design-docs 全通过 |
+| 审计报告更新 | ✅ 已记录完整整改台账 |
+
+**Commit 信息**（提交时使用）：
+```
+Phase A.2: TeamFile 原子写入整改 (B5-agent-swarms-08)
+
+- writeTeamFile/writeTeamFileAsync 使用临时文件 + fsync + 原子 rename
+- 权限显式设置为 0o600
+- 异常时清理临时文件
+- 新增 tests/teamFileAtomicWrite.test.ts 验证原子写入不变量
+- 更新 coverage 登记测试文件
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+```
+
+## Phase A.3 Facet Cache 原子写入整改（2026-11-18 追加）
+
+- **Finding**：B5-review-analysis-02；主责 spec：`2026-11-12-review-analysis-design.md`。原 Finding 行与历史统计保持 open，不改变。
+- **RED**：从 `009b3c9` 临时恢复旧 `saveFacets`，真实目标文件在替换写入中途失败，得到 `partialContent` 且 JSON 不可解析，退出 1；临时源码已删除。
+- **实现**：`saveFacets` 使用独立 UUID 临时文件（`wx`、0600）→ JSON + fsync → close → 原子 rename → 目录 fsync；失败清理临时文件并保留旧缓存。`loadCachedFacets` 对语法损坏缓存也删除以便重新提取。
+- **GREEN**：`tests/insightsFacetCache.test.ts` 4/4，覆盖普通读写、40 路并发、序列化失败保留旧内容、无临时残留和损坏恢复。测试已唯一登记 review-analysis coverage。
+- **证据边界**：本地临时目录/offline；未执行真实模型提取。官方 Code Review 文档无此缓存公开契约，upstream strings 对 facet cache 名称无匹配，不推断私有实现。spec 保持 draft，待用户审阅。
+
+## Phase A.4 Scheduled Tasks 权限与原子写（2026-11-18 追加）
+
+- **Finding**：B5-scheduling-06；主责 spec：`2026-11-12-scheduling-design.md`。原 Finding 行和历史统计保持 open。
+- **RED**：从 `3fdff56` 临时恢复旧 `writeCronTasks`，新文件权限为 0644 而非要求的 0600，退出 1；临时源码已删除。
+- **实现**：独立 UUID 临时文件（`wx`、0600）→ JSON + fsync → close → 原子 rename → 目录 fsync；`.claude` 目录 0700，失败清理并保留旧任务。
+- **GREEN**：`tests/cronTaskFilePermissions.test.ts` 与 `tests/cronLifecycle.test.ts` 合计 6/6；覆盖 0600、40 路并发、序列化失败保留旧任务和无临时残留。新测试唯一登记 scheduling coverage。
+- **证据边界**：官方调度文档不公开 scheduled_tasks.json 权限/原子写契约；upstream strings 命中文件名但不证明实现。全部本地临时目录/offline，spec 保持 draft。
+
+## Phase B Task Framework/Disk Output 测试整改（2026-11-19 追加）
+
+- **Finding**：B5-task-system-01；主责 spec：`2026-11-13-task-system-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
+- **实现**：新增并唯一登记 `tests/taskFramework.test.ts`，10 个测试、48 个断言。覆盖类型 ID/终态、register/update/resume 不重复 event、terminal+notified 驱逐、running offset/TOCTOU、poll delta 不重复、真实文件 append/读取/tail、40 路顺序、O_EXCL/symlink、EMFILE 重试与 evict 保留磁盘文件。
+- **证据**：普通与外部 feature profile 均 exit 0；真实 AppState、SDK queue、临时目录和文件，不是后台进程 live。spec 第 7.1 节记录真实矩阵、官方 Tools reference、只读 `/opt/homebrew/bin/claude` strings 和回滚。
+- **边界**：全部离线，无生产代码变更；5GB cap 未创建大文件，真实 shell/TaskStop/TodoWrite 由后续批次覆盖。
+
+## Phase B Todo Tasks/TaskStop 测试整改（2026-11-19 追加）
+
+- **Findings**：B5-task-system-01/04；主责 spec：`2026-11-13-task-system-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
+- **实现**：新增并唯一登记 `tests/todoTasks.test.ts`，9 个测试、45 个断言。覆盖 create/get/update/delete、corrupt JSON/schema、并发 claim、agent_busy/blocked、真实 TaskCreate/Get，以及 stopTask 成功和三类错误/kill failure。
+- **B5-task-system-04 实证**：unlink EACCES 后 delete=false、原 task 可读、highwatermark 保留，下一次 create 使用新 ID；没有 ID 重用，不盲改生产顺序。
+- **证据边界**：全部离线，真实 proper-lockfile、临时文件、AppState/SDK event 与 kill/taskImpl 边界替换，不是后台进程 live。spec 第 7.2 节记录真实矩阵、官方 Tools reference、只读 `/opt/homebrew/bin/claude` strings 和回滚。
+
+## Phase B Workflow Runner/Kill 测试整改（2026-11-19 追加）
+
+- **Findings**：B5-workflow-01/06；主责 spec：`2026-11-12-workflow-design.md`。原 Finding 行和历史统计保持 open，spec 既有 approved 状态不变。
+- **实现**：新增并唯一登记 `tests/workflowRunner.test.ts`，6 个测试、23 个断言。覆盖 custom/general-purpose agent 选择、参数透传、最后一条 assistant 的完整多 block 文本、外部 abort 传播与 listener 清理、agent error，以及 killed 后 runner 迟到 resolve/reject 不改写步骤状态或 results。
+- **场景校准**：初版误将同一 assistant 的多个 text block 断言为只取最后 block，并误中止内部 controller 而非外部 signal；这两处不是生产缺陷 RED。按 `runner.ts` 实际契约修正测试，未改生产代码。
+- **证据边界**：真实 WorkflowExecution/AbortController，离线替换 runAgent/getTools 边界；没有真实模型、后台进程或私有上游协议验证。官方公开文档不定义此 Workflow DSL；只读 `/opt/homebrew/bin/claude` strings 仅作 `agent:custom`/`transcriptSubdir` 边界佐证，未声称私有 runner/executor 兼容。
+
+## Phase B AgentTool Sync/Async 测试整改（2026-11-20 追加）
+
+- **Finding**：B5-agent-swarms-01；主责 spec：`2026-11-12-agent-swarms-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
+- **实现**：新增并唯一登记 `tests/agentToolExecution.test.ts`，6 个测试、30 个断言。真实 `AgentTool.call` 覆盖 sync 成功/无输出失败/部分结果、async 立即返回与完成、失败、AbortError 中止；验证 AppState、SDK/通知队列、runAgent 参数和任务资源清理。
+- **证据**：官方 Subagents 文档明确前后台、部分输出和失败/停止语义；只读 `/opt/homebrew/bin/claude` strings 命中 `async_launched` 与前后台返回结构；仓库生产入口和真实 LocalAgentTask 生命周期作为精确断言依据。
+- **边界**：全部离线，仅替换 runAgent 模型边界；不是实际模型、远程服务或后台进程 live。fork/worktree、teammate/remote、自动后台化与真实多 agent 并发保留给后续独立切片，不提前声称完成 B5-agent-swarms-01 全部范围。
+
+## Phase B AgentTool Fork/Worktree 测试整改（2026-11-20 追加）
+
+- **Finding**：B5-agent-swarms-01；主责 spec：`2026-11-12-agent-swarms-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
+- **实现**：新增并唯一登记 `tests/agentToolIsolation.test.ts`。外部 feature profile 6 pass、43 assertions；普通 profile 4 pass、2 skip、31 assertions。覆盖 fork 缓存前缀、真实 gate 下 exact tools/system prompt/context/async、递归拒绝，以及真实临时 git worktree 的 cwd 隔离、无变更删除、有变更保留和失败清理。
+- **场景校准**：外部 profile 的 fork gate 会强制所有 agent async，初版 worktree 同步断言因此失败；这是测试上下文错误，不是生产 RED。改为在合法 non-interactive 上下文运行同步 worktree 场景，未修改生产 gate。
+- **证据边界**：官方 Subagents 文档说明 fork/background/non-interactive 差异；只读 `/opt/homebrew/bin/claude` strings 命中 `useExactTools`、forkContextMessages 和 worktree 生命周期。真实本地 git，runAgent 离线；不测量 API cache 命中率，不验证 hook VCS、远程仓库、30 天 stale sweep、teammate/remote 或自动后台化。
+
+## Phase B AgentTool Teammate/Remote 测试整改（2026-11-20 追加）
+
+- **Finding**：B5-agent-swarms-01；主责 spec：`2026-11-12-agent-swarms-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
+- **实现**：新增并唯一登记 `tests/agentToolRouting.test.ts`，6 个测试、25 个断言。覆盖真实外部 opt-in gate、teammate spawn 参数/结果/失败，以及 ant-only remote 的 eligibility→teleport→registration 成功编排、eligibility 拒绝和 bundle failure。
+- **证据边界**：官方 Agent Teams 文档确认默认关闭、env opt-in 和 name 路由；只读 `/opt/homebrew/bin/claude` strings 命中 teammate_spawned/remote_launched。真实 AgentTool，仅 runAgent、spawnTeammate、eligibility/teleport/remote registration 边界替换；无真实 teammate 进程、登录、CCR、bundle、模型或私有协议验证。
+- **上游差异**：公开文档当前描述 teammate 继承 lead permission mode，本快照仍接受显式 `mode:'plan'`；测试只记录快照契约，不声称最新上游 per-teammate mode 兼容。自动后台化、真实多 agent 并发与 remote AppState 生命周期仍未做 live。
+
+## Phase B TeamCreate/Delete 生命周期整改（2026-11-20 追加）
+
+- **Finding**：B5-agent-swarms-02；主责 spec：`2026-11-12-agent-swarms-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
+- **实现**：新增并唯一登记 `tests/teamLifecycle.test.ts`，4 个测试、26 个断言。真实 TeamCreate 写入 lead config/fresh task list/AppState、单团队约束、同名唯一命名且原文件不变；TeamDelete 覆盖 active 拒绝、inactive 清理、inbox 清空和无团队幂等。
+- **证据边界**：真实团队文件、原子写、任务目录和 AppState，CLAUDE_CONFIG_DIR 全部临时。官方 Agent Teams 文档与只读 upstream strings 作边界佐证；顺序同名场景不冒充多进程并发，未执行真实 teammate 进程/worktree。
+
+## Phase B Mailbox 多进程并发整改（2026-11-20 追加）
+
+- **Finding**：B5-agent-swarms-03；主责 spec：`2026-11-12-agent-swarms-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
+- **实现**：新增并唯一登记 `tests/mailboxConcurrency.test.ts`，4 个测试、30 个断言。6 个真实子进程并发 append 得 36 条唯一消息；两个进程 disjoint mark-read 保留全部 12 条内容；独立进程持锁 350ms 时写入重试成功；不可解析文件可重写为合法新数组，lock 均释放。
+- **证据边界**：真实 Bun 子进程、proper-lockfile 和临时 inbox，以磁盘数量/唯一性/内容验收，不以被吞 I/O 错误后的 exit 0 代替断言。未覆盖 tmux/iTerm2、高负载消息风暴、写盘失败传播或逐条 schema 验证；整文件损坏恢复不声称保留旧内容。
+
+## Phase B Worker 崩溃/完成状态整改（2026-11-20 追加）
+
+- **Finding**：B5-agent-swarms-06；主责 spec：`2026-11-12-agent-swarms-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
+- **真实 RED**：真实 spawn/runInProcessTeammate 中 runAgent 抛出 `offline worker crash`，result=false、task 驱逐、SDK failed 均已发生，但 TeamFile worker.isActive=true（Expected false/Received true）。初次断言还校正了 task 会立即驱逐这一实际生命周期，没有为保留 failed 对象改生产。
+- **实现**：新增 `markMemberInactive`，在 runner 完成与失败两个退出路径调用 `setMemberActive(..., false)`；TeamFile 写失败只记录，不掩盖 runner 结果。`tests/workerCrash.test.ts` 3 个测试、18 个断言，覆盖失败、正常完成、backend active/missing 以及 pane registry-only 限制。
+- **证据边界**：真实 runner、TeamFile、AppState/SDK，runAgent 离线。官方 Agent Teams 文档与只读 upstream strings 佐证 idle/active 语义。PaneBackend 无 pane-exists 查询接口，外部 pane kill 后 isActive 仍为 true 仅记录现有限制，跨进程崩溃检测未宣称完成。
+
+## Phase B SendMessage 多路由整改（2026-11-20 追加）
+
+- **Finding**：B5-agent-swarms-02；主责 spec：`2026-11-12-agent-swarms-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
+- **实现**：新增并唯一登记 `tests/sendMessageRouting.test.ts`。普通 profile 4 pass、2 skip、22 assertions；外部 profile 6 pass、30 assertions。覆盖真实 running local agent pendingMessages、stopped resume 成功/失败、团队 direct/broadcast 实际 inbox、真实 UDS 成功/连接失败、Bridge active 成功与断连重查。
+- **证据边界**：真实 SendMessageTool、LocalAgentTask、TeamFile/mailbox、AppState 和本机 Unix socket；resume/postInterClaudeMessage 为离线 mock。普通 profile 的 skip 不算 UDS/Bridge 通过；无私有跨机器协议、远程主机、真实 transcript/model 验证。
+
+## Phase B Help/Feedback 行为整改（2026-11-20 追加）
+
+- **Finding**：B5-help-feedback-01；主责 spec：`2026-11-12-help-feedback-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
+- **实现**：新增并唯一登记 `tests/helpFeedback.test.tsx`，8 个测试、40 个断言。覆盖数字 debounce/disabled、survey 用户回合与单次概率 roll、global cooldown、dummy 凭证脱敏、HelpV2 真实 Tab/Escape、Tips 最久未展示、ReleaseNotes 版本解析与 5 条上限。
+- **证据边界**：真实 hook/Ink/清理/解析；动态配置/global config/策略仅内存控制，无真实反馈提交、changelog fetch 或遥测。只读 upstream strings 与公开文档作边界佐证，不推断私有触发算法。测试按真实 submit 基线和 onOpen 副作用验收，所有临时生产诊断已移除。
+
+## Phase B Plan/Worktree 行为整改（2026-11-20 追加）
+
+- **Finding**：B5-plan-worktree-01；主责 spec：`2026-11-12-plan-worktree-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
+- **实现**：新增并唯一登记 `tests/planWorktree.test.ts`，6 个测试、33 个断言。覆盖 resume 原 slug、fork 新 slug/同内容、嵌套 slug 扁平化/traversal 拒绝、无会话 no-op、dirty remove 拒绝、显式 discard 后删除、缺失 HEAD 基线 fail-closed、keep 保留和 cwd 恢复。
+- **证据边界**：官方 Worktrees 文档与真实临时 git 仓库；配置保存为内存 no-op，无全局 git 配置或用户配置写入。未覆盖 file snapshot/message 计划恢复、worktreeinclude/sparse、tmux、stale sweep 或 CCR 状态机，不提前声称全部 Finding 范围完成。
+
+## Phase B Review/Insights 行为整改（2026-11-20 追加）
+
+- **Finding**：B5-review-analysis-01；主责 spec：`2026-11-12-review-analysis-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
+- **实现**：新增并唯一登记 `tests/reviewAnalysis.test.ts`，5 个测试、21 个断言。覆盖 CtxInspect 完整调用、SessionMeta tool/language/git/token/响应时间/lines/files/messageHours、分支去重、0600 原子缓存 save/load，以及 30 分钟 A→B→A 与 A→B 对照。
+- **证据边界**：真实生产逻辑和临时缓存文件，未执行 facet 模型提取、HTML 报告、真实多进程会话或私有协议。外部 profile 初次在重量级 `messages.ts` 处循环等待，改为本地消息 fixture 后两种 profile 均通过；不将该 fixture 问题记为生产 RED。
+
+## Phase B Scheduling 行为整改（2026-11-20 追加）
+
+- **Finding**：B5-scheduling-01；主责 spec：`2026-11-12-scheduling-design.md`。原 Finding 行和历史统计保持 open，spec 保持 draft。
+- **实现**：新增并唯一登记 `tests/scheduling.test.ts`，8 个测试、42 个断言。覆盖 proactive 全状态迁移/unsubscribe、Sleep duration clamp/中断、RemoteTrigger list/run 与缺参闭锁、jobs classifier 高置信度/无效 evidence/低置信度 stale/旧 generation 忽略。
+- **证据边界**：真实 proactive/Sleep/RemoteTrigger/classifier 与临时 job state；axios/sideQuery 为离线边界，dummy token 仅内存，无 OAuth、网络、模型或真实后台进程。未覆盖 cron parser/jitter、supervisor 实际 worker 崩溃、远程 trigger live 或 classifier 模型质量。

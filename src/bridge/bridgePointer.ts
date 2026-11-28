@@ -6,6 +6,7 @@ import { isENOENT } from '../utils/errors.js'
 import { getWorktreePathsPortable } from '../utils/getWorktreePathsPortable.js'
 import { lazySchema } from '../utils/lazySchema.js'
 import {
+  canonicalizePath,
   getProjectsDir,
   sanitizePath,
 } from '../utils/sessionStoragePortable.js'
@@ -63,7 +64,7 @@ export async function writeBridgePointer(
   dir: string,
   pointer: BridgePointer,
 ): Promise<void> {
-  const path = getBridgePointerPath(dir)
+  const path = getBridgePointerPath(await canonicalizePath(dir))
   try {
     await mkdir(dirname(path), { recursive: true })
     await writeFile(path, jsonStringify(pointer), 'utf8')
@@ -129,11 +130,20 @@ export async function readBridgePointer(
 export async function readBridgePointerAcrossWorktrees(
   dir: string,
 ): Promise<{ pointer: BridgePointer & { ageMs: number }; dir: string } | null> {
-  // Fast path: current dir. Covers standalone bridge (always matches) and
-  // REPL bridge when no worktree mutation happened.
-  const here = await readBridgePointer(dir)
+  // Fast path: current dir. Try the lexical path first, then its canonical
+  // form so /var and /private/var both work on macOS.
+  const readWithCanonicalFallback = async (candidateDir: string) => {
+    const direct = await readBridgePointer(candidateDir)
+    if (direct) return { pointer: direct, dir: candidateDir }
+    const canonical = await canonicalizePath(candidateDir)
+    if (canonical === candidateDir) return null
+    const resolved = await readBridgePointer(canonical)
+    return resolved ? { pointer: resolved, dir: canonical } : null
+  }
+
+  const here = await readWithCanonicalFallback(dir)
   if (here) {
-    return { pointer: here, dir }
+    return here
   }
 
   // Fanout: scan worktree siblings. getWorktreePathsPortable has a 5s
@@ -158,8 +168,8 @@ export async function readBridgePointerAcrossWorktrees(
   // rare ones that have one. Promise.all → latency ≈ slowest single stat.
   const results = await Promise.all(
     candidates.map(async wt => {
-      const p = await readBridgePointer(wt)
-      return p ? { pointer: p, dir: wt } : null
+      const resolved = await readWithCanonicalFallback(wt)
+      return resolved
     }),
   )
 

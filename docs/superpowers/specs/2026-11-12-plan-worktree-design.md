@@ -888,6 +888,23 @@ restoreSessionToOriginalCwd():
 - 暂态工作树清理（模式匹配、mtime 检查、git 状态检查、unpushed commits 检查）
 - Ultraplan CCR 扫描状态机（approved/teleport/rejected/pending/terminated/unchanged 各场景、reject 计数、rescan after rejection）
 
+### 7.1 Plan/Worktree 行为整改（2026-11-20）
+
+关联 Finding：B5-plan-worktree-01。新增 `tests/planWorktree.test.ts` 并唯一登记；6 个测试、33 个断言，普通与外部 feature profile 均通过，无生产代码变更。
+
+| 决策 | 实际行为与验证 | 证据 |
+|---|---|---|
+| Resume/Fork slug | resume 复用原 slug；fork 使用不同 slug 并复制相同内容，原文件不变 | `plans.ts:164-264`；resume/fork 测试 |
+| Slug 安全 | `user/feature` 分支扁平化为 `worktree-user+feature`；空、绝对、空段和 `..` 均拒绝 | `worktree.ts:54-86,210-229` |
+| 无活动会话 | remove 验证返回 errorCode=1，不做文件系统变更 | `ExitWorktreeTool.ts:174-188` |
+| Dirty fail-closed | 未提交文件时 remove 返回 errorCode=2 并保留；仅显式 `discard_changes:true` 后调用才删除该临时 worktree，parent README 不变 | `countWorktreeChanges` 与 remove 测试 |
+| 无 HEAD 基线 | originalHeadCommit 缺失返回 errorCode=3，目录保留 | `ExitWorktreeTool.ts:94-98,195-200` |
+| Keep 保留 | keep 保留 dirty 文件/分支，恢复原 repo cwd 并清空活动 session | `keepWorktree` 与 keep 测试 |
+
+官方 [Worktrees 文档](https://code.claude.com/docs/en/worktrees) 明确 dirty/unverified 时不自动删除、keep 保留、remove 删除及恢复原目录；只读 upstream strings 与当前生产入口作辅助证据；本测试用真实临时 git 仓库验证当前精确错误码和副作用。配置保存为内存 no-op，所有 worktree 均在临时 repo 内清理。
+
+未覆盖 file snapshot/message 计划恢复、`.worktreeinclude` 展开、sparse paths、tmux/iTerm2、stale sweep 或 CCR 批准状态机；这些保留在现有未覆盖清单和后续独立切片，不把本批次夸大为全部完成。
+
 ## 8. 文件覆盖与相关子系统
 
 [Coverage](../../architecture/coverage/plan-worktree.yaml)

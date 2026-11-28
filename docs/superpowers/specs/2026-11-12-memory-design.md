@@ -3,7 +3,7 @@ id: memory
 batch: 3
 title: Memory 记忆加载、提取与同步设计
 date: 2026-11-12
-status: draft
+status: approved
 ---
 
 # Memory 记忆加载、提取与同步设计
@@ -49,6 +49,25 @@ CLAUDE.md通过attachments系统注入上下文，**不是**记忆系统的一�
 - 团队记忆同步有大小限制：单个文件最多 250,000 字节，PUT 体最多 200,000 字节
 - 团队记忆有隐私边界：team 目录是共享的，auto 目录是私有的
 
+### 会话 cursor、路径与状态所有权（当前实现）
+
+**持久化 cursor 与真实路径校验。** `SessionMemoryCursorManager` 将 `lastSummarizedMessageId`、时间戳、trackedFiles 和 sessionId 原子写入每个会话目录的 `.session-memory-cursor.json`，真实 `getLastSummarizedMessageId()` / `setLastSummarizedMessageId()` 通过该 sidecar 读取和更新，而不是只保存在进程变量中。重启后从 sidecar 恢复；删除被跟踪记忆文件时，`checkAndInvalidateDeletedFiles()` 使 cursor 失效并允许重新提取。
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| cursor sidecar | 当前会话的 `SessionMemoryCursorManager` | 首次读取或写入时创建 | 仅当前 memory 目录 | temp+rename 原子替换 | 文件删除、损坏或引用文件不存在时失效并重新提取 | 不删除历史记忆正文，回滚时保留旧 sidecar 以便诊断 |
+| `MemoryPathValidator` | memory 读取/写入/扫描/setup 调用方 | 先做前缀候选检查，再做 realpath 包含校验 | 内部 symlink 允许，逃逸到 memory/team 根目录外拒绝 | 不把被解析后的外部路径当作合法 memory 路径 | 校验失败返回错误，不执行写入或读取 | `src/services/SessionMemory/sessionMemoryUtils.ts`、`src/memdir/memoryScan.ts` |
+| collapse/microcompact 会话状态 | QueryEngine 通过 ToolUseContext 注入 | 每个 QueryEngine/fork 独立实例 | collapse commit/snapshot 按 sessionId 过滤恢复 | reset 仅影响当前会话 | `src/QueryEngine.ts`、`src/query.ts`、`tests/compactionSessionIsolation.test.ts` |
+
+**失败与回滚**：sidecar 缺失时从空 cursor 开始；损坏时不信任旧 cursor；删除文件不会导致 cursor 指向不存在的记忆。realpath 校验失败必须中止对应读取或写入，而不是退回纯前缀检查。若新机制出现回归，回滚仅撤销 cursor/path 改动，保留原记忆类型、索引、同步和压缩语义。
+
+**三层证据**：
+- 官方文档：[How Claude remembers your project](https://code.claude.com/docs/en/memory.md) 用于核对持久指令与 auto memory 边界；具体 cursor sidecar 和 realpath 执行层属于本仓库实现。
+- 上游二进制：对 `/opt/homebrew/bin/claude` 执行 `strings` 检索 `lastSummarizedMessageId`、`collapseStore`、`cachedMCState` 未找到对应符号，不能据此推断上游的 cursor 或路径隔离实现。
+- 本仓库源码/测试：`src/services/SessionMemory/sessionMemoryUtils.ts`、`src/services/SessionMemory/sessionMemory.ts`、`src/memdir/memoryScan.ts`、`tests/sessionMemory.test.ts`、`tests/memoryPaths.test.ts`。
+
+**2026-11-18 执行层回归整改**：`tests/memory.test.ts` 新增真实文件、内部 symlink、文件 symlink 逃逸和目录 symlink 逃逸场景。RED 复现表明 `FsOperations` 契约只提供 `realpathSync`/`lstatSync`，而 validator 曾调用不存在的异步 `realpath`/`lstat`；无错误码异常被逐层吞掉后会退回原始路径，导致逃逸校验失效。实现仅改为调用契约内同步原语，保留 async API、 deepest-existing-ancestor 算法和失败关闭语义。回滚不得恢复为纯前缀检查或未知异步方法；若需撤回调用方，对应读写必须保持拒绝，且重跑上述对抗测试。
+
 ### Feature Gates 与 Disabled 机制
 
 - **build-time gates**：`feature('TEAMMEM')`（团队记忆）、`feature('KAIROS')`（KAIROS 长会话模式的每日日志）
@@ -88,16 +107,20 @@ CLAUDE.md通过attachments系统注入上下文，**不是**记忆系统的一�
 | **代价** | 实现复杂，有多层检查和错误处理 |
 | **证据** | `src/memdir/teamMemPaths.ts`（PathTraversalError、validateTeamMemWritePath、validateTeamMemKey、realpathDeepestExisting、isRealPathWithinTeamDir 等） |
 
-### 团队记忆路径验证差异（读取 vs 写入）
+### Auto/Team 记忆读写统一的 realpath 边界
 
 | 操作 | 验证函数 | 验证程度 | 证据位置 | 说明 |
 |-----|---------|---------|---------|------|
-| **读取/权限检查** | `isTeamMemPath` | 仅字符串前缀检查 | `teamMemPaths.ts:214-220` | 快速路径，无symlink解析，存在潜在逃逸风险（但写入有完整验证） |
-| **写入/同步** | `validateTeamMemWritePath` | 完整symlink解析 + 真实路径检查 | `teamMemPaths.ts:228-284` | 安全路径，深度验证，防止逃逸 |
-| **远程键验证** | `validateTeamMemKey` | 清理+规范化检查 | `teamMemPaths.ts:22-63` | 键名安全，防止路径遍历注入 |
+| **读取/权限检查** | `isTeamMemPath`、`isAutoMemPath` | 同步 deepest-existing-ancestor realpath + 根目录包含检查 | `realPathContainment.ts`、`teamMemPaths.ts`、`paths.ts` | 保留同步 API；内部 symlink 允许，文件/目录逃逸和 dangling symlink 失败关闭 |
+| **团队本地读取** | `readLocalTeamMemory` 内 `validateTeamMemReadPath` | 读取前重新验证真实路径 | `src/services/teamMemorySync/index.ts`、`tests/memoryPathValidation.test.ts` | 普通 entry 保留，逃逸 entry 不进入同步集合 |
+| **写入/同步** | `validateTeamMemWritePath` | 完整 symlink 解析 + 真实路径检查 | `teamMemPaths.ts` | 新文件路径解析最深已存在祖先，保留合法创建行为 |
+| **远程键验证** | `validateTeamMemKey` | 清理 + 规范化 + realpath 检查 | `teamMemPaths.ts` | 键名和最终落盘位置均受约束 |
 
-- **验证边界**：读取路径仅做前缀检查是设计权衡（性能vs安全），因为写入路径已有完整保护；但需注意：若已存在恶意symlink，读取可能访问外部文件。
-- **相关发现登记**：X-memory-01（见cross-subsystem.md）
+- **设计取舍**：同步分类器需要文件系统 I/O，但权限/读取分类不能依赖调用方另选一个安全 API；共享 `PathTraversalError` 和 `realPathContainment.ts` 避免 auto/team 校验漂移。
+- **三层证据**：官方 [How Claude remembers your project](https://code.claude.com/docs/en/memory.md) 只约束记忆语义，不公开本校验实现；本机 `/opt/homebrew/bin/claude` `strings` 未提供可据此推断 auto/team realpath 契约的符号；本仓库源码与 `direct-connect` 无关，不借用私有协议证据。
+- **RED/GREEN**：旧实现对照在真实 symlink 上得到 `teamEscapeAccepted:true`、`autoEscapeAccepted:true`（退出 1）；统一调用方后，`bun test tests/memoryPathValidation.test.ts tests/memoryPaths.test.ts tests/memory.test.ts tests/sessionMemory.test.ts --timeout 60000` 退出 0（55 pass）。
+- **失败与回滚**：校验失败不得读取或返回权限允许；回滚不得恢复 lexical-only 分类，若撤销共享实现，必须同步保留所有现有调用方的 realpath 检查并重跑对抗测试。
+- **相关发现整改**：B3-memory-01、B3-memory-03、B3-memory-06；spec 状态虽为 approved，此行为变更仍需列入下一批用户复审。
 
 ### 删除文件后的cursor/索引失效与重复注入
 
