@@ -24,6 +24,7 @@ mock.module('../src/utils/hooks/execAgentHook.ts', () => ({
 let executeHooksOutsideREPL: typeof import('../src/utils/hooks.ts').executeHooksOutsideREPL
 let executeStopHooks: typeof import('../src/utils/hooks.ts').executeStopHooks
 let registerHookCallbacks: typeof import('../src/bootstrap/state.ts').registerHookCallbacks
+let getRegisteredHooks: typeof import('../src/bootstrap/state.ts').getRegisteredHooks
 let clearRegisteredHooks: typeof import('../src/bootstrap/state.ts').clearRegisteredHooks
 let setIsInteractive: typeof import('../src/bootstrap/state.ts').setIsInteractive
 let getDefaultAppState: typeof import('../src/state/AppStateStore.ts').getDefaultAppState
@@ -43,8 +44,12 @@ beforeAll(async () => {
   ;({ executeHooksOutsideREPL, executeStopHooks } = await import(
     '../src/utils/hooks.ts'
   ))
-  ;({ registerHookCallbacks, clearRegisteredHooks, setIsInteractive } =
-    await import('../src/bootstrap/state.ts'))
+  ;({
+    registerHookCallbacks,
+    getRegisteredHooks,
+    clearRegisteredHooks,
+    setIsInteractive,
+  } = await import('../src/bootstrap/state.ts'))
   ;({ getDefaultAppState } = await import('../src/state/AppStateStore.ts'))
   setIsInteractive(false)
 })
@@ -318,6 +323,48 @@ describe.each(['prompt', 'agent'] as const)('headless %s stop hooks', type => {
     ])
     expect(modelSignal.aborted).toBe(true)
   })
+})
+
+test('hook registration leases distinguish shared matcher occurrences and preserve plugin owners', () => {
+  const sharedCallback = {
+    type: 'callback' as const,
+    callback: async () => ({}),
+  }
+  const sharedHooks = [sharedCallback]
+  const sharedMatcher = { matcher: 'Bash', hooks: sharedHooks }
+  const pluginMatcher = {
+    matcher: 'Bash',
+    hooks: [{ type: 'command' as const, command: 'printf plugin-owner' }],
+    pluginRoot: '/tmp/sdk-hook-plugin-owner',
+    pluginName: 'sdk-hook-plugin-owner',
+    pluginId: 'sdk-hook-plugin-owner@local',
+  }
+
+  const releasePlugin = registerHookCallbacks({ PreToolUse: [pluginMatcher] })
+  const releaseA = registerHookCallbacks({
+    PreToolUse: [sharedMatcher],
+    PostToolUse: [sharedMatcher],
+  })
+  const releaseB = registerHookCallbacks({ PreToolUse: [sharedMatcher] })
+  expect(getRegisteredHooks()?.PreToolUse).toHaveLength(3)
+
+  releaseA()
+  releaseA()
+  const afterA = getRegisteredHooks()
+  expect(afterA?.PreToolUse).toHaveLength(2)
+  expect(afterA?.PreToolUse?.[0]).toMatchObject({
+    pluginRoot: '/tmp/sdk-hook-plugin-owner',
+  })
+  expect(afterA?.PreToolUse?.[1]?.hooks).toBe(sharedHooks)
+  expect(afterA?.PostToolUse).toBeUndefined()
+
+  releaseB()
+  expect(getRegisteredHooks()?.PreToolUse).toHaveLength(1)
+  expect(getRegisteredHooks()?.PreToolUse?.[0]).toMatchObject({
+    pluginRoot: '/tmp/sdk-hook-plugin-owner',
+  })
+  releasePlugin()
+  expect(getRegisteredHooks()).toBeNull()
 })
 
 test('leaves non-Stop prompt and agent hooks unsupported', async () => {

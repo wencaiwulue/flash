@@ -1231,3 +1231,11 @@ export function emitTaskTerminatedSdk(taskId, status, opts): void
 | P3 | 探索将 session JSONL 存储在数据库或云存储中，支持跨设备会话同步。证据：当前仅本地文件系统存储 | 分布式 Session 存储，支持云同步和跨设备访问 | 高 —— 架构变更大 | 概念验证或设计文档 | L | 设计推断 |
 | P3 | 当前文件快照是全量的，建议实现增量快照以减少存储空间和 I/O。证据：`fileHistoryMakeSnapshot()` 每次保存全量 | 增量快照，仅保存变更部分 | 中 —— 需兼容现有快照格式 | 测试增量快照正确创建和恢复 | L | 设计推断 |
 | P3 | 当前 SDK 在同一进程中运行，建议提供可选的子进程隔离模式，提高稳定性。证据：SDK 与 CLI 共享同一进程 | SDK 进程隔离，可选在子进程中运行 SDK | 高 —— 架构变更大 | 概念验证或设计文档 | L | 设计推断 |
+
+## 10. Task 33A 实施证据（2026-11-28）
+
+- 红测：`bun run test:integration tests/integration/sdk/hooks.test.ts` 在未接线时为 0 pass / 5 fail，首个用例的回调顺序实际为 `[]`，deny 回调计数为 0；`bun test tests/headlessHooks.test.ts` 为 11 pass / 1 fail，共享 matcher 用例在 `releaseA()` 处得到 `TypeError: releaseA is not a function`；`bun run test:integration tests/integration/sdk/query-lifecycle.test.ts` 为 10 pass / 5 fail，正常、末次错误、setup 失败、return、close 后 `SDK_IT_33A_EXISTING` 均为 `new` 而非原值 `old`。
+- 实现：`registerHookCallbacks()` 为每个追加 matcher 建立独立包装并返回幂等 release；`createSdkQuery()` 在 setup 起始处转换并注册 `options.hooks`，setup catch 与 cleanup 共用该 release；`options.env` 仅快照本次触键，并在相同退出路径恢复原值或删除原不存在键。
+- 绿测：`bun run test:integration tests/integration/sdk/hooks.test.ts tests/integration/sdk/query-lifecycle.test.ts` 退出 0，分别 5 pass 与 15 pass；覆盖 matcher 命中/不命中、UserPromptSubmit/PreToolUse/PostToolUse 顺序、payload/toolUseID/AbortSignal、deny 无副作用、allow/updatedInput 真实生效、共享 matcher 的 A/B ownership、无 hooks query 不继承回调，以及其他 owner 在 return、末次错误和 setup 失败后保留。
+- 回归：`bun test tests/headlessHooks.test.ts tests/sdkQueryLifecycle.test.ts` 退出 0（13 pass）；`bun test tests/commitAttributionWave2.test.ts` 退出 0（8 pass）；`bun run typecheck` 退出 0；`bun scripts/check-design-docs.ts` 为 0 errors、112 个既有 draft/uncovered warnings。
+- 范围边界：本任务未实现 MCP、elicitation 或 classic sessions，也未宣称解决进程全局 env/hooks 的交错并发隔离。

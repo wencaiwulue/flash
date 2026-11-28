@@ -6,6 +6,7 @@ import { ask } from '../QueryEngine.js'
 import { getCommands } from '../commands.js'
 import {
   setClientType,
+  registerHookCallbacks,
   setCwdState,
   setIsInteractive,
   setOriginalCwd,
@@ -22,6 +23,7 @@ import type {
   McpSdkServerConfigWithInstance,
 } from '../entrypoints/sdk/runtimeTypes.js'
 import type {
+  HookEvent,
   McpServerStatus,
   PermissionMode,
   SDKMessage,
@@ -29,6 +31,10 @@ import type {
   SDKUserMessage,
 } from '../entrypoints/sdk/coreTypes.js'
 import type { CanUseToolFn } from '../hooks/useCanUseTool.js'
+import type {
+  HookCallback as InternalHookCallback,
+  HookCallbackMatcher as InternalHookCallbackMatcher,
+} from '../types/hooks.js'
 import { getMcpToolsCommandsAndResources, fetchToolsForClient } from '../services/mcp/client.js'
 import type {
   MCPServerConnection,
@@ -259,6 +265,25 @@ async function cleanupClients(clients: MCPServerConnection[]): Promise<void> {
   )
 }
 
+function registerSdkHooks(hooks: InternalOptions['hooks']): () => void {
+  if (!hooks) return () => {}
+  const registered: Partial<Record<HookEvent, InternalHookCallbackMatcher[]>> = {}
+  for (const [event, matchers] of Object.entries(hooks)) {
+    registered[event as HookEvent] = matchers.map(matcher => ({
+      matcher: matcher.matcher,
+      hooks: matcher.hooks.map((callback): InternalHookCallback => ({
+        type: 'callback',
+        timeout: matcher.timeout,
+        callback: (input, toolUseID, signal) =>
+          callback(input, toolUseID ?? undefined, {
+            signal: signal ?? new AbortController().signal,
+          }),
+      })),
+    }))
+  }
+  return registerHookCallbacks(registered)
+}
+
 function resolveThinkingConfig(
   options: InternalOptions,
 ): ThinkingConfig | undefined {
@@ -354,6 +379,8 @@ export function createSdkQuery({
   }> | undefined
 
   let releasePersistence: (() => void) | undefined
+  let releaseHooks: (() => void) | undefined
+  let restoreEnv: (() => void) | undefined
 
   if (typeof prompt === 'string') {
     channel.push({
@@ -385,6 +412,7 @@ export function createSdkQuery({
 
   const initialize = () => {
     setupPromise ??= (async () => {
+      releaseHooks = registerSdkHooks(options.hooks)
       releasePersistence = acquireSessionPersistence(
         options.persistSession !== false,
       )
@@ -399,6 +427,19 @@ export function createSdkQuery({
       }
 
       if (options.env) {
+        const previousEnv = new Map<string, string | undefined>()
+        for (const key of Object.keys(options.env)) {
+          previousEnv.set(key, process.env[key])
+        }
+        let envRestored = false
+        restoreEnv = () => {
+          if (envRestored) return
+          envRestored = true
+          for (const [key, value] of previousEnv) {
+            if (value === undefined) delete process.env[key]
+            else process.env[key] = value
+          }
+        }
         for (const [key, value] of Object.entries(options.env)) {
           if (value === undefined) delete process.env[key]
           else process.env[key] = value
@@ -478,7 +519,11 @@ export function createSdkQuery({
         releasePersistence: releasePersistence!,
       }
     })()
-    setupPromise.catch(() => releasePersistence?.())
+    setupPromise.catch(() => {
+      releaseHooks?.()
+      restoreEnv?.()
+      releasePersistence?.()
+    })
     return setupPromise
   }
 
@@ -681,6 +726,8 @@ export function createSdkQuery({
           'abort',
           closeChannelOnExternalAbort,
         )
+        releaseHooks?.()
+        restoreEnv?.()
         releasePersistence?.()
       }
     })()

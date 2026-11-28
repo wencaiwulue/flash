@@ -5,6 +5,7 @@ import type {
   SDKMessage,
   SDKResultMessage,
 } from '../../../src/entrypoints/sdk/coreTypes.js'
+import type { Options } from '../../../src/entrypoints/sdk/runtimeTypes.js'
 import {
   createResponseGate,
   type RecordedRequest,
@@ -19,6 +20,48 @@ import {
 } from '../support/sdk.ts'
 
 const TEST_TIMEOUT_MS = 20_000
+
+const OWNED_ENV_KEYS = [
+  'SDK_IT_33A_EXISTING',
+  'SDK_IT_33A_DELETE',
+  'SDK_IT_33A_NEW',
+  'SDK_IT_33A_ABSENT',
+  'SDK_IT_33A_UNTOUCHED',
+] as const
+
+function preserveEnv(keys: readonly string[]): () => void {
+  const previous = new Map(keys.map(key => [key, process.env[key]]))
+  return () => {
+    for (const [key, value] of previous) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+  }
+}
+
+function prepareOwnedEnv(baseEnv: Options['env']): Options['env'] {
+  process.env.SDK_IT_33A_EXISTING = 'old'
+  process.env.SDK_IT_33A_DELETE = 'gone'
+  delete process.env.SDK_IT_33A_NEW
+  delete process.env.SDK_IT_33A_ABSENT
+  process.env.SDK_IT_33A_UNTOUCHED = 'external-before'
+  return {
+    ...baseEnv,
+    SDK_IT_33A_EXISTING: 'new',
+    SDK_IT_33A_DELETE: undefined,
+    SDK_IT_33A_NEW: 'created',
+    SDK_IT_33A_ABSENT: undefined,
+    CLAUDE_CODE_MAX_RETRIES: '0',
+  }
+}
+
+function expectOwnedEnvRestored(): void {
+  expect(process.env.SDK_IT_33A_EXISTING).toBe('old')
+  expect(process.env.SDK_IT_33A_DELETE).toBe('gone')
+  expect(process.env.SDK_IT_33A_NEW).toBeUndefined()
+  expect(process.env.SDK_IT_33A_ABSENT).toBeUndefined()
+  expect(process.env.SDK_IT_33A_UNTOUCHED).toBe('external-after')
+}
 
 function modelRequests(harness: SdkHarness): RecordedRequest[] {
   return harness.mock.requests.filter(request => request.path === '/v1/messages')
@@ -498,6 +541,136 @@ describe('classic SDK query lifecycle', () => {
       await harness.cleanup()
     }
   }, TEST_TIMEOUT_MS)
+
+  test('restores only options.env-owned keys after normal completion', async () => {
+    const restoreEnv = preserveEnv(OWNED_ENV_KEYS)
+    const harness = await createSdkHarness()
+    try {
+      let observed: Record<string, string | undefined> | undefined
+      harness.mock.setRouter(() => {
+        observed = {
+          existing: process.env.SDK_IT_33A_EXISTING,
+          deleted: process.env.SDK_IT_33A_DELETE,
+          added: process.env.SDK_IT_33A_NEW,
+          absent: process.env.SDK_IT_33A_ABSENT,
+        }
+        process.env.SDK_IT_33A_UNTOUCHED = 'external-after'
+        return { type: 'text', text: 'SDK_ENV_NORMAL_33A' }
+      })
+      const query = harness.track(harness.sdk.query({
+        prompt: 'Observe owned env during normal completion.',
+        options: {
+          ...harness.baseOptions,
+          env: prepareOwnedEnv(harness.baseOptions.env),
+          tools: [],
+          persistSession: false,
+        },
+      }))
+
+      const { error } = await harness.collect(query)
+      expect(error).toBeUndefined()
+      expect(observed).toEqual({
+        existing: 'new',
+        deleted: undefined,
+        added: 'created',
+        absent: undefined,
+      })
+      expectOwnedEnvRestored()
+    } finally {
+      await harness.cleanup()
+      restoreEnv()
+    }
+  }, TEST_TIMEOUT_MS)
+
+  test.each(['terminal-error', 'setup-failure'] as const)(
+    'restores options.env after %s',
+    async scenario => {
+      const restoreEnv = preserveEnv(OWNED_ENV_KEYS)
+      const harness = await createSdkHarness()
+      let query: ReturnType<typeof harness.sdk.query> | undefined
+      try {
+        const options: Options = {
+          ...harness.baseOptions,
+          env: prepareOwnedEnv(harness.baseOptions.env),
+          tools: [],
+          persistSession: false,
+          ...(scenario === 'setup-failure'
+            ? { thinkingConfig: { type: 'enabled' } as Options['thinkingConfig'] }
+            : {}),
+        }
+        // A failed setup makes cleanup reject with the same setup error. Keep this
+        // query out of the harness tracker and explicitly consume that cleanup error.
+        query = scenario === 'setup-failure'
+          ? harness.sdk.query({ prompt: 'Fail setup with owned env.', options })
+          : harness.track(harness.sdk.query({
+              prompt: 'Fail the model request with owned env.',
+              options,
+            }))
+        if (scenario === 'terminal-error') {
+          harness.mock.setRouter(() => {
+            process.env.SDK_IT_33A_UNTOUCHED = 'external-after'
+            return {
+              type: 'error',
+              status: 400,
+              body: {
+                type: 'error',
+                error: { type: 'invalid_request_error', message: 'SDK_ENV_ERROR_33A' },
+              },
+            }
+          })
+        }
+        if (scenario === 'setup-failure') {
+          process.env.SDK_IT_33A_UNTOUCHED = 'external-after'
+        }
+        const { error } = await harness.collect(query)
+        expect(error).toBeInstanceOf(Error)
+        expect((error as Error).message).not.toContain('Timed out')
+        expectOwnedEnvRestored()
+      } finally {
+        if (scenario === 'setup-failure') {
+          await query?.return(undefined).catch(() => {})
+        }
+        await harness.cleanup()
+        restoreEnv()
+      }
+    },
+    TEST_TIMEOUT_MS,
+  )
+
+  test.each(['return', 'close'] as const)(
+    'restores options.env after explicit %s without running the model',
+    async cleanupMethod => {
+      const restoreEnv = preserveEnv(OWNED_ENV_KEYS)
+      const harness = await createSdkHarness()
+      try {
+        const query = harness.track(harness.sdk.query({
+          prompt: 'Initialize but do not run this query.',
+          options: {
+            ...harness.baseOptions,
+            env: prepareOwnedEnv(harness.baseOptions.env),
+            tools: [],
+            persistSession: false,
+          },
+        }))
+        await query.supportedModels()
+        expect(process.env.SDK_IT_33A_EXISTING).toBe('new')
+        expect(process.env.SDK_IT_33A_DELETE).toBeUndefined()
+        expect(process.env.SDK_IT_33A_NEW).toBe('created')
+        process.env.SDK_IT_33A_UNTOUCHED = 'external-after'
+
+        if (cleanupMethod === 'return') await query.return(undefined)
+        else await query.close('SDK env explicit close 33A')
+        if (cleanupMethod === 'return') await query.return(undefined)
+        else await query.close('SDK env explicit close 33A repeated')
+        expectOwnedEnvRestored()
+        expect(modelRequests(harness)).toHaveLength(0)
+      } finally {
+        await harness.cleanup()
+        restoreEnv()
+      }
+    },
+    TEST_TIMEOUT_MS,
+  )
 
   test('interrupt while waiting for input does not poison the next turn', async () => {
     const harness = await createSdkHarness()
