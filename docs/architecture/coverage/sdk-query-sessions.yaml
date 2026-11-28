@@ -79,9 +79,11 @@ groups:
       - tests/sdkControls.test.ts
       - tests/sdkRewind.test.ts
       - tests/sdkMcp.test.ts
+      - tests/integration/sdk/dist-import.test.ts
       - tests/integration/sdk/query-lifecycle.test.ts
       - tests/integration/sdk/sessions.test.ts
       - tests/integration/sdk/hooks.test.ts
       - tests/integration/sdk/mcp.test.ts
       - tests/integration/sdk/token-count.test.ts
       - tests/integration/support/mcp.ts
+      - tests/integration/support/sdk.ts

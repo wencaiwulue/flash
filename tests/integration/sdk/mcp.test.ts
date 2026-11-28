@@ -140,6 +140,67 @@ describe('classic SDK in-process MCP', () => {
     }
   }, TEST_TIMEOUT_MS)
 
+  test('closes connected in-process MCP resources after a late setup failure', async () => {
+    const harness = await createSdkHarness()
+    type ObservableTransport = {
+      close: () => Promise<void>
+      _otherTransport?: ObservableTransport
+    }
+    let query: ReturnType<typeof harness.sdk.query> | undefined
+    let server: ReturnType<DistSdk['createSdkMcpServer']> | undefined
+    try {
+      server = harness.sdk.createSdkMcpServer({ name: 'mock', tools: [] })
+      let serverCloseCalls = 0
+      let clientTransportCloseCalls = 0
+      let clientTransport: ObservableTransport | undefined
+      let serverTransport: ObservableTransport | undefined
+
+      const originalServerClose = server.instance.close.bind(server.instance)
+      server.instance.close = async () => {
+        serverCloseCalls++
+        await originalServerClose()
+      }
+      const originalServerConnect = server.instance.connect.bind(server.instance)
+      server.instance.connect = async transport => {
+        serverTransport = transport as unknown as ObservableTransport
+        clientTransport = serverTransport._otherTransport
+        if (!clientTransport) throw new Error('Missing linked client transport')
+        const originalClientTransportClose = clientTransport.close.bind(clientTransport)
+        clientTransport.close = async () => {
+          clientTransportCloseCalls++
+          await originalClientTransportClose()
+        }
+        await originalServerConnect(transport)
+      }
+
+      query = harness.sdk.query({
+        prompt: 'Connect MCP, then fail while resolving thinking config.',
+        options: {
+          ...mcpOptions(harness, server),
+          thinkingConfig: { type: 'enabled' } as Options['thinkingConfig'],
+        },
+      })
+      const { error } = await harness.collect(query)
+      expect(error).toBeInstanceOf(Error)
+      expect((error as Error).message).toContain('thinkingConfig.enabled requires budgetTokens')
+
+      // Explicit cleanup still rejects with the setup error, but must await resource cleanup.
+      await query.return(undefined).catch(() => {})
+      expect(serverCloseCalls).toBe(1)
+      expect(clientTransportCloseCalls).toBeGreaterThan(0)
+      expect(serverTransport?._otherTransport).toBeUndefined()
+      expect(clientTransport?._otherTransport).toBeUndefined()
+
+      const closeCallsAfterCleanup = { serverCloseCalls, clientTransportCloseCalls }
+      await query.return(undefined).catch(() => {})
+      expect({ serverCloseCalls, clientTransportCloseCalls }).toEqual(closeCallsAfterCleanup)
+    } finally {
+      await query?.return(undefined).catch(() => {})
+      await server?.instance.close().catch(() => {})
+      await harness.cleanup()
+    }
+  }, TEST_TIMEOUT_MS)
+
   test('handles form elicitation initiated by oninitialized before tool discovery', async () => {
     const harness = await createSdkHarness()
     try {

@@ -445,6 +445,62 @@ describe('classic SDK query lifecycle', () => {
     }
   }, TEST_TIMEOUT_MS)
 
+  test('recovers from an API error when a later streaming input turn succeeds', async () => {
+    const harness = await createSdkHarness()
+    const input = createUserInput()
+    try {
+      const diagnostic = 'SDK_QUERY_RECOVERABLE_ERROR_32K'
+      const secondMarker = 'SDK_QUERY_RECOVERED_SECOND_32K'
+      harness.mock.enqueue(
+        {
+          type: 'error',
+          status: 400,
+          body: {
+            type: 'error',
+            error: { type: 'invalid_request_error', message: diagnostic },
+          },
+        },
+        { type: 'text', text: secondMarker },
+      )
+      input.push(userMessage('Fail the first turn while input remains open.'))
+      const query = harness.track(harness.sdk.query({
+        prompt: input.input,
+        options: {
+          ...harness.baseOptions,
+          env: { ...harness.baseOptions.env, CLAUDE_CODE_MAX_RETRIES: '0' },
+          tools: [],
+          persistSession: false,
+        },
+      }))
+
+      const firstMessages: SDKMessage[] = []
+      while (true) {
+        const next = await withDeadline(query.next(), 'recoverable first error result')
+        if (next.done) throw new Error('Query ended before the recoverable error result')
+        firstMessages.push(next.value)
+        if (next.value.type === 'result') break
+      }
+      expect(results(firstMessages)).toHaveLength(1)
+      expect(results(firstMessages)[0]).toMatchObject({ is_error: true })
+      expect(JSON.stringify(firstMessages)).toContain(diagnostic)
+
+      input.push(userMessage('Succeed on a fresh turn after the API error.'))
+      input.close()
+      const second = await harness.collect(query)
+      expect(second.error).toBeUndefined()
+      expect(results(second.messages)).toHaveLength(1)
+      expect(results(second.messages)[0]).toMatchObject({
+        subtype: 'success',
+        is_error: false,
+        result: secondMarker,
+      })
+      expect(modelRequests(harness)).toHaveLength(2)
+    } finally {
+      input.close()
+      await harness.cleanup()
+    }
+  }, TEST_TIMEOUT_MS)
+
   test('interrupts only the active gated turn and accepts a later streaming input turn', async () => {
     const harness = await createSdkHarness()
     const input = createUserInput()

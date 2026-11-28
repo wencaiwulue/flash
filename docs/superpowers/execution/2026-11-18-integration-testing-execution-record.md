@@ -7,7 +7,7 @@ status: final
 
 # 集成测试体系执行记录：做了什么、如何做、决策与未做项
 
-本文是 `integration-testing-cli-e2e` 分支（PR #18）两个子项目交付的执行记录：范围覆盖总体架构 spec 的子项目 0+1（公共支撑设施 + CLI 端到端）与子项目 2（配置对齐验收套件）。执行过程细节在 `.superpowers/sdd/progress.md` 台账（git 忽略），本文是持久化摘要。
+本文是 `integration-testing-cli-e2e` 分支（PR #18）子项目 0+1+2+3 交付的执行记录：范围覆盖总体架构 spec 的子项目 0+1（公共支撑设施 + CLI 端到端）、子项目 2（配置对齐验收套件）与子项目 3（Agent SDK 集成套件）。执行过程细节在 `.superpowers/sdd/progress.md` 台账（git 忽略），本文是持久化摘要。
 
 ## 1. 做了什么
 
@@ -47,7 +47,7 @@ status: final
 | config 联动 | parser 新增 `mcp_elicitation` trigger；Elicitation/ElicitationResult 从 prereq-blocked 点亮为 active，严格 per-event marker、内容与 fallback 计数断言 |
 | 清理 | 16 个 `{tokenCount:null}` 空录制在确认无运行时消费者后删除；不新增 VCR 录制 |
 
-最终状态：SDK 套件 6 文件 39 pass / 0 fail / 无 test.skip；全量 integration 26 文件通过；config-acceptance 8 文件通过；全量 unit、typecheck、build、CLI/SDK smoke、design-docs（0 errors）均通过。逐任务评审中发现的延迟关闭吞错、共享 matcher 误删、config marker 串用、初始化期 elicitation、usage 后尾部消息漏检等问题均已修复并复审通过。
+最终状态：SDK 套件 6 文件 41 pass / 0 fail / 无 test.skip；全量 integration 26 文件通过；config-acceptance 8 文件通过；全量 unit、typecheck、build、CLI/SDK smoke、design-docs（0 errors）均通过。逐任务评审中发现的延迟关闭吞错、共享 matcher 误删、config marker 串用、初始化期 elicitation、usage 后尾部消息漏检等问题均已修复并复审通过。
 
 ## 2. 如何做的
 
@@ -80,7 +80,7 @@ status: final
 | B1 六个新事件运行时协议 | UserPromptExpansion/PostToolBatch/MessageDisplay/DirectoryAdded/PreModelSwitch/PostModelSwitch 属 B1（正确名单经纠正——曾有实现者伪造其中 5 个名字） |
 | 8 个迁移键运行时断言 | print 模式下 theme/editorMode/verbose 等仅影响交互 UI，离线不可观察（`blocked-by-prereq:migration-*-observability`）；probe 确认各键无请求体路径 |
 | Notification/PermissionDenied/StopFailure/Setup/FileChanged/CwdChanged/PostToolUseFailure 运行断言 | 探针证明离线场景不触发（如 Notification 不随权限提示、Setup 需 --init、PostToolUseFailure 在 print 模式不触发），`blocked-by-prereq:*-observability` 各带证据 |
-| SubagentStart/Stop、TaskCreated/Completed、TeammateIdle、Elicitation/ElicitationResult、WorktreeCreate/Remove | 前置缺失：子代理场景框架、任务工具可观察路径、teammate 模式、MCP elicitation 服务端（子项目 3 落地 mock MCP 后可点亮 Elicitation 两条）、worktree 命令场景 |
+| SubagentStart/Stop、TaskCreated/Completed、TeammateIdle、WorktreeCreate/Remove | 前置缺失：子代理场景框架、任务工具可观察路径、teammate 模式、worktree 命令场景；Elicitation/ElicitationResult 已由子项目 3 的 mock MCP 点亮为 active，见 §1.3 |
 | live 层用例 | 无登记（`--live` 目前 no-op，输出提示行）；真实凭据类验收不进 CI 门禁 |
 | helper 去重重构 | approvedKeyConfig/routeHaikuAux/runPrint 在多测试文件间复制——终审判定为 post-merge 重构项（非正确性问题） |
 | spec 双语成对 | specs/plans 按仓库既有惯例单语中文（双语规则适用于 README 与用户向 docs） |
@@ -97,4 +97,4 @@ status: final
 
 - 子项目 3 已完成；其独立设计/计划、三层证据、逐任务红绿记录与 coverage 更新见 §1.3 所列文件。
 - B0/B1 批次落地时：改 fixtures 的 `status` 字段点亮对应验收（无需改测试逻辑）。
-- PR #18 现状：CLI e2e、config-acceptance 与 SDK 子项目 3 均已实现并通过本地及 CI 验证；合并决策待用户。
+- PR #18 现状：CLI e2e、config-acceptance 与 SDK 子项目 3 均已实现并通过当前本地 head 的验证。CI 状态仅适用于已推送提交；未推送的本地提交不声称已有 CI 结果。合并决策待用户。

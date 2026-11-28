@@ -416,6 +416,7 @@ export function createSdkQuery({
   let releasePersistence: (() => void) | undefined
   let releaseHooks: (() => void) | undefined
   let restoreEnv: (() => void) | undefined
+  let setupAppState: AppState | undefined
 
   if (typeof prompt === 'string') {
     channel.push({
@@ -501,6 +502,7 @@ export function createSdkQuery({
       debug('init:done')
 
       const appState = getDefaultAppState()
+      setupAppState = appState
       Object.assign(appState, {
         mainLoopModel: options.model ?? null,
         verbose: options.verbose ?? false,
@@ -572,10 +574,11 @@ export function createSdkQuery({
         releasePersistence: releasePersistence!,
       }
     })()
-    setupPromise.catch(() => {
+    void setupPromise.catch(() => {
       releaseHooks?.()
       restoreEnv?.()
       releasePersistence?.()
+      return cleanup().catch(() => {})
     })
     return setupPromise
   }
@@ -760,16 +763,25 @@ export function createSdkQuery({
   let cleanupPromise: Promise<void> | undefined
   const cleanup = () => {
     cleanupPromise ??= (async () => {
+      let setup: Awaited<typeof setupPromise>
+      let setupError: unknown
+      let setupFailed = false
       try {
-        const setup = await setupPromise
+        setup = await setupPromise
+      } catch (error) {
+        setupFailed = true
+        setupError = error
+      }
+      try {
         if (remoteController) {
           const controller = remoteController
           remoteController = undefined
           await controller.stop()
         }
-        if (setup) {
+        const appState = setup?.appState ?? setupAppState
+        if (appState) {
           await Promise.all([
-            cleanupClients(setup.appState.mcp.clients),
+            cleanupClients(appState.mcp.clients),
             runCleanupFunctions(),
             flushSessionStorage(),
           ])
@@ -783,6 +795,7 @@ export function createSdkQuery({
         restoreEnv?.()
         releasePersistence?.()
       }
+      if (setupFailed) throw setupError
     })()
     return cleanupPromise
   }
