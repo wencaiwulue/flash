@@ -1,8 +1,73 @@
 import { describe, test, expect } from 'bun:test'
 import { loadHookEntries, isBlocked } from './entries.ts'
+import { assertHookEntryResult, type ScenarioResult } from './scenarios.ts'
 import { join } from 'path'
 
 const hooksYaml = join(import.meta.dir, '..', 'fixtures', 'hooks.yaml')
+
+describe('mcp_elicitation result validation', () => {
+  const entry = loadHookEntries(hooksYaml).find(item => item.id === 'hook:Elicitation')!
+  const validResult = {
+    hookFired: true,
+    marker: null,
+    toolExecuted: true,
+    stdout: 'CONFIG_MCP_ELICITATION_DONE_33B',
+    markersByEvent: {
+      Elicitation: { hook_event_name: 'Elicitation' },
+      ElicitationResult: {
+        hook_event_name: 'ElicitationResult',
+        action: 'accept',
+        content: { answer: 'CONFIG_ELICITATION_ACCEPT_33B' },
+      },
+    },
+    elicitationFallbackCalls: 0,
+    finalElicitationResult: {
+      action: 'accept',
+      content: { answer: 'CONFIG_ELICITATION_RESULT_ACCEPT_33B' },
+    },
+  } as ScenarioResult
+
+  test('accepts only independently valid first and final responses', () => {
+    expect(() => assertHookEntryResult(entry, validResult)).not.toThrow()
+  })
+
+  test('never borrows the ElicitationResult marker for a missing Elicitation', () => {
+    const result = {
+      ...validResult,
+      marker: validResult.markersByEvent!.ElicitationResult!,
+      markersByEvent: {
+        ElicitationResult: validResult.markersByEvent!.ElicitationResult!,
+      },
+    }
+    expect(() => assertHookEntryResult(entry, result)).toThrow(/hook:Elicitation hook_fired/)
+  })
+
+  test('rejects ElicitationResult converting a fallback into an apparent first response', () => {
+    const result = {
+      ...validResult,
+      elicitationFallbackCalls: 1,
+      markersByEvent: {
+        ...validResult.markersByEvent,
+        ElicitationResult: {
+          ...validResult.markersByEvent!.ElicitationResult!,
+          content: { answer: 'CONFIG_ELICITATION_FALLBACK_33B' },
+        },
+      },
+    } as ScenarioResult
+    expect(() => assertHookEntryResult(entry, result)).toThrow(/first response|fallback/)
+  })
+
+  test('rejects content other than the ElicitationResult final response', () => {
+    const result = {
+      ...validResult,
+      finalElicitationResult: {
+        action: 'accept',
+        content: { answer: 'WRONG_FINAL_CONTENT' },
+      },
+    } as ScenarioResult
+    expect(() => assertHookEntryResult(entry, result)).toThrow(/final response/)
+  })
+})
 
 describe('loadHookEntries', () => {
   test('loads entries with ids and preserves field values', () => {

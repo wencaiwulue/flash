@@ -1,5 +1,7 @@
 import { join } from 'path'
+import { expect } from 'bun:test'
 import type { ElicitResult } from '@modelcontextprotocol/sdk/types.js'
+import type { HookEntry } from './entries'
 import type { Launcher } from '../form/launcher'
 import { MOCK_API_KEY, type MockAnthropic } from '../../support/mock-anthropic'
 import { createFormElicitationEchoServer } from '../../support/mcp'
@@ -33,6 +35,52 @@ export interface ScenarioResult {
   toolExecuted: boolean
   stdout: string
   markersByEvent?: Record<string, Record<string, unknown> | null>
+  elicitationFallbackCalls?: number
+  finalElicitationResult?: ElicitResult
+}
+
+export function assertHookEntryResult(entry: HookEntry, result: ScenarioResult): void {
+  const isMcpElicitation = entry.trigger === 'mcp_elicitation'
+  const eventMarker = isMcpElicitation
+    ? result.markersByEvent?.[entry.event] ?? null
+    : result.markersByEvent?.[entry.event] ?? result.marker
+  for (const [key, expected] of Object.entries(entry.expected_effect)) {
+    if (key === 'hook_fired') {
+      const hookFired = entry.trigger === 'mcp_elicitation'
+        ? eventMarker !== null
+        : result.hookFired
+      expect(hookFired, `${entry.id} hook_fired`).toBe(expected)
+    } else if (key === 'tool_executed') {
+      expect(result.toolExecuted, `${entry.id} tool_executed`).toBe(expected)
+    } else if (key === 'marker_has_tool_name') {
+      expect((eventMarker as Record<string, unknown> | null)?.tool_name, `${entry.id} marker.tool_name`).toBe('Bash')
+    } else if (key === 'marker_has_error') {
+      expect(JSON.stringify(eventMarker), `${entry.id} marker error`).toMatch(/error|is_error/i)
+    } else if (key === 'marker_has_message') {
+      expect((eventMarker as Record<string, unknown> | null)?.message, `${entry.id} marker.message`).toBeDefined()
+    } else if (key === 'marker_has_prompt') {
+      expect((eventMarker as Record<string, unknown> | null)?.prompt, `${entry.id} marker.prompt`).toBeDefined()
+    } else if (key === 'marker_has_source') {
+      expect((eventMarker as Record<string, unknown> | null)?.source, `${entry.id} marker.source`).toBeDefined()
+    }
+  }
+  if (isMcpElicitation) {
+    expect(
+      result.elicitationFallbackCalls,
+      `${entry.id} elicitation fallback calls`,
+    ).toBe(0)
+    expect(
+      result.markersByEvent?.ElicitationResult?.content,
+      `${entry.id} first response content`,
+    ).toEqual({ answer: 'CONFIG_ELICITATION_ACCEPT_33B' })
+    expect(
+      result.finalElicitationResult,
+      `${entry.id} final response`,
+    ).toEqual({
+      action: 'accept',
+      content: { answer: 'CONFIG_ELICITATION_RESULT_ACCEPT_33B' },
+    })
+  }
 }
 
 export async function runHookScenario(scenario: ScenarioKey, ctx: ScenarioContext): Promise<ScenarioResult> {
@@ -67,6 +115,7 @@ async function mcpElicitationScenario(ctx: ScenarioContext): Promise<ScenarioRes
   const sdk = await loadDistSdk()
   const calls: Array<Record<string, unknown>> = []
   const elicitationResults: ElicitResult[] = []
+  let elicitationFallbackCalls = 0
   const server = createFormElicitationEchoServer(
     sdk,
     'CONFIG_MCP_TOOL_33B',
@@ -110,6 +159,13 @@ async function mcpElicitationScenario(ctx: ScenarioContext): Promise<ScenarioRes
       allowedTools: ['mcp__mock__echo'],
       mcpServers: { mock: server },
       persistSession: false,
+      onElicitation: async () => {
+        elicitationFallbackCalls++
+        return {
+          action: 'accept',
+          content: { answer: 'CONFIG_ELICITATION_FALLBACK_33B' },
+        }
+      },
     },
   })
   let stdout = ''
@@ -145,9 +201,15 @@ async function mcpElicitationScenario(ctx: ScenarioContext): Promise<ScenarioRes
     hookFired: eventsSeen.length > 0 || marker !== null,
     marker,
     toolExecuted:
-      calls.length === 1 && elicitationResults[0]?.action === 'accept',
+      calls.length === 1 &&
+      elicitationFallbackCalls === 0 &&
+      elicitationResults[0]?.action === 'accept' &&
+      elicitationResults[0]?.content?.answer ===
+        'CONFIG_ELICITATION_RESULT_ACCEPT_33B',
     stdout,
     markersByEvent,
+    elicitationFallbackCalls,
+    finalElicitationResult: elicitationResults[0],
   }
 }
 

@@ -1200,6 +1200,8 @@ export function emitTaskTerminatedSdk(taskId, status, opts): void
 - `executeHooksOutsideREPL` 对 Elicitation/ElicitationResult callback 保留完整 JSON 输出，避免只取 `systemMessage` 而丢失 `hookSpecificOutput`；既有命令 hook 和其他事件路径不变。
 - config-acceptance 将两个事件在同一真实 dist classic query、同一 in-process MCP server 和同一组 settings command hooks 中运行；两个命令都返回合法 accept 响应，不要求 UI，也不启动进程/网络 MCP。组合运行避免不同 sandbox 共用进程级 settings snapshot。
 - 本任务不涉及 classic sessions 或 token-count；URL mode 保持明确的非目标。
+- Review follow-up：config 的 MCP entries 不再回退到通用 `result.marker`；真实场景以零 fallback 调用证明 Elicitation 已先响应，以 ElicitationResult 输入中的 `CONFIG_ELICITATION_ACCEPT_33B` 验证原始 content，并要求最终返回 `CONFIG_ELICITATION_RESULT_ACCEPT_33B`。三个负例在修复前均不抛错，修复后通过。
+- Review follow-up：`server.oninitialized` 发起 form elicitation 的红测原报 `MCP error -32601: Method not found`；handler 移到 `client.connect`/`server.connect` 之前后通过，且不产生模型请求。
 
 ## 8. 文件覆盖与相关子系统
 

@@ -140,6 +140,64 @@ describe('classic SDK in-process MCP', () => {
     }
   }, TEST_TIMEOUT_MS)
 
+  test('handles form elicitation initiated by oninitialized before tool discovery', async () => {
+    const harness = await createSdkHarness()
+    try {
+      const server = harness.sdk.createSdkMcpServer({ name: 'mock', tools: [] })
+      const callbackRequests: Array<Record<string, unknown>> = []
+      const elicitationResults: ElicitResult[] = []
+      const elicitationErrors: unknown[] = []
+      let settled = false
+      server.instance.server.oninitialized = () => {
+        void server.instance.server.elicitInput({
+          mode: 'form',
+          message: 'SDK_MCP_ONINITIALIZED_33B',
+          requestedSchema: {
+            type: 'object',
+            properties: { answer: { type: 'string' } },
+            required: ['answer'],
+          },
+        }).then(result => {
+          elicitationResults.push(result)
+        }).catch(error => {
+          elicitationErrors.push(error)
+        }).finally(() => {
+          settled = true
+        })
+      }
+      const query = harness.track(harness.sdk.query({
+        prompt: 'Initialization must not run the model.',
+        options: {
+          ...harness.baseOptions,
+          tools: [],
+          mcpServers: { mock: server },
+          persistSession: false,
+          onElicitation: async request => {
+            callbackRequests.push(request)
+            return { action: 'accept', content: { answer: 'SDK_MCP_INIT_ACCEPT_33B' } }
+          },
+        },
+      }))
+
+      expect(await query.mcpServerStatus()).toMatchObject([
+        { name: 'mock', status: 'connected' },
+      ])
+      await harness.waitFor(() => settled)
+      expect(elicitationErrors).toEqual([])
+      expect(callbackRequests).toHaveLength(1)
+      expect(callbackRequests[0]).toMatchObject({
+        serverName: 'mock', message: 'SDK_MCP_ONINITIALIZED_33B', mode: 'form',
+      })
+      expect(elicitationResults).toEqual([{
+        action: 'accept', content: { answer: 'SDK_MCP_INIT_ACCEPT_33B' },
+      }])
+      expect(modelRequests(harness)).toHaveLength(0)
+      await query.return(undefined)
+    } finally {
+      await harness.cleanup()
+    }
+  }, TEST_TIMEOUT_MS)
+
   test('passes onElicitation accept content through the tool to the model and result hooks', async () => {
     const harness = await createSdkHarness()
     try {

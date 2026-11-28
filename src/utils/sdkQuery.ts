@@ -239,11 +239,8 @@ async function connectMcpConfigs({
         },
       }
       try {
-        await Promise.all([
-          client.connect(clientTransport),
-          config.instance.connect(serverTransport),
-        ])
-        connection.capabilities = client.getServerCapabilities() ?? {}
+        // Servers may legally elicit from oninitialized. Install the handler
+        // before either side starts connecting and exchanging initialization.
         registerElicitationHandler(
           client,
           name,
@@ -257,6 +254,11 @@ async function connectMcpConfigs({
             return onElicitation({ ...params, serverName: name }, { signal })
           },
         )
+        await Promise.all([
+          client.connect(clientTransport),
+          config.instance.connect(serverTransport),
+        ])
+        connection.capabilities = client.getServerCapabilities() ?? {}
         // This is a new client even when its server name was used by an earlier
         // query. Name-keyed tool wrappers must not retain a closed client.
         fetchToolsForClient.cache.delete(name)

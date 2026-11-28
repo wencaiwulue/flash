@@ -2,7 +2,7 @@ import { describe, test, expect, afterAll } from 'bun:test'
 import { join } from 'path'
 import { writeFile } from 'node:fs/promises'
 import { loadHookEntries, isBlocked, type HookEntry } from './engine/entries'
-import { runHookScenario } from './engine/scenarios'
+import { assertHookEntryResult, runHookScenario } from './engine/scenarios'
 import { createFormLauncher, skipLine, type Launcher } from './form/launcher'
 import { createMockAnthropic, MOCK_API_KEY, type MockAnthropic } from '../support/mock-anthropic'
 import { createSandbox, type Sandbox } from '../support/sandbox'
@@ -90,28 +90,7 @@ async function runEntries(entries: HookEntry[]): Promise<void> {
   const result = await runHookScenario(entry.trigger as never, { launcher, mock, sandbox, hookCommand: '' })
 
   for (const item of entries) {
-    // 查找对应的标记（优先使用 markersByEvent，回退到单个 marker）
-    const eventMarker = result.markersByEvent?.[item.event] ?? result.marker
-    for (const [key, expected] of Object.entries(item.expected_effect)) {
-      if (key === 'hook_fired') {
-        const hookFired = item.trigger === 'mcp_elicitation'
-          ? eventMarker !== null
-          : result.hookFired
-        expect(hookFired, `${item.id} hook_fired`).toBe(expected)
-      } else if (key === 'tool_executed') {
-        expect(result.toolExecuted, `${item.id} tool_executed`).toBe(expected)
-      } else if (key === 'marker_has_tool_name') {
-        expect((eventMarker as Record<string, unknown> | null)?.tool_name, `${item.id} marker.tool_name`).toBe('Bash')
-      } else if (key === 'marker_has_error') {
-        expect(JSON.stringify(eventMarker), `${item.id} marker error`).toMatch(/error|is_error/i)
-      } else if (key === 'marker_has_message') {
-        expect((eventMarker as Record<string, unknown> | null)?.message, `${item.id} marker.message`).toBeDefined()
-      } else if (key === 'marker_has_prompt') {
-        expect((eventMarker as Record<string, unknown> | null)?.prompt, `${item.id} marker.prompt`).toBeDefined()
-      } else if (key === 'marker_has_source') {
-        expect((eventMarker as Record<string, unknown> | null)?.source, `${item.id} marker.source`).toBeDefined()
-      }
-    }
+    assertHookEntryResult(item, result)
   }
 }
 
