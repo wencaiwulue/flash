@@ -1,0 +1,97 @@
+# Global source migration keys (from ~/.claude.json)
+# Tests for settings with source: 'global' in supportedSettings.ts
+# Observability verified via probing:
+# - model (source: 'settings', included for reference): observable via API request body
+# - theme, editorMode, verbose, preferredNotifChannel, autoCompactEnabled,
+#   fileCheckpointingEnabled, showTurnDuration, terminalProgressBarEnabled,
+#   todoFeatureEnabled (source: 'global'): not observable in print-mode request/PTY
+
+- id: migration:model
+  status: blocked-by-prereq:migration-model-source-clarification
+  form: dist
+  global_config:
+    model: "claude-3-opus-20240229"
+  expected_effect:
+    model: "claude-3-opus-20240229"
+  comment: "Model has source: 'settings', not 'global' in supportedSettings.ts - tested elsewhere"
+
+- id: migration:theme
+  status: blocked-by-prereq:migration-theme-observability
+  form: dist
+  global_config:
+    theme: "dark"
+  expected_effect:
+    theme: "dark"
+  comment: "Not observable in offline print-mode - affects UI only"
+
+- id: migration:editorMode
+  status: blocked-by-prereq:migration-editorMode-observability
+  form: dist
+  global_config:
+    editorMode: "vim"
+  expected_effect:
+    editorMode: "vim"
+  comment: "Not observable in offline print-mode - affects UI only"
+
+- id: migration:verbose
+  status: blocked-by-prereq:migration-verbose-observability
+  form: dist
+  global_config:
+    verbose: true
+  expected_effect:
+    verbose: true
+  comment: "Not observable in print-mode - affects interactive mode output detail"
+
+- id: migration:preferredNotifChannel
+  status: blocked-by-prereq:migration-preferredNotifChannel-observability
+  form: dist
+  global_config:
+    preferredNotifChannel: "push"
+  expected_effect:
+    preferredNotifChannel: "push"
+  comment: "Not observable in offline print-mode - affects notification preferences"
+
+- id: migration:autoCompactEnabled
+  status: blocked-by-prereq:migration-autoCompactEnabled-observability
+  form: dist
+  global_config:
+    autoCompactEnabled: true
+  expected_effect:
+    autoCompactEnabled: true
+  comment: "Not observable in offline print-mode - affects context management behavior"
+
+- id: migration:fileCheckpointingEnabled
+  status: blocked-by-prereq:migration-fileCheckpointingEnabled-observability
+  form: dist
+  global_config:
+    fileCheckpointingEnabled: true
+  expected_effect:
+    fileCheckpointingEnabled: true
+  comment: "Not observable in offline print-mode - affects code rewind feature"
+
+- id: migration:showTurnDuration
+  status: blocked-by-prereq:migration-showTurnDuration-observability
+  form: dist
+  global_config:
+    showTurnDuration: true
+  expected_effect:
+    showTurnDuration: true
+  comment: "Not observable in print-mode - affects interactive mode UI"
+
+- id: migration:terminalProgressBarEnabled
+  status: blocked-by-prereq:migration-terminalProgressBarEnabled-observability
+  form: dist
+  global_config:
+    terminalProgressBarEnabled: true
+  expected_effect:
+    terminalProgressBarEnabled: true
+  comment: "Not observable in offline print-mode - affects terminal UI"
+
+- id: migration:todoFeatureEnabled
+  status: blocked-by-prereq:migration-todoFeatureEnabled-observability
+  form: dist
+  global_config:
+    todoFeatureEnabled: true
+  expected_effect:
+    todoFeatureEnabled: true
+  comment: "Not observable in offline print-mode - affects todo feature"

@@ -1,0 +1,290 @@
+- event: PreToolUse
+  status: active
+  trigger: tool_call_unsafe_block
+  matcher: '*'
+  exit_semantics: block
+  expected_effect:
+    tool_executed: false
+    hook_fired: true
+- event: PostToolUse
+  status: active
+  trigger: tool_call_safe
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    tool_executed: true
+    hook_fired: true
+    marker_has_tool_name: true
+- event: PostToolUseFailure
+  status: blocked-by-prereq:posttooluse-failure-print-observability
+  trigger: tool_call_fail
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+    marker_has_error: true
+  # Probe result (2026-11-18): PostToolUseFailure hook did not fire in print mode
+  # when a tool failed with exit 7. Only PreToolUse was observed. Further investigation
+  # needed to determine if this hook only fires in interactive mode or under specific conditions.
+- event: UserPromptSubmit
+  status: active
+  trigger: print_turn
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+- event: SessionStart
+  status: active
+  trigger: print_turn
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+    marker_has_source: true
+- event: Setup
+  status: blocked-by-prereq:setup-print-mode-requires-init
+  trigger: print_turn
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+  # Probe result (2026-11-18): Setup does NOT fire in regular print mode.
+  # Setup only fires with --init or --init-only flags (src/main.tsx:3746).
+- event: Stop
+  status: active
+  trigger: print_turn
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+- event: SessionEnd
+  status: active
+  trigger: print_turn
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+  # Probe result (2026-11-18): SessionEnd DOES fire in print mode!
+- event: InstructionsLoaded
+  status: blocked-by-prereq:instructions-loaded-requires-instructions
+  trigger: print_turn
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+  # Probe result (2026-11-18): InstructionsLoaded does not fire without actual instruction files.
+- event: PermissionRequest
+  status: active
+  trigger: permission_prompt
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+    marker_has_tool_name: true
+  # Probe result (2026-11-18): PermissionRequest DOES fire when permission prompt appears!
+- event: Notification
+  status: blocked-by-prereq:notification-not-on-permission-prompt
+  trigger: permission_prompt
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+  # Probe result (2026-11-18): Notification does not fire on permission prompt specifically.
+  # Notification seems for other use cases (MCP elicitation, task notifications, etc.)
+- event: PermissionDenied
+  status: blocked-by-prereq:permission-denied-observability
+  trigger: permission_denied
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+  # Probe result (2026-11-18): PermissionDenied did not fire in our PTY test.
+  # Needs further investigation on the exact timing and mechanism of this event.
+- event: StopFailure
+  status: blocked-by-prereq:stop-failure-requires-error-path
+  trigger: none
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+  # Needs specific error path (model API failure) to test.
+- event: PreCompact
+  status: active
+  trigger: repl_compact
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+
+- event: PostCompact
+  status: active
+  trigger: repl_compact
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+
+- event: ConfigChange
+  status: active
+  trigger: repl_config_change
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+
+- event: FileChanged
+  status: blocked-by-prereq:file-watch-observability
+  trigger: repl_file_change
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+
+- event: CwdChanged
+  status: blocked-by-prereq:cwd-change-observability
+  trigger: none
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+
+- event: SubagentStart
+  status: blocked-by-prereq:subagent-scenario-not-implemented
+  trigger: none
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+  # Probe result (2026-11-18): SubagentStart hook exists in src/utils/hooks.ts and is called
+  # in src/tools/AgentTool/runAgent.ts, but the subagent scenario isn't implemented yet
+  # in tests/integration/config-acceptance/engine/scenarios.ts.
+- event: SubagentStop
+  status: blocked-by-prereq:subagent-scenario-not-implemented
+  trigger: none
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+  # Probe result (2026-11-18): SubagentStop hook exists in src/utils/hooks.ts (referenced
+  # in registerFrontmatterHooks), but the subagent scenario isn't implemented yet.
+- event: TeammateIdle
+  status: blocked-by-prereq:teammate-mode
+  trigger: none
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+  # No offline teammate scenario available.
+
+- event: TaskCreated
+  status: blocked-by-prereq:task-tool-observability
+  trigger: none
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+  # Probe result (2026-11-18): TaskCreated hook exists in src/utils/hooks.ts and is called
+  # in src/tools/TaskCreateTool/TaskCreateTool.ts, but we don't have a way to trigger it
+  # in the test framework yet (TaskCreateTool not integrated into scenario runner).
+- event: TaskCompleted
+  status: blocked-by-prereq:task-tool-observability
+  trigger: none
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+  # Probe result (2026-11-18): TaskCompleted hook exists in src/utils/hooks.ts and is called
+  # in src/tools/TaskUpdateTool/TaskUpdateTool.ts, but we don't have a way to trigger it
+  # in the test framework yet.
+
+- event: Elicitation
+  status: active
+  trigger: mcp_elicitation
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+    tool_executed: true
+  # Historical blocker: mcp-elicit-server. Enabled by the offline in-process
+  # form-elicitation scenario; the command hook returns an accept response.
+
+- event: ElicitationResult
+  status: active
+  trigger: mcp_elicitation
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+    tool_executed: true
+  # Historical blocker: mcp-elicit-server. Enabled by the same real MCP flow;
+  # its command hook returns an accept response without waiting for UI.
+
+- event: WorktreeCreate
+  status: blocked-by-prereq:worktree-ui
+  trigger: none
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+  # Probe result (2026-11-18): WorktreeCreate hook exists in src/utils/hooks.ts and is called
+  # in src/utils/worktree.ts, but we don't have a way to trigger it via the test framework
+  # yet (no /worktree command scenario).
+
+- event: WorktreeRemove
+  status: blocked-by-prereq:worktree-ui
+  trigger: none
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect:
+    hook_fired: true
+  # Probe result (2026-11-18): WorktreeRemove hook exists in src/utils/hooks.ts and is called
+  # in src/utils/worktree.ts, but we don't have a way to trigger it via the test framework
+  # yet (no /worktree command scenario).
+
+- event: UserPromptExpansion
+  status: blocked-by-batch:B1
+  trigger: none
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect: {}
+  # Runtime protocol for new events to be implemented in B1.
+
+- event: PostToolBatch
+  status: blocked-by-batch:B1
+  trigger: none
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect: {}
+  # Runtime protocol for new events to be implemented in B1.
+
+- event: MessageDisplay
+  status: blocked-by-batch:B1
+  trigger: none
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect: {}
+  # Runtime protocol for new events to be implemented in B1.
+
+- event: DirectoryAdded
+  status: blocked-by-batch:B1
+  trigger: none
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect: {}
+  # Runtime protocol for new events to be implemented in B1.
+
+- event: PreModelSwitch
+  status: blocked-by-batch:B1
+  trigger: none
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect: {}
+  # Runtime protocol for new events to be implemented in B1.
+
+- event: PostModelSwitch
+  status: blocked-by-batch:B1
+  trigger: none
+  matcher: '*'
+  exit_semantics: nonblock
+  expected_effect: {}
+  # Runtime protocol for new events to be implemented in B1.

@@ -1,0 +1,105 @@
+
+# 8 dist-form entries (status active)
+- id: source:user-vs-project
+  status: active
+  form: dist
+  layers:
+    user:
+      model: model-user-1
+    project:
+      model: model-project-2
+  expect_key: model
+  expect_value: model-project-2
+
+- id: source:local-vs-project
+  status: active
+  form: dist
+  layers:
+    project:
+      model: model-project-3
+    local:
+      model: model-local-4
+  expect_key: model
+  expect_value: model-local-4
+
+- id: source:local-vs-user
+  status: active
+  form: dist
+  layers:
+    user:
+      model: model-user-5
+    local:
+      model: model-local-6
+  expect_key: model
+  expect_value: model-local-6
+
+- id: source:flag-vs-user
+  status: active
+  form: dist
+  layers:
+    user:
+      model: model-user-7
+    flag:
+      model: model-flag-8
+  expect_key: model
+  expect_value: model-flag-8
+
+- id: source:project-alone
+  status: active
+  form: dist
+  layers:
+    project:
+      model: model-project-9
+  expect_key: model
+  expect_value: model-project-9
+
+- id: source:user-alone
+  status: active
+  form: dist
+  layers:
+    user:
+      model: model-user-10
+  expect_key: model
+  expect_value: model-user-10
+
+- id: source:local-alone
+  status: active
+  form: dist
+  layers:
+    local:
+      model: model-local-11
+  expect_key: model
+  expect_value: model-local-11
+
+- id: source:flag-alone
+  status: active
+  form: dist
+  layers:
+    flag:
+      model: model-flag-12
+  expect_key: model
+  expect_value: model-flag-12
+
+# 2 source-form entries (blocked-by-prereq:source-form-missing-ant-modules)
+- id: source:managed-vs-user
+  status: blocked-by-prereq:source-form-missing-ant-modules
+  form: source
+  layers:
+    user:
+      model: model-user-13
+    managed:
+      model: model-managed-14
+  expect_key: model
+  expect_value: model-managed-14
+
+- id: source:managed-vs-flag
+  status: blocked-by-prereq:source-form-missing-ant-modules
+  form: source
+  layers:
+    flag:
+      model: model-flag-15
+    managed:
+      model: model-managed-16
+  expect_key: model
+  expect_value: model-managed-16
+

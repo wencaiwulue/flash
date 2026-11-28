@@ -1,0 +1,30 @@
+# Environment variable config tests
+# Status: active = test runs, blocked-by-batch:B1 = skip for now, blocked-by-prereq = needs more work
+
+- id: env:MAX_THINKING_TOKENS-set
+  status: active
+  form: dist
+  env:
+    MAX_THINKING_TOKENS: "1024"
+    CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING: "1"
+  expected_effect:
+    thinking:
+      type: "enabled"
+      budget_tokens: 1024
+
+- id: env:MAX_THINKING_TOKENS-unset
+  status: active
+  form: dist
+  env: {}
+  expected_effect:
+    thinking:
+      type: "adaptive"
+
+- id: env:CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION
+  status: blocked-by-batch:B1
+  form: dist
+  env:
+    CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION: "3"
+  expected_effect:
+    subagent_limit: 3
+  comment: "Consumer evidence: alignment roadmap §1.1 - key has no consumer in flash yet"

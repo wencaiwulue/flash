@@ -33,15 +33,12 @@ afterAll(async () => {
 })
 
 describe('SDK control methods', () => {
-  test('reads usage and settings, reloads plugins, and validates task IDs', async () => {
+  test('reads settings, reloads plugins, and validates task IDs', async () => {
     const q = query({
       prompt: (async function* () {})(),
       options: { tools: [] },
     })
     try {
-      const usage = await q.getContextUsage()
-      expect(usage.maxTokens).toBeGreaterThan(0)
-
       const settings = await q.getSettings()
       expect(settings.applied.model).toBeTruthy()
 

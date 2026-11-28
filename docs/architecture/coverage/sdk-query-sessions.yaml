@@ -35,19 +35,20 @@ groups:
   - id: sdk-query-lifecycle
     kind: source
     section: 4
-    summary: SDK Query 生命周期管理，异步输入输出、中断清理、持久化租赁
+    summary: Classic Query 生命周期、classic session 解析，channel、canUseTool、hooks/env、MCP、按轮中断、终端错误与幂等清理
     files:
       - src/utils/sdkQuery.ts
+      - src/utils/sdkQuerySession.ts
   - id: sdk-session-conversation
     kind: source
     section: 4
-    summary: SDK Session 会话管理，创建/恢复/提示会话
+    summary: 既有 v2 Session 包装器；classic options 不得借此替代
     files:
       - src/utils/sdkSessionConversation.ts
   - id: sdk-session-storage
     kind: source
     section: 4
-    summary: SDK Session 持久化与访问器，读取列表重命名标记分叉
+    summary: SDK Session 持久化、loader、访问器与 fork；供 classic continue/resume/forkSession 复用
     files:
       - src/utils/sdkSessions.ts
   - id: sdk-control-plane
@@ -71,10 +72,18 @@ groups:
   - id: sdk-tests
     kind: test
     section: 7
-    summary: SDK 测试，生命周期、会话、控制面、回滚
+    summary: SDK 单元测试与后续 dist 集成套件，生命周期、hooks、MCP、classic sessions、控制面、回滚和 token usage
     files:
       - tests/sdkQueryLifecycle.test.ts
       - tests/sdkSessions.test.ts
       - tests/sdkControls.test.ts
       - tests/sdkRewind.test.ts
       - tests/sdkMcp.test.ts
+      - tests/integration/sdk/dist-import.test.ts
+      - tests/integration/sdk/query-lifecycle.test.ts
+      - tests/integration/sdk/sessions.test.ts
+      - tests/integration/sdk/hooks.test.ts
+      - tests/integration/sdk/mcp.test.ts
+      - tests/integration/sdk/token-count.test.ts
+      - tests/integration/support/mcp.ts
+      - tests/integration/support/sdk.ts

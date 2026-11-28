@@ -3182,7 +3182,9 @@ export async function executeHooksOutsideREPL({
             isSyncHookJSONOutput(json) &&
             json.hookSpecificOutput?.hookEventName === 'WorktreeCreate'
               ? json.hookSpecificOutput.worktreePath
-              : json.systemMessage || ''
+              : hookEvent === 'Elicitation' || hookEvent === 'ElicitationResult'
+                ? jsonStringify(json)
+                : json.systemMessage || ''
           const blocked =
             isSyncHookJSONOutput(json) && json.decision === 'block'
 

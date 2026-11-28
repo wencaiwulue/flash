@@ -69,6 +69,10 @@ export function registerElicitationHandler(
   client: Client,
   serverName: string,
   setAppState: (f: (prevState: AppState) => AppState) => void,
+  handleElicitation?: (
+    params: ElicitRequestParams,
+    signal: AbortSignal,
+  ) => Promise<ElicitResult>,
 ): void {
   // Register the elicitation request handler.
   // Wrapped in try/catch because setRequestHandler throws if the client wasn't
@@ -93,6 +97,13 @@ export function registerElicitationHandler(
           request.params,
           extra.signal,
         )
+
+        const elicitationId =
+          mode === 'url' && 'elicitationId' in request.params
+            ? (request.params.elicitationId as string | undefined)
+            : undefined
+
+        let rawResult: ElicitResult
         if (hookResponse) {
           logMCPDebug(
             serverName,
@@ -103,55 +114,56 @@ export function registerElicitationHandler(
             action:
               hookResponse.action as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           })
-          return hookResponse
-        }
+          rawResult = hookResponse
+        } else if (handleElicitation) {
+          rawResult = await handleElicitation(request.params, extra.signal)
+          logEvent('tengu_mcp_elicitation_response', {
+            mode: mode as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+            action:
+              rawResult.action as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+          })
+        } else {
+          rawResult = await new Promise<ElicitResult>(resolve => {
+            const onAbort = () => {
+              resolve({ action: 'cancel' })
+            }
 
-        const elicitationId =
-          mode === 'url' && 'elicitationId' in request.params
-            ? (request.params.elicitationId as string | undefined)
-            : undefined
+            if (extra.signal.aborted) {
+              onAbort()
+              return
+            }
 
-        const response = new Promise<ElicitResult>(resolve => {
-          const onAbort = () => {
-            resolve({ action: 'cancel' })
-          }
+            const waitingState: ElicitationWaitingState | undefined =
+              elicitationId ? { actionLabel: 'Skip confirmation' } : undefined
 
-          if (extra.signal.aborted) {
-            onAbort()
-            return
-          }
-
-          const waitingState: ElicitationWaitingState | undefined =
-            elicitationId ? { actionLabel: 'Skip confirmation' } : undefined
-
-          setAppState(prev => ({
-            ...prev,
-            elicitation: {
-              queue: [
-                ...prev.elicitation.queue,
-                {
-                  serverName,
-                  requestId: extra.requestId,
-                  params: request.params,
-                  signal: extra.signal,
-                  waitingState,
-                  respond: (result: ElicitResult) => {
-                    extra.signal.removeEventListener('abort', onAbort)
-                    logEvent('tengu_mcp_elicitation_response', {
-                      mode: mode as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                      action:
-                        result.action as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                    })
-                    resolve(result)
+            setAppState(prev => ({
+              ...prev,
+              elicitation: {
+                queue: [
+                  ...prev.elicitation.queue,
+                  {
+                    serverName,
+                    requestId: extra.requestId,
+                    params: request.params,
+                    signal: extra.signal,
+                    waitingState,
+                    respond: (result: ElicitResult) => {
+                      extra.signal.removeEventListener('abort', onAbort)
+                      logEvent('tengu_mcp_elicitation_response', {
+                        mode: mode as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+                        action:
+                          result.action as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+                      })
+                      resolve(result)
+                    },
                   },
-                },
-              ],
-            },
-          }))
+                ],
+              },
+            }))
 
-          extra.signal.addEventListener('abort', onAbort, { once: true })
-        })
-        const rawResult = await response
+            extra.signal.addEventListener('abort', onAbort, { once: true })
+          })
+        }
         logMCPDebug(
           serverName,
           `Elicitation response: ${jsonStringify(rawResult)}`,

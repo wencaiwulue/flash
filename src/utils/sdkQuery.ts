@@ -6,6 +6,7 @@ import { ask } from '../QueryEngine.js'
 import { getCommands } from '../commands.js'
 import {
   setClientType,
+  registerHookCallbacks,
   setCwdState,
   setIsInteractive,
   setOriginalCwd,
@@ -22,13 +23,20 @@ import type {
   McpSdkServerConfigWithInstance,
 } from '../entrypoints/sdk/runtimeTypes.js'
 import type {
+  HookEvent,
   McpServerStatus,
   PermissionMode,
   SDKMessage,
+  SDKResultMessage,
   SDKUserMessage,
 } from '../entrypoints/sdk/coreTypes.js'
 import type { CanUseToolFn } from '../hooks/useCanUseTool.js'
+import type {
+  HookCallback as InternalHookCallback,
+  HookCallbackMatcher as InternalHookCallbackMatcher,
+} from '../types/hooks.js'
 import { getMcpToolsCommandsAndResources, fetchToolsForClient } from '../services/mcp/client.js'
+import { registerElicitationHandler } from '../services/mcp/elicitationHandler.js'
 import type {
   MCPServerConnection,
   ScopedMcpServerConfig,
@@ -42,7 +50,16 @@ import { createFileStateCacheWithSizeLimit } from '../utils/fileStateCache.js'
 import { asSessionId } from '../types/ids.js'
 import type { Message } from '../types/message.js'
 import { runCleanupFunctions } from './cleanupRegistry.js'
-import { flushSessionStorage } from './sessionStorage.js'
+import {
+  clearSessionMetadata,
+  flushSessionStorage,
+  resetSessionFilePointer,
+} from './sessionStorage.js'
+import { canonicalizePath } from './sessionStoragePortable.js'
+import {
+  resolveSdkQuerySession,
+  validateSdkQuerySessionOptions,
+} from './sdkQuerySession.js'
 import { FileCheckpointing } from './fileCheckpointing.js'
 import { getModelOptions } from './model/modelOptions.js'
 import { getMainLoopModel } from './model/model.js'
@@ -143,6 +160,10 @@ export class UserMessageChannel {
     this.notify()
   }
 
+  isClosedAndDrained(): boolean {
+    return this.closed && this.queue.length === 0
+  }
+
   private notify(): void {
     const waiters = this.waiters.splice(0)
     for (const waiter of waiters) {
@@ -189,9 +210,13 @@ function hasMcpInstance(
 async function connectMcpConfigs({
   configs,
   onConnection,
+  onElicitation,
+  setAppState,
 }: {
   configs: Record<string, ScopedMcpServerConfig>
   onConnection: Parameters<typeof getMcpToolsCommandsAndResources>[0]
+  onElicitation: InternalOptions['onElicitation']
+  setAppState: (f: (prevState: AppState) => AppState) => void
 }): Promise<void> {
   const processConfigs = Object.fromEntries(
     Object.entries(configs).filter(([, config]) => !hasMcpInstance(config)),
@@ -208,7 +233,10 @@ async function connectMcpConfigs({
       if (!hasMcpInstance(config)) return
       const [clientTransport, serverTransport] =
         InMemoryTransport.createLinkedPair()
-      const client = new Client({ name: 'claude-code-sdk', version: '1.0.0' })
+      const client = new Client(
+        { name: 'claude-code-sdk', version: '1.0.0' },
+        { capabilities: { elicitation: {} } },
+      )
       const connection: MCPServerConnection = {
         type: 'connected',
         name,
@@ -220,11 +248,29 @@ async function connectMcpConfigs({
         },
       }
       try {
+        // Servers may legally elicit from oninitialized. Install the handler
+        // before either side starts connecting and exchanging initialization.
+        registerElicitationHandler(
+          client,
+          name,
+          setAppState,
+          async (params, signal) => {
+            // URL elicitation is outside the in-process SDK scope. Form mode
+            // follows hooks -> callback -> decline -> result hooks.
+            if (params.mode === 'url' || !onElicitation) {
+              return { action: 'decline' }
+            }
+            return onElicitation({ ...params, serverName: name }, { signal })
+          },
+        )
         await Promise.all([
           client.connect(clientTransport),
           config.instance.connect(serverTransport),
         ])
         connection.capabilities = client.getServerCapabilities() ?? {}
+        // This is a new client even when its server name was used by an earlier
+        // query. Name-keyed tool wrappers must not retain a closed client.
+        fetchToolsForClient.cache.delete(name)
         const tools = await fetchToolsForClient(connection)
         onConnection({ client: connection, tools, commands: [] })
       } catch (error) {
@@ -252,6 +298,25 @@ async function cleanupClients(clients: MCPServerConnection[]): Promise<void> {
       }
     }),
   )
+}
+
+function registerSdkHooks(hooks: InternalOptions['hooks']): () => void {
+  if (!hooks) return () => {}
+  const registered: Partial<Record<HookEvent, InternalHookCallbackMatcher[]>> = {}
+  for (const [event, matchers] of Object.entries(hooks)) {
+    registered[event as HookEvent] = matchers.map(matcher => ({
+      matcher: matcher.matcher,
+      hooks: matcher.hooks.map((callback): InternalHookCallback => ({
+        type: 'callback',
+        timeout: matcher.timeout,
+        callback: (input, toolUseID, signal) =>
+          callback(input, toolUseID ?? undefined, {
+            signal: signal ?? new AbortController().signal,
+          }),
+      })),
+    }))
+  }
+  return registerHookCallbacks(registered)
 }
 
 function resolveThinkingConfig(
@@ -334,6 +399,7 @@ export function createSdkQuery({
 }): InternalQuery {
   const abortController = options.abortController ?? new AbortController()
   const channel = new UserMessageChannel()
+  let currentTurnAbortController: AbortController | undefined
   let remoteController: SdkRemoteController | undefined
   let setupPromise: Promise<{
     appState: AppState
@@ -348,6 +414,9 @@ export function createSdkQuery({
   }> | undefined
 
   let releasePersistence: (() => void) | undefined
+  let releaseHooks: (() => void) | undefined
+  let restoreEnv: (() => void) | undefined
+  let setupAppState: AppState | undefined
 
   if (typeof prompt === 'string') {
     channel.push({
@@ -369,32 +438,71 @@ export function createSdkQuery({
     })()
   }
 
+  const closeChannelOnExternalAbort = () => channel.close()
+  if (abortController.signal.aborted) closeChannelOnExternalAbort()
+  else {
+    abortController.signal.addEventListener('abort', closeChannelOnExternalAbort, {
+      once: true,
+    })
+  }
+
   const initialize = () => {
     setupPromise ??= (async () => {
+      validateSdkQuerySessionOptions(options)
+      releaseHooks = registerSdkHooks(options.hooks)
       releasePersistence = acquireSessionPersistence(
         options.persistSession !== false,
       )
       const cwd = options.cwd ?? process.cwd()
-      setOriginalCwd(cwd)
+      const storageCwd = await canonicalizePath(cwd)
+      setOriginalCwd(storageCwd)
       setCwdState(cwd)
       setIsInteractive(false)
       setClientType('sdk')
       setSessionSource('sdk')
-      if (session) {
-        switchSession(asSessionId(session.id), (await session.projectDir) ?? null)
-      }
 
       if (options.env) {
+        const previousEnv = new Map<string, string | undefined>()
+        for (const key of Object.keys(options.env)) {
+          previousEnv.set(key, process.env[key])
+        }
+        let envRestored = false
+        restoreEnv = () => {
+          if (envRestored) return
+          envRestored = true
+          for (const [key, value] of previousEnv) {
+            if (value === undefined) delete process.env[key]
+            else process.env[key] = value
+          }
+        }
         for (const [key, value] of Object.entries(options.env)) {
           if (value === undefined) delete process.env[key]
           else process.env[key] = value
         }
       }
+
+      let resolvedSession = session
+      let resolvedInitialMessages = initialMessages
+      if (!resolvedSession) {
+        const classicSession = await resolveSdkQuerySession(options, storageCwd)
+        resolvedSession = classicSession.session
+        resolvedInitialMessages = classicSession.initialMessages
+      }
+      if (resolvedSession) {
+        switchSession(
+          asSessionId(resolvedSession.id),
+          (await resolvedSession.projectDir) ?? null,
+        )
+        clearSessionMetadata()
+        await resetSessionFilePointer()
+      }
+
       debug('init:start')
       enableConfigs()
       debug('init:done')
 
       const appState = getDefaultAppState()
+      setupAppState = appState
       Object.assign(appState, {
         mainLoopModel: options.model ?? null,
         verbose: options.verbose ?? false,
@@ -424,6 +532,8 @@ export function createSdkQuery({
       debug(`mcp:config:${Object.keys(options.mcpServers ?? {}).join(',')};scoped:${Object.keys(scopedConfigs).join(',')}`)
       await connectMcpConfigs({
         configs: scopedConfigs,
+        onElicitation: options.onElicitation,
+        setAppState: updater => Object.assign(appState, updater(appState)),
         onConnection: ({ client, tools, commands, resources }) => {
           appState.mcp = {
             ...appState.mcp,
@@ -459,12 +569,17 @@ export function createSdkQuery({
         thinkingConfig,
         userSpecifiedModel: options.model,
         readFileCache: createFileStateCacheWithSizeLimit(100),
-        mutableMessages: (await initialMessages) ?? [],
+        mutableMessages: (await resolvedInitialMessages) ?? [],
         fileCheckpointing,
         releasePersistence: releasePersistence!,
       }
     })()
-    setupPromise.catch(() => releasePersistence?.())
+    void setupPromise.catch(() => {
+      releaseHooks?.()
+      restoreEnv?.()
+      releasePersistence?.()
+      return cleanup().catch(() => {})
+    })
     return setupPromise
   }
 
@@ -529,65 +644,113 @@ export function createSdkQuery({
       )
     }
 
+    let terminalErrorResult: SDKResultMessage | undefined
+    const throwTerminalError = (result: SDKResultMessage): never => {
+      const diagnostic =
+        result.subtype === 'success'
+          ? result.result
+          : result.errors.join('\n')
+      throw new Error(
+        diagnostic || `SDK query ended with ${result.subtype}`,
+      )
+    }
+
     try {
       for await (const message of channel.iterate()) {
-        const content = message.message.content
-        const promptContent: string | ContentBlockParam[] =
-          typeof content === 'string' ? content : content
-        if (!message.isSynthetic) {
-          // A user-visible checkpoint is usable only after its initial state
-          // has been committed. QueryEngine's fire-and-forget duplicate is
-          // deduplicated by fileHistoryMakeSnapshot.
-          await setup.fileCheckpointing.makeSnapshot(message.uuid as UUID)
+        terminalErrorResult = undefined
+        const turnAbortController = new AbortController()
+        const forwardExternalAbort = () => {
+          turnAbortController.abort(abortController.signal.reason)
         }
-        debug('ask:start')
-        for await (const output of ask({
-          commands: setup.commands,
-          prompt: promptContent,
-          promptUuid: message.uuid,
-          isMeta: message.isSynthetic,
-          cwd: options.cwd ?? process.cwd(),
-          tools: setup.tools,
-          mcpClients: setup.appState.mcp.clients,
-          verbose: options.verbose,
-          thinkingConfig: setup.thinkingConfig,
-          maxTurns: options.maxTurns,
-          maxBudgetUsd: options.maxBudgetUsd,
-          taskBudget: options.taskBudget,
-          canUseTool,
-          mutableMessages,
-          getReadFileCache: () => setup.readFileCache,
-          setReadFileCache: cache => {
-            setup.readFileCache = cache
-          },
-          customSystemPrompt:
-            options.systemPrompt === undefined
-              ? ''
-              : typeof options.systemPrompt === 'string'
-                ? options.systemPrompt
+        if (abortController.signal.aborted) forwardExternalAbort()
+        else {
+          abortController.signal.addEventListener('abort', forwardExternalAbort, {
+            once: true,
+          })
+        }
+        currentTurnAbortController = turnAbortController
+        try {
+          const content = message.message.content
+          const promptContent: string | ContentBlockParam[] =
+            typeof content === 'string' ? content : content
+          if (!message.isSynthetic) {
+            // A user-visible checkpoint is usable only after its initial state
+            // has been committed. QueryEngine's fire-and-forget duplicate is
+            // deduplicated by fileHistoryMakeSnapshot.
+            await setup.fileCheckpointing.makeSnapshot(message.uuid as UUID)
+          }
+          debug('ask:start')
+          for await (const output of ask({
+            commands: setup.commands,
+            prompt: promptContent,
+            promptUuid: message.uuid,
+            isMeta: message.isSynthetic,
+            cwd: options.cwd ?? process.cwd(),
+            tools: setup.tools,
+            mcpClients: setup.appState.mcp.clients,
+            verbose: options.verbose,
+            thinkingConfig: setup.thinkingConfig,
+            maxTurns: options.maxTurns,
+            maxBudgetUsd: options.maxBudgetUsd,
+            taskBudget: options.taskBudget,
+            canUseTool,
+            mutableMessages,
+            getReadFileCache: () => setup.readFileCache,
+            setReadFileCache: cache => {
+              setup.readFileCache = cache
+            },
+            customSystemPrompt:
+              options.systemPrompt === undefined
+                ? ''
+                : typeof options.systemPrompt === 'string'
+                  ? options.systemPrompt
+                  : undefined,
+            appendSystemPrompt:
+              typeof options.systemPrompt === 'object' &&
+              options.systemPrompt.type === 'preset'
+                ? options.systemPrompt.append
                 : undefined,
-          appendSystemPrompt:
-            typeof options.systemPrompt === 'object' &&
-            options.systemPrompt.type === 'preset'
-              ? options.systemPrompt.append
-              : undefined,
-          userSpecifiedModel: setup.userSpecifiedModel,
-          fallbackModel: options.fallbackModel,
-          jsonSchema: options.outputFormat?.schema,
-          getAppState: () => setup.appState,
-          setAppState: f => {
-            Object.assign(setup.appState, f(setup.appState))
-          },
-          abortController,
-          replayUserMessages: options.replayUserMessages,
-          includePartialMessages: options.includePartialMessages,
-          agents: parseAgentsFromJson(options.agents ?? {}),
-        })) {
-          debug(`message:${output.type}`)
-          yield output
+            userSpecifiedModel: setup.userSpecifiedModel,
+            fallbackModel: options.fallbackModel,
+            jsonSchema: options.outputFormat?.schema,
+            getAppState: () => setup.appState,
+            setAppState: f => {
+              Object.assign(setup.appState, f(setup.appState))
+            },
+            abortController: turnAbortController,
+            replayUserMessages: options.replayUserMessages,
+            includePartialMessages: options.includePartialMessages,
+            agents: parseAgentsFromJson(options.agents ?? {}),
+          })) {
+            debug(`message:${output.type}`)
+            if (
+              output.type === 'result' &&
+              (output.subtype !== 'success' || output.is_error)
+            ) {
+              terminalErrorResult = output
+            }
+            yield output
+          }
+          debug('ask:done')
+        } finally {
+          abortController.signal.removeEventListener(
+            'abort',
+            forwardExternalAbort,
+          )
+          if (currentTurnAbortController === turnAbortController) {
+            currentTurnAbortController = undefined
+          }
         }
-        debug('ask:done')
+
+        if (
+          terminalErrorResult &&
+          (channel.isClosedAndDrained() || abortController.signal.aborted)
+        ) {
+          throwTerminalError(terminalErrorResult)
+        }
+        if (abortController.signal.aborted) return
       }
+      if (terminalErrorResult) throwTerminalError(terminalErrorResult)
     } catch (error) {
       debug(`error:${error instanceof Error ? error.stack : String(error)}`)
       throw error
@@ -600,23 +763,39 @@ export function createSdkQuery({
   let cleanupPromise: Promise<void> | undefined
   const cleanup = () => {
     cleanupPromise ??= (async () => {
+      let setup: Awaited<typeof setupPromise>
+      let setupError: unknown
+      let setupFailed = false
       try {
-        const setup = await setupPromise
+        setup = await setupPromise
+      } catch (error) {
+        setupFailed = true
+        setupError = error
+      }
+      try {
         if (remoteController) {
           const controller = remoteController
           remoteController = undefined
           await controller.stop()
         }
-        if (setup) {
+        const appState = setup?.appState ?? setupAppState
+        if (appState) {
           await Promise.all([
-            cleanupClients(setup.appState.mcp.clients),
+            cleanupClients(appState.mcp.clients),
             runCleanupFunctions(),
             flushSessionStorage(),
           ])
         }
       } finally {
+        abortController.signal.removeEventListener(
+          'abort',
+          closeChannelOnExternalAbort,
+        )
+        releaseHooks?.()
+        restoreEnv?.()
         releasePersistence?.()
       }
+      if (setupFailed) throw setupError
     })()
     return cleanupPromise
   }
@@ -631,7 +810,7 @@ export function createSdkQuery({
 
   return Object.assign(query, {
     interrupt: async () => {
-      abortController.abort()
+      currentTurnAbortController?.abort('interrupt')
     },
     setPermissionMode: async (mode: PermissionMode) => {
       const { appState } = await initialize()
@@ -702,6 +881,9 @@ export function createSdkQuery({
         setup.appState.mcp.clients.map(client => client.name),
       )
       await cleanupClients(setup.appState.mcp.clients)
+      // Tool wrappers capture their client. Invalidate name-keyed discovery
+      // entries before same-name replacement so the fresh instance is called.
+      for (const name of previousNames) fetchToolsForClient.cache.delete(name)
       setup.appState.mcp = {
         ...setup.appState.mcp,
         clients: [],
@@ -711,6 +893,9 @@ export function createSdkQuery({
       }
       await connectMcpConfigs({
         configs: toScopedConfigs(servers),
+        onElicitation: options.onElicitation,
+        setAppState: updater =>
+          Object.assign(setup.appState, updater(setup.appState)),
         onConnection: ({ client, tools, commands, resources }) => {
           setup.appState.mcp = {
             ...setup.appState.mcp,

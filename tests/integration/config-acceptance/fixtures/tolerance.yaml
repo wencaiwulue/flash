@@ -1,0 +1,103 @@
+# Tolerance test cases for config parsing resilience
+# B0-blocked cases have full expected_effect defined for when B0 lands
+
+# 1. Unknown hook event - B0 blocked
+- id: tolerance:unknown-hook-event
+  status: blocked-by-batch:B0
+  form: dist
+  layers:
+    user:
+      model: model-user-valid
+      hooks:
+        FutureUpstreamEvent:
+          - matcher: "*"
+            hooks:
+              - type: command
+                command: "echo invalid"
+        PostToolUse:
+          - matcher: "*"
+            hooks:
+              - type: command
+                command: "echo valid"
+  expect_key: model
+  expect_value: model-user-valid
+  # Target expected_effect (B0): unknown event dropped, sibling config survives
+  expected_effect:
+    model_used: model-user-valid
+    hooks_valid:
+      PostToolUse: present
+    hooks_invalid_dropped:
+      FutureUpstreamEvent: true
+
+# 2. Known event not array - B0 blocked
+- id: tolerance:known-event-not-array
+  status: blocked-by-batch:B0
+  form: dist
+  layers:
+    user:
+      model: model-user-valid-2
+      hooks:
+        PostToolUse: 3  # Not an array
+        PreToolUse:
+          - matcher: "*"
+            hooks:
+              - type: command
+                command: "echo valid"
+  expect_key: model
+  expect_value: model-user-valid-2
+  # Target expected_effect (B0): invalid entry dropped, siblings survive
+  expected_effect:
+    model_used: model-user-valid-2
+    hooks_valid:
+      PreToolUse: present
+    hooks_invalid_dropped:
+      PostToolUse: true
+
+# 3. Hooks not object - B0 blocked
+- id: tolerance:hooks-not-object
+  status: blocked-by-batch:B0
+  form: dist
+  layers:
+    user:
+      model: model-user-valid-3
+      hooks: "invalid"  # Not an object
+  expect_key: model
+  expect_value: model-user-valid-3
+  # Target expected_effect (B0): hooks field dropped, siblings survive
+  expected_effect:
+    model_used: model-user-valid-3
+    hooks_field_dropped: true
+
+# 4. Plain field schema error - ACTIVE
+- id: tolerance:plain-field-schema-error
+  status: active
+  form: dist
+  layers:
+    user:
+      model: 42  # Invalid - should be string
+    project:
+      model: model-project-fallback
+  expect_key: model
+  expect_value: model-project-fallback
+  # Current behavior: user source fails entirely, project's model wins
+
+# 5. Unknown top-level key - ACTIVE
+- id: tolerance:unknown-top-level-key
+  status: active
+  form: dist
+  layers:
+    user:
+      model: model-user-valid-4
+      futureUnknownKey: true  # Unknown top-level key
+  expect_key: model
+  expect_value: model-user-valid-4
+  # Current behavior: passthrough doesn't poison; model still applies
+
+# 6. Managed corrupt - blocked-by-prereq:source-form-missing-ant-modules
+- id: tolerance:managed-corrupt
+  status: blocked-by-prereq:source-form-missing-ant-modules
+  form: source
+  layers:
+    managed: {}  # Corrupt JSON will be created by test
+  expect_key: model
+  expect_value: null  # fail-closed expectation

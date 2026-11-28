@@ -1422,18 +1422,39 @@ export function getInitJsonSchema(): Record<string, unknown> | null {
 
 export function registerHookCallbacks(
   hooks: Partial<Record<HookEvent, RegisteredHookMatcher[]>>,
-): void {
+): () => void {
   if (!STATE.registeredHooks) {
     STATE.registeredHooks = {}
   }
 
-  // `registerHookCallbacks` may be called multiple times, so we need to merge (not overwrite)
+  // Each appended item is a distinct occurrence. In particular, two owners may
+  // register the exact same matcher object, so the original reference cannot be
+  // used as the ownership key when one owner is released.
+  const occurrences = new Set<RegisteredHookMatcher>()
   for (const [event, matchers] of Object.entries(hooks)) {
     const eventKey = event as HookEvent
     if (!STATE.registeredHooks[eventKey]) {
       STATE.registeredHooks[eventKey] = []
     }
-    STATE.registeredHooks[eventKey]!.push(...matchers)
+    for (const matcher of matchers) {
+      const occurrence = { ...matcher } as RegisteredHookMatcher
+      occurrences.add(occurrence)
+      STATE.registeredHooks[eventKey]!.push(occurrence)
+    }
+  }
+
+  let released = false
+  return () => {
+    if (released) return
+    released = true
+    if (!STATE.registeredHooks) return
+
+    const remaining: Partial<Record<HookEvent, RegisteredHookMatcher[]>> = {}
+    for (const [event, matchers] of Object.entries(STATE.registeredHooks)) {
+      const kept = matchers.filter(matcher => !occurrences.has(matcher))
+      if (kept.length > 0) remaining[event as HookEvent] = kept
+    }
+    STATE.registeredHooks = Object.keys(remaining).length > 0 ? remaining : null
   }
 }
 

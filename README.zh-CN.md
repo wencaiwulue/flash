@@ -155,6 +155,8 @@ SDK 组合方式见[架构文档](https://github.com/wencaiwulue/flash/blob/main
 | `bun run generate:sdk-types` | 从当前 schema 生成可序列化 SDK 类型。 |
 | `bun run typecheck` | 执行 TypeScript 检查，不生成文件。 |
 | `bun run test` | 使用仓库的逐文件隔离运行器执行测试。 |
+| `bun run test:integration` | 运行集成测试套件（先构建 dist；离线 mock API，无凭据）。 |
+| `bun scripts/test-integration.ts --suite=config-acceptance` | 运行配置对齐验收套件（33 事件 hook 矩阵、来源优先级、解析容错；managed 来源条目因前置缺失暂跳过）。 |
 | `bun run build` | 生成 SDK 类型、构建 CLI/SDK 并生成声明。 |
 | `bun run build:binary` | 为当前主机编译、验证并打包独立二进制。 |
 
