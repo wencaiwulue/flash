@@ -145,6 +145,8 @@ export interface Query extends AsyncGenerator<SDKMessage, void> {
      * @returns Array of model information including display names and descriptions
      */
     supportedModels(): Promise<ModelInfo[]>;
+    /** Get a breakdown of current context window usage. */
+    getContextUsage(): Promise<SDKControlGetContextUsageResponse>;
     /**
      * Get the current status of all configured MCP servers.
      *
@@ -610,8 +612,6 @@ export type InternalOptions = Options & {
 export interface InternalQuery extends Query {
     /** End the session, optionally recording why it was ended. */
     close(reason?: string): Promise<void>;
-    /** Get a breakdown of current context window usage. */
-    getContextUsage(): Promise<SDKControlGetContextUsageResponse>;
     /** Reload plugins and return the refreshed session components. */
     reloadPlugins(): Promise<SDKControlReloadPluginsResponse>;
     /** Stop a running task. */

@@ -234,3 +234,22 @@ setMcpServers、error_max_turns、error_during_execution 等目标片段
 | P2 | 官方和 binary 均定义 resumeSessionAt inclusive cutoff，但本轮只批准 continue/resume/forkSession | 后续单独补 resumeSessionAt 红测和 loader cutoff，含未知 UUID 错误 | 中 —— 截断 transcript 可能破坏 DAG/tool pairing | 指定 UUID 前后历史、未知 UUID、fork 组合测试 | M | 已证实 |
 | P2 | 本设计只验证 in-process MCP 的显式恢复；官方 remote 自动重连不属于本环境 | 另设 offline transport 故障注入或 live 层验证自动重连，不与本轮混报 | 中 —— 网络时序和重试容易抖动 | 区分 controlled replacement 与 automatic reconnect 的结果记录 | M | 设计推断 |
 | P3 | 当前官方文档已移除 v2，而仓库仍保留 unstable_v2 导出 | 在独立弃用设计中评估兼容成本和删除窗口 | 高 —— 可能影响现有调用方 | 先盘点消费者和版本政策，不在本子项目直接删除 | M | 已证实 |
+
+## 10. Task 34B 实际实施证据（2026-11-28）
+
+- 新增 `tests/integration/sdk/token-count.test.ts`，从真实 `dist/sdk.mjs` 创建 classic query，以 `pauseAtResult()` 停在 success result 的 yield 点；调用 usage 前实测 `ANTHROPIC_BASE_URL === mock.url` 且 key 为 `MOCK_API_KEY`。一次运行记录 13 个本地 `/v1/messages/count_tokens` 请求，分类数值与请求录制聚合一致；关闭后未新增 count 请求，外部占用前的假 env 值得到恢复。
+- 公开类型红测：直接以公开 `Query` 注解调用时得到 `TS2339: Property 'getContextUsage' does not exist on type 'Query'`。最小修复仅把既有签名从 `InternalQuery` 提升到 `Query`；包含新测试的临时 tsconfig 随后退出 0，构建后的 `dist/types/entrypoints/sdk/runtimeTypes.d.ts` 也包含该方法。
+- 初次集成运行还暴露两个测试自身问题：finally 的计数断言遮蔽了首个失败，以及误把正常 assistant usage 的 `input_tokens` 当作 count_tokens 注入。分别修正清理断言的生效条件和删除该过宽 substring 断言后，保留并通过了真实的消息数、流快照及聚合断言；未因此修改产品运行时代码。
+- 删除前再次逐一验证 16/16 fixture 都严格为 `{tokenCount:null}`；`src/tests/scripts/package.json` 无文件名消费者，docs 命中仅为设计/计划。随后删除 13 个 tracked 和既定的 3 个 untracked 文件，最终 `rg --files fixtures | rg token-count-` 无输出，完整测试后也未重新生成。
+- `tests/sdkControls.test.ts` 删除隐式 VCR usage 调用，保留 settings/plugins/task 控制断言；新测试归属已加入 `sdk-query-sessions.yaml`。
+
+| 实际命令 | 结果 |
+|---|---|
+| `bun run test:integration tests/integration/sdk/token-count.test.ts tests/integration/sdk/query-lifecycle.test.ts` | 退出 0；2 文件、16 tests、0 fail；token-count 为 1 pass / 125 assertions |
+| `bun run test:integration --suite=sdk` | 退出 0；6 文件、39 tests、0 fail |
+| `bun run test:integration --suite=config-acceptance` | 退出 0；8 文件，无失败；既有 batch/prerequisite skip 保留 |
+| `bun run test` | 首轮因 `tests/openBackends.test.ts` 本地 CDP reconnect 10s timeout 退出 1；该文件单独重跑 10 pass / 1 既有 skip / 0 fail；完整第二轮退出 0 且无 `Failed test files` |
+| `bun run typecheck` | 退出 0 |
+| `bun run build` | 退出 0，包含 SDK declaration 生成 |
+| `bun scripts/check-design-docs.ts` | 0 errors，112 条既有 warnings |
+| `rg -n "test\\.skip" tests/integration/sdk` | 无输出 |

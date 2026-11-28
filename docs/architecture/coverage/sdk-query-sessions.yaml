@@ -83,4 +83,5 @@ groups:
       - tests/integration/sdk/sessions.test.ts
       - tests/integration/sdk/hooks.test.ts
       - tests/integration/sdk/mcp.test.ts
+      - tests/integration/sdk/token-count.test.ts
       - tests/integration/support/mcp.ts
