@@ -3,7 +3,7 @@ id: memory
 batch: 3
 title: Memory 记忆加载、提取与同步设计
 date: 2026-11-12
-status: draft
+status: approved
 ---
 
 # Memory 记忆加载、提取与同步设计
@@ -48,6 +48,25 @@ CLAUDE.md通过attachments系统注入上下文，**不是**记忆系统的一�
 - 记忆索引（MEMORY.md）有硬性限制：最多 200 行，最多 25,000 字节
 - 团队记忆同步有大小限制：单个文件最多 250,000 字节，PUT 体最多 200,000 字节
 - 团队记忆有隐私边界：team 目录是共享的，auto 目录是私有的
+
+### 会话 cursor、路径与状态所有权（当前实现）
+
+**持久化 cursor 与真实路径校验。** `SessionMemoryCursorManager` 将 `lastSummarizedMessageId`、时间戳、trackedFiles 和 sessionId 原子写入每个会话目录的 `.session-memory-cursor.json`，真实 `getLastSummarizedMessageId()` / `setLastSummarizedMessageId()` 通过该 sidecar 读取和更新，而不是只保存在进程变量中。重启后从 sidecar 恢复；删除被跟踪记忆文件时，`checkAndInvalidateDeletedFiles()` 使 cursor 失效并允许重新提取。
+
+| 对象/资源 | 所有者 | 创建与初始化 | 共享/隔离 | 持久化 | 重置/失效 | 取消与清理 |
+|---|---|---|---|---|---|---|
+| cursor sidecar | 当前会话的 `SessionMemoryCursorManager` | 首次读取或写入时创建 | 仅当前 memory 目录 | temp+rename 原子替换 | 文件删除、损坏或引用文件不存在时失效并重新提取 | 不删除历史记忆正文，回滚时保留旧 sidecar 以便诊断 |
+| `MemoryPathValidator` | memory 读取/写入/扫描/setup 调用方 | 先做前缀候选检查，再做 realpath 包含校验 | 内部 symlink 允许，逃逸到 memory/team 根目录外拒绝 | 不把被解析后的外部路径当作合法 memory 路径 | 校验失败返回错误，不执行写入或读取 | `src/services/SessionMemory/sessionMemoryUtils.ts`、`src/memdir/memoryScan.ts` |
+| collapse/microcompact 会话状态 | QueryEngine 通过 ToolUseContext 注入 | 每个 QueryEngine/fork 独立实例 | collapse commit/snapshot 按 sessionId 过滤恢复 | reset 仅影响当前会话 | `src/QueryEngine.ts`、`src/query.ts`、`tests/compactionSessionIsolation.test.ts` |
+
+**失败与回滚**：sidecar 缺失时从空 cursor 开始；损坏时不信任旧 cursor；删除文件不会导致 cursor 指向不存在的记忆。realpath 校验失败必须中止对应读取或写入，而不是退回纯前缀检查。若新机制出现回归，回滚仅撤销 cursor/path 改动，保留原记忆类型、索引、同步和压缩语义。
+
+**三层证据**：
+- 官方文档：[How Claude remembers your project](https://code.claude.com/docs/en/memory.md) 用于核对持久指令与 auto memory 边界；具体 cursor sidecar 和 realpath 执行层属于本仓库实现。
+- 上游二进制：对 `/opt/homebrew/bin/claude` 执行 `strings` 检索 `lastSummarizedMessageId`、`collapseStore`、`cachedMCState` 未找到对应符号，不能据此推断上游的 cursor 或路径隔离实现。
+- 本仓库源码/测试：`src/services/SessionMemory/sessionMemoryUtils.ts`、`src/services/SessionMemory/sessionMemory.ts`、`src/memdir/memoryScan.ts`、`tests/sessionMemory.test.ts`、`tests/memoryPaths.test.ts`。
+
+**2026-11-18 执行层回归整改**：`tests/memory.test.ts` 新增真实文件、内部 symlink、文件 symlink 逃逸和目录 symlink 逃逸场景。RED 复现表明 `FsOperations` 契约只提供 `realpathSync`/`lstatSync`，而 validator 曾调用不存在的异步 `realpath`/`lstat`；无错误码异常被逐层吞掉后会退回原始路径，导致逃逸校验失效。实现仅改为调用契约内同步原语，保留 async API、 deepest-existing-ancestor 算法和失败关闭语义。回滚不得恢复为纯前缀检查或未知异步方法；若需撤回调用方，对应读写必须保持拒绝，且重跑上述对抗测试。
 
 ### Feature Gates 与 Disabled 机制
 

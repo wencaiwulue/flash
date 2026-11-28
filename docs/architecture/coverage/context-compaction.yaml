@@ -1,7 +1,7 @@
 schema_version: 1
 spec_id: context-compaction
 spec: ../../superpowers/specs/2026-11-12-context-compaction-design.md
-status: draft
+status: approved
 groups:
   - id: commands
     kind: source
@@ -61,7 +61,9 @@ groups:
   - id: compact-test
     kind: test
     section: 7
-    summary: 专门测试 - contextCollapse.test.ts/reactiveCompact.test.ts
+    summary: 专门测试 - contextCollapse.test.ts/reactiveCompact.test.ts/compactionSessionIsolation.test.ts/contextCompaction.test.ts
     files:
       - tests/contextCollapse.test.ts
       - tests/reactiveCompact.test.ts
+      - tests/compactionSessionIsolation.test.ts
+      - tests/contextCompaction.test.ts

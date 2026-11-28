@@ -38,7 +38,7 @@ specs:
     spec: docs/superpowers/specs/2026-11-12-context-compaction-design.md
     coverage: docs/architecture/coverage/context-compaction.yaml
     batch: 1
-    status: draft
+    status: approved
   - id: model-api
     spec: docs/superpowers/specs/2026-11-12-model-api-design.md
     coverage: docs/architecture/coverage/model-api.yaml
@@ -93,7 +93,7 @@ specs:
     spec: docs/superpowers/specs/2026-11-12-session-persistence-design.md
     coverage: docs/architecture/coverage/session-persistence.yaml
     batch: 2
-    status: draft
+    status: approved
   - id: shell-tools
     spec: docs/superpowers/specs/2026-11-12-shell-tools-design.md
     coverage: docs/architecture/coverage/shell-tools.yaml
@@ -108,7 +108,7 @@ specs:
     spec: docs/superpowers/specs/2026-11-12-auth-design.md
     coverage: docs/architecture/coverage/auth.yaml
     batch: 3
-    status: draft
+    status: approved
   - id: commit-attribution
     spec: docs/superpowers/specs/2026-11-12-commit-attribution-design.md
     coverage: docs/architecture/coverage/commit-attribution.yaml
@@ -123,7 +123,7 @@ specs:
     spec: docs/superpowers/specs/2026-11-12-memory-design.md
     coverage: docs/architecture/coverage/memory.yaml
     batch: 3
-    status: draft
+    status: approved
   - id: notifications
     spec: docs/superpowers/specs/2026-11-12-notifications-design.md
     coverage: docs/architecture/coverage/notifications.yaml
@@ -153,12 +153,12 @@ specs:
     spec: docs/superpowers/specs/2026-11-12-skills-design.md
     coverage: docs/architecture/coverage/skills.yaml
     batch: 3
-    status: draft
+    status: approved
   - id: app-state
     spec: docs/superpowers/specs/2026-11-12-app-state-design.md
     coverage: docs/architecture/coverage/app-state.yaml
     batch: 4
-    status: draft
+    status: approved
   - id: assistant-ui
     spec: docs/superpowers/specs/2026-11-12-assistant-ui-design.md
     coverage: docs/architecture/coverage/assistant-ui.yaml
@@ -243,7 +243,7 @@ specs:
     spec: docs/superpowers/specs/2026-11-12-workflow-design.md
     coverage: docs/architecture/coverage/workflow.yaml
     batch: 5
-    status: draft
+    status: approved
   - id: daemon-background
     spec: docs/superpowers/specs/2026-11-12-daemon-background-design.md
     coverage: docs/architecture/coverage/daemon-background.yaml
@@ -343,7 +343,7 @@ specs:
     spec: docs/superpowers/specs/2026-11-12-test-validation-design.md
     coverage: docs/architecture/coverage/test-validation.yaml
     batch: 7
-    status: draft
+    status: approved
   - id: web-tools
     spec: docs/superpowers/specs/2026-11-12-web-tools-design.md
     coverage: docs/architecture/coverage/web-tools.yaml

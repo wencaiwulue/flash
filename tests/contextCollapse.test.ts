@@ -95,6 +95,8 @@ describe('context-collapse execution', () => {
       tokenCount: () => 100,
       contextWindow: () => 100,
       summarize: async () => '',
+      recordCommit: async () => {},
+      recordSnapshot: async () => {},
     })
     resetContextCollapse()
     const original = messages()

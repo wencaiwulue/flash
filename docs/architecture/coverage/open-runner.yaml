@@ -48,6 +48,7 @@ groups:
     files:
       - tests/openRunnerProtocol.test.ts
       - tests/openRunnerWorker.test.ts
+      - tests/protocolContracts.test.ts
   - id: backends-tests
     kind: test
     section: 7

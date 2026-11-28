@@ -1,7 +1,7 @@
 schema_version: 1
 spec_id: skills
 spec: ../../superpowers/specs/2026-11-12-skills-design.md
-status: draft
+status: approved
 groups:
   - id: commands
     kind: source
@@ -13,9 +13,10 @@ groups:
   - id: skills-load
     kind: source
     section: 4
-    summary: 技能加载器，从目录加载技能、frontmatter解析、动态发现
+    summary: 技能加载器，从目录加载技能、frontmatter解析、动态发现、生命周期管理
     files:
       - src/skills/loadSkillsDir.ts
+      - src/skills/skillLifecycle.ts
   - id: skills-bundled
     kind: source
     section: 4
@@ -134,6 +135,7 @@ groups:
     files:
       - tests/skillSearch.test.ts
       - tests/remoteSkills.test.ts
+      - tests/skillsLifecycle.test.ts
   - id: skills-bundled-verify
     kind: source
     section: 4

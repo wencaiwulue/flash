@@ -75,6 +75,8 @@ export type {
 import type { SpinnerMode } from './components/Spinner.js'
 import type { QuerySource } from './constants/querySource.js'
 import type { SDKStatus } from './entrypoints/agentSdkTypes.js'
+import type { ContextCollapseSession } from './services/contextCollapse/index.js'
+import type { MicrocompactSession } from './services/compact/microCompact.js'
 import type { AppState } from './state/AppState.js'
 import type {
   HookProgress,
@@ -290,6 +292,16 @@ export type ToolUseContext = {
    * resumeAgentBackground threads one reconstructed from sidechain records.
    */
   contentReplacementState?: ContentReplacementState
+  /**
+   * Session-scoped context collapse state. Isolated per QueryEngine instance.
+   * When present, query.ts uses this instead of the legacy singleton.
+   */
+  contextCollapseSession?: ContextCollapseSession
+  /**
+   * Session-scoped microcompact state. Isolated per QueryEngine instance.
+   * When present, query.ts uses this instead of the legacy singleton.
+   */
+  microcompactSession?: MicrocompactSession
   /**
    * Parent's rendered system prompt bytes, frozen at turn start.
    * Used by fork subagents to share the parent's prompt cache — re-calling

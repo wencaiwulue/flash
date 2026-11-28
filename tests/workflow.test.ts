@@ -204,6 +204,107 @@ describe('WorkflowExecution', () => {
     expect((await execution.done).status).toBe('killed')
     expect(execution.kill()).toBe(false)
   })
+
+  test('retry resets only dependency-propagated skips with custom messages', async () => {
+    const steps = [
+      { id: 'a', prompt: 'A', dependsOn: [], continueOnError: false },
+      { id: 'b', prompt: 'B', dependsOn: ['a'], continueOnError: false },
+      { id: 'c', prompt: 'C', dependsOn: ['b'], continueOnError: false },
+      { id: 'd', prompt: 'D', dependsOn: [], continueOnError: false }, // Keep workflow running
+    ]
+    const execution = new WorkflowExecution(
+      workflow({ steps }),
+      '',
+      async (step) => {
+        if (step.id === 'a') throw new Error('fail a')
+        return 'ok'
+      },
+    )
+    execution.start()
+    let result = await execution.done
+    expect(result.status).toBe('failed')
+    expect(result.agents.a?.status).toBe('failed')
+    expect(result.agents.b?.status).toBe('skipped')
+    expect(result.agents.b?.skipCause).toBe('dependency')
+    expect(result.agents.c?.status).toBe('skipped')
+    expect(result.agents.c?.skipCause).toBe('dependency')
+
+    // Create a deferred for step d so we can keep the workflow running
+    const deferredD = deferred<string>()
+    const execution2 = new WorkflowExecution(
+      workflow({ steps }),
+      '',
+      async (step) => {
+        if (step.id === 'a') throw new Error('fail a')
+        if (step.id === 'd') return deferredD.promise
+        return 'ok'
+      },
+    )
+    execution2.start()
+    await sleep(10) // Wait for a to fail and propagate
+    // Now skip c while workflow is still running (d is pending)
+    expect(execution2.skip('c')).toBe(true)
+    const stateAfterSkip = execution2.getState()
+    expect(stateAfterSkip.agents.c?.status).toBe('skipped')
+    expect(stateAfterSkip.agents.c?.skipCause).toBe('user')
+
+    // Retry step a
+    expect(execution2.retry('a')).toBe(true)
+    const stateAfterRetry = execution2.getState()
+    // Step b should be reset (dependency-propagated skip)
+    expect(stateAfterRetry.agents.b?.status).toBe('pending')
+    // Step c should remain skipped (user-initiated)
+    expect(stateAfterRetry.agents.c?.status).toBe('skipped')
+    expect(stateAfterRetry.agents.c?.skipCause).toBe('user')
+
+    // Clean up: let d complete
+    deferredD.resolve('done')
+    await execution2.done
+  })
+
+  test('skipCause is set correctly for manual and dependency skips', async () => {
+    const steps = [
+      { id: 'a', prompt: 'A', dependsOn: [], continueOnError: false },
+      { id: 'b', prompt: 'B', dependsOn: ['a'], continueOnError: false },
+    ]
+    let aCompleted = false
+    const execution = new WorkflowExecution(
+      workflow({ steps }),
+      '',
+      async (step) => {
+        if (step.id === 'a') {
+          throw new Error('fail a')
+        }
+        return 'ok'
+      },
+    )
+    execution.start()
+    const result = await execution.done
+    // a is failed, b is skipped with skipCause: 'dependency'
+    expect(result.agents.a?.status).toBe('failed')
+    expect(result.agents.b?.status).toBe('skipped')
+    expect(result.agents.b?.skipCause).toBe('dependency')
+  })
+
+  test('skip() sets skipCause: user', async () => {
+    const steps = [{ id: 'a', prompt: 'A', dependsOn: [], continueOnError: false }]
+    const deferredA = deferred<string>()
+    const execution = new WorkflowExecution(
+      workflow({ steps }),
+      '',
+      async () => deferredA.promise,
+    )
+    execution.start()
+    await sleep(0)
+    // Skip a while it's pending
+    expect(execution.skip('a')).toBe(true)
+    const state = execution.getState()
+    expect(state.agents.a?.status).toBe('skipped')
+    expect(state.agents.a?.skipCause).toBe('user')
+    // Clean up
+    deferredA.resolve('done')
+    await execution.done
+  })
 })
 
 describe('workflow discovery and local task state', () => {

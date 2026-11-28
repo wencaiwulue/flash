@@ -1,7 +1,7 @@
 schema_version: 1
 spec_id: session-persistence
 spec: ../../superpowers/specs/2026-11-12-session-persistence-design.md
-status: draft
+status: approved
 groups:
   - id: additional-files-source
     kind: source
@@ -65,3 +65,5 @@ groups:
     summary: 会话持久化核心测试
     files:
       - tests/sessionChainRecovery.test.ts
+      - tests/sessionConcurrency.test.ts
+      - tests/fixtures/concurrent-worker.ts

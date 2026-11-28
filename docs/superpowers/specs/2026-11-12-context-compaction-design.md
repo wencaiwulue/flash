@@ -3,7 +3,7 @@ id: context-compaction
 batch: 1
 title: Context Compaction 历史压缩与溢出恢复设计
 date: 2026-11-12
-status: draft
+status: approved
 ---
 
 # Context Compaction 历史压缩与溢出恢复设计
@@ -35,6 +35,24 @@ Progress消息存在于mutableMessages中用于UI，但不在transcript链中持
 - feature gates分多个层级：build-time (`feature()`)、runtime (`getFeatureValue()`)、环境变量 (`CLAUDE_*`)、用户配置
 - context collapse使用模块级全局状态（`collapseStore`），在forked agents中需避免污染主状态
 - 压缩API调用本身也可能触发`prompt too long`，需要重试策略
+
+### 会话级状态所有权（当前实现）
+
+**QueryEngine 注入取代生产单例。** 每个 QueryEngine 会话分别创建 `ContextCollapseSession` 和 `MicrocompactSession`，并通过 `ToolUseContext.contextCollapseSession` / `microcompactSession` 传入 `query.ts`。压缩入口优先使用这些会话实例；`legacySession` 仅保留给未注入上下文的直接调用以维持兼容，不再作为 QueryEngine 主路径的状态来源。forked context 默认使用独立实例，`restoreFromEntries()` 按 `sessionId` 过滤恢复记录。
+
+| 对象 | 所有者与生命周期 | 共享/隔离 | 重置/回滚 | 证据 |
+|---|---|---|---|---|
+| `ContextCollapseSession` | QueryEngine 创建，覆盖 staged/commit/generation/project/recover | 不同 QueryEngine/fork 不共享 committed、staged 或 activeSpawn | reset 仅影响当前会话；reset-during-persistence 丢弃当前 generation 的迟到结果 | `src/QueryEngine.ts`、`src/query.ts`、`tests/compactionSessionIsolation.test.ts` |
+| `MicrocompactSession` | QueryEngine 创建，管理工具注册、cache edits 与 pending 状态 | 不同会话不共享 cachedMCState 或 pendingCacheEdits | reset/dispose 仅清理当前会话，旧直接调用回退 legacySession | `src/Tool.ts`、`src/query.ts`、`tests/compactionSessionIsolation.test.ts` |
+| `SessionMemoryCursorManager` | 每个会话目录的原子 cursor sidecar | 仅当前 memory 目录共享；重启恢复，不跨目录共享 | 文件缺失或损坏时重新初始化；引用文件删除时 cursor 失效 | `src/services/SessionMemory/sessionMemoryUtils.ts`、`tests/sessionMemory.test.ts` |
+| `MemoryPathValidator` | 权限快速候选检查之后的执行层 realpath 校验 | 合法内部 symlink 允许，逃逸到 memory/team 根目录之外拒绝 | 读取、写入、setup 和扫描任一层失败都不得放行 | `src/services/SessionMemory/sessionMemoryUtils.ts`、`src/memdir/memoryScan.ts`、`tests/memoryPaths.test.ts` |
+
+**恢复与回滚语义**：sidecar 使用临时文件加 rename 原子替换；重启时只恢复当前 sessionId。缺少 sidecar 时从空 cursor 重新提取，损坏时回退到安全重建而非相信旧 cursor。若新会话隔离出现回归，回滚仅撤销状态注入改动，保留既有压缩阈值、staged/commit、PTL、恢复和取消语义，不改写历史发现。
+
+**三层证据**：
+- 官方文档：[Context window](https://code.claude.com/docs/en/context-window.md) 与 [Memory](https://code.claude.com/docs/en/memory.md) 用于核对上下文和记忆边界；会话级 cursor 属于本仓库实现细节，没有对应的公开协议承诺。
+- 上游二进制：对 `/opt/homebrew/bin/claude` 执行 `strings` 检索 `collapseStore`、`cachedMCState`、`lastSummarizedMessageId` 未找到对应符号；只能发现 `tengu_time_based_microcompact`、`compact_boundary` 等通用事件，不能据此声称上游采用相同会话隔离实现。
+- 本仓库源码/测试：`src/QueryEngine.ts`、`src/query.ts`、`src/Tool.ts`、`src/services/SessionMemory/sessionMemoryUtils.ts`、`tests/compactionSessionIsolation.test.ts`、`tests/sessionMemory.test.ts`、`tests/memoryPaths.test.ts`。
 
 ### Feature Gates 与 Disabled 机制
 - **build-time gates**: `feature('CACHED_MICROCOMPACT')`、`feature('CONTEXT_COLLAPSE')`、`feature('REACTIVE_COMPACT')`、`feature('PROMPT_CACHE_BREAK_DETECTION')`、`feature('KAIROS')`
