@@ -25,11 +25,11 @@ SDK 调用方需要的不只是发送一个 prompt。可靠的查询还包括异
 
 | 决策 | 实际机制 | 为什么采用 | 备选方案及不采用原因 | 代价 | 证据 |
 |---|---|---|---|---|---|
-| classic options 直挂 query | `createSdkQuery` 消费 hooks/env/continue/resume/forkSession；新内部 `sdkQuerySession.ts` 只解析 session | 公开类型已有 classic 字段，缺的是运行时接线；session helper 复用 loader/storage | 用 unstable_v2：不是同一 API；复制 CLI resume：容易与 DAG/compact 格式漂移 | 需要 dist 集成测试覆盖进程全局资源 | 官方 sessions/streaming 文档；本机上游 2.1.212 strings 的 fork/resume 参数映射；`runtimeTypes.ts:241-473`、`sdkQuery.ts` 当前未消费这些字段 |
+| classic options 直挂 query | `createSdkQuery` 消费 hooks/env/continue/resume/forkSession；新内部 `sdkQuerySession.ts` 为 fresh 每次分配新 UUID 并 switchSession，继续/恢复复用 loader/storage；continue+resume 互斥，任何 resumeSessionAt 在副作用前明确拒绝 | 公开类型已有 classic 字段，缺运行时接线；fresh 不得共享进程初始 session ID；不支持的 cutoff 不得静默忽略 | 用 unstable_v2：不是同一 API；沿用初始 ID：不同 fresh query 写同一 transcript；复制 CLI resume：DAG/compact 易漂移 | 需要 dist 集成测试覆盖 fresh ID、无副作用参数错误和进程全局资源 | 官方 sessions/streaming 文档；本机上游 2.1.212 strings 的 fork/resume 参数映射；`runtimeTypes.ts:241-473`、`state.ts:439-483`、`sdkQuery.ts` 当前缺口 |
 | interrupt 按轮、外部 abort 按 query | 每轮子 AbortController 链接外部 signal；末次错误 result 后抛出 | interrupt 后 streaming input 可继续，外部取消仍能终止整个 query | 复用单一 controller：后续轮永久 aborted；所有错误只 yield：丢失末次异常 | channel 需提供关闭且排空判断 | 官方 streaming-vs-single-mode/agent-loop；binary 每轮 controller 和 `error_max_turns`/`error_during_execution`；`sdkQuery.ts:335,532-595` |
-| hook 注册按身份释放 | `registerHookCallbacks` 返回捕获 matcher 引用的幂等 lease；cleanup 仅移除本次注册 | 当前全局追加/全量 clear 会泄漏或误删其他所有者 | 按事件清空：同事件兄弟被误删；不清理：重复触发 | 需覆盖 setup 失败与重复 return | 官方 hooks 文档证明 options.hooks 和 matcher；binary 只证明注册符号/执行路径，不证明 unregister；`state.ts:1423-1469` |
+| hook 注册按 occurrence 释放 | 每次注册分配独立 occurrence，`registerHookCallbacks` 返回捕获这些追加记录的幂等 lease；cleanup 仅移除本次 occurrence，不仅按调用方 matcher 引用过滤 | 当前全局追加/全量 clear 会泄漏或误删其他所有者；不同 owner 还可能共享同一 matcher 对象 | 按事件或原始引用清空：同事件/共享 matcher 兄弟被误删；不清理：重复触发 | 需覆盖 setup 失败、重复 return 和 shared-matcher 回归 | 官方 hooks 文档证明 options.hooks 和 matcher；binary 只证明注册符号/执行路径，不证明 unregister；`state.ts:1423-1469` |
 | MCP form elicitation 复用 hook 顺序 | in-process client 声明 capability；Elicitation hooks → onElicitation → 默认 decline → ElicitationResult hooks | 与上游未处理自动 decline 和本仓库现有 hook handler 一致 | URL 模式：分支和 UI 不同，非本阶段；真实 MCP：违背离线约束 | 需补公开类型及 mock server 场景 | 官方 TypeScript/MCP/custom-tools；binary setMcpServers/onElicitation 片段；`elicitationHandler.ts:68-170`、`sdkQuery.ts:189-245` |
-| token usage 走真实 API 路径 | `getContextUsage()` 经 collectContextData/analyzeContextUsage 调 mock count_tokens | 证明生产调用链，避免空 VCR fixture | 本地估算代替：不能证明 API 接线；真实网络：违反离线 | 多分类可能多请求，断言需允许 | 官方 TypeScript getContextUsage full 说明；`sdkControl.ts:26-46`；16 个 token-count fixture 均为 null 且无文件名消费者 |
+| token usage 走真实 API 路径且 env lease 活跃 | 手工 query.next() 暂停在 success result 的 yield 点，未进入 finally；确认 base URL 仍为本地 mock 后调 `getContextUsage()`，随后 return/close 才恢复 env | 证明生产调用链并避免 cleanup 后恢复真实地址再发 count_tokens | 完整消费后调用：env 已恢复，可能真实联网；for-await break：隐式 return；本地估算/真实 API：不满足契约 | 多分类可能多请求；测试必须手工迭代并在 finally 关闭 | 官方 TypeScript getContextUsage full 说明；`sdkQuery.ts:594-621,746-765` 的 yield/cleanup；`sdkControl.ts:26-46`；16 个 null fixture 无文件名消费者 |
 
 ### 公开 API 分层设计
 
@@ -135,7 +135,7 @@ SDK 调用方需要的不只是发送一个 prompt。可靠的查询还包括异
 - 不重新实现模型传输协议，不把 remote-control 当作 query 默认实现
 - 不把 CLI UI 状态复制到 SDK，不把 session 恢复等同于文件系统回滚
 - 不用全局 checkpoint 配置共享不同 query 的快照
-- 本阶段不删除旧 v2 导出、不实现 resumeSessionAt/URL elicitation，不增加真实网络或进程 MCP 和额外并发隔离
+- 本阶段不删除旧 v2 导出、不实现 resumeSessionAt 截断（提供该字段时明确拒绝）或 URL elicitation，不增加真实网络或进程 MCP 和额外并发隔离
 
 ## 4. 架构、模块与数据流
 
@@ -165,8 +165,8 @@ SDK caller
 | 中断 | 每轮 controller 链接外部 signal | interrupt 仅结束当前轮；外部 abort/close 终止 query 并清理 |
 | Hooks | options.hooks 注册到共享 registry，按 matcher 执行 | setup/结束释放本次身份 lease；释放 A 不影响 B/plugin |
 | MCP | in-memory client/server 连接、发现、调用 | 失败状态/errors 可见；form elicitation 未处理默认 decline；close 两端 |
-| Resume/fork | loader 恢复 initialMessages 和 session ID | 不存在/非法 ID 明确失败；fork 写新 ID 且不改源 transcript |
-| Token usage | 当前 messages/tools → collectContextData → count_tokens | API 错误向调用方传播，不以 null fixture 伪装结果 |
+| Fresh/resume/fork | fresh 每次 switch 到新 UUID；loader 恢复 initialMessages/session ID；fork 复制新 ID | continue+resume、任何 resumeSessionAt、非法/不存在 ID 在副作用前明确失败；fork 不改源 transcript |
+| Token usage | 手工 next 暂停在 result yield 且 env 仍为 mock → getContextUsage → count_tokens → return/close | 禁止 cleanup 后调用；API 错误向调用方传播，不以 null fixture 伪装结果 |
 
 ### 核心对象生命周期七列表
 
@@ -175,9 +175,9 @@ SDK caller
 | Query/channel | query 工厂创建并接收 string/AsyncIterable | FIFO 输入、逐轮输出 | session options 提供历史 | interrupt 当前轮；return/close 全 query | cleanupPromise 仅一次 | 输入错误与末次错误 result 向调用方传播 |
 | AbortController | 外部 controller + 每轮子 controller | 传入模型/工具/hooks/MCP | 新轮新建子 controller | interrupt 子级；外部 abort 父级 | 移除 signal listener | 外部已 abort 不可按轮复活 |
 | Persistence lease | 首次初始化按 persistSession 获取 | 同值引用计数 | resume 后沿用同一存储 | 随 query 结束释放 | 最后用户恢复旧值 | 不同值并发明确报错；release 幂等 |
-| Hook lease | 注册时捕获实际 matcher 引用 | 共享 registry 执行 callback | 不适用 | setup 失败或 query 清理触发 | 按身份移除且幂等 | 不误删其他 owner；hook 错误按事件契约处理 |
+| Hook lease | 每次注册分配独立 occurrence 并捕获追加记录 | 共享 registry 执行 callback；允许共享输入 matcher | 不适用 | setup 失败或 query 清理触发 | 按 occurrence 移除且幂等 | 共享 matcher 的其他 owner 不受影响；hook 错误按事件契约处理 |
 | MCP connection | options/setMcpServers 建立 | list tools、call、elicitation | 显式替换新实例恢复 | client/server 成对 close | cleanupClients 全部执行 | 连接失败进入状态/errors；未处理 form 默认 decline |
-| Session transcript | 新 session 或 loader 读取 | 追加 user/assistant/system | resume 保 ID；fork 复制新 ID | abort 后可从已写边界恢复 | flushSessionStorage | 非法/不存在明确失败；fork 源不变 |
+| Session transcript | fresh 每次分配新 UUID 并 switchSession，或由 loader 读取 | 按各自 ID 追加 user/assistant/system | resume 保 ID；fork 复制新 ID | abort 后可从已写边界恢复 | flushSessionStorage | continue+resume/任何 resumeSessionAt/非法或不存在 ID 均在副作用前失败；fork 源不变 |
 | FileCheckpointing | 每 query 创建 | 按 user UUID 等快照/回滚 | fork 不复制文件快照 | 随 query 回收 | pending map 不持久化 | dry run 不写；未知 ID/未启用返回错误 |
 
 ### 公开 API 层级
@@ -1086,8 +1086,10 @@ export function emitTaskTerminatedSdk(taskId, status, opts): void
 
 - 错误 result 必须先 yield，使调用方取得 `session_id`、errors 和 usage；single-shot 或输入关闭且排空的末轮随后抛出。
 - streaming input 仍有后续消息时，较早轮错误不终止整个 query；外部 abort 与按轮 interrupt 不得混为同一生命周期。
-- options.env 只恢复本次触碰的键；options.hooks 只释放本次注册；MCP client/server、cleanup registry、session flush 和 persistence lease 都在同一幂等出口收尾。
+- options.env 只恢复本次触碰的键；options.hooks 只释放本次 per-registration occurrence，即使不同 owner 共享 matcher 输入对象也不能互删；MCP client/server、cleanup registry、session flush 和 persistence lease 都在同一幂等出口收尾。
+- fresh query 每次分配新 session ID；continue+resume 互斥，任何 resumeSessionAt（包括 resume+resumeSessionAt）都在状态、文件和网络副作用前明确报不支持。
 - form elicitation 的顺序为 Elicitation hooks → onElicitation → 默认 decline → ElicitationResult hooks；URL 模式不在本阶段。
+- getContextUsage 只在手工暂停于 result yield、env lease 仍指向本地 mock 时调用；return/close 后才恢复 env，cleanup 后禁止再发 count_tokens。
 
 ### Query 清理保证
 
@@ -1139,10 +1141,10 @@ export function emitTaskTerminatedSdk(taskId, status, opts): void
 
 - `tests/integration/sdk/` 的 dist-import、query-lifecycle、hooks、mcp、sessions、token-count 六文件全部实际运行，无新增 skip。
 - query 测试证明消息顺序、canUseTool allow/deny/updatedInput、env 恢复、末次错误 result+throw、按轮 interrupt 与外部 abort。
-- hooks 测试证明 options.hooks 和 matcher 生效，A 的幂等释放不影响 B；MCP 测试证明发现、调用、显式替换恢复及 form elicitation。
-- classic sessions 测试证明 continue/resume 历史进入下一次真实模型请求，fork 新 ID 且源 transcript 不变，abort 后可 resume；不得以 v2 调用替代。
-- token-count 通过真实 `getContextUsage()` 和 mock `/v1/messages/count_tokens` 验证；16 个 null fixture 仅在再次确认无消费者后删除。
-- config-acceptance 的 Elicitation/ElicitationResult 只有真实场景通过后才改为 active。
+- hooks 测试证明 options.hooks 和 matcher 生效；A/B 共享同一 matcher 对象时，A 的 occurrence 幂等释放不影响 B 恰好执行一次；MCP 测试证明发现、调用、显式替换恢复及 form elicitation。
+- classic sessions 测试证明两个 fresh query ID 不同、continue/resume 历史进入下一次真实模型请求、fork 新 ID 且源 transcript 不变、abort 后可 resume；continue+resume 互斥，任何 resumeSessionAt 均在副作用前明确拒绝；不得以 v2 调用替代。
+- token-count 在 result yield 暂停点、env lease 活跃时通过真实 `getContextUsage()` 和本地 mock `/v1/messages/count_tokens` 验证，return/close 后才恢复 env；16 个 null fixture 仅在再次确认无消费者后删除。
+- config-acceptance 先扩展并测试 `engine/entries.ts` 的 `mcp_elicitation` trigger parser，Elicitation/ElicitationResult 只有真实场景通过后才改为 active。
 
 ## 7. 代码与测试证据
 
@@ -1151,7 +1153,7 @@ export function emitTaskTerminatedSdk(taskId, status, opts): void
 | 状态 | 所有者 | 访问边界 | 持久化 |
 |---|---|---|---|
 | `activePersistenceLease` | `sdkQuery.ts` | 模块级私有 | 否 |
-| `registeredHooks` 中的 query 注册项（目标） | 每次注册 lease | 按 matcher 引用归属；共享 registry 只执行 | 否 |
+| `registeredHooks` 中的 query 注册项（目标） | 每次注册 occurrence lease | 按追加 occurrence 归属；允许不同 owner 共享输入 matcher | 否 |
 | options.env 旧值 lease（目标） | 每个 Query 实例 | 仅本次触碰的键 | 否 |
 | 当前轮 AbortController（目标） | 每个 Query 的当前轮 | 链接 query 级外部 signal | 否 |
 | `UserMessageChannel.queue` | 每个 Query 实例 | Query 内部 | 否 |
@@ -1220,7 +1222,7 @@ export function emitTaskTerminatedSdk(taskId, status, opts): void
 | 优先级 | 触发场景与证据 | 建议方向 | 回归风险 | 验收方式 | 工作量 | 置信度 |
 |---|---|---|---|---|---|---|
 | P1 | classic Options 中的 hooks/continue/resume/forkSession 未被 createSdkQuery 消费，且无 dist SDK 集成目录 | 按 2026-11-28 配套 plan 分阶段红测，补 hook 身份 lease、按轮 abort、session resolver 和真实 token usage | 中 —— 涉及进程全局状态和所有退出路径 | 六个 dist 测试文件、config elicitation active、全套件/typecheck/build/design gate 退出 0 | L | 待运行验证 |
-| P2 | 当前设计要求调用 `interrupt()` 后仍需调用 `return()` 完成清理，但这容易被误用。证据：`src/utils/sdkQuery.ts` 中 `interrupt()` 与 `return()` 的分离实现 | 明确 `interrupt()` 与 `return()` 的组合契约；在 `interrupt()` 内部启动清理但仍允许 `return()` 安全调用 | 低 —— 可保持向后兼容 | 测试调用 `interrupt()` 后调用 `return()` 是安全的，且清理只执行一次 | S | 设计推断 |
+| P2 | 当前实现的 interrupt 共享 AbortController；若 interrupt 立即清理 MCP/hooks/env/persistence，后续 streaming turn 将无法继续。证据：官方 streaming-vs-single-mode 的 interrupt 后继续语义及 `sdkQuery.ts` 清理路径 | interrupt 只结束当前轮，并为后续轮保留全部 query 资源；仅在外部 abort、输入最终结束、return/close 时统一幂等清理 | 中 —— 必须区分按轮终止与 query 终止，避免资源泄漏或提前释放 | 测试 interrupt 后第二轮成功，且最终 close 后各类资源只清一次 | M | 已证实 |
 | P2 | `UserMessageChannel` 和 MCP 连接当前没有超时配置，可能导致查询挂起。证据：`src/utils/sdkQuery.ts` 中 `UserMessageChannel` 和 MCP 客户端的实现 | 增加可配置的超时机制，对用户输入等待、模型响应、MCP 执行等分别设置超时 | 中 —— 超时可能中断正常的长耗时操作 | 测试超时能正确触发并清理资源 | M | 设计推断 |
 | P2 | 当前仅限制 `persistSession` 不同的并发，建议实现真正的交错持久化支持，或提供更明确的错误恢复路径。证据：`src/utils/sdkQuery.ts` 中 `acquireSessionPersistence()` 的检查 | 改进并发 query 限制：或实现真正的交错持久化支持，或提供更明确的错误恢复路径和冲突避免机制 | 中 —— 需谨慎处理全局状态 | 测试不同 `persistSession` 值的并发 query 有更清晰的错误或支持交错执行 | M | 设计推断 |
 | P2 | 当前 `#pendingSnapshots` 仅存在于内存中，如果在快照创建完成前进程崩溃，`rewindFiles()` 无法等待。证据：`src/utils/fileCheckpointing.ts` 中 `#pendingSnapshots` 的实现 | 将 pending 状态也写入磁盘，使 `rewindFiles()` 能在重启后等待或恢复未完成的快照 | 低 —— 新增功能，不改变现有行为 | 测试进程在快照创建中崩溃后重启，`rewindFiles()` 能正确处理 | M | 设计推断 |

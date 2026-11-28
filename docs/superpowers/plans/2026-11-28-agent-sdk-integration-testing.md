@@ -212,8 +212,8 @@ bun test tests/sdkQueryLifecycle.test.ts tests/sdkRewind.test.ts
 - Modify: `src/utils/sdkQuery.ts`
 
 **Interfaces:**
-- `registerHookCallbacks(hooks)` 可返回幂等 `release(): void`；既有忽略返回值的调用方保持兼容。
-- release 只删除本次实际追加的 matcher 对象（引用身份），不按事件名全清，不删除 plugin/native 或其他 query 的注册。
+- `registerHookCallbacks(hooks)` 为每次调用中的每个追加项分配独立 registration occurrence，并返回幂等 `release(): void`；既有忽略返回值的调用方保持兼容。
+- registry 必须能区分“同一调用方 matcher 对象被 A/B 分别注册”的两个 occurrence；release 只删除本次追加的 occurrence，不得只按原始对象引用过滤，不按事件名全清，不删除 plugin/native 或其他 query 的注册。实现可为每项建立独立注册记录/包装并保留原 callbacks；不得改变 hook 输入输出。
 
 - [ ] **Step 1：写 options.hooks 公开行为红测**
 
@@ -223,13 +223,13 @@ Run `bun run test:integration tests/integration/sdk/hooks.test.ts`，Expected re
 
 - [ ] **Step 2：写 owner/幂等红测**
 
-在同一 harness 中初始化 query A 和 B 的 hooks，但不并发执行模型。关闭 A 两次后运行 B：A 回调不再触发，B 恰好触发一次。再验证正常 return、末次错误和 setup 失败均释放自身，预存的其他 matcher 不被清除。
+在同一 harness 中初始化 query A 和 B 的 hooks，但不并发执行模型。A/B 的 options 必须复用**同一个 matcher 对象和同一个 hooks 数组**；关闭 A 两次后运行 B：A 的 occurrence 被释放，共享 callback 仍通过 B 恰好触发一次。引用过滤实现会在关闭 A 时把 B 也删掉，因此该用例必须对引用过滤方案保持红。再验证正常 return、末次错误和 setup 失败均只释放自身 occurrence，预存的其他 matcher 不被清除。
 
-Run 同一文件。该用例证明 ownership，不据此宣称解决其他全局状态的并发隔离。
+Run 同一文件。该用例证明 occurrence ownership，不据此宣称解决其他全局状态的并发隔离。
 
 - [ ] **Step 3：实现注册 lease 和 query 接线**
 
-在 state 中记录本次追加项的 `{event, matcher}` 引用；release 遍历当前 registry，仅过滤这些引用，空事件删除，全部为空时恢复 null。重复 release 直接返回。`createSdkQuery` 初始化时注册 options.hooks，setup 失败与 cleanup 都调用同一 release。
+在 state 中为每个追加项创建独立 occurrence 记录（例如 registry 存本次注册包装，lease 捕获包装引用），保留事件、matcher、callbacks 和原有字段；release 仅过滤这些 occurrence，空事件删除，全部为空时恢复 null。重复 release 直接返回。不得把“调用方传入的 shared matcher 原始引用”当作唯一键。`createSdkQuery` 初始化时注册 options.hooks，setup 失败与 cleanup 都调用同一 release。
 
 Run:
 ```bash
@@ -250,7 +250,9 @@ coverage 只登记实际新建 hooks 测试；spec 保持 draft，实际结果�
 - Modify: `src/utils/sdkQuery.ts`
 - Modify: `src/entrypoints/sdk/runtimeTypes.ts`
 - Modify: `tests/integration/config-acceptance/fixtures/hooks.yaml`
-- Modify: `tests/integration/config-acceptance/engine/scenarios.ts` 及必要的场景测试
+- Modify: `tests/integration/config-acceptance/engine/scenarios.ts`
+- Modify: `tests/integration/config-acceptance/engine/entries.ts`（`KNOWN_TRIGGER_PREFIX`）
+- Modify: `tests/integration/config-acceptance/engine/engine.test.ts`（parser 与场景回归）
 
 **Interfaces:**
 - `Options.onElicitation?: (request: ElicitRequest, options: { signal: AbortSignal }) => Promise<ElicitResult>` 使用 MCP SDK 的实际类型名；以 typecheck 为准，不自行造同构类型。
@@ -288,16 +290,19 @@ bun run test:integration tests/integration/sdk/mcp.test.ts tests/integration/sdk
 bun run typecheck
 ```
 
-- [ ] **Step 5：点亮 config-acceptance 两个事件**
+- [ ] **Step 5：先扩 parser，再点亮 config-acceptance 两个事件**
 
-在 `scenarios.ts` 新增 `mcp_elicitation` 场景：复用 fixture 写入的 settings hooks、dist classic query 和同一 in-process mock MCP，不启动真实进程/网络 MCP。先让场景以 active 断言运行并保留失败，再把 fixtures 的 Elicitation/ElicitationResult 改为 `status: active`、`trigger: mcp_elicitation`；注释保留“原 blocked-by-prereq:mcp-elicit-server，子项目 3 落地后点亮”的历史边界。
+先在 `engine/engine.test.ts` 写红测：包含 `trigger: mcp_elicitation` 的条目必须经 `loadHookEntries()` 保留该 trigger；现有 `bogus_trigger` 仍必须抛出含 entry id 的错误。当前 `engine/entries.ts` 的 `KNOWN_TRIGGER_PREFIX` 不含该值，测试应先失败。随后仅把 `mcp_elicitation` 加入该 allowlist，不为绕过 parser 改成 `print_turn`。
+
+再在 `scenarios.ts` 新增同名场景：复用 fixture 写入的 settings hooks、dist classic query 和同一 in-process mock MCP，不启动真实进程/网络 MCP。先让场景以 active 断言运行并保留失败，再把 fixtures 的 Elicitation/ElicitationResult 改为 `status: active`、`trigger: mcp_elicitation`；注释保留“原 blocked-by-prereq:mcp-elicit-server，子项目 3 落地后点亮”的历史边界。
 
 Run:
 ```bash
-bun run test:integration tests/integration/config-acceptance/hooks-matrix.test.ts tests/integration/config-acceptance/engine/engine.test.ts
+bun run test:integration tests/integration/config-acceptance/engine/engine.test.ts
+bun run test:integration tests/integration/config-acceptance/hooks-matrix.test.ts
 bun run test:integration --suite=config-acceptance
 ```
-Expected：两个事件真实生成标记并有结果断言，不再输出对应 prereq skip；其余既有 blocked 项保持原状。
+Expected：parser 接受新 trigger 且仍拒绝未知值；两个事件真实生成标记并有结果断言，不再输出对应 prereq skip；其余既有 blocked 项保持原状。
 
 - [ ] **Step 6：更新 coverage 并提交**
 
@@ -314,18 +319,23 @@ Expected：两个事件真实生成标记并有结果断言，不再输出对应
 - Modify: `docs/architecture/coverage/sdk-query-sessions.yaml`
 
 **Interfaces:**
-- 内部 resolver 输入 classic options 与 cwd，输出 `session?: { id, projectDir }`、`initialMessages?: Message[] | Promise<Message[]>`。
+- 内部 resolver 输入 classic options 与 cwd，输出 `session: { id, projectDir }`、可选 `initialMessages`。fresh 每次生成新 UUID 并经现有 `switchSession` 设置；不得沿用进程启动时的全局 session ID。
 - continue：当前目录最近会话；resume：指定 ID；`resume + forkSession:true`：先复制为新 ID，再加载 fork；均复用 `resolveSessionFilePath`/`loadSdkSessionTranscript`，fork 使用 `forkSdkSession`。
+- 参数解析在 switchSession、文件读取/写入和模型请求之前执行：`continue && resume` 明确报互斥；只要 `resumeSessionAt !== undefined` 就明确报当前 in-process 实现不支持（包括 resume+resumeSessionAt），不得静默忽略。
 
-- [ ] **Step 1：写 resume 红测**
+- [ ] **Step 1：写 fresh ID、参数校验与 resume 红测**
 
-第一次 classic query 的 prompt 含唯一 marker，从 init/result 捕获 session ID。第二次 `query({prompt:'follow up',options:{resume:id,...}})` 后，断言第二次 `/v1/messages` 请求含第一轮 user/assistant 历史，结果仍属于恢复会话。对不存在 ID 和非法 ID 断言明确错误且不静默新建。
+先在同一个 sandbox 进程内顺序运行两个不带 continue/resume 的 fresh classic query，分别捕获 init session ID。断言两个 ID 都是合法 UUID 且不相等，两个 transcript 文件各自只含对应 marker。当前两者会共享进程初始 session ID，此断言必须先红，再驱动 resolver 的 fresh UUID + `switchSession` 修复；不能用固定公开 session ID fixture 掩盖。
 
-Run `bun run test:integration tests/integration/sdk/sessions.test.ts`，Expected red：当前 options.resume 未消费。
+参数校验用例分别提供 `continue:true + resume:id`、`resume:id + resumeSessionAt:messageId`、仅 `resumeSessionAt:messageId`，断言明确错误且 switch/write/mock 请求计数均不增加。不得只断言“最终没有成功”。
+
+然后写 resume：第一次 classic query 的 prompt 含唯一 marker，从 init/result 捕获 session ID。第二次 `query({prompt:'follow up',options:{resume:id,...}})` 后，断言第二次 `/v1/messages` 请求含第一轮 user/assistant 历史，结果仍属于恢复会话。对不存在 ID 和非法 ID 断言明确错误且不静默新建。
+
+Run `bun run test:integration tests/integration/sdk/sessions.test.ts`，Expected red：fresh ID 当前复用，classic session options 当前未消费。
 
 - [ ] **Step 2：写 continue 与 fork 红测**
 
-- continue：在同一 sandbox/cwd 创建两个时间顺序确定的会话，`continue:true` 必须选择最近者；无历史时明确失败。
+- continue：复用 Step 1 已证明 ID 不同的两个 fresh 会话，用 transcript 文件 mtime/公开列表结果确定时间顺序，`continue:true` 必须选择最近者且第二次请求只含该会话的 marker；无历史时明确失败。若两个 ID 相同，本测试不得继续或被改成单会话。
 - fork：记录源 transcript 字节和消息 UUID；`resume:sourceId,forkSession:true` 后 init/result ID 必须不同，第二次请求含源历史，源文件保持不变，fork 可独立 resume。不得调用 standalone v2 session wrapper；standalone `forkSession()` helper 仅可作为内部复用实现，不作为测试替代路径。
 
 Run 同一文件，记录红测。
@@ -336,7 +346,7 @@ Run 同一文件，记录红测。
 
 - [ ] **Step 4：实现最小 resolver 并接线**
 
-continue 用现有列表/解析能力定位最近文件；resume 保留源 ID 与 projectDir；fork 调 `forkSdkSession` 后加载新 ID。将结果交给现有 `switchSession` 和 `mutableMessages`，确保 storage flush 和 persistence lease 沿用。不得复制 DAG 恢复算法，不改变文件 checkpoint 规则，不实现 resumeSessionAt。
+resolver 先做互斥/不支持校验，再按 fresh/continue/resume/fork 分派。fresh 生成新 UUID 并总是经 `switchSession` 设置，不能只在提供 resume 时 switch；continue 用现有列表/解析能力定位最近文件；resume 保留源 ID 与 projectDir；fork 调 `forkSdkSession` 后加载新 ID。将结果交给现有 `switchSession` 和 `mutableMessages`，确保 storage flush 和 persistence lease 沿用。不得复制 DAG 恢复算法，不改变文件 checkpoint 规则，不实现 resumeSessionAt。
 
 Run:
 ```bash
@@ -354,23 +364,30 @@ bun test tests/sdkSessions.test.ts tests/sessionChainRecovery.test.ts tests/sdkQ
 
 **Files:**
 - Create: `tests/integration/sdk/token-count.test.ts`
+- Modify: `tests/integration/support/sdk.ts`（新增不自动 return 的 `pauseAtResult`）
 - Modify only on red evidence: `src/utils/sdkQuery.ts`、`src/entrypoints/sdk/runtimeTypes.ts`、`src/utils/sdkControl.ts`
 - Delete: 16 个 `fixtures/token-count-*.json`
 - Modify: `docs/architecture/coverage/sdk-query-sessions.yaml`
 
 **Interfaces:**
 - 通过 classic query 返回对象的公开 `getContextUsage()` 调真实 usage 路径；若公开 Query 类型遗漏该方法，按官方 TypeScript reference 将现有 `InternalQuery.getContextUsage` 契约提升到公开 Query，不新增平行实现。
+- 测试支撑提供 `pauseAtResult(query)`：用手工 `query.next()` 收集消息，遇到 success result 后立即返回 `{ messages, result }`，**不调用 return，不用 for-await break**；调用方负责在 finally 中 return/close。
 - mock count_tokens 继续使用现有 `{input_tokens:number}` 响应和请求录制，不引入真实录制。
 
-- [ ] **Step 1：写真实 token-count 测试**
+- [ ] **Step 1：在 env lease 活跃时写真实 token-count 测试**
 
-先完成一个含唯一文本的 query，再调用 `getContextUsage()`。断言：
+禁止“完整消费 query 后再调用 getContextUsage”：那时 generator finally 已清理并恢复 env，可能把 count_tokens 发到真实 `ANTHROPIC_BASE_URL`。按以下顺序实现：
+1. 用 `pauseAtResult(query)` 手工 `next()` 到唯一文本的 success result，确认 generator 仍暂停在 yield，未进入 finally；
+2. 此时断言 `process.env.ANTHROPIC_BASE_URL === mock.url`、API key 仍为假值，然后才 `await query.getContextUsage()`；
+3. 在 finally 中 `await query.return(undefined)`/close，之后才断言原 env 已恢复；此后不得再次调用 usage。
+
+usage 活跃期间断言：
 1. mock 至少收到一个 `/v1/messages/count_tokens`；请求为 POST，body 含模型和 messages/tools 相关字段；
 2. 每个响应 input_tokens 为有限非负数；usage.categories/totalTokens/maxTokens 结构有效，相关分类使用 mock 数值而非 null；
 3. count_tokens 请求不作为 SDK assistant/result 消息出现在原 query 消息流；
 4. 若发多个分类请求，断言每个录制值和聚合一致性，不假定请求恰好一次。
 
-Run `bun run test:integration tests/integration/sdk/token-count.test.ts`。只对真实失败做最小修复，不用本地估算替代 full usage。
+Run `bun run test:integration tests/integration/sdk/token-count.test.ts`。只对真实失败做最小修复，不用本地估算替代 full usage。若暂停点无法维持 mock env，停止测试并重新设计 per-query API config；不得为取得结果而允许真实网络或读取真实凭据。
 
 - [ ] **Step 2：删除前重新证明 fixtures 无消费者**
 
@@ -413,7 +430,7 @@ Expected：全部退出 0；design gate 0 errors。warnings 按实际 draft/unco
 
 - 阶段顺序与 spec 决策一致：支撑/dist → 既有 query → 错误/中断 → hooks/ownership → MCP/elicitation → classic sessions → token/最终门禁。
 - 每阶段均包含红测或既有保护识别、最小实现、实际命令和退出码要求；不存在以设计推断冒充通过结果的步骤。
-- `canUseTool` 不用 allowedTools 绕过；末次错误同时断言 result 和 throw；interrupt 与外部 abort 分开；hooks 按身份而非按事件清理。
-- MCP 恢复明确为 explicit replacement；elicitation 只覆盖 form；config active 必须先有真实场景断言。
-- sessions 只走 classic query；continue/resume/fork 都检查真实历史而非仅成功；abort 后 resume 有持久化边界。
-- token 测试走真实 getContextUsage + mock count_tokens；16 个 null fixtures 只有复核后才删除，不重录。
+- `canUseTool` 不用 allowedTools 绕过；末次错误同时断言 result 和 throw；interrupt 与外部 abort 分开；hooks 按 per-registration occurrence 清理，并有 shared-matcher 回归。
+- MCP 恢复明确为 explicit replacement；elicitation 只覆盖 form；config active 前先扩 `entries.ts` parser 并测 unknown-trigger 拒绝，再有真实场景断言。
+- sessions 只走 classic query；两个 fresh query 必须有不同 ID；continue/resume/fork 检查真实历史；continue+resume 互斥，resumeSessionAt 一律明确拒绝；abort 后 resume 有持久化边界。
+- token 测试在 result yield 暂停点、env lease 活跃时走 getContextUsage + 本地 mock count_tokens，return 后才恢复 env；16 个 null fixtures 只有复核后才删除，不重录。

@@ -51,10 +51,10 @@ status: draft
 | dist 先行 | `distSdkPath()` 用 `dist/sdk.mjs` 做新鲜度 marker；所有 SDK 用例动态导入该产物 | 同时验证构建产物存在性、导出和运行时接线，避免 src 与 dist 漂移 | 直接导入 src：不能验证发布形态；沿用 main.js marker：SDK 缺失或陈旧时误报新鲜 | 支撑测试需要构造 SDK 缺失/陈旧场景 | 官方 [TypeScript reference](https://code.claude.com/docs/en/agent-sdk/typescript) 以包导出为公开边界；仓库 `dist-fixture.ts:26-60`、`scripts/build.ts:45-46` |
 | classic query 消息与权限 | 剧本化 init/assistant/tool_use/tool_result/result；权限用未提前 allow 的工具触发 `canUseTool`，断言 allow/deny/updatedInput | 覆盖真实 agent loop，而非 mock `ask()`；权限顺序决定 callback 并非每次工具都调用 | 直接单测 callback 适配器：不能发现工具池/权限串联；用 allowedTools 预批：会绕过 callback | mock 必须生成协议正确的流式响应 | 官方 [agent-loop](https://code.claude.com/docs/en/agent-sdk/agent-loop) 与 [permissions](https://code.claude.com/docs/en/agent-sdk/permissions)；二进制含 result schema 和 `error_*` 枚举；仓库 `sdkQuery.ts:478-530` |
 | 末次错误抛出，按轮中断可恢复 | 错误 result 先 yield；single-shot 或输入已耗尽的末轮随后抛出。每轮创建子 AbortController，`interrupt()` 只 abort 当前轮；`options.abortController`/`close()` 是 query 级终止 | 与上游可恢复 streaming input 语义一致，解决 controller 永久 aborted 导致后续轮次无法运行 | 所有错误只 yield：调用方收不到末次异常；interrupt 复用全局 controller：第二轮立即失败；所有 abort 都按轮重置：外部 abort 失去终止语义 | 需要 channel 可判断“关闭且排空”，并区分当前轮与外部 signal | 官方 [streaming-vs-single-mode](https://code.claude.com/docs/en/agent-sdk/streaming-vs-single-mode) 明确末次 error result 后 throw、interrupt 产生 `error_during_execution` 且保留后续消息；二进制片段含每轮 `new AbortController`、链接父 signal、`error_max_turns`/`error_during_execution`；仓库 `sdkQuery.ts:335,532-595,632-635` |
-| SDK hooks 有 owner lease | 初始化注册 `options.hooks`；`registerHookCallbacks` 返回捕获实际 matcher 身份的幂等 release；query 清理只删除本次追加项 | 全局 registry 是现状，但全量 clear 会误删其他 query/plugin；按对象身份释放是最小兼容改动 | 不清理：后续用例重复触发；clearRegisteredHooks：误删兄弟；按事件清空：同事件其他 owner 被误删 | 需要覆盖 setup 失败、正常结束、重复 return 和兄弟注册保留 | 官方 [hooks](https://code.claude.com/docs/en/agent-sdk/hooks) 证明 `options.hooks`、matcher、阻断/修改语义；二进制含 `registerHookCallbacks` 与 hook callback 执行路径，但未证明 unregister 契约；仓库 `state.ts:1423-1469`、`sdkQuery.ts` 未消费 hooks |
+| SDK hooks 有 owner lease | 初始化注册 `options.hooks`；每次注册分配独立 occurrence，registry 保存本次追加记录，release 只删除这些 occurrence 且幂等；不得仅按调用方 matcher 引用过滤 | 全局 registry 是现状，但全量 clear 或引用过滤会误删其他 query/plugin；同一 matcher 对象也可能被两个 owner 共享 | 不清理：后续用例重复触发；clearRegisteredHooks/引用过滤：误删兄弟；按事件清空：同事件其他 owner 被误删 | 需要覆盖 setup 失败、正常结束、重复 return、共享 matcher 和兄弟注册保留 | 官方 [hooks](https://code.claude.com/docs/en/agent-sdk/hooks) 证明 `options.hooks`、matcher、阻断/修改语义；二进制含 `registerHookCallbacks` 与 hook callback 执行路径，但未证明 unregister 契约；仓库 `state.ts:1423-1469`、`sdkQuery.ts` 未消费 hooks |
 | 进程内 MCP 与 form elicitation | `createSdkMcpServer` + linked transport 验证 `mcp__server__tool` 发现和调用；`setMcpServers` 受控断开并替换恢复。client 声明 elicitation capability，顺序为 Elicitation hooks → `onElicitation` → 默认 decline，再运行 ElicitationResult hooks | 无网络/子进程即可覆盖公开链路；与上游 hook 优先及未处理自动 decline 对齐 | 真实 stdio/HTTP MCP：引入环境不稳定；URL elicitation：协议与 UI 分支不同，超出本轮；只测工具 handler：不验证 MCP 协议 | 需要 mock server 在工具内发起 form elicitation，并补齐公开类型 | 官方 [custom-tools](https://code.claude.com/docs/en/agent-sdk/custom-tools)、[MCP](https://code.claude.com/docs/en/agent-sdk/mcp)、[TypeScript reference](https://code.claude.com/docs/en/agent-sdk/typescript)（`onElicitation` 和默认 decline）；二进制 `setMcpServers` 分离 SDK instance 并增删、`onElicitation` 出现在 query 参数；仓库 `sdkQuery.ts:189-245,699-738`、`services/mcp/elicitationHandler.ts:68-170` |
-| classic continue/resume/fork | 新 `src/utils/sdkQuerySession.ts` 解析 options，复用 `listSdkSessions`、`resolveSessionFilePath`、`loadSdkSessionTranscript`、`forkSdkSession`；将 session 与 initialMessages 交给现有 query | 避免第二套 transcript 格式；fork 新 ID 且源不变可由公开访问器验证 | v2 session wrapper：不是本任务 API；另写 JSONL parser：DAG/compact 恢复漂移；只断言调用成功：不能证明历史恢复 | continue 需要可重复的“当前目录最近会话”夹具；fork 涉及文件复制 | 官方 [sessions](https://code.claude.com/docs/en/agent-sdk/sessions) 定义 continue/resume/fork 及 result/init session ID；二进制将 `forkSession` 映射 `--fork-session`、`resumeSessionAt` 映射对应 flag，含 UUID 校验和 transcript 复制；仓库 `sdkSessions.ts:253-330`、`sdkSessionConversation.ts:124-138` 已有可复用加载路径 |
-| token-count 改真实调用 | query 产生真实上下文后调用 `getContextUsage()`；mock 记录并回答 `/v1/messages/count_tokens`，断言请求体及数值进入分类/汇总；删除 16 个 null fixtures，不重录 | 验证生产调用链而不是空录制；离线且确定 | 保留 VCR：当前数据无有效 token 值且无消费者；本地估算法替代 API：不能证明真实请求；真实 API：违反无凭据约束 | 多分类可能发多次 count 请求，断言聚合而非假定恰好一次 | 官方 TypeScript reference 说明 full usage 会发 token-count 请求且不进消息流；仓库 `sdkControl.ts:26-46` → `collectContextData` → `analyzeContextUsage`，`mock-anthropic.ts:52-54` 已有路由，16 个 fixture 均只含 null |
+| classic fresh/continue/resume/fork | 新 `src/utils/sdkQuerySession.ts` 解析 options：fresh 每次分配新 UUID 并交 `switchSession`，continue/resume/fork 复用 `listSdkSessions`、`resolveSessionFilePath`、`loadSdkSessionTranscript`、`forkSdkSession`；在任何副作用前校验 continue+resume 互斥，resumeSessionAt 一律明确拒绝 | 避免第二套 transcript 格式；防止两个 fresh query 共用进程初始 session ID；fork 新 ID 且源不变可由公开访问器验证 | v2 session wrapper：不是本任务 API；沿用全局初始 ID：不同 query 写同一 transcript；忽略 resumeSessionAt：静默偏离调用方意图；另写 JSONL parser：DAG/compact 恢复漂移 | continue 需要可重复的“当前目录最近会话”夹具；fork 涉及文件复制 | 官方 [sessions](https://code.claude.com/docs/en/agent-sdk/sessions) 定义 continue/resume/fork 及 result/init session ID；二进制将 `forkSession` 映射 `--fork-session`、`resumeSessionAt` 映射对应 flag，含 UUID 校验和 transcript 复制；仓库 `sdkSessions.ts:253-330`、`state.ts:439-483` 提供 fresh ID/session switch 原语 |
+| token-count 改真实调用且锁住 mock 边界 | 手动 `query.next()` 暂停在 success result 的 yield 点，此时 generator 尚未 finally、env lease 仍有效；立即调用 `getContextUsage()`，mock 记录并回答 count_tokens，随后 return/close 才恢复 env；删除 16 个 null fixtures，不重录 | 验证生产调用链而不是空录制；防止 cleanup 后 ANTHROPIC_BASE_URL 恢复成真实地址再发 usage 请求 | 先完整消费再 usage：env 已恢复，可能访问真实网络；for-await break：会隐式 return 并清理；本地估算/真实 API：分别不能证明接线或违反无凭据约束 | 多分类可能发多次 count 请求；测试必须使用手工迭代而非自动 for-await | 官方 TypeScript reference 说明 full usage 会发 token-count 请求且不进消息流；仓库 `sdkQuery.ts:594-621,746-765` 的 yield/finally/cleanup、`sdkControl.ts:26-46` → `analyzeContextUsage`、mock 路由和 16 个 null fixture |
 
 ### 2.2 证据差异与不作出的假设
 
@@ -64,7 +64,7 @@ status: draft
 | hook unregister | 官方文档和所取二进制片段没有给出按身份 unregister 的完整契约 | lease 是本仓库为全局 registry 所有权提出的最小修复，由后续红测验证，不声称上游逐字实现 |
 | env | 上游 `options.env` 描述子进程环境替换；本仓库 classic query 直接在当前进程运行 | 保留现有进程内模型，只恢复本次触碰的键；不声称实现子进程隔离 |
 | MCP 恢复 | 官方自动重连细节主要针对 remote server；本仓库 in-process `setMcpServers` 是显式替换 | 本轮“恢复”是受控断开后的重新配置和再次调用，不宣称自动 backoff/reconnect |
-| resumeSessionAt | 官方为包含目标 UUID 的截断恢复；二进制显示找不到 UUID 报错、找到后 inclusive slice | 作为后续候选，不纳入本轮已批准 classic 三选项实现，不在测试中伪造支持 |
+| resumeSessionAt | 官方为包含目标 UUID 的截断恢复；二进制显示找不到 UUID 报错、找到后 inclusive slice | 作为后续候选，不实现截断；本轮只要提供该字段（包括 resume+resumeSessionAt）就在任何状态/文件/网络副作用前明确报“不支持”，不得静默忽略 |
 | elicitation 类型细节 | 官方给出 `onElicitation(request,{signal})` 和默认 decline；form 字段由本仓库 MCP SDK 类型与 handler 佐证 | 只做 form accept/decline/cancel 及 hooks；URL 模式明确非目标 |
 
 ## 3. 目标与非目标
@@ -79,7 +79,7 @@ status: draft
 
 ### 3.2 非目标
 
-- 不删除或迁移旧 v2 导出；不实现 URL elicitation、真实网络或真实进程 MCP。
+- 不删除或迁移旧 v2 导出；不实现 resumeSessionAt 截断（提供时明确拒绝）、URL elicitation、真实网络或真实进程 MCP。
 - 不做额外并发隔离，不重构 QueryEngine，不修改 unit runner、CI、release smoke。
 - 不用 `test.skip` 隐藏本轮 SDK 缺口，不重录 token-count fixtures。
 - 不把字符串证据当作运行通过证据；mock/offline 结果也不冒充 live 上游互操作结果。
@@ -114,10 +114,10 @@ scripts/test-integration.ts（逐文件独立 Bun 进程，顺序执行）
 2. **权限**：不预批目标工具 → callback 记录 toolUseID/signal → allow 可修改 input，deny 返回消息；断言工具副作用和模型收到的结果，而非只看 callback 被调用。
 3. **中断**：gated response 确认请求已挂起 → `interrupt()` → 当前轮 `error_during_execution` → streaming input 第二轮成功。外部 controller abort 必须贯穿后续轮次并执行一次清理。
 4. **终端错误**：maxTurns 或执行错误先产生带 session_id/errors 的 result；末轮随后 throw。若 streaming input 仍有后续消息，较早轮错误不提前终止整个 query。
-5. **hooks**：注册只发生一次；matcher 过滤；callback 能阻断/修改；release 重复调用无副作用，释放 A 不影响 B 或 plugin 注册。
+5. **hooks**：每次注册分配独立 occurrence，即使 A/B 共享同一 matcher 对象也不共用注册身份；matcher 过滤，callback 能阻断/修改；release 重复调用无副作用，释放 A 只删 A 的 occurrence，不影响 B 或 plugin 注册。
 6. **MCP**：初始连接和 list tools → 模型调用 `mcp__mock__echo` → handler 结果回传；`setMcpServers({})` 断开，再设置新 server → 状态/工具恢复并再次调用。form elicitation 先经 hooks，未处理才调用 callback，最终 result hooks 可观察/修改。
-7. **classic session**：第一次 query 从 init/result 捕获 ID 并落盘；resume/continue 后第二次 mock 请求包含历史 marker；fork 返回不同 ID，源 transcript 内容不变；abort 后可凭 ID resume。
-8. **token-count**：真实 query 建立 messages/tools → `getContextUsage()` → 一次或多次 mock count_tokens → 分类与总计为有限非负数，且请求包含当前模型/消息信息。
+7. **classic session**：fresh query 每次经 switchSession 使用新 UUID，两个连续 fresh query 的 init ID 必须不同且 transcript 分离；resume/continue 后第二次 mock 请求包含历史 marker；fork 返回不同 ID，源 transcript 内容不变；abort 后可凭 ID resume。continue+resume 以及任何 resumeSessionAt 在副作用前明确失败。
+8. **token-count**：手动 `next()` 收集到 success result 并停在 yield 点，禁止 for-await 自动 return；确认此时 `process.env.ANTHROPIC_BASE_URL` 仍是 mock → `getContextUsage()` → 一次或多次本地 mock count_tokens → 断言分类与总计；随后 `return()`/close 才恢复 env。若实现无法在 lease 内完成 usage，必须先设计 per-query API config，不得发真实请求。
 
 ### 核心对象生命周期七列表
 
@@ -127,10 +127,10 @@ scripts/test-integration.ts（逐文件独立 Bun 进程，顺序执行）
 | SDK test harness | 每用例创建 sandbox/mock，加载 dist | 提供 env、消息构造、请求记录和 bounded wait | 临时 HOME 中读取 transcript | 先 close query，再 stop mock/sandbox | cleanup 幂等，超时仍执行 | 清理异常聚合报告，不覆盖首个业务断言 |
 | Query/channel | `query()` 创建，字符串 prompt 自动关闭，AsyncIterable 保持打开 | FIFO 输入，逐轮 ask/yield | options 提供 initialMessages/session | interrupt 当前轮；外部 abort/close 终止 query | finally + return 共用 cleanupPromise | channel 输入错误和末次错误 result 均向调用方传播 |
 | 每轮 AbortController | 每轮开始创建并链接外部 signal | 传给模型、权限、hooks、MCP | 下一轮重新创建 | interrupt 只 abort 当前 controller | 移除外部 signal listener | 外部已 aborted 时当前轮立即终止，不能复活 |
-| hook registration lease | 初始化追加实际 matcher 对象并返回 release | registry 供事件执行 | 不适用 | query 清理或 setup 失败触发 release | 按身份删除且仅一次 | 回调异常按 hook 契约传播/降级；释放不抛覆业务错误 |
+| hook registration lease | 每次注册分配独立 occurrence，registry 保存本次追加记录并返回 release | registry 供事件执行；允许不同 owner 共享输入 matcher 对象 | 不适用 | query 清理或 setup 失败触发 release | 按 occurrence 删除且仅一次，不按原始引用批删 | 回调异常按 hook 契约传播/降级；共享 matcher 的兄弟注册不受影响 |
 | MCP connection/elicitation | client/server 经 linked transport 连接并列工具 | 工具调用；form 请求走 hooks/callback | setMcpServers 替换为新实例恢复 | close 两端，abort 取消待答 elicitation | 清理所有连接和待处理 handler | 连接失败进入状态/errors；未处理 form 默认 decline；handler 错误作为工具错误结果 |
-| classic session | 新 query 或从当前目录/ID loader 加载 | initialMessages 进入 mutableMessages，transcript 追加 | resume 保持 ID；fork 先复制为新 ID | abort 后已写内容仍可 resume | flush storage 后释放 persistence lease | 不存在/空历史/非法 ID 明确失败；fork 不改源文件 |
-| token usage | 在已有上下文上调用 getContextUsage | count_tokens 请求与分类聚合 | resume 后以恢复上下文重新统计 | 随 query 清理 | 无独立持久资源 | mock 错误必须可见；不得用 null fixture 伪装成功 |
+| classic session | fresh 每次分配新 UUID 并 switchSession；或从当前目录/ID loader 加载 | initialMessages 进入 mutableMessages，transcript 按各自 ID 追加 | resume 保持 ID；fork 先复制为新 ID | abort 后已写内容仍可 resume | flush storage 后释放 persistence lease | continue+resume、任何 resumeSessionAt、非法/不存在 ID 均在副作用前失败；fork 不改源文件 |
+| token usage | 在 result yield 暂停点、env lease 活跃时调用 getContextUsage | 只向当前 mock 发 count_tokens 并聚合分类 | resume 后以恢复上下文重新统计 | return/close 后才随 query 清理 | 无独立持久资源 | cleanup 后不得再发 usage；mock 错误可见；不得用 null fixture 伪装成功 |
 
 ### 测试文件与模块职责
 
@@ -157,9 +157,12 @@ scripts/test-integration.ts（逐文件独立 Bun 进程，顺序执行）
 | hook setup 后失败 | 错误传给调用方 | 仅本次注册被移除，兄弟保留 |
 | MCP 初始连接失败 | mcpServerStatus/setMcpServers errors 可见，不伪报工具存在 | 失败 client/server 可清理 |
 | elicitation 无 callback/hook | 自动 decline，ElicitationResult 可观察 | abort/close 能解除 pending |
+| fresh query 连续创建 | 每次 init session ID 不同，transcript 分离；后续 continue 能选择最近新会话 | 不复用进程初始 session ID |
+| continue+resume / 任何 resumeSessionAt | 在状态、文件、模型请求前明确报参数错误；resumeSessionAt 不因提供 resume 而被静默接受 | 无新建/复制 transcript，无网络请求 |
 | resume 不存在或 continue 无历史 | 明确错误，不静默开新会话 | 不写伪 transcript |
 | fork | 新 session ID；源文件字节/消息不变；新文件含复制历史 | 后续 query 只写 fork 文件 |
 | mock gate 未释放 | abort 或测试超时可解除，不能留下挂起 fetch | stop/harness 清理兜底 |
+| getContextUsage 调用时机 | 仅在 query 暂停于 result yield、env 仍为 mock 时调用 | 调用后 return/close；若 env 已恢复则测试必须失败并阻止网络，而非继续调用 |
 
 工程上优先复用现有 `UserMessageChannel`、persistence lease、session loader、MCP SDK 和 mock 路由。只有在公开断言证明现状不满足时才改产品；不得为了测试便利新增生产调试端点或凭据旁路。
 
@@ -170,10 +173,10 @@ scripts/test-integration.ts（逐文件独立 Bun 进程，顺序执行）
 1. `bun run test:integration --suite=sdk` 退出 0，六个测试文件全部被发现，无新增 `test.skip`。
 2. dist-import 在 sdk.mjs 缺失或陈旧时触发重建；其余测试只消费 dist 公开入口。
 3. query 测试分别证明消息流、allow/deny/updatedInput、env 恢复原值/删除语义、末次错误 result+throw、按轮 interrupt 与 query 级 abort。
-4. hooks 测试证明 options.hooks 生效和按身份幂等释放；既有 `headlessHooks`/plugin 相关回归不破坏。
-5. MCP 测试证明工具发现、调用、受控断连恢复及 form elicitation；config-acceptance 两个事件改 active 后真实运行并有标记/结果断言。
-6. sessions 测试只使用 classic options，证明 continue/resume 历史、fork 新 ID 与源不变、abort 后 resume。
-7. token-count 测试存在真实 count_tokens 请求且 usage 数值一致；16 个 null fixtures 在重新确认无消费者后删除。
+4. hooks 测试证明 options.hooks 生效、按 occurrence 幂等释放；A/B 共享同一 matcher 对象时关闭 A 后 B 仍恰好执行一次；既有 `headlessHooks`/plugin 回归不破坏。
+5. MCP 测试证明工具发现、调用、受控断连恢复及 form elicitation；config 的 `engine/entries.ts` 先接受并测试 `mcp_elicitation` parser 分支，两个事件改 active 后真实运行并有标记/结果断言。
+6. sessions 测试只使用 classic options，证明连续 fresh query ID 不同、continue/resume 历史、fork 新 ID 与源不变、abort 后 resume；continue+resume 和任何 resumeSessionAt 有明确无副作用错误。
+7. token-count 在手动暂停 result 且 env lease 活跃时调用，断言此刻 base URL 为本地 mock、存在真实 count_tokens 请求且 usage 数值一致；return 后才验证 env 恢复；16 个 null fixtures 在重新确认无消费者后删除。
 8. `bun run test:integration`、`bun run test`、`bun run typecheck`、`bun run build` 均以退出码 0 完成；若有环境性失败，单列，不能写成通过。
 9. `bun scripts/check-design-docs.ts` 为 0 errors；新增文件在落地时获得唯一 coverage 主责，warnings 与基线分开报告。
 
@@ -218,7 +221,7 @@ setMcpServers、error_max_turns、error_during_execution 等目标片段
 | `src/bootstrap/state.ts` | app-state 主责；sdk-query-sessions 相邻契约 | 不重复登记；在本 spec 和 app-state 相关边界说明身份 lease |
 | MCP client/elicitation | mcp 主责；sdk-query-sessions 联动 | 只复用现有 form/hook 语义，URL 分支不变 |
 | `tests/integration/sdk/**` 与 support | sdk-query-sessions 的集成测试归属 | 文件实际创建后登记；runner 自动发现，不改 manifest 新 spec |
-| config fixtures/scenarios | upstream-configuration-alignment/config 验收 | 只在真实场景可用后 active，保留历史 blocked 注释证据 |
+| config fixtures、`engine/scenarios.ts`、`engine/entries.ts`、`engine/engine.test.ts` | upstream-configuration-alignment/config 验收 | 先把 `mcp_elicitation` 加入 KNOWN_TRIGGER_PREFIX 并做 parser/unknown-trigger 测试；真实场景可用后才 active，保留历史 blocked 注释证据 |
 | `fixtures/token-count-*.json` | 测试数据清理 | 删除前再次跑文件名和内容消费者搜索 |
 
 关联子系统：query-core、session-persistence、hooks-system、mcp、permissions、build/test-validation。新增文件的所有权在实际变更提交时沿这些真实调用关系复核，不为本工程 spec 另建 manifest 条目。
