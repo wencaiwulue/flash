@@ -543,8 +543,20 @@ export function createSdkQuery({
       )
     }
 
+    let terminalErrorResult: SDKResultMessage | undefined
+    const throwTerminalError = (result: SDKResultMessage): never => {
+      const diagnostic =
+        result.subtype === 'success'
+          ? result.result
+          : result.errors.join('\n')
+      throw new Error(
+        diagnostic || `SDK query ended with ${result.subtype}`,
+      )
+    }
+
     try {
       for await (const message of channel.iterate()) {
+        terminalErrorResult = undefined
         const turnAbortController = new AbortController()
         const forwardExternalAbort = () => {
           turnAbortController.abort(abortController.signal.reason)
@@ -556,7 +568,6 @@ export function createSdkQuery({
           })
         }
         currentTurnAbortController = turnAbortController
-        let terminalErrorResult: SDKResultMessage | undefined
         try {
           const content = message.message.content
           const promptContent: string | ContentBlockParam[] =
@@ -634,17 +645,11 @@ export function createSdkQuery({
           terminalErrorResult &&
           (channel.isClosedAndDrained() || abortController.signal.aborted)
         ) {
-          const diagnostic =
-            terminalErrorResult.subtype === 'success'
-              ? terminalErrorResult.result
-              : terminalErrorResult.errors.join('\n')
-          throw new Error(
-            diagnostic ||
-              `SDK query ended with ${terminalErrorResult.subtype}`,
-          )
+          throwTerminalError(terminalErrorResult)
         }
         if (abortController.signal.aborted) return
       }
+      if (terminalErrorResult) throwTerminalError(terminalErrorResult)
     } catch (error) {
       debug(`error:${error instanceof Error ? error.stack : String(error)}`)
       throw error

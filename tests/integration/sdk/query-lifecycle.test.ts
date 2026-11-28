@@ -348,6 +348,60 @@ describe('classic SDK query lifecycle', () => {
     }
   }, TEST_TIMEOUT_MS)
 
+  test('throws a recorded terminal error when input closes while query.next is already waiting', async () => {
+    const harness = await createSdkHarness()
+    const input = createUserInput()
+    try {
+      const diagnostic = 'SDK_QUERY_DELAYED_CLOSE_DIAGNOSTIC_32J'
+      harness.mock.enqueue({
+        type: 'error',
+        status: 400,
+        body: {
+          type: 'error',
+          error: { type: 'invalid_request_error', message: diagnostic },
+        },
+      })
+      input.push(userMessage('Fail this turn while the input remains open.'))
+      const query = harness.track(harness.sdk.query({
+        prompt: input.input,
+        options: {
+          ...harness.baseOptions,
+          env: { ...harness.baseOptions.env, CLAUDE_CODE_MAX_RETRIES: '0' },
+          tools: [],
+          persistSession: false,
+        },
+      }))
+
+      const messages: SDKMessage[] = []
+      while (true) {
+        const next = await withDeadline(query.next(), 'delayed-close error result')
+        if (next.done) throw new Error('Query ended before its error result')
+        messages.push(next.value)
+        if (next.value.type === 'result') break
+      }
+      expect(results(messages)).toHaveLength(1)
+      expect(results(messages)[0]!.is_error).toBe(true)
+
+      const waitingNext = query.next()
+      // Let the generator finish the error turn and park in channel.iterate().
+      await new Promise(resolve => setTimeout(resolve, 0))
+      input.close()
+      let error: unknown
+      try {
+        await withDeadline(waitingNext, 'terminal error after delayed input close')
+      } catch (caught) {
+        error = caught
+      }
+      expect(error).toBeInstanceOf(Error)
+      expect((error as Error).message).toContain(diagnostic)
+      expect((error as Error).message).not.toContain('Timed out')
+      expect(modelRequests(harness)).toHaveLength(1)
+    } finally {
+      input.close()
+      await harness.cleanup()
+    }
+  }, TEST_TIMEOUT_MS)
+
   test('interrupts only the active gated turn and accepts a later streaming input turn', async () => {
     const harness = await createSdkHarness()
     const input = createUserInput()
@@ -432,8 +486,8 @@ describe('classic SDK query lifecycle', () => {
         subtype: 'error_during_execution',
         is_error: true,
       })
-      expect(error === undefined || error instanceof Error).toBe(true)
-      if (error instanceof Error) expect(error.message).not.toContain('Timed out')
+      expect(error).toBeInstanceOf(Error)
+      expect((error as Error).message).not.toContain('Timed out')
       await query.close('first explicit close')
       await query.close('second explicit close')
       expect(modelRequests(harness)).toHaveLength(1)
