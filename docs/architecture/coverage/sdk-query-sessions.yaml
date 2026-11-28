@@ -78,3 +78,4 @@ groups:
       - tests/sdkControls.test.ts
       - tests/sdkRewind.test.ts
       - tests/sdkMcp.test.ts
+      - tests/integration/sdk/query-lifecycle.test.ts

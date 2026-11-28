@@ -25,6 +25,7 @@ import type {
   McpServerStatus,
   PermissionMode,
   SDKMessage,
+  SDKResultMessage,
   SDKUserMessage,
 } from '../entrypoints/sdk/coreTypes.js'
 import type { CanUseToolFn } from '../hooks/useCanUseTool.js'
@@ -141,6 +142,10 @@ export class UserMessageChannel {
     this.error = error
     this.closed = true
     this.notify()
+  }
+
+  isClosedAndDrained(): boolean {
+    return this.closed && this.queue.length === 0
   }
 
   private notify(): void {
@@ -334,6 +339,7 @@ export function createSdkQuery({
 }): InternalQuery {
   const abortController = options.abortController ?? new AbortController()
   const channel = new UserMessageChannel()
+  let currentTurnAbortController: AbortController | undefined
   let remoteController: SdkRemoteController | undefined
   let setupPromise: Promise<{
     appState: AppState
@@ -367,6 +373,14 @@ export function createSdkQuery({
         channel.fail(error)
       }
     })()
+  }
+
+  const closeChannelOnExternalAbort = () => channel.close()
+  if (abortController.signal.aborted) closeChannelOnExternalAbort()
+  else {
+    abortController.signal.addEventListener('abort', closeChannelOnExternalAbort, {
+      once: true,
+    })
   }
 
   const initialize = () => {
@@ -531,62 +545,105 @@ export function createSdkQuery({
 
     try {
       for await (const message of channel.iterate()) {
-        const content = message.message.content
-        const promptContent: string | ContentBlockParam[] =
-          typeof content === 'string' ? content : content
-        if (!message.isSynthetic) {
-          // A user-visible checkpoint is usable only after its initial state
-          // has been committed. QueryEngine's fire-and-forget duplicate is
-          // deduplicated by fileHistoryMakeSnapshot.
-          await setup.fileCheckpointing.makeSnapshot(message.uuid as UUID)
+        const turnAbortController = new AbortController()
+        const forwardExternalAbort = () => {
+          turnAbortController.abort(abortController.signal.reason)
         }
-        debug('ask:start')
-        for await (const output of ask({
-          commands: setup.commands,
-          prompt: promptContent,
-          promptUuid: message.uuid,
-          isMeta: message.isSynthetic,
-          cwd: options.cwd ?? process.cwd(),
-          tools: setup.tools,
-          mcpClients: setup.appState.mcp.clients,
-          verbose: options.verbose,
-          thinkingConfig: setup.thinkingConfig,
-          maxTurns: options.maxTurns,
-          maxBudgetUsd: options.maxBudgetUsd,
-          taskBudget: options.taskBudget,
-          canUseTool,
-          mutableMessages,
-          getReadFileCache: () => setup.readFileCache,
-          setReadFileCache: cache => {
-            setup.readFileCache = cache
-          },
-          customSystemPrompt:
-            options.systemPrompt === undefined
-              ? ''
-              : typeof options.systemPrompt === 'string'
-                ? options.systemPrompt
+        if (abortController.signal.aborted) forwardExternalAbort()
+        else {
+          abortController.signal.addEventListener('abort', forwardExternalAbort, {
+            once: true,
+          })
+        }
+        currentTurnAbortController = turnAbortController
+        let terminalErrorResult: SDKResultMessage | undefined
+        try {
+          const content = message.message.content
+          const promptContent: string | ContentBlockParam[] =
+            typeof content === 'string' ? content : content
+          if (!message.isSynthetic) {
+            // A user-visible checkpoint is usable only after its initial state
+            // has been committed. QueryEngine's fire-and-forget duplicate is
+            // deduplicated by fileHistoryMakeSnapshot.
+            await setup.fileCheckpointing.makeSnapshot(message.uuid as UUID)
+          }
+          debug('ask:start')
+          for await (const output of ask({
+            commands: setup.commands,
+            prompt: promptContent,
+            promptUuid: message.uuid,
+            isMeta: message.isSynthetic,
+            cwd: options.cwd ?? process.cwd(),
+            tools: setup.tools,
+            mcpClients: setup.appState.mcp.clients,
+            verbose: options.verbose,
+            thinkingConfig: setup.thinkingConfig,
+            maxTurns: options.maxTurns,
+            maxBudgetUsd: options.maxBudgetUsd,
+            taskBudget: options.taskBudget,
+            canUseTool,
+            mutableMessages,
+            getReadFileCache: () => setup.readFileCache,
+            setReadFileCache: cache => {
+              setup.readFileCache = cache
+            },
+            customSystemPrompt:
+              options.systemPrompt === undefined
+                ? ''
+                : typeof options.systemPrompt === 'string'
+                  ? options.systemPrompt
+                  : undefined,
+            appendSystemPrompt:
+              typeof options.systemPrompt === 'object' &&
+              options.systemPrompt.type === 'preset'
+                ? options.systemPrompt.append
                 : undefined,
-          appendSystemPrompt:
-            typeof options.systemPrompt === 'object' &&
-            options.systemPrompt.type === 'preset'
-              ? options.systemPrompt.append
-              : undefined,
-          userSpecifiedModel: setup.userSpecifiedModel,
-          fallbackModel: options.fallbackModel,
-          jsonSchema: options.outputFormat?.schema,
-          getAppState: () => setup.appState,
-          setAppState: f => {
-            Object.assign(setup.appState, f(setup.appState))
-          },
-          abortController,
-          replayUserMessages: options.replayUserMessages,
-          includePartialMessages: options.includePartialMessages,
-          agents: parseAgentsFromJson(options.agents ?? {}),
-        })) {
-          debug(`message:${output.type}`)
-          yield output
+            userSpecifiedModel: setup.userSpecifiedModel,
+            fallbackModel: options.fallbackModel,
+            jsonSchema: options.outputFormat?.schema,
+            getAppState: () => setup.appState,
+            setAppState: f => {
+              Object.assign(setup.appState, f(setup.appState))
+            },
+            abortController: turnAbortController,
+            replayUserMessages: options.replayUserMessages,
+            includePartialMessages: options.includePartialMessages,
+            agents: parseAgentsFromJson(options.agents ?? {}),
+          })) {
+            debug(`message:${output.type}`)
+            if (
+              output.type === 'result' &&
+              (output.subtype !== 'success' || output.is_error)
+            ) {
+              terminalErrorResult = output
+            }
+            yield output
+          }
+          debug('ask:done')
+        } finally {
+          abortController.signal.removeEventListener(
+            'abort',
+            forwardExternalAbort,
+          )
+          if (currentTurnAbortController === turnAbortController) {
+            currentTurnAbortController = undefined
+          }
         }
-        debug('ask:done')
+
+        if (
+          terminalErrorResult &&
+          (channel.isClosedAndDrained() || abortController.signal.aborted)
+        ) {
+          const diagnostic =
+            terminalErrorResult.subtype === 'success'
+              ? terminalErrorResult.result
+              : terminalErrorResult.errors.join('\n')
+          throw new Error(
+            diagnostic ||
+              `SDK query ended with ${terminalErrorResult.subtype}`,
+          )
+        }
+        if (abortController.signal.aborted) return
       }
     } catch (error) {
       debug(`error:${error instanceof Error ? error.stack : String(error)}`)
@@ -615,6 +672,10 @@ export function createSdkQuery({
           ])
         }
       } finally {
+        abortController.signal.removeEventListener(
+          'abort',
+          closeChannelOnExternalAbort,
+        )
         releasePersistence?.()
       }
     })()
@@ -631,7 +692,7 @@ export function createSdkQuery({
 
   return Object.assign(query, {
     interrupt: async () => {
-      abortController.abort()
+      currentTurnAbortController?.abort('interrupt')
     },
     setPermissionMode: async (mode: PermissionMode) => {
       const { appState } = await initialize()
