@@ -1,5 +1,5 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { CallToolResult, ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
+import type { CallToolResult, ElicitRequestParams, ElicitResult, ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import type { ZodRawShape } from 'zod';
 import type { ZodRawShape as Zod4RawShape } from 'zod/v4';
 export type AnyZodRawShape = ZodRawShape | Zod4RawShape;
@@ -405,6 +405,14 @@ export type Options = {
      * ```
      */
     mcpServers?: Record<string, McpServerConfig>;
+    /**
+     * Handle an MCP server's elicitation request. When omitted, form
+     * elicitations are declined instead of waiting for interactive UI.
+     */
+    onElicitation?: (
+      request: ElicitRequestParams & { serverName: string },
+      options: { signal: AbortSignal },
+    ) => Promise<ElicitResult>;
     /**
      * Claude model to use. Defaults to the CLI default model.
      * Examples: 'claude-sonnet-4-5-20250929', 'claude-opus-4-20250514'

@@ -17,7 +17,7 @@ export interface HookEntry {
   expected_effect: Record<string, unknown>
 }
 
-const KNOWN_TRIGGER_PREFIX = 'tool_call|permission_prompt|permission_denied|print_turn|repl_|subagent|none'
+const KNOWN_TRIGGER_PREFIX = 'tool_call|permission_prompt|permission_denied|print_turn|repl_|subagent|mcp_elicitation|none'
 
 export function isBlocked(status: EntryStatus): boolean {
   return status !== 'active'

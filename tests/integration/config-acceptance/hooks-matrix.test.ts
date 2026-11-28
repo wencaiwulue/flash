@@ -34,7 +34,27 @@ function hookSettingsFor(event: string, sandboxHome: string, exit2: boolean): Re
   // 对于新事件，使用单独的标记文件；对于旧事件，保持向后兼容
   const legacyMarkerPath = join(sandboxHome, 'hook-marker.json')
   const body = `cat > '${markerPath}'; echo '${event}' >> '${eventsFile}'; ln -sf '${markerPath}' '${legacyMarkerPath}' 2>/dev/null || true`
-  const cmd = exit2 ? `${body}; exit 2` : body
+  const response = event === 'Elicitation'
+    ? {
+        hookSpecificOutput: {
+          hookEventName: 'Elicitation',
+          action: 'accept',
+          content: { answer: 'CONFIG_ELICITATION_ACCEPT_33B' },
+        },
+      }
+    : event === 'ElicitationResult'
+      ? {
+          hookSpecificOutput: {
+            hookEventName: 'ElicitationResult',
+            action: 'accept',
+            content: { answer: 'CONFIG_ELICITATION_RESULT_ACCEPT_33B' },
+          },
+        }
+      : undefined
+  const responseOutput = response
+    ? `; printf '%s\\n' '${JSON.stringify(response)}'`
+    : ''
+  const cmd = `${body}${responseOutput}${exit2 ? '; exit 2' : ''}`
   return {
     hooks: {
       [event]: [{ matcher: '*', hooks: [{ type: 'command', command: cmd }] }],
@@ -42,7 +62,8 @@ function hookSettingsFor(event: string, sandboxHome: string, exit2: boolean): Re
   }
 }
 
-async function runEntry(entry: HookEntry): Promise<void> {
+async function runEntries(entries: HookEntry[]): Promise<void> {
+  const entry = entries[0]!
   const launcher = createFormLauncher(FORM)
   const mock = await createMockAnthropic()
 
@@ -53,32 +74,43 @@ async function runEntry(entry: HookEntry): Promise<void> {
       ? { customApiKeyResponses: { approved: [MOCK_API_KEY] } }
       : undefined
   })
-  const settings = hookSettingsFor(entry.event, sandbox.home, entry.exit_semantics === 'block')
-  await writeFile(join(sandbox.home, '.claude', 'settings.json'), JSON.stringify(settings))
+  const hooks: Record<string, unknown> = {}
+  for (const item of entries) {
+    Object.assign(hooks, hookSettingsFor(
+      item.event,
+      sandbox.home,
+      item.exit_semantics === 'block',
+    ).hooks)
+  }
+  await writeFile(join(sandbox.home, '.claude', 'settings.json'), JSON.stringify({ hooks }))
 
   toClose.push({ sandbox, mock })
   routeHaikuAux(mock)
 
   const result = await runHookScenario(entry.trigger as never, { launcher, mock, sandbox, hookCommand: '' })
 
-  // 查找对应的标记（优先使用 markersByEvent，回退到单个 marker）
-  const eventMarker = result.markersByEvent?.[entry.event] ?? result.marker
-
-  for (const [key, expected] of Object.entries(entry.expected_effect)) {
-    if (key === 'hook_fired') {
-      expect(result.hookFired, `${entry.id} hook_fired`).toBe(expected)
-    } else if (key === 'tool_executed') {
-      expect(result.toolExecuted, `${entry.id} tool_executed`).toBe(expected)
-    } else if (key === 'marker_has_tool_name') {
-      expect((eventMarker as Record<string, unknown> | null)?.tool_name, `${entry.id} marker.tool_name`).toBe('Bash')
-    } else if (key === 'marker_has_error') {
-      expect(JSON.stringify(eventMarker), `${entry.id} marker error`).toMatch(/error|is_error/i)
-    } else if (key === 'marker_has_message') {
-      expect((eventMarker as Record<string, unknown> | null)?.message, `${entry.id} marker.message`).toBeDefined()
-    } else if (key === 'marker_has_prompt') {
-      expect((eventMarker as Record<string, unknown> | null)?.prompt, `${entry.id} marker.prompt`).toBeDefined()
-    } else if (key === 'marker_has_source') {
-      expect((eventMarker as Record<string, unknown> | null)?.source, `${entry.id} marker.source`).toBeDefined()
+  for (const item of entries) {
+    // 查找对应的标记（优先使用 markersByEvent，回退到单个 marker）
+    const eventMarker = result.markersByEvent?.[item.event] ?? result.marker
+    for (const [key, expected] of Object.entries(item.expected_effect)) {
+      if (key === 'hook_fired') {
+        const hookFired = item.trigger === 'mcp_elicitation'
+          ? eventMarker !== null
+          : result.hookFired
+        expect(hookFired, `${item.id} hook_fired`).toBe(expected)
+      } else if (key === 'tool_executed') {
+        expect(result.toolExecuted, `${item.id} tool_executed`).toBe(expected)
+      } else if (key === 'marker_has_tool_name') {
+        expect((eventMarker as Record<string, unknown> | null)?.tool_name, `${item.id} marker.tool_name`).toBe('Bash')
+      } else if (key === 'marker_has_error') {
+        expect(JSON.stringify(eventMarker), `${item.id} marker error`).toMatch(/error|is_error/i)
+      } else if (key === 'marker_has_message') {
+        expect((eventMarker as Record<string, unknown> | null)?.message, `${item.id} marker.message`).toBeDefined()
+      } else if (key === 'marker_has_prompt') {
+        expect((eventMarker as Record<string, unknown> | null)?.prompt, `${item.id} marker.prompt`).toBeDefined()
+      } else if (key === 'marker_has_source') {
+        expect((eventMarker as Record<string, unknown> | null)?.source, `${item.id} marker.source`).toBeDefined()
+      }
     }
   }
 }
@@ -91,8 +123,21 @@ describe('hook matrix', () => {
       console.log(skipLine(entry.status, entry.id))
       continue
     }
+    // Both events share one in-process query below. Besides exercising the real
+    // chain, this avoids reusing the process-global settings snapshot across sandboxes.
+    if (entry.trigger === 'mcp_elicitation') continue
     test(`${entry.id} [${entry.trigger}]`, { timeout: 120_000 }, async () => {
-      await runEntry(entry)
+      await runEntries([entry])
+    })
+  }
+  const elicitationEntries = entries.filter(entry =>
+    !isBlocked(entry.status) && entry.trigger === 'mcp_elicitation',
+  )
+  if (elicitationEntries.length > 0) {
+    test('hook:Elicitation + hook:ElicitationResult [mcp_elicitation]', {
+      timeout: 120_000,
+    }, async () => {
+      await runEntries(elicitationEntries)
     })
   }
 })

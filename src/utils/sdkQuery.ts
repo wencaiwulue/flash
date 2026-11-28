@@ -36,6 +36,7 @@ import type {
   HookCallbackMatcher as InternalHookCallbackMatcher,
 } from '../types/hooks.js'
 import { getMcpToolsCommandsAndResources, fetchToolsForClient } from '../services/mcp/client.js'
+import { registerElicitationHandler } from '../services/mcp/elicitationHandler.js'
 import type {
   MCPServerConnection,
   ScopedMcpServerConfig,
@@ -200,9 +201,13 @@ function hasMcpInstance(
 async function connectMcpConfigs({
   configs,
   onConnection,
+  onElicitation,
+  setAppState,
 }: {
   configs: Record<string, ScopedMcpServerConfig>
   onConnection: Parameters<typeof getMcpToolsCommandsAndResources>[0]
+  onElicitation: InternalOptions['onElicitation']
+  setAppState: (f: (prevState: AppState) => AppState) => void
 }): Promise<void> {
   const processConfigs = Object.fromEntries(
     Object.entries(configs).filter(([, config]) => !hasMcpInstance(config)),
@@ -219,7 +224,10 @@ async function connectMcpConfigs({
       if (!hasMcpInstance(config)) return
       const [clientTransport, serverTransport] =
         InMemoryTransport.createLinkedPair()
-      const client = new Client({ name: 'claude-code-sdk', version: '1.0.0' })
+      const client = new Client(
+        { name: 'claude-code-sdk', version: '1.0.0' },
+        { capabilities: { elicitation: {} } },
+      )
       const connection: MCPServerConnection = {
         type: 'connected',
         name,
@@ -236,6 +244,22 @@ async function connectMcpConfigs({
           config.instance.connect(serverTransport),
         ])
         connection.capabilities = client.getServerCapabilities() ?? {}
+        registerElicitationHandler(
+          client,
+          name,
+          setAppState,
+          async (params, signal) => {
+            // URL elicitation is outside the in-process SDK scope. Form mode
+            // follows hooks -> callback -> decline -> result hooks.
+            if (params.mode === 'url' || !onElicitation) {
+              return { action: 'decline' }
+            }
+            return onElicitation({ ...params, serverName: name }, { signal })
+          },
+        )
+        // This is a new client even when its server name was used by an earlier
+        // query. Name-keyed tool wrappers must not retain a closed client.
+        fetchToolsForClient.cache.delete(name)
         const tools = await fetchToolsForClient(connection)
         onConnection({ client: connection, tools, commands: [] })
       } catch (error) {
@@ -479,6 +503,8 @@ export function createSdkQuery({
       debug(`mcp:config:${Object.keys(options.mcpServers ?? {}).join(',')};scoped:${Object.keys(scopedConfigs).join(',')}`)
       await connectMcpConfigs({
         configs: scopedConfigs,
+        onElicitation: options.onElicitation,
+        setAppState: updater => Object.assign(appState, updater(appState)),
         onConnection: ({ client, tools, commands, resources }) => {
           appState.mcp = {
             ...appState.mcp,
@@ -815,6 +841,9 @@ export function createSdkQuery({
         setup.appState.mcp.clients.map(client => client.name),
       )
       await cleanupClients(setup.appState.mcp.clients)
+      // Tool wrappers capture their client. Invalidate name-keyed discovery
+      // entries before same-name replacement so the fresh instance is called.
+      for (const name of previousNames) fetchToolsForClient.cache.delete(name)
       setup.appState.mcp = {
         ...setup.appState.mcp,
         clients: [],
@@ -824,6 +853,9 @@ export function createSdkQuery({
       }
       await connectMcpConfigs({
         configs: toScopedConfigs(servers),
+        onElicitation: options.onElicitation,
+        setAppState: updater =>
+          Object.assign(setup.appState, updater(setup.appState)),
         onConnection: ({ client, tools, commands, resources }) => {
           setup.appState.mcp = {
             ...setup.appState.mcp,

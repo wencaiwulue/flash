@@ -80,3 +80,5 @@ groups:
       - tests/sdkMcp.test.ts
       - tests/integration/sdk/query-lifecycle.test.ts
       - tests/integration/sdk/hooks.test.ts
+      - tests/integration/sdk/mcp.test.ts
+      - tests/integration/support/mcp.ts

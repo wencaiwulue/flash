@@ -1,6 +1,9 @@
 import { join } from 'path'
+import type { ElicitResult } from '@modelcontextprotocol/sdk/types.js'
 import type { Launcher } from '../form/launcher'
-import type { MockAnthropic } from '../../support/mock-anthropic'
+import { MOCK_API_KEY, type MockAnthropic } from '../../support/mock-anthropic'
+import { createFormElicitationEchoServer } from '../../support/mcp'
+import { loadDistSdk } from '../../support/sdk'
 import type { Sandbox } from '../../support/sandbox'
 
 export type ScenarioKey =
@@ -14,6 +17,7 @@ export type ScenarioKey =
   | 'repl_config_change'
   | 'repl_file_change'
   | 'subagent'
+  | 'mcp_elicitation'
   | 'none'
 
 export interface ScenarioContext {
@@ -41,6 +45,8 @@ export async function runHookScenario(scenario: ScenarioKey, ctx: ScenarioContex
       return toolCallScenario(ctx, { command: 'exit 7', executable: false, hookFails: false, isFailureEvent: true })
     case 'print_turn':
       return printTurnScenario(ctx)
+    case 'mcp_elicitation':
+      return mcpElicitationScenario(ctx)
     case 'permission_prompt':
       return permissionPromptScenario(ctx, { approve: true })
     case 'permission_denied':
@@ -53,6 +59,95 @@ export async function runHookScenario(scenario: ScenarioKey, ctx: ScenarioContex
       return { hookFired: false, marker: null, toolExecuted: false, stdout: '' }
     default:
       throw new Error(`scenario "${scenario}" not implemented yet`)
+  }
+}
+
+async function mcpElicitationScenario(ctx: ScenarioContext): Promise<ScenarioResult> {
+  const { mock, sandbox } = ctx
+  const sdk = await loadDistSdk()
+  const calls: Array<Record<string, unknown>> = []
+  const elicitationResults: ElicitResult[] = []
+  const server = createFormElicitationEchoServer(
+    sdk,
+    'CONFIG_MCP_TOOL_33B',
+    calls,
+    elicitationResults,
+  )
+  const toolUseId = 'toolu-config-elicitation-33b'
+  mock.enqueue(
+    {
+      type: 'tool_use',
+      id: toolUseId,
+      name: 'mcp__mock__echo',
+      input: { text: 'config-input', elicit: true },
+    },
+    { type: 'text', text: 'CONFIG_MCP_ELICITATION_DONE_33B' },
+  )
+
+  const env: Record<string, string | undefined> = { ...sandbox.env }
+  for (const key of Object.keys(process.env)) {
+    if (key.startsWith('ANTHROPIC_') || key.startsWith('CLAUDE_')) {
+      env[key] = undefined
+    }
+  }
+  Object.assign(env, {
+    HOME: sandbox.home,
+    USERPROFILE: sandbox.home,
+    CLAUDE_CONFIG_DIR: join(sandbox.home, '.claude'),
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+    ANTHROPIC_API_KEY: MOCK_API_KEY,
+    ANTHROPIC_BASE_URL: mock.url,
+    NODE_ENV: 'production',
+    USER_TYPE: undefined,
+  })
+  const query = sdk.query({
+    prompt: 'Call the config-acceptance form-eliciting tool.',
+    options: {
+      cwd: sandbox.project,
+      env,
+      settingSources: ['user'],
+      tools: [],
+      allowedTools: ['mcp__mock__echo'],
+      mcpServers: { mock: server },
+      persistSession: false,
+    },
+  })
+  let stdout = ''
+  try {
+    for await (const message of query) {
+      if (message.type === 'result' && message.subtype === 'success') {
+        stdout = message.result
+      }
+    }
+  } finally {
+    await query.return(undefined)
+  }
+
+  const eventsFile = join(sandbox.home, 'hook-events-seen.txt')
+  const eventsSeen = (await Bun.file(eventsFile).text().catch(() => ''))
+    .split('\n')
+    .filter(Boolean)
+  const markersByEvent: Record<string, Record<string, unknown> | null> = {}
+  for (const event of ['Elicitation', 'ElicitationResult']) {
+    const markerRaw = await Bun.file(join(sandbox.home, `hook-marker-${event}.json`))
+      .text()
+      .catch(() => null)
+    if (markerRaw) {
+      try {
+        markersByEvent[event] = JSON.parse(markerRaw)
+      } catch {
+        markersByEvent[event] = { raw: markerRaw }
+      }
+    }
+  }
+  const marker = markersByEvent.Elicitation ?? markersByEvent.ElicitationResult ?? null
+  return {
+    hookFired: eventsSeen.length > 0 || marker !== null,
+    marker,
+    toolExecuted:
+      calls.length === 1 && elicitationResults[0]?.action === 'accept',
+    stdout,
+    markersByEvent,
   }
 }
 

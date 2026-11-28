@@ -198,22 +198,26 @@
   # in the test framework yet.
 
 - event: Elicitation
-  status: blocked-by-prereq:mcp-elicit-server
-  trigger: none
+  status: active
+  trigger: mcp_elicitation
   matcher: '*'
   exit_semantics: nonblock
   expected_effect:
     hook_fired: true
-  # Requires MCP elicitation server (to be implemented in subproject 3).
+    tool_executed: true
+  # Historical blocker: mcp-elicit-server. Enabled by the offline in-process
+  # form-elicitation scenario; the command hook returns an accept response.
 
 - event: ElicitationResult
-  status: blocked-by-prereq:mcp-elicit-server
-  trigger: none
+  status: active
+  trigger: mcp_elicitation
   matcher: '*'
   exit_semantics: nonblock
   expected_effect:
     hook_fired: true
-  # Requires MCP elicitation server (to be implemented in subproject 3).
+    tool_executed: true
+  # Historical blocker: mcp-elicit-server. Enabled by the same real MCP flow;
+  # its command hook returns an accept response without waiting for UI.
 
 - event: WorktreeCreate
   status: blocked-by-prereq:worktree-ui

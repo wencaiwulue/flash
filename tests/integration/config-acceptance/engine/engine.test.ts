@@ -83,6 +83,24 @@ describe('loadHookEntries', () => {
     expect(uniqueIds.size).toBe(ids.length)
   })
 
+  test('preserves the mcp_elicitation trigger', async () => {
+    const { mkdtemp, writeFile, rm } = await import('node:fs/promises')
+    const { tmpdir } = await import('node:os')
+    const dir = await mkdtemp(join(tmpdir(), 'ca-elicit-'))
+    const yaml = join(dir, 'elicitation.yaml')
+    await writeFile(yaml, `- event: Elicitation\n  status: active\n  trigger: mcp_elicitation\n  matcher: '*'\n  exit_semantics: nonblock\n  expected_effect:\n    hook_fired: true\n`)
+    try {
+      const [entry] = loadHookEntries(yaml)
+      expect(entry).toMatchObject({
+        id: 'hook:Elicitation',
+        status: 'active',
+        trigger: 'mcp_elicitation',
+      })
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   test('unknown trigger throws with entry id', async () => {
     const { mkdtemp, writeFile, rm } = await import('node:fs/promises')
     const { tmpdir } = await import('node:os')

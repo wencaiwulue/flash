@@ -1192,6 +1192,15 @@ export function emitTaskTerminatedSdk(taskId, status, opts): void
 - 仓库：`runtimeTypes.ts` 已声明 classic options，`sdkQuery.ts` 尚未消费 hooks/session fields 且 env 不恢复；`state.ts` 注册只追加/全清；`sdkSessions.ts` 与 `sdkSessionConversation.ts` 提供可复用 loader；16 个 token-count fixtures 全为 `{tokenCount:null}` 且未发现文件名消费者。
 - 当前只完成文档和证据收集，新增 dist 集成测试尚未创建或运行，不能记为 pass。
 
+### 2026-11-28 Task 33B 实施证据
+
+- parser 红测先得到 `hook:Elicitation: unknown trigger "mcp_elicitation"`；`KNOWN_TRIGGER_PREFIX` 只新增 `mcp_elicitation` 后，保留测试和未知 `bogus_trigger` 含 entry id 的回归均通过。
+- `tests/integration/sdk/mcp.test.ts` 先红后绿：初跑中 `onElicitation`、Elicitation/ElicitationResult 观察均为 0，abort 等待超时；后续隔离还证明同名恢复会复用捕获已关闭 client 的 name-keyed tool wrapper。实现为每个新 in-process client 失效旧 discovery cache，并在显式替换前清除旧名称；这不是 remote 自动重连。
+- `Options.onElicitation` 直接采用 MCP SDK 的 `ElicitRequestParams`（附加 `serverName`）和 `ElicitResult`；in-process `Client` 声明 `elicitation: {}`。实际顺序为 Elicitation hooks → onElicitation → 默认 decline → ElicitationResult hooks；Elicitation hook 先响应时不调用 callback，result hook 的覆盖再送回工具/模型。abort 通过嵌套 `elicitInput` 的 signal 传递，callback 以 cancel 收尾，不再发起后续模型请求。
+- `executeHooksOutsideREPL` 对 Elicitation/ElicitationResult callback 保留完整 JSON 输出，避免只取 `systemMessage` 而丢失 `hookSpecificOutput`；既有命令 hook 和其他事件路径不变。
+- config-acceptance 将两个事件在同一真实 dist classic query、同一 in-process MCP server 和同一组 settings command hooks 中运行；两个命令都返回合法 accept 响应，不要求 UI，也不启动进程/网络 MCP。组合运行避免不同 sandbox 共用进程级 settings snapshot。
+- 本任务不涉及 classic sessions 或 token-count；URL mode 保持明确的非目标。
+
 ## 8. 文件覆盖与相关子系统
 
 本设计的覆盖率文件位于 [Coverage](../../architecture/coverage/sdk-query-sessions.yaml)。
